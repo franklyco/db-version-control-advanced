@@ -143,6 +143,26 @@ function dbvc_render_export_page()
 		}
 	}
 
+	// Handle new post creation + mirror domain settings
+	if (isset($_POST['dbvc_create_settings_save']) && wp_verify_nonce($_POST['dbvc_create_settings_nonce'], 'dbvc_create_settings_action')) {
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+		}
+
+		update_option('dbvc_allow_new_posts', ! empty($_POST['dbvc_allow_new_posts']) ? '1' : '0');
+		update_option('dbvc_new_post_status', sanitize_text_field($_POST['dbvc_new_post_status'] ?? 'draft'));
+
+		$whitelist = isset($_POST['dbvc_new_post_types_whitelist']) && is_array($_POST['dbvc_new_post_types_whitelist'])
+			? array_map('sanitize_text_field', wp_unslash($_POST['dbvc_new_post_types_whitelist']))
+			: [];
+		update_option('dbvc_new_post_types_whitelist', $whitelist);
+
+		update_option('dbvc_mirror_domain', sanitize_text_field($_POST['dbvc_mirror_domain'] ?? ''));
+
+		echo '<div class="notice notice-success"><p>' . esc_html__('Import settings updated!', 'dbvc') . '</p></div>';
+	}
+
+
 	// Get the current resolved path for display.
 	$resolved_path = dbvc_get_sync_path();
 
@@ -194,6 +214,48 @@ function dbvc_render_export_page()
 						<p><?php echo esc_html($msg); ?></p>
 					</div>
 				<?php endif; ?>
+
+				<?php
+				// ✅ Display import log if available
+				$log = get_option('dbvc_import_log');
+				if (!empty($log)) :
+				?>
+					<hr />
+					<h2><?php esc_html_e('Latest Import Log', 'dbvc'); ?></h2>
+					<p><strong><?php esc_html_e('Imported on:', 'dbvc'); ?></strong> <?php echo esc_html($log['timestamp']); ?></p>
+
+					<?php if (!empty($log['imported_post_ids'])) : ?>
+						<h3><?php esc_html_e('Newly Created Posts', 'dbvc'); ?></h3>
+						<ul>
+							<?php foreach ($log['imported_post_ids'] as $post_id) : ?>
+								<li><a href="<?php echo esc_url(get_edit_post_link($post_id)); ?>" target="_blank"><?php echo esc_html(get_the_title($post_id) ?: "Post ID {$post_id}"); ?></a> (<?php echo esc_html($post_id); ?>)</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+
+					<?php if (!empty($log['remapped_ids'])) : ?>
+						<h3><?php esc_html_e('Remapped Post Relationships', 'dbvc'); ?></h3>
+						<ul>
+							<?php foreach ($log['remapped_ids'] as $old => $new) : ?>
+								<li><?php echo esc_html("Old ID: {$old} → New ID: {$new}"); ?></li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+
+					<?php if (!empty($log['relationship_updates'])) : ?>
+						<h3><?php esc_html_e('Updated Relationship Fields', 'dbvc'); ?></h3>
+						<ul>
+							<?php foreach ($log['relationship_updates'] as $post_id => $fields) : ?>
+								<li>
+									<a href="<?php echo esc_url(get_edit_post_link($post_id)); ?>" target="_blank">
+										<?php echo esc_html(get_the_title($post_id) ?: "Post ID {$post_id}"); ?>
+									</a>: <?php echo esc_html(implode(', ', $fields)); ?>
+								</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+				<?php endif; ?>
+
 			</div>
 
 			<!-- Tab 2: Export / Download -->
@@ -250,6 +312,49 @@ function dbvc_render_export_page()
 					<strong><?php esc_html_e('Resolved path:', 'dbvc'); ?></strong> <code><?php echo esc_html(dbvc_get_sync_path()); ?></code><br><br>
 					<?php submit_button(esc_html__('Save Folder Path', 'dbvc'), 'secondary', 'dbvc_sync_path_save'); ?>
 				</form>
+
+				<form method="post">
+					<?php wp_nonce_field('dbvc_create_settings_action', 'dbvc_create_settings_nonce'); ?>
+					<h2><?php esc_html_e('Post Creation & Mirror Domain Settings', 'dbvc'); ?></h2>
+
+					<p><label>
+							<input type="checkbox" name="dbvc_allow_new_posts" value="1" <?php checked(get_option('dbvc_allow_new_posts'), '1'); ?> />
+							<?php esc_html_e('Allow importing new posts that do not already exist on this site', 'dbvc'); ?>
+						</label></p>
+
+					<p>
+						<label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
+						<select name="dbvc_new_post_status" id="dbvc_new_post_status">
+							<?php
+							$status = get_option('dbvc_new_post_status', 'draft');
+							foreach (['draft', 'publish', 'pending'] as $s) {
+								echo '<option value="' . esc_attr($s) . '" ' . selected($status, $s, false) . '>' . esc_html($s) . '</option>';
+							}
+							?>
+						</select>
+					</p>
+
+					<p>
+						<label for="dbvc_new_post_types_whitelist"><?php esc_html_e('Restrict creation to selected post types (optional):', 'dbvc'); ?></label><br>
+						<select name="dbvc_new_post_types_whitelist[]" multiple size="5" style="width:100%;">
+							<?php
+							$selected_types = (array) get_option('dbvc_new_post_types_whitelist', []);
+							foreach (dbvc_get_available_post_types() as $pt => $obj) {
+								echo '<option value="' . esc_attr($pt) . '" ' . selected(in_array($pt, $selected_types, true), true, false) . '>' . esc_html($obj->label) . ' (' . esc_html($pt) . ')</option>';
+							}
+							?>
+						</select>
+					</p>
+
+					<p>
+						<label for="dbvc_mirror_domain"><?php esc_html_e('Mirror domain (optional):', 'dbvc'); ?></label><br>
+						<input type="text" name="dbvc_mirror_domain" id="dbvc_mirror_domain" value="<?php echo esc_attr(get_option('dbvc_mirror_domain', '')); ?>" style="width:100%;" placeholder="e.g., https://staging.example.com" />
+						<small><?php esc_html_e('Any URLs containing this domain will be replaced with the current site domain during import.', 'dbvc'); ?></small>
+					</p>
+
+					<?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_create_settings_save'); ?>
+				</form>
+
 			</div>
 		</div><!-- #dbvc-tabs -->
 	</div><!-- .wrap -->
