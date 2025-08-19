@@ -1,15 +1,15 @@
 <?php
 
 /**
- * Plugin Name: DB Version Control
- * Description: Sync WordPress to version-controlled JSON files for easy Git workflows.
+ * Plugin Name: DB Version Control Advanced
+ * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
  * Version:     1.1.0
- * Author:      Robert DeVore
- * Author URI:  https://robertdevore.com
+ * Author:      Frankly / Robert DeVore
+ * Author URI:  https://frankly.design
  * Text Domain: dbvc
  * License:     GPL-2.0+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.txt
- * Update URI:  https://github.com/robertdevore/db-version-control/
+ * Update URI:  https://github.com/franklyco/db-version-control-advanced/
  */
 
 // If this file is called directly, abort.
@@ -22,7 +22,7 @@ require 'vendor/plugin-update-checker/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
 $myUpdateChecker = PucFactory::buildUpdateChecker(
-	'https://github.com/robertdevore/db-version-control/',
+	'https://github.com/franklyco/db-version-control-advanced/',
 	__FILE__,
 	'db-version-control'
 );
