@@ -26,6 +26,11 @@ class DBVC_Sync_Posts
     // Static variables
     protected static $imported_post_id_map = [];
 
+    /* @WIP Relationship remapping
+    // protected static $relationship_field_keys = []; // You can populate this before calling import
+    // protected static $relationship_field_updates = [];
+*/
+
     /**
      * Check the sync folder path.
      * 
@@ -243,6 +248,14 @@ HT;
             }
         }
 
+        /*      @WIP Relationship remapping   
+$acf_relationship_fields = [
+            'related_services',
+            'connected_team_members',
+            'case_study_featured_post',
+        ];
+
+        self::remap_relationship_fields($acf_relationship_fields); */
 
 
         return [
@@ -378,6 +391,7 @@ HT;
                 }
             }
 
+            // 🔁 Remap old domain in postmeta if mirror domain was set
             if (!empty($mirror_domain) && $mirror_domain !== $current_domain) {
                 self::remap_post_meta_domains($post_id, $mirror_domain);
             }
@@ -429,6 +443,71 @@ HT;
         $real = realpath($path);
         return $base && $real && strpos($real, $base) === 0;
     }
+
+
+    /* 
+    * @WIP Relationship remapping
+    *
+    Remapping for ACF relationship fields based on newly created posts if applicable
+    // Added: 08-14-2025
+    
+    public static function remap_relationship_fields(array $relationship_field_keys = [])
+    {
+        if (empty(self::$imported_post_id_map) || empty($relationship_field_keys)) {
+            return;
+        }
+
+        foreach (self::$imported_post_id_map as $old_id => $new_id) {
+            foreach ($relationship_field_keys as $field_key) {
+                $value = get_post_meta($new_id, $field_key, true);
+
+                if (empty($value)) {
+                    continue;
+                }
+
+                $remapped_value = self::recursive_remap_relationships($value);
+
+                if ($remapped_value !== $value) {
+                    update_post_meta($new_id, $field_key, $remapped_value);
+                    self::$relationship_field_updates[$new_id][] = $field_key;
+                    error_log("[DBVC] Remapped field '{$field_key}' for post {$new_id}");
+                }
+            }
+        }
+    }
+
+    // Helper to handle remapping nested values in relationship fields
+    protected static function recursive_remap_relationships($value)
+    {
+        if (is_numeric($value)) {
+            return self::$imported_post_id_map[$value] ?? $value;
+        }
+
+        if (is_array($value)) {
+            $new = [];
+            foreach ($value as $k => $v) {
+                $new[$k] = self::recursive_remap_relationships($v);
+            }
+            return $new;
+        }
+
+        return $value;
+    }
+
+    // Remaps across all posts
+    public static function remap_relationship_ids_across_posts($remap_ids, $post_ids)
+    {
+        foreach ($post_ids as $post_id) {
+            $meta = get_post_meta($post_id);
+            foreach ($meta as $key => $value) {
+                $updated_value = self::deep_replace_ids($value, $remap_ids);
+                if ($updated_value !== $value) {
+                    update_post_meta($post_id, $key, $updated_value);
+                }
+            }
+        }
+    }
+    */
 
     // Export Taxonomy
     public static function export_tax_input_portable($post_id, $post_type)
@@ -757,6 +836,11 @@ HT;
     {
         $supported_types = self::get_supported_post_types();
 
+        /* @WIP Relationship remapping
+        // Initialize maps
+        self::$imported_post_id_map = [];
+        self::$relationship_field_updates = [];
+ */
         foreach ($supported_types as $post_type) {
             $path  = dbvc_get_sync_path($post_type);
             $files = glob($path . '*.json');
@@ -808,6 +892,17 @@ HT;
                     'post_status'  => $json['post_status'] ?? 'publish',
                 ]);
 
+                /* @WIP Old disregard if working properly
+                
+                $new_post_id = wp_insert_post([
+                    'ID'           => $post_id,
+                    'post_title'   => sanitize_text_field($json['post_title'] ?? ''),
+                    'post_content' => wp_kses_post($json['post_content'] ?? ''),
+                    'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
+                    'post_type'    => sanitize_text_field($json['post_type'] ?? $post_type),
+                    'post_status'  => sanitize_text_field($json['post_status'] ?? 'publish'),
+                ]); */
+
                 if (! is_wp_error($new_post_id)) {
                     if ($post_id !== $new_post_id) {
                         self::$imported_post_id_map[$post_id] = $new_post_id;
@@ -828,6 +923,19 @@ HT;
                 }
             }
         }
+
+        /* @WIP // ✅ Remap relationships if any were imported
+        if (! empty(self::$imported_post_id_map)) {
+            self::remap_relationship_fields(self::$relationship_field_keys ?? []);
+
+            update_option('dbvc_import_log', [
+                'timestamp'              => current_time('mysql'),
+                'remapped_ids'           => self::$imported_post_id_map,
+                'imported_post_ids'      => array_values(self::$imported_post_id_map),
+                'relationship_updates'   => self::$relationship_field_updates ?? [],
+            ]);
+        }
+ */
     }
 
 
@@ -1307,6 +1415,10 @@ HT;
         $supported_types = self::get_supported_post_types();
         $all_files = [];
 
+        /*         @WIP Relationship remapping */
+        // $remap_ids = [];
+        // $imported_post_ids = [];
+
         // Collect all JSON files from all post type directories
         foreach ($supported_types as $post_type) {
             $path = dbvc_get_sync_path($post_type);
@@ -1356,6 +1468,32 @@ HT;
 
             $processed++;
         }
+        /*
+        @WIP Relationship remapping
+        *
+        // ✅ Set the remap for later use
+        self::$imported_post_id_map = $remap_ids;
+
+        // ✅ Remap relationship fields (requires list of known field keys)
+        $relationship_field_keys = [
+            'alternatives_relationship',
+            'related_items',
+            'team_members', // Add any other relationship/meta field keys as needed
+        ];
+        self::remap_relationship_fields($relationship_field_keys);
+
+        // ✅ Also remap any nested references across posts (optional if both are needed)
+        self::remap_relationship_ids_across_posts($remap_ids, $imported_post_ids);
+        self::$relationship_field_updates = self::$relationship_field_updates ?? [];
+
+        // ✅ Store log for admin report
+        update_option('dbvc_import_log', [
+            'timestamp'             => current_time('mysql'),
+            'remapped_ids'          => $remap_ids,
+            'imported_post_ids'     => $imported_post_ids,
+            'relationship_updates'  => self::$relationship_field_updates ?? [],
+        ]);
+        */
 
         $total_files = count($all_files);
         $remaining = max(0, $total_files - ($offset + $processed));
@@ -1400,14 +1538,31 @@ HT;
      */
     public static function export_fse_theme_data()
     {
-        if (!did_action('wp_loaded')) {
+        if (! did_action('wp_loaded')) {
             return;
         }
+
+        /* 
+        @WIP
+        *
+        $existing = get_post(absint($json['ID']));
+
+        if ($smart_import && $existing) {
+            $hash_key = '_dbvc_import_hash';
+            $new_hash = md5(serialize([$json['post_content'], $json['meta'] ?? []]));
+            $existing_hash = get_post_meta($existing->ID, $hash_key, true);
+
+            if ($new_hash === $existing_hash) {
+                return; // Skip unchanged post
+            }
+        } */
+
 
         if (!wp_is_block_theme()) {
             return;
         }
 
+        // Skip during admin page loads to prevent conflicts.
         if (is_admin() && !wp_doing_ajax() && !defined('WP_CLI')) {
             return;
         }
@@ -1443,7 +1598,7 @@ HT;
             $theme_data['theme_json'] = [];
         }
 
-        // Allow external modifications
+        // Allow other plugins to modify FSE theme data.
         $theme_data = apply_filters('dbvc_export_fse_theme_data', $theme_data);
 
         // Prepare file path
@@ -1529,7 +1684,7 @@ HT;
     /**
      * Download the latest sync files as dbvc-sync-{date}.zip
      */
-    function dbvc_handle_download_sync()
+    public static function handle_download_sync()
     {
         if (! current_user_can('manage_options')) {
             wp_die(__('Permission denied.', 'dbvc'));
@@ -1544,7 +1699,7 @@ HT;
             wp_die(__('Sync directory does not exist.', 'dbvc'));
         }
 
-        $tmp_zip = wp_tempnam();               // WordPress-safe tmp file.
+        $tmp_zip = wp_tempnam();
         $zip     = new ZipArchive();
 
         if (true !== $zip->open($tmp_zip, ZipArchive::OVERWRITE)) {
@@ -1611,50 +1766,6 @@ HT;
 
         $query_var = $unzip ? 'success' : 'fail';
         wp_redirect(add_query_arg('dbvc_upload', $query_var, wp_get_referer()));
-        exit;
-    }
-
-    /**
-     * Stream a ZIP of the entire sync folder for download.
-     */
-    public static function handle_download_sync()
-    {
-        if (! current_user_can('manage_options')) {
-            wp_die(__('Permission denied.', 'dbvc'));
-        }
-
-        if (! wp_verify_nonce($_GET['_wpnonce'] ?? '', 'dbvc_download_sync')) {
-            wp_die(__('Nonce check failed.', 'dbvc'));
-        }
-
-        $sync_dir = dbvc_get_sync_path();
-        if (! is_dir($sync_dir)) {
-            wp_die(__('Sync directory does not exist.', 'dbvc'));
-        }
-
-        $tmp_zip = wp_tempnam();
-        $zip     = new ZipArchive();
-
-        if (true !== $zip->open($tmp_zip, ZipArchive::OVERWRITE)) {
-            wp_die(__('Could not create ZIP.', 'dbvc'));
-        }
-
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($sync_dir, FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            $rel_path = ltrim(str_replace($sync_dir, '', $file), '/');
-            $zip->addFile($file, $rel_path);
-        }
-        $zip->close();
-
-        $filename = 'dbvc-sync-' . gmdate('Ymd-His') . '.zip';
-
-        header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . filesize($tmp_zip));
-        readfile($tmp_zip);
-        @unlink($tmp_zip);
         exit;
     }
 
