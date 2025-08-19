@@ -13,10 +13,6 @@ if (! defined('WPINC')) {
 	die;
 }
 
-// Register sync-folder download/upload
-add_action('admin_post_dbvc_download_sync', ['DBVC_Sync_Posts', 'handle_download_sync']);
-add_action('admin_post_dbvc_upload_sync',   ['DBVC_Sync_Posts', 'handle_upload_sync']);
-
 /**
  * Handle post deletion by removing corresponding JSON files.
  * 
@@ -288,6 +284,149 @@ function dbvc_handle_fse_changes()
 	do_action('dbvc_after_fse_changes');
 }
 
+// Handles processing zip/delete all in Admin tab 3
+// Purge (delete or download-then-delete)
+add_action('admin_post_dbvc_purge_sync', 'dbvc_handle_purge_sync');
+
+function dbvc_handle_purge_sync()
+{
+	if (! current_user_can('manage_options')) wp_die(esc_html__('Insufficient permissions.', 'dbvc'));
+	check_admin_referer('dbvc_purge_sync_action', 'dbvc_purge_sync_nonce');
+
+	$confirmation   = isset($_POST['dbvc_purge_confirm']) ? trim(wp_unslash($_POST['dbvc_purge_confirm'])) : '';
+	$do_delete      = ! empty($_POST['dbvc_purge_delete']);
+	$do_dl_then_del = ! empty($_POST['dbvc_purge_download_then_delete']);
+	$delete_root    = ! empty($_POST['dbvc_purge_delete_root']); // <-- new
+
+	if ($confirmation !== 'DELETE') {
+		dbvc_admin_notice_redirect('confirm_fail');
+	}
+
+	if (! $do_delete && ! $do_dl_then_del) {
+		dbvc_admin_notice_redirect('no_action');
+	}
+
+	$sync_dir = dbvc_get_sync_path();
+
+	if ($do_dl_then_del) {
+		dbvc_download_then_delete_stream($sync_dir, $delete_root); // <-- pass it through
+	}
+
+	// Plain delete
+	list($deleted, $failed, $deleted_root) = dbvc_delete_sync_contents($sync_dir, $delete_root);
+	dbvc_admin_notice_redirect('purge_ok', [
+		'deleted'      => (int) $deleted,
+		'failed'       => (int) $failed,
+		'deleted_root' => $deleted_root ? 1 : 0,
+	]);
+}
+
+/**
+ * Stream a zip of the sync folder, then delete contents after the response finishes.
+ */
+function dbvc_download_then_delete_stream($sync_dir, $delete_root = false)
+{
+	if (! class_exists('ZipArchive')) wp_die(esc_html__('ZipArchive not available.', 'dbvc'));
+	if (! is_dir($sync_dir)) wp_die(esc_html__('Sync directory does not exist.', 'dbvc'));
+
+	$zip = dbvc_build_sync_zip($sync_dir);
+	if (is_wp_error($zip)) wp_die(esc_html($zip->get_error_message()));
+
+	// Ensure clean output state before headers
+	nocache_headers();
+	if (function_exists('apache_setenv')) @apache_setenv('no-gzip', '1');
+	@ini_set('zlib.output_compression', 'Off');
+	while (ob_get_level()) {
+		@ob_end_clean();
+	}
+
+	// After the response finishes, delete + set transient exactly once
+	register_shutdown_function(function () use ($sync_dir, $delete_root) {
+		list($deleted, $failed, $deleted_root_flag) = dbvc_delete_sync_contents($sync_dir, $delete_root);
+
+		set_transient(
+			'dbvc_last_purge',
+			[
+				'deleted'      => (int) $deleted,
+				'failed'       => (int) $failed,
+				'deleted_root' => $deleted_root_flag ? 1 : 0,
+				'ts'           => time(),
+			],
+			5 * MINUTE_IN_SECONDS
+		);
+	});
+
+	$filename = 'dbvc-sync-' . date('Ymd-His') . '.zip';
+	clearstatcache(true, $zip);
+	$size = @filesize($zip);
+
+	header('Content-Type: application/zip');
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	if ($size !== false) {
+		header('Content-Length: ' . $size);
+	}
+	header('Pragma: public');
+	header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+	header('Expires: 0');
+
+	$fp = fopen($zip, 'rb');
+	fpassthru($fp);
+	fclose($fp);
+	@unlink($zip);
+	exit;
+}
+
+
+/**
+ * Redirect back to your settings page with a notice query string.
+ */
+function dbvc_admin_notice_redirect($code, array $extra = [])
+{
+	// 1) Prefer explicit return URL from form
+	$target = isset($_POST['dbvc_return']) ? esc_url_raw($_POST['dbvc_return']) : '';
+
+	// 2) Otherwise, use the referrer
+	if (! $target) {
+		$ref = wp_get_referer();
+		if ($ref) {
+			$target = $ref;
+		}
+	}
+
+	// 3) Final fallback: your menu slug (CHANGE THIS if your slug differs)
+	if (! $target) {
+		$target = menu_page_url('db-version-control', false);
+		if (! $target) {
+			$target = admin_url('admin.php?page=db-version-control');
+		}
+	}
+
+	// Clean previous notice args and add the new ones
+	$remove = ['dbvc_notice', 'deleted', 'failed', 'deleted_root', '_wpnonce', 'action'];
+	$target = remove_query_arg($remove, $target);
+	$target = add_query_arg(array_merge(['dbvc_notice' => $code], $extra), $target);
+
+	wp_safe_redirect($target);
+	exit;
+}
+
+add_action('wp_ajax_dbvc_purge_status', function () {
+	if (! current_user_can('manage_options')) {
+		wp_send_json_error(['message' => 'forbidden'], 403);
+	}
+
+	$data = get_transient('dbvc_last_purge');
+	if ($data) {
+		// Clear it so the notice is one-shot
+		delete_transient('dbvc_last_purge');
+		wp_send_json_success($data);
+	}
+
+	wp_send_json_success(null); // not ready yet
+});
+
+
+
 /**
  * Handle block pattern changes.
  * 
@@ -324,6 +463,9 @@ add_action('updated_option', 'dbvc_handle_option_updates', 10, 3);
 add_action('wp_update_nav_menu', 'dbvc_handle_menu_updates', 10, 2);
 add_action('save_post_nav_menu_item', 'dbvc_handle_menu_item_save', 10, 1);
 add_action('delete_post', 'dbvc_handle_menu_item_deletion', 10, 1);
+// Register sync-folder download/upload
+add_action('admin_post_dbvc_download_sync', ['DBVC_Sync_Posts', 'handle_download_sync']);
+add_action('admin_post_dbvc_upload_sync',   ['DBVC_Sync_Posts', 'handle_upload_sync']);
 
 // FSE hooks - use safer, later hooks that don't interfere with admin loading
 add_action('wp_loaded', function () {

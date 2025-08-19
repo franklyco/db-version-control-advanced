@@ -143,6 +143,98 @@ function dbvc_render_export_page()
 		}
 	}
 
+	// Handle new post creation + mirror domain settings
+	if (isset($_POST['dbvc_create_settings_save']) && wp_verify_nonce($_POST['dbvc_create_settings_nonce'], 'dbvc_create_settings_action')) {
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+		}
+
+		update_option('dbvc_allow_new_posts', ! empty($_POST['dbvc_allow_new_posts']) ? '1' : '0');
+		update_option('dbvc_new_post_status', sanitize_text_field($_POST['dbvc_new_post_status'] ?? 'draft'));
+
+		$whitelist = isset($_POST['dbvc_new_post_types_whitelist']) && is_array($_POST['dbvc_new_post_types_whitelist'])
+			? array_map('sanitize_text_field', wp_unslash($_POST['dbvc_new_post_types_whitelist']))
+			: [];
+		update_option('dbvc_new_post_types_whitelist', $whitelist);
+
+		update_option('dbvc_mirror_domain', sanitize_text_field($_POST['dbvc_mirror_domain'] ?? ''));
+
+		echo '<div class="notice notice-success"><p>' . esc_html__('Import settings updated!', 'dbvc') . '</p></div>';
+	}
+
+	// --- Notices (place near the top of dbvc_render_export_page(), before HTML output) ---
+	if (isset($_GET['dbvc_notice'])) {
+		$code = sanitize_key($_GET['dbvc_notice']);
+
+		if ($code === 'purge_ok') {
+			$deleted = isset($_GET['deleted']) ? max(0, intval($_GET['deleted'])) : 0;
+			$failed  = isset($_GET['failed'])  ? max(0, intval($_GET['failed']))  : 0;
+			$root    = ! empty($_GET['deleted_root']);
+
+			// Optional suffix if the root sync folder itself was removed
+			$suffix = $root ? ' ' . esc_html__('(Sync folder removed)', 'dbvc') : '';
+
+			echo '<div class="notice notice-success"><p>' .
+				sprintf(
+					/* translators: 1: deleted count, 2: failed count, 3: optional suffix e.g. "(Sync folder removed)" */
+					esc_html__('Purge completed. Deleted: %1$d, Failed: %2$d.%3$s', 'dbvc'),
+					$deleted,
+					$failed,
+					$suffix
+				) .
+				'</p></div>';
+		} elseif ($code === 'confirm_fail') {
+			echo '<div class="notice notice-error"><p>' .
+				esc_html__('Type DELETE exactly to confirm.', 'dbvc') .
+				'</p></div>';
+		} elseif ($code === 'no_action') {
+			echo '<div class="notice notice-error"><p>' .
+				esc_html__('Select an action: Delete or Download then Delete.', 'dbvc') .
+				'</p></div>';
+		}
+	}
+
+	// Handle purge/delete controls (Tab 3).
+	if (isset($_POST['dbvc_purge_sync_submit']) && wp_verify_nonce($_POST['dbvc_purge_sync_nonce'], 'dbvc_purge_sync_action')) {
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+		}
+
+		$confirmation = isset($_POST['dbvc_purge_confirm']) ? trim(wp_unslash($_POST['dbvc_purge_confirm'])) : '';
+		$do_delete    = ! empty($_POST['dbvc_purge_delete']);
+		$do_dl_delete = ! empty($_POST['dbvc_purge_download_then_delete']);
+
+		if ($confirmation !== 'DELETE') {
+			echo '<div class="notice notice-error"><p>' . esc_html__('Confirmation failed. Type DELETE exactly to proceed.', 'dbvc') . '</p></div>';
+		} elseif (! $do_delete && ! $do_dl_delete) {
+			echo '<div class="notice notice-error"><p>' . esc_html__('Please select an action: Delete all files or Download then delete.', 'dbvc') . '</p></div>';
+		} else {
+			$sync_dir = dbvc_get_sync_path();
+
+			if ($do_dl_delete) {
+				// Redirect to combined download+delete handler so the download happens first, then deletion.
+				$dl_url = wp_nonce_url(
+					add_query_arg('action', 'dbvc_download_then_delete', admin_url('admin-post.php')),
+					'dbvc_purge_sync_action',
+					'dbvc_purge_sync_nonce'
+				);
+				wp_safe_redirect($dl_url);
+				exit;
+			}
+
+			// Plain delete (no download)
+			list($deleted, $failed) = dbvc_delete_sync_contents($sync_dir);
+			$msg = sprintf(
+				/* translators: 1: deleted count, 2: failed count */
+				esc_html__('Purge completed. Deleted: %1$d, Failed: %2$d.', 'dbvc'),
+				(int) $deleted,
+				(int) $failed
+			);
+			echo '<div class="notice notice-success"><p>' . $msg . '</p></div>';
+		}
+	}
+
+
 	// Get the current resolved path for display.
 	$resolved_path = dbvc_get_sync_path();
 
@@ -250,6 +342,159 @@ function dbvc_render_export_page()
 					<strong><?php esc_html_e('Resolved path:', 'dbvc'); ?></strong> <code><?php echo esc_html(dbvc_get_sync_path()); ?></code><br><br>
 					<?php submit_button(esc_html__('Save Folder Path', 'dbvc'), 'secondary', 'dbvc_sync_path_save'); ?>
 				</form>
+
+				<hr />
+
+				<iframe name="dbvc_dl_iframe" style="display:none;width:0;height:0;border:0;" title="DBVC download"></iframe>
+
+				<form id="dbvc-purge-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+					<input type="hidden" name="action" value="dbvc_purge_sync" />
+					<?php wp_nonce_field('dbvc_purge_sync_action', 'dbvc_purge_sync_nonce'); ?>
+					<input type="hidden" name="dbvc_return" value="<?php echo esc_url(menu_page_url('db-version-control', false)); ?>" />
+
+					<h2><?php esc_html_e('Purge Sync Folder', 'dbvc'); ?></h2>
+					<p><?php esc_html_e('These actions affect the current sync folder path shown above. Use with caution.', 'dbvc'); ?></p>
+
+					<p style="margin-bottom:0.5em;">
+						<label>
+							<input type="checkbox" name="dbvc_purge_delete" value="1" />
+							<strong><?php esc_html_e('Delete all files (and folders) in the sync path', 'dbvc'); ?></strong>
+						</label>
+					</p>
+					<p style="margin:0 0 1em;">
+						<label>
+							<input type="checkbox" name="dbvc_purge_download_then_delete" value="1" />
+							<strong><?php esc_html_e('Download then delete all files', 'dbvc'); ?></strong>
+							<br /><small><?php esc_html_e('Creates a ZIP of the sync folder, starts the download, then deletes the folder contents.', 'dbvc'); ?></small>
+						</label>
+					</p>
+					<p style="margin:0 0 1em;">
+						<label>
+							<input type="checkbox" name="dbvc_purge_delete_root" value="1" />
+							<strong>
+								<?php
+								$root_name = basename(untrailingslashit(dbvc_get_sync_path()));
+								printf(esc_html__('Also delete the sync folder itself (%s)', 'dbvc'), esc_html($root_name));
+								?>
+							</strong>
+							<br /><small><?php esc_html_e('Removes the folder after its contents are purged. Use with caution.', 'dbvc'); ?></small>
+						</label>
+					</p>
+					<p>
+						<label for="dbvc_purge_confirm">
+							<?php esc_html_e('Type DELETE to confirm:', 'dbvc'); ?>
+						</label><br />
+						<input type="text" id="dbvc_purge_confirm" name="dbvc_purge_confirm" placeholder="DELETE" style="width:280px;" required />
+					</p>
+
+					<?php submit_button(esc_html__('Process', 'dbvc'), 'delete', 'dbvc_purge_sync_submit'); ?>
+				</form>
+
+				<script>
+					jQuery(function($) {
+						var pollTimer = null;
+
+						function startPolling() {
+							if (pollTimer) return;
+
+							if (!$('#dbvc-inline-info').length) {
+								$('<div id="dbvc-inline-info" class="notice notice-info"><p><?php echo esc_js(__('Your download has started. The sync folder will be purged after the download completes…', 'dbvc')); ?></p></div>').insertAfter('.wrap h1:first');
+							}
+
+							pollTimer = setInterval(function() {
+								$.post(ajaxurl, {
+									action: 'dbvc_purge_status'
+								}).done(function(resp) {
+									if (resp && resp.success && resp.data) {
+										clearInterval(pollTimer);
+										pollTimer = null;
+
+										var data = resp.data || {};
+										var suffix = data.deleted_root ? ' <?php echo esc_js(__('(Sync folder removed)', 'dbvc')); ?>' : '';
+										var html = '<div class="notice notice-success"><p>' +
+											'<?php echo esc_js(__('Purge completed. Deleted: %1$d, Failed: %2$d.%3$s', 'dbvc')); ?>'
+											.replace('%1$d', parseInt(data.deleted || 0, 10))
+											.replace('%2$d', parseInt(data.failed || 0, 10))
+											.replace('%3$s', suffix) +
+											'</p></div>';
+
+										$('#dbvc-inline-info').remove();
+										$(html).insertAfter('.wrap h1:first');
+									}
+								});
+							}, 2000);
+						}
+
+						function isDownloadThenDeleteChecked() {
+							return $('#dbvc-purge-form input[name="dbvc_purge_download_then_delete"]').is(':checked');
+						}
+
+						// Toggle target based on checkbox state
+						$('#dbvc-purge-form input[name="dbvc_purge_download_then_delete"]').on('change', function() {
+							if (this.checked) {
+								$('#dbvc-purge-form').attr('target', 'dbvc_dl_iframe');
+							} else {
+								$('#dbvc-purge-form').removeAttr('target');
+							}
+						}).trigger('change'); // set initial state on load
+
+						// On submit: decide path
+						$('#dbvc-purge-form').on('submit', function() {
+							if (isDownloadThenDeleteChecked()) {
+								// Keep submission in iframe and poll for transient
+								$(this).attr('target', 'dbvc_dl_iframe');
+								startPolling();
+							} else {
+								// Delete-only: submit in main window so PHP redirect shows notice
+								$(this).removeAttr('target');
+							}
+						});
+					});
+				</script>
+
+
+				<form method="post">
+					<?php wp_nonce_field('dbvc_create_settings_action', 'dbvc_create_settings_nonce'); ?>
+					<h2><?php esc_html_e('Post Creation & Mirror Domain Settings', 'dbvc'); ?></h2>
+
+					<p><label>
+							<input type="checkbox" name="dbvc_allow_new_posts" value="1" <?php checked(get_option('dbvc_allow_new_posts'), '1'); ?> />
+							<?php esc_html_e('Allow importing new posts that do not already exist on this site', 'dbvc'); ?>
+						</label></p>
+
+					<p>
+						<label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
+						<select name="dbvc_new_post_status" id="dbvc_new_post_status">
+							<?php
+							$status = get_option('dbvc_new_post_status', 'draft');
+							foreach (['draft', 'publish', 'pending'] as $s) {
+								echo '<option value="' . esc_attr($s) . '" ' . selected($status, $s, false) . '>' . esc_html($s) . '</option>';
+							}
+							?>
+						</select>
+					</p>
+
+					<p>
+						<label for="dbvc_new_post_types_whitelist"><?php esc_html_e('Restrict creation to selected post types (optional):', 'dbvc'); ?></label><br>
+						<select name="dbvc_new_post_types_whitelist[]" multiple size="5" style="width:100%;">
+							<?php
+							$selected_types = (array) get_option('dbvc_new_post_types_whitelist', []);
+							foreach (dbvc_get_available_post_types() as $pt => $obj) {
+								echo '<option value="' . esc_attr($pt) . '" ' . selected(in_array($pt, $selected_types, true), true, false) . '>' . esc_html($obj->label) . ' (' . esc_html($pt) . ')</option>';
+							}
+							?>
+						</select>
+					</p>
+
+					<p>
+						<label for="dbvc_mirror_domain"><?php esc_html_e('Mirror domain (optional):', 'dbvc'); ?></label><br>
+						<input type="text" name="dbvc_mirror_domain" id="dbvc_mirror_domain" value="<?php echo esc_attr(get_option('dbvc_mirror_domain', '')); ?>" style="width:100%;" placeholder="e.g., https://staging.example.com" />
+						<small><?php esc_html_e('Any URLs containing this domain will be replaced with the current site domain during import.', 'dbvc'); ?></small>
+					</p>
+
+					<?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_create_settings_save'); ?>
+				</form>
+
 			</div>
 		</div><!-- #dbvc-tabs -->
 	</div><!-- .wrap -->
