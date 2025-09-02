@@ -88,43 +88,95 @@ function dbvc_render_export_page()
 
 	// Handle export form.
 	// Handle export form.
-	if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_nonce'], 'dbvc_export_action')) {
-		// Additional capability check
-		if (! current_user_can('manage_options')) {
-			wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
-		}
+if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_nonce'], 'dbvc_export_action')) {
+    if (! current_user_can('manage_options')) {
+        wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+    }
 
-		// Save export options
-		$use_slug      = ! empty($_POST['dbvc_use_slug_in_filenames']);
-		$strip_domain  = ! empty($_POST['dbvc_strip_domain_urls']);
+    // Save export options
+    $use_slug     = ! empty($_POST['dbvc_use_slug_in_filenames']);
+    $strip_domain = ! empty($_POST['dbvc_strip_domain_urls']);
 
-		update_option('dbvc_use_slug_in_filenames', $use_slug ? '1' : '0');
-		update_option('dbvc_strip_domain_urls', $strip_domain ? '1' : '0');
+    update_option('dbvc_use_slug_in_filenames', $use_slug ? '1' : '0');
+    update_option('dbvc_strip_domain_urls',     $strip_domain ? '1' : '0');
 
-		// Run full export
-		DBVC_Sync_Posts::export_options_to_json();
-		DBVC_Sync_Posts::export_menus_to_json();
+    // --- NEW: make statuses + caps predictable during this run ---
+    // Broaden allowed statuses for bricks_template (adjust if you want this global)
+    add_filter('dbvc_allowed_statuses_for_export', function ($statuses, $post) {
+        if ($post && $post->post_type === 'bricks_template') {
+            return ['publish','private','draft','pending','future','inherit','auto-draft'];
+        }
+        return $statuses;
+    }, 10, 2);
 
-		$posts = get_posts([
-			'post_type'      => 'any',
-			'posts_per_page' => -1,
-			'post_status'    => 'any',
-		]);
+    // Optionally bypass read-cap checks during admin-triggered full export.
+    // Comment out if you prefer strict caps.
+    add_filter('dbvc_skip_read_cap_check', '__return_true', 10, 3);
 
-		foreach ($posts as $post) {
-			DBVC_Sync_Posts::export_post_to_json($post->ID, $post, $use_slug);
-		}
+    // Export options / menus first (unchanged)
+    DBVC_Sync_Posts::export_options_to_json();
+    DBVC_Sync_Posts::export_menus_to_json();
 
-		// Create dated backup of export .json files
-		if (method_exists('DBVC_Sync_Posts', 'dbvc_create_backup_folder_and_copy_exports')) {
-			DBVC_Sync_Posts::dbvc_create_backup_folder_and_copy_exports();
-		} else {
-			error_log('[DBVC] Static method dbvc_create_backup_folder_and_copy_exports not found in DBVC_Sync_Posts.');
-		}
+    // --- NEW: honor configured/supported post types + batch looping ---
+    // Use the saved selection if present; fall back to supported types.
+    $selected = (array) get_option('dbvc_post_types', []);
+    if (empty($selected)) {
+        $selected = method_exists('DBVC_Sync_Posts', 'get_supported_post_types')
+            ? DBVC_Sync_Posts::get_supported_post_types()
+            : array_keys( dbvc_get_available_post_types() );
+    }
 
-		echo '<div class="notice notice-success"><p>' . esc_html__('Full export completed!', 'dbvc') . '</p></div>';
-	}
+    // Ensure bricks_template is included if your plugin supports it.
+    if (! in_array('bricks_template', $selected, true)) {
+        $selected[] = 'bricks_template';
+    }
 
+    // Broad status list; filterable.
+    $statuses = apply_filters('dbvc_export_all_post_statuses', [
+        'publish','private','draft','pending','future','inherit','auto-draft'
+    ]);
+
+    // Batch through each post type to avoid time/memory surprises.
+    foreach ($selected as $pt) {
+        $paged = 1;
+        do {
+            $q = new WP_Query([
+                'post_type'        => $pt,
+                'post_status'      => $statuses,
+                'posts_per_page'   => 500,
+                'paged'            => $paged,
+                'fields'           => 'ids',
+                'orderby'          => 'ID',
+                'order'            => 'ASC',
+                'suppress_filters' => false, // allow multilingual/visibility plugins to run if needed
+                'no_found_rows'    => true,
+            ]);
+
+            if (! empty($q->posts)) {
+                foreach ($q->posts as $post_id) {
+                    $post = get_post($post_id);
+                    if ($post) {
+                        DBVC_Sync_Posts::export_post_to_json($post_id, $post, $use_slug);
+                    }
+                }
+            }
+            $paged++;
+        } while (! empty($q->posts));
+    }
+
+    // Create dated backup of export .json files (unchanged)
+    if (method_exists('DBVC_Sync_Posts', 'dbvc_create_backup_folder_and_copy_exports')) {
+        DBVC_Sync_Posts::dbvc_create_backup_folder_and_copy_exports();
+    } else {
+        error_log('[DBVC] Static method dbvc_create_backup_folder_and_copy_exports not found in DBVC_Sync_Posts.');
+    }
+
+    echo '<div class="notice notice-success"><p>' . esc_html__('Full export completed!', 'dbvc') . '</p></div>';
+
+    // Cleanup temp filters (optional, keeps scope tight)
+    remove_filter('dbvc_allowed_statuses_for_export', '__return_false', 10);
+    remove_filter('dbvc_skip_read_cap_check', '__return_true', 10);
+}
 
 	if (isset($_POST['dbvc_import_button']) && wp_verify_nonce($_POST['dbvc_import_nonce'], 'dbvc_import_action')) {
 		if (current_user_can('manage_options')) {
@@ -234,6 +286,96 @@ function dbvc_render_export_page()
 		}
 	}
 
+	if (isset($_POST['dbvc_bricks_export_test_button'])
+    && wp_verify_nonce($_POST['dbvc_bricks_export_test_nonce'], 'dbvc_bricks_export_test_action')) {
+
+    if (! current_user_can('manage_options')) {
+        wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+    }
+
+    // Scope temporary filters just for this run.
+    $remove_filters = [];
+
+    if (!empty($_POST['dbvc_force_caps'])) {
+        add_filter('dbvc_skip_read_cap_check', '__return_true', 10, 3);
+        $remove_filters[] = ['dbvc_skip_read_cap_check', '__return_true'];
+    }
+
+    if (!empty($_POST['dbvc_broaden_status'])) {
+        add_filter('dbvc_allowed_statuses_for_export', function($statuses, $post){
+            if ($post && $post->post_type === 'bricks_template') {
+                return ['publish','private','draft','pending','future','inherit','auto-draft'];
+            }
+            return $statuses;
+        }, 10, 2);
+        $remove_filters[] = ['dbvc_allowed_statuses_for_export'];
+    }
+
+    $ids = get_posts([
+        'post_type'        => 'bricks_template',
+        'post_status'      => 'any',
+        'fields'           => 'ids',
+        'nopaging'         => true,
+        'suppress_filters' => false,
+    ]);
+
+    $rows = [];
+    foreach ($ids as $id) {
+        $p = get_post($id);
+        if (! $p) { continue; }
+
+        // Compute the exact file path the exporter will use (matches your exporter)
+        $path = function_exists('dbvc_get_sync_path') ? dbvc_get_sync_path($p->post_type) : WP_CONTENT_DIR . '/dbvc-sync/' . $p->post_type . '/';
+        $use_slug = (get_option('dbvc_use_slug_in_filenames') === '1');
+        $slug = sanitize_title($p->post_name);
+        $filename_part = ($use_slug && !empty($slug) && !is_numeric($slug)) ? $slug : $p->ID;
+        $file_path = trailingslashit($path) . sanitize_file_name($p->post_type . '-' . $filename_part . '.json');
+        $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $p->ID, $p);
+
+        $pre_exists = file_exists($file_path);
+
+        // Run the actual exporter once for each
+        DBVC_Sync_Posts::export_post_to_json($p->ID, $p, $use_slug);
+
+        $result = [
+            'ID'            => $p->ID,
+            'Title'         => get_the_title($p->ID),
+            'Status'        => $p->post_status,
+            'Path'          => $file_path,
+            'Dir Exists?'   => is_dir(dirname($file_path)) ? 'yes' : 'no',
+            'Writable?'     => is_dir(dirname($file_path)) && is_writable(dirname($file_path)) ? 'yes' : 'no',
+            'Pre-Exists?'   => $pre_exists ? 'yes' : 'no',
+            'Post-Exists?'  => file_exists($file_path) ? 'yes' : 'no',
+            'Bytes'         => file_exists($file_path) ? filesize($file_path) : 0,
+        ];
+
+        $rows[] = $result;
+        error_log('[DBVC DryRun] ' . wp_json_encode($result));
+    }
+
+    // Remove temp filters
+    foreach ($remove_filters as $f) {
+        remove_filter($f[0], $f[1]);
+    }
+
+    // Output a simple table
+    echo '<div class="notice notice-info" style="padding:12px 12px 0;"><p><strong>Bricks Export Dry-Run Results</strong></p>';
+    echo '<table class="widefat striped"><thead><tr>';
+    $headers = ['ID','Title','Status','Path','Dir Exists?','Writable?','Pre-Exists?','Post-Exists?','Bytes'];
+    foreach ($headers as $h) echo '<th>' . esc_html($h) . '</th>';
+    echo '</tr></thead><tbody>';
+    foreach ($rows as $r) {
+        echo '<tr>';
+        foreach ($headers as $h) {
+            $v = isset($r[$h]) ? $r[$h] : '';
+            echo '<td style="vertical-align:top;">' . (in_array($h,['ID','Path']) ? '<code>' . esc_html($v) . '</code>' : esc_html($v)) . '</td>';
+        }
+        echo '</tr>';
+    }
+    echo '</tbody></table></div>';
+}
+
+
 
 	// Get the current resolved path for display.
 	$resolved_path = dbvc_get_sync_path();
@@ -342,6 +484,172 @@ function dbvc_render_export_page()
 					<strong><?php esc_html_e('Resolved path:', 'dbvc'); ?></strong> <code><?php echo esc_html(dbvc_get_sync_path()); ?></code><br><br>
 					<?php submit_button(esc_html__('Save Folder Path', 'dbvc'), 'secondary', 'dbvc_sync_path_save'); ?>
 				</form>
+
+<hr />
+<?php
+// 1) Add a "Temp Bricks Check" form in the #tab-config section if you haven't already:
+// (Place this where your other config forms live)
+?>
+
+<form method="post">
+  <?php wp_nonce_field('dbvc_bricks_check_action', 'dbvc_bricks_check_nonce'); ?>
+  <h2><?php esc_html_e('Temp Bricks Check', 'dbvc'); ?></h2>
+  <p><?php esc_html_e('Diagnose which Bricks Templates will export and why (status, caps, filters, path).', 'dbvc'); ?></p>
+  <?php submit_button(__('Run Bricks Check', 'dbvc'), 'secondary', 'dbvc_bricks_check_button'); ?>
+</form>
+
+<?php
+// 2) Handler: paste this near your other POST handlers inside dbvc_render_export_page()
+if (isset($_POST['dbvc_bricks_check_button']) && wp_verify_nonce($_POST['dbvc_bricks_check_nonce'], 'dbvc_bricks_check_action')) {
+    if (! current_user_can('manage_options')) {
+        wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+    }
+
+    // Collect all bricks_template posts
+    $ids = get_posts([
+        'post_type'        => 'bricks_template',
+        'post_status'      => 'any',
+        'fields'           => 'ids',
+        'nopaging'         => true,
+        'suppress_filters' => false,
+    ]);
+
+    // Helper to compute export path & filename exactly like your exporter
+    $compute_file_path = function($post) {
+        $path = function_exists('dbvc_get_sync_path') ? dbvc_get_sync_path($post->post_type) : WP_CONTENT_DIR . '/dbvc-sync/' . $post->post_type . '/';
+        $use_slug_option = (get_option('dbvc_use_slug_in_filenames') === '1');
+        $slug = sanitize_title($post->post_name);
+        $filename_part = ($use_slug_option && !empty($slug) && !is_numeric($slug)) ? $slug : $post->ID;
+        $file_path = trailingslashit($path) . sanitize_file_name($post->post_type . '-' . $filename_part . '.json');
+        $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $post->ID, $post);
+        return $file_path;
+    };
+
+    $supported = method_exists('DBVC_Sync_Posts', 'get_supported_post_types')
+        ? DBVC_Sync_Posts::get_supported_post_types()
+        : array_keys( get_post_types([], 'names') );
+
+    $rows = [];
+    foreach ($ids as $id) {
+        $p = get_post($id);
+        if (! $p) { continue; }
+
+        $reason   = 'pass';
+        $details  = [];
+        $allowed  = apply_filters('dbvc_allowed_statuses_for_export', ['publish'], $p);
+        $is_supported = in_array($p->post_type, $supported, true);
+        $details[] = 'allowed_statuses=' . implode(',', (array)$allowed);
+        $details[] = 'supported_types?=' . ($is_supported ? 'yes' : 'no');
+
+        // Type check
+        if (! $is_supported) {
+            $reason = 'unsupported_type';
+        }
+
+        // Status check
+        if ($reason === 'pass' && ! in_array($p->post_status, $allowed, true)) {
+            $reason = 'disallowed_status_' . $p->post_status;
+        }
+
+        // Capability check (mirrors exporter)
+        if ($reason === 'pass') {
+            $pto = get_post_type_object($p->post_type);
+            $skip_caps = apply_filters('dbvc_skip_read_cap_check', false, $id, $p);
+            if ($pto && (! defined('WP_CLI') || ! WP_CLI) && ! $skip_caps) {
+                if (! current_user_can($pto->cap->read_post, $id)) {
+                    $reason = 'read_cap_fail';
+                }
+            }
+        }
+
+        // Incremental guard via filter (if present)
+        // If any code hooks this and returns false, we surface it here.
+        if ($reason === 'pass') {
+            $should_export = apply_filters('dbvc_should_export_post', true, $id, $p);
+            if (! $should_export) {
+                $reason = 'filtered_out_by_dbvc_should_export_post';
+            }
+        }
+
+        // Path & filename checks (safe path, writability, collision)
+        $file_path = $compute_file_path($p);
+        $path_ok = function_exists('dbvc_is_safe_file_path') ? dbvc_is_safe_file_path($file_path) : true;
+        $dir = trailingslashit( dirname($file_path) );
+        $dir_exists = is_dir($dir);
+        $dir_writable = $dir_exists ? is_writable($dir) : false;
+        $exists = file_exists($file_path);
+
+        if ($reason === 'pass' && ! $path_ok) {
+            $reason = 'unsafe_file_path';
+        } elseif ($reason === 'pass' && $dir_exists && ! $dir_writable) {
+            $reason = 'dir_not_writable';
+        }
+
+        $rows[] = [
+            'ID'               => $id,
+            'Title'            => get_the_title($id),
+            'Status'           => $p->post_status,
+            'Modified (GMT)'   => $p->post_modified_gmt,
+            'Supported?'       => $is_supported ? 'yes' : 'no',
+            'Reason'           => $reason,
+            'File Path'        => $file_path,
+            'Dir Exists?'      => $dir_exists ? 'yes' : 'no',
+            'Dir Writable?'    => $dir_writable ? 'yes' : 'no',
+            'File Exists?'     => $exists ? 'yes' : 'no',
+            'Notes'            => implode(' | ', $details),
+        ];
+    }
+
+    // Sort: skipped first, then pass
+    usort($rows, function($a, $b){
+        if ($a['Reason'] === $b['Reason']) return 0;
+        if ($a['Reason'] === 'pass') return 1;
+        if ($b['Reason'] === 'pass') return -1;
+        return strcmp($a['Reason'], $b['Reason']);
+    });
+
+    // Output
+    echo '<div class="notice notice-info" style="padding:12px 12px 0;"><p><strong>Bricks Template Export Check</strong></p>';
+    echo '<table class="widefat striped"><thead><tr>';
+    $headers = ['ID','Title','Status','Modified (GMT)','Supported?','Reason','File Path','Dir Exists?','Dir Writable?','File Exists?','Notes'];
+    foreach ($headers as $h) echo '<th>' . esc_html($h) . '</th>';
+    echo '</tr></thead><tbody>';
+    foreach ($rows as $r) {
+        echo '<tr>';
+        foreach ($headers as $h) {
+            $v = isset($r[$h]) ? $r[$h] : '';
+            echo '<td style="vertical-align:top;">' . (in_array($h, ['ID','File Path']) ? '<code>' . esc_html($v) . '</code>' : esc_html($v)) . '</td>';
+        }
+        echo '</tr>';
+    }
+    echo '</tbody></table></div>';
+
+    // Also log a compact list of skipped IDs + reasons
+    $skipped = array_filter($rows, fn($r) => $r['Reason'] !== 'pass');
+    if ($skipped) {
+        error_log('[DBVC] bricks_template skipped: ' . print_r(array_map(fn($r)=>[$r['ID']=>$r['Reason']], $skipped), true));
+    }
+}
+
+?>
+
+<hr />
+
+<form method="post">
+  <?php wp_nonce_field('dbvc_bricks_export_test_action', 'dbvc_bricks_export_test_nonce'); ?>
+  <h2><?php esc_html_e('Bricks Export Dry-Run (templates only)', 'dbvc'); ?></h2>
+  <p><?php esc_html_e('Runs export_post_to_json for all bricks_template posts and reports file write results.', 'dbvc'); ?></p>
+  <label>
+    <input type="checkbox" name="dbvc_force_caps" value="1" />
+    <?php esc_html_e('Bypass read capability check for this run', 'dbvc'); ?>
+  </label><br>
+  <label>
+    <input type="checkbox" name="dbvc_broaden_status" value="1" />
+    <?php esc_html_e('Broaden allowed statuses for bricks_template during this run', 'dbvc'); ?>
+  </label><br><br>
+  <?php submit_button(__('Run Bricks Export Dry-Run', 'dbvc'), 'secondary', 'dbvc_bricks_export_test_button'); ?>
+</form>
+
 
 				<hr />
 
@@ -504,7 +812,7 @@ function dbvc_render_export_page()
 			$('#dbvc-tabs').tabs();
 			$('#dbvc-post-types-select').select2({
 				placeholder: <?php echo wp_json_encode(esc_html__('Select post types…', 'dbvc')); ?>,
-				allowClear: false
+				allowClear: true
 			});
 		});
 	</script>

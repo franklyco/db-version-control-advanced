@@ -1372,7 +1372,7 @@ HT;
      * @since  1.0.0
      * @return array Results with processed count and remaining count.
      */
-    public static function export_posts_batch($batch_size = 50, $offset = 0)
+    public static function export_posts_batch($batch_size = 100, $offset = 0)
     {
         $supported_types = self::get_supported_post_types();
 
