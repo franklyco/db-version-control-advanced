@@ -87,56 +87,104 @@ function dbvc_render_export_page()
 	}
 
 	// Handle export form.
-	// Handle export form.
+// Handle export form.
 if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_nonce'], 'dbvc_export_action')) {
+    // Capability check
     if (! current_user_can('manage_options')) {
         wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
     }
 
-    // Save export options
-    $use_slug     = ! empty($_POST['dbvc_use_slug_in_filenames']);
-    $strip_domain = ! empty($_POST['dbvc_strip_domain_urls']);
+    // --- Gather POSTed settings first (so this run uses the user's current choices) ---
+    $use_slug       = ! empty($_POST['dbvc_use_slug_in_filenames']);
+    $strip_checked  = ! empty($_POST['dbvc_strip_domain_urls']);          // user's intent for strip
+    $mirror_checked = ! empty($_POST['dbvc_export_use_mirror_domain']);   // user's intent for mirror
 
-    update_option('dbvc_use_slug_in_filenames', $use_slug ? '1' : '0');
-    update_option('dbvc_strip_domain_urls',     $strip_domain ? '1' : '0');
+    // Persist slug & mirror checkbox (mirror domain string is saved on Tab 3's save handler)
+    update_option('dbvc_use_slug_in_filenames',    $use_slug ? '1' : '0');
+    update_option('dbvc_export_use_mirror_domain', $mirror_checked ? '1' : '0');
 
-    // --- NEW: make statuses + caps predictable during this run ---
-    // Broaden allowed statuses for bricks_template (adjust if you want this global)
-    add_filter('dbvc_allowed_statuses_for_export', function ($statuses, $post) {
+    // Persist masking settings edited in Tab #2
+    update_option('dbvc_mask_meta_keys',   sanitize_textarea_field($_POST['dbvc_mask_meta_keys']   ?? ''));
+    update_option('dbvc_mask_subkeys',     sanitize_textarea_field($_POST['dbvc_mask_subkeys']     ?? ''));
+    $action = in_array(($_POST['dbvc_mask_action'] ?? 'remove'), ['remove','redact'], true) ? $_POST['dbvc_mask_action'] : 'remove';
+    update_option('dbvc_mask_action',      $action);
+    update_option('dbvc_mask_placeholder', sanitize_text_field($_POST['dbvc_mask_placeholder'] ?? '***'));
+
+    // --- Mirror vs Strip coordination for THIS run ---
+    $mirror_raw  = trim((string) get_option('dbvc_mirror_domain', ''));
+    $site_home   = untrailingslashit(home_url());
+    $mirror_home = untrailingslashit($mirror_raw);
+
+    $mirror_cb         = null;   // to remove later
+    $restore_strip_opt = null;   // to restore user's strip choice after run
+    $mirror_valid      = $mirror_checked && $mirror_home && filter_var($mirror_home, FILTER_VALIDATE_URL);
+
+    if ($mirror_valid) {
+        // If *both* mirror & strip are checked, force strip OFF during this run (so replacements can occur),
+        // then restore the user's "strip on" choice afterward.
+        if ($strip_checked) {
+            $restore_strip_opt = '1';                 // remember to restore ON
+            update_option('dbvc_strip_domain_urls', '0'); // OFF for this run
+        } else {
+            // user left strip unchecked: leave it OFF
+            update_option('dbvc_strip_domain_urls', '0');
+        }
+
+        // Attach temporary mirror replacement filter (priority 9: before default 10s)
+        $mirror_cb = function(array $data, $post_id, $post) use ($site_home, $mirror_home) {
+            if (isset($data['post_content']) && is_string($data['post_content'])) {
+                $data['post_content'] = str_replace($site_home, $mirror_home, $data['post_content']);
+            }
+            if (isset($data['post_excerpt']) && is_string($data['post_excerpt'])) {
+                $data['post_excerpt'] = str_replace($site_home, $mirror_home, $data['post_excerpt']);
+            }
+            if (isset($data['meta'])) {
+                // Requires dbvc_recursive_str_replace() to be defined in your plugin.
+                $data['meta'] = dbvc_recursive_str_replace($site_home, $mirror_home, $data['meta']);
+            }
+            return $data;
+        };
+        add_filter('dbvc_export_post_data', $mirror_cb, 9, 3);
+
+    } else {
+        // No mirror: just persist user's strip choice now.
+        update_option('dbvc_strip_domain_urls', $strip_checked ? '1' : '0');
+    }
+
+    // --- Make statuses + caps predictable during this run (with cleanup handles) ---
+    $status_cb = function ($statuses, $post) {
         if ($post && $post->post_type === 'bricks_template') {
             return ['publish','private','draft','pending','future','inherit','auto-draft'];
         }
         return $statuses;
-    }, 10, 2);
+    };
+    add_filter('dbvc_allowed_statuses_for_export', $status_cb, 10, 2);
 
     // Optionally bypass read-cap checks during admin-triggered full export.
-    // Comment out if you prefer strict caps.
     add_filter('dbvc_skip_read_cap_check', '__return_true', 10, 3);
 
-    // Export options / menus first (unchanged)
+    // --- Exports ---
     DBVC_Sync_Posts::export_options_to_json();
     DBVC_Sync_Posts::export_menus_to_json();
 
-    // --- NEW: honor configured/supported post types + batch looping ---
-    // Use the saved selection if present; fall back to supported types.
+    // Use saved selection or fall back
     $selected = (array) get_option('dbvc_post_types', []);
     if (empty($selected)) {
         $selected = method_exists('DBVC_Sync_Posts', 'get_supported_post_types')
             ? DBVC_Sync_Posts::get_supported_post_types()
-            : array_keys( dbvc_get_available_post_types() );
+            : array_keys(dbvc_get_available_post_types());
     }
-
-    // Ensure bricks_template is included if your plugin supports it.
+    // Ensure bricks_template included if supported
     if (! in_array('bricks_template', $selected, true)) {
         $selected[] = 'bricks_template';
     }
 
-    // Broad status list; filterable.
+    // Broad status list; filterable
     $statuses = apply_filters('dbvc_export_all_post_statuses', [
         'publish','private','draft','pending','future','inherit','auto-draft'
     ]);
 
-    // Batch through each post type to avoid time/memory surprises.
+    // Batch export by type
     foreach ($selected as $pt) {
         $paged = 1;
         do {
@@ -148,7 +196,7 @@ if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_no
                 'fields'           => 'ids',
                 'orderby'          => 'ID',
                 'order'            => 'ASC',
-                'suppress_filters' => false, // allow multilingual/visibility plugins to run if needed
+                'suppress_filters' => false,
                 'no_found_rows'    => true,
             ]);
 
@@ -164,7 +212,7 @@ if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_no
         } while (! empty($q->posts));
     }
 
-    // Create dated backup of export .json files (unchanged)
+    // Backup export .json files (if available)
     if (method_exists('DBVC_Sync_Posts', 'dbvc_create_backup_folder_and_copy_exports')) {
         DBVC_Sync_Posts::dbvc_create_backup_folder_and_copy_exports();
     } else {
@@ -173,10 +221,18 @@ if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_no
 
     echo '<div class="notice notice-success"><p>' . esc_html__('Full export completed!', 'dbvc') . '</p></div>';
 
-    // Cleanup temp filters (optional, keeps scope tight)
-    remove_filter('dbvc_allowed_statuses_for_export', '__return_false', 10);
+    // --- Cleanup (mirror filter + strip restoration; temp filters) ---
+    if ($mirror_cb) {
+        remove_filter('dbvc_export_post_data', $mirror_cb, 9);
+    }
+    if ($restore_strip_opt !== null) {
+        update_option('dbvc_strip_domain_urls', $restore_strip_opt);
+    }
+
+    remove_filter('dbvc_allowed_statuses_for_export', $status_cb, 10);
     remove_filter('dbvc_skip_read_cap_check', '__return_true', 10);
 }
+
 
 	if (isset($_POST['dbvc_import_button']) && wp_verify_nonce($_POST['dbvc_import_nonce'], 'dbvc_import_action')) {
 		if (current_user_can('manage_options')) {
@@ -197,24 +253,30 @@ if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_no
 
 	// Handle new post creation + mirror domain settings
 	if (isset($_POST['dbvc_create_settings_save']) && wp_verify_nonce($_POST['dbvc_create_settings_nonce'], 'dbvc_create_settings_action')) {
-		if (! current_user_can('manage_options')) {
-			wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
-		}
+    if (! current_user_can('manage_options')) {
+    wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+}
 
-		update_option('dbvc_allow_new_posts', ! empty($_POST['dbvc_allow_new_posts']) ? '1' : '0');
-		update_option('dbvc_new_post_status', sanitize_text_field($_POST['dbvc_new_post_status'] ?? 'draft'));
 
-		$whitelist = isset($_POST['dbvc_new_post_types_whitelist']) && is_array($_POST['dbvc_new_post_types_whitelist'])
-			? array_map('sanitize_text_field', wp_unslash($_POST['dbvc_new_post_types_whitelist']))
-			: [];
-		update_option('dbvc_new_post_types_whitelist', $whitelist);
+    update_option('dbvc_allow_new_posts', ! empty($_POST['dbvc_allow_new_posts']) ? '1' : '0');
+    update_option('dbvc_new_post_status', sanitize_text_field($_POST['dbvc_new_post_status'] ?? 'draft'));
 
-		update_option('dbvc_mirror_domain', sanitize_text_field($_POST['dbvc_mirror_domain'] ?? ''));
+    $whitelist = isset($_POST['dbvc_new_post_types_whitelist']) && is_array($_POST['dbvc_new_post_types_whitelist'])
+        ? array_map('sanitize_text_field', wp_unslash($_POST['dbvc_new_post_types_whitelist']))
+        : [];
+    update_option('dbvc_new_post_types_whitelist', $whitelist);
 
-		echo '<div class="notice notice-success"><p>' . esc_html__('Import settings updated!', 'dbvc') . '</p></div>';
-	}
+    // Save mirror domain
+    $mirror = sanitize_text_field( wp_unslash($_POST['dbvc_mirror_domain'] ?? '') );
+    update_option('dbvc_mirror_domain', $mirror);
 
-	// --- Notices (place near the top of dbvc_render_export_page(), before HTML output) ---
+    // ✅ Save the new checkbox here (NOT in the form markup)
+    update_option('dbvc_export_use_mirror_domain', ! empty($_POST['dbvc_export_use_mirror_domain']) ? '1' : '0');
+
+    echo '<div class="notice notice-success"><p>' . esc_html__('Import settings updated!', 'dbvc') . '</p></div>';
+}	
+
+	// --- Notices ---
 	if (isset($_GET['dbvc_notice'])) {
 		$code = sanitize_key($_GET['dbvc_notice']);
 
@@ -245,6 +307,22 @@ if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_no
 				'</p></div>';
 		}
 	}
+
+    // Handle Tab #2 "Save Masking Settings" (no export)
+if (isset($_POST['dbvc_mask_settings_save']) && wp_verify_nonce($_POST['dbvc_mask_settings_nonce'], 'dbvc_mask_settings_action')) {
+    if (! current_user_can('manage_options')) {
+        wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+    }
+
+    // Persist only the masking options (avoid touching unrelated settings)
+    update_option('dbvc_mask_meta_keys',      sanitize_textarea_field($_POST['dbvc_mask_meta_keys'] ?? ''));
+    update_option('dbvc_mask_subkeys',        sanitize_textarea_field($_POST['dbvc_mask_subkeys'] ?? ''));
+    $action = in_array(($_POST['dbvc_mask_action'] ?? 'remove'), ['remove','redact'], true) ? $_POST['dbvc_mask_action'] : 'remove';
+    update_option('dbvc_mask_action',         $action);
+    update_option('dbvc_mask_placeholder',    sanitize_text_field($_POST['dbvc_mask_placeholder'] ?? '***'));
+
+    echo '<div class="notice notice-success"><p>' . esc_html__('Masking settings saved.', 'dbvc') . '</p></div>';
+}
 
 	// Handle purge/delete controls (Tab 3).
 	if (isset($_POST['dbvc_purge_sync_submit']) && wp_verify_nonce($_POST['dbvc_purge_sync_nonce'], 'dbvc_purge_sync_action')) {
@@ -433,15 +511,153 @@ if (isset($_POST['dbvc_export_nonce']) && wp_verify_nonce($_POST['dbvc_export_no
 			<!-- Tab 2: Export / Download -->
 			<div id="tab-export">
 				<form method="post">
-					<?php wp_nonce_field('dbvc_export_action', 'dbvc_export_nonce'); ?>
-					<h2><?php esc_html_e('Full Export', 'dbvc'); ?></h2>
-					<p><?php esc_html_e('Export all posts, options, and menus to JSON files.', 'dbvc'); ?></p>
-					<label><input type="checkbox" name="dbvc_use_slug_in_filenames" value="1" <?php checked(get_option('dbvc_use_slug_in_filenames'), '1'); ?> />
-						<?php esc_html_e('Use slug instead of post ID in export filenames', 'dbvc'); ?></label><br>
-					<label><input type="checkbox" name="dbvc_strip_domain_urls" value="1" <?php checked(get_option('dbvc_strip_domain_urls'), '1'); ?> />
-						<?php esc_html_e('Strip domain from URLs during export', 'dbvc'); ?></label><br><br>
-					<?php submit_button(esc_html__('Run Full Export', 'dbvc')); ?>
-				</form>
+  <?php wp_nonce_field('dbvc_export_action', 'dbvc_export_nonce'); ?>
+  <h2><?php esc_html_e('Full Export', 'dbvc'); ?></h2>
+  <p><?php esc_html_e('Export all posts, options, and menus to JSON files.', 'dbvc'); ?></p>
+
+  <label><input type="checkbox" name="dbvc_use_slug_in_filenames" value="1" <?php checked(get_option('dbvc_use_slug_in_filenames'), '1'); ?> />
+    <?php esc_html_e('Use slug instead of post ID in export filenames', 'dbvc'); ?></label><br>
+
+  <label>
+    <input type="checkbox" name="dbvc_strip_domain_urls" value="1" <?php checked(get_option('dbvc_strip_domain_urls'), '1'); ?> />
+    <?php esc_html_e('Strip domain from URLs during export', 'dbvc'); ?></label><br>
+
+  <!-- ✅ New duplicate control -->
+  <label>
+    <input type="checkbox" name="dbvc_export_use_mirror_domain" value="1"
+      <?php checked(get_option('dbvc_export_use_mirror_domain'), '1'); ?> />
+    <?php esc_html_e('Replace current site domain with the Mirror Domain during export', 'dbvc'); ?>
+  </label>
+  <?php
+  $mirror = trim((string) get_option('dbvc_mirror_domain', ''));
+  if ($mirror) {
+    echo '<br><small>' . sprintf(
+      esc_html__('Current mirror domain: %s', 'dbvc'),
+      '<code>' . esc_html($mirror) . '</code>'
+    ) . '</small>';
+  }
+  ?>
+<br>
+<br>
+
+<!-- Masking UI (duplicate of Tab #3) -->
+<h3 style="margin-top:0;"><?php esc_html_e('Export Masking (Post Meta)', 'dbvc'); ?></h3>
+
+<p>
+  <label for="dbvc_mask_meta_keys"><strong><?php esc_html_e('Exclude whole postmeta keys', 'dbvc'); ?></strong></label><br>
+  <textarea name="dbvc_mask_meta_keys" id="dbvc_mask_meta_keys" rows="3" style="width:100%;"
+    placeholder="<?php echo esc_attr('_wp_old_date, _dbvc_import_hash, dbvc_post_history, _some_private_* , /_secret_.+/'); ?>"><?php
+      echo esc_textarea(get_option('dbvc_mask_meta_keys', ''));
+  ?></textarea><br>
+  <small><?php esc_html_e('Comma or newline separated. Supports wildcards (*, ?) and regex wrapped with /.../.', 'dbvc'); ?></small>
+</p>
+
+<p>
+  <label for="dbvc_mask_subkeys"><strong><?php esc_html_e('Mask/remove nested sub-keys (by dot-path or leaf key)', 'dbvc'); ?></strong></label><br>
+  <textarea name="dbvc_mask_subkeys" id="dbvc_mask_subkeys" rows="4" style="width:100%;"
+    placeholder="<?php echo esc_attr(implode('\n', [
+      '_bricks_page_content_2.*.settings.signature',
+      '_bricks_page_content_2.*.settings.time',
+      'signature',
+      '/^.*\\.extrasCustomQueryCode$/'
+    ])); ?>"><?php
+      echo esc_textarea(get_option('dbvc_mask_subkeys', ''));
+  ?></textarea><br>
+  <small><?php esc_html_e('One per line or comma separated. Match full dot-path (e.g. metaKey.*.path.leaf) or just a leaf key name. Wildcards and /regex/ supported.', 'dbvc'); ?></small>
+</p>
+
+<p>
+  <label><strong><?php esc_html_e('Mask action', 'dbvc'); ?></strong></label><br>
+  <?php $mask_action = get_option('dbvc_mask_action', 'remove'); ?>
+  <label><input type="radio" name="dbvc_mask_action" value="remove" <?php checked($mask_action, 'remove'); ?> />
+    <?php esc_html_e('Remove matched items from export', 'dbvc'); ?></label><br>
+  <label><input type="radio" name="dbvc_mask_action" value="redact" <?php checked($mask_action, 'redact'); ?> />
+    <?php esc_html_e('Redact matched items with a placeholder', 'dbvc'); ?></label>
+</p>
+
+<p id="dbvc-mask-placeholder-wrap-2" style="margin-left:1.5em;">
+  <label for="dbvc_mask_placeholder"><?php esc_html_e('Redaction placeholder', 'dbvc'); ?></label><br>
+  <input type="text" name="dbvc_mask_placeholder" id="dbvc_mask_placeholder"
+    value="<?php echo esc_attr(get_option('dbvc_mask_placeholder', '***')); ?>" style="width:240px;" />
+</p>
+
+<script>
+  (function(){
+    const remove = document.querySelector('#tab-export input[name="dbvc_mask_action"][value="remove"]');
+    const redact = document.querySelector('#tab-export input[name="dbvc_mask_action"][value="redact"]');
+    const wrap   = document.getElementById('dbvc-mask-placeholder-wrap-2');
+    function sync(){ if (redact && redact.checked) wrap.style.display = ''; else wrap.style.display = 'none'; }
+    if (remove && redact && wrap) {
+      remove.addEventListener('change', sync);
+      redact.addEventListener('change', sync);
+      sync();
+    }
+  })();
+</script>
+
+  <br>
+
+  <?php submit_button(esc_html__('Run Full Export', 'dbvc')); ?>
+</form>
+
+<!-- Save-only form for masking settings (does not trigger export) -->
+<form method="post" style="margin-top:1.5rem;">
+  <?php wp_nonce_field('dbvc_mask_settings_action', 'dbvc_mask_settings_nonce'); ?>
+  <h3 style="margin-top:0;"><?php esc_html_e('Export Masking (Post Meta)', 'dbvc'); ?></h3>
+
+  <p>
+    <label for="dbvc_mask_meta_keys"><strong><?php esc_html_e('Exclude whole postmeta keys', 'dbvc'); ?></strong></label><br>
+    <textarea name="dbvc_mask_meta_keys" id="dbvc_mask_meta_keys" rows="3" style="width:100%;"
+      placeholder="<?php echo esc_attr('_wp_old_date, _dbvc_import_hash, dbvc_post_history, _some_private_* , /_secret_.+/'); ?>"><?php
+        echo esc_textarea(get_option('dbvc_mask_meta_keys', ''));
+    ?></textarea><br>
+    <small><?php esc_html_e('Comma or newline separated. Supports wildcards (*, ?) and regex wrapped with /.../.', 'dbvc'); ?></small>
+  </p>
+
+  <p>
+    <label for="dbvc_mask_subkeys"><strong><?php esc_html_e('Mask/remove nested sub-keys (by dot-path or leaf key)', 'dbvc'); ?></strong></label><br>
+    <textarea name="dbvc_mask_subkeys" id="dbvc_mask_subkeys" rows="4" style="width:100%;"
+      placeholder="<?php echo esc_attr(implode('\n', [
+        '_bricks_page_content_2.*.settings.signature',
+        '_bricks_page_content_2.*.settings.time',
+        'signature',
+        '/^.*\\.extrasCustomQueryCode$/'
+      ])); ?>"><?php
+        echo esc_textarea(get_option('dbvc_mask_subkeys', ''));
+    ?></textarea><br>
+    <small><?php esc_html_e('One per line or comma separated. Match full dot-path (e.g. metaKey.*.path.leaf) or just a leaf key name. Wildcards and /regex/ supported.', 'dbvc'); ?></small>
+  </p>
+
+  <p>
+    <label><strong><?php esc_html_e('Mask action', 'dbvc'); ?></strong></label><br>
+    <?php $mask_action = get_option('dbvc_mask_action', 'remove'); ?>
+    <label><input type="radio" name="dbvc_mask_action" value="remove" <?php checked($mask_action, 'remove'); ?> />
+      <?php esc_html_e('Remove matched items from export', 'dbvc'); ?></label><br>
+    <label><input type="radio" name="dbvc_mask_action" value="redact" <?php checked($mask_action, 'redact'); ?> />
+      <?php esc_html_e('Redact matched items with a placeholder', 'dbvc'); ?></label>
+  </p>
+
+  <p id="dbvc-mask-placeholder-wrap-2b" style="margin-left:1.5em;">
+    <label for="dbvc_mask_placeholder_2"><?php esc_html_e('Redaction placeholder', 'dbvc'); ?></label><br>
+    <input type="text" name="dbvc_mask_placeholder" id="dbvc_mask_placeholder_2"
+      value="<?php echo esc_attr(get_option('dbvc_mask_placeholder', '***')); ?>" style="width:240px;" />
+  </p>
+
+  <?php submit_button(__('Save Masking Settings', 'dbvc'), 'secondary', 'dbvc_mask_settings_save'); ?>
+</form>
+
+<script>
+  // Show/hide placeholder based on selected action (Tab #2 variant)
+  (function(){
+    const root   = document.getElementById('tab-export');
+    if (!root) return;
+    const remove = root.querySelector('input[name="dbvc_mask_action"][value="remove"]');
+    const redact = root.querySelector('input[name="dbvc_mask_action"][value="redact"]');
+    const wrap   = document.getElementById('dbvc-mask-placeholder-wrap-2b');
+    function sync(){ if (redact && redact.checked) wrap.style.display = ''; else wrap.style.display = 'none'; }
+    if (remove && redact && wrap) { remove.addEventListener('change', sync); redact.addEventListener('change', sync); sync(); }
+  })();
+</script>
 
 				<hr />
 
@@ -762,46 +978,57 @@ if (isset($_POST['dbvc_bricks_check_button']) && wp_verify_nonce($_POST['dbvc_br
 
 
 				<form method="post">
-					<?php wp_nonce_field('dbvc_create_settings_action', 'dbvc_create_settings_nonce'); ?>
-					<h2><?php esc_html_e('Post Creation & Mirror Domain Settings', 'dbvc'); ?></h2>
+  <?php wp_nonce_field('dbvc_create_settings_action', 'dbvc_create_settings_nonce'); ?>
+  <h2><?php esc_html_e('Post Creation & Mirror Domain Settings', 'dbvc'); ?></h2>
 
-					<p><label>
-							<input type="checkbox" name="dbvc_allow_new_posts" value="1" <?php checked(get_option('dbvc_allow_new_posts'), '1'); ?> />
-							<?php esc_html_e('Allow importing new posts that do not already exist on this site', 'dbvc'); ?>
-						</label></p>
+  <p><label>
+    <input type="checkbox" name="dbvc_allow_new_posts" value="1" <?php checked(get_option('dbvc_allow_new_posts'), '1'); ?> />
+    <?php esc_html_e('Allow importing new posts that do not already exist on this site', 'dbvc'); ?>
+  </label></p>
 
-					<p>
-						<label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
-						<select name="dbvc_new_post_status" id="dbvc_new_post_status">
-							<?php
-							$status = get_option('dbvc_new_post_status', 'draft');
-							foreach (['draft', 'publish', 'pending'] as $s) {
-								echo '<option value="' . esc_attr($s) . '" ' . selected($status, $s, false) . '>' . esc_html($s) . '</option>';
-							}
-							?>
-						</select>
-					</p>
+  <p>
+    <label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
+    <select name="dbvc_new_post_status" id="dbvc_new_post_status">
+      <?php
+      $status = get_option('dbvc_new_post_status', 'draft');
+      foreach (['draft','publish','pending'] as $s) {
+        echo '<option value="' . esc_attr($s) . '" ' . selected($status, $s, false) . '>' . esc_html($s) . '</option>';
+      }
+      ?>
+    </select>
+  </p>
 
-					<p>
-						<label for="dbvc_new_post_types_whitelist"><?php esc_html_e('Restrict creation to selected post types (optional):', 'dbvc'); ?></label><br>
-						<select name="dbvc_new_post_types_whitelist[]" multiple size="5" style="width:100%;">
-							<?php
-							$selected_types = (array) get_option('dbvc_new_post_types_whitelist', []);
-							foreach (dbvc_get_available_post_types() as $pt => $obj) {
-								echo '<option value="' . esc_attr($pt) . '" ' . selected(in_array($pt, $selected_types, true), true, false) . '>' . esc_html($obj->label) . ' (' . esc_html($pt) . ')</option>';
-							}
-							?>
-						</select>
-					</p>
+  <p>
+    <label for="dbvc_new_post_types_whitelist"><?php esc_html_e('Restrict creation to selected post types (optional):', 'dbvc'); ?></label><br>
+    <select name="dbvc_new_post_types_whitelist[]" multiple size="5" style="width:100%;">
+      <?php
+      $selected_types = (array) get_option('dbvc_new_post_types_whitelist', []);
+      foreach (dbvc_get_available_post_types() as $pt => $obj) {
+        echo '<option value="' . esc_attr($pt) . '" ' . selected(in_array($pt, $selected_types, true), true, false) . '>' . esc_html($obj->label) . ' (' . esc_html($pt) . ')</option>';
+      }
+      ?>
+    </select>
+  </p>
 
-					<p>
-						<label for="dbvc_mirror_domain"><?php esc_html_e('Mirror domain (optional):', 'dbvc'); ?></label><br>
-						<input type="text" name="dbvc_mirror_domain" id="dbvc_mirror_domain" value="<?php echo esc_attr(get_option('dbvc_mirror_domain', '')); ?>" style="width:100%;" placeholder="e.g., https://staging.example.com" />
-						<small><?php esc_html_e('Any URLs containing this domain will be replaced with the current site domain during import.', 'dbvc'); ?></small>
-					</p>
+  <p>
+    <label for="dbvc_mirror_domain"><?php esc_html_e('Mirror domain (optional):', 'dbvc'); ?></label><br>
+    <input type="text" name="dbvc_mirror_domain" id="dbvc_mirror_domain"
+           value="<?php echo esc_attr(get_option('dbvc_mirror_domain', '')); ?>"
+           style="width:100%;" placeholder="e.g., https://staging.example.com" />
+    <small><?php esc_html_e('Any URLs containing this domain will be replaced with the current site domain during import.', 'dbvc'); ?></small>
+  </p>
 
-					<?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_create_settings_save'); ?>
-				</form>
+  <p style="margin-top:.5rem;">
+    <label>
+      <input type="checkbox" name="dbvc_export_use_mirror_domain" value="1"
+        <?php checked(get_option('dbvc_export_use_mirror_domain'), '1'); ?> />
+      <?php esc_html_e('Replace current site domain with the Mirror Domain during export', 'dbvc'); ?>
+    </label>
+    <br><small><?php esc_html_e('When enabled, URLs that start with the current site domain will be rewritten to the Mirror Domain in exported content and meta.', 'dbvc'); ?></small>
+  </p>
+
+  <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_create_settings_save'); ?>
+</form>
 
 			</div>
 		</div><!-- #dbvc-tabs -->

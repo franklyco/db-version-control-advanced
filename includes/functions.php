@@ -12,6 +12,193 @@ if (! defined('WPINC')) {
 	die;
 }
 
+// --- Masking helpers ---------------------------------------------------------
+if (! function_exists('dbvc_mask_parse_list')) {
+	/**
+	 * Parse a comma/newline separated list into an array of patterns.
+	 * Supports: exact strings, wildcards (*, ?) via fnmatch, and regex when wrapped in /.../ .
+	 */
+	function dbvc_mask_parse_list($raw) {
+		$raw = (string) $raw;
+		$parts = preg_split('/[,\r\n]+/', $raw);
+		$out = [];
+		foreach ($parts as $p) {
+			$p = trim($p);
+			if ($p !== '') $out[] = $p;
+		}
+		return $out;
+	}
+}
+
+if (! function_exists('dbvc_mask_match')) {
+	/**
+	 * Match $target against $pattern.
+	 * - If pattern starts/ends with /, treat as regex.
+	 * - Else if contains * or ?, use fnmatch (case-insensitive).
+	 * - Else exact compare (case-sensitive).
+	 */
+	function dbvc_mask_match($target, $pattern) {
+		if ($pattern === '') return false;
+		if (strlen($pattern) > 2 && $pattern[0] === '/' && substr($pattern, -1) === '/') {
+			return (bool) @preg_match($pattern, $target);
+		}
+		if (strpbrk($pattern, '*?') !== false) {
+			// Use fnmatch if available, fallback to regex-ish
+			if (function_exists('fnmatch')) {
+				return fnmatch($pattern, $target, FNM_CASEFOLD);
+			}
+			$regex = '/^' . str_replace(['\*','\?'], ['.*','.?'], preg_quote($pattern, '/')) . '$/i';
+			return (bool) preg_match($regex, $target);
+		}
+		return $target === $pattern;
+	}
+}
+
+if (! function_exists('dbvc_mask_should_remove_key')) {
+	/** Check if a top-level meta key matches any exclude/mask pattern. */
+	function dbvc_mask_should_remove_key($meta_key, array $patterns) {
+		foreach ($patterns as $pat) {
+			if (dbvc_mask_match($meta_key, $pat)) return true;
+		}
+		return false;
+	}
+}
+
+if (! function_exists('dbvc_mask_should_remove_path')) {
+	/**
+	 * Check if a *path* (e.g. "_bricks_page_content_2.0.settings.signature") should be masked.
+	 * Matches if either the full dot-path OR the final segment matches any provided subkey pattern.
+	 */
+	function dbvc_mask_should_remove_path($dot_path, $leaf_key, array $patterns) {
+		foreach ($patterns as $pat) {
+			if (dbvc_mask_match($dot_path, $pat)) return true;
+			if (dbvc_mask_match($leaf_key, $pat)) return true;
+		}
+		return false;
+	}
+}
+
+if (! function_exists('dbvc_mask_walk_value')) {
+	/**
+	 * Recursively walk a meta value (array|object|scalar) and remove or redact
+	 * any entries whose dot-path or leaf key matches subkey rules.
+	 *
+	 * @param mixed  $value
+	 * @param string $current_path Dot path from the meta key root
+	 * @param array  $subkey_patterns
+	 * @param string $action 'remove' or 'redact'
+	 * @param string $placeholder replacement when redacting
+	 * @return mixed
+	 */
+	function dbvc_mask_walk_value($value, $current_path, array $subkey_patterns, $action = 'remove', $placeholder = '***') {
+		// Arrays
+		if (is_array($value)) {
+			foreach ($value as $k => $v) {
+				$leaf_key   = is_int($k) ? (string)$k : (string)$k;
+				$child_path = $current_path === '' ? $leaf_key : ($current_path . '.' . $leaf_key);
+
+				// If the leaf key/path itself is a match, apply action
+				if (dbvc_mask_should_remove_path($child_path, $leaf_key, $subkey_patterns)) {
+					if ($action === 'remove') {
+						unset($value[$k]);
+						continue;
+					}
+					$value[$k] = $placeholder;
+					continue;
+				}
+
+				// Recurse
+				$value[$k] = dbvc_mask_walk_value($v, $child_path, $subkey_patterns, $action, $placeholder);
+			}
+			return $value;
+		}
+
+		// Objects
+		if (is_object($value)) {
+			foreach ($value as $k => $v) {
+				$leaf_key   = (string)$k;
+				$child_path = $current_path === '' ? $leaf_key : ($current_path . '.' . $leaf_key);
+
+				if (dbvc_mask_should_remove_path($child_path, $leaf_key, $subkey_patterns)) {
+					if ($action === 'remove') {
+						unset($value->$k);
+						continue;
+					}
+					$value->$k = $placeholder;
+					continue;
+				}
+
+				$value->$k = dbvc_mask_walk_value($v, $child_path, $subkey_patterns, $action, $placeholder);
+			}
+			return $value;
+		}
+
+		// Scalars — only mask by *path* at parent level (handled above). Return as-is.
+		return $value;
+	}
+}
+
+if (! function_exists('dbvc_mask_apply_to_meta')) {
+	/**
+	 * Apply masking/exclusion rules to the entire $meta array.
+	 *
+	 * Options (stored as strings in wp_options):
+	 * - dbvc_mask_meta_keys   (comma/newline list, supports wildcards/regex)
+	 * - dbvc_mask_subkeys     (comma/newline list of subpaths or leaf keys)
+	 * - dbvc_mask_action      ('remove' or 'redact')
+	 * - dbvc_mask_placeholder (string for 'redact' mode, default '***')
+	 */
+	function dbvc_mask_apply_to_meta(array $meta) {
+		$keys_raw   = (string) get_option('dbvc_mask_meta_keys', '');
+		$subs_raw   = (string) get_option('dbvc_mask_subkeys', '');
+		$action     = get_option('dbvc_mask_action', 'remove');
+		$placeholder= (string) get_option('dbvc_mask_placeholder', '***');
+
+		$key_patterns = dbvc_mask_parse_list($keys_raw);
+		$sub_patterns = dbvc_mask_parse_list($subs_raw);
+
+		// 1) Remove/redact whole meta keys
+		foreach ($meta as $mkey => $mval) {
+			if (dbvc_mask_should_remove_key($mkey, $key_patterns)) {
+				if ($action === 'remove') {
+					unset($meta[$mkey]);
+					continue;
+				}
+				$meta[$mkey] = $placeholder;
+			}
+		}
+
+		// 2) Walk remaining meta for subkey/path masking
+		if (! empty($sub_patterns)) {
+			foreach ($meta as $mkey => $mval) {
+				$root_path = $mkey; // root of dot-path is the meta key
+				$meta[$mkey] = dbvc_mask_walk_value($mval, $root_path, $sub_patterns, $action, $placeholder);
+			}
+		}
+
+		return $meta;
+	}
+}
+
+// Helper: recursive string replace for arrays/objects
+if ( ! function_exists( 'dbvc_recursive_str_replace' ) ) {
+	function dbvc_recursive_str_replace( $search, $replace, $value ) {
+		if ( is_array( $value ) ) {
+			foreach ( $value as $k => $v ) {
+				$value[ $k ] = dbvc_recursive_str_replace( $search, $replace, $v );
+			}
+			return $value;
+		}
+		if ( is_object( $value ) ) {
+			foreach ( $value as $k => $v ) {
+				$value->$k = dbvc_recursive_str_replace( $search, $replace, $v );
+			}
+			return $value;
+		}
+		return is_string( $value ) ? str_replace( $search, $replace, $value ) : $value;
+	}
+}
+
 /**
  * Get the sync path for exports
  * 

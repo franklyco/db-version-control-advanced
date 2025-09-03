@@ -13,6 +13,20 @@ if (! defined('WPINC')) {
 	die;
 }
 
+/* Apply mask/exclude rules to export payloads.
+ * 
+ * 
+ * @since  1.1.4
+ */
+add_filter('dbvc_export_post_data', function($data, $post_id, $post) {
+	if (! isset($data['meta']) || ! is_array($data['meta'])) {
+		return $data;
+	}
+
+	$data['meta'] = dbvc_mask_apply_to_meta($data['meta']);
+	return $data;
+}, 20, 3);
+
 /**
  * Handle post deletion by removing corresponding JSON files.
  * 
