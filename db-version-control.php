@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.1.3
+ * Version:     1.1.4
  * Author:      Frankly / Robert DeVore
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -17,7 +17,7 @@ if (! defined('WPINC')) {
 	die;
 }
 
-// Current Version 1.1.3
+// Current Version 1.1.4
 require 'vendor/plugin-update-checker/plugin-update-checker.php';
 
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
