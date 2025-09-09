@@ -18,7 +18,8 @@ if (! function_exists('dbvc_mask_parse_list')) {
 	 * Parse a comma/newline separated list into an array of patterns.
 	 * Supports: exact strings, wildcards (*, ?) via fnmatch, and regex when wrapped in /.../ .
 	 */
-	function dbvc_mask_parse_list($raw) {
+	function dbvc_mask_parse_list($raw)
+	{
 		$raw = (string) $raw;
 		$parts = preg_split('/[,\r\n]+/', $raw);
 		$out = [];
@@ -37,17 +38,19 @@ if (! function_exists('dbvc_mask_match')) {
 	 * - Else if contains * or ?, use fnmatch (case-insensitive).
 	 * - Else exact compare (case-sensitive).
 	 */
-	function dbvc_mask_match($target, $pattern) {
+	function dbvc_mask_match($target, $pattern)
+	{
 		if ($pattern === '') return false;
 		if (strlen($pattern) > 2 && $pattern[0] === '/' && substr($pattern, -1) === '/') {
+			$ok = @preg_match($pattern, '');
+			if ($ok === false) return false; // invalid regex; skip
 			return (bool) @preg_match($pattern, $target);
 		}
 		if (strpbrk($pattern, '*?') !== false) {
-			// Use fnmatch if available, fallback to regex-ish
 			if (function_exists('fnmatch')) {
 				return fnmatch($pattern, $target, FNM_CASEFOLD);
 			}
-			$regex = '/^' . str_replace(['\*','\?'], ['.*','.?'], preg_quote($pattern, '/')) . '$/i';
+			$regex = '/^' . str_replace(['\*', '\?'], ['.*', '.?'], preg_quote($pattern, '/')) . '$/i';
 			return (bool) preg_match($regex, $target);
 		}
 		return $target === $pattern;
@@ -56,7 +59,8 @@ if (! function_exists('dbvc_mask_match')) {
 
 if (! function_exists('dbvc_mask_should_remove_key')) {
 	/** Check if a top-level meta key matches any exclude/mask pattern. */
-	function dbvc_mask_should_remove_key($meta_key, array $patterns) {
+	function dbvc_mask_should_remove_key($meta_key, array $patterns)
+	{
 		foreach ($patterns as $pat) {
 			if (dbvc_mask_match($meta_key, $pat)) return true;
 		}
@@ -69,7 +73,8 @@ if (! function_exists('dbvc_mask_should_remove_path')) {
 	 * Check if a *path* (e.g. "_bricks_page_content_2.0.settings.signature") should be masked.
 	 * Matches if either the full dot-path OR the final segment matches any provided subkey pattern.
 	 */
-	function dbvc_mask_should_remove_path($dot_path, $leaf_key, array $patterns) {
+	function dbvc_mask_should_remove_path($dot_path, $leaf_key, array $patterns)
+	{
 		foreach ($patterns as $pat) {
 			if (dbvc_mask_match($dot_path, $pat)) return true;
 			if (dbvc_mask_match($leaf_key, $pat)) return true;
@@ -90,7 +95,8 @@ if (! function_exists('dbvc_mask_walk_value')) {
 	 * @param string $placeholder replacement when redacting
 	 * @return mixed
 	 */
-	function dbvc_mask_walk_value($value, $current_path, array $subkey_patterns, $action = 'remove', $placeholder = '***') {
+	function dbvc_mask_walk_value($value, $current_path, array $subkey_patterns, $action = 'remove', $placeholder = '***')
+	{
 		// Arrays
 		if (is_array($value)) {
 			foreach ($value as $k => $v) {
@@ -148,18 +154,25 @@ if (! function_exists('dbvc_mask_apply_to_meta')) {
 	 * - dbvc_mask_action      ('remove' or 'redact')
 	 * - dbvc_mask_placeholder (string for 'redact' mode, default '***')
 	 */
-	function dbvc_mask_apply_to_meta(array $meta) {
-		$keys_raw   = (string) get_option('dbvc_mask_meta_keys', '');
-		$subs_raw   = (string) get_option('dbvc_mask_subkeys', '');
-		$action     = get_option('dbvc_mask_action', 'remove');
-		$placeholder= (string) get_option('dbvc_mask_placeholder', '***');
+	function dbvc_mask_apply_to_meta(array $meta)
+	{
+		$keys_raw    = (string) get_option('dbvc_mask_meta_keys', '');
+		$subs_raw    = (string) get_option('dbvc_mask_subkeys', '');
+		$action_opt  = get_option('dbvc_mask_action', 'remove');
+		$action      = ($action_opt === 'redact') ? 'redact' : 'remove'; // harden
+		$placeholder = (string) get_option('dbvc_mask_placeholder', '***');
+
+		// ✅ No configured keys/paths? Nothing to do.
+		if ($keys_raw === '' && $subs_raw === '') {
+			return $meta;
+		}
 
 		$key_patterns = dbvc_mask_parse_list($keys_raw);
 		$sub_patterns = dbvc_mask_parse_list($subs_raw);
 
 		// 1) Remove/redact whole meta keys
 		foreach ($meta as $mkey => $mval) {
-			if (dbvc_mask_should_remove_key($mkey, $key_patterns)) {
+			if (!empty($key_patterns) && dbvc_mask_should_remove_key($mkey, $key_patterns)) {
 				if ($action === 'remove') {
 					unset($meta[$mkey]);
 					continue;
@@ -171,7 +184,7 @@ if (! function_exists('dbvc_mask_apply_to_meta')) {
 		// 2) Walk remaining meta for subkey/path masking
 		if (! empty($sub_patterns)) {
 			foreach ($meta as $mkey => $mval) {
-				$root_path = $mkey; // root of dot-path is the meta key
+				$root_path   = $mkey; // dot-path root is the meta key
 				$meta[$mkey] = dbvc_mask_walk_value($mval, $root_path, $sub_patterns, $action, $placeholder);
 			}
 		}
@@ -181,21 +194,22 @@ if (! function_exists('dbvc_mask_apply_to_meta')) {
 }
 
 // Helper: recursive string replace for arrays/objects
-if ( ! function_exists( 'dbvc_recursive_str_replace' ) ) {
-	function dbvc_recursive_str_replace( $search, $replace, $value ) {
-		if ( is_array( $value ) ) {
-			foreach ( $value as $k => $v ) {
-				$value[ $k ] = dbvc_recursive_str_replace( $search, $replace, $v );
+if (! function_exists('dbvc_recursive_str_replace')) {
+	function dbvc_recursive_str_replace($search, $replace, $value)
+	{
+		if (is_array($value)) {
+			foreach ($value as $k => $v) {
+				$value[$k] = dbvc_recursive_str_replace($search, $replace, $v);
 			}
 			return $value;
 		}
-		if ( is_object( $value ) ) {
-			foreach ( $value as $k => $v ) {
-				$value->$k = dbvc_recursive_str_replace( $search, $replace, $v );
+		if (is_object($value)) {
+			foreach ($value as $k => $v) {
+				$value->$k = dbvc_recursive_str_replace($search, $replace, $v);
 			}
 			return $value;
 		}
-		return is_string( $value ) ? str_replace( $search, $replace, $value ) : $value;
+		return is_string($value) ? str_replace($search, $replace, $value) : $value;
 	}
 }
 
@@ -299,6 +313,104 @@ function dbvc_validate_sync_path($path)
 }
 
 /**
+ * Lossless normalizer for JSON export.
+ * - Recurses arrays/objects.
+ * - On strings: ONLY normalize UTF-8. No unslash/stripslashes, no kses, no trim.
+ * - Keeps backslashes (e.g., "\\Bricks\\Query") intact.
+ */
+if (! function_exists('dbvc_normalize_for_json')) {
+	function dbvc_normalize_for_json($value)
+	{
+		if (is_array($value)) {
+			$out = [];
+			foreach ($value as $k => $v) {
+				$out[$k] = dbvc_normalize_for_json($v);
+			}
+			return $out;
+		}
+		if (is_object($value)) {
+			foreach ($value as $k => $v) {
+				$value->{$k} = dbvc_normalize_for_json($v);
+			}
+			return $value;
+		}
+		if (is_string($value)) {
+			// IMPORTANT: do not unslash. Just validate/normalize UTF-8.
+			return wp_check_invalid_utf8($value, true);
+		}
+		return $value;
+	}
+}
+
+/**
+ * Safer meta sanitizer for export.
+ * - Unserializes serialized scalars (common for WP meta).
+ * - Never unslashes or stripslashes.
+ * - Leaves code-bearing Bricks keys intact (except UTF-8 normalization).
+ */
+if (! function_exists('dbvc_sanitize_post_meta_safe')) {
+	/**
+	 * Sanitize post meta for export while preserving code/JSON in specific keys.
+	 *
+	 * - Avoids wp_unslash / stripslashes / sanitize_text_field on code-bearing values
+	 * - Gently normalizes UTF-8
+	 * - Unserializes scalar values when needed (because get_post_meta() with $single=false
+	 *   returns raw stored strings)
+	 * @since  1.1.5
+	 * @param array $meta Format from get_post_meta($post_id): [meta_key => [value1, value2, ...]]
+	 * @return array
+	 */
+	function dbvc_sanitize_post_meta_safe(array $meta)
+	{
+		$default_skip = [
+			'_bricks_page_content_2',
+			'_bricks_page_header_2',
+			'_bricks_page_footer_2',
+			'_bricks_page_css',
+			'_bricks_page_custom_code',
+		];
+		$skip_keys = apply_filters('dbvc_meta_sanitize_skip_keys', $default_skip);
+
+		$recur = static function ($val) use (&$recur) {
+			if (is_array($val)) {
+				foreach ($val as $k => $v) {
+					$val[$k] = $recur($v);
+				}
+				return $val;
+			}
+			if (is_object($val)) {
+				foreach ($val as $k => $v) {
+					$val->{$k} = $recur($v);
+				}
+				return $val;
+			}
+			if (is_string($val)) {
+				// If this string is actually a serialized structure, safely unserialize.
+				if (is_serialized($val)) {
+					$maybe = @maybe_unserialize($val);
+					// Recurse into unserialized structure.
+					return $recur($maybe);
+				}
+				// Otherwise: normalize only (keep backslashes).
+				return wp_check_invalid_utf8($val, true);
+			}
+			return $val;
+		};
+
+		foreach ($meta as $key => $values) {
+			// $values is usually an array of one or more scalars/serialized strings.
+			if (in_array($key, $skip_keys, true)) {
+				$meta[$key] = $recur($values);
+			} else {
+				$meta[$key] = $recur($values);
+			}
+		}
+
+		return $meta;
+	}
+}
+
+/**
  * Sanitize JSON file content before writing.
  * 
  * @param mixed $data The data to sanitize.
@@ -306,6 +418,33 @@ function dbvc_validate_sync_path($path)
  * @since  1.0.0
  * @return mixed Sanitized data.
  */
+// Safe JSON sanitizer: do NOT unslash, never stripslashes().
+if (! function_exists('dbvc_sanitize_json_data')) {
+	function dbvc_sanitize_json_data($value)
+	{
+		if (is_array($value)) {
+			$out = [];
+			foreach ($value as $k => $v) {
+				// Preserve array keys as-is
+				$out[$k] = dbvc_sanitize_json_data($v);
+			}
+			return $out;
+		}
+		if (is_object($value)) {
+			foreach ($value as $k => $v) {
+				$value->{$k} = dbvc_sanitize_json_data($v);
+			}
+			return $value;
+		}
+		if (is_string($value)) {
+			// Normalize only; DO NOT unslash/stripslashes here.
+			return wp_check_invalid_utf8($value, true);
+		}
+		return $value;
+	}
+}
+
+/* ORIGINAL VERSION
 function dbvc_sanitize_json_data($data)
 {
 	if (is_array($data)) {
@@ -318,7 +457,7 @@ function dbvc_sanitize_json_data($data)
 	}
 
 	return $data;
-}
+} */
 
 /**
  * Check if a file path is safe for writing.

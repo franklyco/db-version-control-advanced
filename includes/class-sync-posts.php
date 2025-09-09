@@ -106,336 +106,6 @@ HT;
         }
     }
 
-
-    /* Import taxonomy inputs based on post meta
-    * Added: 08-14-2025
-    */
-    public static function import_tax_input_for_post(int $post_id, string $post_type, array $tax_input, bool $create_terms): void
-    {
-        foreach ($tax_input as $taxonomy => $items) {
-            if (! taxonomy_exists($taxonomy)) {
-                DBVC_Sync_Logger::log("[DBVC] Skipping taxonomy '{$taxonomy}' – not registered.");
-                continue;
-            }
-
-            if (! is_object_in_taxonomy($post_type, $taxonomy)) {
-                DBVC_Sync_Logger::log("[DBVC] Taxonomy '{$taxonomy}' is not attached to post type '{$post_type}' – skipping.");
-                continue;
-            }
-
-            $term_ids = [];
-
-            foreach ($items as $term) {
-                $slug   = sanitize_title($term['slug'] ?? '');
-                $name   = sanitize_text_field($term['name'] ?? $slug);
-                $parent_slug = sanitize_title($term['parent'] ?? '');
-
-                if (! $slug) {
-                    continue;
-                }
-
-                $term_obj = get_term_by('slug', $slug, $taxonomy);
-
-                if (! $term_obj && $create_terms) {
-                    $args = [];
-
-                    // Handle parent term
-                    if ($parent_slug) {
-                        $parent_obj = get_term_by('slug', $parent_slug, $taxonomy);
-                        if (! $parent_obj && $create_terms) {
-                            $parent_created = wp_insert_term($parent_slug, $taxonomy, ['slug' => $parent_slug]);
-                            if (! is_wp_error($parent_created)) {
-                                $parent_obj = get_term($parent_created['term_id']);
-                            }
-                        }
-
-                        if ($parent_obj && ! is_wp_error($parent_obj)) {
-                            $args['parent'] = $parent_obj->term_id;
-                        }
-                    }
-
-                    $term_created = wp_insert_term($name, $taxonomy, array_merge(['slug' => $slug], $args));
-                    if (! is_wp_error($term_created)) {
-                        $term_obj = get_term($term_created['term_id']);
-                    }
-                }
-
-                if ($term_obj && ! is_wp_error($term_obj)) {
-                    $term_ids[] = $term_obj->term_id;
-                }
-            }
-
-            if (! empty($term_ids)) {
-                wp_set_object_terms($post_id, $term_ids, $taxonomy, false);
-            }
-        }
-    }
-
-
-    /**
-     * Replace old domain references in postmeta values with the current site domain.
-     * Useful for ACF link fields or serialized arrays with URL values.
-     *
-     * @param int $post_id
-     * @param string $old_domain (e.g., 'https://stagingsite.local')
-     */
-    public static function remap_post_meta_domains($post_id, $old_domain)
-    {
-        $current_domain = home_url(); // e.g., https://productionsite.com
-        $meta = get_post_meta($post_id);
-
-        foreach ($meta as $key => $values) {
-            foreach ($values as $index => $original_value) {
-                $maybe_updated_value = maybe_unserialize($original_value);
-
-                if (is_array($maybe_updated_value)) {
-                    // Recursively replace domains in nested array
-                    $new_value = self::replace_domain_recursive($maybe_updated_value, $old_domain, $current_domain);
-                } elseif (is_string($maybe_updated_value) && str_contains($maybe_updated_value, $old_domain)) {
-                    $new_value = str_replace($old_domain, $current_domain, $maybe_updated_value);
-                } else {
-                    continue;
-                }
-
-                // Only update if it changed
-                if ($new_value !== $maybe_updated_value) {
-                    update_post_meta($post_id, $key, $new_value);
-                    error_log("[DBVC] Updated domain in postmeta key '{$key}' for post ID {$post_id}");
-                }
-            }
-        }
-    }
-
-    /**
-     * Recursively replace domain in arrays.
-     */
-    private static function replace_domain_recursive($data, $old_domain, $new_domain)
-    {
-        foreach ($data as $key => $value) {
-            if (is_array($value)) {
-                $data[$key] = self::replace_domain_recursive($value, $old_domain, $new_domain);
-            } elseif (is_string($value) && str_contains($value, $old_domain)) {
-                $data[$key] = str_replace($old_domain, $new_domain, $value);
-            }
-        }
-        return $data;
-    }
-
-
-    /* Import all posts */
-    public static function import_all($offset = 0, $smart_import = false)
-    {
-        $path = dbvc_get_sync_path(); // Do not append 'posts' subfolder
-
-        if (! is_dir($path)) {
-            error_log('[DBVC] Import path not found: ' . $path);
-            return;
-        }
-
-        $supported_types = self::get_supported_post_types();
-        $processed = 0;
-
-        foreach ($supported_types as $post_type) {
-            $folder = trailingslashit($path) . sanitize_key($post_type);
-            if (! is_dir($folder)) {
-                continue;
-            }
-
-            $json_files = glob($folder . '/' . sanitize_key($post_type) . '-*.json');
-            foreach ($json_files as $filepath) {
-                self::import_post_from_json($filepath, $smart_import);
-                $processed++;
-            }
-        }
-
-        /*      @WIP Relationship remapping   
-$acf_relationship_fields = [
-            'related_services',
-            'connected_team_members',
-            'case_study_featured_post',
-        ];
-
-        self::remap_relationship_fields($acf_relationship_fields); */
-
-
-        return [
-            'processed' => $processed,
-            'remaining' => 0,
-            'total'     => $processed,
-            'offset'    => $offset + $processed,
-        ];
-    }
-
-    /**
-     * Build import posts from Json
-     * Added: 08-12-2025
-     */
-    public static function import_post_from_json($filepath, $smart_import = false)
-    {
-        if (! file_exists($filepath)) {
-            return;
-        }
-
-        $json_raw = file_get_contents($filepath);
-        $json = json_decode($json_raw, true);
-
-        if (
-            empty($json) ||
-            ! is_array($json) ||
-            ! isset($json['ID'], $json['post_type'], $json['post_title'])
-        ) {
-            error_log("[DBVC] Skipped non-post JSON file: {$filepath}");
-            return;
-        }
-
-        $original_id = absint($json['ID']);
-        $post_type = sanitize_text_field($json['post_type']);
-        $mirror_domain = rtrim(get_option('dbvc_mirror_domain', ''), '/');
-        $current_domain = rtrim(home_url(), '/');
-
-        // Exit early if already processed
-        $existing_hash = $json['meta']['dbvc_post_history']['hash'] ?? '';
-        $current_hash = md5($json_raw);
-        $status = $json['meta']['dbvc_post_history']['status'] ?? '';
-
-        if ($existing_hash === $current_hash && in_array($status, ['existing', 'imported'])) {
-            error_log("[DBVC] Skipping unchanged JSON for post ID {$original_id} (status: {$status})");
-            return;
-        }
-
-        $existing = get_post($original_id);
-        $post_id = null;
-
-        // Smart import hash check
-        if ($smart_import && $existing) {
-            $meta = $json['meta'] ?? [];
-            unset($meta['_dbvc_import_hash']);
-
-            $new_hash = md5(serialize([$json['post_content'], $meta]));
-            $existing_hash = get_post_meta($existing->ID, '_dbvc_import_hash', true);
-
-            if ($new_hash === $existing_hash) {
-                if (!empty($mirror_domain) && $mirror_domain !== $current_domain) {
-                    self::remap_post_meta_domains($existing->ID, $mirror_domain);
-                    error_log("[DBVC] Remapped post meta for unchanged post ID {$original_id} due to mirror domain.");
-                }
-
-                error_log("[DBVC] Skipping unchanged post ID {$original_id}");
-                return;
-            }
-        }
-
-        $allow_create = get_option('dbvc_allow_new_posts') === '1';
-        $target_status = get_option('dbvc_new_post_status', 'draft');
-        $whitelist = (array) get_option('dbvc_new_post_types_whitelist', []);
-        $limit_to_types = ! empty($whitelist);
-
-        // Update existing
-        if ($existing && $existing->post_type === $post_type) {
-            $post_array = [
-                'ID'           => $original_id,
-                'post_title'   => sanitize_text_field($json['post_title']),
-                'post_content' => wp_kses_post($json['post_content'] ?? ''),
-                'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
-                'post_type'    => $post_type,
-                'post_status'  => sanitize_text_field($json['post_status'] ?? 'draft'),
-            ];
-
-            $post_id = wp_insert_post($post_array);
-            error_log("[DBVC] Updated existing post ID {$post_id}");
-        } else {
-            if (! $allow_create) {
-                error_log("[DBVC] Skipped creation of missing post ID {$original_id} — creation disabled.");
-                return;
-            }
-
-            if ($limit_to_types && ! in_array($post_type, $whitelist, true)) {
-                error_log("[DBVC] Skipped creation of post type '{$post_type}' — not whitelisted.");
-                return;
-            }
-
-            $content = wp_kses_post($json['post_content'] ?? '');
-            if (!empty($mirror_domain) && $mirror_domain !== $current_domain) {
-                $content = str_replace($mirror_domain, $current_domain, $content);
-            }
-
-            $post_array = [
-                'post_title'   => sanitize_text_field($json['post_title']),
-                'post_content' => $content,
-                'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
-                'post_type'    => $post_type,
-                'post_status'  => $target_status,
-            ];
-
-            $post_id = wp_insert_post($post_array);
-
-            if (is_wp_error($post_id)) {
-                error_log("[DBVC] Failed to create post from {$filepath}: " . $post_id->get_error_message());
-                return;
-            }
-
-            self::$imported_post_id_map[$original_id] = $post_id;
-            error_log("[DBVC] Created new post ID {$post_id} (from original ID {$original_id})");
-
-            // Overwrite JSON ID with actual new ID
-            $json['ID'] = $post_id;
-        }
-
-        // Import meta
-        if (! is_wp_error($post_id) && isset($json['meta']) && is_array($json['meta'])) {
-            foreach ($json['meta'] as $key => $values) {
-                if (is_array($values)) {
-                    foreach ($values as $value) {
-                        update_post_meta($post_id, sanitize_text_field($key), maybe_unserialize($value));
-                    }
-                }
-            }
-
-            // 🔁 Remap old domain in postmeta if mirror domain was set
-            if (!empty($mirror_domain) && $mirror_domain !== $current_domain) {
-                self::remap_post_meta_domains($post_id, $mirror_domain);
-            }
-        }
-
-        // Import taxonomies
-        if (! is_wp_error($post_id) && isset($json['tax_input']) && is_array($json['tax_input'])) {
-            $create_terms = (bool) get_option('dbvc_auto_create_terms', true);
-            self::import_tax_input_for_post($post_id, $post_type, $json['tax_input'], $create_terms);
-        }
-
-        // Save import hash
-        if ($post_id) {
-            $meta = $json['meta'] ?? [];
-            unset($meta['_dbvc_import_hash']);
-            $hash = md5(serialize([$json['post_content'], $meta]));
-            update_post_meta($post_id, '_dbvc_import_hash', $hash);
-        }
-
-        // Save post history meta
-        $post_history = [
-            'imported_from'    => 'local-json',
-            'original_post_id' => $original_id,
-            'original_slug'    => $json['post_name'] ?? '',
-            'imported_at'      => current_time('mysql'),
-            'imported_by'      => get_current_user_id(),
-            'mirror_domain'    => $mirror_domain,
-            'hash'             => $current_hash,
-            'json_filename'    => basename($filepath),
-            'status'           => ($post_id === $original_id) ? 'existing' : 'imported',
-        ];
-        update_post_meta($post_id, 'dbvc_post_history', $post_history);
-        $json['meta']['dbvc_post_history'] = $post_history;
-
-        // Rewrite updated JSON
-        $new_json = wp_json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        if ($new_json && self::is_safe_file_path($filepath)) {
-            file_put_contents($filepath, $new_json);
-        }
-
-        error_log("[DBVC] Imported post ID {$post_id}");
-    }
-
-
     // Helper Function for Folder Path Checking
     public static function is_safe_file_path($path)
     {
@@ -644,6 +314,408 @@ HT;
         rmdir($folder);
     }
 
+    /* Import taxonomy inputs based on post meta
+    * Added: 08-14-2025
+    */
+    public static function import_tax_input_for_post(int $post_id, string $post_type, array $tax_input, bool $create_terms): void
+    {
+        foreach ($tax_input as $taxonomy => $items) {
+            if (! taxonomy_exists($taxonomy)) {
+                DBVC_Sync_Logger::log("[DBVC] Skipping taxonomy '{$taxonomy}' – not registered.");
+                continue;
+            }
+
+            if (! is_object_in_taxonomy($post_type, $taxonomy)) {
+                DBVC_Sync_Logger::log("[DBVC] Taxonomy '{$taxonomy}' is not attached to post type '{$post_type}' – skipping.");
+                continue;
+            }
+
+            $term_ids = [];
+
+            foreach ($items as $term) {
+                $slug   = sanitize_title($term['slug'] ?? '');
+                $name   = sanitize_text_field($term['name'] ?? $slug);
+                $parent_slug = sanitize_title($term['parent'] ?? '');
+
+                if (! $slug) {
+                    continue;
+                }
+
+                $term_obj = get_term_by('slug', $slug, $taxonomy);
+
+                if (! $term_obj && $create_terms) {
+                    $args = [];
+
+                    // Handle parent term
+                    if ($parent_slug) {
+                        $parent_obj = get_term_by('slug', $parent_slug, $taxonomy);
+                        if (! $parent_obj && $create_terms) {
+                            $parent_created = wp_insert_term($parent_slug, $taxonomy, ['slug' => $parent_slug]);
+                            if (! is_wp_error($parent_created)) {
+                                $parent_obj = get_term($parent_created['term_id']);
+                            }
+                        }
+
+                        if ($parent_obj && ! is_wp_error($parent_obj)) {
+                            $args['parent'] = $parent_obj->term_id;
+                        }
+                    }
+
+                    $term_created = wp_insert_term($name, $taxonomy, array_merge(['slug' => $slug], $args));
+                    if (! is_wp_error($term_created)) {
+                        $term_obj = get_term($term_created['term_id']);
+                    }
+                }
+
+                if ($term_obj && ! is_wp_error($term_obj)) {
+                    $term_ids[] = $term_obj->term_id;
+                }
+            }
+
+            if (! empty($term_ids)) {
+                wp_set_object_terms($post_id, $term_ids, $taxonomy, false);
+            }
+        }
+    }
+
+
+    /**
+     * Replace old domain references in postmeta values with the current site domain.
+     * Useful for ACF link fields or serialized arrays with URL values.
+     *
+     * @param int $post_id
+     * @param string $old_domain (e.g., 'https://stagingsite.local')
+     */
+    public static function remap_post_meta_domains($post_id, $old_domain)
+    {
+        $current_domain = home_url(); // e.g., https://productionsite.com
+        $meta = get_post_meta($post_id);
+
+        foreach ($meta as $key => $values) {
+            foreach ($values as $index => $original_value) {
+                $maybe_updated_value = maybe_unserialize($original_value);
+
+                if (is_array($maybe_updated_value)) {
+                    // Recursively replace domains in nested array
+                    $new_value = self::replace_domain_recursive($maybe_updated_value, $old_domain, $current_domain);
+                } elseif (is_string($maybe_updated_value) && str_contains($maybe_updated_value, $old_domain)) {
+                    $new_value = str_replace($old_domain, $current_domain, $maybe_updated_value);
+                } else {
+                    continue;
+                }
+
+                // Only update if it changed
+                if ($new_value !== $maybe_updated_value) {
+                    update_post_meta($post_id, $key, $new_value);
+                    error_log("[DBVC] Updated domain in postmeta key '{$key}' for post ID {$post_id}");
+                }
+            }
+        }
+    }
+
+    /**
+     * Recursively replace domain in arrays.
+     */
+    private static function replace_domain_recursive($data, $old_domain, $new_domain)
+    {
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $data[$key] = self::replace_domain_recursive($value, $old_domain, $new_domain);
+            } elseif (is_string($value) && str_contains($value, $old_domain)) {
+                $data[$key] = str_replace($old_domain, $new_domain, $value);
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * Re-double only isolated single backslashes in strings (idempotent).
+     * - Arrays/objects are handled recursively.
+     * - Existing "\\" sequences are left as-is.
+     *
+     * @param mixed $value
+     * @return mixed
+     * @since 1.1.5
+     */
+    private static function reslash_isolated_backslashes($value)
+    {
+        if (is_array($value)) {
+            foreach ($value as $k => $v) {
+                $value[$k] = self::reslash_isolated_backslashes($v);
+            }
+            return $value;
+        }
+        if (is_object($value)) {
+            foreach ($value as $k => $v) {
+                $value->{$k} = self::reslash_isolated_backslashes($v);
+            }
+            return $value;
+        }
+        if (!is_string($value)) {
+            return $value;
+        }
+        // Replace any single "\" not already part of "\\" with "\\"
+        // (?<!\\)  = not preceded by backslash
+        // (?!\\)   = not followed by backslash
+        return preg_replace('/(?<!\\\\)\\\\(?!\\\\)/', '\\\\\\\\', $value);
+    }
+
+    /* Import all posts */
+    public static function import_all($offset = 0, $smart_import = false)
+    {
+        $path = dbvc_get_sync_path(); // Do not append 'posts' subfolder
+
+        if (! is_dir($path)) {
+            error_log('[DBVC] Import path not found: ' . $path);
+            return;
+        }
+
+        $supported_types = self::get_supported_post_types();
+        $processed = 0;
+
+        foreach ($supported_types as $post_type) {
+            $folder = trailingslashit($path) . sanitize_key($post_type);
+            if (! is_dir($folder)) {
+                continue;
+            }
+
+            $json_files = glob($folder . '/' . sanitize_key($post_type) . '-*.json');
+            foreach ($json_files as $filepath) {
+                self::import_post_from_json($filepath, $smart_import);
+                $processed++;
+            }
+        }
+
+        /*      @WIP Relationship remapping   
+$acf_relationship_fields = [
+            'related_services',
+            'connected_team_members',
+            'case_study_featured_post',
+        ];
+
+        self::remap_relationship_fields($acf_relationship_fields); */
+
+
+        return [
+            'processed' => $processed,
+            'remaining' => 0,
+            'total'     => $processed,
+            'offset'    => $offset + $processed,
+        ];
+    }
+
+    /**
+     * Build import posts from Json
+     * Added: 08-12-2025
+     */
+    public static function import_post_from_json($filepath, $smart_import = false)
+    {
+        if (! file_exists($filepath)) {
+            return;
+        }
+
+        $json_raw = file_get_contents($filepath);
+        $json = json_decode($json_raw, true);
+
+        if (
+            empty($json) ||
+            ! is_array($json) ||
+            ! isset($json['ID'], $json['post_type'], $json['post_title'])
+        ) {
+            error_log("[DBVC] Skipped non-post JSON file: {$filepath}");
+            return;
+        }
+
+        $original_id = absint($json['ID']);
+        $post_type = sanitize_text_field($json['post_type']);
+        $mirror_domain = rtrim(get_option('dbvc_mirror_domain', ''), '/');
+        $current_domain = rtrim(home_url(), '/');
+
+        // Exit early if already processed
+        $existing_hash = $json['meta']['dbvc_post_history']['hash'] ?? '';
+        $current_hash = md5($json_raw);
+        $status = $json['meta']['dbvc_post_history']['status'] ?? '';
+
+        if ($existing_hash === $current_hash && in_array($status, ['existing', 'imported'])) {
+            error_log("[DBVC] Skipping unchanged JSON for post ID {$original_id} (status: {$status})");
+            return;
+        }
+
+        $existing = get_post($original_id);
+        $post_id = null;
+
+        // Smart import hash check
+        if ($smart_import && $existing) {
+            $meta = $json['meta'] ?? [];
+            unset($meta['_dbvc_import_hash']);
+
+            $new_hash = md5(serialize([$json['post_content'], $meta]));
+            $existing_hash = get_post_meta($existing->ID, '_dbvc_import_hash', true);
+
+            if ($new_hash === $existing_hash) {
+                if (!empty($mirror_domain) && $mirror_domain !== $current_domain) {
+                    self::remap_post_meta_domains($existing->ID, $mirror_domain);
+                    error_log("[DBVC] Remapped post meta for unchanged post ID {$original_id} due to mirror domain.");
+                }
+
+                error_log("[DBVC] Skipping unchanged post ID {$original_id}");
+                return;
+            }
+        }
+
+        $allow_create = get_option('dbvc_allow_new_posts') === '1';
+        $target_status = get_option('dbvc_new_post_status', 'draft');
+        $whitelist = (array) get_option('dbvc_new_post_types_whitelist', []);
+        $limit_to_types = ! empty($whitelist);
+
+        // Update existing
+        if ($existing && $existing->post_type === $post_type) {
+            $post_array = [
+                'ID'           => $original_id,
+                'post_title'   => sanitize_text_field($json['post_title']),
+                'post_content' => wp_kses_post($json['post_content'] ?? ''),
+                'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
+                'post_type'    => $post_type,
+                'post_status'  => sanitize_text_field($json['post_status'] ?? 'draft'),
+            ];
+
+            $post_id = wp_insert_post($post_array);
+            error_log("[DBVC] Updated existing post ID {$post_id}");
+        } else {
+            if (! $allow_create) {
+                error_log("[DBVC] Skipped creation of missing post ID {$original_id} — creation disabled.");
+                return;
+            }
+
+            if ($limit_to_types && ! in_array($post_type, $whitelist, true)) {
+                error_log("[DBVC] Skipped creation of post type '{$post_type}' — not whitelisted.");
+                return;
+            }
+
+            $content = wp_kses_post($json['post_content'] ?? '');
+            if (!empty($mirror_domain) && $mirror_domain !== $current_domain) {
+                $content = str_replace($mirror_domain, $current_domain, $content);
+            }
+
+            $post_array = [
+                'post_title'   => sanitize_text_field($json['post_title']),
+                'post_content' => $content,
+                'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
+                'post_type'    => $post_type,
+                'post_status'  => $target_status,
+            ];
+
+            $post_id = wp_insert_post($post_array);
+
+            if (is_wp_error($post_id)) {
+                error_log("[DBVC] Failed to create post from {$filepath}: " . $post_id->get_error_message());
+                return;
+            }
+
+            self::$imported_post_id_map[$original_id] = $post_id;
+            error_log("[DBVC] Created new post ID {$post_id} (from original ID {$original_id})");
+
+            // Overwrite JSON ID with actual new ID
+            $json['ID'] = $post_id;
+        }
+
+        // Import meta
+        if (! is_wp_error($post_id) && isset($json['meta']) && is_array($json['meta'])) {
+
+            // Bricks meta keys to protect
+            $bricks_keys = apply_filters('dbvc_bricks_meta_keys', [
+                '_bricks_page_content_2',
+                '_bricks_page_header_2',
+                '_bricks_page_footer_2',
+                '_bricks_page_css',
+                '_bricks_page_custom_code',
+            ]);
+
+            // Temporarily disable sanitize callbacks for these keys (defensive)
+            $null_cb = static function ($v) {
+                return $v;
+            };
+            $hooked  = [];
+            foreach ($bricks_keys as $bk) {
+                $tag = 'sanitize_post_meta_' . $bk;
+                add_filter($tag, $null_cb, 10, 1);
+                $hooked[] = $tag;
+            }
+
+            foreach ($json['meta'] as $key => $values) {
+                // Use sanitize_key for the meta key (preserves underscores)
+                $meta_key = sanitize_key($key);
+
+                if (is_array($values)) {
+                    foreach ($values as $value) {
+
+                        // Re-double isolated singles for Bricks keys only
+                        if (in_array($meta_key, $bricks_keys, true)) {
+                            $value = self::reslash_isolated_backslashes($value);
+                        }
+
+                        // Do not unslash/sanitize the value here; just maybe_unserialize
+                        update_post_meta($post_id, $meta_key, maybe_unserialize($value));
+                    }
+                }
+            }
+
+            // Remove temporary sanitize bypass
+            foreach ($hooked as $tag) {
+                remove_filter($tag, $null_cb, 10);
+            }
+
+            // 🔁 Remap old domain in postmeta if mirror domain was set (unchanged)
+            if (!empty($mirror_domain) && $mirror_domain !== $current_domain) {
+                self::remap_post_meta_domains($post_id, $mirror_domain);
+            }
+        }
+
+        $raw = get_post_meta($post_id, '_bricks_page_footer_2', true);
+        if (is_array($raw)) {
+            $code = $raw[0][0]['settings']['code'] ?? '';
+            // Expect to see \\Bricks\\
+            error_log('[DBVC] AFTER IMPORT snippet=' . substr($code, max(0, strpos($code, '\\Bricks\\')), 14));
+        }
+
+        // Import taxonomies
+        if (! is_wp_error($post_id) && isset($json['tax_input']) && is_array($json['tax_input'])) {
+            $create_terms = (bool) get_option('dbvc_auto_create_terms', true);
+            self::import_tax_input_for_post($post_id, $post_type, $json['tax_input'], $create_terms);
+        }
+
+        // Save import hash
+        if ($post_id) {
+            $meta = $json['meta'] ?? [];
+            unset($meta['_dbvc_import_hash']);
+            $hash = md5(serialize([$json['post_content'], $meta]));
+            update_post_meta($post_id, '_dbvc_import_hash', $hash);
+        }
+
+        // Save post history meta
+        $post_history = [
+            'imported_from'    => 'local-json',
+            'original_post_id' => $original_id,
+            'original_slug'    => $json['post_name'] ?? '',
+            'imported_at'      => current_time('mysql'),
+            'imported_by'      => get_current_user_id(),
+            'mirror_domain'    => $mirror_domain,
+            'hash'             => $current_hash,
+            'json_filename'    => basename($filepath),
+            'status'           => ($post_id === $original_id) ? 'existing' : 'imported',
+        ];
+        update_post_meta($post_id, 'dbvc_post_history', $post_history);
+        $json['meta']['dbvc_post_history'] = $post_history;
+
+        // Rewrite updated JSON
+        $new_json = wp_json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($new_json && self::is_safe_file_path($filepath)) {
+            file_put_contents($filepath, $new_json);
+        }
+
+        error_log("[DBVC] Imported post ID {$post_id}");
+    }
+
     /**
      * Recursively strip the site domain from any string values in the given data array.
      *
@@ -651,6 +723,36 @@ HT;
      * @param string $domain_to_strip The domain to remove (e.g., https://example.com).
      * @return array Sanitized array with domain stripped.
      */
+    private static function strip_domain_from_meta_urls($data, $domain)
+    {
+        if (empty($domain)) {
+            return $data;
+        }
+        $needles = [untrailingslashit($domain), untrailingslashit($domain) . '/'];
+
+        $recur = static function ($val) use (&$recur, $needles) {
+            if (is_array($val)) {
+                foreach ($val as $k => $v) {
+                    $val[$k] = $recur($v);
+                }
+                return $val;
+            }
+            if (is_object($val)) {
+                foreach ($val as $k => $v) {
+                    $val->{$k} = $recur($v);
+                }
+                return $val;
+            }
+            if (is_string($val)) {
+                // Plain replace; DO NOT unslash.
+                return str_replace($needles, '', $val);
+            }
+            return $val;
+        };
+
+        return $recur($data);
+    }
+    /* ORIGINAL VERSION 
     public static function strip_domain_from_meta_urls($meta, $domain_to_strip)
     {
         if (empty($domain_to_strip) || empty($meta)) {
@@ -664,17 +766,14 @@ HT;
         });
 
         return $meta;
-    }
-
-
-
+    } */
 
     /**
      * Export a single post to JSON file.
-     * 
+     *
      * @param int    $post_id Post ID.
-     * @param object $post    Post object.
-     * 
+     * @param object $post    WP_Post object.
+     *
      * @since  1.0.0
      * @return void
      */
@@ -684,56 +783,62 @@ HT;
         if (! is_numeric($post_id) || $post_id <= 0) {
             return;
         }
-
         if (! is_object($post) || ! isset($post->post_type)) {
             return;
         }
-
         if (wp_is_post_revision($post_id)) {
             return;
         }
 
-        // For FSE content, allow draft status as templates can be in draft.
+        // Allowed statuses (FSE types may include draft/auto-draft) + filter.
         $allowed_statuses = ['publish'];
         if (in_array($post->post_type, ['wp_template', 'wp_template_part', 'wp_global_styles', 'wp_navigation'], true)) {
             $allowed_statuses[] = 'draft';
             $allowed_statuses[] = 'auto-draft';
         }
-
+        $allowed_statuses = apply_filters('dbvc_allowed_statuses_for_export', $allowed_statuses, $post);
         if (! in_array($post->post_status, $allowed_statuses, true)) {
             return;
         }
 
+        // Only export supported types.
         $supported_types = self::get_supported_post_types();
         if (! in_array($post->post_type, $supported_types, true)) {
             return;
         }
 
-        // Check if user has permission to read this post type (skip for WP-CLI).
-        if (! defined('WP_CLI') || ! WP_CLI) {
-            $post_type_obj = get_post_type_object($post->post_type);
-            if (! $post_type_obj || ! current_user_can($post_type_obj->cap->read_post, $post_id)) {
+        // Capability check (skip if WP-CLI or filter instructs to skip).
+        $skip_caps = apply_filters('dbvc_skip_read_cap_check', false, $post->ID, $post);
+        if ((! defined('WP_CLI') || ! WP_CLI) && ! $skip_caps) {
+            $pto = get_post_type_object($post->post_type);
+            if (! $pto || ! current_user_can($pto->cap->read_post, $post_id)) {
                 return;
             }
         }
 
-        $domain_to_strip = get_option('dbvc_strip_domain_urls') === '1' ? home_url() : '';
+        // Domain strip option (current site).
+        $domain_to_strip = get_option('dbvc_strip_domain_urls') === '1' ? untrailingslashit(home_url()) : '';
 
-        $sanitized_meta = self::sanitize_post_meta(get_post_meta($post_id));
+        // Fetch raw meta and safely sanitize/normalize (preserves backslashes).
+        $raw_meta       = get_post_meta($post_id);
+        $sanitized_meta = function_exists('dbvc_sanitize_post_meta_safe')
+            ? dbvc_sanitize_post_meta_safe($raw_meta)
+            : $raw_meta;
 
+        // Content/excerpt, optionally strip current domain.
         if ($domain_to_strip) {
-            $post_content = str_replace($domain_to_strip, '', $post->post_content);
-            $post_excerpt = str_replace($domain_to_strip, '', $post->post_excerpt);
+            $needles      = [$domain_to_strip, $domain_to_strip . '/'];
+            $post_content = is_string($post->post_content) ? str_replace($needles, '', $post->post_content) : '';
+            $post_excerpt = is_string($post->post_excerpt) ? str_replace($needles, '', $post->post_excerpt) : '';
             $sanitized_meta = self::strip_domain_from_meta_urls($sanitized_meta, $domain_to_strip);
         } else {
             $post_content = $post->post_content;
             $post_excerpt = $post->post_excerpt;
         }
 
-        // Process post taxonomy terms
+        // Taxonomies → slugs.
         $taxonomies = get_object_taxonomies($post->post_type);
-        $tax_input = [];
-
+        $tax_input  = [];
         foreach ($taxonomies as $taxonomy) {
             $terms = wp_get_post_terms($post_id, $taxonomy, ['fields' => 'slugs']);
             if (! is_wp_error($terms)) {
@@ -741,6 +846,7 @@ HT;
             }
         }
 
+        // Assemble base payload (title/status/name lightly sanitized; meta untouched).
         $data = [
             'ID'           => absint($post_id),
             'post_title'   => sanitize_text_field($post->post_title),
@@ -751,41 +857,34 @@ HT;
             'post_name'    => sanitize_text_field($post->post_name),
             'meta'         => $sanitized_meta,
             'tax_input'    => $tax_input,
-
         ];
 
-        // Process post taxonomy terms
-        // $record['tax_input'] = self::export_tax_input_portable($post_id, $post->post_type);
-
-
-        // Add FSE-specific data.
+        // FSE extras.
         if (in_array($post->post_type, ['wp_template', 'wp_template_part'], true)) {
             $data['theme']  = get_stylesheet();
             $data['slug']   = $post->post_name;
             $data['source'] = get_post_meta($post_id, 'origin', true) ?: 'custom';
         }
 
-        // Allow other plugins to modify the export data
+        // Let mirror/masking etc. adjust the payload.
         $data = apply_filters('dbvc_export_post_data', $data, $post_id, $post);
 
-        // Sanitize the final data
-        $data = dbvc_sanitize_json_data($data);
+        // FINAL: Lossless normalize ONLY (no unslash).
+        $data = dbvc_normalize_for_json($data);
 
-        $path = dbvc_get_sync_path($post->post_type);
-
+        // Resolve path and ensure directory exists.
+        $path = trailingslashit(dbvc_get_sync_path($post->post_type));
         if (! is_dir($path)) {
             if (! wp_mkdir_p($path)) {
                 error_log('DBVC: Failed to create directory: ' . $path);
                 return;
             }
         }
-
         self::ensure_directory_security($path);
 
+        // Filename by slug or ID.
         $use_slug_option = $use_slug || get_option('dbvc_use_slug_in_filenames') === '1';
-        $slug = sanitize_title($post->post_name);
-
-        // Fallback to ID if slug is empty or purely numeric
+        $slug            = sanitize_title($post->post_name);
         if ($use_slug_option && ! empty($slug) && ! is_numeric($slug)) {
             $filename_part = $slug;
         } else {
@@ -795,34 +894,39 @@ HT;
             }
         }
 
-
         $file_path = $path . sanitize_file_name($post->post_type . '-' . $filename_part . '.json');
 
-
-
-
-        // Allow other plugins to modify the file path.
-        $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $post_id, $post);
-
-        // Validate the final file path
+        // Allow path filter + validate.
+        $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $post->ID, $post);
         if (! dbvc_is_safe_file_path($file_path)) {
             error_log('DBVC: Unsafe file path detected: ' . $file_path);
             return;
         }
 
+        // Pick the exact path you care about:
+        $code = $data['meta']['_bricks_page_footer_2'][0][0]['settings']['code'] ?? null;
+        if (is_string($code)) {
+            error_log('[DBVC] PRE backslash count=' . substr_count($code, '\\'));
+            $pos = strpos($code, '\\Bricks\\');
+            if ($pos !== false) {
+                $snip = substr($code, $pos, 14);
+                error_log('[DBVC] PRE snip="' . $snip . '" hex=' . bin2hex($snip));
+            }
+        }
+
+
+        // Encode and write (slashes in BACKSLASH are preserved; forward slashes are unescaped).
         $json_content = wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if (false === $json_content) {
             error_log('DBVC: Failed to encode JSON for post ' . $post_id);
             return;
         }
 
-        $result = file_put_contents($file_path, $json_content);
-        if (false === $result) {
+        if (false === file_put_contents($file_path, $json_content)) {
             error_log('DBVC: Failed to write file: ' . $file_path);
             return;
         }
 
-        // Allow other plugins to perform additional actions after export.
         do_action('dbvc_after_export_post', $post_id, $post, $file_path);
     }
 
@@ -910,11 +1014,46 @@ HT;
 
                     // Import post meta
                     if (isset($json['meta']) && is_array($json['meta'])) {
+                        $bricks_keys = apply_filters('dbvc_bricks_meta_keys', [
+                            '_bricks_page_content_2',
+                            '_bricks_page_header_2',
+                            '_bricks_page_footer_2',
+                            '_bricks_page_css',
+                            '_bricks_page_custom_code',
+                        ]);
+
+                        $null_cb = static function ($v) {
+                            return $v;
+                        };
+                        $hooked  = [];
+                        foreach ($bricks_keys as $bk) {
+                            $tag = 'sanitize_post_meta_' . $bk;
+                            add_filter($tag, $null_cb, 10, 1);
+                            $hooked[] = $tag;
+                        }
+
                         foreach ($json['meta'] as $key => $values) {
-                            foreach ($values as $value) {
-                                update_post_meta($new_post_id, $key, maybe_unserialize($value));
+                            $meta_key = sanitize_key($key);
+                            if (is_array($values)) {
+                                foreach ($values as $value) {
+                                    if (in_array($meta_key, $bricks_keys, true)) {
+                                        $value = self::reslash_isolated_backslashes($value);
+                                    }
+                                    update_post_meta($new_post_id, $meta_key, maybe_unserialize($value));
+                                }
                             }
                         }
+
+                        foreach ($hooked as $tag) {
+                            remove_filter($tag, $null_cb, 10);
+                        }
+                    }
+
+                    $raw = get_post_meta($post_id, '_bricks_page_footer_2', true);
+                    if (is_array($raw)) {
+                        $code = $raw[0][0]['settings']['code'] ?? '';
+                        // Expect to see \\Bricks\\
+                        error_log('[DBVC] AFTER IMPORT snippet=' . substr($code, max(0, strpos($code, '\\Bricks\\')), 14));
                     }
 
                     error_log("[DBVC] Imported post $new_post_id from $filename");
@@ -1054,6 +1193,7 @@ HT;
             'content',
             'info',
             'header',
+            'name'
         ];
 
         foreach ($meta_data as $key => $values) {
@@ -1456,13 +1596,46 @@ HT;
                 }
 
                 if (! empty($json['meta']) && is_array($json['meta'])) {
+                    $bricks_keys = apply_filters('dbvc_bricks_meta_keys', [
+                        '_bricks_page_content_2',
+                        '_bricks_page_header_2',
+                        '_bricks_page_footer_2',
+                        '_bricks_page_css',
+                        '_bricks_page_custom_code',
+                    ]);
+
+                    $null_cb = static function ($v) {
+                        return $v;
+                    };
+                    $hooked  = [];
+                    foreach ($bricks_keys as $bk) {
+                        $tag = 'sanitize_post_meta_' . $bk;
+                        add_filter($tag, $null_cb, 10, 1);
+                        $hooked[] = $tag;
+                    }
+
                     foreach ($json['meta'] as $key => $values) {
+                        $meta_key = sanitize_key($key);
                         if (is_array($values)) {
                             foreach ($values as $value) {
-                                update_post_meta($post_id, sanitize_key($key), maybe_unserialize($value));
+                                if (in_array($meta_key, $bricks_keys, true)) {
+                                    $value = self::reslash_isolated_backslashes($value);
+                                }
+                                update_post_meta($post_id, $meta_key, maybe_unserialize($value));
                             }
                         }
                     }
+
+                    foreach ($hooked as $tag) {
+                        remove_filter($tag, $null_cb, 10);
+                    }
+                }
+
+                $raw = get_post_meta($post_id, '_bricks_page_footer_2', true);
+                if (is_array($raw)) {
+                    $code = $raw[0][0]['settings']['code'] ?? '';
+                    // Expect to see \\Bricks\\
+                    error_log('[DBVC] AFTER IMPORT snippet=' . substr($code, max(0, strpos($code, '\\Bricks\\')), 14));
                 }
             }
 
