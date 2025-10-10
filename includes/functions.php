@@ -319,26 +319,41 @@ function dbvc_validate_sync_path($path)
  * - Keeps backslashes (e.g., "\\Bricks\\Query") intact.
  */
 if (! function_exists('dbvc_normalize_for_json')) {
-	function dbvc_normalize_for_json($value)
-	{
-		if (is_array($value)) {
-			$out = [];
-			foreach ($value as $k => $v) {
-				$out[$k] = dbvc_normalize_for_json($v);
-			}
-			return $out;
-		}
-		if (is_object($value)) {
-			foreach ($value as $k => $v) {
-				$value->{$k} = dbvc_normalize_for_json($v);
-			}
-			return $value;
-		}
-		if (is_string($value)) {
-			// IMPORTANT: do not unslash. Just validate/normalize UTF-8.
-			return wp_check_invalid_utf8($value, true);
-		}
-		return $value;
+    function dbvc_normalize_for_json($value) {
+        if (is_array($value)) {
+            $out = [];
+            foreach ($value as $k => $v) {
+                $out[$k] = dbvc_normalize_for_json($v);
+            }
+            return $out;
+        }
+
+        if (is_object($value)) {
+            // 🚫 Don’t mutate incomplete objects
+            if (dbvc_is_incomplete_object($value)) {
+                return $value;
+            }
+            foreach (get_object_vars($value) as $k => $v) {
+                $value->{$k} = dbvc_normalize_for_json($v);
+            }
+            return $value;
+        }
+
+        if (is_string($value)) {
+            // IMPORTANT: do not unslash. Just validate/normalize UTF-8.
+            return wp_check_invalid_utf8($value, true);
+        }
+
+        return $value;
+    }
+}
+
+
+// Detect PHP's placeholder for missing class definitions after unserialize()
+if (! function_exists('dbvc_is_incomplete_object')) {
+	function dbvc_is_incomplete_object($obj) {
+		return is_object($obj)
+			&& ($obj instanceof __PHP_Incomplete_Class || get_class($obj) === '__PHP_Incomplete_Class');
 	}
 }
 
@@ -360,54 +375,59 @@ if (! function_exists('dbvc_sanitize_post_meta_safe')) {
 	 * @param array $meta Format from get_post_meta($post_id): [meta_key => [value1, value2, ...]]
 	 * @return array
 	 */
-	function dbvc_sanitize_post_meta_safe(array $meta)
-	{
-		$default_skip = [
-			'_bricks_page_content_2',
-			'_bricks_page_header_2',
-			'_bricks_page_footer_2',
-			'_bricks_page_css',
-			'_bricks_page_custom_code',
-		];
-		$skip_keys = apply_filters('dbvc_meta_sanitize_skip_keys', $default_skip);
+	function dbvc_sanitize_post_meta_safe(array $meta) {
+        $default_skip = [
+            '_bricks_page_content_2',
+            '_bricks_page_header_2',
+            '_bricks_page_footer_2',
+            '_bricks_page_css',
+            '_bricks_page_custom_code',
+        ];
+        $skip_keys = apply_filters('dbvc_meta_sanitize_skip_keys', $default_skip);
 
-		$recur = static function ($val) use (&$recur) {
-			if (is_array($val)) {
-				foreach ($val as $k => $v) {
-					$val[$k] = $recur($v);
-				}
-				return $val;
-			}
-			if (is_object($val)) {
-				foreach ($val as $k => $v) {
-					$val->{$k} = $recur($v);
-				}
-				return $val;
-			}
-			if (is_string($val)) {
-				// If this string is actually a serialized structure, safely unserialize.
-				if (is_serialized($val)) {
-					$maybe = @maybe_unserialize($val);
-					// Recurse into unserialized structure.
-					return $recur($maybe);
-				}
-				// Otherwise: normalize only (keep backslashes).
-				return wp_check_invalid_utf8($val, true);
-			}
-			return $val;
-		};
+        $recur = static function ($val) use (&$recur) {
+            if (is_array($val)) {
+                foreach ($val as $k => $v) {
+                    $val[$k] = $recur($v);
+                }
+                return $val;
+            }
 
-		foreach ($meta as $key => $values) {
-			// $values is usually an array of one or more scalars/serialized strings.
-			if (in_array($key, $skip_keys, true)) {
-				$meta[$key] = $recur($values);
-			} else {
-				$meta[$key] = $recur($values);
-			}
-		}
+            if (is_object($val)) {
+                // 🚫 Leave incomplete objects untouched
+                if (dbvc_is_incomplete_object($val)) {
+                    return $val;
+                }
+                foreach (get_object_vars($val) as $k => $v) {
+                    $val->{$k} = $recur($v);
+                }
+                return $val;
+            }
 
-		return $meta;
-	}
+            if (is_string($val)) {
+                // If this string is actually a serialized structure, safely unserialize.
+                if (is_serialized($val)) {
+                    $maybe = @maybe_unserialize($val);
+                    return $recur($maybe);
+                }
+                // Otherwise: normalize only (keep backslashes).
+                return wp_check_invalid_utf8($val, true);
+            }
+
+            return $val;
+        };
+
+        foreach ($meta as $key => $values) {
+            // $values is usually an array of one or more scalars/serialized strings.
+            if (in_array($key, $skip_keys, true)) {
+                $meta[$key] = $recur($values);
+            } else {
+                $meta[$key] = $recur($values);
+            }
+        }
+
+        return $meta;
+    }
 }
 
 /**
@@ -419,30 +439,39 @@ if (! function_exists('dbvc_sanitize_post_meta_safe')) {
  * @return mixed Sanitized data.
  */
 // Safe JSON sanitizer: do NOT unslash, never stripslashes().
+// Safe JSON sanitizer: do NOT unslash, never stripslashes().
 if (! function_exists('dbvc_sanitize_json_data')) {
-	function dbvc_sanitize_json_data($value)
-	{
-		if (is_array($value)) {
-			$out = [];
-			foreach ($value as $k => $v) {
-				// Preserve array keys as-is
-				$out[$k] = dbvc_sanitize_json_data($v);
-			}
-			return $out;
-		}
-		if (is_object($value)) {
-			foreach ($value as $k => $v) {
-				$value->{$k} = dbvc_sanitize_json_data($v);
-			}
-			return $value;
-		}
-		if (is_string($value)) {
-			// Normalize only; DO NOT unslash/stripslashes here.
-			return wp_check_invalid_utf8($value, true);
-		}
-		return $value;
-	}
+    function dbvc_sanitize_json_data($value) {
+        if (is_array($value)) {
+            $out = [];
+            foreach ($value as $k => $v) {
+                // Preserve array keys as-is
+                $out[$k] = dbvc_sanitize_json_data($v);
+            }
+            return $out;
+        }
+
+        if (is_object($value)) {
+            // 🚫 Do not touch incomplete/unloaded-class objects; leave as-is to avoid fatals.
+            if (dbvc_is_incomplete_object($value)) {
+                return $value;
+            }
+            // Recurse into public props without reassigning structure
+            foreach (get_object_vars($value) as $k => $v) {
+                $value->{$k} = dbvc_sanitize_json_data($v);
+            }
+            return $value;
+        }
+
+        if (is_string($value)) {
+            // Normalize only; DO NOT unslash/stripslashes here.
+            return wp_check_invalid_utf8($value, true);
+        }
+
+        return $value;
+    }
 }
+
 
 /* ORIGINAL VERSION
 function dbvc_sanitize_json_data($data)
