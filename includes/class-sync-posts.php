@@ -114,6 +114,200 @@ HT;
         return $base && $real && strpos($real, $base) === 0;
     }
 
+    /**
+     * Normalize a requested filename mode into one of the allowed values.
+     *
+     * @param mixed $mode Potential mode from UI, filters, or legacy boolean.
+     * @since 1.2.0
+     */
+    protected static function normalize_filename_mode($mode = null)
+    {
+        $allowed = apply_filters('dbvc_allowed_export_filename_formats', ['id', 'slug', 'slug_id']);
+        if (! is_array($allowed) || empty($allowed)) {
+            $allowed = ['id', 'slug', 'slug_id'];
+        }
+
+        if (is_string($mode) && in_array($mode, $allowed, true)) {
+            return $mode;
+        }
+
+        if ($mode === true && in_array('slug', $allowed, true)) {
+            return 'slug';
+        }
+
+        if ($mode === false || $mode === null || $mode === '') {
+            $preferred = dbvc_get_export_filename_format();
+            if (in_array($preferred, $allowed, true)) {
+                return $preferred;
+            }
+        }
+
+        return in_array('id', $allowed, true) ? 'id' : reset($allowed);
+    }
+
+    /**
+     * Determine the filename fragment to use before sanitization.
+     *
+     * @param int      $post_id
+     * @param \WP_Post $post
+     * @param string   $mode     id|slug|slug_id
+     * @param bool     $log_fallback Whether to log when falling back to ID.
+     * @since 1.2.0
+     */
+    protected static function determine_filename_part($post_id, $post, $mode, $log_fallback = true)
+    {
+        $post_id = absint($post_id);
+        $slug    = is_object($post) ? sanitize_title($post->post_name) : '';
+
+        if ($mode === 'slug_id') {
+            if ($slug !== '' && ! is_numeric($slug)) {
+                return $slug . '-' . $post_id;
+            }
+            if ($log_fallback) {
+                error_log("[DBVC] Warning: Falling back to ID for post {$post_id} due to invalid slug for slug+ID format: '{$slug}'");
+            }
+            return (string) $post_id;
+        }
+
+        if ($mode === 'slug') {
+            if ($slug !== '' && ! is_numeric($slug)) {
+                return $slug;
+            }
+            if ($log_fallback) {
+                error_log("[DBVC] Warning: Falling back to ID for post {$post_id} due to invalid slug: '{$slug}'");
+            }
+            return (string) $post_id;
+        }
+
+        return (string) $post_id;
+    }
+
+    /**
+     * Resolve export filename components for a post.
+     *
+     * @param int      $post_id
+     * @param \WP_Post $post
+     * @param mixed    $mode_request Requested mode from UI/filter.
+     * @param bool     $log_fallback Whether to log when falling back to ID.
+     * @since 1.2.0
+     * @return array{mode:string,filename_part:string,filename:string}
+     */
+    public static function resolve_filename_components($post_id, $post, $mode_request = null, $log_fallback = true)
+    {
+        $normalized = self::normalize_filename_mode($mode_request);
+        $filtered   = apply_filters('dbvc_export_filename_mode', $normalized, $post_id, $post);
+        $final_mode = self::normalize_filename_mode($filtered);
+
+        $part = self::determine_filename_part($post_id, $post, $final_mode, $log_fallback);
+        $part = apply_filters('dbvc_export_filename_part', $part, $post_id, $post, $final_mode);
+
+        if (! is_string($part) || $part === '') {
+            $part = (string) absint($post_id);
+        }
+
+        $filename = sanitize_file_name($post->post_type . '-' . $part . '.json');
+
+        return [
+            'mode'          => $final_mode,
+            'filename_part' => $part,
+            'filename'      => $filename,
+        ];
+    }
+
+    /**
+     * Extract the filename token (between post type prefix and extension).
+     *
+     * @param string $filepath  Absolute path to the JSON file.
+     * @param string $post_type Expected post type.
+     * @since 1.2.0
+     * @return string
+     */
+    protected static function extract_filename_token($filepath, $post_type)
+    {
+        $basename = basename($filepath);
+        if (substr($basename, -5) === '.json') {
+            $basename = substr($basename, 0, -5);
+        }
+
+        $prefix = sanitize_key($post_type) . '-';
+        if (strpos($basename, $prefix) !== 0) {
+            return $basename;
+        }
+
+        return substr($basename, strlen($prefix));
+    }
+
+    /**
+     * Analyse an import filename against JSON data to detect its format.
+     *
+     * @param string $filepath
+     * @param string $post_type
+     * @param array  $data       Decoded JSON payload.
+     * @since 1.2.0
+     * @return array{mode:string,part:string,slug:string,id:string}
+     */
+    protected static function analyze_import_filename($filepath, $post_type, array $data)
+    {
+        $part = self::extract_filename_token($filepath, $post_type);
+        $id   = isset($data['ID']) ? (string) absint($data['ID']) : '';
+        $slug = isset($data['post_name']) ? sanitize_title($data['post_name']) : '';
+
+        if ($slug !== '' && $id !== '' && $part === $slug . '-' . $id) {
+            return ['mode' => 'slug_id', 'part' => $part, 'slug' => $slug, 'id' => $id];
+        }
+
+        if ($slug !== '' && $part === $slug) {
+            return ['mode' => 'slug', 'part' => $part, 'slug' => $slug, 'id' => $id];
+        }
+
+        if ($id !== '' && $part === $id) {
+            return ['mode' => 'id', 'part' => $part, 'slug' => $slug, 'id' => $id];
+        }
+
+        if ($slug !== '' && $id !== '' && strpos($part, $slug . '-') === 0 && preg_match('/-\d+$/', $part)) {
+            return ['mode' => 'slug_id', 'part' => $part, 'slug' => $slug, 'id' => $id];
+        }
+
+        if (preg_match('/^\d+$/', $part)) {
+            return ['mode' => 'id', 'part' => $part, 'slug' => $slug, 'id' => $id];
+        }
+
+        return ['mode' => 'slug', 'part' => $part, 'slug' => $slug, 'id' => $id];
+    }
+
+    /**
+     * Determine if an import filename should be processed for the requested mode.
+     *
+     * @param string      $target_mode Normalized target mode or null for all.
+     * @param string      $filepath
+     * @param string      $post_type
+     * @param array       $data        Decoded JSON payload.
+     * @since 1.2.0
+     * @return bool
+     */
+    protected static function import_filename_matches_mode($target_mode, $filepath, $post_type, array $data)
+    {
+        if ($target_mode === null) {
+            return true;
+        }
+
+        $analysis = self::analyze_import_filename($filepath, $post_type, $data);
+        if ($analysis['mode'] === $target_mode) {
+            return true;
+        }
+
+        // When exporting with slug format but slug is empty/numeric we fall back to ID.
+        if (
+            $target_mode === 'slug'
+            && $analysis['mode'] === 'id'
+            && ($analysis['slug'] === '' || is_numeric($analysis['slug']))
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
 
     /* 
     * @WIP Relationship remapping
@@ -461,17 +655,23 @@ HT;
     }
 
     /* Import all posts */
-    public static function import_all($offset = 0, $smart_import = false)
+    public static function import_all($offset = 0, $smart_import = false, $filename_mode = null)
     {
         $path = dbvc_get_sync_path(); // Do not append 'posts' subfolder
 
         if (! is_dir($path)) {
             error_log('[DBVC] Import path not found: ' . $path);
-            return;
+            return [
+                'processed' => 0,
+                'remaining' => 0,
+                'total'     => 0,
+                'offset'    => $offset,
+            ];
         }
 
         $supported_types = self::get_supported_post_types();
-        $processed = 0;
+        $processed       = 0;
+        $normalized_mode = ($filename_mode !== null) ? self::normalize_filename_mode($filename_mode) : null;
 
         foreach ($supported_types as $post_type) {
             $folder = trailingslashit($path) . sanitize_key($post_type);
@@ -481,8 +681,9 @@ HT;
 
             $json_files = glob($folder . '/' . sanitize_key($post_type) . '-*.json');
             foreach ($json_files as $filepath) {
-                self::import_post_from_json($filepath, $smart_import);
-                $processed++;
+                if (self::import_post_from_json($filepath, $smart_import, $normalized_mode)) {
+                    $processed++;
+                }
             }
         }
 
@@ -508,14 +709,14 @@ $acf_relationship_fields = [
      * Build import posts from Json
      * Added: 08-12-2025
      */
-    public static function import_post_from_json($filepath, $smart_import = false)
+    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null)
     {
         if (! file_exists($filepath)) {
-            return;
+            return false;
         }
 
-        $json_raw = file_get_contents($filepath);
-        $json = json_decode($json_raw, true);
+        $json_raw = $decoded_json ? wp_json_encode($decoded_json) : file_get_contents($filepath);
+        $json     = $decoded_json ?? json_decode($json_raw, true);
 
         if (
             empty($json) ||
@@ -523,11 +724,20 @@ $acf_relationship_fields = [
             ! isset($json['ID'], $json['post_type'], $json['post_title'])
         ) {
             error_log("[DBVC] Skipped non-post JSON file: {$filepath}");
-            return;
+            return false;
         }
 
         $original_id = absint($json['ID']);
         $post_type = sanitize_text_field($json['post_type']);
+        $normalized_mode = ($filename_mode !== null) ? self::normalize_filename_mode($filename_mode) : null;
+
+        if (! self::import_filename_matches_mode($normalized_mode, $filepath, $post_type, $json)) {
+            if ($normalized_mode !== null) {
+                error_log("[DBVC] Skipping file due to filename filter ({$normalized_mode}): " . basename($filepath));
+            }
+            return false;
+        }
+
         $mirror_domain = rtrim(get_option('dbvc_mirror_domain', ''), '/');
         $current_domain = rtrim(home_url(), '/');
 
@@ -538,7 +748,7 @@ $acf_relationship_fields = [
 
         if ($existing_hash === $current_hash && in_array($status, ['existing', 'imported'])) {
             error_log("[DBVC] Skipping unchanged JSON for post ID {$original_id} (status: {$status})");
-            return;
+            return false;
         }
 
         $existing = get_post($original_id);
@@ -559,7 +769,7 @@ $acf_relationship_fields = [
                 }
 
                 error_log("[DBVC] Skipping unchanged post ID {$original_id}");
-                return;
+                return false;
             }
         }
 
@@ -584,12 +794,12 @@ $acf_relationship_fields = [
         } else {
             if (! $allow_create) {
                 error_log("[DBVC] Skipped creation of missing post ID {$original_id} — creation disabled.");
-                return;
+                return false;
             }
 
             if ($limit_to_types && ! in_array($post_type, $whitelist, true)) {
                 error_log("[DBVC] Skipped creation of post type '{$post_type}' — not whitelisted.");
-                return;
+                return false;
             }
 
             $content = wp_kses_post($json['post_content'] ?? '');
@@ -609,7 +819,7 @@ $acf_relationship_fields = [
 
             if (is_wp_error($post_id)) {
                 error_log("[DBVC] Failed to create post from {$filepath}: " . $post_id->get_error_message());
-                return;
+                return false;
             }
 
             self::$imported_post_id_map[$original_id] = $post_id;
@@ -714,6 +924,7 @@ $acf_relationship_fields = [
         }
 
         error_log("[DBVC] Imported post ID {$post_id}");
+        return true;
     }
 
     /**
@@ -773,11 +984,12 @@ $acf_relationship_fields = [
      *
      * @param int    $post_id Post ID.
      * @param object $post    WP_Post object.
+     * @param mixed  $filename_mode Preferred filename format (id|slug|slug_id|legacy bool).
      *
      * @since  1.0.0
      * @return void
      */
-    public static function export_post_to_json($post_id, $post, $use_slug = false)
+    public static function export_post_to_json($post_id, $post, $filename_mode = null)
     {
         // Validate inputs.
         if (! is_numeric($post_id) || $post_id <= 0) {
@@ -882,19 +1094,9 @@ $acf_relationship_fields = [
         }
         self::ensure_directory_security($path);
 
-        // Filename by slug or ID.
-        $use_slug_option = $use_slug || get_option('dbvc_use_slug_in_filenames') === '1';
-        $slug            = sanitize_title($post->post_name);
-        if ($use_slug_option && ! empty($slug) && ! is_numeric($slug)) {
-            $filename_part = $slug;
-        } else {
-            $filename_part = $post_id;
-            if ($use_slug_option) {
-                error_log("[DBVC] Warning: Falling back to ID for post {$post_id} due to invalid slug: '{$slug}'");
-            }
-        }
-
-        $file_path = $path . sanitize_file_name($post->post_type . '-' . $filename_part . '.json');
+        // Filename selection (ID, slug, or slug+ID).
+        $filename_components = self::resolve_filename_components($post_id, $post, $filename_mode);
+        $file_path           = $path . $filename_components['filename'];
 
         // Allow path filter + validate.
         $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $post->ID, $post);
@@ -936,145 +1138,9 @@ $acf_relationship_fields = [
      * @since  1.0.0
      * @return void
      */
-    public static function import_all_json_files()
+    public static function import_all_json_files($filename_mode = null)
     {
-        $supported_types = self::get_supported_post_types();
-
-        /* @WIP Relationship remapping
-        // Initialize maps
-        self::$imported_post_id_map = [];
-        self::$relationship_field_updates = [];
- */
-        foreach ($supported_types as $post_type) {
-            $path  = dbvc_get_sync_path($post_type);
-            $files = glob($path . '*.json');
-
-            if (empty($files)) {
-                continue;
-            }
-
-            foreach ($files as $file) {
-                $filename = basename($file);
-                $json     = json_decode(file_get_contents($file), true);
-
-                if (empty($json) || ! is_array($json)) {
-                    error_log("[DBVC] Skipped invalid or empty JSON file: $filename");
-                    continue;
-                }
-
-                // Determine post by ID or slug from filename
-                $matches = [];
-                if (preg_match('/^([a-z0-9_-]+)-(.+)\.json$/i', $filename, $matches)) {
-                    $post_type_from_file = $matches[1];
-                    $identifier          = $matches[2];
-
-                    // Only proceed if post type matches
-                    if ($post_type_from_file !== $post_type) {
-                        error_log("[DBVC] Skipping mismatched post type file: $filename");
-                        continue;
-                    }
-
-                    // Try to load existing post by slug or ID
-                    $existing_post = is_numeric($identifier)
-                        ? get_post((int) $identifier)
-                        : get_page_by_path($identifier, OBJECT, $post_type);
-
-                    // If existing post found, reuse its ID; otherwise use from JSON
-                    $post_id = $existing_post ? $existing_post->ID : ($json['ID'] ?? 0);
-                } else {
-                    // Fallback if filename format is not matched
-                    $post_id = $json['ID'] ?? 0;
-                }
-
-                // Insert or update post
-                $new_post_id = wp_insert_post([
-                    'ID'           => $post_id,
-                    'post_title'   => $json['post_title'] ?? '',
-                    'post_content' => $json['post_content'] ?? '',
-                    'post_excerpt' => $json['post_excerpt'] ?? '',
-                    'post_type'    => $json['post_type'] ?? $post_type,
-                    'post_status'  => $json['post_status'] ?? 'publish',
-                ]);
-
-                /* @WIP Old disregard if working properly
-                
-                $new_post_id = wp_insert_post([
-                    'ID'           => $post_id,
-                    'post_title'   => sanitize_text_field($json['post_title'] ?? ''),
-                    'post_content' => wp_kses_post($json['post_content'] ?? ''),
-                    'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
-                    'post_type'    => sanitize_text_field($json['post_type'] ?? $post_type),
-                    'post_status'  => sanitize_text_field($json['post_status'] ?? 'publish'),
-                ]); */
-
-                if (! is_wp_error($new_post_id)) {
-                    if ($post_id !== $new_post_id) {
-                        self::$imported_post_id_map[$post_id] = $new_post_id;
-                    }
-
-                    // Import post meta
-                    if (isset($json['meta']) && is_array($json['meta'])) {
-                        $bricks_keys = apply_filters('dbvc_bricks_meta_keys', [
-                            '_bricks_page_content_2',
-                            '_bricks_page_header_2',
-                            '_bricks_page_footer_2',
-                            '_bricks_page_css',
-                            '_bricks_page_custom_code',
-                        ]);
-
-                        $null_cb = static function ($v) {
-                            return $v;
-                        };
-                        $hooked  = [];
-                        foreach ($bricks_keys as $bk) {
-                            $tag = 'sanitize_post_meta_' . $bk;
-                            add_filter($tag, $null_cb, 10, 1);
-                            $hooked[] = $tag;
-                        }
-
-                        foreach ($json['meta'] as $key => $values) {
-                            $meta_key = sanitize_key($key);
-                            if (is_array($values)) {
-                                foreach ($values as $value) {
-                                    if (in_array($meta_key, $bricks_keys, true)) {
-                                        $value = self::reslash_isolated_backslashes($value);
-                                    }
-                                    update_post_meta($new_post_id, $meta_key, maybe_unserialize($value));
-                                }
-                            }
-                        }
-
-                        foreach ($hooked as $tag) {
-                            remove_filter($tag, $null_cb, 10);
-                        }
-                    }
-
-                    $raw = get_post_meta($post_id, '_bricks_page_footer_2', true);
-                    if (is_array($raw)) {
-                        $code = $raw[0][0]['settings']['code'] ?? '';
-                        // Expect to see \\Bricks\\
-                        error_log('[DBVC] AFTER IMPORT snippet=' . substr($code, max(0, strpos($code, '\\Bricks\\')), 14));
-                    }
-
-                    error_log("[DBVC] Imported post $new_post_id from $filename");
-                } else {
-                    error_log("[DBVC] ERROR importing post from $filename: " . $new_post_id->get_error_message());
-                }
-            }
-        }
-
-        /* @WIP // ✅ Remap relationships if any were imported
-        if (! empty(self::$imported_post_id_map)) {
-            self::remap_relationship_fields(self::$relationship_field_keys ?? []);
-
-            update_option('dbvc_import_log', [
-                'timestamp'              => current_time('mysql'),
-                'remapped_ids'           => self::$imported_post_id_map,
-                'imported_post_ids'      => array_values(self::$imported_post_id_map),
-                'relationship_updates'   => self::$relationship_field_updates ?? [],
-            ]);
-        }
- */
+        self::import_all(0, false, $filename_mode);
     }
 
 
@@ -1550,132 +1616,59 @@ $acf_relationship_fields = [
      * @since  1.0.0
      * @return array Results with processed count and remaining count.
      */
-    public static function import_posts_batch($batch_size = 50, $offset = 0)
+    public static function import_posts_batch($batch_size = 50, $offset = 0, $filename_mode = null)
     {
         $supported_types = self::get_supported_post_types();
-        $all_files = [];
+        $entries         = [];
+        $normalized_mode = ($filename_mode !== null) ? self::normalize_filename_mode($filename_mode) : null;
 
-        /*         @WIP Relationship remapping */
-        // $remap_ids = [];
-        // $imported_post_ids = [];
-
-        // Collect all JSON files from all post type directories
         foreach ($supported_types as $post_type) {
-            $path = dbvc_get_sync_path($post_type);
+            $path  = dbvc_get_sync_path($post_type);
             $files = glob($path . '*.json');
-            if (! empty($files)) {
-                $all_files = array_merge($all_files, $files);
-            }
-        }
-
-        $batch_files = array_slice($all_files, $offset, $batch_size);
-        $processed = 0;
-
-        foreach ($batch_files as $file) {
-            $json = json_decode(file_get_contents($file), true);
-            if (empty($json)) {
+            if (empty($files)) {
                 continue;
             }
 
-            $original_id = absint($json['ID']);
-
-            $post_id = wp_insert_post([
-                'ID'           => $original_id,
-                'post_title'   => sanitize_text_field($json['post_title']),
-                'post_content' => wp_kses_post($json['post_content'] ?? ''),
-                'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
-                'post_type'    => sanitize_text_field($json['post_type']),
-                'post_status'  => sanitize_text_field($json['post_status'] ?? 'draft'),
-            ]);
-
-            if (! is_wp_error($post_id)) {
-                $imported_post_ids[] = $post_id;
-
-                if ($post_id !== $original_id) {
-                    $remap_ids[$original_id] = $post_id;
+            sort($files);
+            foreach ($files as $file) {
+                $raw  = file_get_contents($file);
+                $json = json_decode($raw, true);
+                if (empty($json) || ! is_array($json)) {
+                    continue;
                 }
 
-                if (! empty($json['meta']) && is_array($json['meta'])) {
-                    $bricks_keys = apply_filters('dbvc_bricks_meta_keys', [
-                        '_bricks_page_content_2',
-                        '_bricks_page_header_2',
-                        '_bricks_page_footer_2',
-                        '_bricks_page_css',
-                        '_bricks_page_custom_code',
-                    ]);
-
-                    $null_cb = static function ($v) {
-                        return $v;
-                    };
-                    $hooked  = [];
-                    foreach ($bricks_keys as $bk) {
-                        $tag = 'sanitize_post_meta_' . $bk;
-                        add_filter($tag, $null_cb, 10, 1);
-                        $hooked[] = $tag;
-                    }
-
-                    foreach ($json['meta'] as $key => $values) {
-                        $meta_key = sanitize_key($key);
-                        if (is_array($values)) {
-                            foreach ($values as $value) {
-                                if (in_array($meta_key, $bricks_keys, true)) {
-                                    $value = self::reslash_isolated_backslashes($value);
-                                }
-                                update_post_meta($post_id, $meta_key, maybe_unserialize($value));
-                            }
-                        }
-                    }
-
-                    foreach ($hooked as $tag) {
-                        remove_filter($tag, $null_cb, 10);
-                    }
+                if (! self::import_filename_matches_mode($normalized_mode, $file, $post_type, $json)) {
+                    continue;
                 }
 
-                $raw = get_post_meta($post_id, '_bricks_page_footer_2', true);
-                if (is_array($raw)) {
-                    $code = $raw[0][0]['settings']['code'] ?? '';
-                    // Expect to see \\Bricks\\
-                    error_log('[DBVC] AFTER IMPORT snippet=' . substr($code, max(0, strpos($code, '\\Bricks\\')), 14));
-                }
+                $entries[] = $file;
             }
-
-            $processed++;
         }
-        /*
-        @WIP Relationship remapping
-        *
-        // ✅ Set the remap for later use
-        self::$imported_post_id_map = $remap_ids;
 
-        // ✅ Remap relationship fields (requires list of known field keys)
-        $relationship_field_keys = [
-            'alternatives_relationship',
-            'related_items',
-            'team_members', // Add any other relationship/meta field keys as needed
-        ];
-        self::remap_relationship_fields($relationship_field_keys);
+        $total = count($entries);
 
-        // ✅ Also remap any nested references across posts (optional if both are needed)
-        self::remap_relationship_ids_across_posts($remap_ids, $imported_post_ids);
-        self::$relationship_field_updates = self::$relationship_field_updates ?? [];
+        if ($batch_size <= 0) {
+            $batch_files = $entries;
+            $next_offset = $total;
+        } else {
+            $batch_files = array_slice($entries, $offset, $batch_size);
+            $next_offset = $offset + count($batch_files);
+        }
 
-        // ✅ Store log for admin report
-        update_option('dbvc_import_log', [
-            'timestamp'             => current_time('mysql'),
-            'remapped_ids'          => $remap_ids,
-            'imported_post_ids'     => $imported_post_ids,
-            'relationship_updates'  => self::$relationship_field_updates ?? [],
-        ]);
-        */
+        $processed = 0;
+        foreach ($batch_files as $file) {
+            if (self::import_post_from_json($file, false, $normalized_mode)) {
+                $processed++;
+            }
+        }
 
-        $total_files = count($all_files);
-        $remaining = max(0, $total_files - ($offset + $processed));
+        $remaining = max(0, $total - $next_offset);
 
         return [
             'processed' => $processed,
             'remaining' => $remaining,
-            'total'     => $total_files,
-            'offset'    => $offset + $processed,
+            'total'     => $total,
+            'offset'    => $next_offset,
         ];
     }
 

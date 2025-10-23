@@ -63,7 +63,9 @@ function dbvc_handle_post_deletion($post_id)
 function dbvc_handle_post_status_transition($new_status, $old_status, $post)
 {
 	if ($new_status !== $old_status) {
-		DBVC_Sync_Posts::export_post_to_json($post->ID, $post);
+		dbvc_run_auto_export_with_mask(function () use ($post) {
+			DBVC_Sync_Posts::export_post_to_json($post->ID, $post);
+		});
 	}
 
 	// Allow other plugins to hook into status transitions
@@ -91,7 +93,9 @@ function dbvc_handle_post_meta_update($meta_id, $object_id, $meta_key, $meta_val
 
 	$post = get_post($object_id);
 	if ($post && in_array($post->post_type, DBVC_Sync_Posts::get_supported_post_types(), true)) {
-		DBVC_Sync_Posts::export_post_to_json($object_id, $post);
+		dbvc_run_auto_export_with_mask(function () use ($object_id, $post) {
+			DBVC_Sync_Posts::export_post_to_json($object_id, $post);
+		});
 	}
 
 	// Allow other plugins to hook into meta updates

@@ -193,6 +193,129 @@ if (! function_exists('dbvc_mask_apply_to_meta')) {
 	}
 }
 
+if (! function_exists('dbvc_get_auto_mask_settings')) {
+	/**
+	 * Resolve masking settings that should be applied during automatic exports.
+	 *
+	 * @since 1.2.0
+	 * @return array{mode:string,action:string,meta_keys:string,subkeys:string,placeholder:string}
+	 */
+	function dbvc_get_auto_mask_settings()
+	{
+		$allowed_modes = apply_filters('dbvc_auto_export_mask_modes', ['none', 'remove_defaults', 'redact_defaults']);
+		$mode          = get_option('dbvc_auto_export_mask_mode', 'none');
+		if (! in_array($mode, $allowed_modes, true)) {
+			$mode = 'none';
+		}
+
+		$defaults_meta = (string) get_option('dbvc_mask_defaults_meta_keys', '');
+		$defaults_sub  = (string) get_option('dbvc_mask_defaults_subkeys', '');
+		$placeholder_default = (string) get_option('dbvc_mask_placeholder', '***') ?: '***';
+		$auto_placeholder    = (string) get_option('dbvc_auto_export_mask_placeholder', $placeholder_default);
+		if ($auto_placeholder === '') {
+			$auto_placeholder = $placeholder_default;
+		}
+
+		switch ($mode) {
+			case 'remove_defaults':
+				$action    = 'remove';
+				$meta_keys = $defaults_meta;
+				$subkeys   = $defaults_sub;
+				break;
+
+			case 'redact_defaults':
+				$action    = 'redact';
+				$meta_keys = $defaults_meta;
+				$subkeys   = $defaults_sub;
+				break;
+
+			case 'none':
+			default:
+				$mode      = 'none';
+				$action    = 'remove';
+				$meta_keys = '';
+				$subkeys   = '';
+				break;
+		}
+
+		$settings = [
+			'mode'        => $mode,
+			'action'      => $action,
+			'meta_keys'   => $meta_keys,
+			'subkeys'     => $subkeys,
+			'placeholder' => ($action === 'redact') ? $auto_placeholder : $placeholder_default,
+		];
+
+		return apply_filters('dbvc_auto_export_mask_settings', $settings);
+	}
+}
+
+if (! function_exists('dbvc_run_auto_export_with_mask')) {
+	/**
+	 * Execute a callback while temporarily applying auto-export masking settings.
+	 *
+	 * @since 1.2.0
+	 *
+	 * @param callable $callback Function to execute.
+	 * @return mixed Callback result.
+	 */
+	function dbvc_run_auto_export_with_mask(callable $callback)
+	{
+		$settings = dbvc_get_auto_mask_settings();
+
+		$current = [
+			'action'      => get_option('dbvc_mask_action', 'remove'),
+			'meta_keys'   => (string) get_option('dbvc_mask_meta_keys', ''),
+			'subkeys'     => (string) get_option('dbvc_mask_subkeys', ''),
+			'placeholder' => (string) get_option('dbvc_mask_placeholder', '***'),
+		];
+
+		$changes = [
+			'action'      => $settings['action'] !== $current['action'],
+			'meta_keys'   => $settings['meta_keys'] !== $current['meta_keys'],
+			'subkeys'     => $settings['subkeys'] !== $current['subkeys'],
+			'placeholder' => ($settings['action'] === 'redact' && $settings['placeholder'] !== $current['placeholder']),
+		];
+
+		if (! $changes['action'] && ! $changes['meta_keys'] && ! $changes['subkeys'] && ! $changes['placeholder']) {
+			return $callback();
+		}
+
+		$placeholder_changed = false;
+
+		if ($changes['action']) {
+			update_option('dbvc_mask_action', $settings['action']);
+		}
+		if ($changes['meta_keys']) {
+			update_option('dbvc_mask_meta_keys', $settings['meta_keys']);
+		}
+		if ($changes['subkeys']) {
+			update_option('dbvc_mask_subkeys', $settings['subkeys']);
+		}
+		if ($changes['placeholder']) {
+			update_option('dbvc_mask_placeholder', $settings['placeholder']);
+			$placeholder_changed = true;
+		}
+
+		try {
+			return $callback();
+		} finally {
+			if ($changes['action']) {
+				update_option('dbvc_mask_action', $current['action']);
+			}
+			if ($changes['meta_keys']) {
+				update_option('dbvc_mask_meta_keys', $current['meta_keys']);
+			}
+			if ($changes['subkeys']) {
+				update_option('dbvc_mask_subkeys', $current['subkeys']);
+			}
+			if ($placeholder_changed) {
+				update_option('dbvc_mask_placeholder', $current['placeholder']);
+			}
+		}
+	}
+}
+
 // Helper: recursive string replace for arrays/objects
 if (! function_exists('dbvc_recursive_str_replace')) {
 	function dbvc_recursive_str_replace($search, $replace, $value)
@@ -250,6 +373,63 @@ function dbvc_get_sync_path($subfolder = '')
 	}
 
 	return $base_path;
+}
+
+/**
+ * Determine the preferred filename format for exported posts.
+ *
+ * @since 1.2.0
+ * @return string One of: id, slug, slug_id.
+ */
+function dbvc_get_export_filename_format()
+{
+	$mode     = get_option('dbvc_export_filename_format', '');
+	$allowed  = ['id', 'slug', 'slug_id'];
+	$filtered = apply_filters('dbvc_allowed_export_filename_formats', $allowed);
+	if (! is_array($filtered) || empty($filtered)) {
+		$filtered = $allowed;
+	}
+
+	if (in_array($mode, $filtered, true)) {
+		return $mode;
+	}
+
+	// Legacy option: treat truthy flag as slug format.
+	$legacy = get_option('dbvc_use_slug_in_filenames', '');
+	if ($legacy === '1' && in_array('slug', $filtered, true)) {
+		return 'slug';
+	}
+
+	return in_array('id', $filtered, true) ? 'id' : reset($filtered);
+}
+
+/**
+ * Determine the preferred filename format for imports.
+ *
+ * Defaults to the export format if no explicit import choice exists.
+ *
+ * @since 1.2.0
+ * @return string One of: id, slug, slug_id.
+ */
+function dbvc_get_import_filename_format()
+{
+	$mode     = get_option('dbvc_import_filename_format', '');
+	$allowed  = ['id', 'slug', 'slug_id'];
+	$filtered = apply_filters('dbvc_allowed_export_filename_formats', $allowed);
+	if (! is_array($filtered) || empty($filtered)) {
+		$filtered = $allowed;
+	}
+
+	if (in_array($mode, $filtered, true)) {
+		return $mode;
+	}
+
+	$export_mode = dbvc_get_export_filename_format();
+	if (in_array($export_mode, $filtered, true)) {
+		return $export_mode;
+	}
+
+	return in_array('id', $filtered, true) ? 'id' : reset($filtered);
 }
 
 /**
@@ -314,12 +494,14 @@ function dbvc_validate_sync_path($path)
 
 /**
  * Lossless normalizer for JSON export.
+ * @since 1.1.53
  * - Recurses arrays/objects.
  * - On strings: ONLY normalize UTF-8. No unslash/stripslashes, no kses, no trim.
  * - Keeps backslashes (e.g., "\\Bricks\\Query") intact.
  */
 if (! function_exists('dbvc_normalize_for_json')) {
-    function dbvc_normalize_for_json($value) {
+	function dbvc_normalize_for_json($value)
+	{
         if (is_array($value)) {
             $out = [];
             foreach ($value as $k => $v) {
@@ -327,7 +509,6 @@ if (! function_exists('dbvc_normalize_for_json')) {
             }
             return $out;
         }
-
         if (is_object($value)) {
             // 🚫 Don’t mutate incomplete objects
             if (dbvc_is_incomplete_object($value)) {
@@ -358,6 +539,38 @@ if (! function_exists('dbvc_is_incomplete_object')) {
 }
 
 /**
+ * ORIGINAL VERSION
+ * Pre 1.1.53
+ */
+ 
+/*
+if (! function_exists('dbvc_normalize_for_json')) {
+	function dbvc_normalize_for_json($value)
+	{
+		if (is_array($value)) {
+			$out = [];
+			foreach ($value as $k => $v) {
+				$out[$k] = dbvc_normalize_for_json($v);
+			}
+			return $out;
+		}
+		if (is_object($value)) {
+			foreach ($value as $k => $v) {
+				$value->{$k} = dbvc_normalize_for_json($v);
+			}
+			return $value;
+		}
+		if (is_string($value)) {
+			// IMPORTANT: do not unslash. Just validate/normalize UTF-8.
+			return wp_check_invalid_utf8($value, true);
+		}
+		return $value;
+	}
+}
+*/
+
+
+/**
  * Safer meta sanitizer for export.
  * - Unserializes serialized scalars (common for WP meta).
  * - Never unslashes or stripslashes.
@@ -375,7 +588,8 @@ if (! function_exists('dbvc_sanitize_post_meta_safe')) {
 	 * @param array $meta Format from get_post_meta($post_id): [meta_key => [value1, value2, ...]]
 	 * @return array
 	 */
-	function dbvc_sanitize_post_meta_safe(array $meta) {
+	function dbvc_sanitize_post_meta_safe(array $meta)
+	{
         $default_skip = [
             '_bricks_page_content_2',
             '_bricks_page_header_2',
@@ -392,7 +606,6 @@ if (! function_exists('dbvc_sanitize_post_meta_safe')) {
                 }
                 return $val;
             }
-
             if (is_object($val)) {
                 // 🚫 Leave incomplete objects untouched
                 if (dbvc_is_incomplete_object($val)) {
@@ -439,9 +652,9 @@ if (! function_exists('dbvc_sanitize_post_meta_safe')) {
  * @return mixed Sanitized data.
  */
 // Safe JSON sanitizer: do NOT unslash, never stripslashes().
-// Safe JSON sanitizer: do NOT unslash, never stripslashes().
 if (! function_exists('dbvc_sanitize_json_data')) {
-    function dbvc_sanitize_json_data($value) {
+	function dbvc_sanitize_json_data($value)
+	{
         if (is_array($value)) {
             $out = [];
             foreach ($value as $k => $v) {
@@ -462,16 +675,13 @@ if (! function_exists('dbvc_sanitize_json_data')) {
             }
             return $value;
         }
-
         if (is_string($value)) {
             // Normalize only; DO NOT unslash/stripslashes here.
             return wp_check_invalid_utf8($value, true);
         }
-
         return $value;
     }
 }
-
 
 /* ORIGINAL VERSION
 function dbvc_sanitize_json_data($data)

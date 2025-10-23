@@ -42,8 +42,11 @@ class DBVC_WP_CLI_Commands {
      * @return void
 	 */
 	public function export( $args, $assoc_args ) {
-		$batch_size = isset( $assoc_args['batch-size'] ) ? absint( $assoc_args['batch-size'] ) : 50;
-		$no_batch = ( 0 === $batch_size );
+		$batch_size  = isset( $assoc_args['batch-size'] ) ? absint( $assoc_args['batch-size'] ) : 50;
+		$no_batch    = ( 0 === $batch_size );
+		$import_mode = function_exists( 'dbvc_get_import_filename_format' )
+			? dbvc_get_import_filename_format()
+			: dbvc_get_export_filename_format();
 		
 		// Export options and menus first (these are typically small)
         DBVC_Sync_Posts::export_options_to_json();
@@ -122,8 +125,11 @@ class DBVC_WP_CLI_Commands {
 	public function import( $args, $assoc_args ) {
 		WP_CLI::warning( 'This will overwrite existing data. Make sure you have a backup.' );
 		
-		$batch_size = isset( $assoc_args['batch-size'] ) ? absint( $assoc_args['batch-size'] ) : 50;
-		$no_batch = ( 0 === $batch_size );
+		$batch_size  = isset( $assoc_args['batch-size'] ) ? absint( $assoc_args['batch-size'] ) : 50;
+		$no_batch    = ( 0 === $batch_size );
+		$import_mode = function_exists( 'dbvc_get_import_filename_format' )
+			? dbvc_get_import_filename_format()
+			: dbvc_get_export_filename_format();
 		
 		// Import options and menus first
         DBVC_Sync_Posts::import_options_from_json();
@@ -132,7 +138,7 @@ class DBVC_WP_CLI_Commands {
         if ( $no_batch ) {
 			// Legacy behavior - import all at once
 			WP_CLI::log( "Importing all files at once (no batching)" );
-			DBVC_Sync_Posts::import_all_json_files();
+			DBVC_Sync_Posts::import_all_json_files( $import_mode );
 			WP_CLI::success( 'All JSON files imported to DB.' );
 		} else {
 			// Batch processing
@@ -142,7 +148,7 @@ class DBVC_WP_CLI_Commands {
 			WP_CLI::log( "Starting batch import with batch size: {$batch_size}" );
 			
 			do {
-				$result = DBVC_Sync_Posts::import_posts_batch( $batch_size, $offset );
+				$result = DBVC_Sync_Posts::import_posts_batch( $batch_size, $offset, $import_mode );
 				$total_processed += $result['processed'];
 				$offset = $result['offset'];
 				

@@ -29,6 +29,23 @@ function dbvc_render_export_page()
 
   $custom_path         = get_option('dbvc_sync_path', '');
   $selected_post_types = get_option('dbvc_post_types', []);
+  $current_import_mode = dbvc_get_import_filename_format();
+
+  $allowed_export_mask_modes = ['none', 'remove_defaults', 'remove_customize', 'redact_custom'];
+  $current_export_mask_mode  = get_option('dbvc_export_last_mask_mode', 'none');
+  if (! in_array($current_export_mask_mode, $allowed_export_mask_modes, true)) {
+    $current_export_mask_mode = 'none';
+  }
+
+  $allowed_auto_mask_modes         = ['none', 'remove_defaults', 'redact_defaults'];
+  $auto_export_mask_mode           = get_option('dbvc_auto_export_mask_mode', 'none');
+  if (! in_array($auto_export_mask_mode, $allowed_auto_mask_modes, true)) {
+    $auto_export_mask_mode = 'none';
+  }
+  $auto_export_mask_placeholder    = (string) get_option(
+    'dbvc_auto_export_mask_placeholder',
+    get_option('dbvc_mask_placeholder', '***')
+  );
 
   // Handle custom sync path form.
   if (isset($_POST['dbvc_sync_path_save']) && wp_verify_nonce($_POST['dbvc_sync_path_nonce'], 'dbvc_sync_path_action')) {
@@ -94,18 +111,30 @@ function dbvc_render_export_page()
     }
 
     // --- Gather POSTed basic settings ---
-    $use_slug       = ! empty($_POST['dbvc_use_slug_in_filenames']);
+    $filename_mode  = isset($_POST['dbvc_export_filename_format'])
+      ? sanitize_key($_POST['dbvc_export_filename_format'])
+      : dbvc_get_export_filename_format();
+    $allowed_filename_modes = ['id', 'slug', 'slug_id'];
+    if (! in_array($filename_mode, $allowed_filename_modes, true)) {
+      $filename_mode = 'id';
+    }
     $strip_checked  = ! empty($_POST['dbvc_strip_domain_urls']);
     $mirror_checked = ! empty($_POST['dbvc_export_use_mirror_domain']);
 
-    // Persist slug & mirror checkbox (mirror domain itself is saved in Tab 3)
-    update_option('dbvc_use_slug_in_filenames',    $use_slug ? '1' : '0');
+    // Persist filename format & mirror checkbox (mirror domain itself is saved in Tab 3)
+    update_option('dbvc_export_filename_format', $filename_mode);
+    update_option('dbvc_use_slug_in_filenames', $filename_mode === 'id' ? '0' : '1'); // legacy flag
     update_option('dbvc_export_use_mirror_domain', $mirror_checked ? '1' : '0');
 
     // --- New: Determine masking mode (from Export tab radio) ---
     $mask_mode = isset($_POST['dbvc_export_mask_mode'])
       ? sanitize_key($_POST['dbvc_export_mask_mode'])
       : 'none'; // none | remove_defaults | remove_customize | redact_custom
+    if (! in_array($mask_mode, $allowed_export_mask_modes, true)) {
+      $mask_mode = 'none';
+    }
+    update_option('dbvc_export_last_mask_mode', $mask_mode);
+    $current_export_mask_mode = $mask_mode;
 
     // Snapshot existing mask options so this run is temporary
     $prev_mask = [
@@ -256,7 +285,7 @@ function dbvc_render_export_page()
             foreach ($q->posts as $post_id) {
               $post = get_post($post_id);
               if ($post) {
-                DBVC_Sync_Posts::export_post_to_json($post_id, $post, $use_slug);
+                DBVC_Sync_Posts::export_post_to_json($post_id, $post, $filename_mode);
               }
             }
           }
@@ -295,8 +324,17 @@ function dbvc_render_export_page()
     if (current_user_can('manage_options')) {
       $smart_import  = ! empty($_POST['dbvc_smart_import']);
       $import_menus  = ! empty($_POST['dbvc_import_menus']);
+      $import_mode   = isset($_POST['dbvc_import_filename_format'])
+        ? sanitize_key($_POST['dbvc_import_filename_format'])
+        : $current_import_mode;
+      $allowed_filename_modes = ['id', 'slug', 'slug_id'];
+      if (! in_array($import_mode, $allowed_filename_modes, true)) {
+        $import_mode = $current_import_mode;
+      }
 
-      DBVC_Sync_Posts::import_all(0, $smart_import);
+      update_option('dbvc_import_filename_format', $import_mode);
+
+      DBVC_Sync_Posts::import_all(0, $smart_import, $import_mode);
 
       if ($import_menus) {
         DBVC_Sync_Posts::import_menus_from_json();
@@ -399,6 +437,25 @@ function dbvc_render_export_page()
     update_option('dbvc_mask_defaults_meta_keys', $meta_defaults);
     update_option('dbvc_mask_defaults_subkeys',  $sub_defaults);
 
+    $auto_mode = isset($_POST['dbvc_auto_export_mask_mode'])
+      ? sanitize_key($_POST['dbvc_auto_export_mask_mode'])
+      : 'none';
+    if (! in_array($auto_mode, $allowed_auto_mask_modes, true)) {
+      $auto_mode = 'none';
+    }
+
+    $auto_placeholder = isset($_POST['dbvc_auto_export_mask_placeholder'])
+      ? sanitize_text_field(wp_unslash($_POST['dbvc_auto_export_mask_placeholder']))
+      : '';
+    if ($auto_placeholder === '') {
+      $auto_placeholder = '***';
+    }
+
+    update_option('dbvc_auto_export_mask_mode', $auto_mode);
+    update_option('dbvc_auto_export_mask_placeholder', $auto_placeholder);
+    $auto_export_mask_mode        = $auto_mode;
+    $auto_export_mask_placeholder = $auto_placeholder;
+
     echo '<div class="notice notice-success"><p>' . esc_html__('Masking defaults saved.', 'dbvc') . '</p></div>';
   }
 
@@ -486,16 +543,14 @@ function dbvc_render_export_page()
 
       // Compute the exact file path the exporter will use (matches your exporter)
       $path = function_exists('dbvc_get_sync_path') ? dbvc_get_sync_path($p->post_type) : WP_CONTENT_DIR . '/dbvc-sync/' . $p->post_type . '/';
-      $use_slug = (get_option('dbvc_use_slug_in_filenames') === '1');
-      $slug = sanitize_title($p->post_name);
-      $filename_part = ($use_slug && !empty($slug) && !is_numeric($slug)) ? $slug : $p->ID;
-      $file_path = trailingslashit($path) . sanitize_file_name($p->post_type . '-' . $filename_part . '.json');
+      $components = DBVC_Sync_Posts::resolve_filename_components($p->ID, $p, null, false);
+      $file_path = trailingslashit($path) . $components['filename'];
       $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $p->ID, $p);
 
       $pre_exists = file_exists($file_path);
 
       // Run the actual exporter once for each
-      DBVC_Sync_Posts::export_post_to_json($p->ID, $p, $use_slug);
+      DBVC_Sync_Posts::export_post_to_json($p->ID, $p, $components['mode']);
 
       $result = [
         'ID'            => $p->ID,
@@ -538,6 +593,7 @@ function dbvc_render_export_page()
 
 
   // Get the current resolved path for display.
+  $current_filename_mode = dbvc_get_export_filename_format();
   $resolved_path = dbvc_get_sync_path();
 
   // Get all public post types.
@@ -560,6 +616,24 @@ function dbvc_render_export_page()
           <?php wp_nonce_field('dbvc_import_action', 'dbvc_import_nonce'); ?>
           <h2><?php esc_html_e('Import from JSON', 'dbvc'); ?></h2>
           <p><?php esc_html_e('Import posts & CPTs from the sync folder. Optionally only new/changed content.', 'dbvc'); ?></p>
+
+          <fieldset style="margin:0 0 1rem 0;">
+            <legend><strong><?php esc_html_e('Import Filename Filter', 'dbvc'); ?></strong></legend>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_import_filename_format" value="id" <?php checked($current_import_mode, 'id'); ?> />
+              <?php esc_html_e('Only import files named with post ID (e.g., cpt-123.json)', 'dbvc'); ?>
+            </label>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_import_filename_format" value="slug" <?php checked($current_import_mode, 'slug'); ?> />
+              <?php esc_html_e('Only import files named with the post slug (e.g., cpt-sample-page.json)', 'dbvc'); ?>
+            </label>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_import_filename_format" value="slug_id" <?php checked($current_import_mode, 'slug_id'); ?> />
+              <?php esc_html_e('Only import files named with slug and ID (e.g., cpt-sample-page-123.json)', 'dbvc'); ?>
+            </label>
+            <p class="description"><?php esc_html_e('Select the filename style to process. Choose the format that matches your current exports to avoid legacy duplicates.', 'dbvc'); ?></p>
+          </fieldset>
+
           <label><input type="checkbox" name="dbvc_smart_import" value="1" /> <?php esc_html_e('Only import new or modified posts', 'dbvc'); ?></label><br>
           <label><input type="checkbox" name="dbvc_import_menus" value="1" /> <?php esc_html_e('Also import menus', 'dbvc'); ?></label><br><br>
           <?php submit_button(esc_html__('Run Import', 'dbvc'), 'primary', 'dbvc_import_button'); ?>
@@ -597,8 +671,22 @@ function dbvc_render_export_page()
           <h2><?php esc_html_e('Full Export', 'dbvc'); ?></h2>
           <p><?php esc_html_e('Export all posts, options, and menus to JSON files.', 'dbvc'); ?></p>
 
-          <label><input type="checkbox" name="dbvc_use_slug_in_filenames" value="1" <?php checked(get_option('dbvc_use_slug_in_filenames'), '1'); ?> />
-            <?php esc_html_e('Use slug instead of post ID in export filenames', 'dbvc'); ?></label><br>
+          <fieldset style="margin:0 0 1rem 0;">
+            <legend><strong><?php esc_html_e('Export Filename Format', 'dbvc'); ?></strong></legend>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_export_filename_format" value="id" <?php checked($current_filename_mode, 'id'); ?> />
+              <?php esc_html_e('Use post ID (e.g., cpt-123.json)', 'dbvc'); ?>
+            </label>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_export_filename_format" value="slug" <?php checked($current_filename_mode, 'slug'); ?> />
+              <?php esc_html_e('Use post slug when available (e.g., cpt-sample-page.json)', 'dbvc'); ?>
+            </label>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_export_filename_format" value="slug_id" <?php checked($current_filename_mode, 'slug_id'); ?> />
+              <?php esc_html_e('Use slug and ID (e.g., cpt-sample-page-123.json)', 'dbvc'); ?>
+            </label>
+            <p class="description"><?php esc_html_e('Slug-based formats fall back to the post ID if the slug is empty or numeric.', 'dbvc'); ?></p>
+          </fieldset>
 
           <label>
             <input type="checkbox" name="dbvc_strip_domain_urls" value="1" <?php checked(get_option('dbvc_strip_domain_urls'), '1'); ?> />
@@ -635,12 +723,12 @@ function dbvc_render_export_page()
           <fieldset id="dbvc-mask-mode-wrap" style="margin-bottom:1rem;">
             <legend><strong><?php esc_html_e('Choose how to handle post meta during export', 'dbvc'); ?></strong></legend>
             <label style="display:block;margin:.25rem 0;">
-              <input type="radio" name="dbvc_export_mask_mode" value="none" checked />
+              <input type="radio" name="dbvc_export_mask_mode" value="none" <?php checked($current_export_mask_mode, 'none'); ?> />
               <?php esc_html_e('1) Standard Export (No Masking)', 'dbvc'); ?>
             </label>
 
             <label style="display:block;margin:.25rem 0;">
-              <input type="radio" name="dbvc_export_mask_mode" value="remove_defaults" />
+              <input type="radio" name="dbvc_export_mask_mode" value="remove_defaults" <?php checked($current_export_mask_mode, 'remove_defaults'); ?> />
               <?php esc_html_e('2) Remove matched Masking Defaults from exports', 'dbvc'); ?>
               <br><small>
                 <?php esc_html_e('Uses the default keys saved under Configure → Export Masking Defaults.', 'dbvc'); ?>
@@ -648,7 +736,7 @@ function dbvc_render_export_page()
             </label>
 
             <label style="display:block;margin:.25rem 0;">
-              <input type="radio" name="dbvc_export_mask_mode" value="remove_customize" />
+              <input type="radio" name="dbvc_export_mask_mode" value="remove_customize" <?php checked($current_export_mask_mode, 'remove_customize'); ?> />
               <?php esc_html_e('3) Remove & Customize matched Masking Defaults', 'dbvc'); ?>
               <br><small>
                 <?php esc_html_e('Pre-fills the inputs below with your saved defaults; you can add extra keys before running export.', 'dbvc'); ?>
@@ -656,7 +744,7 @@ function dbvc_render_export_page()
             </label>
 
             <label style="display:block;margin:.25rem 0;">
-              <input type="radio" name="dbvc_export_mask_mode" value="redact_custom" />
+              <input type="radio" name="dbvc_export_mask_mode" value="redact_custom" <?php checked($current_export_mask_mode, 'redact_custom'); ?> />
               <?php esc_html_e('4) Redact matched items with a placeholder', 'dbvc'); ?>
               <br><small>
                 <?php esc_html_e('Same behavior as before: provide keys to redact and a placeholder token.', 'dbvc'); ?>
@@ -844,6 +932,29 @@ function dbvc_render_export_page()
             <small><?php esc_html_e('One per line or comma separated. Match full dot-path (e.g. metaKey.*.path.leaf) or just a leaf key name. Wildcards and /regex/ supported.', 'dbvc'); ?></small>
           </p>
 
+          <fieldset id="dbvc-auto-mask-mode-wrap" style="margin-bottom:1rem;">
+            <legend><strong><?php esc_html_e('Automatic Export Masking', 'dbvc'); ?></strong></legend>
+            <p class="description" style="margin-top:0;"><?php esc_html_e('Controls how DBVC handles background exports triggered by post saves or meta updates.', 'dbvc'); ?></p>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_auto_export_mask_mode" value="none" <?php checked($auto_export_mask_mode, 'none'); ?> />
+              <?php esc_html_e('Do not mask automatic exports', 'dbvc'); ?>
+            </label>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_auto_export_mask_mode" value="remove_defaults" <?php checked($auto_export_mask_mode, 'remove_defaults'); ?> />
+              <?php esc_html_e('Remove Masking Defaults during automatic exports', 'dbvc'); ?>
+            </label>
+            <label style="display:block;margin:.25rem 0;">
+              <input type="radio" name="dbvc_auto_export_mask_mode" value="redact_defaults" <?php checked($auto_export_mask_mode, 'redact_defaults'); ?> />
+              <?php esc_html_e('Redact Masking Defaults during automatic exports', 'dbvc'); ?>
+            </label>
+            <p>
+              <label for="dbvc_auto_export_mask_placeholder"><strong><?php esc_html_e('Redaction placeholder', 'dbvc'); ?></strong></label><br>
+              <input type="text" name="dbvc_auto_export_mask_placeholder" id="dbvc_auto_export_mask_placeholder" class="regular-text"
+                value="<?php echo esc_attr($auto_export_mask_placeholder); ?>" />
+              <br><small><?php esc_html_e('Only used when automatic exports are set to redact defaults.', 'dbvc'); ?></small>
+            </p>
+          </fieldset>
+
           <?php submit_button(__('Save Masking Defaults', 'dbvc'), 'secondary', 'dbvc_mask_defaults_save'); ?>
         </form>
 
@@ -880,10 +991,8 @@ function dbvc_render_export_page()
           // Helper to compute export path & filename exactly like your exporter
           $compute_file_path = function ($post) {
             $path = function_exists('dbvc_get_sync_path') ? dbvc_get_sync_path($post->post_type) : WP_CONTENT_DIR . '/dbvc-sync/' . $post->post_type . '/';
-            $use_slug_option = (get_option('dbvc_use_slug_in_filenames') === '1');
-            $slug = sanitize_title($post->post_name);
-            $filename_part = ($use_slug_option && !empty($slug) && !is_numeric($slug)) ? $slug : $post->ID;
-            $file_path = trailingslashit($path) . sanitize_file_name($post->post_type . '-' . $filename_part . '.json');
+            $components = DBVC_Sync_Posts::resolve_filename_components($post->ID, $post, null, false);
+            $file_path = trailingslashit($path) . $components['filename'];
             $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $post->ID, $post);
             return $file_path;
           };
