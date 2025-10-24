@@ -400,7 +400,66 @@ function dbvc_get_export_filename_format()
 		return 'slug';
 	}
 
+
 	return in_array('id', $filtered, true) ? 'id' : reset($filtered);
+}
+
+/**
+ * Get the list of taxonomies selected for sync.
+ *
+ * @since 1.3.0
+ * @return array
+ */
+function dbvc_get_selected_taxonomies()
+{
+	$selected = (array) get_option('dbvc_taxonomies', []);
+	$selected = array_map('sanitize_key', $selected);
+	return array_values(array_unique(array_filter($selected)));
+}
+
+/**
+ * Determine preferred taxonomy filename format.
+ *
+ * @since 1.3.0
+ * @return string id|slug|slug_id
+ */
+function dbvc_get_taxonomy_filename_format()
+{
+	$mode     = get_option('dbvc_taxonomy_filename_format', 'slug');
+	$allowed  = ['id', 'slug', 'slug_id'];
+	$filtered = apply_filters('dbvc_allowed_taxonomy_filename_formats', $allowed);
+	if (! is_array($filtered) || empty($filtered)) {
+		$filtered = $allowed;
+	}
+
+	if (in_array($mode, $filtered, true)) {
+		return $mode;
+	}
+
+	return in_array('slug', $filtered, true) ? 'slug' : reset($filtered);
+}
+
+/**
+ * Retrieve available taxonomies for DBVC configuration.
+ *
+ * @since 1.3.0
+ * @return array<string,WP_Taxonomy>
+ */
+function dbvc_get_available_taxonomies()
+{
+	$args = [
+		'public'  => true,
+		'show_ui' => true,
+	];
+
+	$taxonomies = get_taxonomies($args, 'objects');
+
+	/**
+	 * Filter the list of taxonomies shown in the DBVC UI.
+	 *
+	 * @param array $taxonomies Array of taxonomy objects keyed by taxonomy slug.
+	 */
+	return apply_filters('dbvc_available_taxonomies', $taxonomies);
 }
 
 /**

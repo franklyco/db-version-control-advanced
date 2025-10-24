@@ -51,6 +51,9 @@ class DBVC_WP_CLI_Commands {
 		// Export options and menus first (these are typically small)
         DBVC_Sync_Posts::export_options_to_json();
         DBVC_Sync_Posts::export_menus_to_json();
+        if ( class_exists( 'DBVC_Sync_Taxonomies' ) ) {
+            DBVC_Sync_Taxonomies::export_selected_taxonomies();
+        }
         
         if ( $no_batch ) {
 			// Legacy behavior - export all at once.
@@ -134,6 +137,9 @@ class DBVC_WP_CLI_Commands {
 		// Import options and menus first
         DBVC_Sync_Posts::import_options_from_json();
         DBVC_Sync_Posts::import_menus_from_json();
+        if ( class_exists( 'DBVC_Sync_Taxonomies' ) ) {
+            DBVC_Sync_Taxonomies::import_taxonomies();
+        }
         
         if ( $no_batch ) {
 			// Legacy behavior - import all at once

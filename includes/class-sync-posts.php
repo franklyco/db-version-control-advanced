@@ -1140,6 +1140,10 @@ $acf_relationship_fields = [
      */
     public static function import_all_json_files($filename_mode = null)
     {
+        if (class_exists('DBVC_Sync_Taxonomies')) {
+            DBVC_Sync_Taxonomies::import_taxonomies();
+        }
+
         self::import_all(0, false, $filename_mode);
     }
 
