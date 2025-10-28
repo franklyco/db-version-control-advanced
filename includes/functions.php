@@ -584,8 +584,37 @@ if (! function_exists('dbvc_normalize_for_json')) {
             return wp_check_invalid_utf8($value, true);
         }
 
-        return $value;
-    }
+		return $value;
+	}
+}
+
+if (! function_exists('dbvc_sort_array_recursive')) {
+	/**
+	 * Recursively sort associative arrays (case-insensitive A-Z) while leaving indexed order intact.
+	 */
+	function dbvc_sort_array_recursive($value)
+	{
+		if (is_array($value)) {
+			if (! array_is_list($value)) {
+				ksort($value, SORT_NATURAL | SORT_FLAG_CASE);
+			}
+			foreach ($value as $key => $child) {
+				$value[$key] = dbvc_sort_array_recursive($child);
+			}
+			return $value;
+		}
+		if (is_object($value)) {
+			if (dbvc_is_incomplete_object($value)) {
+				return $value;
+			}
+			$props = get_object_vars($value);
+			ksort($props, SORT_NATURAL | SORT_FLAG_CASE);
+			foreach ($props as $key => $child) {
+				$value->{$key} = dbvc_sort_array_recursive($child);
+			}
+		}
+		return $value;
+	}
 }
 
 

@@ -44,6 +44,7 @@ function dbvc_render_export_page()
   if (! in_array($current_export_mask_mode, $allowed_export_mask_modes, true)) {
     $current_export_mask_mode = 'none';
   }
+  $sort_export_meta = get_option('dbvc_export_sort_meta', '0') === '1';
 
   $allowed_auto_mask_modes         = ['none', 'remove_defaults', 'redact_defaults'];
   $auto_export_mask_mode           = get_option('dbvc_auto_export_mask_mode', 'none');
@@ -54,6 +55,9 @@ function dbvc_render_export_page()
     'dbvc_auto_export_mask_placeholder',
     get_option('dbvc_mask_placeholder', '***')
   );
+
+  $existing_defaults_meta = (string) get_option('dbvc_mask_defaults_meta_keys', '');
+  $existing_defaults_sub  = (string) get_option('dbvc_mask_defaults_subkeys', '');
 
   $config_feedback = [
     'post_types' => ['success' => [], 'error' => []],
@@ -209,6 +213,9 @@ function dbvc_render_export_page()
     if (! empty($config_feedback['import']['error'])) {
       $active_config_subtab = 'dbvc-config-import';
     }
+    if (! empty($config_feedback['import']['error'])) {
+      $active_config_subtab = 'dbvc-config-import';
+    }
   }
 
   // Handle export form (with Masking Modes)
@@ -231,10 +238,13 @@ function dbvc_render_export_page()
     $strip_checked  = ! empty($_POST['dbvc_strip_domain_urls']);
     $mirror_checked = ! empty($_POST['dbvc_export_use_mirror_domain']);
 
-    // Persist filename format & mirror checkbox (mirror domain itself is saved in Tab 3)
+    // Persist filename format, mirror checkbox, and meta sorting behavior (mirror domain itself is saved in Tab 3)
     update_option('dbvc_export_filename_format', $filename_mode);
     update_option('dbvc_use_slug_in_filenames', $filename_mode === 'id' ? '0' : '1'); // legacy flag
     update_option('dbvc_export_use_mirror_domain', $mirror_checked ? '1' : '0');
+    $sort_meta_enabled = ! empty($_POST['dbvc_export_sort_meta']);
+    update_option('dbvc_export_sort_meta', $sort_meta_enabled ? '1' : '0');
+    $sort_export_meta = $sort_meta_enabled;
 
     // --- New: Determine masking mode (from Export tab radio) ---
     $mask_mode = isset($_POST['dbvc_export_mask_mode'])
@@ -693,15 +703,15 @@ function dbvc_render_export_page()
   <div class="wrap">
     <h1><?php esc_html_e('DB Version Control', 'dbvc'); ?></h1>
 
-    <div class="dbvc-admin-layout" data-dbvc-tabs>
-      <nav class="dbvc-main-nav" role="tablist" aria-label="<?php esc_attr_e('DBVC Sections', 'dbvc'); ?>">
+    <div class="dbvc-tabs" data-dbvc-tabs>
+      <nav class="dbvc-tabs__nav" role="tablist" aria-label="<?php esc_attr_e('DBVC Sections', 'dbvc'); ?>">
 <?php foreach ($main_tabs as $tab_id => $label) :
   $button_id = 'dbvc-nav-' . $tab_id;
   $is_active = ($active_main_tab === $tab_id);
 ?>
         <button type="button"
           id="<?php echo esc_attr($button_id); ?>"
-          class="dbvc-main-nav__item<?php echo $is_active ? ' is-active' : ''; ?>"
+          class="dbvc-tabs__item<?php echo $is_active ? ' is-active' : ''; ?>"
           data-dbvc-tab="<?php echo esc_attr($tab_id); ?>"
           role="tab"
           aria-controls="<?php echo esc_attr($tab_id); ?>"
@@ -711,7 +721,7 @@ function dbvc_render_export_page()
 <?php endforeach; ?>
       </nav>
 
-      <div class="dbvc-main-panels">
+      <div class="dbvc-tabs__panels">
         <section id="tab-import" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-import' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-import" role="tabpanel" aria-labelledby="dbvc-nav-tab-import" <?php echo $active_main_tab === 'tab-import' ? '' : 'hidden'; ?>>
         <div class="dbvc-subtabs" data-dbvc-subtabs>
           <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import subsections', 'dbvc'); ?>">
@@ -852,6 +862,12 @@ function dbvc_render_export_page()
               ?>
               <br>
               <br>
+              <label>
+                <input type="checkbox" name="dbvc_export_sort_meta" value="1" <?php checked($sort_export_meta); ?> />
+                <?php esc_html_e('Sort meta keys alphabetically before writing JSON', 'dbvc'); ?>
+              </label>
+              <br><small><?php esc_html_e('Applies to posts/CPTs and taxonomy term meta.', 'dbvc'); ?></small>
+              <br><br>
 
               <!-- Export Masking Mode -->
               <h3 style="margin-top:0;"><?php esc_html_e('Export Masking (Post Meta)', 'dbvc'); ?></h3>
@@ -1407,13 +1423,13 @@ function dbvc_render_export_page()
   </div><!-- .wrap -->
 
   <style>
-    .dbvc-admin-layout { display:flex; gap:2rem; align-items:flex-start; }
-    .dbvc-main-nav { flex:0 0 220px; display:flex; flex-direction:column; gap:0.5rem; margin:0; padding:0; }
-    .dbvc-main-nav__item { display:block; width:100%; text-align:left; border:1px solid #dcdcde; border-radius:4px; padding:0.6rem 0.8rem; background:#fff; font-weight:600; cursor:pointer; transition:box-shadow .15s ease, border-color .15s ease; }
-    .dbvc-main-nav__item:hover,
-    .dbvc-main-nav__item:focus { border-color:#2271b1; color:#2271b1; outline:0; box-shadow:0 0 0 1px #2271b1; }
-    .dbvc-main-nav__item.is-active { background:#f0f6fc; border-color:#2271b1; box-shadow:0 0 0 1px #2271b1; color:#1d2327; }
-    .dbvc-main-panels { flex:1; min-width:0; }
+    .dbvc-tabs { display:flex; flex-direction:column; gap:1.5rem; }
+    .dbvc-tabs__nav { display:flex; gap:0.75rem; flex-wrap:wrap; margin:0; padding:0; }
+    .dbvc-tabs__item { border:1px solid #dcdcde; border-radius:4px 4px 0 0; background:#f6f7f7; padding:0.65rem 1.25rem; font-weight:600; cursor:pointer; transition:box-shadow .15s ease, border-color .15s ease, background .15s ease; }
+    .dbvc-tabs__item:hover,
+    .dbvc-tabs__item:focus { border-color:#2271b1; color:#2271b1; outline:0; box-shadow:0 0 0 1px #2271b1; background:#fff; }
+    .dbvc-tabs__item.is-active { background:#fff; border-color:#2271b1; border-bottom-color:#fff; box-shadow:0 -2px 0 0 #2271b1 inset; color:#1d2327; }
+    .dbvc-tabs__panels { background:#fff; border:1px solid #dcdcde; border-radius:4px; padding:1.5rem; }
     .dbvc-tab-panel[hidden] { display:none; }
     .dbvc-subtabs { display:flex; gap:1.5rem; align-items:flex-start; }
     .dbvc-subtabs-nav { flex:0 0 220px; display:flex; flex-direction:column; gap:0.5rem; margin:0; padding:0; }
@@ -1428,11 +1444,11 @@ function dbvc_render_export_page()
     .dbvc-tools-panel form { margin-bottom:2rem; }
     .dbvc-tools-panel table { margin-top:1rem; }
     @media (max-width:782px) {
-      .dbvc-admin-layout,
+      .dbvc-tabs__nav { flex-direction:column; gap:0.5rem; }
+      .dbvc-tabs__item { border-radius:4px; margin-bottom:0; }
+      .dbvc-tabs__item.is-active { box-shadow:0 0 0 1px #2271b1; border-bottom-color:#2271b1; }
       .dbvc-subtabs { flex-direction:column; }
-      .dbvc-main-nav,
       .dbvc-subtabs-nav { flex:0 0 auto; flex-direction:row; flex-wrap:wrap; gap:0.5rem; }
-      .dbvc-main-nav__item,
       .dbvc-subtabs-nav__item { flex:1 1 160px; }
     }
   </style>
@@ -1555,7 +1571,7 @@ function dbvc_render_export_page()
         return { activate: activate, panels: panels };
       }
 
-      const mainContainer = document.querySelector('.dbvc-admin-layout[data-dbvc-tabs]');
+      const mainContainer = document.querySelector('.dbvc-tabs[data-dbvc-tabs]');
       const mainApi = mainContainer ? initMainTabs(mainContainer) : null;
 
       const subtabMap = new Map();

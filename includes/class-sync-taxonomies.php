@@ -143,10 +143,33 @@ class DBVC_Sync_Taxonomies
 
 		if ($include_meta) {
 			$meta = get_term_meta($term->term_id);
+			if (function_exists('dbvc_sanitize_post_meta_safe')) {
+				$meta = dbvc_sanitize_post_meta_safe($meta);
+			} else {
+				// Fallback: recursively maybe_unserialize values.
+				$meta = array_map(static function ($values) {
+					if (! is_array($values)) {
+						$values = [$values];
+					}
+					foreach ($values as $index => $value) {
+						if (is_string($value) && is_serialized($value)) {
+							$values[$index] = maybe_unserialize($value);
+						}
+					}
+					return $values;
+				}, $meta);
+			}
 			$data['meta'] = $meta;
 		}
 
 		$data = apply_filters('dbvc_export_term_data', $data, $term, $taxonomy);
+
+		if (get_option('dbvc_export_sort_meta', '0') === '1' && isset($data['meta']) && is_array($data['meta']) && function_exists('dbvc_sort_array_recursive')) {
+			$data['meta'] = dbvc_sort_array_recursive($data['meta']);
+		}
+		if (function_exists('dbvc_normalize_for_json')) {
+			$data = dbvc_normalize_for_json($data);
+		}
 
 		$filename = self::resolve_filename_components($term, $taxonomy, $mode);
 		$path     = self::get_taxonomy_sync_path($taxonomy);

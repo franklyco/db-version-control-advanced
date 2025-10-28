@@ -1081,6 +1081,10 @@ $acf_relationship_fields = [
         // Let mirror/masking etc. adjust the payload.
         $data = apply_filters('dbvc_export_post_data', $data, $post_id, $post);
 
+        if (get_option('dbvc_export_sort_meta', '0') === '1' && isset($data['meta']) && is_array($data['meta']) && function_exists('dbvc_sort_array_recursive')) {
+            $data['meta'] = dbvc_sort_array_recursive($data['meta']);
+        }
+
         // FINAL: Lossless normalize ONLY (no unslash).
         $data = dbvc_normalize_for_json($data);
 
