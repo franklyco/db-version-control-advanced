@@ -75,7 +75,7 @@ class DBVC_Sync_Posts
      * @param string $path Full absolute path to the directory.
      * @since 1.1.0
      */
-    private static function ensure_directory_security($path)
+    public static function ensure_directory_security($path)
     {
         if (! is_dir($path)) {
             return;
@@ -485,13 +485,37 @@ HT;
             }
         }
 
+        // Generate manifest snapshot for this backup
+        if (class_exists('DBVC_Backup_Manager')) {
+            DBVC_Backup_Manager::generate_manifest($backup_path);
+        }
+
         // Cleanup: Keep only 10 latest backup folders
         $folders = glob($backup_base . '/*', GLOB_ONLYDIR);
         usort($folders, function ($a, $b) {
             return filemtime($b) <=> filemtime($a);
         });
 
-        $old_folders = array_slice($folders, 10);
+        $locked_names = [];
+        if (class_exists('DBVC_Backup_Manager')) {
+            $locked_names = array_flip(DBVC_Backup_Manager::get_locked());
+        }
+
+        $kept       = 0;
+        $old_folders = [];
+
+        foreach ($folders as $folder_path) {
+            $folder_name = basename($folder_path);
+            if (isset($locked_names[$folder_name])) {
+                continue; // Locked backups never count toward rotation.
+            }
+
+            $kept++;
+            if ($kept > 10) {
+                $old_folders[] = $folder_path;
+            }
+        }
+
         foreach ($old_folders as $old_folder) {
             self::delete_folder_recursive($old_folder);
             error_log("[DBVC] Deleted old backup folder: $old_folder");
@@ -506,6 +530,203 @@ HT;
             is_dir($path) ? self::delete_folder_recursive($path) : unlink($path);
         }
         rmdir($folder);
+    }
+
+    /**
+     * Copy an entire backup folder to the active sync directory.
+     *
+     * @param string $backup_path Absolute backup path.
+     * @param bool   $wipe_first  Whether to empty the sync directory first.
+     * @return void
+     */
+    public static function copy_backup_to_sync($backup_path, $wipe_first = true)
+    {
+        $sync_dir = dbvc_get_sync_path();
+        if ($wipe_first && is_dir($sync_dir)) {
+            self::delete_folder_contents($sync_dir);
+        }
+        self::recursive_copy($backup_path, $sync_dir);
+
+        // Remove manifest file if copied over.
+        $manifest_path = trailingslashit($sync_dir) . DBVC_Backup_Manager::MANIFEST_FILENAME;
+        if (file_exists($manifest_path)) {
+            @unlink($manifest_path);
+        }
+    }
+
+    /**
+     * Restore content from a stored backup folder.
+     *
+     * @param string $backup_name Folder name inside the backup base directory.
+     * @param array  $options     Supported keys: partial (bool), mode (full|copy|partial).
+     * @return array|WP_Error
+     */
+    public static function import_backup($backup_name, array $options = [])
+    {
+        if (! current_user_can('manage_options')) {
+            return new WP_Error('dbvc_forbidden', __('You do not have permission to restore backups.', 'dbvc'));
+        }
+
+        if (! class_exists('DBVC_Backup_Manager')) {
+            return new WP_Error('dbvc_missing_manager', __('Backup manager is unavailable.', 'dbvc'));
+        }
+
+        $backup_name = sanitize_text_field($backup_name);
+        $base        = DBVC_Backup_Manager::get_base_path();
+        $backup_path = trailingslashit($base) . $backup_name;
+
+        if (! is_dir($backup_path)) {
+            return new WP_Error('dbvc_backup_missing', __('The selected backup could not be found.', 'dbvc'));
+        }
+
+        $defaults = [
+            'mode'    => 'full', // full | partial | copy
+        ];
+        $options = wp_parse_args($options, $defaults);
+
+        $manifest = DBVC_Backup_Manager::read_manifest($backup_path);
+        if (! $manifest) {
+            return new WP_Error('dbvc_manifest_missing', __('Backup manifest is missing or unreadable.', 'dbvc'));
+        }
+
+        $mode        = $options['mode'];
+        $imported    = 0;
+        $skipped     = 0;
+        $errors      = [];
+        $items_total = isset($manifest['items']) ? count($manifest['items']) : 0;
+
+        if ($mode === 'copy') {
+            self::copy_backup_to_sync($backup_path, true);
+            DBVC_Sync_Logger::log('Backup copied to sync directory', ['backup' => $backup_name]);
+
+            return [
+                'imported' => 0,
+                'skipped'  => $items_total,
+                'mode'     => $mode,
+            ];
+        }
+
+        $targets = [];
+        if ($mode === 'partial') {
+            if (! empty($manifest['totals']['missing_import_hash'])) {
+                return new WP_Error(
+                    'dbvc_partial_blocked',
+                    __('Partial restore aborted: at least one item is missing its import hash.', 'dbvc')
+                );
+            }
+
+            foreach ($manifest['items'] as $item) {
+                if (($item['item_type'] ?? '') !== 'post') {
+                    $skipped++;
+                    continue;
+                }
+
+                $post_id = (int) ($item['post_id'] ?? 0);
+                if (! $post_id) {
+                    $skipped++;
+                    continue;
+                }
+
+                $current_hash = get_post_meta($post_id, '_dbvc_import_hash', true);
+                $content_hash = $item['content_hash'] ?? '';
+
+                if ($content_hash && $current_hash === $content_hash) {
+                    $skipped++;
+                    continue;
+                }
+
+                $targets[] = $item;
+            }
+
+            if (empty($targets)) {
+                return [
+                    'imported' => 0,
+                    'skipped'  => $items_total,
+                    'mode'     => $mode,
+                    'message'  => __('No changes detected – nothing to restore.', 'dbvc'),
+                ];
+            }
+        } else {
+            $targets = $manifest['items'];
+        }
+
+        if ($mode === 'full') {
+            self::copy_backup_to_sync($backup_path, true);
+        }
+
+        foreach ($targets as $entry) {
+            $path = trailingslashit($backup_path) . $entry['path'];
+            if (! file_exists($path)) {
+                $errors[] = sprintf(__('File missing: %s', 'dbvc'), $entry['path']);
+                DBVC_Sync_Logger::log('Restore skipped missing file', ['file' => $entry['path']]);
+                continue;
+            }
+
+            if (($entry['item_type'] ?? '') === 'post') {
+                $tmp = wp_tempnam();
+                if (! $tmp) {
+                    $errors[] = sprintf(__('Failed to create temp file for %s', 'dbvc'), $entry['path']);
+                    continue;
+                }
+
+                if (! copy($path, $tmp)) {
+                    @unlink($tmp);
+                    $errors[] = sprintf(__('Failed to stage %s', 'dbvc'), $entry['path']);
+                    continue;
+                }
+
+                $decoded = json_decode(file_get_contents($tmp), true);
+                if (! is_array($decoded)) {
+                    @unlink($tmp);
+                    $errors[] = sprintf(__('Invalid JSON: %s', 'dbvc'), $entry['path']);
+                    continue;
+                }
+
+                $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded);
+                @unlink($tmp);
+
+                if ($result) {
+                    $imported++;
+                } else {
+                    $errors[] = sprintf(__('Post import failed for %s', 'dbvc'), $entry['path']);
+                    DBVC_Sync_Logger::log('Post import failed', ['file' => $entry['path']]);
+                }
+            } elseif (($entry['item_type'] ?? '') === 'options') {
+                $options = json_decode(file_get_contents($path), true);
+                if (! empty($options) && is_array($options)) {
+                    foreach ($options as $key => $value) {
+                        update_option($key, maybe_unserialize($value));
+                    }
+                    $imported++;
+                }
+            } elseif (($entry['item_type'] ?? '') === 'menus') {
+                $payload = json_decode(file_get_contents($path), true);
+                if (! empty($payload) && is_array($payload)) {
+                    $tmp = wp_tempnam();
+                    if ($tmp && file_put_contents($tmp, wp_json_encode($payload)) !== false) {
+                        // Temporarily place file in sync dir for existing importer to reuse.
+                        $sync_dir = trailingslashit(dbvc_get_sync_path());
+                        wp_mkdir_p($sync_dir);
+                        $sync_file = $sync_dir . 'menus.json';
+                        copy($path, $sync_file);
+                        self::import_menus_from_json();
+                        @unlink($sync_file);
+                        $imported++;
+                    }
+                }
+            }
+        }
+
+        if (! empty($errors)) {
+            DBVC_Sync_Logger::log('Restore completed with warnings', ['errors' => $errors]);
+        }
+
+        return [
+            'imported' => $imported,
+            'skipped'  => $skipped,
+            'errors'   => $errors,
+            'mode'     => $mode,
+        ];
     }
 
     /* Import taxonomy inputs based on post meta
@@ -789,6 +1010,13 @@ $acf_relationship_fields = [
                 'post_status'  => sanitize_text_field($json['post_status'] ?? 'draft'),
             ];
 
+            if (! empty($json['post_date'])) {
+                $post_array['post_date'] = sanitize_text_field($json['post_date']);
+            }
+            if (! empty($json['post_modified'])) {
+                $post_array['post_modified'] = sanitize_text_field($json['post_modified']);
+            }
+
             $post_id = wp_insert_post($post_array);
             error_log("[DBVC] Updated existing post ID {$post_id}");
         } else {
@@ -814,6 +1042,13 @@ $acf_relationship_fields = [
                 'post_type'    => $post_type,
                 'post_status'  => $target_status,
             ];
+
+            if (! empty($json['post_date'])) {
+                $post_array['post_date'] = sanitize_text_field($json['post_date']);
+            }
+            if (! empty($json['post_modified'])) {
+                $post_array['post_modified'] = sanitize_text_field($json['post_modified']);
+            }
 
             $post_id = wp_insert_post($post_array);
 
@@ -1067,6 +1302,8 @@ $acf_relationship_fields = [
             'post_type'    => sanitize_text_field($post->post_type),
             'post_status'  => sanitize_text_field($post->post_status),
             'post_name'    => sanitize_text_field($post->post_name),
+            'post_date'    => isset($post->post_date) ? sanitize_text_field($post->post_date) : '',
+            'post_modified'=> isset($post->post_modified) ? sanitize_text_field($post->post_modified) : '',
             'meta'         => $sanitized_meta,
             'tax_input'    => $tax_input,
         ];

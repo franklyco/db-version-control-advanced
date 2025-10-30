@@ -78,6 +78,114 @@ function dbvc_render_export_page()
   $active_import_subtab = 'dbvc-import-content';
   $active_export_subtab = 'dbvc-export-full';
   $active_config_subtab = 'dbvc-config-post-types';
+  $backup_feedback      = ['success' => [], 'error' => []];
+  $selected_backup      = isset($_GET['dbvc_backup']) ? sanitize_text_field(wp_unslash($_GET['dbvc_backup'])) : '';
+  $selected_backup_page = isset($_GET['dbvc_backup_page']) ? max(1, absint($_GET['dbvc_backup_page'])) : 1;
+  $logging_enabled      = get_option(DBVC_Sync_Logger::OPTION_ENABLED, '0');
+  $logging_max_size     = DBVC_Sync_Logger::get_max_size();
+
+  if (isset($_GET['dbvc_tab']) && sanitize_key($_GET['dbvc_tab']) === 'tab-backups') {
+    $active_main_tab = 'tab-backups';
+  }
+  if ($selected_backup) {
+    $active_main_tab = 'tab-backups';
+  }
+
+  if (isset($_POST['dbvc_backup_action']) && isset($_POST['dbvc_backup_nonce']) && wp_verify_nonce(wp_unslash($_POST['dbvc_backup_nonce']), 'dbvc_backup_action')) {
+    $active_main_tab = 'tab-backups';
+    $action          = sanitize_key($_POST['dbvc_backup_action']);
+    $folder          = isset($_POST['dbvc_backup_folder']) ? sanitize_text_field(wp_unslash($_POST['dbvc_backup_folder'])) : '';
+
+    if (! class_exists('DBVC_Backup_Manager')) {
+      $backup_feedback['error'][] = esc_html__('Backup manager unavailable.', 'dbvc');
+    } elseif ($action === 'toggle_lock') {
+      $lock_value = isset($_POST['dbvc_backup_lock']) ? sanitize_text_field(wp_unslash($_POST['dbvc_backup_lock'])) : '0';
+      $lock_state = $lock_value === '1';
+      DBVC_Backup_Manager::set_lock($folder, $lock_state);
+      $backup_feedback['success'][] = $lock_state
+        ? esc_html__('Backup locked.', 'dbvc')
+        : esc_html__('Backup unlocked.', 'dbvc');
+      $selected_backup = $folder;
+    } elseif ($action === 'delete_backup') {
+      $delete_result = DBVC_Backup_Manager::delete_backup($folder);
+      if (is_wp_error($delete_result)) {
+        $backup_feedback['error'][] = $delete_result->get_error_message();
+      } else {
+        $backup_feedback['success'][] = esc_html__('Backup deleted.', 'dbvc');
+        if ($selected_backup === $folder) {
+          $selected_backup = '';
+        }
+      }
+    } elseif ($action === 'restore_backup') {
+      $confirmation = isset($_POST['dbvc_backup_confirm']) ? trim((string) wp_unslash($_POST['dbvc_backup_confirm'])) : '';
+      if (strcasecmp($confirmation, 'Restore') !== 0) {
+        $backup_feedback['error'][] = esc_html__('Type Restore to confirm.', 'dbvc');
+      } else {
+        $mode_flags = [
+          'partial' => ! empty($_POST['dbvc_backup_mode_partial']),
+          'full'    => ! empty($_POST['dbvc_backup_mode_full']),
+          'copy'    => ! empty($_POST['dbvc_backup_mode_copy']),
+        ];
+        $selected_modes = array_filter($mode_flags);
+        if (count($selected_modes) !== 1) {
+          $backup_feedback['error'][] = esc_html__('Select exactly one restore mode.', 'dbvc');
+        } else {
+          $mode_key = array_key_first($selected_modes);
+          $mode_map = [
+            'partial' => 'partial',
+            'full'    => 'full',
+            'copy'    => 'copy',
+          ];
+          $restore_mode = $mode_map[$mode_key] ?? 'full';
+          $result       = DBVC_Sync_Posts::import_backup($folder, ['mode' => $restore_mode]);
+          if (is_wp_error($result)) {
+            $backup_feedback['error'][] = $result->get_error_message();
+          } else {
+            $imported = isset($result['imported']) ? absint($result['imported']) : 0;
+            $mode_label = ucfirst($restore_mode);
+            $backup_feedback['success'][] = sprintf(
+              /* translators: 1: mode, 2: count */
+              esc_html__('%1$s restore completed. Items processed: %2$d', 'dbvc'),
+              esc_html($mode_label),
+              $imported
+            );
+            if (! empty($result['errors'])) {
+              foreach ((array) $result['errors'] as $err) {
+                $backup_feedback['error'][] = esc_html($err);
+              }
+            }
+            $selected_backup = $folder;
+          }
+        }
+      }
+    }
+  }
+
+  if (isset($_POST['dbvc_logging_action']) && isset($_POST['dbvc_logging_nonce']) && wp_verify_nonce(wp_unslash($_POST['dbvc_logging_nonce']), 'dbvc_logging_action')) {
+    $active_main_tab = 'tab-backups';
+    $logging_action  = sanitize_key($_POST['dbvc_logging_action']);
+
+    if ($logging_action === 'save_logging') {
+      $enabled = isset($_POST['dbvc_logging_enabled']) ? '1' : '0';
+      update_option(DBVC_Sync_Logger::OPTION_ENABLED, $enabled);
+      $logging_enabled = $enabled;
+
+      $max_size_input = isset($_POST['dbvc_logging_max_size'])
+        ? absint(wp_unslash($_POST['dbvc_logging_max_size']))
+        : DBVC_Sync_Logger::DEFAULT_MAX_SIZE;
+      update_option(DBVC_Sync_Logger::OPTION_MAX_SIZE, $max_size_input);
+      $logging_max_size = DBVC_Sync_Logger::get_max_size();
+
+      $backup_feedback['success'][] = esc_html__('Logging settings updated.', 'dbvc');
+    } elseif ($logging_action === 'delete_log') {
+      if (DBVC_Sync_Logger::delete_log()) {
+        $backup_feedback['success'][] = esc_html__('Log file deleted.', 'dbvc');
+      } else {
+        $backup_feedback['error'][] = esc_html__('Unable to delete log file.', 'dbvc');
+      }
+    }
+  }
+
 
   // Unified Configure (Tab 3) save handler.
   if (isset($_POST['dbvc_config_save']) && isset($_POST['dbvc_config_nonce']) && wp_verify_nonce($_POST['dbvc_config_nonce'], 'dbvc_config_save_action')) {
@@ -667,6 +775,7 @@ function dbvc_render_export_page()
     'tab-import' => esc_html__('Import/Upload', 'dbvc'),
     'tab-export' => esc_html__('Export/Download', 'dbvc'),
     'tab-config' => esc_html__('Configure', 'dbvc'),
+    'tab-backups' => esc_html__('Backup/Archive', 'dbvc'),
   ];
   $import_subtabs = [
     'dbvc-import-content' => esc_html__('Content Import', 'dbvc'),
@@ -698,6 +807,28 @@ function dbvc_render_export_page()
     }
     echo '</div>';
   };
+
+  $backup_archives          = class_exists('DBVC_Backup_Manager') ? DBVC_Backup_Manager::list_backups() : [];
+  $selected_backup_record   = null;
+  foreach ($backup_archives as $archive) {
+    if ($archive['name'] === $selected_backup) {
+      $selected_backup_record = $archive;
+      break;
+    }
+  }
+  $manifest_items     = $selected_backup_record['manifest']['items'] ?? [];
+  $items_per_page     = 10;
+  $total_manifest     = is_array($manifest_items) ? count($manifest_items) : 0;
+  $total_manifest = max(0, $total_manifest);
+  $total_pages        = $total_manifest > 0 ? (int) ceil($total_manifest / $items_per_page) : 1;
+  if ($selected_backup_page > $total_pages) {
+    $selected_backup_page = $total_pages;
+  }
+  $manifest_page_slice = [];
+  if ($total_manifest > 0) {
+    $offset = ($selected_backup_page - 1) * $items_per_page;
+    $manifest_page_slice = array_slice($manifest_items, $offset, $items_per_page);
+  }
 
 ?>
   <div class="wrap">
@@ -1418,6 +1549,226 @@ function dbvc_render_export_page()
     </div>
   </div>
 </section>
+    <section id="tab-backups" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-backups' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-backups" role="tabpanel" aria-labelledby="dbvc-nav-tab-backups" <?php echo $active_main_tab === 'tab-backups' ? '' : 'hidden'; ?>>
+      <h2><?php esc_html_e('Backup & Archive Management', 'dbvc'); ?></h2>
+
+      <?php foreach (array_unique($backup_feedback['error']) as $message) : ?>
+        <div class="notice notice-error"><p><?php echo esc_html($message); ?></p></div>
+      <?php endforeach; ?>
+      <?php foreach (array_unique($backup_feedback['success']) as $message) : ?>
+        <div class="notice notice-success"><p><?php echo esc_html($message); ?></p></div>
+      <?php endforeach; ?>
+
+      <?php if (! class_exists('DBVC_Backup_Manager')) : ?>
+        <div class="notice notice-error"><p><?php esc_html_e('Backup manager is not available. Please ensure the plugin files are intact.', 'dbvc'); ?></p></div>
+      <?php else : ?>
+        <div class="dbvc-backup-grid">
+          <section class="dbvc-backup-list">
+            <h3><?php esc_html_e('Available Backups', 'dbvc'); ?></h3>
+            <?php if (empty($backup_archives)) : ?>
+              <p><?php esc_html_e('No backups have been created yet.', 'dbvc'); ?></p>
+            <?php else : ?>
+              <table class="widefat striped">
+                <thead>
+                  <tr>
+                    <th><?php esc_html_e('Name', 'dbvc'); ?></th>
+                    <th><?php esc_html_e('Created', 'dbvc'); ?></th>
+                    <th><?php esc_html_e('Size', 'dbvc'); ?></th>
+                    <th><?php esc_html_e('Status', 'dbvc'); ?></th>
+                    <th><?php esc_html_e('Actions', 'dbvc'); ?></th>
+                  </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($backup_archives as $archive) :
+                  $manifest    = $archive['manifest'] ?? [];
+                  $created_utc = isset($manifest['generated_at']) ? $manifest['generated_at'] . ' UTC' : esc_html__('Unknown', 'dbvc');
+                  $size_readable = function_exists('size_format') ? size_format((float) ($archive['size'] ?? 0)) : esc_html__('n/a', 'dbvc');
+                  $status      = $archive['locked'] ? esc_html__('Locked', 'dbvc') : esc_html__('Unlocked', 'dbvc');
+                  $view_url    = add_query_arg([
+                    'page'         => 'dbvc-export',
+                    'dbvc_tab'     => 'tab-backups',
+                    'dbvc_backup'  => $archive['name'],
+                    'dbvc_backup_page' => 1,
+                  ], admin_url('admin.php'));
+                  $download_url = wp_nonce_url(
+                    add_query_arg([
+                      'action' => 'dbvc_download_backup',
+                      'backup' => $archive['name'],
+                    ], admin_url('admin-post.php')),
+                    'dbvc_download_backup_' . $archive['name']
+                  );
+                  ?>
+                  <tr>
+                    <td><a href="<?php echo esc_url($view_url); ?>"><?php echo esc_html($archive['name']); ?></a></td>
+                    <td><?php echo esc_html($created_utc); ?></td>
+                    <td><?php echo esc_html($size_readable); ?></td>
+                    <td><?php echo esc_html($status); ?></td>
+                    <td style="white-space:nowrap;">
+                      <a class="button button-small" href="<?php echo esc_url($view_url); ?>">
+                        <?php esc_html_e('View', 'dbvc'); ?>
+                      </a>
+                      <a class="button button-small" href="<?php echo esc_url($download_url); ?>">
+                        <?php esc_html_e('Download', 'dbvc'); ?>
+                      </a>
+                      <form method="post" style="display:inline;">
+                        <?php wp_nonce_field('dbvc_backup_action', 'dbvc_backup_nonce'); ?>
+                        <input type="hidden" name="dbvc_backup_action" value="toggle_lock" />
+                        <input type="hidden" name="dbvc_backup_folder" value="<?php echo esc_attr($archive['name']); ?>" />
+                        <input type="hidden" name="dbvc_backup_lock" value="<?php echo $archive['locked'] ? '0' : '1'; ?>" />
+                        <button type="submit" class="button button-small">
+                          <?php echo $archive['locked'] ? esc_html__('Unlock', 'dbvc') : esc_html__('Lock', 'dbvc'); ?>
+                        </button>
+                      </form>
+                      <form method="post" style="display:inline;" onsubmit="return confirm('<?php echo esc_js(__('Delete this backup? This cannot be undone.', 'dbvc')); ?>');">
+                        <?php wp_nonce_field('dbvc_backup_action', 'dbvc_backup_nonce'); ?>
+                        <input type="hidden" name="dbvc_backup_action" value="delete_backup" />
+                        <input type="hidden" name="dbvc_backup_folder" value="<?php echo esc_attr($archive['name']); ?>" />
+                        <button type="submit" class="button button-small button-link-delete"<?php disabled($archive['locked']); ?>>
+                          <?php esc_html_e('Delete', 'dbvc'); ?>
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+                </tbody>
+              </table>
+            <?php endif; ?>
+          </section>
+
+          <section class="dbvc-backup-detail">
+            <h3><?php esc_html_e('Backup Detail & Restore', 'dbvc'); ?></h3>
+            <?php if (! $selected_backup_record) : ?>
+              <p><?php esc_html_e('Select a backup to inspect its manifest and restore options.', 'dbvc'); ?></p>
+            <?php else :
+              $manifest = $selected_backup_record['manifest'] ?? [];
+              $summary  = $manifest['totals'] ?? [];
+              $missing  = isset($summary['missing_import_hash']) ? (int) $summary['missing_import_hash'] : 0;
+              ?>
+              <div class="dbvc-backup-meta">
+                <p><strong><?php esc_html_e('Selected Backup:', 'dbvc'); ?></strong> <?php echo esc_html($selected_backup_record['name']); ?></p>
+                <p><strong><?php esc_html_e('Created:', 'dbvc'); ?></strong> <?php echo esc_html($manifest['generated_at'] ?? esc_html__('Unknown', 'dbvc')); ?> UTC</p>
+                <p><strong><?php esc_html_e('Items:', 'dbvc'); ?></strong> <?php echo esc_html($summary['files'] ?? 0); ?></p>
+                <p><strong><?php esc_html_e('Locked:', 'dbvc'); ?></strong> <?php echo $selected_backup_record['locked'] ? esc_html__('Yes', 'dbvc') : esc_html__('No', 'dbvc'); ?></p>
+                <?php if ($missing > 0) : ?>
+                  <p class="description"><?php echo esc_html(sprintf(_n('%d item is missing its import hash.', '%d items are missing their import hash.', $missing, 'dbvc'), $missing)); ?></p>
+                <?php endif; ?>
+              </div>
+
+              <form method="post" class="dbvc-backup-restore-form">
+                <?php wp_nonce_field('dbvc_backup_action', 'dbvc_backup_nonce'); ?>
+                <input type="hidden" name="dbvc_backup_action" value="restore_backup" />
+                <input type="hidden" name="dbvc_backup_folder" value="<?php echo esc_attr($selected_backup_record['name']); ?>" />
+
+                <fieldset>
+                  <legend><strong><?php esc_html_e('Restore Mode (select one)', 'dbvc'); ?></strong></legend>
+                  <label>
+                    <input type="checkbox" name="dbvc_backup_mode_partial" value="1" />
+                    <?php esc_html_e('Partial: validate and import only changed entries', 'dbvc'); ?>
+                  </label><br>
+                  <label>
+                    <input type="checkbox" name="dbvc_backup_mode_full" value="1" />
+                    <?php esc_html_e('Full: rewrite sync folder then import everything', 'dbvc'); ?>
+                  </label><br>
+                  <label>
+                    <input type="checkbox" name="dbvc_backup_mode_copy" value="1" />
+                    <?php esc_html_e('Copy: copy backup into sync folder (no import)', 'dbvc'); ?>
+                  </label>
+                </fieldset>
+
+                <p>
+                  <label for="dbvc_backup_confirm">
+                    <?php esc_html_e('Type Restore to confirm:', 'dbvc'); ?>
+                  </label><br>
+                  <input type="text" id="dbvc_backup_confirm" name="dbvc_backup_confirm" value="" style="width:200px;" autocomplete="off" />
+                </p>
+
+                <?php submit_button(esc_html__('Execute', 'dbvc'), 'primary', 'dbvc_backup_restore_submit', false); ?>
+              </form>
+
+              <?php if (! empty($manifest_page_slice)) : ?>
+                <h4><?php esc_html_e('Manifest Preview', 'dbvc'); ?></h4>
+                <table class="widefat striped">
+                  <thead>
+                    <tr>
+                      <th><?php esc_html_e('Title / File', 'dbvc'); ?></th>
+                      <th><?php esc_html_e('Type', 'dbvc'); ?></th>
+                      <th><?php esc_html_e('Published', 'dbvc'); ?></th>
+                      <th><?php esc_html_e('Modified', 'dbvc'); ?></th>
+                      <th><?php esc_html_e('Hash Status', 'dbvc'); ?></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                  <?php foreach ($manifest_page_slice as $item) :
+                    $item_type = $item['item_type'] ?? 'generic';
+                    $title     = $item_type === 'post' ? ($item['post_title'] ?: sprintf(__('Post #%d', 'dbvc'), $item['post_id'])) : ucfirst($item_type);
+                    $hash_info = ($item['has_import_hash'] ?? false) ? esc_html__('Present', 'dbvc') : esc_html__('Missing', 'dbvc');
+                    ?>
+                    <tr>
+                      <td>
+                        <strong><?php echo esc_html($title); ?></strong><br>
+                        <code><?php echo esc_html($item['path'] ?? ''); ?></code>
+                      </td>
+                      <td><?php echo esc_html($item_type); ?></td>
+                      <td><?php echo esc_html($item['post_date'] ?? '—'); ?></td>
+                      <td><?php echo esc_html($item['post_modified'] ?? '—'); ?></td>
+                      <td><?php echo esc_html($hash_info); ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+
+                <?php if ($total_pages > 1) :
+                  $pagination_base = add_query_arg([
+                    'page'                => 'dbvc-export',
+                    'dbvc_tab'            => 'tab-backups',
+                    'dbvc_backup'         => $selected_backup_record['name'],
+                  ], admin_url('admin.php'));
+                  ?>
+                  <p class="dbvc-backup-pagination">
+                    <?php if ($selected_backup_page > 1) :
+                      $prev_url = add_query_arg('dbvc_backup_page', $selected_backup_page - 1, $pagination_base); ?>
+                      <a class="button button-small" href="<?php echo esc_url($prev_url); ?>">&larr; <?php esc_html_e('Previous', 'dbvc'); ?></a>
+                    <?php endif; ?>
+
+                    <span><?php printf(esc_html__('Page %1$d of %2$d', 'dbvc'), $selected_backup_page, $total_pages); ?></span>
+
+                    <?php if ($selected_backup_page < $total_pages) :
+                      $next_url = add_query_arg('dbvc_backup_page', $selected_backup_page + 1, $pagination_base); ?>
+                      <a class="button button-small" href="<?php echo esc_url($next_url); ?>"><?php esc_html_e('Next', 'dbvc'); ?> &rarr;</a>
+                    <?php endif; ?>
+                  </p>
+                <?php endif; ?>
+              <?php else : ?>
+                <p><?php esc_html_e('No manifest entries available for preview.', 'dbvc'); ?></p>
+              <?php endif; ?>
+            <?php endif; ?>
+          </section>
+        </div>
+
+        <section class="dbvc-logging-controls">
+          <h3><?php esc_html_e('Logging Controls', 'dbvc'); ?></h3>
+          <form method="post" class="dbvc-logging-form">
+            <?php wp_nonce_field('dbvc_logging_action', 'dbvc_logging_nonce'); ?>
+            <input type="hidden" name="dbvc_logging_action" value="save_logging" />
+            <label style="display:block;margin-bottom:0.75rem;">
+              <input type="checkbox" name="dbvc_logging_enabled" value="1" <?php checked($logging_enabled, '1'); ?> />
+              <?php esc_html_e('Enable Backup Logging', 'dbvc'); ?>
+            </label>
+            <label>
+              <?php esc_html_e('Max log size (bytes)', 'dbvc'); ?><br>
+              <input type="number" name="dbvc_logging_max_size" value="<?php echo esc_attr($logging_max_size); ?>" min="10240" step="10240" style="width:200px;" />
+            </label>
+            <?php submit_button(esc_html__('Save Logging Settings', 'dbvc'), 'secondary', 'dbvc_save_logging', false); ?>
+          </form>
+
+          <form method="post" style="margin-top:1rem;">
+            <?php wp_nonce_field('dbvc_logging_action', 'dbvc_logging_nonce'); ?>
+            <input type="hidden" name="dbvc_logging_action" value="delete_log" />
+            <?php submit_button(esc_html__('Delete Log File', 'dbvc'), 'delete', 'dbvc_delete_log', false); ?>
+          </form>
+        </section>
+      <?php endif; ?>
+    </section>
       </div>
     </div>
   </div><!-- .wrap -->
@@ -1443,6 +1794,15 @@ function dbvc_render_export_page()
     .dbvc-config-feedback .notice { margin:0 0 .75rem; }
     .dbvc-tools-panel form { margin-bottom:2rem; }
     .dbvc-tools-panel table { margin-top:1rem; }
+    .dbvc-backup-grid { display:grid; gap:1.5rem; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); margin-bottom:2rem; }
+    .dbvc-backup-list table td form { display:inline-block; margin:0 0 0 0.25rem; }
+    .dbvc-backup-list table td form:first-of-type { margin-left:0.5rem; }
+    .dbvc-backup-detail { background:#f8f9fa; border:1px solid #dcdcde; border-radius:4px; padding:1rem 1.25rem; }
+    .dbvc-backup-detail table { margin-top:1rem; }
+    .dbvc-backup-meta p { margin:0 0 0.35rem 0; }
+    .dbvc-backup-restore-form { margin:1rem 0; padding:1rem; border:1px solid #e2e4e7; border-radius:4px; background:#fff; }
+    .dbvc-backup-pagination { display:flex; align-items:center; gap:0.75rem; margin:0.75rem 0; }
+    .dbvc-logging-controls { border-top:1px solid #dcdcde; padding-top:1.5rem; margin-top:1.5rem; }
     @media (max-width:782px) {
       .dbvc-tabs__nav { flex-direction:column; gap:0.5rem; }
       .dbvc-tabs__item { border-radius:4px; margin-bottom:0; }
@@ -1450,6 +1810,7 @@ function dbvc_render_export_page()
       .dbvc-subtabs { flex-direction:column; }
       .dbvc-subtabs-nav { flex:0 0 auto; flex-direction:row; flex-wrap:wrap; gap:0.5rem; }
       .dbvc-subtabs-nav__item { flex:1 1 160px; }
+      .dbvc-backup-grid { grid-template-columns:1fr; }
     }
   </style>
 
