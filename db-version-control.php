@@ -49,6 +49,7 @@ define('DBVC_PLUGIN_VERSION', '1.1.0');
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-media-sync.php';
 // require_once DBVC_PLUGIN_PATH . 'includes/class-menu-importer.php'; // Added new menu importer/exporter class - removed later to avoid over-complicating the class-sync-posts.php
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-posts.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-taxonomies.php';

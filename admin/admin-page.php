@@ -81,8 +81,22 @@ function dbvc_render_export_page()
   $backup_feedback      = ['success' => [], 'error' => []];
   $selected_backup      = isset($_GET['dbvc_backup']) ? sanitize_text_field(wp_unslash($_GET['dbvc_backup'])) : '';
   $selected_backup_page = isset($_GET['dbvc_backup_page']) ? max(1, absint($_GET['dbvc_backup_page'])) : 1;
-  $logging_enabled      = get_option(DBVC_Sync_Logger::OPTION_ENABLED, '0');
-  $logging_max_size     = DBVC_Sync_Logger::get_max_size();
+  $logging_enabled        = get_option(DBVC_Sync_Logger::OPTION_ENABLED, '0');
+  $logging_max_size       = DBVC_Sync_Logger::get_max_size();
+  $media_retrieve_enabled = get_option(DBVC_Media_Sync::OPTION_ENABLED, '0');
+  $media_preserve_names   = get_option(DBVC_Media_Sync::OPTION_PRESERVE_NAMES, '1');
+  $media_preview_enabled  = get_option(DBVC_Media_Sync::OPTION_PREVIEW_ENABLED, '0');
+  $media_allow_external   = get_option(DBVC_Media_Sync::OPTION_ALLOW_EXTERNAL, '0');
+  $media_clear_url        = '#';
+  if (class_exists('DBVC_Media_Sync')) {
+    $media_clear_url = wp_nonce_url(
+      add_query_arg([
+        'action'   => 'dbvc_clear_media_cache',
+        'dbvc_tab' => 'tab-config',
+      ], admin_url('admin-post.php')),
+      'dbvc_clear_media_cache'
+    );
+  }
 
   if (isset($_GET['dbvc_tab']) && sanitize_key($_GET['dbvc_tab']) === 'tab-backups') {
     $active_main_tab = 'tab-backups';
@@ -152,6 +166,36 @@ function dbvc_render_export_page()
             if (! empty($result['errors'])) {
               foreach ((array) $result['errors'] as $err) {
                 $backup_feedback['error'][] = esc_html($err);
+              }
+            }
+            if (! empty($result['media']) && is_array($result['media'])) {
+              $media_summary = [];
+              if (! empty($result['media']['downloaded'])) {
+                $media_summary[] = sprintf(
+                  esc_html__('%d media files downloaded', 'dbvc'),
+                  (int) $result['media']['downloaded']
+                );
+              }
+              if (! empty($result['media']['reused'])) {
+                $media_summary[] = sprintf(
+                  esc_html__('%d media files reused', 'dbvc'),
+                  (int) $result['media']['reused']
+                );
+              }
+              if (! empty($media_summary)) {
+                $backup_feedback['success'][] = implode(' · ', $media_summary);
+              }
+              if (! empty($result['media']['errors'])) {
+                $backup_feedback['error'][] = sprintf(
+                  esc_html__('%d media downloads failed. Check the log for details.', 'dbvc'),
+                  (int) $result['media']['errors']
+                );
+              }
+              if (! empty($result['media']['blocked'])) {
+                $backup_feedback['error'][] = sprintf(
+                  esc_html__('%d media sources were blocked by current download restrictions.', 'dbvc'),
+                  (int) $result['media']['blocked']
+                );
               }
             }
             $selected_backup = $folder;
@@ -305,6 +349,18 @@ function dbvc_render_export_page()
 
     $export_use_mirror = ! empty($_POST['dbvc_export_use_mirror_domain']) ? '1' : '0';
     update_option('dbvc_export_use_mirror_domain', $export_use_mirror);
+
+    $media_retrieve_enabled = ! empty($_POST['dbvc_media_retrieve_enabled']) ? '1' : '0';
+    update_option(DBVC_Media_Sync::OPTION_ENABLED, $media_retrieve_enabled);
+
+    $media_preserve_names = ! empty($_POST['dbvc_media_preserve_names']) ? '1' : '0';
+    update_option(DBVC_Media_Sync::OPTION_PRESERVE_NAMES, $media_preserve_names);
+
+    $media_preview_enabled = ! empty($_POST['dbvc_media_preview_enabled']) ? '1' : '0';
+    update_option(DBVC_Media_Sync::OPTION_PREVIEW_ENABLED, $media_preview_enabled);
+
+    $media_allow_external = ! empty($_POST['dbvc_media_allow_external']) ? '1' : '0';
+    update_option(DBVC_Media_Sync::OPTION_ALLOW_EXTERNAL, $media_allow_external);
 
     if (in_array('import', $config_sections_submitted, true)) {
       $config_feedback['import']['success'][] = esc_html__('Import defaults saved.', 'dbvc');
@@ -530,6 +586,10 @@ function dbvc_render_export_page()
         error_log('[DBVC] Static method dbvc_create_backup_folder_and_copy_exports not found in DBVC_Sync_Posts.');
       }
 
+      if (class_exists('DBVC_Backup_Manager')) {
+        DBVC_Backup_Manager::generate_manifest(dbvc_get_sync_path());
+      }
+
       echo '<div class="notice notice-success"><p>' . esc_html__('Full export completed!', 'dbvc') . '</p></div>';
     } finally {
       // --- Cleanup (mirror filter + strip restoration; temp filters; restore masking options) ---
@@ -577,7 +637,50 @@ function dbvc_render_export_page()
         DBVC_Sync_Posts::import_menus_from_json();
       }
 
+      $media_stats_import = null;
+      $manifest_path = trailingslashit(dbvc_get_sync_path()) . DBVC_Backup_Manager::MANIFEST_FILENAME;
+      if (class_exists('DBVC_Media_Sync') && file_exists($manifest_path)) {
+        $manifest_data = json_decode(file_get_contents($manifest_path), true);
+        if (is_array($manifest_data)) {
+          $media_stats_import = DBVC_Media_Sync::sync_manifest_media($manifest_data);
+        }
+      }
+
       echo '<div class="notice notice-success"><p>' . esc_html__('Import completed.', 'dbvc') . '</p></div>';
+
+      if ($media_stats_import && is_array($media_stats_import)) {
+        $summary_parts = [];
+        if (! empty($media_stats_import['downloaded'])) {
+          $summary_parts[] = sprintf(
+            esc_html__('%d media downloaded', 'dbvc'),
+            (int) $media_stats_import['downloaded']
+          );
+        }
+        if (! empty($media_stats_import['reused'])) {
+          $summary_parts[] = sprintf(
+            esc_html__('%d media reused', 'dbvc'),
+            (int) $media_stats_import['reused']
+          );
+        }
+
+        if (! empty($summary_parts)) {
+          echo '<div class="notice notice-info"><p>' . esc_html__('Media sync:', 'dbvc') . ' ' . esc_html(implode(' · ', $summary_parts)) . '</p></div>';
+        }
+
+        if (! empty($media_stats_import['errors'])) {
+          echo '<div class="notice notice-error"><p>' . esc_html(sprintf(
+            __('%d media downloads failed. Check the log for details.', 'dbvc'),
+            (int) $media_stats_import['errors']
+          )) . '</p></div>';
+        }
+
+        if (! empty($media_stats_import['blocked'])) {
+          echo '<div class="notice notice-warning"><p>' . esc_html(sprintf(
+            __('%d media sources were blocked by current download restrictions.', 'dbvc'),
+            (int) $media_stats_import['blocked']
+          )) . '</p></div>';
+        }
+      }
     } else {
       wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
     }
@@ -611,6 +714,10 @@ function dbvc_render_export_page()
     } elseif ($code === 'no_action') {
       echo '<div class="notice notice-error"><p>' .
         esc_html__('Select an action: Delete or Download then Delete.', 'dbvc') .
+        '</p></div>';
+    } elseif ($code === 'media_cache_cleared') {
+      echo '<div class="notice notice-success"><p>' .
+        esc_html__('Media cache cleared.', 'dbvc') .
         '</p></div>';
     }
   }
@@ -828,6 +935,15 @@ function dbvc_render_export_page()
   if ($total_manifest > 0) {
     $offset = ($selected_backup_page - 1) * $items_per_page;
     $manifest_page_slice = array_slice($manifest_items, $offset, $items_per_page);
+  }
+
+  $media_preview_data = null;
+  if (
+    $selected_backup_record
+    && class_exists('DBVC_Media_Sync')
+    && DBVC_Media_Sync::is_preview_enabled()
+  ) {
+    $media_preview_data = DBVC_Media_Sync::preview_manifest_media($selected_backup_record['manifest'] ?? [], 20);
   }
 
 ?>
@@ -1348,6 +1464,44 @@ function dbvc_render_export_page()
           <br><small><?php esc_html_e('When enabled, URLs that start with the current site domain will be rewritten to the Mirror Domain in exported content and meta.', 'dbvc'); ?></small>
         </p>
 
+        <hr />
+
+        <h2><?php esc_html_e('Media Retrieval', 'dbvc'); ?></h2>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_retrieve_enabled" value="1" <?php checked($media_retrieve_enabled, '1'); ?> />
+            <?php esc_html_e('Retrieve missing media from mirror sources after import/restore', 'dbvc'); ?>
+          </label>
+        </p>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_preserve_names" value="1" <?php checked($media_preserve_names, '1'); ?> />
+            <?php esc_html_e('Preserve original filenames when downloading media (bypass renamers)', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('Enable this if other plugins/themes rewrite filenames or convert formats during upload.', 'dbvc'); ?></small>
+        </p>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_preview_enabled" value="1" <?php checked($media_preview_enabled, '1'); ?> />
+            <?php esc_html_e('Show media retrieval preview in Backup/Archive tab before restore', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('Displays counts and sample assets that would be downloaded so you can review before running a restore.', 'dbvc'); ?></small>
+        </p>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_allow_external" value="1" <?php checked($media_allow_external, '1'); ?> />
+            <?php esc_html_e('Allow downloads from external domains (beyond this site or mirror domain)', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('When disabled, only assets hosted on this site or the configured mirror domain will be retrieved.', 'dbvc'); ?></small>
+        </p>
+        <?php if ($media_clear_url && $media_clear_url !== '#') : ?>
+          <p>
+            <a class="button" href="<?php echo esc_url($media_clear_url); ?>">
+              <?php esc_html_e('Clear Media Cache', 'dbvc'); ?>
+            </a>
+          </p>
+        <?php endif; ?>
+
         <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_config_save[import]', false); ?>
       </section>
       </form>
@@ -1654,6 +1808,79 @@ function dbvc_render_export_page()
                 <?php endif; ?>
               </div>
 
+              <?php if ($media_preview_data) :
+                $preview_items      = $media_preview_data['preview_items'] ?? [];
+                $pending_count      = (int) ($media_preview_data['total_candidates'] ?? 0);
+                $detected_count     = (int) ($media_preview_data['total_detected'] ?? 0);
+                $skipped_existing   = (int) ($media_preview_data['skipped_existing'] ?? 0);
+                $blocked_entries    = isset($media_preview_data['blocked']) && is_array($media_preview_data['blocked']) ? $media_preview_data['blocked'] : [];
+                $blocked_count      = count($blocked_entries);
+              ?>
+                <div class="dbvc-media-preview">
+                  <h4><?php esc_html_e('Media Retrieval Preview', 'dbvc'); ?></h4>
+                  <p>
+                    <?php
+                    echo esc_html(
+                      sprintf(
+                        /* translators: 1: total detected, 2: pending download, 3: already present, 4: blocked */
+                        __('Detected %1$d media references (%2$d pending download, %3$d already present, %4$d blocked).', 'dbvc'),
+                        $detected_count,
+                        $pending_count,
+                        $skipped_existing,
+                        $blocked_count
+                      )
+                    );
+                    ?>
+                  </p>
+                  <?php if ($pending_count > 0 && ! empty($preview_items)) : ?>
+                    <table class="widefat striped dbvc-media-preview__table">
+                      <thead>
+                        <tr>
+                          <th><?php esc_html_e('Attachment ID', 'dbvc'); ?></th>
+                          <th><?php esc_html_e('Host', 'dbvc'); ?></th>
+                          <th><?php esc_html_e('Filename', 'dbvc'); ?></th>
+                          <th><?php esc_html_e('Source URL', 'dbvc'); ?></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                      <?php foreach ($preview_items as $item) : ?>
+                        <tr>
+                          <td><?php echo esc_html($item['original_id'] ?? ''); ?></td>
+                          <td><?php echo esc_html($item['source_host'] ?? ''); ?></td>
+                          <td><?php echo esc_html($item['filename'] ?? ''); ?></td>
+                          <td><a href="<?php echo esc_url($item['source_url'] ?? ''); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html($item['source_url'] ?? ''); ?></a></td>
+                        </tr>
+                      <?php endforeach; ?>
+                      </tbody>
+                    </table>
+                    <?php if ($pending_count > count($preview_items)) : ?>
+                      <p class="description"><?php echo esc_html(sprintf(__('Showing first %1$d of %2$d pending downloads.', 'dbvc'), count($preview_items), $pending_count)); ?></p>
+                    <?php endif; ?>
+                  <?php endif; ?>
+                  <?php if ($blocked_count > 0) : ?>
+                    <p class="notice notice-warning" style="margin-top:1rem;">
+                      <?php esc_html_e('Some media sources are blocked. Enable external downloads to retrieve them.', 'dbvc'); ?>
+                    </p>
+                    <ul class="dbvc-media-preview__blocked-list">
+                      <?php foreach (array_slice($blocked_entries, 0, 5) as $blocked) :
+                        $blocked_url = isset($blocked['source_url']) ? esc_url($blocked['source_url']) : '';
+                        $blocked_host = $blocked_url ? parse_url($blocked_url, PHP_URL_HOST) : '';
+                      ?>
+                        <li>
+                          <?php echo esc_html($blocked_host ?: $blocked_url); ?>
+                          <?php if ($blocked_url) : ?>
+                            – <a href="<?php echo esc_url($blocked_url); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('view', 'dbvc'); ?></a>
+                          <?php endif; ?>
+                        </li>
+                      <?php endforeach; ?>
+                      <?php if ($blocked_count > 5) : ?>
+                        <li><?php echo esc_html(sprintf(__('...and %d more.', 'dbvc'), $blocked_count - 5)); ?></li>
+                      <?php endif; ?>
+                    </ul>
+                  <?php endif; ?>
+                </div>
+              <?php endif; ?>
+
               <form method="post" class="dbvc-backup-restore-form">
                 <?php wp_nonce_field('dbvc_backup_action', 'dbvc_backup_nonce'); ?>
                 <input type="hidden" name="dbvc_backup_action" value="restore_backup" />
@@ -1801,6 +2028,9 @@ function dbvc_render_export_page()
     .dbvc-backup-detail table { margin-top:1rem; }
     .dbvc-backup-meta p { margin:0 0 0.35rem 0; }
     .dbvc-backup-restore-form { margin:1rem 0; padding:1rem; border:1px solid #e2e4e7; border-radius:4px; background:#fff; }
+    .dbvc-media-preview { margin:1.5rem 0; padding:1rem; border:1px solid #dcdcde; border-radius:4px; background:#fff; }
+    .dbvc-media-preview__table { margin-top:1rem; }
+    .dbvc-media-preview__blocked-list { margin:0.75rem 0 0 1.25rem; list-style:disc; }
     .dbvc-backup-pagination { display:flex; align-items:center; gap:0.75rem; margin:0.75rem 0; }
     .dbvc-logging-controls { border-top:1px solid #dcdcde; padding-top:1.5rem; margin-top:1.5rem; }
     @media (max-width:782px) {

@@ -16,6 +16,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
         const MANIFEST_FILENAME = 'manifest.json';
         const OPTION_LOCKED     = 'dbvc_locked_backups';
         const SCHEMA_VERSION    = 1;
+        private static $attachment_cache = [];
 
         /**
          * Return the absolute base directory for stored backups.
@@ -54,6 +55,8 @@ if (! class_exists('DBVC_Backup_Manager')) {
 
             $items          = [];
             $missing_hashes = 0;
+            $media_index    = [];
+            $source_lookup  = [];
 
             $iterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($backup_path, FilesystemIterator::SKIP_DOTS)
@@ -61,6 +64,10 @@ if (! class_exists('DBVC_Backup_Manager')) {
 
             foreach ($iterator as $file) {
                 if (! $file->isFile() || strtolower($file->getExtension()) !== 'json') {
+                    continue;
+                }
+
+                if (basename($file->getFilename()) === self::MANIFEST_FILENAME) {
                     continue;
                 }
 
@@ -87,6 +94,10 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 $post_name       = '';
                 $post_date       = '';
                 $post_modified   = '';
+                $media_refs      = [
+                    'meta'    => [],
+                    'content' => [],
+                ];
 
                 if (isset($decoded['ID'], $decoded['post_type'])) {
                     $item_type = 'post';
@@ -124,6 +135,8 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $post_name     = isset($decoded['post_name']) ? sanitize_title($decoded['post_name']) : '';
                     $post_date     = isset($decoded['post_date']) ? sanitize_text_field($decoded['post_date']) : '';
                     $post_modified = isset($decoded['post_modified']) ? sanitize_text_field($decoded['post_modified']) : '';
+
+                    $media_refs = self::collect_post_media_refs($decoded, $post_id, $media_index, $source_lookup);
                 } elseif (basename($relative) === 'options.json') {
                     $item_type = 'options';
                 } elseif (basename($relative) === 'menus.json') {
@@ -144,6 +157,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     'post_modified'    => $post_modified,
                     'has_import_hash'  => $has_import_hash,
                     'content_hash'     => $content_hash,
+                    'media_refs'       => $media_refs,
                 ];
             }
 
@@ -161,6 +175,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     'missing_import_hash' => $missing_hashes,
                 ],
                 'items'        => $items,
+                'media_index'  => array_values($media_index),
             ];
 
             $manifest['checksum'] = hash('sha256', wp_json_encode($manifest));
@@ -170,6 +185,201 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 $manifest_path,
                 wp_json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
             );
+        }
+
+        /**
+         * Gather media references from the post JSON payload and enrich the shared media index.
+         *
+         * @param array $decoded
+         * @param int   $post_id
+         * @param array $media_index
+         * @param array $source_lookup
+         * @return array
+         */
+        private static function collect_post_media_refs(array $decoded, $post_id, array &$media_index, array &$source_lookup)
+        {
+            $refs = [
+                'meta'    => [],
+                'content' => [],
+            ];
+
+            // Meta-based attachment references.
+            if (! empty($decoded['meta']) && is_array($decoded['meta'])) {
+                foreach ($decoded['meta'] as $meta_key => $values) {
+                    if (! is_array($values)) {
+                        continue;
+                    }
+                    foreach ($values as $index => $value) {
+                        $matches = self::detect_attachment_ids($value);
+                        if (empty($matches)) {
+                            continue;
+                        }
+                        foreach ($matches as $match) {
+                            $attachment_id = $match['id'];
+                            $path          = $match['path'];
+
+                            if (! isset($media_index[$attachment_id])) {
+                                $entry = self::build_media_index_entry($attachment_id);
+                                if (! $entry) {
+                                    continue;
+                                }
+                                $media_index[$attachment_id] = $entry;
+                                if (! empty($entry['source_url'])) {
+                                    $source_lookup[$entry['source_url']] = $attachment_id;
+                                }
+                            }
+
+                            $refs['meta'][] = [
+                                'original_id' => $attachment_id,
+                                'meta_key'    => sanitize_key($meta_key),
+                                'value_index' => $index,
+                                'path'        => $path,
+                            ];
+                        }
+                    }
+                }
+            }
+
+            // Content URLs (remote assets).
+            if (! empty($decoded['post_content']) && is_string($decoded['post_content'])) {
+                if (preg_match_all('#https?://[^\s"\']+#', $decoded['post_content'], $matches)) {
+                    $urls = array_unique($matches[0]);
+                    foreach ($urls as $url_raw) {
+                        $url = esc_url_raw($url_raw);
+                        if (! $url) {
+                            continue;
+                        }
+                        $original_id = null;
+                        if (isset($source_lookup[$url])) {
+                            $original_id = $source_lookup[$url];
+                        }
+
+                        $refs['content'][] = [
+                            'original_url' => $url,
+                            'original_id'  => $original_id,
+                        ];
+                    }
+                }
+            }
+
+            return $refs;
+        }
+
+        /**
+         * Detect attachment IDs inside an arbitrary value.
+         *
+         * @param mixed $value
+         * @param array $path
+         * @return array
+         */
+        private static function detect_attachment_ids($value, array $path = [])
+        {
+            $matches = [];
+
+            if (is_array($value)) {
+                if (isset($value['ID']) && self::is_attachment_id($value['ID'])) {
+                    $matches[] = [
+                        'id'   => (int) $value['ID'],
+                        'path' => array_merge($path, ['ID']),
+                    ];
+                }
+                foreach ($value as $key => $child) {
+                    $child_path = array_merge($path, [$key]);
+                    $matches    = array_merge($matches, self::detect_attachment_ids($child, $child_path));
+                }
+                return $matches;
+            }
+
+            if (is_object($value)) {
+                $vars = get_object_vars($value);
+                return self::detect_attachment_ids($vars, $path);
+            }
+
+            if (self::is_attachment_id($value)) {
+                $matches[] = [
+                    'id'   => (int) $value,
+                    'path' => $path,
+                ];
+            }
+
+            return $matches;
+        }
+
+        /**
+         * Determine whether a value points to an attachment ID.
+         *
+         * @param mixed $value
+         * @return bool
+         */
+        private static function is_attachment_id($value)
+        {
+            if (is_int($value) && $value > 0) {
+                $attachment = self::get_attachment($value);
+                return ($attachment !== null);
+            }
+
+            if (is_string($value) && ctype_digit($value)) {
+                $attachment = self::get_attachment((int) $value);
+                return ($attachment !== null);
+            }
+
+            return false;
+        }
+
+        /**
+         * Fetch attachment post with basic caching.
+         *
+         * @param int $attachment_id
+         * @return WP_Post|null
+         */
+        private static function get_attachment($attachment_id)
+        {
+            if (isset(self::$attachment_cache[$attachment_id])) {
+                return self::$attachment_cache[$attachment_id];
+            }
+
+            $post = get_post($attachment_id);
+            if ($post && $post->post_type === 'attachment') {
+                self::$attachment_cache[$attachment_id] = $post;
+                return $post;
+            }
+
+            self::$attachment_cache[$attachment_id] = null;
+            return null;
+        }
+
+        /**
+         * Build a manifest entry for a single attachment.
+         *
+         * @param int $attachment_id
+         * @return array|null
+         */
+        private static function build_media_index_entry($attachment_id)
+        {
+            $attachment = self::get_attachment($attachment_id);
+            if (! $attachment) {
+                return null;
+            }
+
+            $source_url = wp_get_attachment_url($attachment_id);
+            $file_path  = get_attached_file($attachment_id);
+            $hash       = '';
+            $filesize   = 0;
+
+            if ($file_path && file_exists($file_path)) {
+                $hash     = hash_file('sha256', $file_path);
+                $filesize = filesize($file_path);
+            }
+
+            return [
+                'original_id' => $attachment_id,
+                'source_url'  => $source_url ?: '',
+                'mime_type'   => $attachment->post_mime_type ?: '',
+                'title'       => get_the_title($attachment_id),
+                'filename'    => $source_url ? basename(parse_url($source_url, PHP_URL_PATH)) : '',
+                'hash'        => $hash,
+                'filesize'    => $filesize,
+            ];
         }
 
         /**

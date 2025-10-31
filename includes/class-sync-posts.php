@@ -32,6 +32,24 @@ class DBVC_Sync_Posts
 */
 
     /**
+     * Resolve the local post ID for a given original ID.
+     *
+     * @param int $original_id
+     * @return int|null
+     */
+    public static function resolve_local_post_id($original_id)
+    {
+        $original_id = (int) $original_id;
+        if (! $original_id) {
+            return null;
+        }
+        if (isset(self::$imported_post_id_map[$original_id])) {
+            return (int) self::$imported_post_id_map[$original_id];
+        }
+        return $original_id;
+    }
+
+    /**
      * Check the sync folder path.
      * 
      * @since  1.1.0
@@ -721,11 +739,17 @@ HT;
             DBVC_Sync_Logger::log('Restore completed with warnings', ['errors' => $errors]);
         }
 
+        $media_stats = [];
+        if (class_exists('DBVC_Media_Sync') && DBVC_Media_Sync::is_enabled()) {
+            $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest);
+        }
+
         return [
             'imported' => $imported,
             'skipped'  => $skipped,
             'errors'   => $errors,
             'mode'     => $mode,
+            'media'    => $media_stats,
         ];
     }
 

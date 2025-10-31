@@ -485,6 +485,7 @@ add_action('delete_post', 'dbvc_handle_menu_item_deletion', 10, 1);
 add_action('admin_post_dbvc_download_sync', ['DBVC_Sync_Posts', 'handle_download_sync']);
 add_action('admin_post_dbvc_upload_sync',   ['DBVC_Sync_Posts', 'handle_upload_sync']);
 add_action('admin_post_dbvc_download_backup', ['DBVC_Backup_Manager', 'handle_download_request']);
+add_action('admin_post_dbvc_clear_media_cache', ['DBVC_Media_Sync', 'handle_clear_cache_request']);
 
 // FSE hooks - use safer, later hooks that don't interfere with admin loading
 add_action('wp_loaded', function () {
