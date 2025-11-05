@@ -141,11 +141,13 @@ class DBVC_WP_CLI_Commands {
             DBVC_Sync_Taxonomies::import_taxonomies();
         }
         
+        $import_success_message = '';
+
         if ( $no_batch ) {
 			// Legacy behavior - import all at once
 			WP_CLI::log( "Importing all files at once (no batching)" );
 			DBVC_Sync_Posts::import_all_json_files( $import_mode );
-			WP_CLI::success( 'All JSON files imported to DB.' );
+			$import_success_message = __( 'All JSON files imported to DB.', 'dbvc' );
 		} else {
 			// Batch processing
 			$offset = 0;
@@ -175,10 +177,101 @@ class DBVC_WP_CLI_Commands {
 				
 			} while ( $result['remaining'] > 0 && $result['processed'] > 0 );
 			
-			WP_CLI::success( sprintf( 
-				'Batch import completed! Processed %d files.',
+			$import_success_message = sprintf(
+				/* translators: %d: number of processed files */
+				__( 'Batch import completed! Processed %d files.', 'dbvc' ),
 				$total_processed
-			) );
+			);
+		}
+
+		$this->maybe_sync_media_after_import();
+
+		if ( $import_success_message ) {
+			WP_CLI::success( $import_success_message );
+		}
+	}
+
+	/**
+	 * Run media synchronization via manifest if enabled.
+	 *
+	 * @return void
+	 */
+	private function maybe_sync_media_after_import() {
+		if (
+			! class_exists( 'DBVC_Media_Sync' )
+			|| ! class_exists( 'DBVC_Backup_Manager' )
+			|| ! function_exists( 'dbvc_get_sync_path' )
+			|| ! DBVC_Media_Sync::is_enabled()
+		) {
+			return;
+		}
+
+		$manifest_path = trailingslashit( dbvc_get_sync_path() ) . DBVC_Backup_Manager::MANIFEST_FILENAME;
+
+		if ( ! file_exists( $manifest_path ) || ! is_readable( $manifest_path ) ) {
+			WP_CLI::log( __( 'Media sync skipped: manifest.json not found in the sync directory.', 'dbvc' ) );
+			return;
+		}
+
+		$manifest_raw  = file_get_contents( $manifest_path );
+		$manifest_data = json_decode( $manifest_raw, true );
+
+		if ( ! is_array( $manifest_data ) ) {
+			WP_CLI::warning( __( 'Media sync skipped: manifest.json could not be decoded.', 'dbvc' ) );
+			return;
+		}
+
+		$media_stats = DBVC_Media_Sync::sync_manifest_media( $manifest_data );
+		if ( ! is_array( $media_stats ) ) {
+			return;
+		}
+
+		$summary = [];
+
+		if ( ! empty( $media_stats['downloaded'] ) ) {
+			$summary[] = sprintf(
+				/* translators: %d: number of downloaded media files */
+				__( '%d media downloaded', 'dbvc' ),
+				(int) $media_stats['downloaded']
+			);
+		}
+		if ( ! empty( $media_stats['reused'] ) ) {
+			$summary[] = sprintf(
+				/* translators: %d: number of media files reused */
+				__( '%d media reused', 'dbvc' ),
+				(int) $media_stats['reused']
+			);
+		}
+
+		if ( ! empty( $summary ) ) {
+			WP_CLI::log(
+				sprintf(
+					__( 'Media sync: %s', 'dbvc' ),
+					implode( ', ', $summary )
+				)
+			);
+		} else {
+			WP_CLI::log( __( 'Media sync: no downloads required.', 'dbvc' ) );
+		}
+
+		if ( ! empty( $media_stats['errors'] ) ) {
+			WP_CLI::warning(
+				sprintf(
+					/* translators: %d: number of failed media downloads */
+					__( '%d media downloads failed. Check the DBVC log for details.', 'dbvc' ),
+					(int) $media_stats['errors']
+				)
+			);
+		}
+
+		if ( ! empty( $media_stats['blocked'] ) ) {
+			WP_CLI::warning(
+				sprintf(
+					/* translators: %d: number of blocked media downloads */
+					__( '%d media sources were blocked by current download restrictions.', 'dbvc' ),
+					(int) $media_stats['blocked']
+				)
+			);
 		}
 	}
 }
