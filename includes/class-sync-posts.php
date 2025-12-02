@@ -25,6 +25,10 @@ class DBVC_Sync_Posts
 {
     // Static variables
     protected static $imported_post_id_map = [];
+    private const PROPOSAL_DECISIONS_OPTION = 'dbvc_proposal_decisions';
+    private const AUTO_CLEAR_DECISIONS_OPTION = 'dbvc_auto_clear_decisions';
+    private const IMPORT_RESULT_APPLIED = 'applied';
+    private const IMPORT_RESULT_SKIPPED = 'skipped';
 
     /* @WIP Relationship remapping
     // protected static $relationship_field_keys = []; // You can populate this before calling import
@@ -572,6 +576,35 @@ HT;
         }
     }
 
+    public static function import_resolver_decisions_from_manifest(array $manifest, $proposal_id = ''): void
+    {
+        if (empty($manifest['resolver_decisions']) || ! is_array($manifest['resolver_decisions'])) {
+            return;
+        }
+
+        $bundle = $manifest['resolver_decisions'];
+        $store  = get_option('dbvc_resolver_decisions', []);
+
+        if ($proposal_id === '' && ! empty($manifest['backup_name'])) {
+            $proposal_id = sanitize_text_field($manifest['backup_name']);
+        }
+
+        if ($proposal_id !== '' && isset($bundle['proposal']) && is_array($bundle['proposal'])) {
+            $store[$proposal_id] = $bundle['proposal'];
+        }
+
+        if (isset($bundle['global']) && is_array($bundle['global'])) {
+            if (! isset($store['__global']) || ! is_array($store['__global'])) {
+                $store['__global'] = [];
+            }
+            foreach ($bundle['global'] as $original_id => $decision) {
+                $store['__global'][$original_id] = $decision;
+            }
+        }
+
+        update_option('dbvc_resolver_decisions', $store, false);
+    }
+
     /**
      * Restore content from a stored backup folder.
      *
@@ -607,7 +640,36 @@ HT;
             return new WP_Error('dbvc_manifest_missing', __('Backup manifest is missing or unreadable.', 'dbvc'));
         }
 
+        self::import_resolver_decisions_from_manifest($manifest, $backup_name);
+
+        $decision_store = get_option(self::PROPOSAL_DECISIONS_OPTION, []);
+        if (! is_array($decision_store)) {
+            $decision_store = [];
+        }
+        $proposal_decisions = isset($decision_store[$backup_name]) && is_array($decision_store[$backup_name])
+            ? $decision_store[$backup_name]
+            : [];
+        $auto_clear_decisions = get_option(self::AUTO_CLEAR_DECISIONS_OPTION, '1') === '1';
+        $has_entity_decisions = false;
+        if (! empty($proposal_decisions)) {
+            foreach ($proposal_decisions as $entity_key => $entity_decision) {
+                if (! is_array($entity_decision)) {
+                    continue;
+                }
+                $entity_key = (string) $entity_key;
+                if ($entity_key !== '' && strpos($entity_key, '__') === 0) {
+                    continue;
+                }
+                if (! empty($entity_decision)) {
+                    $has_entity_decisions = true;
+                    break;
+                }
+            }
+        }
+        $proposal_processed = false;
+
         $mode        = $options['mode'];
+        $ignore_missing_hash = ! empty($options['ignore_missing_hash']);
         $imported    = 0;
         $skipped     = 0;
         $errors      = [];
@@ -626,11 +688,19 @@ HT;
 
         $targets = [];
         if ($mode === 'partial') {
-            if (! empty($manifest['totals']['missing_import_hash'])) {
+            if (! $ignore_missing_hash && ! empty($manifest['totals']['missing_import_hash'])) {
                 return new WP_Error(
                     'dbvc_partial_blocked',
                     __('Partial restore aborted: at least one item is missing its import hash.', 'dbvc')
                 );
+            }
+            if ($ignore_missing_hash && ! empty($manifest['totals']['missing_import_hash'])) {
+                if (class_exists('DBVC_Sync_Logger') && method_exists('DBVC_Sync_Logger', 'log_import')) {
+                    DBVC_Sync_Logger::log_import('Partial restore ignoring missing hashes', [
+                        'proposal' => $backup_name,
+                        'missing'  => (int) $manifest['totals']['missing_import_hash'],
+                    ]);
+                }
             }
 
             foreach ($manifest['items'] as $item) {
@@ -681,6 +751,7 @@ HT;
             }
 
             if (($entry['item_type'] ?? '') === 'post') {
+                $proposal_processed = true;
                 $tmp = wp_tempnam();
                 if (! $tmp) {
                     $errors[] = sprintf(__('Failed to create temp file for %s', 'dbvc'), $entry['path']);
@@ -700,14 +771,35 @@ HT;
                     continue;
                 }
 
-                $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded);
+                $vf_object_uid = isset($entry['post_id']) ? (string) $entry['post_id'] : '';
+                $entity_decisions = null;
+                if ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])) {
+                    $entity_decisions = $proposal_decisions[$vf_object_uid];
+                }
+
+                $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded, $entity_decisions);
                 @unlink($tmp);
 
-                if ($result) {
+                if ($result === self::IMPORT_RESULT_APPLIED) {
                     $imported++;
+                } elseif ($result === self::IMPORT_RESULT_SKIPPED) {
+                    $skipped++;
+                    if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                        DBVC_Sync_Logger::log_import('Post import skipped by selections', [
+                            'file'     => $entry['path'],
+                            'post_id'  => $vf_object_uid,
+                            'proposal' => $backup_name,
+                        ]);
+                    }
+                } elseif (is_wp_error($result)) {
+                    $errors[] = $result->get_error_message();
+                    DBVC_Sync_Logger::log_import('Post import failed', [
+                        'file'  => $entry['path'],
+                        'error' => $result->get_error_message(),
+                    ]);
                 } else {
                     $errors[] = sprintf(__('Post import failed for %s', 'dbvc'), $entry['path']);
-                    DBVC_Sync_Logger::log('Post import failed', ['file' => $entry['path']]);
+                    DBVC_Sync_Logger::log_import('Post import failed', ['file' => $entry['path']]);
                 }
             } elseif (($entry['item_type'] ?? '') === 'options') {
                 $options = json_decode(file_get_contents($path), true);
@@ -739,9 +831,71 @@ HT;
             DBVC_Sync_Logger::log('Restore completed with warnings', ['errors' => $errors]);
         }
 
-        $media_stats = [];
+        if (
+            $auto_clear_decisions
+            && $proposal_processed
+            && $has_entity_decisions
+            && empty($errors)
+        ) {
+            $latest_store = get_option(self::PROPOSAL_DECISIONS_OPTION, []);
+            if (is_array($latest_store) && isset($latest_store[$backup_name])) {
+                unset($latest_store[$backup_name]);
+                update_option(self::PROPOSAL_DECISIONS_OPTION, $latest_store, false);
+
+                if (
+                    class_exists('DBVC_Sync_Logger')
+                    && method_exists('DBVC_Sync_Logger', 'log_import')
+                ) {
+                    DBVC_Sync_Logger::log_import('Cleared proposal decisions after import', [
+                        'proposal'   => $backup_name,
+                        'auto_clear' => true,
+                    ]);
+                }
+            }
+        }
+
+        $media_stats      = [];
+        $resolver_payload = [
+            'attachments' => [],
+            'id_map'      => [],
+            'conflicts'   => [],
+            'metrics'     => [],
+        ];
         if (class_exists('DBVC_Media_Sync') && DBVC_Media_Sync::is_enabled()) {
-            $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest);
+            $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest, ['proposal_id' => $backup_name]);
+        }
+
+        if (isset($media_stats['resolver']) && is_array($media_stats['resolver'])) {
+            $resolver_payload = $media_stats['resolver'];
+            unset($media_stats['resolver']);
+        } elseif (class_exists('\Dbvc\Media\Resolver')) {
+            $resolver_options = [
+                'allow_remote' => class_exists('DBVC_Media_Sync') ? DBVC_Media_Sync::allow_external_sources() : false,
+                'dry_run'      => true,
+            ];
+
+            try {
+                $resolver_payload = \Dbvc\Media\Resolver::resolve_manifest($manifest, $resolver_options);
+
+                if (
+                    class_exists('DBVC_Sync_Logger')
+                    && method_exists('DBVC_Sync_Logger', 'log_media')
+                ) {
+                    DBVC_Sync_Logger::log_media('Resolver dry run completed', [
+                        'metrics'   => $resolver_payload['metrics'] ?? [],
+                        'conflicts' => isset($resolver_payload['conflicts']) ? count($resolver_payload['conflicts']) : 0,
+                    ]);
+                }
+            } catch (\Throwable $resolver_error) {
+                if (
+                    class_exists('DBVC_Sync_Logger')
+                    && method_exists('DBVC_Sync_Logger', 'log_media')
+                ) {
+                    DBVC_Sync_Logger::log_media('Resolver dry run failed', [
+                        'error' => $resolver_error->getMessage(),
+                    ]);
+                }
+            }
         }
 
         return [
@@ -750,7 +904,18 @@ HT;
             'errors'   => $errors,
             'mode'     => $mode,
             'media'    => $media_stats,
+            'media_resolver' => $resolver_payload,
         ];
+    }
+
+    /**
+     * Return total count of exportable posts across supported types.
+     *
+     * @return int
+     */
+    public static function get_total_export_post_count()
+    {
+        return self::wp_count_posts_by_type(self::get_supported_post_types());
     }
 
     /* Import taxonomy inputs based on post meta
@@ -868,6 +1033,101 @@ HT;
     }
 
     /**
+     * Normalize a raw decision map to a sanitized array.
+     *
+     * @param mixed $decisions
+     * @return array|null
+     */
+    private static function normalize_entity_decisions($decisions): ?array
+    {
+        if (! is_array($decisions)) {
+            return null;
+        }
+
+        $normalized = [];
+
+        foreach ($decisions as $path => $action) {
+            if (! is_string($path) || $path === '') {
+                continue;
+            }
+
+            $normalized[$path] = ($action === 'accept') ? 'accept' : 'keep';
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Determine if at least one decision is marked as accepted.
+     *
+     * @param array|null $decisions
+     * @return bool
+     */
+    private static function decisions_have_accept(?array $decisions): bool
+    {
+        if ($decisions === null) {
+            return true;
+        }
+
+        foreach ($decisions as $action) {
+            if ($action === 'accept') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Evaluate whether the provided decision map allows applying the value at a given path.
+     *
+     * @param array|null $decisions
+     * @param string     $path
+     * @return bool
+     */
+    private static function decision_allows_path(?array $decisions, string $path): bool
+    {
+        if ($decisions === null) {
+            return true;
+        }
+
+        $path = trim($path);
+        if ($path === '') {
+            return false;
+        }
+
+        $best_action = null;
+        $best_length = -1;
+
+        foreach ($decisions as $decision_path => $action) {
+            if (! is_string($decision_path) || $decision_path === '') {
+                continue;
+            }
+
+            if ($decision_path === $path) {
+                $length = strlen($decision_path);
+            } elseif (strpos($decision_path, $path . '.') === 0) {
+                $length = strlen($decision_path);
+            } elseif (strpos($path, $decision_path . '.') === 0) {
+                $length = strlen($decision_path);
+            } else {
+                continue;
+            }
+
+            if ($length > $best_length) {
+                $best_length = $length;
+                $best_action = $action;
+            }
+        }
+
+        if ($best_action === null) {
+            return false;
+        }
+
+        return $best_action === 'accept';
+    }
+
+    /**
      * Re-double only isolated single backslashes in strings (idempotent).
      * - Arrays/objects are handled recursively.
      * - Existing "\\" sequences are left as-is.
@@ -905,6 +1165,11 @@ HT;
         $path = dbvc_get_sync_path(); // Do not append 'posts' subfolder
 
         if (! is_dir($path)) {
+            if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                DBVC_Sync_Logger::log_import('Import aborted: sync path not found', [
+                    'path' => $path,
+                ]);
+            }
             error_log('[DBVC] Import path not found: ' . $path);
             return [
                 'processed' => 0,
@@ -918,6 +1183,14 @@ HT;
         $processed       = 0;
         $normalized_mode = ($filename_mode !== null) ? self::normalize_filename_mode($filename_mode) : null;
 
+        if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+            DBVC_Sync_Logger::log_import('Import run started', [
+                'smart_import' => (bool) $smart_import,
+                'mode'         => $normalized_mode ?: 'all',
+                'post_types'   => $supported_types,
+            ]);
+        }
+
         foreach ($supported_types as $post_type) {
             $folder = trailingslashit($path) . sanitize_key($post_type);
             if (! is_dir($folder)) {
@@ -926,7 +1199,8 @@ HT;
 
             $json_files = glob($folder . '/' . sanitize_key($post_type) . '-*.json');
             foreach ($json_files as $filepath) {
-                if (self::import_post_from_json($filepath, $smart_import, $normalized_mode)) {
+                $result = self::import_post_from_json($filepath, $smart_import, $normalized_mode);
+                if ($result === self::IMPORT_RESULT_APPLIED) {
                     $processed++;
                 }
             }
@@ -942,34 +1216,48 @@ $acf_relationship_fields = [
         self::remap_relationship_fields($acf_relationship_fields); */
 
 
-        return [
+        $result = [
             'processed' => $processed,
             'remaining' => 0,
             'total'     => $processed,
             'offset'    => $offset + $processed,
         ];
+
+        if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+            DBVC_Sync_Logger::log_import('Import run completed', [
+                'processed'     => $processed,
+                'smart_import'  => (bool) $smart_import,
+                'mode'          => $normalized_mode ?: 'all',
+                'post_types'    => $supported_types,
+            ]);
+        }
+
+        return $result;
     }
 
     /**
      * Build import posts from Json
      * Added: 08-12-2025
      */
-    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null)
+    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null, ?array $field_decisions = null)
     {
         if (! file_exists($filepath)) {
-            return false;
+            return new WP_Error('dbvc_import_missing_file', sprintf(__('Import source missing: %s', 'dbvc'), $filepath));
         }
 
         $json_raw = $decoded_json ? wp_json_encode($decoded_json) : file_get_contents($filepath);
-        $json     = $decoded_json ?? json_decode($json_raw, true);
+        if ($json_raw === false) {
+            return new WP_Error('dbvc_import_read_failed', sprintf(__('Unable to read JSON file: %s', 'dbvc'), $filepath));
+        }
+
+        $json = $decoded_json ?? json_decode($json_raw, true);
 
         if (
             empty($json) ||
             ! is_array($json) ||
             ! isset($json['ID'], $json['post_type'], $json['post_title'])
         ) {
-            error_log("[DBVC] Skipped non-post JSON file: {$filepath}");
-            return false;
+            return new WP_Error('dbvc_import_invalid_json', sprintf(__('Skipped non-post JSON file: %s', 'dbvc'), basename($filepath)));
         }
 
         $original_id = absint($json['ID']);
@@ -980,7 +1268,7 @@ $acf_relationship_fields = [
             if ($normalized_mode !== null) {
                 error_log("[DBVC] Skipping file due to filename filter ({$normalized_mode}): " . basename($filepath));
             }
-            return false;
+            return self::IMPORT_RESULT_SKIPPED;
         }
 
         $mirror_domain = rtrim(get_option('dbvc_mirror_domain', ''), '/');
@@ -993,11 +1281,12 @@ $acf_relationship_fields = [
 
         if ($existing_hash === $current_hash && in_array($status, ['existing', 'imported'])) {
             error_log("[DBVC] Skipping unchanged JSON for post ID {$original_id} (status: {$status})");
-            return false;
+            return self::IMPORT_RESULT_SKIPPED;
         }
 
         $existing = get_post($original_id);
         $post_id = null;
+        $normalized_decisions = self::normalize_entity_decisions($field_decisions);
 
         // Smart import hash check
         if ($smart_import && $existing) {
@@ -1014,44 +1303,85 @@ $acf_relationship_fields = [
                 }
 
                 error_log("[DBVC] Skipping unchanged post ID {$original_id}");
-                return false;
+                return self::IMPORT_RESULT_SKIPPED;
             }
+        }
+
+        if ($normalized_decisions !== null && ! self::decisions_have_accept($normalized_decisions)) {
+            error_log("[DBVC] Skipped post ID {$original_id} — no accepted fields in reviewer selections.");
+            return self::IMPORT_RESULT_SKIPPED;
         }
 
         $allow_create = get_option('dbvc_allow_new_posts') === '1';
         $target_status = get_option('dbvc_new_post_status', 'draft');
         $whitelist = (array) get_option('dbvc_new_post_types_whitelist', []);
         $limit_to_types = ! empty($whitelist);
+        $did_apply_post_fields = false;
+        $did_apply_meta = false;
+        $did_apply_tax = false;
 
         // Update existing
         if ($existing && $existing->post_type === $post_type) {
+            $post_id = $existing->ID;
             $post_array = [
-                'ID'           => $original_id,
-                'post_title'   => sanitize_text_field($json['post_title']),
-                'post_content' => wp_kses_post($json['post_content'] ?? ''),
-                'post_excerpt' => sanitize_textarea_field($json['post_excerpt'] ?? ''),
-                'post_type'    => $post_type,
-                'post_status'  => sanitize_text_field($json['post_status'] ?? 'draft'),
+                'ID'        => $post_id,
+                'post_type' => $post_type,
+            ];
+
+            $field_map = [
+                'post_title'   => static function () use ($json) { return sanitize_text_field($json['post_title']); },
+                'post_content' => static function () use ($json) { return wp_kses_post($json['post_content'] ?? ''); },
+                'post_excerpt' => static function () use ($json) { return sanitize_textarea_field($json['post_excerpt'] ?? ''); },
+                'post_status'  => static function () use ($json) { return sanitize_text_field($json['post_status'] ?? 'draft'); },
+                'post_name'    => static function () use ($json) { return sanitize_text_field($json['post_name'] ?? ''); },
             ];
 
             if (! empty($json['post_date'])) {
-                $post_array['post_date'] = sanitize_text_field($json['post_date']);
-            }
-            if (! empty($json['post_modified'])) {
-                $post_array['post_modified'] = sanitize_text_field($json['post_modified']);
+                $field_map['post_date'] = static function () use ($json) {
+                    return sanitize_text_field($json['post_date']);
+                };
             }
 
-            $post_id = wp_insert_post($post_array);
-            error_log("[DBVC] Updated existing post ID {$post_id}");
+            if (! empty($json['post_modified'])) {
+                $field_map['post_modified'] = static function () use ($json) {
+                    return sanitize_text_field($json['post_modified']);
+                };
+            }
+
+            foreach ($field_map as $path => $callback) {
+                if ($normalized_decisions !== null && ! self::decision_allows_path($normalized_decisions, $path)) {
+                    continue;
+                }
+
+                $value = $callback();
+                if ($value !== null) {
+                    $post_array[$path] = $value;
+                }
+            }
+
+            if (count($post_array) > 2) {
+                $result = wp_insert_post($post_array);
+                if (is_wp_error($result)) {
+                    return $result;
+                }
+                $post_id = $result;
+                $did_apply_post_fields = true;
+                error_log("[DBVC] Updated existing post ID {$post_id}");
+            } else {
+                $post_id = $existing->ID;
+            }
         } else {
+            // Treat decisions as default accept for creations to avoid blocking required fields.
+            $normalized_decisions = null;
+
             if (! $allow_create) {
                 error_log("[DBVC] Skipped creation of missing post ID {$original_id} — creation disabled.");
-                return false;
+                return self::IMPORT_RESULT_SKIPPED;
             }
 
             if ($limit_to_types && ! in_array($post_type, $whitelist, true)) {
                 error_log("[DBVC] Skipped creation of post type '{$post_type}' — not whitelisted.");
-                return false;
+                return self::IMPORT_RESULT_SKIPPED;
             }
 
             $content = wp_kses_post($json['post_content'] ?? '');
@@ -1078,7 +1408,7 @@ $acf_relationship_fields = [
 
             if (is_wp_error($post_id)) {
                 error_log("[DBVC] Failed to create post from {$filepath}: " . $post_id->get_error_message());
-                return false;
+                return $post_id;
             }
 
             self::$imported_post_id_map[$original_id] = $post_id;
@@ -1112,6 +1442,11 @@ $acf_relationship_fields = [
             }
 
             foreach ($json['meta'] as $key => $values) {
+                $meta_path = 'meta.' . $key;
+                if ($normalized_decisions !== null && ! self::decision_allows_path($normalized_decisions, $meta_path)) {
+                    continue;
+                }
+
                 // Use sanitize_key for the meta key (preserves underscores)
                 $meta_key = sanitize_key($key);
 
@@ -1127,6 +1462,8 @@ $acf_relationship_fields = [
                         update_post_meta($post_id, $meta_key, maybe_unserialize($value));
                     }
                 }
+
+                $did_apply_meta = true;
             }
 
             // Remove temporary sanitize bypass
@@ -1150,7 +1487,27 @@ $acf_relationship_fields = [
         // Import taxonomies
         if (! is_wp_error($post_id) && isset($json['tax_input']) && is_array($json['tax_input'])) {
             $create_terms = (bool) get_option('dbvc_auto_create_terms', true);
-            self::import_tax_input_for_post($post_id, $post_type, $json['tax_input'], $create_terms);
+            $tax_subset = [];
+
+            foreach ($json['tax_input'] as $taxonomy => $items) {
+                $tax_path = 'tax_input.' . $taxonomy;
+                if ($normalized_decisions !== null && ! self::decision_allows_path($normalized_decisions, $tax_path)) {
+                    continue;
+                }
+                $tax_subset[$taxonomy] = $items;
+            }
+
+            if (! empty($tax_subset)) {
+                self::import_tax_input_for_post($post_id, $post_type, $tax_subset, $create_terms);
+                $did_apply_tax = true;
+            }
+        }
+
+        $did_apply = $did_apply_post_fields || $did_apply_meta || $did_apply_tax;
+
+        if (! $did_apply) {
+            error_log("[DBVC] Skipped applying changes for post ID {$original_id} — no accepted fields.");
+            return self::IMPORT_RESULT_SKIPPED;
         }
 
         // Save import hash
@@ -1183,7 +1540,7 @@ $acf_relationship_fields = [
         }
 
         error_log("[DBVC] Imported post ID {$post_id}");
-        return true;
+        return self::IMPORT_RESULT_APPLIED;
     }
 
     /**
@@ -1250,15 +1607,34 @@ $acf_relationship_fields = [
      */
     public static function export_post_to_json($post_id, $post, $filename_mode = null)
     {
+        $prepared = self::prepare_post_export($post_id, $post, $filename_mode);
+        if (is_wp_error($prepared) || empty($prepared)) {
+            return;
+        }
+
+        self::ensure_clean_export_directory($post->post_type);
+        self::write_export_payload($prepared, $post_id, $post);
+    }
+
+    /**
+     * Prepare export payload without writing to disk.
+     *
+     * @param int    $post_id
+     * @param object $post
+     * @param mixed  $filename_mode
+     * @return array|\WP_Error
+     */
+    private static function prepare_post_export($post_id, $post, $filename_mode = null)
+    {
         // Validate inputs.
         if (! is_numeric($post_id) || $post_id <= 0) {
-            return;
+            return new WP_Error('dbvc_invalid_post', __('Invalid post ID supplied for export.', 'dbvc'));
         }
         if (! is_object($post) || ! isset($post->post_type)) {
-            return;
+            return new WP_Error('dbvc_invalid_post', __('Invalid post object supplied for export.', 'dbvc'));
         }
         if (wp_is_post_revision($post_id)) {
-            return;
+            return new WP_Error('dbvc_skipped_revision', __('Skipping revision export.', 'dbvc'));
         }
 
         // Allowed statuses (FSE types may include draft/auto-draft) + filter.
@@ -1269,13 +1645,13 @@ $acf_relationship_fields = [
         }
         $allowed_statuses = apply_filters('dbvc_allowed_statuses_for_export', $allowed_statuses, $post);
         if (! in_array($post->post_status, $allowed_statuses, true)) {
-            return;
+            return new WP_Error('dbvc_skipped_status', __('Post status not allowed for export.', 'dbvc'));
         }
 
         // Only export supported types.
         $supported_types = self::get_supported_post_types();
         if (! in_array($post->post_type, $supported_types, true)) {
-            return;
+            return new WP_Error('dbvc_skipped_type', __('Post type not supported for export.', 'dbvc'));
         }
 
         // Capability check (skip if WP-CLI or filter instructs to skip).
@@ -1283,7 +1659,7 @@ $acf_relationship_fields = [
         if ((! defined('WP_CLI') || ! WP_CLI) && ! $skip_caps) {
             $pto = get_post_type_object($post->post_type);
             if (! $pto || ! current_user_can($pto->cap->read_post, $post_id)) {
-                return;
+                return new WP_Error('dbvc_skipped_cap', __('Insufficient capability to export post.', 'dbvc'));
             }
         }
 
@@ -1354,7 +1730,7 @@ $acf_relationship_fields = [
         if (! is_dir($path)) {
             if (! wp_mkdir_p($path)) {
                 error_log('DBVC: Failed to create directory: ' . $path);
-                return;
+                return new WP_Error('dbvc_directory_failed', __('Unable to create export directory.', 'dbvc'));
             }
         }
         self::ensure_directory_security($path);
@@ -1367,7 +1743,7 @@ $acf_relationship_fields = [
         $file_path = apply_filters('dbvc_export_post_file_path', $file_path, $post->ID, $post);
         if (! dbvc_is_safe_file_path($file_path)) {
             error_log('DBVC: Unsafe file path detected: ' . $file_path);
-            return;
+            return new WP_Error('dbvc_unsafe_path', __('Unsafe file path detected.', 'dbvc'));
         }
 
         // Pick the exact path you care about:
@@ -1381,20 +1757,42 @@ $acf_relationship_fields = [
             }
         }
 
-
         // Encode and write (slashes in BACKSLASH are preserved; forward slashes are unescaped).
         $json_content = wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if (false === $json_content) {
             error_log('DBVC: Failed to encode JSON for post ' . $post_id);
-            return;
+            return new WP_Error('dbvc_json_failure', __('Failed to encode post JSON.', 'dbvc'));
         }
 
-        if (false === file_put_contents($file_path, $json_content)) {
-            error_log('DBVC: Failed to write file: ' . $file_path);
-            return;
+        $hash = hash('sha256', $json_content);
+
+        return [
+            'post_id'      => $post_id,
+            'post'         => $post,
+            'file_path'    => $file_path,
+            'json_content' => $json_content,
+            'data'         => $data,
+            'hash'         => $hash,
+        ];
+    }
+
+    /**
+     * Persist prepared export payload to disk.
+     *
+     * @param array  $prepared
+     * @param int    $post_id
+     * @param object $post
+     * @return bool
+     */
+    private static function write_export_payload(array $prepared, $post_id, $post)
+    {
+        if (false === file_put_contents($prepared['file_path'], $prepared['json_content'])) {
+            error_log('DBVC: Failed to write file: ' . $prepared['file_path']);
+            return false;
         }
 
-        do_action('dbvc_after_export_post', $post_id, $post, $file_path);
+        do_action('dbvc_after_export_post', $post_id, $post, $prepared['file_path']);
+        return true;
     }
 
     /**
@@ -1409,7 +1807,146 @@ $acf_relationship_fields = [
             DBVC_Sync_Taxonomies::import_taxonomies();
         }
 
-        self::import_all(0, false, $filename_mode);
+        return self::import_all(0, false, $filename_mode);
+    }
+
+    /**
+     * Export only posts changed since a baseline snapshot.
+     *
+     * @param int|null $baseline_snapshot_id
+     * @param mixed    $filename_mode
+     * @return array|\WP_Error
+     */
+    public static function export_posts_diff($baseline_snapshot_id = null, $filename_mode = null)
+    {
+        if (! class_exists('DBVC_Database')) {
+            return new WP_Error('dbvc_missing_database', __('Snapshot database layer unavailable.', 'dbvc'));
+        }
+
+        if (! $baseline_snapshot_id) {
+            $latest = DBVC_Database::get_latest_snapshot('full_export');
+            if ($latest) {
+                $baseline_snapshot_id = (int) $latest->id;
+            }
+        }
+
+        $baseline_hashes = $baseline_snapshot_id ? DBVC_Database::get_snapshot_item_hashes($baseline_snapshot_id, 'post') : [];
+
+        $selected = (array) get_option('dbvc_post_types', []);
+        if (empty($selected)) {
+            $selected = method_exists(__CLASS__, 'get_supported_post_types')
+                ? self::get_supported_post_types()
+                : array_keys(dbvc_get_available_post_types());
+        }
+
+        $statuses = apply_filters('dbvc_export_all_post_statuses', [
+            'publish',
+            'private',
+            'draft',
+            'pending',
+            'future',
+            'inherit',
+            'auto-draft'
+        ]);
+
+        $snapshot_items = [];
+        $export_time    = current_time('mysql', true);
+        $sync_root      = trailingslashit(dbvc_get_sync_path());
+        $counts         = [
+            'created'   => 0,
+            'updated'   => 0,
+            'unchanged' => 0,
+        ];
+
+        foreach ($selected as $pt) {
+            $paged = 1;
+            do {
+                $query = new WP_Query([
+                    'post_type'        => $pt,
+                    'post_status'      => $statuses,
+                    'posts_per_page'   => 500,
+                    'paged'            => $paged,
+                    'fields'           => 'ids',
+                    'orderby'          => 'ID',
+                    'order'            => 'ASC',
+                    'suppress_filters' => false,
+                    'no_found_rows'    => true,
+                ]);
+
+                if (! empty($query->posts)) {
+                    foreach ($query->posts as $post_id) {
+                        $post = get_post($post_id);
+                        if (! $post) {
+                            continue;
+                        }
+
+                        $prepared = self::prepare_post_export($post_id, $post, $filename_mode);
+                        if (is_wp_error($prepared)) {
+                            continue;
+                        }
+
+                        $hash          = $prepared['hash'];
+                        $baseline_hash = isset($baseline_hashes[$post_id]) ? (string) $baseline_hashes[$post_id] : null;
+                        $status        = $baseline_hash ? 'updated' : 'created';
+
+                        if ($baseline_hash && hash_equals($baseline_hash, $hash)) {
+                            $status = 'unchanged';
+                        } else {
+                            self::write_export_payload($prepared, $post_id, $post);
+                        }
+
+                        $counts[$status]++;
+
+                        $relative = ltrim(str_replace($sync_root, '', $prepared['file_path']), '/');
+                        $snapshot_items[] = [
+                            'object_type'  => 'post',
+                            'object_id'    => (int) $post_id,
+                            'content_hash' => $hash,
+                            'media_hash'   => null,
+                            'status'       => $status,
+                            'payload_path' => $relative,
+                            'exported_at'  => $export_time,
+                        ];
+                    }
+                }
+                $paged++;
+            } while (! empty($query->posts));
+        }
+
+        if (class_exists('DBVC_Backup_Manager')) {
+            DBVC_Backup_Manager::generate_manifest(dbvc_get_sync_path());
+        }
+
+        $snapshot_id = DBVC_Database::insert_snapshot([
+            'type'         => 'diff_export',
+            'sync_path'    => dbvc_get_sync_path(),
+            'notes'        => wp_json_encode([
+                'baseline_snapshot_id' => $baseline_snapshot_id,
+                'counts'               => $counts,
+                'timestamp'            => $export_time,
+            ]),
+        ]);
+
+        if ($snapshot_id && ! empty($snapshot_items)) {
+            DBVC_Database::insert_snapshot_items($snapshot_id, $snapshot_items);
+        }
+
+        DBVC_Database::log_activity(
+            'diff_export_completed',
+            'info',
+            'Diff export completed',
+            [
+                'snapshot_id'          => $snapshot_id,
+                'baseline_snapshot_id' => $baseline_snapshot_id,
+                'counts'               => $counts,
+            ]
+        );
+
+        return [
+            'snapshot_id'          => $snapshot_id,
+            'baseline_snapshot_id' => $baseline_snapshot_id,
+            'counts'               => $counts,
+        ];
     }
 
 
@@ -1856,6 +2393,8 @@ $acf_relationship_fields = [
             'posts_per_page' => $batch_size,
             'offset'         => $offset,
             'post_status'    => 'any',
+            'orderby'        => 'ID',
+            'order'          => 'ASC',
         ]);
 
         $processed = 0;
@@ -1926,19 +2465,34 @@ $acf_relationship_fields = [
 
         $processed = 0;
         foreach ($batch_files as $file) {
-            if (self::import_post_from_json($file, false, $normalized_mode)) {
+            $result = self::import_post_from_json($file, false, $normalized_mode);
+            if ($result === self::IMPORT_RESULT_APPLIED) {
                 $processed++;
             }
         }
 
         $remaining = max(0, $total - $next_offset);
 
-        return [
+        $result = [
             'processed' => $processed,
             'remaining' => $remaining,
             'total'     => $total,
             'offset'    => $next_offset,
         ];
+
+        if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+            DBVC_Sync_Logger::log_import('Batch import processed', [
+                'batch_size'      => $batch_size,
+                'requested_offset'=> $offset,
+                'next_offset'     => $next_offset,
+                'processed'       => $processed,
+                'remaining'       => $remaining,
+                'total'           => $total,
+                'mode'            => $normalized_mode ?: 'all',
+            ]);
+        }
+
+        return $result;
     }
 
     /**
@@ -2217,78 +2771,101 @@ $acf_relationship_fields = [
             wp_die(__('Nonce check failed.', 'dbvc'));
         }
 
-        error_log('[DBVC] Upload handler triggered');
+        $raw_name = isset($_FILES['dbvc_sync_upload']['name']) ? wp_unslash($_FILES['dbvc_sync_upload']['name']) : '';
+        $filename = sanitize_file_name($raw_name);
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $current_user = get_current_user_id();
 
         if (empty($_FILES['dbvc_sync_upload']['tmp_name'])) {
-            error_log('[DBVC] No file uploaded.');
+            if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+                DBVC_Sync_Logger::log_upload('Sync upload aborted: no file supplied', [
+                    'filename' => $filename,
+                    'extension'=> $extension,
+                    'user'     => $current_user,
+                ]);
+            }
             wp_redirect(add_query_arg('dbvc_upload', 'empty', wp_get_referer()));
             exit;
         }
 
+        $tmp      = $_FILES['dbvc_sync_upload']['tmp_name'];
         $sync_dir = dbvc_get_sync_path();
         wp_mkdir_p($sync_dir);
-        error_log('[DBVC] Sync path: ' . $sync_dir);
 
-        $tmp = $_FILES['dbvc_sync_upload']['tmp_name'];
-        $ext = strtolower(pathinfo($_FILES['dbvc_sync_upload']['name'], PATHINFO_EXTENSION));
+        $log_context = [
+            'filename'  => $filename,
+            'extension' => $extension,
+            'sync_dir'  => $sync_dir,
+            'user'      => $current_user,
+        ];
+
+        if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+            DBVC_Sync_Logger::log_upload('Sync upload started', $log_context);
+        }
+
         $success = false;
+        $failure_reason = '';
 
-        // Always clear existing sync folder first
+        // Always clear existing sync folder first.
         self::delete_folder_contents($sync_dir);
-        error_log('[DBVC] Cleared existing sync folder');
+        if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+            DBVC_Sync_Logger::log_upload('Sync folder cleared prior to upload', [
+                'sync_dir' => $sync_dir,
+            ]);
+        }
 
-        // Handle ZIP upload
-        if ('zip' === $ext && class_exists('ZipArchive')) {
+        if ('zip' === $extension && class_exists('ZipArchive')) {
             $zip = new \ZipArchive();
             $open_result = $zip->open($tmp);
 
             if ($open_result === true) {
-                error_log('[DBVC] ZIP opened successfully');
-
-                // Temporary extract folder
                 $tmp_dir = trailingslashit(wp_tempnam() . '-extract');
                 wp_mkdir_p($tmp_dir);
 
                 if ($zip->extractTo($tmp_dir)) {
                     $zip->close();
-                    error_log('[DBVC] ZIP extracted to temp: ' . $tmp_dir);
 
-                    // Flatten if zip contains a single wrapper folder
                     $entries = array_diff(scandir($tmp_dir), ['.', '..']);
                     if (count($entries) === 1 && is_dir($tmp_dir . $entries[0])) {
                         $tmp_dir .= $entries[0] . '/';
-                        error_log('[DBVC] ZIP had single wrapper folder: ' . $entries[0]);
                     }
 
-                    // Copy everything from temp to sync path
                     self::recursive_copy($tmp_dir, $sync_dir);
-                    error_log('[DBVC] Copied extracted files to sync folder');
-                    // After copy is complete
                     self::delete_folder_contents(dirname($tmp_dir));
-                    @rmdir(dirname($tmp_dir)); // Delete the parent temp folder if empty
-
+                    @rmdir(dirname($tmp_dir));
 
                     $success = true;
                 } else {
                     $zip->close();
-                    error_log('[DBVC] ZIP extraction failed');
+                    $failure_reason = 'zip_extract_failed';
                 }
             } else {
-                error_log('[DBVC] Failed to open ZIP file');
+                $failure_reason = 'zip_open_failed';
             }
-        } elseif ('json' === $ext) {
+        } elseif ('json' === $extension) {
             require_once ABSPATH . 'wp-admin/includes/file.php';
             WP_Filesystem();
             global $wp_filesystem;
 
-            $dest    = trailingslashit($sync_dir) . basename($_FILES['dbvc_sync_upload']['name']);
+            $dest    = trailingslashit($sync_dir) . $filename;
             $success = (bool) $wp_filesystem->put_contents($dest, file_get_contents($tmp), FS_CHMOD_FILE);
-            error_log('[DBVC] Single JSON uploaded: ' . ($success ? 'yes' : 'no'));
+            if (! $success) {
+                $failure_reason = 'json_write_failed';
+            }
         } else {
-            error_log('[DBVC] Unsupported file type: ' . $ext);
+            $failure_reason = 'unsupported_extension';
         }
 
-        wp_redirect(add_query_arg('dbvc_upload', $success ? 'success' : 'fail', wp_get_referer()));
+        if (! $success && class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+            DBVC_Sync_Logger::log_upload('Sync upload failed', array_merge($log_context, [
+                'reason' => $failure_reason ?: 'unknown',
+            ]));
+        } elseif ($success && class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+            DBVC_Sync_Logger::log_upload('Sync upload completed', $log_context);
+        }
+
+        $status = $success ? 'success' : 'fail';
+        wp_redirect(add_query_arg('dbvc_upload', $status, wp_get_referer()));
         exit;
     }
 
@@ -2338,5 +2915,22 @@ $acf_relationship_fields = [
                 @unlink($item->getPathname());
             }
         }
+    }
+
+    private static function ensure_clean_export_directory(string $post_type): void
+    {
+        static $cleaned = [];
+        if (isset($cleaned[$post_type])) {
+            return;
+        }
+
+        $path = trailingslashit(dbvc_get_sync_path($post_type));
+        if (is_dir($path)) {
+            self::delete_folder_contents($path);
+        }
+        wp_mkdir_p($path);
+        self::ensure_directory_security($path);
+
+        $cleaned[$post_type] = true;
     }
 }

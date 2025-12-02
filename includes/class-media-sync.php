@@ -20,6 +20,10 @@ if (! class_exists('DBVC_Media_Sync')) {
         const OPTION_PRESERVE_NAMES  = 'dbvc_media_preserve_filenames';
         const OPTION_PREVIEW_ENABLED = 'dbvc_media_preview_enabled';
         const OPTION_ALLOW_EXTERNAL  = 'dbvc_media_allow_external';
+        const OPTION_TRANSPORT_MODE  = 'dbvc_media_transport_mode';
+        const OPTION_BUNDLE_ENABLED  = 'dbvc_media_bundle_enabled';
+        const OPTION_BUNDLE_CHUNK    = 'dbvc_media_bundle_chunk';
+        const BUNDLE_DIR             = 'media';
         const MAP_OPTION             = 'dbvc_media_map_temp';
         const URL_OPTION             = 'dbvc_media_url_map_temp';
 
@@ -90,29 +94,239 @@ if (! class_exists('DBVC_Media_Sync')) {
         }
 
         /**
+         * Retrieve the configured transport mode.
+         *
+         * @return string auto|bundled|remote
+         */
+        public static function get_transport_mode()
+        {
+            $mode     = get_option(self::OPTION_TRANSPORT_MODE, 'auto');
+            $allowed  = ['auto', 'bundled', 'remote'];
+
+            if (! in_array($mode, $allowed, true)) {
+                $mode = 'auto';
+            }
+
+            return $mode;
+        }
+
+        /**
+         * Determine whether bundled media should be generated.
+         *
+         * @return bool
+         */
+        public static function is_bundle_enabled()
+        {
+            return get_option(self::OPTION_BUNDLE_ENABLED, '0') === '1';
+        }
+
+        /**
+         * Return the chunk size for bundle processing.
+         *
+         * @return int
+         */
+        public static function get_bundle_chunk_size()
+        {
+            $raw = (int) get_option(self::OPTION_BUNDLE_CHUNK, 250);
+            if ($raw <= 0) {
+                $raw = 250;
+            }
+            return $raw;
+        }
+
+        /**
+         * Absolute path to the bundle media directory.
+         *
+         * @return string
+         */
+        public static function get_bundle_base_dir()
+        {
+            $base = dbvc_get_sync_path();
+            return trailingslashit($base) . self::BUNDLE_DIR;
+        }
+
+        /**
+         * Build the relative bundle path (inside sync directory) for an attachment.
+         *
+         * @param int         $attachment_id
+         * @param string|null $file_path
+         * @return string
+         */
+        public static function get_relative_bundle_path($attachment_id, $file_path = null)
+        {
+            if ($file_path === null) {
+                $file_path = get_attached_file($attachment_id);
+            }
+
+            if (! $file_path) {
+                return '';
+            }
+
+            $normalized = wp_normalize_path($file_path);
+            $uploads    = wp_get_upload_dir();
+
+            if (! empty($uploads['basedir'])) {
+                $base = wp_normalize_path($uploads['basedir']);
+                if (strpos($normalized, $base) === 0) {
+                    $relative = ltrim(substr($normalized, strlen($base)), '/');
+                } else {
+                    $relative = basename($normalized);
+                }
+            } else {
+                $relative = basename($normalized);
+            }
+
+            $relative = str_replace('\\', '/', $relative);
+            $relative = ltrim($relative, '/');
+
+            return self::BUNDLE_DIR . '/' . $relative;
+        }
+
+        /**
+         * Ensure hashes carry a consistent prefix.
+         *
+         * @param string $hash
+         * @return string
+         */
+        public static function format_hash($hash)
+        {
+            $hash = (string) $hash;
+            if ($hash === '') {
+                return '';
+            }
+
+            if (strpos($hash, ':') === false) {
+                return 'sha256:' . $hash;
+            }
+
+            return $hash;
+        }
+
+        /**
+         * Centralized logging helper for media sync instrumentation.
+         *
+         * @param string $event
+         * @param string $message
+         * @param array  $context
+         * @param string $level
+         * @return void
+         */
+        private static function log_event($event, $message, array $context = [], $level = 'info')
+        {
+            if (
+                class_exists('DBVC_Sync_Logger')
+                && method_exists('DBVC_Sync_Logger', 'is_media_logging_enabled')
+                && DBVC_Sync_Logger::is_media_logging_enabled()
+            ) {
+                DBVC_Sync_Logger::log_media($message, array_merge([
+                    'event' => $event,
+                    'level' => $level,
+                ], $context));
+            }
+
+            if (class_exists('DBVC_Database')) {
+                DBVC_Database::log_activity($event, $level, $message, $context);
+            }
+        }
+
+        /**
          * Orchestrate media synchronization from a manifest snapshot.
          *
          * @param array $manifest
          * @return array Statistics
          */
-        public static function sync_manifest_media(array $manifest)
+        private static $resolver_decisions = [];
+        private static $resolver_global_decisions = [];
+
+        public static function sync_manifest_media(array $manifest, array $context = [])
         {
             self::ensure_state_loaded();
             self::reset_stats();
+            self::load_resolver_decisions($context['proposal_id'] ?? '');
 
             self::prime_existing_mappings($manifest);
             $candidates = self::collect_candidates($manifest);
             $queue      = $candidates['queue'];
             self::$stats['blocked'] = count($candidates['blocked']);
 
-            if (! empty($queue)) {
+            $resolver_result = null;
+            if (class_exists('\Dbvc\Media\Resolver')) {
+                try {
+                    $resolver_result = \Dbvc\Media\Resolver::resolve_manifest($manifest, [
+                        'allow_remote' => self::allow_external_sources(),
+                        'dry_run'      => false,
+                    ]);
+                    self::apply_resolver_result($resolver_result, $queue);
+                } catch (\Throwable $resolver_exception) {
+                    self::log_event(
+                        'media_resolver_apply_failed',
+                        'Resolver preflight failed',
+                        [
+                            'error' => $resolver_exception->getMessage(),
+                        ],
+                        'error'
+                    );
+                }
+            }
+
+            $run_legacy = self::should_run_legacy_sync($resolver_result, $queue);
+
+            $transport_mode = self::get_transport_mode();
+            $initial_queue_count = count($queue);
+            self::log_event(
+                'media_sync_candidates',
+                'Media sync candidates prepared',
+                [
+                    'transport_mode'      => $transport_mode,
+                    'queue_count'         => $initial_queue_count,
+                    'blocked_count'       => count($candidates['blocked']),
+                    'skipped_existing'    => $candidates['skipped_existing'],
+                    'total_detected'      => $candidates['total_detected'],
+                    'hosts'               => self::summarize_hosts($queue),
+                    'blocked_reasons'     => self::summarize_blocked($candidates['blocked']),
+                    'relative_path_use'   => self::summarize_relative_paths($queue),
+                    'resolver_reused'     => isset($resolver_result['metrics']['reused']) ? (int) $resolver_result['metrics']['reused'] : 0,
+                    'resolver_unresolved' => isset($resolver_result['metrics']['unresolved']) ? (int) $resolver_result['metrics']['unresolved'] : 0,
+                ]
+            );
+
+            if ($run_legacy && $transport_mode !== 'remote') {
+                self::process_bundled_media($queue, $manifest);
+            }
+
+            $queue = array_values(array_filter($queue, static function ($item) {
+                return empty($item['handled']);
+            }));
+
+            $remaining_queue_count = count($queue);
+
+            if ($run_legacy && ! empty($queue) && $transport_mode !== 'bundled') {
                 self::process_queue($queue);
             }
 
             self::apply_post_mappings($manifest);
             self::persist_state();
 
-            return self::$stats;
+            self::log_event(
+                'media_sync_completed',
+                'Media sync completed',
+                [
+                    'queued_initial'   => $initial_queue_count,
+                    'queued_remaining' => $remaining_queue_count,
+                    'blocked'          => self::$stats['blocked'],
+                    'downloaded'       => self::$stats['downloaded'],
+                    'reused'           => self::$stats['reused'],
+                    'meta_updates'     => self::$stats['meta_updates'],
+                    'content_updates'  => self::$stats['content_updates'],
+                    'errors'           => self::$stats['errors'],
+                    'skipped_existing' => $candidates['skipped_existing'],
+                ]
+            );
+
+            $stats = self::$stats;
+            $stats['resolver'] = $resolver_result;
+
+            return $stats;
         }
 
         /**
@@ -176,13 +390,29 @@ if (! class_exists('DBVC_Media_Sync')) {
                 $items = array_slice($items, 0, (int) $limit);
             }
 
-            return [
+            $summary = [
                 'total_candidates' => count($candidates['queue']),
                 'preview_items'    => $items,
                 'blocked'          => $candidates['blocked'],
                 'skipped_existing' => $candidates['skipped_existing'],
                 'total_detected'   => $candidates['total_detected'],
             ];
+
+            self::log_event(
+                'media_preview_generated',
+                'Media preview generated',
+                [
+                    'total_detected'    => $summary['total_detected'],
+                    'total_candidates' => $summary['total_candidates'],
+                    'preview_count'    => count($summary['preview_items']),
+                    'blocked_count'    => count($summary['blocked']),
+                    'skipped_existing' => $summary['skipped_existing'],
+                    'hosts'            => self::summarize_hosts($candidates['queue']),
+                    'relative_path_use'=> self::summarize_relative_paths($candidates['queue']),
+                ]
+            );
+
+            return $summary;
         }
 
         /**
@@ -226,6 +456,22 @@ if (! class_exists('DBVC_Media_Sync')) {
                     if ($track_stats) {
                         self::$stats['reused']++;
                     }
+
+                    if (class_exists('DBVC_Database')) {
+                        $file_path = get_attached_file($existing_id);
+                        $file_hash = ($file_path && is_readable($file_path)) ? hash_file('sha256', $file_path) : null;
+                        $file_size = ($file_path && is_readable($file_path)) ? filesize($file_path) : null;
+
+                        DBVC_Database::upsert_media([
+                            'attachment_id' => $existing_id,
+                            'original_id'   => $original_id,
+                            'source_url'    => $entry['source_url'] ?? null,
+                            'relative_path' => null,
+                            'file_hash'     => $file_hash,
+                            'file_size'     => $file_size,
+                            'mime_type'     => $entry['mime_type'] ?? null,
+                        ]);
+                    }
                 }
             }
         }
@@ -242,13 +488,173 @@ if (! class_exists('DBVC_Media_Sync')) {
                 $result = self::download_item($item);
                 if (is_wp_error($result)) {
                     self::$stats['errors']++;
-                    DBVC_Sync_Logger::log('Media download failed', [
+                    DBVC_Sync_Logger::log_media('Media download failed', [
                         'error'        => $result->get_error_message(),
                         'original_id'  => $item['original_id'],
                         'source_url'   => $item['source_url'],
                     ]);
+                    if (class_exists('DBVC_Database')) {
+                        DBVC_Database::log_activity(
+                            'media_download_failed',
+                            'error',
+                            $result->get_error_message(),
+                            [
+                                'original_id' => $item['original_id'],
+                                'source_url'  => $item['source_url'],
+                            ]
+                        );
+                    }
                 }
             }
+        }
+
+        /**
+         * Attempt to import bundled media files based on manifest entries.
+         *
+         * @param array $queue
+         * @param array $manifest
+         * @return void
+         */
+        private static function process_bundled_media(array &$queue, array $manifest)
+        {
+            if (empty($queue)) {
+                return;
+            }
+
+            $mode        = self::get_transport_mode();
+
+            foreach ($queue as &$item) {
+                if (! empty($item['handled'])) {
+                    continue;
+                }
+
+                $relative = isset($item['relative_path']) ? wp_normalize_path($item['relative_path']) : '';
+                if (! $relative) {
+                    continue;
+                }
+
+                $absolute = wp_normalize_path(trailingslashit(dbvc_get_sync_path()) . ltrim($relative, '/'));
+                if (! file_exists($absolute)) {
+                    if ($mode === 'bundled') {
+                        self::$stats['errors']++;
+                        DBVC_Sync_Logger::log_media('Bundled media missing', [
+                            'original_id'   => $item['original_id'],
+                            'relative_path' => $relative,
+                        ]);
+                        $item['handled'] = true;
+                    }
+                    continue;
+                }
+
+                $hash_expected = '';
+                if (! empty($item['hash'])) {
+                    $parts = explode(':', $item['hash'], 2);
+                    $hash_expected = end($parts);
+                }
+
+                $hash_actual = hash_file('sha256', $absolute);
+                if ($hash_expected && ! hash_equals($hash_expected, $hash_actual)) {
+                    DBVC_Sync_Logger::log_media('Bundled media hash mismatch', [
+                        'relative_path' => $relative,
+                        'expected'      => $hash_expected,
+                        'actual'        => $hash_actual,
+                    ]);
+                    if ($mode === 'bundled') {
+                        self::$stats['errors']++;
+                        $item['handled'] = true;
+                    }
+                    continue;
+                }
+
+                $attachment_id = self::import_bundled_file($absolute, $item);
+                if (is_wp_error($attachment_id)) {
+                    DBVC_Sync_Logger::log_media('Bundled media import failed', [
+                        'error'        => $attachment_id->get_error_message(),
+                        'relative_path'=> $relative,
+                        'original_id'  => $item['original_id'],
+                    ]);
+                    if ($mode === 'bundled') {
+                        self::$stats['errors']++;
+                        $item['handled'] = true;
+                    }
+                    continue;
+                }
+
+                $item['handled'] = true;
+                self::set_mapping($item['original_id'], $attachment_id);
+                self::register_url_mapping($item['source_url'], $attachment_id);
+                self::$stats['downloaded']++;
+
+                DBVC_Sync_Logger::log_media('Bundled media imported', [
+                    'original_id'   => $item['original_id'],
+                    'attachment_id' => $attachment_id,
+                    'relative_path' => $relative,
+                ]);
+
+                if (class_exists('DBVC_Database')) {
+                    DBVC_Database::upsert_media([
+                        'attachment_id' => $attachment_id,
+                        'original_id'   => $item['original_id'],
+                        'relative_path' => $relative,
+                        'file_hash'     => $hash_actual,
+                        'file_size'     => filesize($absolute),
+                        'mime_type'     => $item['mime_type'] ?? null,
+                        'source_url'    => $item['source_url'] ?? null,
+                    ]);
+
+                    DBVC_Database::log_activity(
+                        'media_bundled_imported',
+                        'info',
+                        'Bundled media imported',
+                        [
+                            'original_id'   => $item['original_id'],
+                            'attachment_id' => $attachment_id,
+                            'relative_path' => $relative,
+                        ]
+                    );
+                }
+            }
+        }
+
+        /**
+         * Create a local attachment from a bundled file on disk.
+         *
+         * @param string $absolute_path
+         * @param array  $item
+         * @return int|\WP_Error
+         */
+        private static function import_bundled_file($absolute_path, array $item)
+        {
+            $tmp = wp_tempnam();
+            if (! $tmp || ! @copy($absolute_path, $tmp)) {
+                return new WP_Error('dbvc_bundle_copy_failed', __('Unable to stage bundled media file.', 'dbvc'));
+            }
+
+            $file_array = [
+                'name'     => $item['filename'] ?: basename($absolute_path),
+                'tmp_name' => $tmp,
+            ];
+
+            $attachment_id = media_handle_sideload(
+                $file_array,
+                0,
+                $item['title'] ?? '',
+                [
+                    'post_mime_type' => $item['mime_type'] ?? null,
+                ]
+            );
+
+            if (is_wp_error($attachment_id)) {
+                @unlink($tmp);
+                return $attachment_id;
+            }
+
+            update_post_meta($attachment_id, '_dbvc_original_attachment_id', (int) $item['original_id']);
+            if (! empty($item['source_url'])) {
+                update_post_meta($attachment_id, '_dbvc_original_source_url', esc_url_raw($item['source_url']));
+            }
+
+            return $attachment_id;
         }
 
         /**
@@ -304,11 +710,38 @@ if (! class_exists('DBVC_Media_Sync')) {
             self::register_url_mapping($item['source_url'], $attachment_id);
             self::$stats['downloaded']++;
 
-            DBVC_Sync_Logger::log('Downloaded media asset', [
+            DBVC_Sync_Logger::log_media('Downloaded media asset', [
                 'original_id' => $item['original_id'],
                 'attachment_id' => $attachment_id,
                 'source_url'  => $item['source_url'],
             ]);
+
+            if (class_exists('DBVC_Database')) {
+                $file_path = get_attached_file($attachment_id);
+                $file_hash = ($file_path && is_readable($file_path)) ? hash_file('sha256', $file_path) : null;
+                $file_size = ($file_path && is_readable($file_path)) ? filesize($file_path) : null;
+
+                DBVC_Database::upsert_media([
+                    'attachment_id' => $attachment_id,
+                    'original_id'   => $item['original_id'] ?? null,
+                    'source_url'    => $item['source_url'] ?? null,
+                    'relative_path' => null,
+                    'file_hash'     => $file_hash,
+                    'file_size'     => $file_size,
+                    'mime_type'     => $item['mime_type'] ?? null,
+                ]);
+
+                DBVC_Database::log_activity(
+                    'media_downloaded',
+                    'info',
+                    'Media asset downloaded',
+                    [
+                        'original_id'   => $item['original_id'],
+                        'attachment_id' => $attachment_id,
+                        'source_url'    => $item['source_url'],
+                    ]
+                );
+            }
 
             return $attachment_id;
         }
@@ -367,9 +800,9 @@ if (! class_exists('DBVC_Media_Sync')) {
          * @param array $meta_refs
          * @return bool
          */
-        private static function apply_meta_mappings($post_id, array $meta_refs)
-        {
-            $meta_changed = false;
+    private static function apply_meta_mappings($post_id, array $meta_refs)
+    {
+        $meta_changed = false;
 
             foreach ($meta_refs as $ref) {
                 $original_id = isset($ref['original_id']) ? (int) $ref['original_id'] : 0;
@@ -637,7 +1070,7 @@ if (! class_exists('DBVC_Media_Sync')) {
                 $source_url  = isset($entry['source_url']) ? esc_url_raw($entry['source_url']) : '';
                 $total_detected++;
 
-                if (! $original_id || empty($source_url)) {
+                if (! $original_id) {
                     continue;
                 }
 
@@ -645,8 +1078,14 @@ if (! class_exists('DBVC_Media_Sync')) {
                     $skipped_existing++;
                     continue;
                 }
+                $relative_path = isset($entry['relative_path']) ? sanitize_text_field($entry['relative_path']) : '';
+                $bundle_path   = isset($entry['bundle_path']) ? sanitize_text_field($entry['bundle_path']) : $relative_path;
 
-                if (! self::is_source_allowed($source_url)) {
+                if (empty($source_url) && ! $relative_path) {
+                    continue;
+                }
+
+                if ($source_url && ! self::is_source_allowed($source_url)) {
                     $blocked[] = [
                         'original_id' => $original_id,
                         'source_url'  => $source_url,
@@ -656,14 +1095,25 @@ if (! class_exists('DBVC_Media_Sync')) {
                 }
 
                 $source_host = parse_url($source_url, PHP_URL_HOST);
+                $raw_hash    = '';
+                if (! empty($entry['file_hash'])) {
+                    $raw_hash = sanitize_text_field($entry['file_hash']);
+                } elseif (! empty($entry['hash'])) {
+                    $raw_hash = sanitize_text_field($entry['hash']);
+                }
+
                 $queue[] = [
-                    'original_id' => $original_id,
-                    'source_url'  => $source_url,
-                    'source_host' => $source_host ? (string) $source_host : '',
-                    'mime_type'   => isset($entry['mime_type']) ? sanitize_text_field($entry['mime_type']) : '',
-                    'title'       => isset($entry['title']) ? sanitize_text_field($entry['title']) : '',
-                    'filename'    => isset($entry['filename']) ? sanitize_file_name($entry['filename']) : '',
-                    'hash'        => isset($entry['hash']) ? sanitize_text_field($entry['hash']) : '',
+                    'original_id'   => $original_id,
+                    'asset_uid'     => isset($entry['asset_uid']) ? sanitize_text_field($entry['asset_uid']) : '',
+                    'source_url'    => $source_url,
+                    'source_host'   => $source_host ? (string) $source_host : '',
+                    'mime_type'     => isset($entry['mime_type']) ? sanitize_text_field($entry['mime_type']) : '',
+                    'title'         => isset($entry['title']) ? sanitize_text_field($entry['title']) : '',
+                    'filename'      => isset($entry['filename']) ? sanitize_file_name($entry['filename']) : '',
+                    'hash'          => $raw_hash,
+                    'relative_path' => $relative_path,
+                    'bundle_path'   => $bundle_path,
+                    'filesize'      => isset($entry['filesize']) ? (int) $entry['filesize'] : 0,
                 ];
             }
 
@@ -672,6 +1122,206 @@ if (! class_exists('DBVC_Media_Sync')) {
                 'blocked'          => $blocked,
                 'skipped_existing' => $skipped_existing,
                 'total_detected'   => $total_detected,
+            ];
+        }
+
+        /**
+         * Apply resolver results by seeding ID mappings and pruning queue items.
+         *
+         * @param array|null $resolver_result
+         * @param array      $queue
+         * @return void
+         */
+        private static function apply_resolver_result($resolver_result, array &$queue)
+        {
+            if (! is_array($resolver_result) || empty($resolver_result['attachments'])) {
+                return;
+            }
+
+            $resolved_map = [];
+
+            foreach ($resolver_result['attachments'] as $asset_key => $resolution) {
+                $descriptor = isset($resolution['descriptor']) && is_array($resolution['descriptor'])
+                    ? $resolution['descriptor']
+                    : [];
+
+                $original_id = isset($descriptor['original_id']) ? (int) $descriptor['original_id'] : 0;
+                if (! $original_id) {
+                    continue;
+                }
+
+                $status    = isset($resolution['status']) ? $resolution['status'] : '';
+                $target_id = isset($resolution['target_id']) ? (int) $resolution['target_id'] : 0;
+
+                $decision = self::get_resolver_decision($original_id);
+
+                if ($decision) {
+                    if (in_array($decision['action'], ['reuse', 'map'], true) && ! empty($decision['target_id'])) {
+                        $target_id = (int) $decision['target_id'];
+                        self::set_mapping($original_id, $target_id);
+                        self::$stats['reused']++;
+                        self::mark_queue_handled($queue, $original_id, $target_id);
+                        self::log_event('media_resolver_decision_reuse', 'Resolver decision applied (reuse/map)', [
+                            'original_id' => $original_id,
+                            'target_id'   => $target_id,
+                            'scope'       => $decision['scope'],
+                        ]);
+                        continue;
+                    }
+
+                    if ($decision['action'] === 'skip') {
+                        self::mark_queue_handled($queue, $original_id, null);
+                        self::log_event('media_resolver_decision_skip', 'Resolver decision applied (skip)', [
+                            'original_id' => $original_id,
+                            'scope'       => $decision['scope'],
+                        ]);
+                        continue;
+                    }
+
+                    if ($decision['action'] === 'download') {
+                        self::flag_queue_for_download($queue, $original_id);
+                        self::log_event('media_resolver_decision_download', 'Resolver decision applied (download)', [
+                            'original_id' => $original_id,
+                            'scope'       => $decision['scope'],
+                        ]);
+                    }
+                }
+
+                if ($status === 'reused' && $target_id) {
+                    $current = self::get_local_id($original_id);
+                    self::set_mapping($original_id, $target_id);
+                    if (! $current) {
+                        self::$stats['reused']++;
+                    }
+                    $resolved_map[$original_id] = $target_id;
+                    continue;
+                }
+
+                if ($status === 'conflict') {
+                    self::log_event(
+                        'media_resolver_conflict',
+                        'Resolver conflict detected',
+                        [
+                            'original_id' => $original_id,
+                            'asset_uid'   => $descriptor['asset_uid'] ?? null,
+                            'reason'      => $resolution['reason'] ?? '',
+                            'candidates'  => $resolution['candidates'] ?? [],
+                        ],
+                        'warning'
+                    );
+                }
+            }
+
+            if (empty($resolved_map)) {
+                return;
+            }
+
+            foreach ($queue as &$item) {
+                $original_id = isset($item['original_id']) ? (int) $item['original_id'] : 0;
+                if ($original_id && isset($resolved_map[$original_id])) {
+                    $item['handled']  = true;
+                    $item['local_id'] = $resolved_map[$original_id];
+                }
+            }
+            unset($item);
+        }
+
+        /**
+         * Determine whether legacy queue processing should run.
+         *
+         * @param array|null $resolver_result
+         * @param array      $queue
+         * @return bool
+         */
+        private static function should_run_legacy_sync($resolver_result, array $queue): bool
+        {
+            $default = ! empty($queue);
+
+            if (is_array($resolver_result) && isset($resolver_result['metrics'])) {
+                $metrics     = $resolver_result['metrics'];
+                $unresolved  = isset($metrics['unresolved']) ? (int) $metrics['unresolved'] : null;
+                $detected    = isset($metrics['detected']) ? (int) $metrics['detected'] : null;
+                $resolved_id = isset($resolver_result['id_map']) ? count($resolver_result['id_map']) : 0;
+
+                if (
+                    $unresolved === 0
+                    && $detected !== null
+                    && $resolved_id >= $detected
+                ) {
+                    $default = false;
+                }
+            }
+
+            /**
+             * Filter whether the legacy media sync queue should run.
+             *
+             * @param bool  $should_run     Default decision.
+             * @param array $resolver_result Resolver payload (may be null).
+             * @param array $queue           Remaining queue entries.
+             */
+            return apply_filters('dbvc_media_use_legacy_sync', $default, $resolver_result, $queue);
+        }
+
+        /**
+         * Summarize source hosts for logging.
+         *
+         * @param array $items
+         * @return array
+         */
+        private static function summarize_hosts(array $items)
+        {
+            $summary = [];
+            foreach ($items as $item) {
+                $host = isset($item['source_host']) && $item['source_host'] !== '' ? $item['source_host'] : 'local';
+                if (! isset($summary[$host])) {
+                    $summary[$host] = 0;
+                }
+                $summary[$host]++;
+            }
+            return $summary;
+        }
+
+        /**
+         * Summarize blocked reasons for logging.
+         *
+         * @param array $blocked
+         * @return array
+         */
+        private static function summarize_blocked(array $blocked)
+        {
+            $summary = [];
+            foreach ($blocked as $item) {
+                $reason = isset($item['reason']) ? (string) $item['reason'] : 'unknown';
+                if (! isset($summary[$reason])) {
+                    $summary[$reason] = 0;
+                }
+                $summary[$reason]++;
+            }
+            return $summary;
+        }
+
+        /**
+         * Summarize relative path availability for logging.
+         *
+         * @param array $items
+         * @return array
+         */
+        private static function summarize_relative_paths(array $items)
+        {
+            $with    = 0;
+            $without = 0;
+
+            foreach ($items as $item) {
+                if (! empty($item['relative_path'])) {
+                    $with++;
+                } else {
+                    $without++;
+                }
+            }
+
+            return [
+                'with_relative_path'    => $with,
+                'without_relative_path' => $without,
             ];
         }
 
@@ -712,6 +1362,64 @@ if (! class_exists('DBVC_Media_Sync')) {
             }
 
             return in_array($host, $allowed_hosts, true);
+        }
+
+        private static function load_resolver_decisions($proposal_id)
+        {
+            self::$resolver_decisions = [];
+            self::$resolver_global_decisions = [];
+
+            $store = get_option('dbvc_resolver_decisions', []);
+            if (! is_array($store)) {
+                return;
+            }
+
+            if ($proposal_id && isset($store[$proposal_id]) && is_array($store[$proposal_id])) {
+                self::$resolver_decisions = $store[$proposal_id];
+                unset(self::$resolver_decisions['__summary']);
+            }
+
+            if (isset($store['__global']) && is_array($store['__global'])) {
+                self::$resolver_global_decisions = $store['__global'];
+            }
+        }
+
+        private static function get_resolver_decision($original_id)
+        {
+            $key = (string) $original_id;
+            if (isset(self::$resolver_decisions[$key])) {
+                return self::$resolver_decisions[$key];
+            }
+            if (isset(self::$resolver_global_decisions[$key])) {
+                return self::$resolver_global_decisions[$key];
+            }
+            return null;
+        }
+
+        private static function mark_queue_handled(array &$queue, $original_id, $local_id = null)
+        {
+            foreach ($queue as &$item) {
+                if ((int) ($item['original_id'] ?? 0) === (int) $original_id) {
+                    $item['handled'] = true;
+                    if ($local_id) {
+                        $item['local_id'] = $local_id;
+                    }
+                    break;
+                }
+            }
+            unset($item);
+        }
+
+        private static function flag_queue_for_download(array &$queue, $original_id)
+        {
+            foreach ($queue as &$item) {
+                if ((int) ($item['original_id'] ?? 0) === (int) $original_id) {
+                    $item['force_download'] = true;
+                    $item['handled']        = false;
+                    break;
+                }
+            }
+            unset($item);
         }
 
         /**

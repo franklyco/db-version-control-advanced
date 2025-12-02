@@ -1,0 +1,16 @@
+{
+  "name": "db-version-control-admin-app",
+  "version": "1.0.0",
+  "private": true,
+  "main": "build/admin-app.js",
+  "source": "src/admin-app.js",
+  "scripts": {
+    "start": "wp-scripts start admin-app",
+    "build": "wp-scripts build admin-app",
+    "lint": "wp-scripts lint-js admin-app"
+  },
+  "devDependencies": {
+    "@babel/runtime": "^7.26.0",
+    "@wordpress/scripts": "^28.2.0"
+  }
+}

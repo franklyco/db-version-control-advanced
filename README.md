@@ -226,6 +226,77 @@ wp dbvc import
     git push
 ```
 
+## Example Scenarios
+
+The admin interface lives under **DBVC Export** in the WordPress dashboard. The steps below reference those tabs directly.
+
+### 1. Full Site Export (UI)
+
+1. Open **DBVC Export → Export/Download → Full Export**.
+2. Confirm the post types, masking, and mirror settings you want.
+3. Click **Run Full Export**. A success notice confirms JSON regeneration in your sync folder.
+4. Commit the updated files to Git if you are tracking the sync directory.
+
+### 2. Differential Export Between Releases
+
+Export only new or changed posts since the last full export.
+
+1. Go to **Export/Download → Snapshots & Diff**.
+2. Pick a baseline (latest full export or a specific snapshot ID).
+3. Click **Run Diff Export**. The notice shows created/updated/unchanged counts and a snapshot entry is logged.
+4. Commit only the files that changed—unchanged content is skipped automatically.
+
+**CLI equivalent**
+
+```bash
+wp dbvc export --baseline=latest
+wp dbvc export --baseline=123   # specific snapshot ID
+```
+
+### 3. Chunked Export for Large Sites
+
+1. In **Snapshots & Diff**, set a chunk size (e.g., 250) and click **Start Chunked Export**.
+2. A job row appears with progress data. Click **Process Next Chunk** until the remaining count reaches zero.
+3. A completion notice confirms the manifest refresh and records a chunked export snapshot. The same job can be resumed later via CLI using the command printed beneath the row.
+
+### 4. Importing JSON into Another Environment
+
+1. Pull the sync directory onto the target site (e.g., `git pull` or upload a ZIP in **Import/Upload → Upload**).
+2. Go to **Import/Upload → Content Import**.
+3. Choose a filename filter, enable *Smart Import* if you want to skip unchanged posts, and optionally enable media retrieval.
+4. Click **Run Import**. Import, media, and menu stats appear in the notices.
+
+### 5. Mirroring Domains & Media Retrieval
+
+1. Open **Configure → Import Defaults**.
+2. Set **Mirror domain** to the source URL (e.g., staging site).
+3. Choose the **Media transport mode**:
+   - *Auto* (default) uses bundled media first, then remote URLs.
+   - *Bundled only* requires files to exist in `sync/media/...`.
+   - *Remote only* ignores bundles and always downloads.
+4. Enable **Retrieve missing media** on imports when you want attachments restored.
+
+During import, DBVC rewrites URLs from the mirror domain and sideloads media according to the selected transport policy. Any blocks or failures are logged.
+
+### 6. Restoring from a Backup Snapshot
+
+1. Visit **Backup/Archive**, choose a snapshot folder, and click **Restore** (or download the bundle first if you need a local copy).
+2. After the snapshot copies back into the sync directory, run a standard import.
+3. If the snapshot contained a media bundle (`sync/media/...`), the importer detects it automatically when the transport mode allows bundled files.
+
+### 7. Media Bundles & Validation
+
+1. Enable media bundling under **Configure → Import Defaults → Media Retrieval**.
+2. Run an export. Bundled files are copied into `sync/media/YYYY/MM/` with hashes recorded in the manifest and snapshot entries.
+3. Use **Clear Media Cache** and re-export if you need to rebuild the bundle after remote changes.
+4. During import, hash mismatches or missing bundles are reported through the activity log so you can correct and retry.
+
+## Monitoring & Logs
+
+- **Activity log table (`wp_dbvc_activity_log`)** — Structured events for exports, imports, chunk progress, and media sync. Query with your database viewer or `wp db query`.
+- **File log (`dbvc-backup.log`)** — Enabled via the Import Defaults tab; captures high-level notices for backups and media operations.
+- **Snapshots & Jobs UI** — The Snapshots tab shows the latest exports/imports and any active chunked jobs, including inline controls for continuing jobs directly from the dashboard.
+
 ## Developer Integration
 
 ### Filters

@@ -15,7 +15,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
     {
         const MANIFEST_FILENAME = 'manifest.json';
         const OPTION_LOCKED     = 'dbvc_locked_backups';
-        const SCHEMA_VERSION    = 1;
+        const SCHEMA_VERSION    = 3;
         private static $attachment_cache = [];
 
         /**
@@ -53,10 +53,11 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 return;
             }
 
-            $items          = [];
-            $missing_hashes = 0;
-            $media_index    = [];
-            $source_lookup  = [];
+        $items          = [];
+        $missing_hashes = 0;
+        $media_index    = [];
+        $source_lookup  = [];
+        $backup_name    = basename($backup_path);
 
             $iterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($backup_path, FilesystemIterator::SKIP_DOTS)
@@ -161,9 +162,14 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 ];
             }
 
+            if (class_exists('DBVC_Media_Sync') && DBVC_Media_Sync::is_bundle_enabled() && ! empty($media_index)) {
+                self::bundle_media_assets($media_index);
+            }
+
             $manifest = [
                 'schema'       => self::SCHEMA_VERSION,
                 'generated_at' => gmdate('Y-m-d H:i:s'),
+                'backup_name'  => $backup_name,
                 'site'         => [
                     'home_url'   => home_url(),
                     'site_url'   => site_url(),
@@ -173,10 +179,20 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 'totals'       => [
                     'files'             => count($items),
                     'missing_import_hash' => $missing_hashes,
+                    'media_items'       => count($media_index),
+                ],
+                'bundle'      => [
+                    'media_enabled'  => class_exists('DBVC_Media_Sync') ? DBVC_Media_Sync::is_bundle_enabled() : false,
+                    'transport_mode' => class_exists('DBVC_Media_Sync') ? DBVC_Media_Sync::get_transport_mode() : 'auto',
                 ],
                 'items'        => $items,
                 'media_index'  => array_values($media_index),
             ];
+
+            $resolver_snapshot = self::export_resolver_decisions($backup_name);
+            if (! empty($resolver_snapshot['proposal']) || ! empty($resolver_snapshot['global'])) {
+                $manifest['resolver_decisions'] = $resolver_snapshot;
+            }
 
             $manifest['checksum'] = hash('sha256', wp_json_encode($manifest));
 
@@ -185,6 +201,129 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 $manifest_path,
                 wp_json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
             );
+        }
+
+        private static function export_resolver_decisions($backup_name)
+        {
+            $store    = get_option('dbvc_resolver_decisions', []);
+            $proposal = isset($store[$backup_name]) && is_array($store[$backup_name]) ? $store[$backup_name] : [];
+            $global   = isset($store['__global']) && is_array($store['__global']) ? $store['__global'] : [];
+
+            return [
+                'proposal' => $proposal,
+                'global'   => $global,
+            ];
+        }
+
+        /**
+         * Copy referenced media files into the sync bundle directory.
+         *
+         * @param array $media_index
+         * @return void
+         */
+        private static function bundle_media_assets(array $media_index)
+        {
+            if (empty($media_index)) {
+                return;
+            }
+
+            $sync_root    = dbvc_get_sync_path();
+            $bundle_root  = DBVC_Media_Sync::get_bundle_base_dir();
+            $copied       = 0;
+            $failed       = 0;
+            $skipped_hash = 0;
+
+            if (is_dir($bundle_root)) {
+                // Clear existing bundle contents to avoid stale files.
+                if (method_exists('DBVC_Sync_Posts', 'delete_folder_contents')) {
+                    DBVC_Sync_Posts::delete_folder_contents($bundle_root);
+                }
+            }
+
+            wp_mkdir_p($bundle_root);
+
+            foreach ($media_index as $entry) {
+                $original_id   = isset($entry['original_id']) ? (int) $entry['original_id'] : 0;
+                $relative_path = isset($entry['relative_path']) ? $entry['relative_path'] : '';
+                $hash_prefixed = isset($entry['hash']) ? $entry['hash'] : '';
+                $source_path   = $original_id ? get_attached_file($original_id) : '';
+
+                if (! $original_id || ! $source_path || ! file_exists($source_path) || empty($relative_path)) {
+                    $failed++;
+                    continue;
+                }
+
+                $target_path = trailingslashit($sync_root) . ltrim($relative_path, '/');
+                $target_dir  = dirname($target_path);
+
+                if (! wp_mkdir_p($target_dir)) {
+                    DBVC_Sync_Logger::log('Failed to create bundle media directory', [
+                        'target_dir' => $target_dir,
+                    ]);
+                    $failed++;
+                    continue;
+                }
+
+                $existing_hash = '';
+                if (file_exists($target_path)) {
+                    $existing_hash = hash_file('sha256', $target_path);
+                }
+
+                $expected_hash = '';
+                if ($hash_prefixed) {
+                    $parts = explode(':', $hash_prefixed, 2);
+                    $expected_hash = end($parts);
+                }
+
+                if ($existing_hash && $expected_hash && hash_equals($existing_hash, $expected_hash)) {
+                    $skipped_hash++;
+                    continue;
+                }
+
+                if (! @copy($source_path, $target_path)) {
+                    DBVC_Sync_Logger::log('Failed to copy media into bundle', [
+                        'source' => $source_path,
+                        'target' => $target_path,
+                    ]);
+                    $failed++;
+                    continue;
+                }
+
+                $copied++;
+
+                if (class_exists('DBVC_Database')) {
+                    DBVC_Database::upsert_media([
+                        'attachment_id' => $original_id,
+                        'original_id'   => $original_id,
+                        'relative_path' => $relative_path,
+                        'file_hash'     => $expected_hash ?: hash_file('sha256', $target_path),
+                        'file_size'     => file_exists($target_path) ? filesize($target_path) : null,
+                        'mime_type'     => isset($entry['mime_type']) ? $entry['mime_type'] : null,
+                        'source_url'    => isset($entry['source_url']) ? $entry['source_url'] : null,
+                    ]);
+                }
+            }
+
+            if ($copied > 0) {
+                DBVC_Sync_Logger::log('Bundled media copied', [
+                    'copied'        => $copied,
+                    'skipped_hash'  => $skipped_hash,
+                    'failed'        => $failed,
+                ]);
+            }
+
+            if (class_exists('DBVC_Database')) {
+                DBVC_Database::log_activity(
+                    'media_bundle_built',
+                    'info',
+                    'Media bundle generated',
+                    [
+                        'copied'       => $copied,
+                        'skipped_hash' => $skipped_hash,
+                        'failed'       => $failed,
+                    ]
+                );
+            }
         }
 
         /**
@@ -361,25 +500,103 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 return null;
             }
 
-            $source_url = wp_get_attachment_url($attachment_id);
-            $file_path  = get_attached_file($attachment_id);
-            $hash       = '';
-            $filesize   = 0;
+            $asset_uid  = get_post_meta($attachment_id, 'vf_asset_uid', true);
+            $file_hash  = get_post_meta($attachment_id, 'vf_file_hash', true);
+            $need_stamp = false;
+            $file_path     = get_attached_file($attachment_id);
+            $hash_raw      = '';
+            $filesize      = 0;
+            $dimensions    = ['width' => null, 'height' => null];
+            $relative_path = '';
+
+            $source_url    = wp_get_attachment_url($attachment_id);
 
             if ($file_path && file_exists($file_path)) {
-                $hash     = hash_file('sha256', $file_path);
-                $filesize = filesize($file_path);
+                $hash_raw      = hash_file('sha256', $file_path);
+                $filesize      = filesize($file_path);
+                if (class_exists('DBVC_Media_Sync')) {
+                    $relative_path = DBVC_Media_Sync::get_relative_bundle_path($attachment_id, $file_path);
+                }
+
+                $image_meta = wp_get_attachment_metadata($attachment_id);
+                if (is_array($image_meta)) {
+                    if (! empty($image_meta['width'])) {
+                        $dimensions['width'] = (int) $image_meta['width'];
+                    }
+                    if (! empty($image_meta['height'])) {
+                        $dimensions['height'] = (int) $image_meta['height'];
+                    }
+                }
             }
 
-            return [
-                'original_id' => $attachment_id,
-                'source_url'  => $source_url ?: '',
-                'mime_type'   => $attachment->post_mime_type ?: '',
-                'title'       => get_the_title($attachment_id),
-                'filename'    => $source_url ? basename(parse_url($source_url, PHP_URL_PATH)) : '',
-                'hash'        => $hash,
-                'filesize'    => $filesize,
+            if (! $asset_uid) {
+                $asset_uid = wp_generate_uuid4();
+                $need_stamp = true;
+            }
+
+            if (! $file_hash && $hash_raw) {
+                $file_hash  = $hash_raw;
+                $need_stamp = true;
+            }
+
+            if ($need_stamp) {
+                self::ensure_attachment_identity($attachment_id, $asset_uid, $file_hash);
+            }
+
+            $entry = [
+                'original_id'   => $attachment_id,
+                'asset_uid'     => $asset_uid,
+                'source_url'    => $source_url ?: '',
+                'mime_type'     => $attachment->post_mime_type ?: '',
+                'title'         => get_the_title($attachment_id),
+                'filename'      => $source_url ? basename(parse_url($source_url, PHP_URL_PATH)) : '',
+                'relative_path' => $relative_path,
+                'bundle_path'   => $relative_path,
+                'file_hash'     => class_exists('DBVC_Media_Sync')
+                    ? DBVC_Media_Sync::format_hash($file_hash ?: $hash_raw)
+                    : ($file_hash ?: $hash_raw),
+                'hash'          => class_exists('DBVC_Media_Sync')
+                    ? DBVC_Media_Sync::format_hash($hash_raw)
+                    : $hash_raw,
+                'filesize'      => $filesize,
+                'file_size'     => $filesize, // Legacy key retained for backward compatibility.
+                'dimensions'    => array_filter($dimensions, static function ($value) {
+                    return $value !== null;
+                }),
             ];
+
+            if (class_exists('DBVC_Database')) {
+                DBVC_Database::upsert_media([
+                    'attachment_id' => $attachment_id,
+                    'original_id'   => $attachment_id,
+                    'source_url'    => $entry['source_url'],
+                    'relative_path' => $relative_path ?: null,
+                    'file_hash'     => $hash_raw ?: null,
+                    'file_size'     => $filesize ?: null,
+                    'mime_type'     => $entry['mime_type'],
+                ]);
+            }
+
+            return $entry;
+        }
+
+        /**
+         * Ensure attachment identity metadata is persisted.
+         *
+         * @param int         $attachment_id
+         * @param string|null $asset_uid
+         * @param string|null $file_hash
+         * @return void
+         */
+        private static function ensure_attachment_identity($attachment_id, $asset_uid = null, $file_hash = null)
+        {
+            if ($asset_uid) {
+                update_post_meta($attachment_id, 'vf_asset_uid', $asset_uid);
+            }
+
+            if ($file_hash) {
+                update_post_meta($attachment_id, 'vf_file_hash', $file_hash);
+            }
         }
 
         /**

@@ -46,19 +46,29 @@ define('DBVC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBVC_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('DBVC_PLUGIN_VERSION', '1.1.0');
 
+require_once DBVC_PLUGIN_PATH . 'includes/class-database.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-snapshot-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-media-sync.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Resolver.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-export-manager.php';
 // require_once DBVC_PLUGIN_PATH . 'includes/class-menu-importer.php'; // Added new menu importer/exporter class - removed later to avoid over-complicating the class-sync-posts.php
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-posts.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-taxonomies.php';
 require_once DBVC_PLUGIN_PATH . 'includes/hooks.php';
 require_once DBVC_PLUGIN_PATH . 'commands/class-wp-cli-commands.php';
+require_once DBVC_PLUGIN_PATH . 'admin/class-admin-app.php';
+DBVC_Admin_App::init();
+
 if (is_admin()) {
 	require_once DBVC_PLUGIN_PATH . 'admin/admin-menu.php';
 	require_once DBVC_PLUGIN_PATH . 'admin/admin-page.php';
 }
+
+DBVC_Database::init();
+register_activation_hook(__FILE__, ['DBVC_Database', 'activate']);
 
 // Hook into post save.
 add_action('save_post', ['DBVC_Sync_Posts', 'export_post_to_json'], 10, 2);

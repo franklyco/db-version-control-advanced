@@ -215,6 +215,9 @@ function dbvc_handle_term_changes()
  */
 function dbvc_handle_option_updates($option, $old_value, $new_value)
 {
+	if (defined('DBVC_PHPUNIT') && DBVC_PHPUNIT) {
+		return;
+	}
 	// Allow other plugins to add their own options to skip
 	$skip_options = apply_filters('dbvc_skip_option_names', ['dbvc_']);
 

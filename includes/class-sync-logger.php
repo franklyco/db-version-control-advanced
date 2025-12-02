@@ -16,10 +16,14 @@ if (! defined('WPINC')) {
 if (! class_exists('DBVC_Sync_Logger')) {
     class DBVC_Sync_Logger
     {
-        const OPTION_ENABLED  = 'dbvc_logging_enabled';
-        const OPTION_MAX_SIZE = 'dbvc_logging_max_size';
-        const DEFAULT_MAX_SIZE = 1048576; // 1MB
-        const LOG_FILENAME    = 'dbvc-backup.log';
+        const OPTION_ENABLED        = 'dbvc_logging_enabled';
+        const OPTION_MAX_SIZE       = 'dbvc_logging_max_size';
+        const OPTION_DIRECTORY      = 'dbvc_logging_directory';
+        const OPTION_IMPORT_EVENTS  = 'dbvc_logging_imports';
+        const OPTION_UPLOAD_EVENTS  = 'dbvc_logging_uploads';
+        const OPTION_MEDIA_EVENTS   = 'dbvc_logging_media';
+        const DEFAULT_MAX_SIZE      = 1048576; // 1MB
+        const LOG_FILENAME          = 'dbvc-backup.log';
 
         /**
          * Write an entry to the custom log file.
@@ -30,10 +34,229 @@ if (! class_exists('DBVC_Sync_Logger')) {
          */
         public static function log($message, array $context = [])
         {
-            if ('1' !== get_option(self::OPTION_ENABLED, '0')) {
+            if (! self::is_core_logging_enabled()) {
                 return;
             }
 
+            self::write_entry($message, $context);
+        }
+
+        /**
+         * Write an entry scoped to import activity.
+         *
+         * @param string $message
+         * @param array  $context
+         * @return void
+         */
+        public static function log_import($message, array $context = [])
+        {
+            if (! self::is_import_logging_enabled()) {
+                return;
+            }
+
+            self::write_entry($message, $context);
+        }
+
+        /**
+         * Write an entry scoped to sync uploads.
+         *
+         * @param string $message
+         * @param array  $context
+         * @return void
+         */
+        public static function log_upload($message, array $context = [])
+        {
+            if (! self::is_upload_logging_enabled()) {
+                return;
+            }
+
+            self::write_entry($message, $context);
+        }
+
+        /**
+         * Write an entry scoped to media retrieval.
+         *
+         * @param string $message
+         * @param array  $context
+         * @return void
+         */
+        public static function log_media($message, array $context = [])
+        {
+            if (! self::is_media_logging_enabled()) {
+                return;
+            }
+
+            self::write_entry($message, $context);
+        }
+
+        /**
+         * Return the absolute log file path, ensuring the directory exists.
+         *
+         * @return string Empty string if unavailable.
+         */
+        public static function get_log_file_path()
+        {
+            $dir = self::get_log_directory();
+            if (! $dir) {
+                return '';
+            }
+
+            return trailingslashit($dir) . self::LOG_FILENAME;
+        }
+
+        /**
+         * Resolve the effective log directory (creates it if missing).
+         *
+         * @return string Directory path without trailing slash or empty string.
+         */
+        public static function get_log_directory()
+        {
+            $dir_option = '';
+            if (function_exists('get_option')) {
+                $dir_option = (string) get_option(self::OPTION_DIRECTORY, '');
+            }
+
+            $normalized = self::normalize_directory_option($dir_option);
+            if ($normalized === '') {
+                $normalized = wp_normalize_path(WP_CONTENT_DIR);
+            }
+
+            if (! is_dir($normalized) && ! wp_mkdir_p($normalized)) {
+                return '';
+            }
+
+            // Only attempt to harden if directory is within the sync path.
+            if (
+                function_exists('dbvc_get_sync_path')
+                && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')
+            ) {
+                $sync_dir = wp_normalize_path(trailingslashit(dbvc_get_sync_path()));
+                $target   = wp_normalize_path(trailingslashit($normalized));
+                if ($sync_dir && strpos($target, $sync_dir) === 0) {
+                    DBVC_Sync_Posts::ensure_directory_security(rtrim($target, '/'));
+                }
+            }
+
+            return untrailingslashit($normalized);
+        }
+
+        /**
+         * Determine if the core logging toggle is active.
+         *
+         * @return bool
+         */
+        public static function is_core_logging_enabled()
+        {
+            return function_exists('get_option') && get_option(self::OPTION_ENABLED, '0') === '1';
+        }
+
+        /**
+         * Determine if import-related events should be logged.
+         *
+         * @return bool
+         */
+        public static function is_import_logging_enabled()
+        {
+            return self::is_core_logging_enabled() && get_option(self::OPTION_IMPORT_EVENTS, '0') === '1';
+        }
+
+        /**
+         * Determine if upload-related events should be logged.
+         *
+         * @return bool
+         */
+        public static function is_upload_logging_enabled()
+        {
+            return self::is_core_logging_enabled() && get_option(self::OPTION_UPLOAD_EVENTS, '0') === '1';
+        }
+
+        /**
+         * Determine if media retrieval events should be logged.
+         *
+         * @return bool
+         */
+        public static function is_media_logging_enabled()
+        {
+            return self::is_core_logging_enabled() && get_option(self::OPTION_MEDIA_EVENTS, '0') === '1';
+        }
+
+        /**
+         * Normalize the directory option into an absolute path within the WP install.
+         *
+         * @param string $raw
+         * @return string Empty string if invalid or not provided.
+         */
+        private static function normalize_directory_option($raw)
+        {
+            $raw = trim((string) $raw);
+            if ($raw === '') {
+                return '';
+            }
+
+            if (function_exists('dbvc_validate_sync_path')) {
+                $validated = dbvc_validate_sync_path($raw);
+                if ($validated === false) {
+                    return '';
+                }
+
+                if ($validated === '') {
+                    return '';
+                }
+
+                $abs = trailingslashit(ABSPATH) . ltrim($validated, '/');
+                return wp_normalize_path($abs);
+            }
+
+            $normalized = wp_normalize_path($raw);
+            if (self::is_absolute_path($normalized)) {
+                return $normalized;
+            }
+
+            return wp_normalize_path(trailingslashit(ABSPATH) . ltrim($normalized, '/'));
+        }
+
+        /**
+         * Simple absolute path detector for back-compat.
+         *
+         * @param string $path
+         * @return bool
+         */
+        private static function is_absolute_path($path)
+        {
+            if ($path === '') {
+                return false;
+            }
+
+            if (preg_match('#^[a-zA-Z]:[\\\\/]#', $path)) {
+                return true;
+            }
+
+            return $path[0] === '/' || strpos($path, '://') !== false;
+        }
+
+        /**
+         * Delete the current log file.
+         *
+         * @return bool True on success or if file absent.
+         */
+        public static function delete_log()
+        {
+            $path = self::get_log_file_path();
+            if (! $path || ! file_exists($path)) {
+                return true;
+            }
+            return (bool) @unlink($path);
+        }
+
+        /**
+         * Low-level writer that appends a formatted line to the log file.
+         *
+         * @param string $message
+         * @param array  $context
+         * @return void
+         */
+        private static function write_entry($message, array $context = [])
+        {
             $path = self::get_log_file_path();
             if (! $path) {
                 return;
@@ -49,44 +272,6 @@ if (! class_exists('DBVC_Sync_Logger')) {
             );
 
             file_put_contents($path, $entry, FILE_APPEND);
-        }
-
-        /**
-         * Return the absolute log file path, ensuring the directory exists.
-         *
-         * @return string Empty string if unavailable.
-         */
-        public static function get_log_file_path()
-        {
-            if (! function_exists('dbvc_get_sync_path')) {
-                return '';
-            }
-
-            $dir = trailingslashit(dbvc_get_sync_path());
-            if (! is_dir($dir) && ! wp_mkdir_p($dir)) {
-                return '';
-            }
-
-            // Ensure the directory has basic protection.
-            if (method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
-                DBVC_Sync_Posts::ensure_directory_security($dir);
-            }
-
-            return $dir . self::LOG_FILENAME;
-        }
-
-        /**
-         * Delete the current log file.
-         *
-         * @return bool True on success or if file absent.
-         */
-        public static function delete_log()
-        {
-            $path = self::get_log_file_path();
-            if (! $path || ! file_exists($path)) {
-                return true;
-            }
-            return (bool) @unlink($path);
         }
 
         /**
