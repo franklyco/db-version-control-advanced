@@ -661,6 +661,7 @@ final class DBVC_Admin_App
                 'post_type'     => $item['post_type'],
                 'post_title'    => $item['post_title'],
                 'post_status'   => $item['post_status'],
+                'post_modified' => $item['post_modified'] ?? null,
                 'path'          => $item['path'],
                 'hash'          => $item['hash'],
                 'content_hash'  => $item['content_hash'] ?? null,

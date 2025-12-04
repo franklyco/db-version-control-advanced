@@ -245,6 +245,114 @@ const renderStatusBadge = (status) => {
 	return <span className={`dbvc-badge dbvc-badge--${status}`}>{label}</span>;
 };
 
+const ENTITY_COLUMN_DEFS = [
+	{
+		id: 'title',
+		label: 'Title',
+		defaultVisible: true,
+		lockVisible: true,
+		renderCell: (entity) => entity.post_title || entity.vf_object_uid,
+	},
+	{
+		id: 'post_name',
+		label: 'Slug',
+		defaultVisible: true,
+		renderCell: (entity) => (
+			<span className="dbvc-text-break">{entity.post_name || '—'}</span>
+		),
+	},
+	{
+		id: 'post_type',
+		label: 'Type',
+		defaultVisible: true,
+		renderCell: (entity) => entity.post_type || '—',
+	},
+	{
+		id: 'post_status',
+		label: 'Status',
+		defaultVisible: true,
+		renderCell: (entity) => entity.post_status || '—',
+	},
+	{
+		id: 'post_modified',
+		label: 'Last modified',
+		defaultVisible: true,
+		renderCell: (entity) => (entity.post_modified ? formatDate(entity.post_modified) : '—'),
+	},
+	{
+		id: 'content_hash',
+		label: 'Content hash',
+		defaultVisible: false,
+		renderCell: (entity) => (
+			<span className="dbvc-text-break">{entity.content_hash ?? '—'}</span>
+		),
+	},
+	{
+		id: 'diff',
+		label: 'Diff',
+		defaultVisible: true,
+		renderCell: (entity, helpers) => (
+			<>
+				{renderStatusBadge(helpers.diffState.needs_review ? 'needs_review' : 'resolved')}
+				{helpers.hashMissing && (
+					<span className="dbvc-badge dbvc-badge--missing" style={{ marginLeft: '0.25rem' }}>
+						Hash missing
+					</span>
+				)}
+			</>
+		),
+	},
+	{
+		id: 'media_refs',
+		label: 'Media refs',
+		defaultVisible: true,
+		renderCell: (entity) =>
+			(entity.media_refs?.meta?.length ?? 0) + (entity.media_refs?.content?.length ?? 0),
+	},
+	{
+		id: 'resolver',
+		label: 'Resolver',
+		defaultVisible: true,
+		renderCell: (entity, helpers) => renderStatusBadge(helpers.mediaStatus),
+	},
+	{
+		id: 'unresolved_media',
+		label: 'Unresolved media',
+		defaultVisible: true,
+		renderCell: (entity, helpers) => helpers.summary.unresolved ?? 0,
+	},
+	{
+		id: 'meta_diff_count',
+		label: 'Unresolved meta',
+		defaultVisible: true,
+		renderCell: (entity) => entity.meta_diff_count ?? 0,
+	},
+	{
+		id: 'conflicts',
+		label: 'Conflicts',
+		defaultVisible: true,
+		renderCell: (entity, helpers) => helpers.summary.conflicts ?? 0,
+	},
+	{
+		id: 'decisions',
+		label: 'Decisions',
+		defaultVisible: true,
+		renderCell: (entity, helpers) =>
+			helpers.entityHasSelections ? (
+				<div className="dbvc-decisions">
+					{helpers.entityAccepted > 0 && (
+						<span className="dbvc-badge dbvc-badge--accept">{helpers.entityAccepted} accept</span>
+					)}
+					{helpers.entityKept > 0 && (
+						<span className="dbvc-badge dbvc-badge--keep">{helpers.entityKept} keep</span>
+					)}
+				</div>
+			) : (
+				'—'
+			),
+	},
+];
+
 const ProposalList = ({ proposals, selectedId, onSelect }) => {
 	if (!proposals.length) {
 		return <p>No proposals found. Generate an export to get started.</p>;
@@ -448,13 +556,14 @@ const ResolverSummary = ({ resolver }) => {
 	);
 };
 
-const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
+const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) => {
 	if (loading) {
 		return <p>Loading entities…</p>;
 	}
 	if (!entities.length) {
 		return <p>No entities found for this proposal.</p>;
 	}
+	const tableColumns = columns && columns.length ? columns : ENTITY_COLUMN_DEFS;
 	const virtualizationEnabled = entities.length > 200;
 	const rowHeight = 52;
 	const containerRef = useRef(null);
@@ -519,23 +628,15 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
 			<table className="widefat striped">
 				<thead>
 					<tr>
-						<th>Title</th>
-						<th>Type</th>
-						<th>Status</th>
-						<th>Content hash</th>
-						<th>Diff</th>
-						<th>Media refs</th>
-						<th>Resolver</th>
-						<th>Unresolved media</th>
-						<th>Unresolved meta</th>
-						<th>Conflicts</th>
-						<th>Decisions</th>
+						{tableColumns.map((column) => (
+							<th key={column.id}>{column.label}</th>
+						))}
 					</tr>
 				</thead>
 				<tbody>
 					{virtualizationEnabled && paddingTop > 0 && (
 						<tr className="dbvc-entity-spacer" aria-hidden="true" style={{ height: `${paddingTop}px` }}>
-							<td colSpan={11} />
+							<td colSpan={tableColumns.length} />
 						</tr>
 					)}
 					{visibleEntities.map((entity) => {
@@ -564,6 +665,16 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
 						event.stopPropagation();
 						onSelect(entity.vf_object_uid);
 					};
+						const helpers = {
+							summary,
+							diffState,
+							mediaStatus,
+							hashMissing,
+							decisionSummary,
+							entityHasSelections,
+							entityAccepted,
+							entityKept,
+						};
 						return (
 							<tr
 								key={entity.vf_object_uid}
@@ -578,45 +689,17 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
 							role="button"
 							tabIndex={0}
 						>
-							<td>{entity.post_title || entity.vf_object_uid}</td>
-							<td>{entity.post_type}</td>
-							<td>{entity.post_status || '—'}</td>
-							<td style={{ wordBreak: 'break-all' }}>{entity.content_hash ?? '—'}</td>
-							<td>
-								{renderStatusBadge(diffState.needs_review ? 'needs_review' : 'resolved')}
-								{hashMissing && (
-									<span className="dbvc-badge dbvc-badge--missing" style={{ marginLeft: '0.25rem' }}>
-										Hash missing
-									</span>
-								)}
-							</td>
-							<td>
-								{(entity.media_refs?.meta?.length ?? 0) + (entity.media_refs?.content?.length ?? 0)}
-							</td>
-							<td>{renderStatusBadge(mediaStatus)}</td>
-							<td>{summary.unresolved ?? 0}</td>
-							<td>{entity.meta_diff_count ?? 0}</td>
-							<td>{summary.conflicts ?? 0}</td>
-							<td>
-								{entityHasSelections ? (
-									<div className="dbvc-decisions">
-										{entityAccepted > 0 && (
-											<span className="dbvc-badge dbvc-badge--accept">{entityAccepted} accept</span>
-										)}
-										{entityKept > 0 && (
-											<span className="dbvc-badge dbvc-badge--keep">{entityKept} keep</span>
-										)}
-									</div>
-								) : (
-									'—'
-								)}
-							</td>
+							{tableColumns.map((column) => (
+								<td key={column.id}>
+									{column.renderCell ? column.renderCell(entity, helpers) : entity[column.id] ?? '—'}
+								</td>
+							))}
 						</tr>
 						);
 					})}
 					{virtualizationEnabled && paddingBottom > 0 && (
 						<tr className="dbvc-entity-spacer" aria-hidden="true" style={{ height: `${paddingBottom}px` }}>
-							<td colSpan={11} />
+							<td colSpan={tableColumns.length} />
 						</tr>
 					)}
 				</tbody>
@@ -969,6 +1052,17 @@ const EntityDetailPanel = ({
 						<span>File: {item?.path || '—'}</span>
 					</div>
 				</div>
+				{onClose && (
+					<button
+						type="button"
+						className="dbvc-entity-detail__close"
+						onClick={onClose}
+						aria-label="Close entity detail"
+						ref={onClose ? closeButtonRef : undefined}
+					>
+						Close
+					</button>
+				)}
 				<div className="dbvc-diff-filter">
 					<span>View:</span>
 					<button
@@ -1345,6 +1439,33 @@ const App = () => {
 	const [snapshotCapturing, setSnapshotCapturing] = useState(false);
 	const [captureAllSnapshotsLoading, setCaptureAllSnapshotsLoading] = useState(false);
 	const [clearingAll, setClearingAll] = useState(false);
+	const [columnVisibility, setColumnVisibility] = useState(() => {
+		const map = {};
+		ENTITY_COLUMN_DEFS.forEach((column) => {
+			map[column.id] = column.defaultVisible !== false;
+		});
+		return map;
+	});
+	const visibleColumns = useMemo(
+		() => ENTITY_COLUMN_DEFS.filter((column) => columnVisibility[column.id]),
+		[columnVisibility]
+	);
+	const handleColumnVisibilityToggle = useCallback((columnId) => {
+		setColumnVisibility((prev) => {
+			const column = ENTITY_COLUMN_DEFS.find((col) => col.id === columnId);
+			if (column && column.lockVisible) {
+				return prev;
+			}
+			return {
+				...prev,
+				[columnId]: !prev[columnId],
+			};
+		});
+	}, []);
+	const selectionRef = useRef(null);
+	useEffect(() => {
+		selectionRef.current = selectedEntityId;
+	}, [selectedEntityId]);
 	const reloadProposals = useCallback(
 		async (options = {}) => {
 			const { signal, focusProposalId } = options;
@@ -1487,25 +1608,30 @@ const App = () => {
 		}
 	}, []);
 
-	useEffect(() => {
-		if (!selectedId) {
-			return;
-		}
-
-		const controller = new AbortController();
+useEffect(() => {
+	if (!selectedId) {
 		setSelectedEntityId(null);
 		setEntityDetail(null);
-		loadEntities(selectedId, entityFilter, controller.signal).then((items) => {
-			if (items.length) {
-				setSelectedEntityId(items[0].vf_object_uid);
-				setIsEntityDetailOpen(true);
-			} else {
-				setSelectedEntityId(null);
-				setIsEntityDetailOpen(false);
-			}
-		});
-		return () => controller.abort();
-	}, [selectedId, entityFilter, loadEntities]);
+		setIsEntityDetailOpen(false);
+		return;
+	}
+
+	const controller = new AbortController();
+	loadEntities(selectedId, entityFilter, controller.signal).then((items) => {
+		if (!items.length) {
+			setSelectedEntityId(null);
+			setIsEntityDetailOpen(false);
+			return;
+		}
+		const currentSelection = selectionRef.current;
+		if (currentSelection && items.some((item) => item.vf_object_uid === currentSelection)) {
+			return;
+		}
+		setSelectedEntityId(null);
+		setIsEntityDetailOpen(false);
+	});
+	return () => controller.abort();
+}, [selectedId, entityFilter, loadEntities]);
 
 	useEffect(() => {
 		if (!selectedId) {
@@ -1614,12 +1740,7 @@ const App = () => {
 		}
 		const needle = entitySearch.toLowerCase();
 		return entities.filter((entity) => {
-			const haystack = [
-				entity.post_title,
-				entity.post_type,
-				entity.post_status,
-				entity.path,
-			]
+			const haystack = [entity.post_title, entity.post_type, entity.post_status, entity.path]
 				.filter(Boolean)
 				.join(' ')
 				.toLowerCase();
@@ -1642,24 +1763,17 @@ const App = () => {
 		[entities]
 	);
 
-	useEffect(() => {
-		if (!filteredEntities.length) {
-			setSelectedEntityId(null);
-			setIsEntityDetailOpen(false);
-			return;
-		}
-		if (!filteredEntities.find((entity) => entity.vf_object_uid === selectedEntityId)) {
-			setSelectedEntityId(filteredEntities[0].vf_object_uid);
-			setIsEntityDetailOpen(true);
-		}
-	}, [filteredEntities, selectedEntityId]);
-
-	useEffect(() => {
-		if (entities.length && !selectedEntityId) {
-			setSelectedEntityId(entities[0].vf_object_uid);
-			setIsEntityDetailOpen(true);
-		}
-	}, [entities, selectedEntityId]);
+useEffect(() => {
+	if (!filteredEntities.length) {
+		setSelectedEntityId(null);
+		setIsEntityDetailOpen(false);
+		return;
+	}
+	if (selectedEntityId && !filteredEntities.some((entity) => entity.vf_object_uid === selectedEntityId)) {
+		setSelectedEntityId(null);
+		setIsEntityDetailOpen(false);
+	}
+}, [filteredEntities, selectedEntityId]);
 
 	useEffect(() => {
 		setDiffFilterMode('conflicts');
@@ -2784,6 +2898,20 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 				)}
 			</div>
 		)}
+		<div className="dbvc-column-toggle">
+			<span>Columns:</span>
+			{ENTITY_COLUMN_DEFS.map((column) => (
+				<label key={column.id}>
+					<input
+						type="checkbox"
+						checked={columnVisibility[column.id]}
+						onChange={() => handleColumnVisibilityToggle(column.id)}
+						disabled={column.lockVisible}
+					/>
+					{column.label}
+				</label>
+			))}
+		</div>
 					{errorEntities && (
 						<div className="notice notice-error">
 							<p>Failed to load entities: {errorEntities}</p>
@@ -2794,6 +2922,7 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 						loading={loadingEntities}
 						selectedEntityId={selectedEntityId}
 						onSelect={handleSelectEntity}
+						columns={visibleColumns}
 					/>
 					<ResolverRulesPanel />
 

@@ -51,6 +51,13 @@
 	margin-top: 24px;
 }
 
+.dbvc-admin-app__detail-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
 .dbvc-admin-app__entity-detail pre {
 	background: #f6f7f7;
 	border: 1px solid #ccd0d4;
@@ -166,6 +173,12 @@
 	margin-bottom: 24px;
 }
 
+.dbvc-text-break {
+	word-break: break-all;
+	font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+	font-size: 12px;
+}
+
 .dbvc-resolver-rules__header {
 	display: flex;
 	align-items: center;
@@ -179,6 +192,21 @@
 
 .dbvc-admin-app__filters input[type='search'] {
 	min-width: 220px;
+}
+
+.dbvc-column-toggle {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	align-items: center;
+	margin: 12px 0 16px;
+	font-size: 13px;
+}
+
+.dbvc-column-toggle label {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 }
 
 .dbvc-admin-app__no-diff {
@@ -713,6 +741,18 @@
 
 .dbvc-entity-table table {
 	margin-bottom: 0;
+	table-layout: fixed;
+}
+
+.dbvc-entity-table th,
+.dbvc-entity-table td {
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	overflow: hidden;
+}
+
+.dbvc-entity-table td .dbvc-decisions {
+	white-space: normal;
 }
 
 .dbvc-entity-spacer td {
@@ -848,8 +888,8 @@
 .dbvc-entity-detail-modal__panel {
 	position: relative;
 	height: 100%;
-	width: min(960px, 100%);
-	max-width: 960px;
+	width: min(70vw, 100%, 1800px);
+	max-width: 80vw;
 	background: #fff;
 	padding: 24px 28px 32px;
 	box-shadow: -6px 0 24px rgba(0, 0, 0, 0.2);
