@@ -131,6 +131,26 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/duplicates',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [self::class, 'get_proposal_duplicates'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/duplicates/cleanup',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'cleanup_proposal_duplicates'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)',
             [
                 'methods'             => \WP_REST_Server::READABLE,
@@ -357,6 +377,8 @@ final class DBVC_Admin_App
                 : [];
             $decision_summary = self::summarize_proposal_decisions($proposal_decisions);
 
+        $duplicate_summary = self::find_duplicate_manifest_entities($manifest);
+
         $items[] = [
             'id'             => $proposal_id,
             'title'          => $proposal_id,
@@ -372,6 +394,7 @@ final class DBVC_Admin_App
             'media_bundle'  => $manifest['media_bundle'] ?? null,
             'decisions'      => $decision_summary,
             'status'        => $manifest['status'] ?? 'draft',
+            'duplicate_count' => is_array($duplicate_summary) ? count($duplicate_summary) : 0,
         ];
         }
 
@@ -661,6 +684,7 @@ final class DBVC_Admin_App
                 'post_type'     => $item['post_type'],
                 'post_title'    => $item['post_title'],
                 'post_status'   => $item['post_status'],
+                'post_name'     => $item['post_name'] ?? null,
                 'post_modified' => $item['post_modified'] ?? null,
                 'path'          => $item['path'],
                 'hash'          => $item['hash'],
@@ -689,6 +713,116 @@ final class DBVC_Admin_App
             ],
             'decision_summary' => self::summarize_proposal_decisions($proposal_decisions),
             'resolver_decisions' => self::summarize_resolver_decisions($proposal_id),
+        ]);
+    }
+
+    /**
+     * REST: duplicate manifest entries for a proposal.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public static function get_proposal_duplicates(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $report = self::build_manifest_duplicate_report($manifest);
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'count'       => count($report),
+            'items'       => $report,
+        ]);
+    }
+
+    public static function cleanup_proposal_duplicates(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        $params = $request->get_json_params();
+        $vf_object_uid = isset($params['vf_object_uid']) ? sanitize_text_field($params['vf_object_uid']) : '';
+        $keep_path     = isset($params['keep_path']) ? ltrim((string) $params['keep_path'], '/\\') : '';
+
+        if ($proposal_id === '' || $vf_object_uid === '' || $keep_path === '') {
+            return new \WP_Error('dbvc_invalid_request', __('Specify the entity UID and canonical file path.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        $matches = [];
+        foreach ($items as $index => $item) {
+            if (($item['item_type'] ?? '') !== 'post') {
+                continue;
+            }
+            $entity_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($entity_uid !== $vf_object_uid) {
+                continue;
+            }
+            $path = isset($item['path']) ? ltrim((string) $item['path'], '/\\') : '';
+            if ($path === '') {
+                continue;
+            }
+            $matches[$index] = $path;
+        }
+
+        if (count($matches) <= 1) {
+            return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were found for this entity.', 'dbvc'), ['status' => 400]);
+        }
+
+        $keep_index = null;
+        foreach ($matches as $idx => $path) {
+            if ($path === $keep_path) {
+                $keep_index = $idx;
+                break;
+            }
+        }
+        if ($keep_index === null) {
+            return new \WP_Error('dbvc_keep_missing', __('Canonical file path was not found among duplicates.', 'dbvc'), ['status' => 400]);
+        }
+
+        if (! class_exists('DBVC_Backup_Manager')) {
+            return new \WP_Error('dbvc_missing_manager', __('Backup manager is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $base_dir = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
+        $base_real = realpath($base_dir);
+        if ($base_real === false || ! is_dir($base_real)) {
+            return new \WP_Error('dbvc_missing_proposal_dir', __('Proposal directory not found.', 'dbvc'), ['status' => 500]);
+        }
+
+        foreach ($matches as $idx => $path) {
+            if ($idx === $keep_index) {
+                continue;
+            }
+            $absolute = self::resolve_manifest_entry_path($base_real, $path);
+            if ($absolute && file_exists($absolute) && strpos($absolute, $base_real) === 0) {
+                @unlink($absolute);
+            }
+            unset($items[$idx]);
+        }
+
+        $manifest['items'] = array_values($items);
+
+        $manifest_path = trailingslashit($base_real) . DBVC_Backup_Manager::MANIFEST_FILENAME;
+        file_put_contents(
+            $manifest_path,
+            wp_json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
+
+        $updated_report = self::build_manifest_duplicate_report($manifest);
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'items'       => $updated_report,
         ]);
     }
 
@@ -1196,6 +1330,70 @@ final class DBVC_Admin_App
         }
 
         return $duplicates;
+    }
+
+    private static function build_manifest_duplicate_report(array $manifest): array
+    {
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        $groups = [];
+
+        foreach ($items as $item) {
+            if (($item['item_type'] ?? '') !== 'post') {
+                continue;
+            }
+            $entity_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            $path    = isset($item['path']) ? $item['path'] : '';
+            if ($entity_uid === '' || $path === '') {
+                continue;
+            }
+            if (! isset($groups[$entity_uid])) {
+                $groups[$entity_uid] = [
+                    'vf_object_uid' => $entity_uid,
+                    'post_id'       => $item['post_id'] ?? null,
+                    'post_title'    => $item['post_title'] ?? '',
+                    'post_name'     => $item['post_name'] ?? '',
+                    'post_type'     => $item['post_type'] ?? '',
+                    'entries'       => [],
+                ];
+            }
+            $groups[$entity_uid]['entries'][] = [
+                'path'          => $path,
+                'hash'          => $item['hash'] ?? '',
+                'content_hash'  => $item['content_hash'] ?? '',
+                'post_status'   => $item['post_status'] ?? '',
+                'post_modified' => $item['post_modified'] ?? '',
+                'size'          => isset($item['size']) ? (int) $item['size'] : null,
+            ];
+        }
+
+        $report = [];
+        foreach ($groups as $group) {
+            if (count($group['entries']) > 1) {
+                $report[] = $group;
+            }
+        }
+
+        return $report;
+    }
+
+    private static function resolve_manifest_entry_path(string $base_dir, string $relative_path): ?string
+    {
+        $relative_path = ltrim($relative_path, '/\\');
+        if ($relative_path === '' || strpos($relative_path, '..') !== false) {
+            return null;
+        }
+
+        $absolute = trailingslashit($base_dir) . $relative_path;
+        $real     = realpath($absolute);
+        if ($real === false) {
+            return $absolute;
+        }
+        if (strpos($real, $base_dir) !== 0) {
+            return null;
+        }
+        return $real;
     }
 
     /**

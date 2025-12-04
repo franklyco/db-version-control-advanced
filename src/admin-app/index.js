@@ -1399,6 +1399,98 @@ const EntityDetailPanel = ({
 	);
 };
 
+function DuplicateEntitiesModal({ open, onClose, report, onMarkCanonical, actionKey }) {
+	if (!open) {
+		return null;
+	}
+
+	return (
+		<Modal
+			title={`Duplicate entities (${report.count ?? 0})`}
+			onRequestClose={onClose}
+			className="dbvc-duplicates-modal"
+		>
+			{(report.items ?? []).length === 0 ? (
+				<p>No duplicate manifest entries were detected for this proposal.</p>
+			) : (
+				report.items.map((group) => {
+					const entries = group.entries ?? [];
+					const latestTs = entries.reduce((max, entry) => {
+						const ts = entry.post_modified
+							? Date.parse(entry.post_modified.replace(' ', 'T'))
+							: 0;
+						return Number.isFinite(ts) && ts > max ? ts : max;
+					}, 0);
+
+					return (
+						<div key={group.vf_object_uid} className="dbvc-duplicate-group">
+							<div className="dbvc-duplicate-group__header">
+								<div>
+									<strong>{group.post_title || group.vf_object_uid}</strong>
+									<div className="dbvc-duplicate-group__meta">
+										<span>UID: {group.vf_object_uid}</span>
+										<span>Slug: {group.post_name || '—'}</span>
+										<span>Type: {group.post_type || '—'}</span>
+									</div>
+								</div>
+								<div className="dbvc-duplicate-group__badges">
+									<span className="dbvc-badge">{group.entries?.length ?? 0} files</span>
+								</div>
+							</div>
+							<table className="widefat">
+								<thead>
+									<tr>
+										<th>Path</th>
+										<th>Hash</th>
+										<th>Content hash</th>
+										<th>Modified</th>
+										<th>Status</th>
+										<th>Size</th>
+										<th>Actions</th>
+									</tr>
+								</thead>
+								<tbody>
+									{entries.map((entry, index) => {
+										const rowKey = `${group.vf_object_uid}::${entry.path || index}`;
+										const ts = entry.post_modified
+											? Date.parse(entry.post_modified.replace(' ', 'T'))
+											: 0;
+										const isLatest = latestTs && Number.isFinite(ts) && ts === latestTs;
+										return (
+											<tr key={rowKey} className={isLatest ? 'is-latest' : ''}>
+												<td className="dbvc-text-break">{entry.path || '—'}</td>
+												<td className="dbvc-text-break">{entry.hash || '—'}</td>
+												<td className="dbvc-text-break">{entry.content_hash || '—'}</td>
+												<td>{entry.post_modified ? formatDate(entry.post_modified) : '—'}</td>
+												<td>{entry.post_status || '—'}</td>
+												<td>{typeof entry.size === 'number' ? `${entry.size} B` : '—'}</td>
+												<td>
+													<Button
+														variant="secondary"
+														onClick={() =>
+															onMarkCanonical && onMarkCanonical(group.vf_object_uid, entry.path)
+														}
+														disabled={actionKey === rowKey}
+													>
+														{actionKey === rowKey ? 'Marking…' : 'Keep this file'}
+													</Button>
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+					);
+				})
+			)}
+			<p className="description">
+				Tip: Clean up duplicate JSON files in the sync folder before exporting new proposals to keep reviewers focused on a single entity per post.
+			</p>
+		</Modal>
+	);
+}
+
 const App = () => {
 	const [proposals, setProposals] = useState([]);
 	const [selectedId, setSelectedId] = useState(null);
@@ -1446,6 +1538,11 @@ const App = () => {
 		});
 		return map;
 	});
+	const [duplicateReport, setDuplicateReport] = useState({ count: 0, items: [] });
+	const [loadingDuplicates, setLoadingDuplicates] = useState(false);
+	const [duplicateError, setDuplicateError] = useState(null);
+	const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+	const [duplicateActionKey, setDuplicateActionKey] = useState('');
 	const visibleColumns = useMemo(
 		() => ENTITY_COLUMN_DEFS.filter((column) => columnVisibility[column.id]),
 		[columnVisibility]
@@ -1462,6 +1559,37 @@ const App = () => {
 			};
 		});
 	}, []);
+	const fetchDuplicates = useCallback(
+		async (proposalId, options = {}) => {
+			if (!proposalId) {
+				setDuplicateReport({ count: 0, items: [] });
+				setDuplicateError(null);
+				return;
+			}
+			const { signal } = options;
+			setLoadingDuplicates(true);
+			setDuplicateError(null);
+			try {
+				const payload = await fetchJSON(
+					`proposals/${encodeURIComponent(proposalId)}/duplicates`,
+					signal ? { signal } : undefined
+				);
+				setDuplicateReport({
+					count: payload.count ?? (payload.items ? payload.items.length : 0),
+					items: payload.items ?? [],
+				});
+			} catch (err) {
+				if (err.name === 'AbortError') {
+					return;
+				}
+				setDuplicateError(err?.message || 'Failed to load duplicates.');
+				setDuplicateReport({ count: 0, items: [] });
+			} finally {
+				setLoadingDuplicates(false);
+			}
+		},
+		[]
+	);
 	const selectionRef = useRef(null);
 	useEffect(() => {
 		selectionRef.current = selectedEntityId;
@@ -1496,6 +1624,44 @@ const App = () => {
 		},
 		[]
 	);
+	const loadEntities = useCallback(async (proposalId, filter, signal) => {
+		if (!proposalId) {
+			setEntities([]);
+			return [];
+		}
+		setLoadingEntities(true);
+		setErrorEntities(null);
+		try {
+			const query = filter && filter !== 'all' ? `?status=${encodeURIComponent(filter)}` : '';
+			const payload = await fetchJSON(`proposals/${encodeURIComponent(proposalId)}/entities${query}`, {
+				signal,
+			});
+			const items = payload.items ?? [];
+			setEntities(items);
+			if (payload.decision_summary) {
+				setProposals((prev) =>
+					prev.map((proposal) =>
+						proposal.id === proposalId ? { ...proposal, decisions: payload.decision_summary } : proposal
+					)
+				);
+			}
+			if (payload.resolver_decisions) {
+				setProposals((prev) =>
+					prev.map((proposal) =>
+						proposal.id === proposalId ? { ...proposal, resolver_decisions: payload.resolver_decisions } : proposal
+					)
+				);
+			}
+			return items;
+		} catch (err) {
+			if (err.name !== 'AbortError') {
+				setErrorEntities(err.message);
+			}
+			return [];
+		} finally {
+			setLoadingEntities(false);
+		}
+	}, []);
 
 	const stopPropagation = useCallback((event) => {
 		event.stopPropagation();
@@ -1512,6 +1678,35 @@ const App = () => {
 		}
 		return resolver?.attachments || [];
 	}, [resolver, entityDetail]);
+	const handleRefreshDuplicates = useCallback(() => {
+		if (!selectedId) {
+			return;
+		}
+		fetchDuplicates(selectedId);
+	}, [selectedId, fetchDuplicates]);
+	const handleMarkCanonical = useCallback(
+		async (vfObjectUid, keepPath) => {
+			if (!selectedId || !vfObjectUid || !keepPath) {
+				return;
+			}
+			const actionKey = `${vfObjectUid}::${keepPath}`;
+			setDuplicateActionKey(actionKey);
+			setDuplicateError(null);
+			try {
+				await postJSON(`proposals/${encodeURIComponent(selectedId)}/duplicates/cleanup`, {
+					vf_object_uid: vfObjectUid,
+					keep_path: keepPath,
+				});
+				await fetchDuplicates(selectedId);
+				await loadEntities(selectedId, entityFilter);
+			} catch (err) {
+				setDuplicateError(err?.message || 'Failed to mark canonical entry.');
+			} finally {
+				setDuplicateActionKey('');
+			}
+		},
+		[selectedId, fetchDuplicates, loadEntities, entityFilter]
+	);
 	const [bulkSaving, setBulkSaving] = useState(false);
 
 	useEffect(() => {
@@ -1547,47 +1742,6 @@ const App = () => {
 		reloadProposals({ signal: controller.signal });
 		return () => controller.abort();
 	}, [reloadProposals]);
-
-	const loadEntities = useCallback(async (proposalId, filter, signal) => {
-		if (!proposalId) {
-			setEntities([]);
-			return [];
-		}
-		setLoadingEntities(true);
-		setErrorEntities(null);
-		try {
-			const query = filter && filter !== 'all' ? `?status=${encodeURIComponent(filter)}` : '';
-			const payload = await fetchJSON(`proposals/${encodeURIComponent(proposalId)}/entities${query}`, { signal });
-			const items = payload.items ?? [];
-			setEntities(items);
-			if (payload.decision_summary) {
-				setProposals((prev) =>
-					prev.map((proposal) =>
-						proposal.id === proposalId
-							? { ...proposal, decisions: payload.decision_summary }
-							: proposal
-					)
-				);
-			}
-			if (payload.resolver_decisions) {
-				setProposals((prev) =>
-					prev.map((proposal) =>
-						proposal.id === proposalId
-							? { ...proposal, resolver_decisions: payload.resolver_decisions }
-							: proposal
-					)
-				);
-			}
-			return items;
-		} catch (err) {
-			if (err.name !== 'AbortError') {
-				setErrorEntities(err.message);
-			}
-			return [];
-		} finally {
-			setLoadingEntities(false);
-		}
-	}, []);
 
 	const loadResolver = useCallback(async (proposalId, signal) => {
 		if (!proposalId) {
@@ -1633,18 +1787,31 @@ useEffect(() => {
 	return () => controller.abort();
 }, [selectedId, entityFilter, loadEntities]);
 
-	useEffect(() => {
-		if (!selectedId) {
-			return;
-		}
+useEffect(() => {
+	if (!selectedId) {
+		return;
+	}
 
-		const controller = new AbortController();
-		loadResolver(selectedId, controller.signal);
-		return () => controller.abort();
-	}, [selectedId, loadResolver]);
+	const controller = new AbortController();
+	loadResolver(selectedId, controller.signal);
+	return () => controller.abort();
+}, [selectedId, loadResolver]);
 
-	useEffect(() => {
-		if (!selectedId || !selectedEntityId) {
+useEffect(() => {
+	if (!selectedId) {
+		setDuplicateReport({ count: 0, items: [] });
+		setDuplicateError(null);
+		return;
+	}
+
+	const controller = new AbortController();
+	fetchDuplicates(selectedId, { signal: controller.signal });
+
+	return () => controller.abort();
+}, [selectedId, fetchDuplicates]);
+
+useEffect(() => {
+	if (!selectedId || !selectedEntityId) {
 			setEntityDetail(null);
 			setEntityDecisions({});
 			setDecisionSaving({});
@@ -2843,7 +3010,15 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 							</Modal>
 						)}
 
-			<h3>Entities</h3>
+			<div className="dbvc-entities-header">
+				<h3>Entities</h3>
+				{loadingDuplicates && <span className="dbvc-duplicates-loading">Checking duplicates…</span>}
+			</div>
+			{duplicateError && (
+				<div className="notice notice-error">
+					<p>Failed to load duplicate summary: {duplicateError}</p>
+				</div>
+			)}
 		<div className="dbvc-admin-app__filters">
 			<label>
 				Show:&nbsp;
@@ -2866,6 +3041,15 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 		</div>
 		{selectedProposal && (
 			<div className="dbvc-entity-actions">
+				{duplicateReport.count > 0 && (
+					<Button
+						variant="primary"
+						className="dbvc-duplicates-button"
+						onClick={() => setDuplicatesOpen(true)}
+					>
+						Resolve {duplicateReport.count} duplicate{duplicateReport.count === 1 ? '' : 's'}
+					</Button>
+				)}
 				<Button
 					variant="secondary"
 					onClick={handleCaptureProposalSnapshot}
@@ -2917,13 +3101,25 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 							<p>Failed to load entities: {errorEntities}</p>
 						</div>
 					)}
-					<EntityList
-						entities={filteredEntities}
-						loading={loadingEntities}
-						selectedEntityId={selectedEntityId}
-						onSelect={handleSelectEntity}
-						columns={visibleColumns}
-					/>
+			<div className="dbvc-entity-table-wrapper">
+				{duplicateReport.count > 0 && (
+					<button
+						type="button"
+						className="dbvc-duplicates-overlay"
+						onClick={() => setDuplicatesOpen(true)}
+						title="Resolve duplicate manifest entries before continuing."
+					>
+						Duplicate manifest entries detected — resolve these first
+					</button>
+				)}
+				<EntityList
+					entities={filteredEntities}
+					loading={loadingEntities}
+					selectedEntityId={selectedEntityId}
+					onSelect={handleSelectEntity}
+					columns={visibleColumns}
+				/>
+			</div>
 					<ResolverRulesPanel />
 
 			<EntityDetailPanel
@@ -2954,6 +3150,14 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 				onHashSync={handleEntityHashSync}
 				hashSyncing={hashSyncing}
 				hashSyncTarget={hashSyncTarget}
+			/>
+			<DuplicateEntitiesModal
+				open={duplicatesOpen}
+				onClose={() => setDuplicatesOpen(false)}
+				onRefresh={handleRefreshDuplicates}
+				onMarkCanonical={handleMarkCanonical}
+				actionKey={duplicateActionKey}
+				report={duplicateReport}
 			/>
 				</section>
 			)}
