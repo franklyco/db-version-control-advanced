@@ -66,12 +66,14 @@ function dbvc_render_export_page()
     'taxonomies' => ['success' => [], 'error' => []],
     'masking'    => ['success' => [], 'error' => []],
     'import'     => ['success' => [], 'error' => []],
+    'media'      => ['success' => [], 'error' => []],
   ];
   $config_section_mapping = [
     'post_types' => 'dbvc-config-post-types',
     'taxonomies' => 'dbvc-config-taxonomies',
     'masking'    => 'dbvc-config-masking',
     'import'     => 'dbvc-config-import',
+    'media'      => 'dbvc-config-media',
   ];
   $config_sections_submitted = [];
   $config_form_was_submitted = false;
@@ -421,32 +423,36 @@ function dbvc_render_export_page()
     $export_use_mirror = ! empty($_POST['dbvc_export_use_mirror_domain']) ? '1' : '0';
     update_option('dbvc_export_use_mirror_domain', $export_use_mirror);
 
-    $media_retrieve_enabled = ! empty($_POST['dbvc_media_retrieve_enabled']) ? '1' : '0';
-    update_option(DBVC_Media_Sync::OPTION_ENABLED, $media_retrieve_enabled);
+    if (in_array('media', $config_sections_submitted, true)) {
+      $media_retrieve_enabled = ! empty($_POST['dbvc_media_retrieve_enabled']) ? '1' : '0';
+      update_option(DBVC_Media_Sync::OPTION_ENABLED, $media_retrieve_enabled);
 
-    $media_preserve_names = ! empty($_POST['dbvc_media_preserve_names']) ? '1' : '0';
-    update_option(DBVC_Media_Sync::OPTION_PRESERVE_NAMES, $media_preserve_names);
+      $media_preserve_names = ! empty($_POST['dbvc_media_preserve_names']) ? '1' : '0';
+      update_option(DBVC_Media_Sync::OPTION_PRESERVE_NAMES, $media_preserve_names);
 
-    $media_preview_enabled = ! empty($_POST['dbvc_media_preview_enabled']) ? '1' : '0';
-    update_option(DBVC_Media_Sync::OPTION_PREVIEW_ENABLED, $media_preview_enabled);
+      $media_preview_enabled = ! empty($_POST['dbvc_media_preview_enabled']) ? '1' : '0';
+      update_option(DBVC_Media_Sync::OPTION_PREVIEW_ENABLED, $media_preview_enabled);
 
-    $media_allow_external = ! empty($_POST['dbvc_media_allow_external']) ? '1' : '0';
-    update_option(DBVC_Media_Sync::OPTION_ALLOW_EXTERNAL, $media_allow_external);
+      $media_allow_external = ! empty($_POST['dbvc_media_allow_external']) ? '1' : '0';
+      update_option(DBVC_Media_Sync::OPTION_ALLOW_EXTERNAL, $media_allow_external);
 
-    $transport_mode = isset($_POST['dbvc_media_transport_mode']) ? sanitize_key($_POST['dbvc_media_transport_mode']) : DBVC_Media_Sync::get_transport_mode();
-    if (! in_array($transport_mode, ['auto', 'bundled', 'remote'], true)) {
-      $transport_mode = 'auto';
+      $transport_mode = isset($_POST['dbvc_media_transport_mode']) ? sanitize_key($_POST['dbvc_media_transport_mode']) : DBVC_Media_Sync::get_transport_mode();
+      if (! in_array($transport_mode, ['auto', 'bundled', 'remote'], true)) {
+        $transport_mode = 'auto';
+      }
+      update_option(DBVC_Media_Sync::OPTION_TRANSPORT_MODE, $transport_mode);
+
+      $bundle_enabled = ! empty($_POST['dbvc_media_bundle_enabled']) ? '1' : '0';
+      update_option(DBVC_Media_Sync::OPTION_BUNDLE_ENABLED, $bundle_enabled);
+
+      $bundle_chunk = isset($_POST['dbvc_media_bundle_chunk']) ? absint($_POST['dbvc_media_bundle_chunk']) : DBVC_Media_Sync::get_bundle_chunk_size();
+      if ($bundle_chunk < 10) {
+        $bundle_chunk = 10;
+      }
+      update_option(DBVC_Media_Sync::OPTION_BUNDLE_CHUNK, $bundle_chunk);
+
+      $config_feedback['media']['success'][] = esc_html__('Media handling settings saved.', 'dbvc');
     }
-    update_option(DBVC_Media_Sync::OPTION_TRANSPORT_MODE, $transport_mode);
-
-    $bundle_enabled = ! empty($_POST['dbvc_media_bundle_enabled']) ? '1' : '0';
-    update_option(DBVC_Media_Sync::OPTION_BUNDLE_ENABLED, $bundle_enabled);
-
-    $bundle_chunk = isset($_POST['dbvc_media_bundle_chunk']) ? absint($_POST['dbvc_media_bundle_chunk']) : DBVC_Media_Sync::get_bundle_chunk_size();
-    if ($bundle_chunk < 10) {
-      $bundle_chunk = 10;
-    }
-    update_option(DBVC_Media_Sync::OPTION_BUNDLE_CHUNK, $bundle_chunk);
 
     $log_import_runs = ! empty($_POST['dbvc_log_import_runs']) ? '1' : '0';
     update_option(DBVC_Sync_Logger::OPTION_IMPORT_EVENTS, $log_import_runs);
@@ -491,7 +497,7 @@ function dbvc_render_export_page()
       wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
     }
 
-    if (isset($_POST['dbvc_chunk_export_submit'])) {
+  if (isset($_POST['dbvc_chunk_export_submit'])) {
       $active_export_subtab = 'dbvc-export-snapshots';
 
       $chunk_size_input = isset($_POST['dbvc_chunk_size']) ? absint($_POST['dbvc_chunk_size']) : 0;
@@ -915,7 +921,10 @@ function dbvc_render_export_page()
           if (is_array($manifest_data)) {
             $proposal_id = $manifest_data['backup_name'] ?? ($selected_backup ?? 'manual');
             DBVC_Sync_Posts::import_resolver_decisions_from_manifest($manifest_data, sanitize_text_field((string) $proposal_id));
-            $media_stats_import = DBVC_Media_Sync::sync_manifest_media($manifest_data, ['proposal_id' => $selected_backup ?? 'manual']);
+            $media_stats_import = DBVC_Media_Sync::sync_manifest_media($manifest_data, [
+              'proposal_id' => $selected_backup ?? 'manual',
+              'manifest_dir'=> trailingslashit(dbvc_get_sync_path()),
+            ]);
             if ($media_preview_enabled === '1') {
               $sync_media_preview_ready = true;
               $sync_media_preview_data  = DBVC_Media_Sync::preview_manifest_media($manifest_data, 20);
@@ -1248,6 +1257,7 @@ function dbvc_render_export_page()
     'dbvc-config-taxonomies' => esc_html__('Taxonomies', 'dbvc'),
     'dbvc-config-masking'    => esc_html__('Masking & Auto-Exports', 'dbvc'),
     'dbvc-config-import'     => esc_html__('Import Defaults', 'dbvc'),
+    'dbvc-config-media'      => esc_html__('Media Handling', 'dbvc'),
     'dbvc-config-tools'      => esc_html__('Maintenance & Tools', 'dbvc'),
   ];
   $render_config_feedback = function (array $bucket) {
@@ -1596,6 +1606,29 @@ function dbvc_render_export_page()
         </div>
         </section>
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const heartbeat = document.getElementById('dbvc-logging-heartbeat');
+  if (heartbeat) {
+    heartbeat.addEventListener('click', function () {
+      if (!heartbeat.dataset.dbvcHeartbeatNonce) {
+        heartbeat.dataset.dbvcHeartbeatNonce = '<?php echo esc_js(wp_create_nonce('dbvc_logging_heartbeat')); ?>';
+      }
+      fetch(ajaxurl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'},
+        body: new URLSearchParams({
+          action: 'dbvc_logging_heartbeat',
+          nonce: heartbeat.dataset.dbvcHeartbeatNonce,
+        }),
+      }).then(() => {
+        heartbeat.blur();
+      });
+    });
+  }
+});
+</script>
       <!-- Tab 2: Export / Download -->
       <section id="tab-export" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-export' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-export" role="tabpanel" aria-labelledby="dbvc-nav-tab-export" <?php echo $active_main_tab === 'tab-export' ? '' : 'hidden'; ?>>
         <div class="dbvc-subtabs" data-dbvc-subtabs>
@@ -2177,29 +2210,6 @@ function dbvc_render_export_page()
           <br><small><?php esc_html_e('When enabled, URLs that start with the current site domain will be rewritten to the Mirror Domain in exported content and meta.', 'dbvc'); ?></small>
         </p>
 
-        <hr />
-
-        <h2><?php esc_html_e('Media Retrieval', 'dbvc'); ?></h2>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_media_retrieve_enabled" value="1" <?php checked($media_retrieve_enabled, '1'); ?> />
-            <?php esc_html_e('Retrieve missing media from mirror sources after import/restore', 'dbvc'); ?>
-          </label>
-        </p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_media_preserve_names" value="1" <?php checked($media_preserve_names, '1'); ?> />
-            <?php esc_html_e('Preserve original filenames when downloading media (bypass renamers)', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('Enable this if other plugins/themes rewrite filenames or convert formats during upload.', 'dbvc'); ?></small>
-        </p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_media_preview_enabled" value="1" <?php checked($media_preview_enabled, '1'); ?> />
-            <?php esc_html_e('Show media retrieval preview in Backup/Archive tab before restore', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('Displays counts and sample assets that would be downloaded so you can review before running a restore.', 'dbvc'); ?></small>
-        </p>
         <p>
           <label>
             <input type="checkbox" name="dbvc_import_require_review" value="1" <?php checked($import_require_review, '1'); ?> />
@@ -2207,56 +2217,11 @@ function dbvc_render_export_page()
           </label><br>
           <small><?php esc_html_e('When enabled, the legacy “Run Import” form is disabled so reviewers must use the React proposals/diff workflow.', 'dbvc'); ?></small>
         </p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_media_allow_external" value="1" <?php checked($media_allow_external, '1'); ?> />
-            <?php esc_html_e('Allow downloads from external domains (beyond this site or mirror domain)', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('When disabled, only assets hosted on this site or the configured mirror domain will be retrieved.', 'dbvc'); ?></small>
+
+        <hr />
+        <p class="description">
+          <?php esc_html_e('Media ingestion, bundling, and resolver settings moved to Configure → Media Handling.', 'dbvc'); ?>
         </p>
-        <div class="dbvc-media-transport">
-          <label for="dbvc_media_transport_mode"><strong><?php esc_html_e('Media transport mode', 'dbvc'); ?></strong></label>
-          <select name="dbvc_media_transport_mode" id="dbvc_media_transport_mode">
-            <?php
-            $transport_mode = DBVC_Media_Sync::get_transport_mode();
-            $transport_options = [
-              'auto'    => __('Auto (bundled first, fallback to remote)', 'dbvc'),
-              'bundled' => __('Bundled only (require local media files)', 'dbvc'),
-              'remote'  => __('Remote only (download from original source)', 'dbvc'),
-            ];
-            foreach ($transport_options as $mode_key => $label) {
-              printf(
-                '<option value="%1$s" %2$s>%3$s</option>',
-                esc_attr($mode_key),
-                selected($transport_mode, $mode_key, false),
-                esc_html($label)
-              );
-            }
-            ?>
-          </select>
-          <p class="description">
-            <?php esc_html_e('Auto mode checks bundled media first, then remote URLs. Bundled mode requires matching files packaged in the sync folder.', 'dbvc'); ?>
-          </p>
-        </div>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_media_bundle_enabled" value="1" <?php checked(DBVC_Media_Sync::is_bundle_enabled(), '1'); ?> />
-            <?php esc_html_e('Include media files inside the sync folder during export', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('When enabled, referenced media is copied into sync/media/, making zip bundles self-contained.', 'dbvc'); ?></small>
-        </p>
-        <p>
-          <label for="dbvc_media_bundle_chunk"><strong><?php esc_html_e('Media bundling chunk size', 'dbvc'); ?></strong></label><br>
-          <input type="number" name="dbvc_media_bundle_chunk" id="dbvc_media_bundle_chunk" value="<?php echo esc_attr(DBVC_Media_Sync::get_bundle_chunk_size()); ?>" min="10" step="10" style="width:140px;" />
-          <small><?php esc_html_e('Number of media files to copy per batch when building bundles.', 'dbvc'); ?></small>
-        </p>
-        <?php if ($media_clear_url && $media_clear_url !== '#') : ?>
-          <p>
-            <a class="button" href="<?php echo esc_url($media_clear_url); ?>">
-              <?php esc_html_e('Clear Media Cache', 'dbvc'); ?>
-            </a>
-          </p>
-        <?php endif; ?>
 
         <hr />
 
@@ -2283,7 +2248,89 @@ function dbvc_render_export_page()
 
         <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_config_save[import]', false); ?>
       </section>
-      </form>
+
+      <section id="dbvc-config-media" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-media' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-media" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-media" <?php echo $active_config_subtab === 'dbvc-config-media' ? '' : 'hidden'; ?>>
+        <?php $render_config_feedback($config_feedback['media']); ?>
+        <h2><?php esc_html_e('Media Handling', 'dbvc'); ?></h2>
+        <p class="description"><?php esc_html_e('Control how proposals capture, bundle, and resolve attachments across environments.', 'dbvc'); ?></p>
+
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_retrieve_enabled" value="1" <?php checked($media_retrieve_enabled, '1'); ?> />
+            <?php esc_html_e('Retrieve missing media from proposal bundles or mirror sources during import', 'dbvc'); ?>
+          </label>
+        </p>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_preserve_names" value="1" <?php checked($media_preserve_names, '1'); ?> />
+            <?php esc_html_e('Preserve original filenames when sideloading media', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('Enable this if other plugins/themes rewrite filenames or convert formats during upload.', 'dbvc'); ?></small>
+        </p>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_preview_enabled" value="1" <?php checked($media_preview_enabled, '1'); ?> />
+            <?php esc_html_e('Show media preview in Backup/Archive tab', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('Displays counts and sample assets that would be downloaded so you can review before running a restore.', 'dbvc'); ?></small>
+        </p>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_allow_external" value="1" <?php checked($media_allow_external, '1'); ?> />
+            <?php esc_html_e('Allow downloads from external domains (beyond this site or mirror domain)', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('When disabled, only assets hosted on this site or the configured mirror domain will be retrieved.', 'dbvc'); ?></small>
+        </p>
+
+        <div class="dbvc-media-transport">
+          <label for="dbvc_media_transport_mode"><strong><?php esc_html_e('Media transport mode', 'dbvc'); ?></strong></label>
+          <select name="dbvc_media_transport_mode" id="dbvc_media_transport_mode">
+            <?php
+            $transport_mode = DBVC_Media_Sync::get_transport_mode();
+            $transport_options = [
+              'auto'    => __('Auto (bundled first, fallback to remote)', 'dbvc'),
+              'bundled' => __('Bundled only (require local media files)', 'dbvc'),
+              'remote'  => __('Remote only (download from original source)', 'dbvc'),
+            ];
+            foreach ($transport_options as $mode_key => $label) {
+              printf(
+                '<option value="%1$s" %2$s>%3$s</option>',
+                esc_attr($mode_key),
+                selected($transport_mode, $mode_key, false),
+                esc_html($label)
+              );
+            }
+            ?>
+          </select>
+          <p class="description">
+            <?php esc_html_e('Auto mode checks deterministic bundles first, then remote URLs. Bundled mode requires matching files packaged with each proposal.', 'dbvc'); ?>
+          </p>
+        </div>
+
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_media_bundle_enabled" value="1" <?php checked(DBVC_Media_Sync::is_bundle_enabled(), '1'); ?> />
+            <?php esc_html_e('Generate per-proposal media bundles during export', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('When enabled, DBVC stores proposal-specific media under sync/media-bundles/<proposal-id>/ for deterministic reuse.', 'dbvc'); ?></small>
+        </p>
+        <p>
+          <label for="dbvc_media_bundle_chunk"><strong><?php esc_html_e('Media bundling chunk size', 'dbvc'); ?></strong></label><br>
+          <input type="number" name="dbvc_media_bundle_chunk" id="dbvc_media_bundle_chunk" value="<?php echo esc_attr(DBVC_Media_Sync::get_bundle_chunk_size()); ?>" min="10" step="10" style="width:140px;" />
+          <small><?php esc_html_e('Number of media files to copy per batch when building bundles.', 'dbvc'); ?></small>
+        </p>
+
+        <?php if ($media_clear_url && $media_clear_url !== '#') : ?>
+          <p>
+            <a class="button" href="<?php echo esc_url($media_clear_url); ?>">
+              <?php esc_html_e('Clear Media Cache', 'dbvc'); ?>
+            </a>
+          </p>
+        <?php endif; ?>
+
+        <?php submit_button(__('Save Media Settings', 'dbvc'), 'secondary', 'dbvc_config_save[media]', false); ?>
+      </section>
+    </form>
 
       <section id="dbvc-config-tools" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-tools' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-tools" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-tools" <?php echo $active_config_subtab === 'dbvc-config-tools' ? '' : 'hidden'; ?>>
         <div class="dbvc-tools-panel">
@@ -2748,8 +2795,8 @@ function dbvc_render_export_page()
               <?php else : ?>
                 <p><?php esc_html_e('No manifest entries available for preview.', 'dbvc'); ?></p>
               <?php endif; ?>
-            <?php endif; ?>
-          </section>
+                <?php endif; ?>
+        </section>
         </div>
 
         <section class="dbvc-logging-controls">
@@ -3273,10 +3320,12 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           $taxSelect.trigger('change');
         });
       }
+
     });
   </script>
 <?php
 }
+
 /**
  * Get all available post types for the settings page.
  * 

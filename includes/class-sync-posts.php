@@ -640,6 +640,10 @@ HT;
             return new WP_Error('dbvc_manifest_missing', __('Backup manifest is missing or unreadable.', 'dbvc'));
         }
 
+        if (class_exists('\Dbvc\Media\BundleManager')) {
+            \Dbvc\Media\BundleManager::ingest_from_backup($backup_name, $backup_path);
+        }
+
         self::import_resolver_decisions_from_manifest($manifest, $backup_name);
 
         $decision_store = get_option(self::PROPOSAL_DECISIONS_OPTION, []);
@@ -674,6 +678,7 @@ HT;
         $skipped     = 0;
         $errors      = [];
         $items_total = isset($manifest['items']) ? count($manifest['items']) : 0;
+        $media_reconcile = [];
 
         if ($mode === 'copy') {
             self::copy_backup_to_sync($backup_path, true);
@@ -740,6 +745,22 @@ HT;
 
         if ($mode === 'full') {
             self::copy_backup_to_sync($backup_path, true);
+        }
+
+        if (class_exists('\Dbvc\Media\Reconciler')) {
+            try {
+                $media_reconcile = \Dbvc\Media\Reconciler::enqueue($backup_name, $manifest, [
+                    'allow_remote' => class_exists('DBVC_Media_Sync') ? DBVC_Media_Sync::allow_external_sources() : false,
+                    'backup_path'  => $backup_path,
+                ]);
+            } catch (\Throwable $media_exception) {
+                if (class_exists('DBVC_Sync_Logger') && method_exists('DBVC_Sync_Logger', 'log_media')) {
+                    DBVC_Sync_Logger::log_media('Media reconciliation failed', [
+                        'proposal' => $backup_name,
+                        'error'    => $media_exception->getMessage(),
+                    ]);
+                }
+            }
         }
 
         foreach ($targets as $entry) {
@@ -862,7 +883,10 @@ HT;
             'metrics'     => [],
         ];
         if (class_exists('DBVC_Media_Sync') && DBVC_Media_Sync::is_enabled()) {
-            $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest, ['proposal_id' => $backup_name]);
+            $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest, [
+                'proposal_id' => $backup_name,
+                'manifest_dir'=> $backup_path,
+            ]);
         }
 
         if (isset($media_stats['resolver']) && is_array($media_stats['resolver'])) {
@@ -905,6 +929,7 @@ HT;
             'mode'     => $mode,
             'media'    => $media_stats,
             'media_resolver' => $resolver_payload,
+            'media_reconcile' => $media_reconcile,
         ];
     }
 

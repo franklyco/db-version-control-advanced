@@ -304,9 +304,13 @@ final class DBVC_Admin_App
             $resolver_metrics = null;
             if (class_exists('\Dbvc\Media\Resolver')) {
                 try {
+                    $proposal_path = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
                     $resolver_result  = \Dbvc\Media\Resolver::resolve_manifest($manifest, [
                         'allow_remote' => false,
                         'dry_run'      => true,
+                        'proposal_id'  => $proposal_id,
+                        'bundle_meta'  => $manifest['media_bundle'] ?? [],
+                        'manifest_dir' => $proposal_path,
                     ]);
                     $resolver_metrics = $resolver_result['metrics'] ?? null;
                 } catch (\Throwable $e) {
@@ -332,6 +336,7 @@ final class DBVC_Admin_App
                 'resolver'       => [
                     'metrics' => $resolver_metrics,
                 ],
+                'media_bundle'  => $manifest['media_bundle'] ?? null,
                 'decisions'      => $decision_summary,
             ];
         }
@@ -466,6 +471,11 @@ final class DBVC_Admin_App
             self::copy_directory($bundle_root, $target_path);
         }
 
+        $ingested_bundle_dir = null;
+        if (class_exists('\Dbvc\Media\BundleManager')) {
+            $ingested_bundle_dir = \Dbvc\Media\BundleManager::ingest_from_backup($proposal_id, $target_path);
+        }
+
         $target_manifest_path = trailingslashit($target_path) . DBVC_Backup_Manager::MANIFEST_FILENAME;
         $manifest_for_site = file_exists($target_manifest_path)
             ? json_decode(file_get_contents($target_manifest_path), true)
@@ -473,6 +483,9 @@ final class DBVC_Admin_App
 
         if (is_array($manifest_for_site)) {
             $manifest_for_site['backup_name'] = $proposal_id;
+            if ($ingested_bundle_dir && isset($manifest_for_site['media_bundle']['storage'])) {
+                $manifest_for_site['media_bundle']['storage']['absolute'] = $ingested_bundle_dir;
+            }
             file_put_contents(
                 $target_manifest_path,
                 wp_json_encode($manifest_for_site, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
@@ -716,6 +729,9 @@ final class DBVC_Admin_App
             $result = \Dbvc\Media\Resolver::resolve_manifest($manifest, [
                 'allow_remote' => false,
                 'dry_run'      => true,
+                'proposal_id'  => $proposal_id,
+                'bundle_meta'  => $manifest['media_bundle'] ?? [],
+                'manifest_dir' => trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id,
             ]);
 
             $attachments = [];
@@ -739,6 +755,7 @@ final class DBVC_Admin_App
                 'conflicts'   => $result['conflicts'] ?? [],
                 'id_map'      => $result['id_map'] ?? [],
                 'attachments' => $attachments,
+                'media_bundle'=> $manifest['media_bundle'] ?? [],
             ]);
         }
 
@@ -1530,6 +1547,7 @@ final class DBVC_Admin_App
                 'errors'         => array_map('strval', isset($result['errors']) && is_array($result['errors']) ? $result['errors'] : []),
                 'media'          => isset($result['media']) ? $result['media'] : [],
                 'media_resolver' => isset($result['media_resolver']) ? $result['media_resolver'] : [],
+                'media_reconcile'=> isset($result['media_reconcile']) ? $result['media_reconcile'] : [],
             ],
             'decisions_before'   => $summary_before,
             'decisions'          => $summary_after,

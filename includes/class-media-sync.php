@@ -222,6 +222,10 @@ if (! class_exists('DBVC_Media_Sync')) {
                     'event' => $event,
                     'level' => $level,
                 ], $context));
+            } elseif (
+                defined('WP_DEBUG_LOG') && WP_DEBUG_LOG
+            ) {
+                error_log('[DBVC media] ' . $message . ' ' . wp_json_encode($context));
             }
 
             if (class_exists('DBVC_Database')) {
@@ -255,6 +259,9 @@ if (! class_exists('DBVC_Media_Sync')) {
                     $resolver_result = \Dbvc\Media\Resolver::resolve_manifest($manifest, [
                         'allow_remote' => self::allow_external_sources(),
                         'dry_run'      => false,
+                        'proposal_id'  => $context['proposal_id'] ?? ($manifest['backup_name'] ?? ''),
+                        'bundle_meta'  => $manifest['media_bundle'] ?? [],
+                        'manifest_dir' => $context['manifest_dir'] ?? null,
                     ]);
                     self::apply_resolver_result($resolver_result, $queue);
                 } catch (\Throwable $resolver_exception) {
@@ -484,9 +491,17 @@ if (! class_exists('DBVC_Media_Sync')) {
          */
         private static function process_queue(array $queue)
         {
+            if (empty($queue)) {
+                return;
+            }
+
+            $downloaded = 0;
+            $errors     = 0;
+
             foreach ($queue as $item) {
                 $result = self::download_item($item);
                 if (is_wp_error($result)) {
+                    $errors++;
                     self::$stats['errors']++;
                     DBVC_Sync_Logger::log_media('Media download failed', [
                         'error'        => $result->get_error_message(),
@@ -504,8 +519,16 @@ if (! class_exists('DBVC_Media_Sync')) {
                             ]
                         );
                     }
+                } else {
+                    $downloaded++;
                 }
             }
+
+            self::log_event('media_sync_remote_processed', 'Remote media queue processed', [
+                'queued'      => count($queue),
+                'downloaded'  => $downloaded,
+                'errors'      => $errors,
+            ]);
         }
 
         /**
@@ -522,6 +545,10 @@ if (! class_exists('DBVC_Media_Sync')) {
             }
 
             $mode        = self::get_transport_mode();
+            $handled     = 0;
+            $missing     = 0;
+            $hash_miss   = 0;
+            $import_fail = 0;
 
             foreach ($queue as &$item) {
                 if (! empty($item['handled'])) {
@@ -541,6 +568,7 @@ if (! class_exists('DBVC_Media_Sync')) {
                             'original_id'   => $item['original_id'],
                             'relative_path' => $relative,
                         ]);
+                        $missing++;
                         $item['handled'] = true;
                     }
                     continue;
@@ -561,6 +589,7 @@ if (! class_exists('DBVC_Media_Sync')) {
                     ]);
                     if ($mode === 'bundled') {
                         self::$stats['errors']++;
+                        $hash_miss++;
                         $item['handled'] = true;
                     }
                     continue;
@@ -575,6 +604,7 @@ if (! class_exists('DBVC_Media_Sync')) {
                     ]);
                     if ($mode === 'bundled') {
                         self::$stats['errors']++;
+                        $import_fail++;
                         $item['handled'] = true;
                     }
                     continue;
@@ -584,6 +614,7 @@ if (! class_exists('DBVC_Media_Sync')) {
                 self::set_mapping($item['original_id'], $attachment_id);
                 self::register_url_mapping($item['source_url'], $attachment_id);
                 self::$stats['downloaded']++;
+                $handled++;
 
                 DBVC_Sync_Logger::log_media('Bundled media imported', [
                     'original_id'   => $item['original_id'],
@@ -614,6 +645,15 @@ if (! class_exists('DBVC_Media_Sync')) {
                     );
                 }
             }
+
+            self::log_event('media_sync_bundled_processed', 'Bundled media processed', [
+                'queued'        => count($queue),
+                'handled'       => $handled,
+                'missing'       => $missing,
+                'hash_mismatch' => $hash_miss,
+                'import_errors' => $import_fail,
+                'mode'          => $mode,
+            ]);
         }
 
         /**
@@ -821,6 +861,11 @@ if (! class_exists('DBVC_Media_Sync')) {
                     set_post_thumbnail($post_id, $new_id);
                     $meta_changed = true;
                     self::$stats['meta_updates']++;
+                    self::log_event('media_meta_thumbnail_updated', 'Post thumbnail remapped', [
+                        'post_id'      => $post_id,
+                        'original_id'  => $original_id,
+                        'attachment_id'=> $new_id,
+                    ]);
                     continue;
                 }
 
@@ -841,6 +886,13 @@ if (! class_exists('DBVC_Media_Sync')) {
                 if ($updated) {
                     $meta_changed = true;
                     self::$stats['meta_updates']++;
+                    self::log_event('media_meta_reference_updated', 'Post meta reference remapped', [
+                        'post_id'      => $post_id,
+                        'meta_key'     => $meta_key,
+                        'original_id'  => $original_id,
+                        'attachment_id'=> $new_id,
+                        'path'         => implode('/', $ref['path'] ?? []),
+                    ]);
                 }
             }
 

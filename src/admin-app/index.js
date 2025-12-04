@@ -2207,8 +2207,9 @@ const App = () => {
 	const applyNoticeClass = applyResultErrors.length ? 'notice notice-warning' : 'notice notice-success';
 	const applyImported = applyResult?.result?.imported ?? 0;
 	const applySkipped = applyResult?.result?.skipped ?? 0;
-	const applyResolverMetrics = applyResult?.result?.media_resolver?.metrics ?? {};
-	const applyResolverUnresolved = applyResolverMetrics?.unresolved ?? 0;
+const applyResolverMetrics = applyResult?.result?.media_resolver?.metrics ?? {};
+const applyResolverUnresolved = applyResolverMetrics?.unresolved ?? 0;
+const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 
 	const handleUploadComplete = useCallback(
 		(proposalId) => {
@@ -2360,6 +2361,11 @@ const App = () => {
 										: ''}
 									{applyResolverUnresolved > 0 && ` · ${applyResolverUnresolved} resolver conflict(s) remain.`}
 								</p>
+								{mediaReconcile && (
+									<p className="dbvc-resolver-summary">
+										Media reconciliation — created: {mediaReconcile.created ?? 0}, unresolved: {mediaReconcile.unresolved ?? 0}
+									</p>
+								)}
 								{applyResult.resolver_decisions && (
 									<p className="dbvc-resolver-summary">
 										Resolver decisions applied — reuse: {applyResult.resolver_decisions.reuse ?? 0}, map:{' '}

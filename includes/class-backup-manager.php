@@ -162,8 +162,24 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 ];
             }
 
-            if (class_exists('DBVC_Media_Sync') && DBVC_Media_Sync::is_bundle_enabled() && ! empty($media_index)) {
-                self::bundle_media_assets($media_index);
+            $media_bundle_meta = null;
+            if (
+                class_exists('DBVC_Media_Sync')
+                && DBVC_Media_Sync::is_bundle_enabled()
+                && ! empty($media_index)
+            ) {
+                try {
+                    $bundle_stats = \Dbvc\Media\BundleManager::build_bundle($backup_name, array_values($media_index));
+                    \Dbvc\Media\BundleManager::mirror_to_backup($backup_name, $backup_path);
+                    $media_bundle_meta = \Dbvc\Media\BundleManager::build_manifest_metadata($backup_name, $bundle_stats);
+                } catch (\Throwable $bundle_exception) {
+                    if (class_exists('DBVC_Sync_Logger')) {
+                        DBVC_Sync_Logger::log('Media bundle generation failed', [
+                            'backup' => $backup_name,
+                            'error'  => $bundle_exception->getMessage(),
+                        ]);
+                    }
+                }
             }
 
             $manifest = [
@@ -187,6 +203,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 ],
                 'items'        => $items,
                 'media_index'  => array_values($media_index),
+                'media_bundle' => $media_bundle_meta,
             ];
 
             $resolver_snapshot = self::export_resolver_decisions($backup_name);
@@ -221,111 +238,6 @@ if (! class_exists('DBVC_Backup_Manager')) {
          * @param array $media_index
          * @return void
          */
-        private static function bundle_media_assets(array $media_index)
-        {
-            if (empty($media_index)) {
-                return;
-            }
-
-            $sync_root    = dbvc_get_sync_path();
-            $bundle_root  = DBVC_Media_Sync::get_bundle_base_dir();
-            $copied       = 0;
-            $failed       = 0;
-            $skipped_hash = 0;
-
-            if (is_dir($bundle_root)) {
-                // Clear existing bundle contents to avoid stale files.
-                if (method_exists('DBVC_Sync_Posts', 'delete_folder_contents')) {
-                    DBVC_Sync_Posts::delete_folder_contents($bundle_root);
-                }
-            }
-
-            wp_mkdir_p($bundle_root);
-
-            foreach ($media_index as $entry) {
-                $original_id   = isset($entry['original_id']) ? (int) $entry['original_id'] : 0;
-                $relative_path = isset($entry['relative_path']) ? $entry['relative_path'] : '';
-                $hash_prefixed = isset($entry['hash']) ? $entry['hash'] : '';
-                $source_path   = $original_id ? get_attached_file($original_id) : '';
-
-                if (! $original_id || ! $source_path || ! file_exists($source_path) || empty($relative_path)) {
-                    $failed++;
-                    continue;
-                }
-
-                $target_path = trailingslashit($sync_root) . ltrim($relative_path, '/');
-                $target_dir  = dirname($target_path);
-
-                if (! wp_mkdir_p($target_dir)) {
-                    DBVC_Sync_Logger::log('Failed to create bundle media directory', [
-                        'target_dir' => $target_dir,
-                    ]);
-                    $failed++;
-                    continue;
-                }
-
-                $existing_hash = '';
-                if (file_exists($target_path)) {
-                    $existing_hash = hash_file('sha256', $target_path);
-                }
-
-                $expected_hash = '';
-                if ($hash_prefixed) {
-                    $parts = explode(':', $hash_prefixed, 2);
-                    $expected_hash = end($parts);
-                }
-
-                if ($existing_hash && $expected_hash && hash_equals($existing_hash, $expected_hash)) {
-                    $skipped_hash++;
-                    continue;
-                }
-
-                if (! @copy($source_path, $target_path)) {
-                    DBVC_Sync_Logger::log('Failed to copy media into bundle', [
-                        'source' => $source_path,
-                        'target' => $target_path,
-                    ]);
-                    $failed++;
-                    continue;
-                }
-
-                $copied++;
-
-                if (class_exists('DBVC_Database')) {
-                    DBVC_Database::upsert_media([
-                        'attachment_id' => $original_id,
-                        'original_id'   => $original_id,
-                        'relative_path' => $relative_path,
-                        'file_hash'     => $expected_hash ?: hash_file('sha256', $target_path),
-                        'file_size'     => file_exists($target_path) ? filesize($target_path) : null,
-                        'mime_type'     => isset($entry['mime_type']) ? $entry['mime_type'] : null,
-                        'source_url'    => isset($entry['source_url']) ? $entry['source_url'] : null,
-                    ]);
-                }
-            }
-
-            if ($copied > 0) {
-                DBVC_Sync_Logger::log('Bundled media copied', [
-                    'copied'        => $copied,
-                    'skipped_hash'  => $skipped_hash,
-                    'failed'        => $failed,
-                ]);
-            }
-
-            if (class_exists('DBVC_Database')) {
-                DBVC_Database::log_activity(
-                    'media_bundle_built',
-                    'info',
-                    'Media bundle generated',
-                    [
-                        'copied'       => $copied,
-                        'skipped_hash' => $skipped_hash,
-                        'failed'       => $failed,
-                    ]
-                );
-            }
-        }
-
         /**
          * Gather media references from the post JSON payload and enrich the shared media index.
          *

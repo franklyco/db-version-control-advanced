@@ -318,6 +318,7 @@ class DBVC_WP_CLI_Commands {
 
 		$media_stats = DBVC_Media_Sync::sync_manifest_media( $manifest_data, [
 			'proposal_id' => $manifest_data['backup_name'] ?? ( $manifest_data['generated_at'] ?? 'cli' ),
+			'manifest_dir'=> trailingslashit( dbvc_get_sync_path() ),
 		] );
 		if ( ! is_array( $media_stats ) ) {
 			return null;

@@ -31,6 +31,7 @@ _Last updated: 2025-11-06 (America/New_York)_
 ### Phases (recommended order)
 1. **Identity layer** (UIDs for posts/terms/attachments; backfill + auto-stamp). _Status: planned_  
 2. **Media resolver** (UID/hash/path → attachment ID map; upload if missing). _Status: redesigning — keep legacy `DBVC_Media_Sync` in place until replacement ready_  
+   - UX follow-up: add a dedicated “Media Handling” subtab under Configure that centralizes all media toggles (bundle exports, remote downloads, filename preservation). Keep Export-tab checkboxes in sync with this subtab so admins always change a single source of truth.
 3. **Exporter** (normalized entity snapshots + manifest + optional media). _Status: planned_  
 4. **Diff engine** (type-aware comparisons for core/meta/ACF/blocks/tax). _Status: planned_  
 5. **REST + UI** (proposal list → drill-down → per-field accept/keep). _Status: planned (future React UI)_  

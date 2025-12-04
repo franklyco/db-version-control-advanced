@@ -26,6 +26,22 @@ if (! class_exists('DBVC_Sync_Logger')) {
         const LOG_FILENAME          = 'dbvc-backup.log';
 
         /**
+         * Emit a simple heartbeat message to the active log destination + WP debug log.
+         */
+        public static function heartbeat($message = 'Logging Active')
+        {
+            $formatted = sprintf('[DBVC_Plugin] %s', $message);
+
+            if (self::is_core_logging_enabled()) {
+                self::write_entry($formatted, self::export_current_settings());
+            }
+
+            if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+                error_log($formatted . ' ' . wp_json_encode(self::export_current_settings()));
+            }
+        }
+
+        /**
          * Write an entry to the custom log file.
          *
          * @param string $message Message to log.
@@ -255,9 +271,9 @@ if (! class_exists('DBVC_Sync_Logger')) {
          * @param array  $context
          * @return void
          */
-        private static function write_entry($message, array $context = [])
-        {
-            $path = self::get_log_file_path();
+    private static function write_entry($message, array $context = [])
+    {
+        $path = self::get_log_file_path();
             if (! $path) {
                 return;
             }
@@ -310,5 +326,24 @@ if (! class_exists('DBVC_Sync_Logger')) {
             $archive = $path . '.' . gmdate('Ymd-His');
             @rename($path, $archive);
         }
+
+    /**
+     * Export current logging toggles/settings for debugging.
+     */
+    private static function export_current_settings(): array
+    {
+        if (! function_exists('get_option')) {
+            return [];
+        }
+
+        return [
+            'enabled'        => get_option(self::OPTION_ENABLED, '0'),
+            'import_events'  => get_option(self::OPTION_IMPORT_EVENTS, '0'),
+            'upload_events'  => get_option(self::OPTION_UPLOAD_EVENTS, '0'),
+            'media_events'   => get_option(self::OPTION_MEDIA_EVENTS, '0'),
+            'directory'      => get_option(self::OPTION_DIRECTORY, ''),
+            'max_size'       => get_option(self::OPTION_MAX_SIZE, self::DEFAULT_MAX_SIZE),
+        ];
     }
+}
 }

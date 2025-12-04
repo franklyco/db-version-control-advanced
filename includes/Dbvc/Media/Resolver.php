@@ -140,7 +140,7 @@ final class Resolver
                     $result['resolved_via'] = 'asset_uid';
                     $result['target_id']    = (int) $candidates[0];
                     $result['candidates']   = $candidates;
-                    $result['bundle_hit']   = self::bundle_file_exists($descriptor['bundle_path']);
+                    $result['bundle_hit']   = self::bundle_file_exists($descriptor, $options);
                     return $result;
                 }
 
@@ -160,7 +160,7 @@ final class Resolver
                     $result['resolved_via'] = 'file_hash';
                     $result['target_id']    = (int) $hash_candidates[0];
                     $result['candidates']   = $hash_candidates;
-                    $result['bundle_hit']   = self::bundle_file_exists($descriptor['bundle_path']);
+                    $result['bundle_hit']   = self::bundle_file_exists($descriptor, $options);
 
                     if ($asset_uid && ! \get_post_meta($hash_candidates[0], 'vf_asset_uid', true)) {
                         \update_post_meta($hash_candidates[0], 'vf_asset_uid', $asset_uid);
@@ -186,7 +186,7 @@ final class Resolver
                     $result['resolved_via'] = 'relative_path';
                     $result['target_id']    = $target_id;
                     $result['candidates']   = $path_candidates;
-                    $result['bundle_hit']   = self::bundle_file_exists($descriptor['bundle_path']);
+                    $result['bundle_hit']   = self::bundle_file_exists($descriptor, $options);
 
                     if ($asset_uid) {
                         \update_post_meta($target_id, 'vf_asset_uid', $asset_uid);
@@ -395,15 +395,29 @@ final class Resolver
      * @param string $bundle_path
      * @return bool
      */
-    private static function bundle_file_exists($bundle_path): bool
+    private static function bundle_file_exists(array $descriptor, array $options): bool
     {
-        if ($bundle_path === '' || ! \function_exists('dbvc_get_sync_path')) {
+        $bundle_path = $descriptor['bundle_path'] ?? '';
+        if ($bundle_path === '') {
             return false;
         }
 
-        $base = \trailingslashit(\dbvc_get_sync_path());
-        $path = \wp_normalize_path($base . ltrim($bundle_path, '/'));
+        $proposal_id = $options['proposal_id'] ?? '';
+        $bundle_meta = isset($options['bundle_meta']) && is_array($options['bundle_meta'])
+            ? $options['bundle_meta']
+            : [];
 
-        return \file_exists($path);
+        $located = BundleManager::locate_bundle_file(
+            $proposal_id,
+            $bundle_path,
+            $bundle_meta,
+            [
+                'bundle_dir'   => $options['bundle_dir'] ?? '',
+                'manifest_dir' => $options['manifest_dir'] ?? '',
+            ]
+        );
+
+        return $located && file_exists($located);
     }
+
 }
