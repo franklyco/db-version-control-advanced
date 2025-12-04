@@ -74,6 +74,7 @@ DBVC_Database::init();
 register_activation_hook(__FILE__, ['DBVC_Database', 'activate']);
 
 // Hook into post save.
+add_action('save_post', ['DBVC_Sync_Posts', 'ensure_post_uid_on_save'], 1, 2);
 add_action('save_post', ['DBVC_Sync_Posts', 'export_post_to_json'], 10, 2);
 
 /**

@@ -144,12 +144,15 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $item_type = 'menus';
                 }
 
+                $entity_uid = class_exists('DBVC_Sync_Posts') ? DBVC_Sync_Posts::ensure_post_uid($post_id) : '';
+
                 $items[] = [
                     'path'             => $relative,
                     'hash'             => hash('sha256', $raw),
                     'size'             => $file->getSize(),
                     'item_type'        => $item_type,
                     'post_id'          => $post_id,
+                    'vf_object_uid'    => $entity_uid,
                     'post_type'        => $post_type,
                     'post_title'       => $post_title,
                     'post_status'      => $post_status,
@@ -186,6 +189,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 'schema'       => self::SCHEMA_VERSION,
                 'generated_at' => gmdate('Y-m-d H:i:s'),
                 'backup_name'  => $backup_name,
+                'status'       => 'draft',
                 'site'         => [
                     'home_url'   => home_url(),
                     'site_url'   => site_url(),

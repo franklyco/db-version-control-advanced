@@ -815,11 +815,14 @@ if (! class_exists('DBVC_Media_Sync')) {
                 }
 
                 $original_post_id = isset($item['post_id']) ? (int) $item['post_id'] : 0;
+                $entity_uid = isset($item['vf_object_uid'])
+                    ? (string) $item['vf_object_uid']
+                    : (string) $original_post_id;
                 if (! $original_post_id) {
                     continue;
                 }
 
-                $local_post_id = DBVC_Sync_Posts::resolve_local_post_id($original_post_id);
+                $local_post_id = DBVC_Sync_Posts::resolve_local_post_id($original_post_id, $entity_uid, $item['post_type'] ?? '');
                 if (! $local_post_id || ! get_post($local_post_id)) {
                     continue;
                 }

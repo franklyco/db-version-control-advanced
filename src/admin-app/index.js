@@ -174,11 +174,34 @@ const renderHighlightedSegments = (segments) => {
 	);
 };
 
+const POST_FIELD_KEYS = new Set([
+	'post_title',
+	'post_name',
+	'post_status',
+	'post_type',
+	'post_excerpt',
+	'post_parent',
+	'post_author',
+	'post_date',
+	'post_date_gmt',
+	'post_modified',
+	'post_modified_gmt',
+	'post_password',
+	'post_mime_type',
+	'post_content_filtered',
+	'menu_order',
+	'comment_status',
+	'ping_status',
+	'guid',
+	'comment_count',
+]);
+
 const SECTION_LABELS = {
 	meta: 'Meta',
 	tax: 'Taxonomies',
 	media: 'Media References',
 	content: 'Content',
+	post_fields: 'Post Fields',
 	title: 'Title',
 	status: 'Status',
 	post_type: 'Post Type',
@@ -191,7 +214,8 @@ const groupDiffChanges = (changes) => {
 
 	changes.forEach((change) => {
 		const [root] = change.path.split('.');
-		const key = root || 'other';
+		const sectionKey = POST_FIELD_KEYS.has(root) ? 'post_fields' : root;
+		const key = sectionKey || 'other';
 		if (!groups[key]) {
 			groups[key] = [];
 		}
@@ -207,6 +231,7 @@ const groupDiffChanges = (changes) => {
 const STATUS_LABELS = {
 	all: 'All entities',
 	needs_review: 'Needs Review',
+	needs_review_media: 'Needs Review (Media)',
 	resolved: 'Resolved',
 	reused: 'Resolved',
 	conflict: 'Conflict',
@@ -226,13 +251,14 @@ const ProposalList = ({ proposals, selectedId, onSelect }) => {
 	}
 
 	return (
-		<table className="widefat fixed striped">
+		<table className="widefat fixed striped dbvc-proposal-table">
 			<thead>
 				<tr>
 					<th>Proposal</th>
 					<th>Generated</th>
 					<th>Files</th>
 					<th>Media</th>
+					<th>Status</th>
 					<th>Decisions</th>
 					<th>Resolver reused</th>
 					<th>Resolver unresolved</th>
@@ -248,10 +274,11 @@ const ProposalList = ({ proposals, selectedId, onSelect }) => {
 					const reviewedCount = decisionSummary.entities_reviewed ?? 0;
 					const hasSelections = (decisionSummary.total ?? 0) > 0;
 
+					const status = proposal.status === 'closed' ? 'Closed' : 'Open';
 					return (
 						<tr
 							key={proposal.id}
-							className={isActive ? 'is-active' : undefined}
+							className={`${isActive ? 'is-active' : ''} ${proposal.status === 'closed' ? 'is-archived' : ''}`}
 							onClick={() => onSelect(proposal.id)}
 							style={{ cursor: 'pointer' }}
 						>
@@ -259,6 +286,11 @@ const ProposalList = ({ proposals, selectedId, onSelect }) => {
 							<td>{formatDate(proposal.generated_at)}</td>
 							<td>{proposal.files ?? '—'}</td>
 							<td>{proposal.media_items ?? '—'}</td>
+							<td>
+								<span className={`dbvc-status-badge dbvc-status-badge--${proposal.status ?? 'draft'}`}>
+									{status}
+								</span>
+							</td>
 							<td>
 								{hasSelections ? (
 									<div className="dbvc-decisions">
@@ -491,9 +523,11 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
 						<th>Type</th>
 						<th>Status</th>
 						<th>Content hash</th>
+						<th>Diff</th>
 						<th>Media refs</th>
 						<th>Resolver</th>
-						<th>Unresolved</th>
+						<th>Unresolved media</th>
+						<th>Unresolved meta</th>
 						<th>Conflicts</th>
 						<th>Decisions</th>
 					</tr>
@@ -501,20 +535,25 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
 				<tbody>
 					{virtualizationEnabled && paddingTop > 0 && (
 						<tr className="dbvc-entity-spacer" aria-hidden="true" style={{ height: `${paddingTop}px` }}>
-							<td colSpan={9} />
+							<td colSpan={11} />
 						</tr>
 					)}
 					{visibleEntities.map((entity) => {
 						const isActive = entity.vf_object_uid === selectedEntityId;
 						const summary = entity.resolver?.summary ?? {};
-						const status = entity.resolver?.status ?? 'unknown';
+						const diffState = entity.diff_state ?? {};
+						const mediaStatus = entity.media_needs_review
+							? 'needs_review'
+							: entity.resolver?.status ?? 'resolved';
+						const overallStatus = entity.overall_status || (diffState.needs_review ? 'needs_review' : 'resolved');
+						const hashMissing = diffState.reason === 'missing_local_hash';
 					const decisionSummary = entity.decision_summary ?? {};
 					const entityAccepted = decisionSummary.accepted ?? 0;
 					const entityKept = decisionSummary.kept ?? 0;
 					const entityHasSelections = (decisionSummary.total ?? 0) > 0;
 
 					const rowClass = [
-						`resolver-${status}`,
+						`resolver-${overallStatus}`,
 						isActive ? 'is-active' : '',
 					]
 						.filter(Boolean)
@@ -544,10 +583,19 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
 							<td>{entity.post_status || '—'}</td>
 							<td style={{ wordBreak: 'break-all' }}>{entity.content_hash ?? '—'}</td>
 							<td>
+								{renderStatusBadge(diffState.needs_review ? 'needs_review' : 'resolved')}
+								{hashMissing && (
+									<span className="dbvc-badge dbvc-badge--missing" style={{ marginLeft: '0.25rem' }}>
+										Hash missing
+									</span>
+								)}
+							</td>
+							<td>
 								{(entity.media_refs?.meta?.length ?? 0) + (entity.media_refs?.content?.length ?? 0)}
 							</td>
-							<td>{renderStatusBadge(status)}</td>
+							<td>{renderStatusBadge(mediaStatus)}</td>
 							<td>{summary.unresolved ?? 0}</td>
+							<td>{entity.meta_diff_count ?? 0}</td>
 							<td>{summary.conflicts ?? 0}</td>
 							<td>
 								{entityHasSelections ? (
@@ -568,7 +616,7 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect }) => {
 					})}
 					{virtualizationEnabled && paddingBottom > 0 && (
 						<tr className="dbvc-entity-spacer" aria-hidden="true" style={{ height: `${paddingBottom}px` }}>
-							<td colSpan={9} />
+							<td colSpan={11} />
 						</tr>
 					)}
 				</tbody>
@@ -602,6 +650,9 @@ const EntityDetailPanel = ({
 	isOpen = true,
 	resettingDecisions = false,
 	snapshotCapturing = false,
+	onHashSync,
+	hashSyncing = false,
+	hashSyncTarget = '',
 }) => {
 	const headingId = useMemo(() => {
 		if (entityDetail?.item?.vf_object_uid) {
@@ -644,36 +695,8 @@ const EntityDetailPanel = ({
 	}, [isOpen, onClose, headingId]);
 
 	const renderPanelShell = (children) => {
-		const header = (
-			<div className="dbvc-entity-detail__header">
-				<h3 id={headingId}>{item?.post_title || 'Entity detail'}</h3>
-				{item && (
-					<div className="dbvc-entity-detail__meta">
-						<div>
-							<strong>Slug:</strong> {item.post_name || '—'}
-						</div>
-						<div>
-							<strong>File:</strong> {item.path || '—'}
-						</div>
-					</div>
-				)}
-				{onClose && (
-					<button
-						type="button"
-						className="dbvc-entity-detail__close"
-						onClick={onClose}
-						aria-label="Close entity detail"
-						ref={onClose ? closeButtonRef : undefined}
-					>
-						Close
-					</button>
-				)}
-			</div>
-		);
-
 		const body = (
 			<div className="dbvc-admin-app__entity-detail">
-				{header}
 				{children}
 			</div>
 		);
@@ -699,6 +722,10 @@ const EntityDetailPanel = ({
 
 	const { item, current, proposed = {}, diff } = entityDetail ?? {};
 	const decisionSummary = entityDetail?.decision_summary ?? {};
+	const diffState = entityDetail?.diff_state ?? item?.diff_state ?? null;
+	const localPostId = diffState?.local_post_id ?? null;
+	const editLink = localPostId ? `post.php?post=${localPostId}&action=edit` : '';
+	const hashNeedsSync = diffState?.reason === 'missing_local_hash';
 	const totalSelections = decisionSummary.total ?? 0;
 	const selectionsLabel =
 		totalSelections > 0
@@ -709,12 +736,8 @@ const EntityDetailPanel = ({
 		if (filterMode !== 'conflicts') {
 			return changes;
 		}
-		return changes.filter((change) => {
-			const path = change.path || '';
-			const decision = decisions?.[path] ?? 'keep';
-			return decision !== 'accept';
-		});
-	}, [changes, filterMode, decisions]);
+		return changes;
+	}, [changes, filterMode]);
 	const groupedChanges = useMemo(() => groupDiffChanges(filteredChanges), [filteredChanges]);
 	const attachments = resolverInfo?.attachments ?? [];
 	const [resolverSearch, setResolverSearch] = useState('');
@@ -742,8 +765,16 @@ const EntityDetailPanel = ({
 	}, [attachments, resolverSearch]);
 
 	const filterActive = filterMode === 'conflicts';
-	const filteredCount = filteredChanges.length;
 	const totalCount = changes.length;
+	const unresolvedCount = useMemo(
+		() =>
+			changes.filter((change) => {
+				const decision = decisions?.[change.path] ?? '';
+				return decision !== 'accept';
+			}).length,
+		[changes, decisions]
+	);
+	const filteredCount = filteredChanges.length;
 	const [showAllSections, setShowAllSections] = useState(false);
 	const [activeSection, setActiveSection] = useState('');
 	const [bulkResolverFilterType, setBulkResolverFilterType] = useState('reason');
@@ -915,9 +946,26 @@ const EntityDetailPanel = ({
 		<>
 			<div className="dbvc-entity-toolbar">
 				<div className="dbvc-entity-toolbar__meta">
-					<div className="dbvc-entity-toolbar__title">{item?.post_title || 'Entity detail'}</div>
+					<div className="dbvc-entity-toolbar__title" id={headingId}>
+						{editLink ? (
+							<a href={editLink} target="_blank" rel="noreferrer">
+								{item?.post_title || 'Entity detail'}
+							</a>
+						) : (
+							item?.post_title || 'Entity detail'
+						)}
+					</div>
 					<div className="dbvc-entity-toolbar__sub">
-						<span>Slug: {item?.post_name || '—'}</span>
+						<span>
+							Slug:{' '}
+							{editLink && item?.post_name ? (
+								<a href={editLink} target="_blank" rel="noreferrer">
+									{item.post_name}
+								</a>
+							) : (
+								item?.post_name || '—'
+							)}
+						</span>
 						<span>File: {item?.path || '—'}</span>
 					</div>
 				</div>
@@ -939,68 +987,124 @@ const EntityDetailPanel = ({
 					</button>
 				</div>
 				<p className="dbvc-entity-toolbar__count">
-					{filteredCount} field(s) shown
-					{filterActive ? ` (from ${totalCount} total changes)` : ''}.
+					{filterActive
+						? `${unresolvedCount} field(s) awaiting review · ${totalCount} total`
+						: `${filteredCount} field(s) shown.`}
 				</p>
-				{bulkPaths.length > 0 && (
-					<div className="dbvc-bulk-actions">
+				{hashNeedsSync && onHashSync && (
+					<div className="notice notice-warning">
+						<p>This entity is missing its stored import hash. Sync it to prevent repeated reviews.</p>
 						<button
 							type="button"
 							className="button button-secondary"
-							onClick={() => {
-								if (onBulkDecision && window.confirm(`Accept ${bulkPaths.length} field(s)?`)) {
-									onBulkDecision('accept', bulkPaths);
-								}
-							}}
-							disabled={bulkSaving}
+							onClick={() => onHashSync(entityDetail?.vf_object_uid)}
+							disabled={hashSyncing && hashSyncTarget === entityDetail?.vf_object_uid}
 						>
-							{bulkSaving ? 'Accepting…' : 'Accept All Visible'}
-						</button>
-						<button
-							type="button"
-							className="button"
-							onClick={() => {
-								if (onBulkDecision && window.confirm(`Keep current values for ${bulkPaths.length} field(s)?`)) {
-									onBulkDecision('keep', bulkPaths);
-								}
-							}}
-							disabled={bulkSaving}
-						>
-							{bulkSaving ? 'Keeping…' : 'Keep All Visible'}
+							{hashSyncing && hashSyncTarget === entityDetail?.vf_object_uid
+								? 'Storing hash…'
+								: 'Store import hash'}
 						</button>
 					</div>
 				)}
+				{(() => {
+					const actionCards = [];
+					if (bulkPaths.length > 0) {
+						actionCards.push({
+							key: 'accept_all',
+							content: (
+								<>
+									<button
+										type="button"
+										className="button button-secondary"
+										onClick={() => {
+											if (onBulkDecision && window.confirm(`Accept ${bulkPaths.length} field(s)?`)) {
+												onBulkDecision('accept', bulkPaths);
+											}
+										}}
+										disabled={bulkSaving}
+									>
+										{bulkSaving ? 'Accepting…' : 'Accept All Visible'}
+									</button>
+									<p className="description">Applies the bundle values to every field currently listed.</p>
+								</>
+							),
+						});
+						actionCards.push({
+							key: 'keep_all',
+							content: (
+								<>
+									<button
+										type="button"
+										className="button"
+										onClick={() => {
+											if (onBulkDecision && window.confirm(`Keep current values for ${bulkPaths.length} field(s)?`)) {
+												onBulkDecision('keep', bulkPaths);
+											}
+										}}
+										disabled={bulkSaving}
+									>
+										{bulkSaving ? 'Keeping…' : 'Keep All Visible'}
+									</button>
+									<p className="description">Locks in the live values for each visible field without importing.</p>
+								</>
+							),
+						});
+					}
+					if (typeof onCaptureSnapshot === 'function') {
+						actionCards.push({
+							key: 'snapshot',
+							content: (
+								<>
+									<button
+										type="button"
+										className="button dbvc-button-inverted"
+										onClick={onCaptureSnapshot}
+										disabled={snapshotCapturing || !onCaptureSnapshot}
+									>
+										{snapshotCapturing ? 'Capturing snapshot…' : 'Capture current snapshot'}
+									</button>
+									<p className="description">Refreshes the “current” baseline from the live post before you compare.</p>
+								</>
+							),
+						});
+					}
+					if (typeof onResetDecisions === 'function' && totalSelections > 0) {
+						actionCards.push({
+							key: 'clear_decisions',
+							content: (
+								<>
+									<button
+										type="button"
+										className="button"
+										onClick={onResetDecisions}
+										disabled={resettingDecisions}
+									>
+										{resettingDecisions ? 'Clearing…' : 'Clear all decisions'}
+									</button>
+									<p className="description">Removes every Accept/Keep choice so you can re-evaluate this entity.</p>
+								</>
+							),
+						});
+					}
+					if (!actionCards.length) {
+						return null;
+					}
+					return (
+						<div className="dbvc-entity-action-grid">
+							{actionCards.map((card) => (
+								<div key={card.key} className="dbvc-entity-action">
+									{card.content}
+								</div>
+							))}
+						</div>
+					);
+				})()}
 				<p className="dbvc-decision-summary">Selections: {selectionsLabel}</p>
 			</div>
-
-		<div className="dbvc-entity-detail__actions">
-			<Button
-				variant="secondary"
-				onClick={onCaptureSnapshot}
-				isBusy={snapshotCapturing}
-				disabled={snapshotCapturing || !onCaptureSnapshot}
-			>
-				{snapshotCapturing ? 'Capturing snapshot…' : 'Capture current snapshot'}
-			</Button>
-			<p className="description">Creates a fresh “current” snapshot from the live site for this entity.</p>
-		</div>
 
 		{decisionError && (
 			<div className="notice notice-error">
 				<p>{decisionError}</p>
-			</div>
-		)}
-		{typeof onResetDecisions === 'function' && totalSelections > 0 && (
-			<div className="dbvc-entity-detail__actions">
-				<Button
-					variant="tertiary"
-					onClick={onResetDecisions}
-					isBusy={resettingDecisions}
-					disabled={resettingDecisions}
-				>
-					{resettingDecisions ? 'Clearing…' : 'Clear all decisions'}
-				</Button>
-				<p className="description">Removes every Accept/Keep choice for this entity.</p>
 			</div>
 		)}
 
@@ -1224,6 +1328,9 @@ const App = () => {
 	const [errorResolver, setErrorResolver] = useState(null);
 	const [errorEntityDetail, setErrorEntityDetail] = useState(null);
 	const [applying, setApplying] = useState(false);
+	const [statusUpdating, setStatusUpdating] = useState(false);
+	const [hashSyncing, setHashSyncing] = useState(false);
+	const [hashSyncTarget, setHashSyncTarget] = useState('');
 	const [applyResult, setApplyResult] = useState(null);
 	const [applyError, setApplyError] = useState(null);
 	const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
@@ -1530,6 +1637,11 @@ const App = () => {
 		[proposals, selectedId]
 	);
 
+	const missingHashEntities = useMemo(
+		() => entities.filter((entity) => entity.diff_state?.reason === 'missing_local_hash'),
+		[entities]
+	);
+
 	useEffect(() => {
 		if (!filteredEntities.length) {
 			setSelectedEntityId(null);
@@ -1562,6 +1674,97 @@ const App = () => {
 		setSelectedEntityId((prev) => (prev === entityId ? prev : entityId));
 		setIsEntityDetailOpen(true);
 	}, []);
+
+	const handleProposalStatusChange = useCallback(
+		async (nextStatus) => {
+			if (!selectedId) {
+				return;
+			}
+
+			setStatusUpdating(true);
+			try {
+				const payload = await postJSON(
+					`proposals/${encodeURIComponent(selectedId)}/status`,
+					{ status: nextStatus }
+				);
+				setProposals((prev) =>
+					prev.map((proposal) =>
+						proposal.id === selectedId ? { ...proposal, status: payload.status } : proposal
+					)
+				);
+			} catch (err) {
+				setApplyError(err?.message || 'Failed to update proposal status.');
+			} finally {
+				setStatusUpdating(false);
+			}
+		},
+		[selectedId]
+	);
+
+	const handleBulkHashSync = useCallback(async () => {
+		if (!selectedId || missingHashEntities.length === 0) {
+			return;
+		}
+		if (
+			!window.confirm(
+				`Store import hashes for ${missingHashEntities.length} entit${
+					missingHashEntities.length === 1 ? 'y' : 'ies'
+				}?`
+			)
+		) {
+			return;
+		}
+
+		setHashSyncTarget('bulk');
+		setHashSyncing(true);
+		setDecisionError(null);
+
+		try {
+			await postJSON(
+				`proposals/${encodeURIComponent(selectedId)}/entities/hash-sync`,
+				{
+					vf_object_uids: missingHashEntities.map((entity) => entity.vf_object_uid),
+				}
+			);
+			await loadEntities(selectedId, entityFilter);
+		} catch (err) {
+			setDecisionError(err?.message || 'Failed to store import hashes.');
+		} finally {
+			setHashSyncing(false);
+			setHashSyncTarget('');
+		}
+	}, [selectedId, missingHashEntities, loadEntities, entityFilter]);
+
+	const handleEntityHashSync = useCallback(
+		async (vfObjectUid) => {
+			if (!selectedId || !vfObjectUid) {
+				return;
+			}
+
+			setHashSyncTarget(vfObjectUid);
+			setHashSyncing(true);
+			setDecisionError(null);
+
+			try {
+				await postJSON(
+					`proposals/${encodeURIComponent(selectedId)}/entities/${encodeURIComponent(vfObjectUid)}/hash-sync`,
+					{}
+				);
+				await loadEntities(selectedId, entityFilter);
+				const refreshed = await fetchJSON(
+					`proposals/${encodeURIComponent(selectedId)}/entities/${encodeURIComponent(vfObjectUid)}`
+				);
+				setEntityDetail(refreshed);
+				setEntityDecisions(refreshed.decisions ?? {});
+			} catch (err) {
+				setDecisionError(err?.message || 'Failed to store import hash.');
+			} finally {
+				setHashSyncing(false);
+				setHashSyncTarget('');
+			}
+		},
+		[selectedId, entityFilter, loadEntities]
+	);
 
 	const handleCloseEntityDetail = useCallback(() => {
 		setIsEntityDetailOpen(false);
@@ -1634,6 +1837,13 @@ const App = () => {
 					)
 				);
 			}
+			if (payload.status) {
+				setProposals((prev) =>
+					prev.map((proposal) =>
+						proposal.id === selectedId ? { ...proposal, status: payload.status } : proposal
+					)
+				);
+			}
 
 			const importedCount = payload?.result?.imported ?? 0;
 			const skippedCount = payload?.result?.skipped ?? 0;
@@ -1656,6 +1866,9 @@ const App = () => {
 						payload.resolver_decisions.map ?? 0
 					}, download: ${payload.resolver_decisions.download ?? 0}, skip: ${payload.resolver_decisions.skip ?? 0}`
 				);
+			}
+			if (payload.status === 'closed') {
+				detailParts.push('Proposal marked closed.');
 			}
 
 			setToasts((prev) => [
@@ -2023,8 +2236,8 @@ const App = () => {
 			);
 			const unresolvedItems = Array.isArray(unresolvedPayload.items) ? unresolvedPayload.items : [];
 			const entityIds = unresolvedItems
-				.map((item) => parseInt(item.vf_object_uid, 10))
-				.filter((id) => Number.isFinite(id) && id > 0);
+				.map((item) => item.vf_object_uid)
+				.filter((id) => typeof id === 'string' && id.length > 0);
 
 			const body = entityIds.length ? { entity_ids: entityIds } : {};
 			const payload = await postJSON(
@@ -2310,14 +2523,17 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 		)}
 
 		<ProposalList proposals={proposals} selectedId={selectedId} onSelect={setSelectedId} />
-		<ResolverRulesPanel />
 
 			{selectedProposal && (
 				<section className="dbvc-admin-app__detail">
 					<h2>{selectedProposal.title}</h2>
-					<p>
+					<p className="dbvc-admin-app__detail-meta">
 						Generated: {formatDate(selectedProposal.generated_at)} · Files:{' '}
-						{selectedProposal.files ?? '—'} · Media: {selectedProposal.media_items ?? '—'}
+						{selectedProposal.files ?? '—'} · Media: {selectedProposal.media_items ?? '—'} · Status:{' '}
+						<strong>{selectedProposal.status === 'closed' ? 'Closed' : 'Open'}</strong>{' '}
+						<span className="dbvc-badge dbvc-badge--resolver">
+							<a href="#dbvc-global-resolver">Global rules enabled</a>
+						</span>
 					</p>
 
 					{errorResolver && (
@@ -2332,10 +2548,32 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 								type="button"
 								className="button button-primary"
 								onClick={handleOpenApplyModal}
-								disabled={applying}
+								disabled={applying || selectedProposal.status === 'closed'}
+								title={
+									selectedProposal.status === 'closed'
+										? 'Reopen this proposal before applying new changes.'
+										: undefined
+								}
 							>
-								{applying ? 'Applying…' : 'Apply Proposal'}
+								{applying ? 'Applying…' : 'Close & Apply Proposal'}
 							</button>
+							{selectedProposal.status === 'closed' ? (
+								<div className="dbvc-admin-app__status-note">
+									<p>This proposal has been closed. Reopen it to continue reviewing this snapshot.</p>
+									<button
+										type="button"
+										className="button"
+										onClick={() => handleProposalStatusChange('draft')}
+										disabled={statusUpdating}
+									>
+										{statusUpdating ? 'Reopening…' : 'Reopen proposal'}
+									</button>
+								</div>
+							) : (
+								<p className="description">
+									Applying will close this proposal snapshot. Re-export on the source site for additional changes.
+								</p>
+							)}
 							{proposalDecisionsTotal > 0 && (
 								<div className="dbvc-decisions">
 									<span className="dbvc-badge dbvc-badge--accept">{proposalDecisionsAccepted} accept</span>
@@ -2421,6 +2659,10 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 									<p>
 										This will run the import pipeline for the selected proposal using the chosen mode.
 									</p>
+									<p className="dbvc-apply-modal__warning">
+										Applying closes this proposal snapshot. To continue reviewing additional entities, export a new proposal after this step or reopen
+										if necessary.
+									</p>
 									{proposalDecisionsTotal > 0 ? (
 										<>
 											<p>Reviewer selections captured:</p>
@@ -2449,6 +2691,16 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 									]}
 									onChange={(value) => setApplyMode(value)}
 								/>
+								<div className="dbvc-apply-mode-help">
+									<p>
+										<strong>Full import (recommended):</strong> Applies only the fields you accepted, records the close-out, and leaves untouched
+										entities for the next export.
+									</p>
+									<p>
+										<strong>Partial import (legacy):</strong> Only needed for old proposals missing import hashes. Behavior otherwise matches full
+										import.
+									</p>
+								</div>
 								{applyMode === 'partial' && (
 									<CheckboxControl
 										label="Ignore missing import hash validation"
@@ -2471,7 +2723,7 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 										isBusy={applying}
 										disabled={applying}
 									>
-										Apply Proposal
+										Close & Apply Proposal
 									</Button>
 								</div>
 							</Modal>
@@ -2484,6 +2736,7 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 				<select value={entityFilter} onChange={handleFilterChange}>
 								<option value="all">{STATUS_LABELS.all}</option>
 								<option value="needs_review">{STATUS_LABELS.needs_review}</option>
+								<option value="needs_review_media">{STATUS_LABELS.needs_review_media}</option>
 								<option value="resolved">{STATUS_LABELS.resolved}</option>
 							</select>
 						</label>
@@ -2507,9 +2760,28 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 				>
 					{captureAllSnapshotsLoading ? 'Capturing snapshots…' : 'Capture Full Snapshot'}
 				</Button>
+				{missingHashEntities.length > 0 && (
+					<Button
+						variant="secondary"
+						onClick={handleBulkHashSync}
+						disabled={hashSyncing && hashSyncTarget === 'bulk'}
+						isBusy={hashSyncing && hashSyncTarget === 'bulk'}
+					>
+						{hashSyncing && hashSyncTarget === 'bulk'
+							? 'Storing hashes…'
+							: `Store hashes for ${missingHashEntities.length} entity hash${
+									missingHashEntities.length === 1 ? '' : 'es'
+							  }`}
+					</Button>
+				)}
 				<p className="description">
 					Captures current-state JSON for {unresolvedCount > 0 ? `${unresolvedCount} unresolved` : 'all'} entity(ies) so the diff shows live vs. proposed.
 				</p>
+				{missingHashEntities.length > 0 && (
+					<p className="description">
+						Some entities are missing their stored import hash. Sync them to prevent repeat reviews across environments.
+					</p>
+				)}
 			</div>
 		)}
 					{errorEntities && (
@@ -2523,6 +2795,7 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 						selectedEntityId={selectedEntityId}
 						onSelect={handleSelectEntity}
 					/>
+					<ResolverRulesPanel />
 
 			<EntityDetailPanel
 				entityDetail={entityDetail}
@@ -2549,6 +2822,9 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 				onClose={handleCloseEntityDetail}
 				resettingDecisions={resettingDecisions}
 				snapshotCapturing={snapshotCapturing}
+				onHashSync={handleEntityHashSync}
+				hashSyncing={hashSyncing}
+				hashSyncTarget={hashSyncTarget}
 			/>
 				</section>
 			)}
@@ -2599,8 +2875,16 @@ const DiffSection = ({ section, decisions, onDecisionChange, savingPaths }) => {
 			const highlight = computeHighlightSegments(change.from, change.to);
 			const decision = decisions?.[change.path] ?? '';
 			const isSaving = !!savingPaths[change.path];
+			const rowClassNames = ['dbvc-diff-row'];
+			if (decision === 'accept') {
+				rowClassNames.push('is-accepted');
+			} else if (decision === 'keep') {
+				rowClassNames.push('is-kept');
+			} else {
+				rowClassNames.push('is-unreviewed');
+			}
 			return (
-								<tr key={change.path}>
+								<tr key={change.path} className={rowClassNames.join(' ')}>
 						<td>
 							<div className="dbvc-field-label">
 								{change.label || change.path}
@@ -2621,37 +2905,43 @@ const DiffSection = ({ section, decisions, onDecisionChange, savingPaths }) => {
 									</td>
 				<td>
 					<div className="dbvc-decision-controls">
-						<label>
-							<input
-								type="radio"
-								name={`decision-${change.path}`}
-								value="keep"
-								checked={decision === 'keep'}
-								disabled={isSaving}
-								onChange={() => onDecisionChange && onDecisionChange(change.path, 'keep')}
-							/>
-							Keep
-						</label>
-						<label>
-							<input
-								type="radio"
-								name={`decision-${change.path}`}
-								value="accept"
-								checked={decision === 'accept'}
-								disabled={isSaving}
-								onChange={() => onDecisionChange && onDecisionChange(change.path, 'accept')}
-							/>
-							Accept
-						</label>
-					<Button
-						variant="link"
-						className="dbvc-decision-clear"
-						onClick={() => onDecisionChange && onDecisionChange(change.path, 'clear')}
-						disabled={isSaving || !decision}
-					>
-						Clear decision
-					</Button>
-					{!decision && <span className="dbvc-decision-status">Not reviewed</span>}
+						<div className="dbvc-decision-options">
+							<label>
+								<input
+									type="radio"
+									name={`decision-${change.path}`}
+									value="keep"
+									checked={decision === 'keep'}
+									disabled={isSaving}
+									onChange={() => onDecisionChange && onDecisionChange(change.path, 'keep')}
+								/>
+								Keep
+							</label>
+							<label>
+								<input
+									type="radio"
+									name={`decision-${change.path}`}
+									value="accept"
+									checked={decision === 'accept'}
+									disabled={isSaving}
+									onChange={() => onDecisionChange && onDecisionChange(change.path, 'accept')}
+								/>
+								Accept
+							</label>
+						</div>
+						<button
+							type="button"
+							className="button-link dbvc-decision-clear"
+							onClick={() => onDecisionChange && onDecisionChange(change.path, 'clear')}
+							disabled={isSaving || !decision}
+						>
+							Clear decision
+						</button>
+					</div>
+					<div className="dbvc-decision-state">
+						<span className="dbvc-decision-status">
+							{decision === 'accept' ? 'Accepted' : decision === 'keep' ? 'Kept' : 'Not reviewed'}
+						</span>
 						{isSaving && <span className="saving">Saving…</span>}
 					</div>
 				</td>
@@ -2887,6 +3177,7 @@ const ResolverRulesPanel = () => {
 	const [ruleForm, setRuleForm] = useState({ original_id: '', action: '', target_id: '', note: '' });
 	const [ruleFormError, setRuleFormError] = useState('');
 	const [ruleFormSaving, setRuleFormSaving] = useState(false);
+	const [collapsed, setCollapsed] = useState(true);
 	const [importing, setImporting] = useState(false);
 	const [importResult, setImportResult] = useState({ imported: 0, errors: [] });
 	const fileInputRef = useRef(null);
@@ -3140,199 +3431,208 @@ const ResolverRulesPanel = () => {
 
 
 	return (
-		<section className="dbvc-resolver-rules">
-			<h2>Global Resolver Rules</h2>
+		<section className="dbvc-resolver-rules" id="dbvc-global-resolver">
+			<div className="dbvc-resolver-rules__header">
+				<h2>Global Resolver Rules</h2>
+				<button type="button" className="button button-link" onClick={() => setCollapsed((prev) => !prev)}>
+					{collapsed ? 'Show rules' : 'Hide rules'}
+				</button>
+			</div>
 			<p className="description">
 				Decisions saved with “remember for future proposals” appear here. They apply automatically whenever a matching original media ID is detected in
 				any proposal.
 			</p>
-			{loading && <p>Loading resolver rules…</p>}
-			{error && (
-				<div className="notice notice-error">
-					<p>{error}</p>
-				</div>
-			)}
-			{!loading && !hasRules && <p>No global rules saved yet.</p>}
-			{hasRules && (
-				<div className="dbvc-panel-search">
-					<label>
-						Search:&nbsp;
-						<input
-							type="search"
-							value={ruleSearch}
-							onChange={(event) => setRuleSearch(event.target.value)}
-							placeholder="ID, action, note…"
-						/>
-					</label>
-				</div>
-			)}
-			{!loading && hasRules && !hasFilteredRules && <p>No rules match “{ruleSearch}”.</p>}
-			{!loading && hasFilteredRules && (
-				<table className="widefat striped">
-					<thead>
-						<tr>
-							<th>
-								<input type="checkbox" checked={selectAll} onChange={toggleSelectAll} />
-							</th>
-							<th>Original ID</th>
-							<th>Action</th>
-							<th>Target</th>
-							<th>Note</th>
-							<th>Saved</th>
-							<th></th>
-						</tr>
-					</thead>
-					<tbody>
-						{filteredRules.map((rule) => (
-							<tr key={rule.original_id}>
-									<td>
-										<input
-											type="checkbox"
-											checked={!!selected[rule.original_id]}
-											onChange={() => toggleSelect(rule.original_id)}
-										/>
-									</td>
-									<td>{rule.original_id}</td>
-									<td>{rule.action}</td>
-									<td>{rule.target_id ?? '—'}</td>
-									<td>{rule.note ?? '—'}</td>
-									<td>{formatDate(rule.saved_at)}</td>
-									<td className="dbvc-resolver-rules__actions">
-										<button type="button" className="button-link" onClick={() => openRuleForm(rule)}>
-											Edit
-										</button>
-										<button type="button" className="button-link-delete" onClick={() => handleDelete(rule.original_id)}>
-											Delete
-										</button>
-									</td>
+			{!collapsed && (
+				<>
+					{loading && <p>Loading resolver rules…</p>}
+					{error && (
+						<div className="notice notice-error">
+							<p>{error}</p>
+						</div>
+					)}
+					{!loading && !hasRules && <p>No global rules saved yet.</p>}
+					{hasRules && (
+						<div className="dbvc-panel-search">
+							<label>
+								Search:&nbsp;
+								<input
+									type="search"
+									value={ruleSearch}
+									onChange={(event) => setRuleSearch(event.target.value)}
+									placeholder="ID, action, note…"
+								/>
+							</label>
+						</div>
+					)}
+					{!loading && hasRules && !hasFilteredRules && <p>No rules match “{ruleSearch}”.</p>}
+					{!loading && hasFilteredRules && (
+						<table className="widefat striped">
+							<thead>
+								<tr>
+									<th>
+										<input type="checkbox" checked={selectAll} onChange={toggleSelectAll} />
+									</th>
+									<th>Original ID</th>
+									<th>Action</th>
+									<th>Target</th>
+									<th>Note</th>
+									<th>Saved</th>
+									<th></th>
 								</tr>
-							))}
-						</tbody>
-					</table>
-				)}
-				<div className="dbvc-resolver-rules__bulk">
-					<button type="button" className="button button-primary" onClick={() => openRuleForm(null)}>
-						Add Rule
-					</button>
-					<button type="button" className="button" onClick={handleImportClick} disabled={importing}>
-						{importing ? 'Importing…' : 'Import CSV'}
-					</button>
-					<button type="button" className="button button-secondary" onClick={handleBulkDelete} disabled={!Object.values(selected).some(Boolean)}>
-						Delete Selected
-					</button>
-					<button
-						type="button"
-						className="button button-link"
-						onClick={() => {
-							const csv = ['original_id,action,target_id,note,saved_at']
-								.concat(
-									rules.map((rule) =>
-										[
-											rule.original_id,
-											rule.action,
-											rule.target_id ?? '',
-											(rule.note || '').replace(/\"/g, '\"\"'),
-											rule.saved_at,
-										].join(',')
+							</thead>
+							<tbody>
+								{filteredRules.map((rule) => (
+									<tr key={rule.original_id}>
+										<td>
+											<input
+												type="checkbox"
+												checked={!!selected[rule.original_id]}
+												onChange={() => toggleSelect(rule.original_id)}
+											/>
+										</td>
+										<td>{rule.original_id}</td>
+										<td>{rule.action}</td>
+										<td>{rule.target_id ?? '—'}</td>
+										<td>{rule.note ?? '—'}</td>
+										<td>{formatDate(rule.saved_at)}</td>
+										<td className="dbvc-resolver-rules__actions">
+											<button type="button" className="button-link" onClick={() => openRuleForm(rule)}>
+												Edit
+											</button>
+											<button type="button" className="button-link-delete" onClick={() => handleDelete(rule.original_id)}>
+												Delete
+											</button>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					)}
+					<div className="dbvc-resolver-rules__bulk">
+						<button type="button" className="button button-primary" onClick={() => openRuleForm(null)}>
+							Add Rule
+						</button>
+						<button type="button" className="button" onClick={handleImportClick} disabled={importing}>
+							{importing ? 'Importing…' : 'Import CSV'}
+						</button>
+						<button type="button" className="button button-secondary" onClick={handleBulkDelete} disabled={!Object.values(selected).some(Boolean)}>
+							Delete Selected
+						</button>
+						<button
+							type="button"
+							className="button button-link"
+							onClick={() => {
+								const csv = ['original_id,action,target_id,note,saved_at']
+									.concat(
+										rules.map((rule) =>
+											[
+												rule.original_id,
+												rule.action,
+												rule.target_id ?? '',
+												(rule.note || '').replace(/"/g, '""'),
+												rule.saved_at,
+											].join(',')
+										)
 									)
-								)
-								.join('\n');
-							const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-							const url = URL.createObjectURL(blob);
-							const anchor = document.createElement('a');
-							anchor.href = url;
-							anchor.download = 'dbvc-resolver-rules.csv';
-							document.body.appendChild(anchor);
-							anchor.click();
-							document.body.removeChild(anchor);
-							URL.revokeObjectURL(url);
-						}}
-					>
-						Export CSV
-					</button>
-					<input
-						ref={fileInputRef}
-						type="file"
-						accept=".csv,text/csv"
-						style={{ display: 'none' }}
-						onChange={handleImportFile}
-					/>
-				</div>
-				{ruleFormVisible && (
-					<form className="dbvc-resolver-rule-form" onSubmit={handleRuleFormSubmit}>
-						<h3>{editingRule ? 'Edit global rule' : 'Add global rule'}</h3>
-						<div className="dbvc-resolver-controls">
-							<input
-								type="number"
-								min="1"
-								placeholder="Original ID"
-								value={ruleForm.original_id}
-								onChange={(event) => handleRuleFormChange('original_id', event.target.value)}
-								readOnly={!!editingRule}
-							/>
-							{duplicateOriginalId && (
-								<span className="dbvc-field-hint is-warning">Rule already exists for this media ID.</span>
-							)}
-							<select value={ruleForm.action} onChange={(event) => handleRuleFormChange('action', event.target.value)}>
-								<option value="">Select action…</option>
-								<option value="reuse">Reuse existing</option>
-								<option value="download">Download new</option>
-								<option value="map">Map to attachment ID</option>
-								<option value="skip">Skip</option>
-							</select>
-							{(ruleForm.action === 'reuse' || ruleForm.action === 'map') && (
+									.join('\n');
+								const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+								const url = URL.createObjectURL(blob);
+								const anchor = document.createElement('a');
+								anchor.href = url;
+								anchor.download = 'dbvc-resolver-rules.csv';
+								document.body.appendChild(anchor);
+								anchor.click();
+								document.body.removeChild(anchor);
+								URL.revokeObjectURL(url);
+							}}
+						>
+							Export CSV
+						</button>
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept=".csv,text/csv"
+							style={{ display: 'none' }}
+							onChange={handleImportFile}
+						/>
+					</div>
+					{ruleFormVisible && (
+						<form className="dbvc-resolver-rule-form" onSubmit={handleRuleFormSubmit}>
+							<h3>{editingRule ? 'Edit global rule' : 'Add global rule'}</h3>
+							<div className="dbvc-resolver-controls">
 								<input
 									type="number"
 									min="1"
-									placeholder="Target attachment ID"
-									value={ruleForm.target_id}
-									onChange={(event) => handleRuleFormChange('target_id', event.target.value)}
+									placeholder="Original ID"
+									value={ruleForm.original_id}
+									onChange={(event) => handleRuleFormChange('original_id', event.target.value)}
+									readOnly={!!editingRule}
 								/>
+								{duplicateOriginalId && (
+									<span className="dbvc-field-hint is-warning">Rule already exists for this media ID.</span>
+								)}
+								<select value={ruleForm.action} onChange={(event) => handleRuleFormChange('action', event.target.value)}>
+									<option value="">Select action…</option>
+									<option value="reuse">Reuse existing</option>
+									<option value="download">Download new</option>
+									<option value="map">Map to attachment ID</option>
+									<option value="skip">Skip</option>
+								</select>
+								{(ruleForm.action === 'reuse' || ruleForm.action === 'map') && (
+									<input
+										type="number"
+										min="1"
+										placeholder="Target attachment ID"
+										value={ruleForm.target_id}
+										onChange={(event) => handleRuleFormChange('target_id', event.target.value)}
+									/>
+								)}
+								{duplicateTargetId && (
+									<span className="dbvc-field-hint is-warning">This attachment ID is already used by another rule.</span>
+								)}
+								<textarea
+									value={ruleForm.note}
+									onChange={(event) => handleRuleFormChange('note', event.target.value)}
+									placeholder="Optional note"
+									rows={2}
+								/>
+							</div>
+							{ruleFormError && (
+								<div className="notice notice-error">
+									<p>{ruleFormError}</p>
+								</div>
 							)}
-							{duplicateTargetId && (
-								<span className="dbvc-field-hint is-warning">This attachment ID is already used by another rule.</span>
+							<div className="dbvc-resolver-rule-form__actions">
+								<button type="button" className="button button-link" onClick={closeRuleForm}>
+									Cancel
+								</button>
+								<button type="submit" className="button button-primary" disabled={ruleFormSaving}>
+									{ruleFormSaving ? 'Saving…' : editingRule ? 'Update Rule' : 'Save Rule'}
+								</button>
+							</div>
+						</form>
+					)}
+					{(importResult.imported > 0 || importResult.errors.length > 0) && (
+						<div className="dbvc-resolver-import">
+							{importResult.imported > 0 && (
+								<div className="notice notice-success">
+									<p>{importResult.imported} rule(s) imported successfully.</p>
+								</div>
 							)}
-							<textarea
-								value={ruleForm.note}
-								onChange={(event) => handleRuleFormChange('note', event.target.value)}
-								placeholder="Optional note"
-								rows={2}
-							/>
+							{importResult.errors.length > 0 && (
+								<div className="notice notice-warning">
+									<p>Import completed with warnings:</p>
+									<ul>
+										{importResult.errors.map((message, index) => (
+											<li key={index}>{message}</li>
+										))}
+									</ul>
+								</div>
+							)}
 						</div>
-						{ruleFormError && (
-							<div className="notice notice-error">
-								<p>{ruleFormError}</p>
-							</div>
-						)}
-						<div className="dbvc-resolver-rule-form__actions">
-							<button type="button" className="button button-link" onClick={closeRuleForm}>
-								Cancel
-							</button>
-							<button type="submit" className="button button-primary" disabled={ruleFormSaving}>
-								{ruleFormSaving ? 'Saving…' : editingRule ? 'Update Rule' : 'Save Rule'}
-							</button>
-						</div>
-					</form>
-				)}
-				{(importResult.imported > 0 || importResult.errors.length > 0) && (
-					<div className="dbvc-resolver-import">
-						{importResult.imported > 0 && (
-							<div className="notice notice-success">
-								<p>{importResult.imported} rule(s) imported successfully.</p>
-							</div>
-						)}
-						{importResult.errors.length > 0 && (
-							<div className="notice notice-warning">
-								<p>Import completed with warnings:</p>
-								<ul>
-									{importResult.errors.map((message, index) => (
-										<li key={index}>{message}</li>
-									))}
-								</ul>
-							</div>
-						)}
-					</div>
-				)}
+					)}
+				</>
+			)}
 		</section>
 	);
 };

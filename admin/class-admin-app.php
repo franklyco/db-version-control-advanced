@@ -11,6 +11,9 @@ final class DBVC_Admin_App
 {
     private const DECISIONS_OPTION = 'dbvc_proposal_decisions';
     private const RESOLVER_DECISIONS_OPTION = 'dbvc_resolver_decisions';
+    private const DEFAULT_DIFF_IGNORE_PATHS = 'meta.dbvc_post_history.*';
+
+    private static $diff_ignore_patterns = null;
 
     /**
      * Bootstrap hooks.
@@ -172,6 +175,26 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/hash-sync',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'sync_entity_hash'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/hash-sync',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'sync_entity_hash_bulk'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/proposals/(?P<proposal_id>[^/]+)/snapshot',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -200,6 +223,16 @@ final class DBVC_Admin_App
                 'args'                => [
                     'proposal_id' => ['required' => true],
                 ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/status',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'update_proposal_status'],
+                'permission_callback' => [self::class, 'can_manage'],
             ]
         );
 
@@ -301,6 +334,7 @@ final class DBVC_Admin_App
                 continue;
             }
 
+            $proposal_id = $backup['name'];
             $resolver_metrics = null;
             if (class_exists('\Dbvc\Media\Resolver')) {
                 try {
@@ -318,27 +352,27 @@ final class DBVC_Admin_App
                 }
             }
 
-            $proposal_id = $backup['name'];
             $proposal_decisions = isset($decision_store[$proposal_id]) && is_array($decision_store[$proposal_id])
                 ? $decision_store[$proposal_id]
                 : [];
             $decision_summary = self::summarize_proposal_decisions($proposal_decisions);
 
-            $items[] = [
-                'id'             => $proposal_id,
-                'title'          => $proposal_id,
-                'generated_at'   => $manifest['generated_at'] ?? null,
-                'files'          => $manifest['totals']['files'] ?? null,
-                'media_items'    => $manifest['totals']['media_items'] ?? null,
-                'missing_hashes' => $manifest['totals']['missing_import_hash'] ?? null,
-                'locked'         => ! empty($backup['locked']),
-                'size'           => isset($backup['size']) ? (int) $backup['size'] : null,
-                'resolver'       => [
-                    'metrics' => $resolver_metrics,
-                ],
-                'media_bundle'  => $manifest['media_bundle'] ?? null,
-                'decisions'      => $decision_summary,
-            ];
+        $items[] = [
+            'id'             => $proposal_id,
+            'title'          => $proposal_id,
+            'generated_at'   => $manifest['generated_at'] ?? null,
+            'files'          => $manifest['totals']['files'] ?? null,
+            'media_items'    => $manifest['totals']['media_items'] ?? null,
+            'missing_hashes' => $manifest['totals']['missing_import_hash'] ?? null,
+            'locked'         => ! empty($backup['locked']),
+            'size'           => isset($backup['size']) ? (int) $backup['size'] : null,
+            'resolver'       => [
+                'metrics' => $resolver_metrics,
+            ],
+            'media_bundle'  => $manifest['media_bundle'] ?? null,
+            'decisions'      => $decision_summary,
+            'status'        => $manifest['status'] ?? 'draft',
+        ];
         }
 
         return new \WP_REST_Response([
@@ -596,22 +630,33 @@ final class DBVC_Admin_App
                 ];
             }
 
-            $needs_review = ($summary['unresolved'] + $summary['conflicts']) > 0;
+            $vf_object_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+
+            $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
+            $diff_state = self::evaluate_entity_diff_state($item, $vf_object_uid, $diff_counts);
+            $diff_needs_review = $diff_state['needs_review'];
+            $media_needs_review = ($summary['unresolved'] + $summary['conflicts']) > 0;
+            $needs_review = $media_needs_review || $diff_needs_review;
+
             if ($status_filter === 'needs_review' && ! $needs_review) {
+                continue;
+            }
+            if ($status_filter === 'needs_review_media' && ! $media_needs_review) {
                 continue;
             }
             if ($status_filter === 'resolved' && $needs_review) {
                 continue;
             }
 
-            $vf_object_uid = isset($item['post_id']) ? (string) $item['post_id'] : '';
             $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
                 ? $proposal_decisions[$vf_object_uid]
                 : [];
             $decision_summary = self::summarize_entity_decisions($entity_decisions);
 
             $items[] = [
-                'vf_object_uid' => $item['post_id'],
+                'vf_object_uid' => $vf_object_uid !== '' ? $vf_object_uid : (string) ($item['post_id'] ?? ''),
                 'post_id'       => $item['post_id'],
                 'post_type'     => $item['post_type'],
                 'post_title'    => $item['post_title'],
@@ -620,10 +665,16 @@ final class DBVC_Admin_App
                 'hash'          => $item['hash'],
                 'content_hash'  => $item['content_hash'] ?? null,
                 'media_refs'    => $media_refs,
+                'diff_state'    => $diff_state,
+                'diff_total'    => $diff_counts['total'],
+                'meta_diff_count' => $diff_counts['meta'] ?? 0,
+                'tax_diff_count'  => $diff_counts['tax'] ?? 0,
+                'media_needs_review' => $media_needs_review,
+                'overall_status' => $needs_review ? 'needs_review' : 'resolved',
                 'resolver'      => [
                     'summary'     => $summary,
                     'attachments' => $attachments,
-                    'status'      => $needs_review ? 'needs_review' : 'resolved',
+                    'status'      => $media_needs_review ? 'needs_review' : 'resolved',
                 ],
                 'decision_summary' => $decision_summary,
             ];
@@ -638,6 +689,54 @@ final class DBVC_Admin_App
             'decision_summary' => self::summarize_proposal_decisions($proposal_decisions),
             'resolver_decisions' => self::summarize_resolver_decisions($proposal_id),
         ]);
+    }
+
+    private static function evaluate_entity_diff_state(array $item, string $vf_object_uid, ?array $diff_counts = null): array
+    {
+        $expected_hash = isset($item['content_hash']) ? (string) $item['content_hash'] : '';
+        $post_type     = isset($item['post_type']) ? $item['post_type'] : '';
+        $original_id   = isset($item['post_id']) ? (int) $item['post_id'] : 0;
+        $local_post_id = class_exists('DBVC_Sync_Posts')
+            ? DBVC_Sync_Posts::resolve_local_post_id($original_id, $vf_object_uid, $post_type)
+            : $original_id;
+
+        $current_hash = $local_post_id ? get_post_meta($local_post_id, '_dbvc_import_hash', true) : '';
+        $needs_review = true;
+        $reason       = 'missing_expected_hash';
+
+        if ($expected_hash !== '' && $current_hash !== '') {
+            $needs_review = ! hash_equals($expected_hash, $current_hash);
+            $reason = $needs_review ? 'hash_mismatch' : 'hash_match';
+        } elseif ($expected_hash !== '' && $current_hash === '') {
+            $needs_review = true;
+            $reason = 'missing_local_hash';
+        } elseif ($expected_hash === '' && $current_hash !== '') {
+            $needs_review = true;
+            $reason = 'missing_expected_hash';
+        } elseif ($local_post_id === 0) {
+            $needs_review = true;
+            $reason = 'missing_local_post';
+        }
+
+        $diff_total = is_array($diff_counts) ? (int) ($diff_counts['total'] ?? 0) : 0;
+        if ($diff_total > 0) {
+            if (! $needs_review || $reason === 'hash_match') {
+                $needs_review = true;
+                $reason = 'snapshot_diff';
+            }
+        } elseif ($diff_total === 0 && $needs_review && $reason === 'hash_mismatch') {
+            $needs_review = false;
+            $reason = 'hash_filtered';
+        }
+
+        return [
+            'needs_review' => $needs_review,
+            'reason'       => $reason,
+            'expected_hash'=> $expected_hash,
+            'current_hash' => $current_hash,
+            'local_post_id'=> $local_post_id,
+            'diff_total'   => $diff_total,
+        ];
     }
 
     /**
@@ -660,8 +759,11 @@ final class DBVC_Admin_App
         $current_path = null;
         $proposed = null;
         foreach ($manifest['items'] as $item) {
-            $post_id = isset($item['post_id']) ? (string) $item['post_id'] : '';
-            if ($post_id === $vf_object_uid) {
+            $entity_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($entity_uid === $vf_object_uid) {
+                $item['vf_object_uid'] = $entity_uid;
                 $entity = $item;
                 $current_path = isset($item['path']) ? $item['path'] : null;
                 $proposed = $item;
@@ -696,6 +798,22 @@ final class DBVC_Admin_App
         }
 
         $diff_summary = self::compare_snapshots($current, $proposed_data);
+        $meta_changes = 0;
+        $tax_changes  = 0;
+        foreach ($diff_summary['changes'] as $change) {
+            $section = $change['section'] ?? '';
+            if ($section === 'meta') {
+                $meta_changes++;
+            } elseif ($section === 'tax') {
+                $tax_changes++;
+            }
+        }
+        $diff_counts = [
+            'total' => isset($diff_summary['total']) ? (int) $diff_summary['total'] : 0,
+            'meta'  => $meta_changes,
+            'tax'   => $tax_changes,
+        ];
+        $diff_state   = self::evaluate_entity_diff_state($entity, $vf_object_uid, $diff_counts);
         $decisions    = self::get_entity_decisions($proposal_id, $vf_object_uid);
 
         return new \WP_REST_Response([
@@ -706,8 +824,73 @@ final class DBVC_Admin_App
             'current'       => $current,
             'current_source'=> $current_source,
             'proposed'      => $proposed_data,
+            'diff_state'    => $diff_state,
             'decisions'     => $decisions,
             'decision_summary' => self::summarize_entity_decisions($decisions),
+        ]);
+    }
+
+    /**
+     * REST: set the import hash for a single entity.
+     */
+    public static function sync_entity_hash(\WP_REST_Request $request)
+    {
+        $proposal_id   = sanitize_text_field($request->get_param('proposal_id'));
+        $vf_object_uid = sanitize_text_field($request->get_param('vf_object_uid'));
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $result = self::handle_entity_hash_sync($manifest, $proposal_id, $vf_object_uid);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: bulk hash sync for multiple entities.
+     */
+    public static function sync_entity_hash_bulk(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        $manifest    = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $body = $request->get_json_params();
+        $uids = [];
+        if (isset($body['vf_object_uids']) && is_array($body['vf_object_uids'])) {
+            $uids = array_filter(array_map('sanitize_text_field', $body['vf_object_uids']));
+        }
+
+        if (empty($uids)) {
+            return new \WP_Error('dbvc_missing_entities', __('Select at least one entity to update.', 'dbvc'), ['status' => 400]);
+        }
+
+        $updated = [];
+        $errors  = [];
+
+        foreach ($uids as $vf_object_uid) {
+            $result = self::handle_entity_hash_sync($manifest, $proposal_id, $vf_object_uid);
+            if (is_wp_error($result)) {
+                $errors[] = [
+                    'vf_object_uid' => $vf_object_uid,
+                    'message'       => $result->get_error_message(),
+                ];
+                continue;
+            }
+            $updated[] = $result;
+        }
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'updated'     => $updated,
+            'errors'      => $errors,
         ]);
     }
 
@@ -989,21 +1172,23 @@ final class DBVC_Admin_App
             if (($item['item_type'] ?? '') !== 'post') {
                 continue;
             }
-            $post_id = isset($item['post_id']) ? (int) $item['post_id'] : 0;
+            $entity_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
             $path    = isset($item['path']) ? $item['path'] : '';
-            if (! $post_id || $path === '') {
+            if ($entity_uid === '' || $path === '') {
                 continue;
             }
-            if (! isset($seen[$post_id])) {
-                $seen[$post_id] = [];
+            if (! isset($seen[$entity_uid])) {
+                $seen[$entity_uid] = [];
             }
-            $seen[$post_id][] = $path;
+            $seen[$entity_uid][] = $path;
         }
 
-        foreach ($seen as $post_id => $paths) {
+        foreach ($seen as $entity_uid => $paths) {
             if (count($paths) > 1) {
                 $duplicates[] = [
-                    'post_id' => $post_id,
+                    'post_id' => $entity_uid,
                     'paths'   => $paths,
                 ];
             }
@@ -1138,15 +1323,15 @@ final class DBVC_Admin_App
 
         $proposal_id   = sanitize_text_field($request->get_param('proposal_id'));
         $vf_object_uid = sanitize_text_field($request->get_param('vf_object_uid'));
-        $post_id       = absint($vf_object_uid);
+        $post_id       = DBVC_Sync_Posts::resolve_local_post_id(0, $vf_object_uid);
 
         if (! $post_id) {
-            return new \WP_Error('dbvc_invalid_entity', __('Invalid entity ID supplied.', 'dbvc'), ['status' => 400]);
+            return new \WP_Error('dbvc_invalid_entity', __('Entity is not available on this site yet.', 'dbvc'), ['status' => 400]);
         }
 
         try {
-            DBVC_Snapshot_Manager::capture_post_snapshot($proposal_id, $post_id);
-            $snapshot = DBVC_Snapshot_Manager::read_snapshot($proposal_id, (string) $post_id);
+            DBVC_Snapshot_Manager::capture_post_snapshot($proposal_id, $post_id, $vf_object_uid);
+            $snapshot = DBVC_Snapshot_Manager::read_snapshot($proposal_id, $vf_object_uid);
         } catch (\Throwable $e) {
             return new \WP_Error('dbvc_snapshot_failed', $e->getMessage(), ['status' => 500]);
         }
@@ -1180,11 +1365,11 @@ final class DBVC_Admin_App
         $entity_ids_param = $request->get_param('entity_ids');
         $entity_ids = [];
         if (is_string($entity_ids_param)) {
-            $entity_ids = array_map('absint', array_filter(array_map('trim', explode(',', $entity_ids_param))));
+            $entity_ids = array_filter(array_map('sanitize_text_field', array_map('trim', explode(',', $entity_ids_param))));
         } elseif (is_array($entity_ids_param)) {
-            $entity_ids = array_map('absint', $entity_ids_param);
+            $entity_ids = array_filter(array_map('sanitize_text_field', $entity_ids_param));
         }
-        $entity_ids = array_values(array_filter($entity_ids));
+        $entity_ids = array_values(array_unique($entity_ids));
 
         $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
         if (empty($items)) {
@@ -1196,25 +1381,34 @@ final class DBVC_Admin_App
             if (($item['item_type'] ?? '') !== 'post') {
                 continue;
             }
-            $post_id = isset($item['post_id']) ? (int) $item['post_id'] : 0;
-            if (! $post_id) {
+            $entity_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($entity_uid === '') {
                 continue;
             }
-            if (! empty($entity_ids) && ! in_array($post_id, $entity_ids, true)) {
+            if (! empty($entity_ids) && ! in_array($entity_uid, $entity_ids, true)) {
                 continue;
             }
-            $targets[] = $post_id;
+            $local_post_id = DBVC_Sync_Posts::resolve_local_post_id(isset($item['post_id']) ? (int) $item['post_id'] : 0, $entity_uid, $item['post_type'] ?? '');
+            if (! $local_post_id) {
+                continue;
+            }
+            $targets[$entity_uid] = $local_post_id;
         }
 
-        $targets = array_values(array_unique($targets));
         if (empty($targets)) {
-            return new \WP_Error('dbvc_snapshot_no_targets', __('No matching entities found for snapshot capture.', 'dbvc'), ['status' => 400]);
+            return new \WP_REST_Response([
+                'proposal_id' => $proposal_id,
+                'targets'     => 0,
+                'captured'    => 0,
+            ]);
         }
 
         $captured = 0;
-        foreach ($targets as $post_id) {
+        foreach ($targets as $entity_uid => $post_id) {
             try {
-                DBVC_Snapshot_Manager::capture_post_snapshot($proposal_id, $post_id);
+                DBVC_Snapshot_Manager::capture_post_snapshot($proposal_id, $post_id, $entity_uid);
                 $captured++;
             } catch (\Throwable $e) {
                 // Continue with remaining entities; optionally log.
@@ -1328,6 +1522,33 @@ final class DBVC_Admin_App
 
         return new \WP_REST_Response([
             'original_id' => (int) $original_id,
+        ]);
+    }
+
+    /**
+     * Manually update proposal status (draft/closed).
+     */
+    public static function update_proposal_status(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $body   = $request->get_json_params();
+        $status = isset($body['status']) ? sanitize_key($body['status']) : '';
+        $allowed = ['draft', 'closed'];
+        if (! in_array($status, $allowed, true)) {
+            return new \WP_Error('dbvc_invalid_status', __('Status must be draft or closed.', 'dbvc'), ['status' => 400]);
+        }
+
+        if (! self::mark_proposal_status($proposal_id, $status)) {
+            return new \WP_Error('dbvc_status_failed', __('Unable to update proposal status.', 'dbvc'), ['status' => 500]);
+        }
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'status'      => $status,
         ]);
     }
 
@@ -1538,6 +1759,8 @@ final class DBVC_Admin_App
         $decisions_cleared  = $had_decisions && (($summary_after['total'] ?? 0) === 0);
         $resolver_summary   = self::summarize_resolver_decisions($proposal_id);
 
+        $status_after = ($summary_after['total'] ?? 0) === 0 ? 'closed' : 'draft';
+
         $response = [
             'proposal_id'         => $proposal_id,
             'mode'                => $mode,
@@ -1556,9 +1779,41 @@ final class DBVC_Admin_App
             'decisions_cleared'  => $decisions_cleared,
             'had_decisions'      => $had_decisions,
             'ignore_missing_hash'=> $ignore_missing_hash,
+            'status'             => $status_after,
         ];
 
+        self::mark_proposal_status($proposal_id, $status_after);
+
         return new \WP_REST_Response($response);
+    }
+    private static function mark_proposal_status(string $proposal_id, string $status): bool
+    {
+        if (! in_array($status, ['draft', 'closed'], true)) {
+            return false;
+        }
+
+        if (! class_exists('DBVC_Backup_Manager')) {
+            return false;
+        }
+
+        $base   = DBVC_Backup_Manager::get_base_path();
+        $folder = trailingslashit($base) . $proposal_id;
+        if (! is_dir($folder)) {
+            return false;
+        }
+
+        $manifest = DBVC_Backup_Manager::read_manifest($folder);
+        if (! is_array($manifest)) {
+            return false;
+        }
+
+        $manifest['status'] = $status;
+
+        $path = trailingslashit($folder) . DBVC_Backup_Manager::MANIFEST_FILENAME;
+        return false !== file_put_contents(
+            $path,
+            wp_json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
     }
 
     /**
@@ -1594,9 +1849,71 @@ final class DBVC_Admin_App
             ];
         }
 
+        if (! empty($changes)) {
+            $changes = array_values(array_filter($changes, function ($change) {
+                $path = isset($change['path']) ? (string) $change['path'] : '';
+                return $path === '' ? true : ! self::should_ignore_diff_path($path);
+            }));
+        }
+
         return [
             'changes' => $changes,
             'total'   => count($changes),
+        ];
+    }
+
+    private static function summarize_entity_diff_counts(string $proposal_id, array $item, string $vf_object_uid): array
+    {
+        $path = isset($item['path']) ? (string) $item['path'] : '';
+        if ($path === '') {
+            return [
+                'total' => 0,
+                'meta'  => 0,
+                'tax'   => 0,
+            ];
+        }
+
+        if ($vf_object_uid === '' && isset($item['post_id'])) {
+            $vf_object_uid = (string) $item['post_id'];
+        }
+
+        $proposed = self::read_entity_payload($proposal_id, $path);
+        if (! is_array($proposed)) {
+            return [
+                'total' => 0,
+                'meta'  => 0,
+                'tax'   => 0,
+            ];
+        }
+
+        $current = [];
+        if (class_exists('DBVC_Snapshot_Manager') && $vf_object_uid !== '') {
+            $snapshot = DBVC_Snapshot_Manager::read_snapshot($proposal_id, $vf_object_uid);
+            if (is_array($snapshot) && ! empty($snapshot)) {
+                $current = $snapshot;
+            }
+        }
+
+        if (empty($current)) {
+            $current = $proposed;
+        }
+
+        $diff_summary = self::compare_snapshots($current, $proposed);
+        $meta_changes = 0;
+        $tax_changes  = 0;
+
+        foreach ($diff_summary['changes'] as $change) {
+            if (($change['section'] ?? '') === 'meta') {
+                $meta_changes++;
+            } elseif (($change['section'] ?? '') === 'tax') {
+                $tax_changes++;
+            }
+        }
+
+        return [
+            'total' => isset($diff_summary['total']) ? (int) $diff_summary['total'] : 0,
+            'meta'  => $meta_changes,
+            'tax'   => $tax_changes,
         ];
     }
 
@@ -1660,6 +1977,90 @@ final class DBVC_Admin_App
             default:
                 return 'other';
         }
+    }
+
+    private static function get_diff_ignore_patterns(): array
+    {
+        if (is_array(self::$diff_ignore_patterns)) {
+            return self::$diff_ignore_patterns;
+        }
+
+        $raw = get_option('dbvc_diff_ignore_paths', null);
+        if ($raw === null || $raw === false) {
+            $raw = self::DEFAULT_DIFF_IGNORE_PATHS;
+        }
+
+        if (! is_string($raw)) {
+            $raw = '';
+        }
+
+        if (function_exists('dbvc_mask_parse_list')) {
+            $patterns = dbvc_mask_parse_list($raw);
+        } else {
+            $parts = preg_split('/[,\r\n]+/', $raw);
+            $patterns = [];
+            if (is_array($parts)) {
+                foreach ($parts as $part) {
+                    $part = trim((string) $part);
+                    if ($part !== '') {
+                        $patterns[] = $part;
+                    }
+                }
+            }
+        }
+
+        self::$diff_ignore_patterns = $patterns;
+        return self::$diff_ignore_patterns;
+    }
+
+    private static function should_ignore_diff_path(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        $patterns = self::get_diff_ignore_patterns();
+        if (empty($patterns)) {
+            return false;
+        }
+
+        $leaf = $path;
+        $last_dot = strrpos($path, '.');
+        if ($last_dot !== false) {
+            $leaf = substr($path, $last_dot + 1);
+        }
+
+        foreach ($patterns as $pattern) {
+            if (self::match_diff_pattern($path, $leaf, $pattern)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function match_diff_pattern(string $full_path, string $leaf, string $pattern): bool
+    {
+        if ($pattern === '') {
+            return false;
+        }
+
+        if (function_exists('dbvc_mask_match')) {
+            if (dbvc_mask_match($full_path, $pattern) || dbvc_mask_match($leaf, $pattern)) {
+                return true;
+            }
+        } else {
+            if (strpbrk($pattern, '*?') !== false) {
+                $regex = '/^' . str_replace(['\*', '\?'], ['.*', '.?'], preg_quote($pattern, '/')) . '$/i';
+                if (preg_match($regex, $full_path) || preg_match($regex, $leaf)) {
+                    return true;
+                }
+            } elseif ($full_path === $pattern || $leaf === $pattern) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -2188,5 +2589,63 @@ final class DBVC_Admin_App
         }
 
         return $summary;
+    }
+
+    private static function handle_entity_hash_sync(array $manifest, string $proposal_id, string $vf_object_uid)
+    {
+        if (! class_exists('DBVC_Sync_Posts')) {
+            return new \WP_Error('dbvc_sync_unavailable', __('Import pipeline is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $item = self::find_manifest_item_by_uid($manifest, $vf_object_uid);
+        if (! $item) {
+            return new \WP_Error('dbvc_entity_missing', __('Entity not found in proposal manifest.', 'dbvc'), ['status' => 404]);
+        }
+
+        $content_hash = isset($item['content_hash']) ? (string) $item['content_hash'] : '';
+        if ($content_hash === '') {
+            return new \WP_Error('dbvc_missing_content_hash', __('Manifest lacks a content hash for this entity.', 'dbvc'), ['status' => 400]);
+        }
+
+        $post_type = isset($item['post_type']) ? $item['post_type'] : '';
+        $post_id   = DBVC_Sync_Posts::resolve_local_post_id(isset($item['post_id']) ? (int) $item['post_id'] : 0, $vf_object_uid, $post_type);
+        if (! $post_id) {
+            return new \WP_Error('dbvc_local_post_missing', __('Matching post was not found on this site.', 'dbvc'), ['status' => 400]);
+        }
+
+        if (! DBVC_Sync_Posts::store_import_hash($post_id, $content_hash)) {
+            return new \WP_Error('dbvc_hash_store_failed', __('Unable to store import hash for this post.', 'dbvc'), ['status' => 500]);
+        }
+
+        $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
+
+        return [
+            'proposal_id'   => $proposal_id,
+            'vf_object_uid' => $vf_object_uid,
+            'post_id'       => $post_id,
+            'content_hash'  => $content_hash,
+            'diff_state'    => self::evaluate_entity_diff_state($item, $vf_object_uid, $diff_counts),
+        ];
+    }
+
+    private static function find_manifest_item_by_uid(array $manifest, string $vf_object_uid)
+    {
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+
+        foreach ($items as $item) {
+            if (($item['item_type'] ?? '') !== 'post') {
+                continue;
+            }
+
+            $candidate = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+
+            if ($candidate === $vf_object_uid) {
+                return $item;
+            }
+        }
+
+        return null;
     }
 }

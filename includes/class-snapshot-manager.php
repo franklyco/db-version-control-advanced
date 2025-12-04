@@ -48,11 +48,18 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
                 if (($item['item_type'] ?? '') !== 'post') {
                     continue;
                 }
-                $post_id = isset($item['post_id']) ? (int) $item['post_id'] : 0;
-                if (! $post_id) {
+
+                $original_id = isset($item['post_id']) ? (int) $item['post_id'] : 0;
+                $vf_object_uid = isset($item['vf_object_uid'])
+                    ? (string) $item['vf_object_uid']
+                    : (string) $original_id;
+
+                $local_post_id = DBVC_Sync_Posts::resolve_local_post_id($original_id, $vf_object_uid, $item['post_type'] ?? '');
+                if (! $local_post_id) {
                     continue;
                 }
-                self::capture_post_snapshot($proposal_id, $post_id);
+
+                self::capture_post_snapshot($proposal_id, $local_post_id, $vf_object_uid);
             }
         }
 
@@ -78,11 +85,11 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
         /**
          * Internal: capture snapshot for a single post ID.
          */
-        public static function capture_post_snapshot(string $proposal_id, int $post_id): void
+        public static function capture_post_snapshot(string $proposal_id, int $post_id, string $vf_object_uid = ''): void
         {
             $post = get_post($post_id);
             if (! $post instanceof \WP_Post) {
-                self::delete_snapshot($proposal_id, $post_id);
+                self::delete_snapshot($proposal_id, $vf_object_uid !== '' ? $vf_object_uid : (string) $post_id);
                 return;
             }
 
@@ -91,7 +98,8 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
                 return;
             }
 
-            $file_path = self::get_snapshot_file_path($proposal_id, (string) $post_id);
+            $key = $vf_object_uid !== '' ? $vf_object_uid : (string) $post_id;
+            $file_path = self::get_snapshot_file_path($proposal_id, $key);
             if (! $file_path) {
                 return;
             }
@@ -149,17 +157,11 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
                 $sanitized_meta = self::strip_domain_from_meta_urls($sanitized_meta, $domain_to_strip);
             }
 
-            $taxonomies = get_object_taxonomies($post->post_type);
-            $tax_input  = [];
-            foreach ($taxonomies as $taxonomy) {
-                $terms = wp_get_post_terms($post_id, $taxonomy, ['fields' => 'slugs']);
-                if (! is_wp_error($terms)) {
-                    $tax_input[$taxonomy] = $terms;
-                }
-            }
+            $tax_input = DBVC_Sync_Posts::export_tax_input_portable($post_id, $post->post_type);
 
             $data = [
                 'ID'           => $post_id,
+                'vf_object_uid'=> DBVC_Sync_Posts::ensure_post_uid($post_id, $post),
                 'post_title'   => sanitize_text_field($post->post_title),
                 'post_content' => wp_kses_post($post_content),
                 'post_excerpt' => sanitize_textarea_field($post_excerpt),
@@ -198,12 +200,13 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
         private static function get_snapshot_file_path(string $proposal_id, string $vf_object_uid): string
         {
             $dir  = trailingslashit(self::get_base_path()) . sanitize_file_name($proposal_id);
-            return trailingslashit($dir) . absint($vf_object_uid) . '.json';
+            $key  = sanitize_file_name($vf_object_uid !== '' ? $vf_object_uid : uniqid('entity_', true));
+            return trailingslashit($dir) . $key . '.json';
         }
 
-        private static function delete_snapshot(string $proposal_id, int $post_id): void
+        private static function delete_snapshot(string $proposal_id, string $vf_object_uid): void
         {
-            $path = self::get_snapshot_file_path($proposal_id, (string) $post_id);
+            $path = self::get_snapshot_file_path($proposal_id, $vf_object_uid);
             if ($path && file_exists($path)) {
                 @unlink($path);
             }

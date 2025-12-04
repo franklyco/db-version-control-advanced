@@ -36,21 +36,174 @@ class DBVC_Sync_Posts
 */
 
     /**
+     * Ensure an entity UID is assigned whenever a post saves.
+     *
+     * @param int     $post_id
+     * @param WP_Post $post
+     * @return void
+     */
+    public static function ensure_post_uid_on_save($post_id, $post)
+    {
+        if (! $post instanceof \WP_Post) {
+            return;
+        }
+
+        if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+            return;
+        }
+
+        if (! self::is_supported_post_type($post->post_type)) {
+            return;
+        }
+
+        self::ensure_post_uid($post_id, $post);
+    }
+
+    /**
+     * Retrieve or generate a persistent UID for a post.
+     *
+     * @param int          $post_id
+     * @param WP_Post|null $post
+     * @return string
+     */
+    public static function ensure_post_uid($post_id, $post = null)
+    {
+        $post_id = (int) $post_id;
+        if (! $post_id) {
+            return '';
+        }
+
+        $post_type = $post instanceof \WP_Post ? $post->post_type : get_post_type($post_id);
+        if (! self::is_supported_post_type($post_type)) {
+            return '';
+        }
+
+        $uid = get_post_meta($post_id, 'vf_object_uid', true);
+        if (! is_string($uid) || $uid === '') {
+            $uid = wp_generate_uuid4();
+            update_post_meta($post_id, 'vf_object_uid', $uid);
+        }
+
+        self::sync_entity_registry($uid, $post_id, $post_type);
+
+        $history = get_post_meta($post_id, 'dbvc_post_history', true);
+        if (is_array($history) && (! isset($history['vf_object_uid']) || $history['vf_object_uid'] === '')) {
+            $history['vf_object_uid'] = $uid;
+            update_post_meta($post_id, 'dbvc_post_history', $history);
+        }
+
+        return $uid;
+    }
+
+    /**
      * Resolve the local post ID for a given original ID.
      *
      * @param int $original_id
      * @return int|null
      */
-    public static function resolve_local_post_id($original_id)
+    public static function resolve_local_post_id($original_id, $entity_uid = '', $post_type = '')
     {
         $original_id = (int) $original_id;
-        if (! $original_id) {
-            return null;
+        $entity_uid  = is_string($entity_uid) ? trim($entity_uid) : '';
+
+        $use_uid_matching = (get_option('dbvc_prefer_entity_uids', '0') === '1');
+        if ($entity_uid !== '' && $use_uid_matching) {
+            $by_uid = self::find_post_id_by_uid($entity_uid, $post_type);
+            if ($by_uid) {
+                return $by_uid;
+            }
         }
-        if (isset(self::$imported_post_id_map[$original_id])) {
+
+        if ($original_id && isset(self::$imported_post_id_map[$original_id])) {
             return (int) self::$imported_post_id_map[$original_id];
         }
-        return $original_id;
+
+        return $original_id ?: null;
+    }
+
+    /**
+     * Persist entity UID mapping to custom table.
+     *
+     * @param string $entity_uid
+     * @param int    $post_id
+     * @param string $post_type
+     * @return void
+     */
+    private static function sync_entity_registry($entity_uid, $post_id, $post_type = '')
+    {
+        if ($entity_uid === '' || ! class_exists('DBVC_Database')) {
+            return;
+        }
+
+        if ($post_type && ! self::is_supported_post_type($post_type)) {
+            return;
+        }
+
+        DBVC_Database::upsert_entity([
+            'entity_uid'    => $entity_uid,
+            'object_id'     => (int) $post_id ?: null,
+            'object_type'   => $post_type ?: get_post_type($post_id),
+            'object_status' => get_post_status($post_id),
+        ]);
+    }
+
+    /**
+     * Locate a local post ID by entity UID (database row or meta).
+     *
+     * @param string $entity_uid
+     * @param string $post_type
+     * @return int|null
+     */
+    private static function find_post_id_by_uid($entity_uid, $post_type = '')
+    {
+        $entity_uid = trim((string) $entity_uid);
+        if ($entity_uid === '') {
+            return null;
+        }
+
+        if (class_exists('DBVC_Database')) {
+            $record = DBVC_Database::get_entity_by_uid($entity_uid);
+            if ($record && ! empty($record->object_id)) {
+                $candidate = get_post((int) $record->object_id);
+                if ($candidate instanceof \WP_Post) {
+                    return (int) $candidate->ID;
+                }
+            }
+        }
+
+        $query_args = [
+            'post_type'      => $post_type ? [$post_type] : self::get_supported_post_types(),
+            'post_status'    => 'any',
+            'meta_key'       => 'vf_object_uid',
+            'meta_value'     => $entity_uid,
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+            'suppress_filters' => true,
+        ];
+
+        $found = get_posts($query_args);
+        if (! empty($found)) {
+            return (int) $found[0];
+        }
+
+        return null;
+    }
+
+    /**
+     * Determine if a post type is eligible for DBVC syncing.
+     *
+     * @param string $post_type
+     * @return bool
+     */
+    private static function is_supported_post_type($post_type)
+    {
+        if ($post_type === '') {
+            return false;
+        }
+
+        $supported = self::get_supported_post_types();
+        return in_array($post_type, $supported, true);
     }
 
     /**
@@ -89,6 +242,37 @@ class DBVC_Sync_Posts
 
         // Allow other plugins to modify supported post types.
         return apply_filters('dbvc_supported_post_types', $selected_types);
+    }
+
+    /**
+     * Persist an import hash/meta state for a post.
+     *
+     * @param int    $post_id
+     * @param string $content_hash
+     * @return bool
+     */
+    public static function store_import_hash($post_id, $content_hash)
+    {
+        $post_id = (int) $post_id;
+        $content_hash = (string) $content_hash;
+        if (! $post_id || $content_hash === '') {
+            return false;
+        }
+
+        update_post_meta($post_id, '_dbvc_import_hash', $content_hash);
+
+        $history = get_post_meta($post_id, 'dbvc_post_history', true);
+        if (! is_array($history)) {
+            $history = [];
+        }
+
+        $history['hash']        = $content_hash;
+        $history['status']      = isset($history['status']) ? $history['status'] : 'existing';
+        $history['imported_at'] = current_time('mysql');
+
+        update_post_meta($post_id, 'dbvc_post_history', $history);
+
+        return true;
     }
 
     /**
@@ -792,13 +976,15 @@ HT;
                     continue;
                 }
 
-                $vf_object_uid = isset($entry['post_id']) ? (string) $entry['post_id'] : '';
+                $vf_object_uid = isset($entry['vf_object_uid'])
+                    ? (string) $entry['vf_object_uid']
+                    : (string) ($entry['post_id'] ?? '');
                 $entity_decisions = null;
                 if ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])) {
                     $entity_decisions = $proposal_decisions[$vf_object_uid];
                 }
 
-                $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded, $entity_decisions);
+                $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded, $entity_decisions, $vf_object_uid);
                 @unlink($tmp);
 
                 if ($result === self::IMPORT_RESULT_APPLIED) {
@@ -962,9 +1148,17 @@ HT;
             $term_ids = [];
 
             foreach ($items as $term) {
-                $slug   = sanitize_title($term['slug'] ?? '');
-                $name   = sanitize_text_field($term['name'] ?? $slug);
-                $parent_slug = sanitize_title($term['parent'] ?? '');
+                if (is_array($term)) {
+                    $slug        = sanitize_title($term['slug'] ?? '');
+                    $name        = sanitize_text_field($term['name'] ?? $slug);
+                    $parent_slug = sanitize_title($term['parent'] ?? '');
+                } elseif (is_string($term)) {
+                    $slug        = sanitize_title($term);
+                    $name        = $slug;
+                    $parent_slug = '';
+                } else {
+                    continue;
+                }
 
                 if (! $slug) {
                     continue;
@@ -1264,7 +1458,7 @@ $acf_relationship_fields = [
      * Build import posts from Json
      * Added: 08-12-2025
      */
-    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null, ?array $field_decisions = null)
+    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null, ?array $field_decisions = null, ?string $entity_uid = null)
     {
         if (! file_exists($filepath)) {
             return new WP_Error('dbvc_import_missing_file', sprintf(__('Import source missing: %s', 'dbvc'), $filepath));
@@ -1287,6 +1481,11 @@ $acf_relationship_fields = [
 
         $original_id = absint($json['ID']);
         $post_type = sanitize_text_field($json['post_type']);
+        $incoming_entity_uid = $entity_uid ?? ($json['vf_object_uid'] ?? '');
+        if ($incoming_entity_uid === '' && isset($json['meta']['dbvc_post_history']['vf_object_uid'])) {
+            $incoming_entity_uid = $json['meta']['dbvc_post_history']['vf_object_uid'];
+        }
+        $incoming_entity_uid = is_string($incoming_entity_uid) ? trim($incoming_entity_uid) : '';
         $normalized_mode = ($filename_mode !== null) ? self::normalize_filename_mode($filename_mode) : null;
 
         if (! self::import_filename_matches_mode($normalized_mode, $filepath, $post_type, $json)) {
@@ -1309,7 +1508,22 @@ $acf_relationship_fields = [
             return self::IMPORT_RESULT_SKIPPED;
         }
 
-        $existing = get_post($original_id);
+        $resolved_post_id = null;
+        if ($incoming_entity_uid !== '') {
+            $resolved_post_id = self::find_post_id_by_uid($incoming_entity_uid, $post_type);
+        }
+
+        $existing = $resolved_post_id ? get_post($resolved_post_id) : get_post($original_id);
+        if ($resolved_post_id && $existing) {
+            self::$imported_post_id_map[$original_id] = (int) $existing->ID;
+        }
+        if (! $existing && $original_id && $original_id !== $resolved_post_id) {
+            $existing = get_post($original_id);
+        }
+        if ($existing && $incoming_entity_uid !== '') {
+            update_post_meta($existing->ID, 'vf_object_uid', $incoming_entity_uid);
+            self::sync_entity_registry($incoming_entity_uid, $existing->ID, $existing->post_type);
+        }
         $post_id = null;
         $normalized_decisions = self::normalize_entity_decisions($field_decisions);
 
@@ -1528,6 +1742,17 @@ $acf_relationship_fields = [
             }
         }
 
+        $stored_entity_uid = $incoming_entity_uid;
+        if ($post_id) {
+            if ($stored_entity_uid) {
+                update_post_meta($post_id, 'vf_object_uid', $stored_entity_uid);
+                self::sync_entity_registry($stored_entity_uid, $post_id, $post_type);
+            } else {
+                $stored_entity_uid = self::ensure_post_uid($post_id);
+            }
+            $json['vf_object_uid'] = $stored_entity_uid;
+        }
+
         $did_apply = $did_apply_post_fields || $did_apply_meta || $did_apply_tax;
 
         if (! $did_apply) {
@@ -1554,6 +1779,7 @@ $acf_relationship_fields = [
             'hash'             => $current_hash,
             'json_filename'    => basename($filepath),
             'status'           => ($post_id === $original_id) ? 'existing' : 'imported',
+            'vf_object_uid'    => $stored_entity_uid,
         ];
         update_post_meta($post_id, 'dbvc_post_history', $post_history);
         $json['meta']['dbvc_post_history'] = $post_history;
@@ -1688,6 +1914,9 @@ $acf_relationship_fields = [
             }
         }
 
+        // Ensure entity UID is available for downstream matching.
+        $entity_uid = self::ensure_post_uid($post_id, $post);
+
         // Domain strip option (current site).
         $domain_to_strip = get_option('dbvc_strip_domain_urls') === '1' ? untrailingslashit(home_url()) : '';
 
@@ -1708,19 +1937,13 @@ $acf_relationship_fields = [
             $post_excerpt = $post->post_excerpt;
         }
 
-        // Taxonomies → slugs.
-        $taxonomies = get_object_taxonomies($post->post_type);
-        $tax_input  = [];
-        foreach ($taxonomies as $taxonomy) {
-            $terms = wp_get_post_terms($post_id, $taxonomy, ['fields' => 'slugs']);
-            if (! is_wp_error($terms)) {
-                $tax_input[$taxonomy] = $terms;
-            }
-        }
+        // Taxonomies → portable payload (slug/name/parent).
+        $tax_input = self::export_tax_input_portable($post_id, $post->post_type);
 
         // Assemble base payload (title/status/name lightly sanitized; meta untouched).
         $data = [
             'ID'           => absint($post_id),
+            'vf_object_uid'=> $entity_uid,
             'post_title'   => sanitize_text_field($post->post_title),
             'post_content' => wp_kses_post($post_content),
             'post_excerpt' => sanitize_textarea_field($post_excerpt),
@@ -1926,6 +2149,7 @@ $acf_relationship_fields = [
                         $snapshot_items[] = [
                             'object_type'  => 'post',
                             'object_id'    => (int) $post_id,
+                            'entity_uid'   => $prepared['data']['vf_object_uid'] ?? '',
                             'content_hash' => $hash,
                             'media_hash'   => null,
                             'status'       => $status,

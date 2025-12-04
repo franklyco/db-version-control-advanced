@@ -99,6 +99,13 @@ function dbvc_render_export_page()
   $media_preview_enabled  = get_option(DBVC_Media_Sync::OPTION_PREVIEW_ENABLED, '0');
   $media_allow_external   = get_option(DBVC_Media_Sync::OPTION_ALLOW_EXTERNAL, '0');
   $import_require_review  = get_option('dbvc_import_require_review', '0');
+  $prefer_entity_uids     = get_option('dbvc_prefer_entity_uids', '0');
+  $diff_ignore_option     = get_option('dbvc_diff_ignore_paths', null);
+  if ($diff_ignore_option === null || $diff_ignore_option === false) {
+    $diff_ignore_paths = 'meta.dbvc_post_history.*';
+  } else {
+    $diff_ignore_paths = (string) $diff_ignore_option;
+  }
   $media_clear_url        = '#';
   if (class_exists('DBVC_Media_Sync')) {
     $media_clear_url = wp_nonce_url(
@@ -423,6 +430,9 @@ function dbvc_render_export_page()
     $export_use_mirror = ! empty($_POST['dbvc_export_use_mirror_domain']) ? '1' : '0';
     update_option('dbvc_export_use_mirror_domain', $export_use_mirror);
 
+    $prefer_entity_uids = ! empty($_POST['dbvc_prefer_entity_uids']) ? '1' : '0';
+    update_option('dbvc_prefer_entity_uids', $prefer_entity_uids);
+
     if (in_array('media', $config_sections_submitted, true)) {
       $media_retrieve_enabled = ! empty($_POST['dbvc_media_retrieve_enabled']) ? '1' : '0';
       update_option(DBVC_Media_Sync::OPTION_ENABLED, $media_retrieve_enabled);
@@ -469,6 +479,12 @@ function dbvc_render_export_page()
     $import_review_input = ! empty($_POST['dbvc_import_require_review']) ? '1' : '0';
     update_option('dbvc_import_require_review', $import_review_input);
     $import_require_review = $import_review_input;
+
+    $diff_ignore_input = isset($_POST['dbvc_diff_ignore_paths'])
+        ? sanitize_textarea_field(wp_unslash($_POST['dbvc_diff_ignore_paths']))
+        : $diff_ignore_paths;
+    update_option('dbvc_diff_ignore_paths', $diff_ignore_input);
+    $diff_ignore_paths = $diff_ignore_input;
 
     if (in_array('import', $config_sections_submitted, true)) {
       $config_feedback['import']['success'][] = esc_html__('Import defaults saved.', 'dbvc');
@@ -892,6 +908,9 @@ function dbvc_render_export_page()
         $media_retrieve_enabled = $download_media ? '1' : '0';
         update_option(DBVC_Media_Sync::OPTION_ENABLED, $media_retrieve_enabled);
       }
+
+      $prefer_entity_uids = ! empty($_POST['dbvc_prefer_entity_uids']) ? '1' : '0';
+      update_option('dbvc_prefer_entity_uids', $prefer_entity_uids);
 
       if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
         DBVC_Sync_Logger::log_import('Manual import requested', [
@@ -1479,6 +1498,13 @@ function dbvc_render_export_page()
 
                 <label><input type="checkbox" name="dbvc_smart_import" value="1" /> <?php esc_html_e('Only import new or modified posts', 'dbvc'); ?></label><br>
                 <label><input type="checkbox" name="dbvc_import_menus" value="1" /> <?php esc_html_e('Also import menus', 'dbvc'); ?></label><br><br>
+                <p>
+                  <label>
+                    <input type="checkbox" name="dbvc_prefer_entity_uids" value="1" <?php checked($prefer_entity_uids, '1'); ?> />
+                    <?php esc_html_e('Prefer entity UIDs when matching posts', 'dbvc'); ?>
+                  </label><br>
+                  <small><?php esc_html_e('When enabled, DBVC attempts UID-based matching before falling back to IDs or slugs. Disable when importing unrelated JSON dumps.', 'dbvc'); ?></small>
+                </p>
 <?php if (class_exists('DBVC_Media_Sync')) : ?>
                 <fieldset class="dbvc-media-import-options" style="margin:1rem 0;">
                   <legend><strong><?php esc_html_e('Media Retrieval', 'dbvc'); ?></strong></legend>
@@ -2171,6 +2197,14 @@ document.addEventListener('DOMContentLoaded', function () {
         </p>
 
         <p>
+          <label>
+            <input type="checkbox" name="dbvc_prefer_entity_uids" value="1" <?php checked($prefer_entity_uids, '1'); ?> />
+            <?php esc_html_e('Prefer entity UIDs when matching posts', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('When enabled, DBVC matches proposal entities by their stored UID before falling back to IDs or slugs.', 'dbvc'); ?></small>
+        </p>
+
+        <p>
           <label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
           <select name="dbvc_new_post_status" id="dbvc_new_post_status">
             <?php
@@ -2208,6 +2242,15 @@ document.addEventListener('DOMContentLoaded', function () {
             <?php esc_html_e('Replace current site domain with the Mirror Domain during export', 'dbvc'); ?>
           </label>
           <br><small><?php esc_html_e('When enabled, URLs that start with the current site domain will be rewritten to the Mirror Domain in exported content and meta.', 'dbvc'); ?></small>
+        </p>
+
+        <h3><?php esc_html_e('Ignore Fields During Proposal Review', 'dbvc'); ?></h3>
+        <p class="description">
+          <?php esc_html_e('Enter dot-path patterns (one per line or comma separated) for meta or taxonomy fields that should be excluded from diff counts and review queues.', 'dbvc'); ?>
+        </p>
+        <textarea name="dbvc_diff_ignore_paths" rows="4" style="width:100%;"><?php echo esc_textarea($diff_ignore_paths); ?></textarea>
+        <p class="description">
+          <?php esc_html_e('Supports wildcards (*) and regular expressions using /pattern/. Example: meta.dbvc_post_history.*', 'dbvc'); ?>
         </p>
 
         <p>

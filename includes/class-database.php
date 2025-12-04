@@ -15,7 +15,7 @@ if (! defined('WPINC')) {
 if (! class_exists('DBVC_Database')) {
     class DBVC_Database
     {
-        const SCHEMA_VERSION = 1;
+        const SCHEMA_VERSION = 2;
         const OPTION_SCHEMA_VERSION = 'dbvc_schema_version';
 
         /**
@@ -68,6 +68,7 @@ if (! class_exists('DBVC_Database')) {
 
             $snapshots = self::table_name('snapshots');
             $snapshot_items = self::table_name('snapshot_items');
+            $entities = self::table_name('entities');
             $media_index = self::table_name('media_index');
             $jobs = self::table_name('jobs');
             $activity = self::table_name('activity_log');
@@ -93,6 +94,7 @@ if (! class_exists('DBVC_Database')) {
                 snapshot_id bigint(20) unsigned NOT NULL,
                 object_type varchar(32) NOT NULL,
                 object_id bigint(20) unsigned NOT NULL DEFAULT 0,
+                entity_uid varchar(64) DEFAULT NULL,
                 content_hash varchar(64) NOT NULL,
                 media_hash varchar(64) DEFAULT NULL,
                 status varchar(20) NOT NULL DEFAULT 'created',
@@ -101,7 +103,20 @@ if (! class_exists('DBVC_Database')) {
                 PRIMARY KEY  (id),
                 KEY snapshot_id (snapshot_id),
                 KEY object_lookup (object_type, object_id),
+                KEY entity_uid (entity_uid),
                 KEY content_hash (content_hash)
+            ) {$charset_collate};";
+
+            $sql[] = "CREATE TABLE {$entities} (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                entity_uid varchar(64) NOT NULL,
+                object_type varchar(64) NOT NULL,
+                object_id bigint(20) unsigned DEFAULT NULL,
+                object_status varchar(20) DEFAULT NULL,
+                last_seen datetime DEFAULT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY entity_uid (entity_uid),
+                KEY object_lookup (object_type, object_id)
             ) {$charset_collate};";
 
             $sql[] = "CREATE TABLE {$media_index} (
@@ -170,6 +185,7 @@ if (! class_exists('DBVC_Database')) {
                 'media_index'    => "{$wpdb->prefix}dbvc_media_index",
                 'jobs'           => "{$wpdb->prefix}dbvc_jobs",
                 'activity_log'   => "{$wpdb->prefix}dbvc_activity_log",
+                'entities'       => "{$wpdb->prefix}dbvc_entities",
             ];
 
             return $map[$suffix] ?? "{$wpdb->prefix}dbvc_{$suffix}";
@@ -238,6 +254,7 @@ if (! class_exists('DBVC_Database')) {
                 $payload = wp_parse_args($item, [
                     'object_type'  => '',
                     'object_id'    => 0,
+                    'entity_uid'   => '',
                     'content_hash' => '',
                     'media_hash'   => null,
                     'status'       => 'created',
@@ -251,6 +268,7 @@ if (! class_exists('DBVC_Database')) {
                         'snapshot_id'  => $snapshot_id,
                         'object_type'  => $payload['object_type'],
                         'object_id'    => $payload['object_id'],
+                        'entity_uid'   => $payload['entity_uid'],
                         'content_hash' => $payload['content_hash'],
                         'media_hash'   => $payload['media_hash'],
                         'status'       => $payload['status'],
@@ -261,6 +279,7 @@ if (! class_exists('DBVC_Database')) {
                         '%d',
                         '%s',
                         '%d',
+                        '%s',
                         '%s',
                         '%s',
                         '%s',
@@ -339,6 +358,75 @@ if (! class_exists('DBVC_Database')) {
                     ['%d', '%d', '%s', '%s', '%s', '%d', '%s', '%s']
                 );
             }
+        }
+
+        /**
+         * Upsert entity registry entry keyed by UID.
+         *
+         * @param array $data
+         * @return void
+         */
+        public static function upsert_entity(array $data)
+        {
+            global $wpdb;
+
+            $defaults = [
+                'entity_uid'   => '',
+                'object_type'  => '',
+                'object_id'    => null,
+                'object_status'=> null,
+                'last_seen'    => current_time('mysql', true),
+            ];
+
+            $payload = wp_parse_args($data, $defaults);
+            $entity_uid = trim((string) $payload['entity_uid']);
+            if ($entity_uid === '') {
+                return;
+            }
+
+            $table = self::table_name('entities');
+
+            $wpdb->replace(
+                $table,
+                [
+                    'entity_uid'   => $entity_uid,
+                    'object_type'  => sanitize_key($payload['object_type']),
+                    'object_id'    => $payload['object_id'] ? (int) $payload['object_id'] : null,
+                    'object_status'=> $payload['object_status'] ? sanitize_key($payload['object_status']) : null,
+                    'last_seen'    => $payload['last_seen'],
+                ],
+                [
+                    '%s',
+                    '%s',
+                    '%d',
+                    '%s',
+                    '%s',
+                ]
+            );
+        }
+
+        /**
+         * Retrieve an entity registry row by UID.
+         *
+         * @param string $entity_uid
+         * @return object|null
+         */
+        public static function get_entity_by_uid($entity_uid)
+        {
+            global $wpdb;
+            $entity_uid = trim((string) $entity_uid);
+            if ($entity_uid === '') {
+                return null;
+            }
+
+            $table = self::table_name('entities');
+
+            return $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM {$table} WHERE entity_uid = %s LIMIT 1",
+                    $entity_uid
+                )
+            );
         }
 
         /**
