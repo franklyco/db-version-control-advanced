@@ -12,6 +12,7 @@ final class DBVC_Admin_App
     private const DECISIONS_OPTION = 'dbvc_proposal_decisions';
     private const RESOLVER_DECISIONS_OPTION = 'dbvc_resolver_decisions';
     private const DEFAULT_DIFF_IGNORE_PATHS = 'meta.dbvc_post_history.*';
+    private const NEW_ENTITY_DECISION_KEY = DBVC_NEW_ENTITY_DECISION_KEY;
 
     private static $diff_ignore_patterns = null;
 
@@ -657,8 +658,12 @@ final class DBVC_Admin_App
                 ? (string) $item['vf_object_uid']
                 : (isset($item['post_id']) ? (string) $item['post_id'] : '');
 
+            $identity    = self::describe_entity_identity($item);
+            $is_new_entity = $identity['is_new'];
+            $identity_match = $identity['match_source'];
+
             $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
-            $diff_state = self::evaluate_entity_diff_state($item, $vf_object_uid, $diff_counts);
+            $diff_state = self::evaluate_entity_diff_state($item, $vf_object_uid, $diff_counts, $identity);
             $diff_needs_review = $diff_state['needs_review'];
             $media_needs_review = ($summary['unresolved'] + $summary['conflicts']) > 0;
             $needs_review = $media_needs_review || $diff_needs_review;
@@ -672,11 +677,15 @@ final class DBVC_Admin_App
             if ($status_filter === 'resolved' && $needs_review) {
                 continue;
             }
+            if ($status_filter === 'new_entities' && ! $is_new_entity) {
+                continue;
+            }
 
             $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
                 ? $proposal_decisions[$vf_object_uid]
                 : [];
             $decision_summary = self::summarize_entity_decisions($entity_decisions);
+            $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $entity_decisions);
 
             $items[] = [
                 'vf_object_uid' => $vf_object_uid !== '' ? $vf_object_uid : (string) ($item['post_id'] ?? ''),
@@ -701,6 +710,9 @@ final class DBVC_Admin_App
                     'attachments' => $attachments,
                     'status'      => $media_needs_review ? 'needs_review' : 'resolved',
                 ],
+                'is_new_entity'      => $is_new_entity,
+                'identity_match'     => $identity_match,
+                'new_entity_decision'=> $new_entity_decision,
                 'decision_summary' => $decision_summary,
             ];
         }
@@ -826,14 +838,28 @@ final class DBVC_Admin_App
         ]);
     }
 
-    private static function evaluate_entity_diff_state(array $item, string $vf_object_uid, ?array $diff_counts = null): array
+    private static function evaluate_entity_diff_state(array $item, string $vf_object_uid, ?array $diff_counts = null, ?array $identity = null): array
     {
         $expected_hash = isset($item['content_hash']) ? (string) $item['content_hash'] : '';
         $post_type     = isset($item['post_type']) ? $item['post_type'] : '';
         $original_id   = isset($item['post_id']) ? (int) $item['post_id'] : 0;
-        $local_post_id = class_exists('DBVC_Sync_Posts')
-            ? DBVC_Sync_Posts::resolve_local_post_id($original_id, $vf_object_uid, $post_type)
-            : $original_id;
+        $local_post_id = null;
+        $identity_match = 'none';
+
+        if (is_array($identity)) {
+            if (isset($identity['local_post_id'])) {
+                $local_post_id = $identity['local_post_id'] ? (int) $identity['local_post_id'] : null;
+            }
+            if (isset($identity['match_source'])) {
+                $identity_match = (string) $identity['match_source'];
+            }
+        }
+
+        if (! $local_post_id) {
+            $local_post_id = class_exists('DBVC_Sync_Posts')
+                ? DBVC_Sync_Posts::resolve_local_post_id($original_id, $vf_object_uid, $post_type)
+                : $original_id;
+        }
 
         $current_hash = $local_post_id ? get_post_meta($local_post_id, '_dbvc_import_hash', true) : '';
         $needs_review = true;
@@ -871,6 +897,7 @@ final class DBVC_Admin_App
             'current_hash' => $current_hash,
             'local_post_id'=> $local_post_id,
             'diff_total'   => $diff_total,
+            'identity_match' => $identity_match ?: ($local_post_id ? 'id' : 'none'),
         ];
     }
 
@@ -932,6 +959,8 @@ final class DBVC_Admin_App
             $current = $proposed_data;
         }
 
+        $identity = self::describe_entity_identity($entity);
+
         $diff_summary = self::compare_snapshots($current, $proposed_data);
         $meta_changes = 0;
         $tax_changes  = 0;
@@ -948,8 +977,9 @@ final class DBVC_Admin_App
             'meta'  => $meta_changes,
             'tax'   => $tax_changes,
         ];
-        $diff_state   = self::evaluate_entity_diff_state($entity, $vf_object_uid, $diff_counts);
+        $diff_state   = self::evaluate_entity_diff_state($entity, $vf_object_uid, $diff_counts, $identity);
         $decisions    = self::get_entity_decisions($proposal_id, $vf_object_uid);
+        $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $decisions);
 
         return new \WP_REST_Response([
             'proposal_id'   => $proposal_id,
@@ -962,6 +992,9 @@ final class DBVC_Admin_App
             'diff_state'    => $diff_state,
             'decisions'     => $decisions,
             'decision_summary' => self::summarize_entity_decisions($decisions),
+            'is_new_entity'     => $identity['is_new'],
+            'identity_match'    => $identity['match_source'],
+            'new_entity_decision'=> $new_entity_decision,
         ]);
     }
 
@@ -1415,7 +1448,8 @@ final class DBVC_Admin_App
             return new \WP_Error('dbvc_missing_path', __('Path is required.', 'dbvc'), ['status' => 400]);
         }
 
-        if (! in_array($action, ['accept', 'keep', 'clear', 'clear_all'], true)) {
+        $allowed_actions = ['accept', 'keep', 'clear', 'clear_all', 'accept_new', 'decline_new'];
+        if (! in_array($action, $allowed_actions, true)) {
             return new \WP_Error('dbvc_invalid_action', __('Invalid action supplied.', 'dbvc'), ['status' => 400]);
         }
 
@@ -2754,6 +2788,54 @@ final class DBVC_Admin_App
             'saved_at'    => isset($decision['saved_at']) ? (string) $decision['saved_at'] : null,
             'saved_by'    => isset($decision['saved_by']) ? (int) $decision['saved_by'] : null,
         ];
+    }
+
+    private static function describe_entity_identity(array $item): array
+    {
+        $vf_object_uid = isset($item['vf_object_uid'])
+            ? (string) $item['vf_object_uid']
+            : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+
+        $context = [
+            'vf_object_uid' => $vf_object_uid,
+            'post_id'       => isset($item['post_id']) ? (int) $item['post_id'] : 0,
+            'post_type'     => isset($item['post_type']) ? (string) $item['post_type'] : '',
+            'post_name'     => isset($item['post_name']) ? (string) $item['post_name'] : '',
+        ];
+
+        $identity = [
+            'post_id'      => null,
+            'match_source' => 'none',
+        ];
+
+        if (class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'identify_local_entity')) {
+            $identity = DBVC_Sync_Posts::identify_local_entity($context);
+        }
+
+        $match_source = isset($identity['match_source']) ? (string) $identity['match_source'] : 'none';
+        $local_post_id = isset($identity['post_id']) ? (int) $identity['post_id'] : null;
+
+        return [
+            'local_post_id' => $local_post_id ?: null,
+            'match_source'  => $match_source !== '' ? $match_source : 'none',
+            'is_new'        => $local_post_id ? false : true,
+        ];
+    }
+
+    private static function get_new_entity_decision(string $proposal_id, string $vf_object_uid, ?array $decisions = null): string
+    {
+        if ($decisions === null) {
+            $decisions = self::get_entity_decisions($proposal_id, $vf_object_uid);
+        }
+
+        if (
+            isset($decisions[self::NEW_ENTITY_DECISION_KEY])
+            && is_string($decisions[self::NEW_ENTITY_DECISION_KEY])
+        ) {
+            return $decisions[self::NEW_ENTITY_DECISION_KEY];
+        }
+
+        return '';
     }
 
     /**

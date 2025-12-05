@@ -122,6 +122,52 @@ class DBVC_Sync_Posts
     }
 
     /**
+     * Diagnose how (or if) a proposal entity maps to a local post.
+     *
+     * @param array $context
+     * @return array{post_id:?int,match_source:string}
+     */
+    public static function identify_local_entity(array $context): array
+    {
+        $vf_object_uid = isset($context['vf_object_uid']) ? trim((string) $context['vf_object_uid']) : '';
+        $post_type     = isset($context['post_type']) ? sanitize_key($context['post_type']) : '';
+        $original_id   = isset($context['post_id']) ? (int) $context['post_id'] : 0;
+        $slug_source   = isset($context['post_name']) ? sanitize_title($context['post_name']) : '';
+
+        $match_source = 'none';
+        $post_id      = null;
+
+        if ($vf_object_uid !== '') {
+            $found = self::find_post_id_by_uid($vf_object_uid, $post_type);
+            if ($found) {
+                $post_id = $found;
+                $match_source = 'uid';
+            }
+        }
+
+        if (! $post_id && $original_id) {
+            $candidate = get_post($original_id);
+            if ($candidate instanceof \WP_Post && ($post_type === '' || $candidate->post_type === $post_type)) {
+                $post_id = (int) $candidate->ID;
+                $match_source = 'id';
+            }
+        }
+
+        if (! $post_id && $slug_source !== '') {
+            $found = self::find_post_id_by_slug($slug_source, $post_type);
+            if ($found) {
+                $post_id = $found;
+                $match_source = 'slug';
+            }
+        }
+
+        return [
+            'post_id'      => $post_id ? (int) $post_id : null,
+            'match_source' => $match_source,
+        ];
+    }
+
+    /**
      * Persist entity UID mapping to custom table.
      *
      * @param string $entity_uid
@@ -176,6 +222,47 @@ class DBVC_Sync_Posts
             'post_status'    => 'any',
             'meta_key'       => 'vf_object_uid',
             'meta_value'     => $entity_uid,
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+            'suppress_filters' => true,
+        ];
+
+        $found = get_posts($query_args);
+        if (! empty($found)) {
+            return (int) $found[0];
+        }
+
+        return null;
+    }
+
+    /**
+     * Try to map a slug to a local post ID.
+     *
+     * @param string $slug
+     * @param string $post_type
+     * @return int|null
+     */
+    private static function find_post_id_by_slug($slug, $post_type = '')
+    {
+        $slug = sanitize_title($slug);
+        if ($slug === '') {
+            return null;
+        }
+
+        $post_types = $post_type ? [$post_type] : self::get_supported_post_types();
+
+        foreach ($post_types as $type) {
+            $candidate = get_page_by_path($slug, OBJECT, $type);
+            if ($candidate instanceof \WP_Post) {
+                return (int) $candidate->ID;
+            }
+        }
+
+        $query_args = [
+            'post_type'      => $post_types,
+            'name'           => $slug,
+            'post_status'    => 'any',
             'posts_per_page' => 1,
             'fields'         => 'ids',
             'no_found_rows'  => true,
@@ -984,6 +1071,35 @@ HT;
                     $entity_decisions = $proposal_decisions[$vf_object_uid];
                 }
 
+                $new_entity_decision = '';
+                if (
+                    $vf_object_uid !== ''
+                    && isset($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
+                    && is_string($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
+                ) {
+                    $new_entity_decision = $entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY];
+                }
+
+                $identity = self::identify_local_entity([
+                    'vf_object_uid' => $vf_object_uid,
+                    'post_id'       => $entry['post_id'] ?? 0,
+                    'post_type'     => $entry['post_type'] ?? '',
+                    'post_name'     => $entry['post_name'] ?? '',
+                ]);
+
+                $is_new_entity = empty($identity['post_id']);
+                if ($is_new_entity && $new_entity_decision !== 'accept_new') {
+                    $skipped++;
+                    if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                        DBVC_Sync_Logger::log_import('Post import skipped – new entity not approved', [
+                            'file'     => $entry['path'],
+                            'post_id'  => $vf_object_uid,
+                            'proposal' => $backup_name,
+                        ]);
+                    }
+                    continue;
+                }
+
                 $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded, $entity_decisions, $vf_object_uid);
                 @unlink($tmp);
 
@@ -1267,6 +1383,10 @@ HT;
 
         foreach ($decisions as $path => $action) {
             if (! is_string($path) || $path === '') {
+                continue;
+            }
+
+            if (defined('DBVC_NEW_ENTITY_DECISION_KEY') && $path === DBVC_NEW_ENTITY_DECISION_KEY) {
                 continue;
             }
 

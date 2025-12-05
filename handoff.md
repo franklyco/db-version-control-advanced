@@ -19,25 +19,25 @@ _Last updated: 2025-11-06 (America/New_York)_
 - External asset registry service (future enhancement).
 
 ### Implementation Status (2025-11-06)
-- **Identity layer** — Planned; no UID stamping exists in the current plugin yet.
-- **Media resolver** — Interim implementation lives in `DBVC_Media_Sync`; keep active while we design the new deterministic resolver.
-- **Exporter / Diff / REST + React UI / Official collections** — Planned; present UI continues to be the PHP-backed backup workflow.
-- **Apply & CLI parity** — Existing WP-CLI commands target the legacy backup/import flow and need alignment once the new stack lands.
+- **Identity layer** — ✅ Shipped. Posts/terms/attachments receive `vf_object_uid`/`vf_asset_uid`, persisted via `DBVC_Sync_Posts` hooks + `wp_dbvc_entities`.
+- **Media resolver** — ✅ Live resolver (`DBVC_Media_Sync` + resolver REST) handles duplicates, downloads, and global rules; duplicate blocking + cleanup APIs enforced in the React app.
+- **Exporter / Diff / REST + React UI / Official collections** — ✅ Exporter + manifest writer + React workflow are production-ready (proposal upload, diff review, Accept/Keep, resolver tooling). Official “collections” export remains future work.
+- **Apply & CLI parity** — ✅ Apply pipeline honours decisions/duplicates/new-entity gating; CLI parity for the new workflow is still pending (legacy WP-CLI commands remain available).
 
 ---
 
 ## 1) Architecture Overview
 
 ### Phases (recommended order)
-1. **Identity layer** (UIDs for posts/terms/attachments; backfill + auto-stamp). _Status: planned_  
-2. **Media resolver** (UID/hash/path → attachment ID map; upload if missing). _Status: redesigning — keep legacy `DBVC_Media_Sync` in place until replacement ready_  
+1. **Identity layer** (UIDs for posts/terms/attachments; backfill + auto-stamp). _Status: ✅ Complete (vf_object_uid auto-stamp + `wp_dbvc_entities` registry)_  
+2. **Media resolver** (UID/hash/path → attachment ID map; upload if missing). _Status: ✅ Complete (resolver REST + duplicate cleanup + media bundle ingestion)_  
    - UX follow-up: add a dedicated “Media Handling” subtab under Configure that centralizes all media toggles (bundle exports, remote downloads, filename preservation). Keep Export-tab checkboxes in sync with this subtab so admins always change a single source of truth.
-3. **Exporter** (normalized entity snapshots + manifest + optional media). _Status: planned_  
-4. **Diff engine** (type-aware comparisons for core/meta/ACF/blocks/tax). _Status: planned_  
-5. **REST + UI** (proposal list → drill-down → per-field accept/keep). _Status: planned (future React UI)_  
+3. **Exporter** (normalized entity snapshots + manifest + optional media). _Status: ✅ Complete (manifest writer + bundle support shipping today)_  
+4. **Diff engine** (type-aware comparisons for core/meta/ACF/blocks/tax). _Status: ✅ Complete (entity snapshots + React diff + Accept/Keep pipeline)_  
+5. **REST + UI** (proposal list → drill-down → per-field accept/keep). _Status: ✅ Complete (React admin app, duplicate modal, new-entity gating)_  
 6. **Official collections & export** (snapshot store + zip export). _Status: planned_  
-7. **Apply engine + CLI parity** (write decisions; strategies; logs). _Status: planned_  
-8. **Hardening** (perf, security, tests). _Status: planned_
+7. **Apply engine + CLI parity** (write decisions; strategies; logs). _Status: 🚧 Apply is live; CLI parity pending._  
+8. **Hardening** (perf, security, tests). _Status: ongoing_
 
 ---
 

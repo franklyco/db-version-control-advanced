@@ -32,6 +32,11 @@
    - Attachments search feeds the new bulk controls, keeping workflows responsive even with hundreds of conflicts.
    - Resolver rule form remembers the last target ID and surfaces inline duplicate warnings before you hit Save.
    - Configure → Import Defaults now has “Require DBVC Proposal review,” which hides the legacy Run Import form and forces the React workflow.
+10. **Duplicate + New-Entity Enforcement**
+    - Backend surface for `/duplicates` + `/duplicates/cleanup`, manifest rewrite, and modal flow shipped (blocking overlays + canonical keep selection).
+    - Proposal load now queries duplicate count + report, shows flashing overlay, and prevents entity review until all duplicates are resolved.
+    - Added explicit “New post” detection pipeline (UID/ID/slug heuristics, DBVC entity registry) with UI badges, forced filter, and accept/decline gating that the importer honours.
+    - Cleanup API rewrites manifest + deletes stray JSONs so reviewers always see a canonical source of truth.
 ## Remaining / Next Steps
 1. **Testing & Automation**
    - Expand coverage (resolver bulk actions, CSV parsing edge cases, importer hooks) now that the scaffold exists.
@@ -43,4 +48,4 @@
    - Finalize manifest/local preview URLs so thumbnails render consistently across environments or fall back gracefully when sync paths differ.
 3. **Documentation & CLI**
    - Extend CLI commands to manage resolver rules (list, add, delete) for scripted environments.
-   - Update handoff to describe modal UX once implemented.
+   - Update handoff to describe modal UX once implemented. ✅ _Docs updated via current session_

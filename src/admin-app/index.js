@@ -208,6 +208,7 @@ const SECTION_LABELS = {
 	post_excerpt: 'Excerpt',
 	other: 'Other',
 };
+const NEW_ENTITY_DECISION_PATH = '__dbvc_new_entity__';
 
 const groupDiffChanges = (changes) => {
 	const groups = {};
@@ -238,12 +239,20 @@ const STATUS_LABELS = {
 	needs_download: 'Needs Download',
 	missing: 'Missing',
 	unknown: 'Unknown',
+	new_entities: 'New posts',
 };
 
 const renderStatusBadge = (status) => {
 	const label = STATUS_LABELS[status] || status;
 	return <span className={`dbvc-badge dbvc-badge--${status}`}>{label}</span>;
 };
+
+const entityLooksNew = (entity) =>
+	Boolean(
+		typeof entity?.is_new_entity !== 'undefined'
+			? entity.is_new_entity
+			: entity?.diff_state?.reason === 'missing_local_post'
+	);
 
 const ENTITY_COLUMN_DEFS = [
 	{
@@ -313,7 +322,31 @@ const ENTITY_COLUMN_DEFS = [
 		id: 'resolver',
 		label: 'Resolver',
 		defaultVisible: true,
-		renderCell: (entity, helpers) => renderStatusBadge(helpers.mediaStatus),
+		renderCell: (entity, helpers) => {
+			const isNew = helpers.isNewEntity;
+			const decision = helpers.newDecision || '';
+			let newLabel = 'New post';
+			if (decision === 'accept_new') {
+				newLabel = 'New post accepted';
+			} else if (decision === 'decline_new') {
+				newLabel = 'New post declined';
+			}
+			return (
+				<div className="dbvc-resolver-cell">
+					{renderStatusBadge(helpers.mediaStatus)}
+					{isNew && (
+						<span
+							className={`dbvc-badge dbvc-badge--new${
+								decision === 'decline_new' ? ' is-declined' : ''
+							}`}
+							style={{ marginLeft: '0.25rem' }}
+						>
+							{newLabel}
+						</span>
+					)}
+				</div>
+			);
+		},
 	},
 	{
 		id: 'unresolved_media',
@@ -648,23 +681,26 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 							: entity.resolver?.status ?? 'resolved';
 						const overallStatus = entity.overall_status || (diffState.needs_review ? 'needs_review' : 'resolved');
 						const hashMissing = diffState.reason === 'missing_local_hash';
-					const decisionSummary = entity.decision_summary ?? {};
-					const entityAccepted = decisionSummary.accepted ?? 0;
-					const entityKept = decisionSummary.kept ?? 0;
-					const entityHasSelections = (decisionSummary.total ?? 0) > 0;
+						const decisionSummary = entity.decision_summary ?? {};
+						const entityAccepted = decisionSummary.accepted ?? 0;
+						const entityKept = decisionSummary.kept ?? 0;
+						const entityHasSelections = (decisionSummary.total ?? 0) > 0;
+						const isNewEntity = entityLooksNew(entity);
+						const newDecision = entity.new_entity_decision || '';
+						const identityMatch = entity.identity_match || '';
 
-					const rowClass = [
-						`resolver-${overallStatus}`,
-						isActive ? 'is-active' : '',
-					]
-						.filter(Boolean)
-						.join(' ');
+						const rowClass = [
+							`resolver-${overallStatus}`,
+							isActive ? 'is-active' : '',
+						]
+							.filter(Boolean)
+							.join(' ');
 
-					const handleRowClick = (event) => {
-						event.preventDefault();
-						event.stopPropagation();
-						onSelect(entity.vf_object_uid);
-					};
+						const handleRowClick = (event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							onSelect(entity.vf_object_uid);
+						};
 						const helpers = {
 							summary,
 							diffState,
@@ -674,6 +710,9 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 							entityHasSelections,
 							entityAccepted,
 							entityKept,
+							isNewEntity,
+							newDecision,
+							identityMatch,
 						};
 						return (
 							<tr
@@ -809,6 +848,11 @@ const EntityDetailPanel = ({
 	const localPostId = diffState?.local_post_id ?? null;
 	const editLink = localPostId ? `post.php?post=${localPostId}&action=edit` : '';
 	const hashNeedsSync = diffState?.reason === 'missing_local_hash';
+	const isNewEntity = entityLooksNew(entityDetail ?? { diff_state: diffState });
+	const identityMatch = entityDetail?.identity_match || '';
+	const newEntityDecision =
+		decisions?.[NEW_ENTITY_DECISION_PATH] ?? entityDetail?.new_entity_decision ?? '';
+	const newDecisionSaving = Boolean(savingPaths?.[NEW_ENTITY_DECISION_PATH]);
 	const totalSelections = decisionSummary.total ?? 0;
 	const selectionsLabel =
 		totalSelections > 0
@@ -1195,6 +1239,49 @@ const EntityDetailPanel = ({
 				})()}
 				<p className="dbvc-decision-summary">Selections: {selectionsLabel}</p>
 			</div>
+			{isNewEntity && (
+				<div className="dbvc-new-entity-card">
+					<div className="dbvc-new-entity-card__header">
+						<span className="dbvc-badge dbvc-badge--new">New post</span>
+						<span className="dbvc-new-entity-card__status">
+							{newEntityDecision === 'accept_new'
+								? 'Accepted for import'
+								: newEntityDecision === 'decline_new'
+								? 'Declined — will be skipped'
+								: 'Pending reviewer decision'}
+						</span>
+					</div>
+					<p>
+						This proposal would create a new {item?.post_type || 'post'} on this site. No UID, original
+						ID, or slug match was detected locally, so choose whether to import it.
+					</p>
+					<div className="dbvc-new-entity-actions">
+						<Button
+							variant={newEntityDecision === 'accept_new' ? 'primary' : 'secondary'}
+							onClick={() => onDecisionChange && onDecisionChange(NEW_ENTITY_DECISION_PATH, 'accept_new')}
+							disabled={newDecisionSaving}
+							isBusy={newDecisionSaving && newEntityDecision === 'accept_new'}
+						>
+							Accept & import
+						</Button>
+						<Button
+							variant={newEntityDecision === 'decline_new' ? 'primary' : 'secondary'}
+							onClick={() => onDecisionChange && onDecisionChange(NEW_ENTITY_DECISION_PATH, 'decline_new')}
+							disabled={newDecisionSaving}
+							isBusy={newDecisionSaving && newEntityDecision === 'decline_new'}
+						>
+							Decline new post
+						</Button>
+						<Button
+							variant="tertiary"
+							onClick={() => onDecisionChange && onDecisionChange(NEW_ENTITY_DECISION_PATH, 'clear')}
+							disabled={newDecisionSaving || !newEntityDecision}
+						>
+							Clear choice
+						</Button>
+					</div>
+				</div>
+			)}
 
 		{decisionError && (
 			<div className="notice notice-error">
@@ -1929,6 +2016,20 @@ useEffect(() => {
 		() => entities.filter((entity) => entity.diff_state?.reason === 'missing_local_hash'),
 		[entities]
 	);
+	const newEntities = useMemo(() => entities.filter((entity) => entityLooksNew(entity)), [entities]);
+	const hasNewEntities = newEntities.length > 0;
+	const newEntityFilterForced = useRef(false);
+
+	useEffect(() => {
+		if (!hasNewEntities) {
+			newEntityFilterForced.current = false;
+			return;
+		}
+		if (!newEntityFilterForced.current && entityFilter !== 'new_entities') {
+			setEntityFilter('new_entities');
+			newEntityFilterForced.current = true;
+		}
+	}, [hasNewEntities, entityFilter]);
 
 useEffect(() => {
 	if (!filteredEntities.length) {
@@ -2262,6 +2363,7 @@ useEffect(() => {
 								...prev,
 								decisions: nextDecisions,
 								decision_summary: nextSummary ?? prev.decision_summary,
+								new_entity_decision: nextDecisions[NEW_ENTITY_DECISION_PATH] ?? prev.new_entity_decision,
 						  }
 						: prev
 				);
@@ -2271,6 +2373,8 @@ useEffect(() => {
 							? {
 									...entity,
 									decision_summary: nextSummary ?? entity.decision_summary,
+									new_entity_decision:
+										nextDecisions[NEW_ENTITY_DECISION_PATH] ?? entity.new_entity_decision,
 							  }
 							: entity
 					)
@@ -3027,6 +3131,7 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 								<option value="needs_review">{STATUS_LABELS.needs_review}</option>
 								<option value="needs_review_media">{STATUS_LABELS.needs_review_media}</option>
 								<option value="resolved">{STATUS_LABELS.resolved}</option>
+								<option value="new_entities">{STATUS_LABELS.new_entities}</option>
 							</select>
 						</label>
 						<label>
@@ -3041,6 +3146,18 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 		</div>
 		{selectedProposal && (
 			<div className="dbvc-entity-actions">
+				{hasNewEntities && (
+					<Button
+						className="dbvc-new-entities-button"
+						variant="secondary"
+						onClick={() => {
+							setEntityFilter('new_entities');
+							setEntitySearch('');
+						}}
+					>
+						Review {newEntities.length} new post{newEntities.length === 1 ? '' : 's'}
+					</Button>
+				)}
 				{duplicateReport.count > 0 && (
 					<Button
 						variant="primary"

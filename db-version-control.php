@@ -45,6 +45,9 @@ define('DBVC_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('DBVC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBVC_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('DBVC_PLUGIN_VERSION', '1.1.0');
+if (! defined('DBVC_NEW_ENTITY_DECISION_KEY')) {
+	define('DBVC_NEW_ENTITY_DECISION_KEY', '__dbvc_new_entity__');
+}
 
 require_once DBVC_PLUGIN_PATH . 'includes/class-database.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';

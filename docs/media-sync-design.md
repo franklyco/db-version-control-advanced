@@ -6,9 +6,10 @@
 - Provide structured storage for job progress, hash metadata, and snapshot history.
 
 ## Database Additions
-Create tables on plugin activation (with versioned schema constants):
+Create tables on plugin activation (with versioned schema constants).  
+_Status: ✅ Implemented via `DBVC_Database::create_or_update_tables()` (schema version 2) in the production plugin._
 
-### `{$wpdb->prefix}dbvc_snapshots`
+### `{$wpdb->prefix}dbvc_snapshots` _(✅ live)_
 | Column            | Type              | Notes |
 |-------------------|-------------------|-------|
 | `id`              | bigint PK         | Auto increment snapshot identifier. |
@@ -22,7 +23,7 @@ Create tables on plugin activation (with versioned schema constants):
 
 Indexes: primary, `(type, created_at)`, `(initiated_by)`.
 
-### `{$wpdb->prefix}dbvc_snapshot_items`
+### `{$wpdb->prefix}dbvc_snapshot_items` _(✅ live)_
 | Column            | Type              | Notes |
 |-------------------|-------------------|-------|
 | `id`              | bigint PK         | |
@@ -37,7 +38,7 @@ Indexes: primary, `(type, created_at)`, `(initiated_by)`.
 
 Indexes: `(snapshot_id)`, `(object_type, object_id)`, `(content_hash)`.
 
-### `{$wpdb->prefix}dbvc_media_index`
+### `{$wpdb->prefix}dbvc_media_index` _(✅ live)_
 | Column            | Type         | Notes |
 |-------------------|--------------|-------|
 | `id`              | bigint PK    | |
@@ -52,7 +53,7 @@ Indexes: `(snapshot_id)`, `(object_type, object_id)`, `(content_hash)`.
 
 Indexes: `(original_id)`, `(file_hash)`, `(relative_path(191))`.
 
-### `{$wpdb->prefix}dbvc_jobs`
+### `{$wpdb->prefix}dbvc_jobs` _(✅ live)_
 | Column        | Type          | Notes |
 |---------------|---------------|-------|
 | `id`          | bigint PK     | |
@@ -66,10 +67,12 @@ Indexes: `(original_id)`, `(file_hash)`, `(relative_path(191))`.
 Indexes: `(job_type, status)`, `(updated_at)`.
 
 ### Optional `{$wpdb->prefix}dbvc_activity_log`
-Structured log entries (mirrors current file log but queryable). Columns: `id`, `event`, `severity`, `context JSON`, `created_at`, `user_id`, `job_id`.
+Structured log entries (mirrors current file log but queryable). Columns: `id`, `event`, `severity`, `context JSON`, `created_at`, `user_id`, `job_id`.  
+_Status: ✅ Table exists and receives entries when verbose logging is enabled._
 
 ## Manifest Enhancements
-Add keys to `manifest.json` for each media entry:
+Add keys to `manifest.json` for each media entry.  
+_Status: ✅ `DBVC_Backup_Manager::generate_manifest()` writes `media_index`, hashes, and resolver decisions so current proposals meet this schema._
 ```json
 {
   "schema": 2,
@@ -112,11 +115,13 @@ Expose a setting (UI + CLI flag) with these options:
 2. **Bundled only**: Require local `relative_path`; fail when files are absent.
 3. **Remote only**: Skip bundle and use `source_url` (current behaviour).
 
-Importer behaviour:
+_Status: ✅ Implemented._ Admins can choose the transport mode via Configure → Media Sync; the value is stored/read by `DBVC_Media_Sync::get_transport_mode()` and surfaced in manifests._
+
+Importer behaviour _(✅ `DBVC_Sync_Posts::import_backup()` + resolver pipeline)_:
 - Verify hash when using bundled media; on mismatch, log and fall back (if allowed).
 - When remote mode succeeds, update `dbvc_media_index` with file hash/path for future bundle generation.
 
-Exporter behaviour:
+Exporter behaviour _(✅ `DBVC_Backup_Manager` + `DBVC_Sync_Posts::export_post_to_json()`)_:
 - If in bundled or auto mode, copy attachment files into `sync/media/yyyy/mm/`. Store hash/size in both manifest and `dbvc_media_index`.
 - Provide chunking controls (`chunk_size`, `max_files_per_chunk`). Store chunk metadata in `dbvc_jobs` and manifest (`chunks`: array of file lists).
 - Diff mode consults `dbvc_snapshot_items` to select only items whose `content_hash` changed since the chosen baseline snapshot.
