@@ -634,6 +634,9 @@ final class DBVC_Admin_App
                 $status     = $resolution['status'] ?? 'unknown';
                 $reason     = $resolution['reason'] ?? null;
                 $decision   = self::get_resolver_decision($proposal_id, (string) $original_id);
+                $descriptor = is_array($resolution) ? ($resolution['descriptor'] ?? []) : [];
+                $target_id  = isset($resolution['target_id']) ? (int) $resolution['target_id'] : 0;
+                $preview    = self::build_attachment_preview($descriptor, $target_id, $proposal_id);
 
                 if ($status === 'reused') {
                     $summary['resolved']++;
@@ -645,13 +648,20 @@ final class DBVC_Admin_App
                     $summary['unknown']++;
                 }
 
-                $attachments[] = [
+                $attachment_row = [
                     'original_id' => $original_id,
                     'status'      => $status,
                     'reason'      => $reason,
-                    'target_id'   => $resolution['target_id'] ?? null,
+                    'target_id'   => $target_id ?: null,
                     'decision'    => $decision,
                 ];
+                if (! empty($descriptor)) {
+                    $attachment_row['descriptor'] = $descriptor;
+                }
+                if ($preview) {
+                    $attachment_row['preview'] = $preview;
+                }
+                $attachments[] = $attachment_row;
             }
 
             $vf_object_uid = isset($item['vf_object_uid'])
@@ -1093,7 +1103,7 @@ final class DBVC_Admin_App
                     $attachment['decision'] = self::get_resolver_decision($proposal_id, (string) $original);
                 }
                 $target_id = isset($attachment['target_id']) ? (int) $attachment['target_id'] : 0;
-                $preview   = self::build_attachment_preview($descriptor, $target_id);
+                $preview   = self::build_attachment_preview($descriptor, $target_id, $proposal_id);
                 if ($preview) {
                     $attachment['preview'] = $preview;
                 }
@@ -2620,9 +2630,9 @@ final class DBVC_Admin_App
      * @param int   $target_id
      * @return array|null
      */
-    private static function build_attachment_preview(array $descriptor, int $target_id = 0): ?array
+    private static function build_attachment_preview(array $descriptor, int $target_id = 0, string $proposal_id = ''): ?array
     {
-        $proposed = self::build_manifest_preview($descriptor);
+        $proposed = self::build_manifest_preview($descriptor, $proposal_id);
         $local    = $target_id ? wp_get_attachment_image_url($target_id, 'thumbnail') : null;
 
         if (! $proposed && ! $local) {
@@ -2640,13 +2650,22 @@ final class DBVC_Admin_App
      * Generate base64 thumbnail for manifest asset.
      *
      * @param array $descriptor
+     * @param string $proposal_id
      * @return string|null
      */
-    private static function build_manifest_preview(array $descriptor): ?string
+    private static function build_manifest_preview(array $descriptor, string $proposal_id = ''): ?string
     {
-        if (! function_exists('dbvc_get_sync_path')) {
+        $manifest_dir = '';
+        if ($proposal_id !== '' && class_exists('DBVC_Backup_Manager')) {
+            $manifest_dir = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
+        } elseif (function_exists('dbvc_get_sync_path')) {
+            $manifest_dir = trailingslashit(dbvc_get_sync_path());
+        }
+
+        if ($manifest_dir === '') {
             return null;
         }
+        $manifest_dir = trailingslashit(wp_normalize_path($manifest_dir));
 
         $relative_candidates = [];
         if (! empty($descriptor['bundle_path'])) {
@@ -2660,9 +2679,8 @@ final class DBVC_Admin_App
         }
 
         $path = null;
-        $base = trailingslashit(dbvc_get_sync_path());
         foreach ($relative_candidates as $candidate) {
-            $candidate_path = wp_normalize_path($base . ltrim($candidate, '/'));
+            $candidate_path = wp_normalize_path($manifest_dir . ltrim($candidate, '/'));
             if (file_exists($candidate_path)) {
                 $path = $candidate_path;
                 break;
@@ -2670,6 +2688,10 @@ final class DBVC_Admin_App
         }
 
         if (! $path) {
+            $remote = isset($descriptor['source_url']) ? esc_url_raw($descriptor['source_url']) : '';
+            if ($remote && self::is_image_like($remote)) {
+                return $remote;
+            }
             return null;
         }
         if (! file_exists($path) || ! is_readable($path)) {
@@ -2681,8 +2703,26 @@ final class DBVC_Admin_App
             return null;
         }
 
+        $editor = wp_get_image_editor($path);
+        if (! is_wp_error($editor)) {
+            $editor->resize(320, 320, false);
+            $temp_file = wp_tempnam(basename($path));
+            if ($temp_file) {
+                $saved = $editor->save($temp_file);
+                if (! is_wp_error($saved) && ! empty($saved['path'])) {
+                    $contents = file_get_contents($saved['path']);
+                    @unlink($saved['path']);
+                    if ($contents !== false) {
+                        $mime = $saved['mime-type'] ?? $saved['type'] ?? $type['type'];
+                        return sprintf('data:%s;base64,%s', $mime, base64_encode($contents));
+                    }
+                }
+                @unlink($temp_file);
+            }
+        }
+
         $size = filesize($path);
-        if ($size === false || $size > 1024 * 1024) { // limit to ~1MB
+        if ($size === false || $size > 1024 * 1024) {
             return null;
         }
 
@@ -2692,6 +2732,22 @@ final class DBVC_Admin_App
         }
 
         return sprintf('data:%s;base64,%s', $type['type'], base64_encode($contents));
+    }
+
+    /**
+     * Check if a URL/path appears to be an image.
+     *
+     * @param string $path
+     * @return bool
+     */
+    private static function is_image_like(string $path): bool
+    {
+        $ext = pathinfo(parse_url($path, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION);
+        if (! $ext) {
+            return false;
+        }
+        $type = wp_check_filetype('preview.' . $ext);
+        return ! empty($type['type']) && strpos($type['type'], 'image/') === 0;
     }
 
     /**

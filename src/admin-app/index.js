@@ -1366,16 +1366,15 @@ const EntityDetailPanel = ({
 						</div>
 					)}
 					{filteredAttachments.length > 0 ? (
-						<table className="widefat">
-							<thead>
-								<tr>
-									<th>Original ID</th>
-									<th>Status</th>
-									<th>Preview</th>
-									<th>Target</th>
-									<th>Reason</th>
-									<th>Decision</th>
-									<th style={{ width: '160px' }}>Actions</th>
+			<table className="widefat">
+				<thead>
+					<tr>
+						<th>Status</th>
+						<th>Original ID</th>
+						<th>Target</th>
+						<th>Reason</th>
+						<th>Decision</th>
+						<th style={{ width: '160px' }}>Actions</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -3062,7 +3061,9 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 										</>
 									) : (
 										<p className="dbvc-apply-modal__warning">
-											No reviewer selections have been recorded. Applying will use the manifest values unchanged.
+											No reviewer selections have been recorded. Applying now only imports entities
+											with Accept/Keep selections or new posts you marked “Accept & import.” All
+											other entities are skipped.
 										</p>
 									)}
 								</div>
@@ -3407,6 +3408,17 @@ const DiffSection = ({ section, decisions, onDecisionChange, savingPaths }) => {
 	);
 };
 
+const ResolverPreviewStack = ({ src, label }) => (
+	<div className="dbvc-resolver-inline-preview">
+		{src ? (
+			<img src={src} alt="" className="dbvc-resolver-inline-preview__image" loading="lazy" />
+		) : (
+			<span className="dbvc-resolver-inline-preview__placeholder">—</span>
+		)}
+		<span className="dbvc-resolver-inline-preview__label">{label ?? '—'}</span>
+	</div>
+);
+
 const ResolverDecisionRow = ({ attachment, saving, onSave, onClear, onApplyToSimilar }) => {
 	const originalId = attachment.original_id;
 	const [action, setAction] = useState(attachment.decision?.action || '');
@@ -3429,39 +3441,13 @@ const ResolverDecisionRow = ({ attachment, saving, onSave, onClear, onApplyToSim
 
 	return (
 		<tr>
-			<td>{originalId}</td>
 			<td>{renderStatusBadge(attachment.status || 'unknown')}</td>
 			<td>
-				<div className="dbvc-resolver-preview">
-					<div className="dbvc-resolver-preview__item">
-						<span className="dbvc-resolver-preview__label">Proposed</span>
-						{attachment.preview?.proposed ? (
-							<img
-								src={attachment.preview.proposed}
-								alt=""
-								className="dbvc-resolver-preview__image"
-								loading="lazy"
-							/>
-						) : (
-							<span className="dbvc-resolver-preview__placeholder">—</span>
-						)}
-					</div>
-					<div className="dbvc-resolver-preview__item">
-						<span className="dbvc-resolver-preview__label">Current</span>
-						{attachment.preview?.local ? (
-							<img
-								src={attachment.preview.local}
-								alt=""
-								className="dbvc-resolver-preview__image"
-								loading="lazy"
-							/>
-						) : (
-							<span className="dbvc-resolver-preview__placeholder">—</span>
-						)}
-					</div>
-				</div>
+				<ResolverPreviewStack src={attachment.preview?.proposed} label={originalId} />
 			</td>
-			<td>{attachment.target_id ?? '—'}</td>
+			<td>
+				<ResolverPreviewStack src={attachment.preview?.local} label={attachment.target_id ?? '—'} />
+			</td>
 			<td>{attachment.reason ?? '—'}</td>
 			<td>
 				<div className="dbvc-resolver-controls">

@@ -1034,6 +1034,7 @@ HT;
             }
         }
 
+        $applied_entities = 0;
         foreach ($targets as $entry) {
             $path = trailingslashit($backup_path) . $entry['path'];
             if (! file_exists($path)) {
@@ -1068,43 +1069,76 @@ HT;
                     : (string) ($entry['post_id'] ?? '');
                 $entity_decisions = null;
                 if ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])) {
-                    $entity_decisions = $proposal_decisions[$vf_object_uid];
-                }
+                $entity_decisions = $proposal_decisions[$vf_object_uid];
+            }
 
-                $new_entity_decision = '';
-                if (
-                    $vf_object_uid !== ''
-                    && isset($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
-                    && is_string($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
-                ) {
-                    $new_entity_decision = $entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY];
-                }
+            $new_entity_decision = '';
+            if (
+                $vf_object_uid !== ''
+                && isset($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
+                && is_string($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
+            ) {
+                $new_entity_decision = $entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY];
+            }
+            $has_field_decisions = self::entity_has_field_decisions($entity_decisions);
+            $identity = self::identify_local_entity([
+                'vf_object_uid' => $vf_object_uid,
+                'post_id'       => $entry['post_id'] ?? 0,
+                'post_type'     => $entry['post_type'] ?? '',
+                'post_name'     => $entry['post_name'] ?? '',
+            ]);
 
-                $identity = self::identify_local_entity([
-                    'vf_object_uid' => $vf_object_uid,
-                    'post_id'       => $entry['post_id'] ?? 0,
-                    'post_type'     => $entry['post_type'] ?? '',
-                    'post_name'     => $entry['post_name'] ?? '',
-                ]);
-
-                $is_new_entity = empty($identity['post_id']);
-                if ($is_new_entity && $new_entity_decision !== 'accept_new') {
-                    $skipped++;
-                    if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-                        DBVC_Sync_Logger::log_import('Post import skipped – new entity not approved', [
-                            'file'     => $entry['path'],
-                            'post_id'  => $vf_object_uid,
-                            'proposal' => $backup_name,
-                        ]);
-                    }
-                    continue;
+            $is_new_entity = empty($identity['post_id']);
+            if ($is_new_entity && $new_entity_decision !== 'accept_new') {
+                $skipped++;
+                if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                    DBVC_Sync_Logger::log_import('Post import skipped – new entity not approved', [
+                        'file'     => $entry['path'],
+                        'post_id'  => $vf_object_uid,
+                        'proposal' => $backup_name,
+                    ]);
                 }
+                continue;
+            }
+            if (! $is_new_entity && ! $has_field_decisions) {
+                $skipped++;
+                if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                    DBVC_Sync_Logger::log_import('Post import skipped – no reviewer selections for existing entity', [
+                        'file'     => $entry['path'],
+                        'post_id'  => $vf_object_uid,
+                        'proposal' => $backup_name,
+                    ]);
+                }
+                continue;
+            }
 
                 $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded, $entity_decisions, $vf_object_uid);
                 @unlink($tmp);
 
                 if ($result === self::IMPORT_RESULT_APPLIED) {
                     $imported++;
+                    $applied_entities++;
+                    if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                        $selection_keys = [];
+                        if (is_array($entity_decisions)) {
+                            foreach ($entity_decisions as $path => $action) {
+                                if ($path === DBVC_NEW_ENTITY_DECISION_KEY) {
+                                    continue;
+                                }
+                                if (in_array($action, ['accept', 'keep'], true)) {
+                                    $selection_keys[] = $path;
+                                }
+                            }
+                        }
+
+                        DBVC_Sync_Logger::log_import('Entity applied', [
+                            'proposal'   => $backup_name,
+                            'post_uid'   => $vf_object_uid,
+                            'post_id'    => $identity['post_id'] ?? null,
+                            'new_entity' => $is_new_entity,
+                            'selections' => $selection_keys,
+                        ]);
+                    }
                 } elseif ($result === self::IMPORT_RESULT_SKIPPED) {
                     $skipped++;
                     if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
@@ -1152,6 +1186,14 @@ HT;
 
         if (! empty($errors)) {
             DBVC_Sync_Logger::log('Restore completed with warnings', ['errors' => $errors]);
+        } elseif (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+            DBVC_Sync_Logger::log_import('Proposal import summary', [
+                'proposal'      => $backup_name,
+                'mode'          => $mode,
+                'entities_applied' => $applied_entities,
+                'entities_skipped' => $skipped,
+                'media_downloaded' => $media_stats['downloaded'] ?? 0,
+            ]);
         }
 
         if (
@@ -1464,6 +1506,30 @@ HT;
         }
 
         return $best_action === 'accept';
+    }
+
+    /**
+     * Check if any Accept/Keep selections exist for an entity.
+     *
+     * @param array|null $decisions
+     * @return bool
+     */
+    private static function entity_has_field_decisions($decisions): bool
+    {
+        if (! is_array($decisions)) {
+            return false;
+        }
+
+        foreach ($decisions as $path => $action) {
+            if ($path === DBVC_NEW_ENTITY_DECISION_KEY) {
+                continue;
+            }
+            if (in_array($action, ['accept', 'keep'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
