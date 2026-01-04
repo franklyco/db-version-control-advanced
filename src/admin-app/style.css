@@ -125,6 +125,15 @@
 	box-shadow: 0 0 0 0 rgba(240, 180, 41, 0.35);
 }
 
+.dbvc-new-entities-accept-button {
+	background: #e6fbef !important;
+	border-color: #27a744 !important;
+	color: #0f5132 !important;
+	animation: dbvc-pulse-green 1.6s ease-in-out infinite;
+	box-shadow: 0 0 0 0 rgba(39, 167, 68, 0.35);
+	margin-right: 8px;
+}
+
 @keyframes dbvc-pulse {
 	0% {
 		box-shadow: 0 0 0 0 rgba(240, 180, 41, 0.4);
@@ -134,6 +143,18 @@
 	}
 	100% {
 		box-shadow: 0 0 0 0 rgba(240, 180, 41, 0);
+	}
+}
+
+@keyframes dbvc-pulse-green {
+	0% {
+		box-shadow: 0 0 0 0 rgba(39, 167, 68, 0.4);
+	}
+	70% {
+		box-shadow: 0 0 0 10px rgba(39, 167, 68, 0);
+	}
+	100% {
+		box-shadow: 0 0 0 0 rgba(39, 167, 68, 0);
 	}
 }
 
@@ -885,6 +906,16 @@
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	overflow: hidden;
+}
+
+.dbvc-entity-table th.dbvc-entity-select,
+.dbvc-entity-table td.dbvc-entity-select {
+	width: 36px;
+	text-align: center;
+}
+
+.dbvc-entity-table tr.is-selected {
+	background: #e6fbef;
 }
 
 .dbvc-entity-table td .dbvc-decisions {

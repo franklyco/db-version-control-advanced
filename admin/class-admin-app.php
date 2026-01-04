@@ -186,6 +186,25 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/accept',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'accept_entities_bulk'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/unaccept',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'unaccept_entities_bulk'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/snapshot',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -1556,6 +1575,182 @@ final class DBVC_Admin_App
     }
 
     /**
+     * REST: Accept multiple entities (new or existing) in bulk.
+     */
+    public static function accept_entities_bulk(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $body  = $request->get_json_params();
+        $scope = isset($body['scope']) ? sanitize_key($body['scope']) : 'selected';
+        $requested_ids = [];
+        if (! empty($body['vf_object_uids']) && is_array($body['vf_object_uids'])) {
+            $requested_ids = array_filter(array_map('sanitize_text_field', $body['vf_object_uids']));
+        }
+
+        $manifest_map = [];
+        foreach ($manifest['items'] as $item) {
+            if (($item['item_type'] ?? '') !== 'post') {
+                continue;
+            }
+            $vf_object_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($vf_object_uid !== '') {
+                $manifest_map[$vf_object_uid] = $item;
+            }
+        }
+
+        $target_ids = [];
+        if ($scope === 'new_only') {
+            foreach ($manifest_map as $uid => $item) {
+                $identity = self::describe_entity_identity($item);
+                if ($identity['is_new']) {
+                    $target_ids[] = $uid;
+                }
+            }
+        } else {
+            $target_ids = $requested_ids;
+        }
+
+        if (empty($target_ids)) {
+            return new \WP_Error('dbvc_no_entities', __('No entities were selected for acceptance.', 'dbvc'), ['status' => 400]);
+        }
+
+        $accepted_new  = 0;
+        $accepted_diff = 0;
+
+        foreach ($target_ids as $vf_object_uid) {
+            $item = $manifest_map[$vf_object_uid] ?? null;
+            if (! $item) {
+                continue;
+            }
+
+            $identity = self::describe_entity_identity($item);
+            if ($identity['is_new']) {
+                self::set_entity_decision($proposal_id, $vf_object_uid, DBVC_NEW_ENTITY_DECISION_KEY, 'accept_new');
+                $accepted_new++;
+                continue;
+            }
+
+            if ($scope === 'new_only') {
+                continue;
+            }
+
+            $paths = self::resolve_entity_diff_paths($proposal_id, $vf_object_uid, $item);
+            if (empty($paths)) {
+                continue;
+            }
+            foreach ($paths as $path) {
+                self::set_entity_decision($proposal_id, $vf_object_uid, $path, 'accept');
+            }
+            $accepted_diff++;
+        }
+
+        $store            = self::get_decision_store();
+        $proposal_store   = isset($store[$proposal_id]) && is_array($store[$proposal_id]) ? $store[$proposal_id] : [];
+        $proposal_summary = self::summarize_proposal_decisions($proposal_store);
+
+        return new \WP_REST_Response([
+            'proposal_id'      => $proposal_id,
+            'accepted_new'     => $accepted_new,
+            'accepted_existing'=> $accepted_diff,
+            'proposal_summary' => $proposal_summary,
+        ]);
+    }
+
+    /**
+     * REST: Clear Accept/Keep decisions (and new entity approvals) in bulk.
+     */
+    public static function unaccept_entities_bulk(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $body = $request->get_json_params();
+        $scope = isset($body['scope']) ? sanitize_key($body['scope']) : 'selected';
+        $requested_ids = [];
+        if (! empty($body['vf_object_uids']) && is_array($body['vf_object_uids'])) {
+            $requested_ids = array_filter(array_map('sanitize_text_field', $body['vf_object_uids']));
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $manifest_map = [];
+        foreach ($manifest['items'] as $item) {
+            if (($item['item_type'] ?? '') !== 'post') {
+                continue;
+            }
+            $vf_object_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($vf_object_uid !== '') {
+                $manifest_map[$vf_object_uid] = $item;
+            }
+        }
+
+        $target_ids = [];
+        if ($scope === 'all') {
+            $target_ids = array_keys($manifest_map);
+        } else {
+            $target_ids = $requested_ids;
+        }
+
+        if (empty($target_ids)) {
+            return new \WP_Error('dbvc_no_entities', __('No entities were selected.', 'dbvc'), ['status' => 400]);
+        }
+
+        $cleared_new  = 0;
+        $cleared_diff = 0;
+
+        foreach ($target_ids as $vf_object_uid) {
+            $item = $manifest_map[$vf_object_uid] ?? null;
+            if (! $item) {
+                continue;
+            }
+            $identity = self::describe_entity_identity($item);
+            if ($identity['is_new']) {
+                self::clear_entity_decision($proposal_id, $vf_object_uid, DBVC_NEW_ENTITY_DECISION_KEY);
+                $cleared_new++;
+            }
+
+            if (! isset($target_ids['existing_only']) || $identity['is_new'] === false) {
+                $paths = self::resolve_entity_diff_paths($proposal_id, $vf_object_uid, $item);
+                if (! empty($paths)) {
+                    foreach ($paths as $path) {
+                        self::clear_entity_decision($proposal_id, $vf_object_uid, $path);
+                    }
+                    $cleared_diff++;
+                }
+            }
+        }
+
+        $store            = self::get_decision_store();
+        $proposal_store   = isset($store[$proposal_id]) && is_array($store[$proposal_id]) ? $store[$proposal_id] : [];
+        $proposal_summary = self::summarize_proposal_decisions($proposal_store);
+
+        return new \WP_REST_Response([
+            'proposal_id'      => $proposal_id,
+            'cleared_new'      => $cleared_new,
+            'cleared_existing' => $cleared_diff,
+            'proposal_summary' => $proposal_summary,
+        ]);
+    }
+
+    /**
      * REST: capture snapshot for a single entity on demand.
      */
     public static function capture_entity_snapshot(\WP_REST_Request $request)
@@ -2105,6 +2300,62 @@ final class DBVC_Admin_App
         ];
     }
 
+    /**
+     * Determine diff paths for an entity.
+     *
+     * @param string $proposal_id
+     * @param string $vf_object_uid
+     * @param array  $manifest_item
+     * @return array
+     */
+    private static function resolve_entity_diff_paths(string $proposal_id, string $vf_object_uid, array $manifest_item): array
+    {
+        $current_path = isset($manifest_item['path']) ? (string) $manifest_item['path'] : '';
+        $proposed = [];
+        if ($current_path !== '') {
+            $payload = self::read_entity_payload($proposal_id, $current_path);
+            if (is_array($payload)) {
+                $proposed = $payload;
+            }
+        }
+
+        $current_source = 'bundle';
+        $current = [];
+        if (class_exists('DBVC_Snapshot_Manager')) {
+            $snapshot = DBVC_Snapshot_Manager::read_snapshot($proposal_id, $vf_object_uid);
+            if (is_array($snapshot) && ! empty($snapshot)) {
+                $current = $snapshot;
+                $current_source = 'snapshot';
+            }
+        }
+
+        if (empty($current)) {
+            $current = $proposed;
+        }
+
+        $diff_summary = self::compare_snapshots($current, $proposed);
+        $paths = [];
+        foreach ($diff_summary['changes'] as $change) {
+            $path = isset($change['path']) ? (string) $change['path'] : '';
+            if ($path !== '') {
+                $paths[] = $path;
+            }
+        }
+
+        if ($current_source === 'snapshot' && empty($paths)) {
+            // fallback to manifest diff when no snapshot changes detected
+            $manifest_diff = self::compare_snapshots($proposed, $proposed);
+            foreach ($manifest_diff['changes'] as $change) {
+                $path = isset($change['path']) ? (string) $change['path'] : '';
+                if ($path !== '') {
+                    $paths[] = $path;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($paths)));
+    }
+
     private static function summarize_entity_diff_counts(string $proposal_id, array $item, string $vf_object_uid): array
     {
         $path = isset($item['path']) ? (string) $item['path'] : '';
@@ -2425,19 +2676,23 @@ final class DBVC_Admin_App
     {
         $accepted = 0;
         $kept     = 0;
+        $accepted_new = 0;
 
         foreach ($entity_decisions as $action) {
             if ($action === 'accept') {
                 $accepted++;
             } elseif ($action === 'keep') {
                 $kept++;
+            } elseif ($action === 'accept_new') {
+                $accepted_new++;
             }
         }
 
         return [
             'accepted'  => $accepted,
             'kept'      => $kept,
-            'total'     => $accepted + $kept,
+            'accepted_new' => $accepted_new,
+            'total'     => $accepted + $kept + $accepted_new,
             'has_accept'=> $accepted > 0,
         ];
     }

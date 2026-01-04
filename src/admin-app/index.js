@@ -376,6 +376,9 @@ const ENTITY_COLUMN_DEFS = [
 					{helpers.entityAccepted > 0 && (
 						<span className="dbvc-badge dbvc-badge--accept">{helpers.entityAccepted} accept</span>
 					)}
+					{helpers.entityNewAccepted > 0 && (
+						<span className="dbvc-badge dbvc-badge--new">{helpers.entityNewAccepted} new</span>
+					)}
 					{helpers.entityKept > 0 && (
 						<span className="dbvc-badge dbvc-badge--keep">{helpers.entityKept} keep</span>
 					)}
@@ -589,7 +592,16 @@ const ResolverSummary = ({ resolver }) => {
 	);
 };
 
-const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) => {
+const EntityList = ({
+	entities,
+	loading,
+	selectedEntityId,
+	onSelect,
+	columns,
+	selectedIds = new Set(),
+	onToggleSelection,
+	onToggleSelectionAll,
+}) => {
 	if (loading) {
 		return <p>Loading entities…</p>;
 	}
@@ -652,6 +664,24 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 		  }
 		: undefined;
 
+	const selectionEnabled = typeof onToggleSelection === 'function';
+	const selectedIdSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+	const visibleIds = visibleEntities.map((entity) => entity.vf_object_uid);
+	const allVisibleSelected =
+		selectionEnabled && visibleEntities.length > 0 && visibleEntities.every((entity) => selectedIdSet.has(entity.vf_object_uid));
+	const partiallySelected =
+		selectionEnabled && !allVisibleSelected && visibleEntities.some((entity) => selectedIdSet.has(entity.vf_object_uid));
+	const headerCheckboxRef = useRef(null);
+
+	useEffect(() => {
+		if (!selectionEnabled) {
+			return;
+		}
+		if (headerCheckboxRef.current) {
+			headerCheckboxRef.current.indeterminate = partiallySelected;
+		}
+	}, [selectionEnabled, partiallySelected]);
+
 	return (
 		<div
 			className={`dbvc-entity-table${virtualizationEnabled ? ' is-virtualized' : ''}`}
@@ -661,6 +691,18 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 			<table className="widefat striped">
 				<thead>
 					<tr>
+						{selectionEnabled && (
+							<th className="dbvc-entity-select">
+								<input
+									type="checkbox"
+									ref={headerCheckboxRef}
+									checked={allVisibleSelected}
+									onChange={(event) =>
+										onToggleSelectionAll?.(visibleIds, event.target.checked)
+									}
+								/>
+							</th>
+						)}
 						{tableColumns.map((column) => (
 							<th key={column.id}>{column.label}</th>
 						))}
@@ -669,11 +711,12 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 				<tbody>
 					{virtualizationEnabled && paddingTop > 0 && (
 						<tr className="dbvc-entity-spacer" aria-hidden="true" style={{ height: `${paddingTop}px` }}>
-							<td colSpan={tableColumns.length} />
+							<td colSpan={tableColumns.length + (selectionEnabled ? 1 : 0)} />
 						</tr>
 					)}
 					{visibleEntities.map((entity) => {
 						const isActive = entity.vf_object_uid === selectedEntityId;
+						const isSelected = selectionEnabled && selectedIdSet.has(entity.vf_object_uid);
 						const summary = entity.resolver?.summary ?? {};
 						const diffState = entity.diff_state ?? {};
 						const mediaStatus = entity.media_needs_review
@@ -684,6 +727,7 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 						const decisionSummary = entity.decision_summary ?? {};
 						const entityAccepted = decisionSummary.accepted ?? 0;
 						const entityKept = decisionSummary.kept ?? 0;
+						const entityNewAccepted = decisionSummary.accepted_new ?? 0;
 						const entityHasSelections = (decisionSummary.total ?? 0) > 0;
 						const isNewEntity = entityLooksNew(entity);
 						const newDecision = entity.new_entity_decision || '';
@@ -692,6 +736,7 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 						const rowClass = [
 							`resolver-${overallStatus}`,
 							isActive ? 'is-active' : '',
+							isSelected ? 'is-selected' : '',
 						]
 							.filter(Boolean)
 							.join(' ');
@@ -709,6 +754,7 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 							decisionSummary,
 							entityHasSelections,
 							entityAccepted,
+							entityNewAccepted,
 							entityKept,
 							isNewEntity,
 							newDecision,
@@ -728,6 +774,19 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 							role="button"
 							tabIndex={0}
 						>
+							{selectionEnabled && (
+								<td className="dbvc-entity-select">
+									<input
+										type="checkbox"
+										checked={isSelected}
+										onChange={(event) => {
+											event.stopPropagation();
+											onToggleSelection?.(entity.vf_object_uid);
+										}}
+										onClick={(event) => event.stopPropagation()}
+									/>
+								</td>
+							)}
 							{tableColumns.map((column) => (
 								<td key={column.id}>
 									{column.renderCell ? column.renderCell(entity, helpers) : entity[column.id] ?? '—'}
@@ -738,7 +797,7 @@ const EntityList = ({ entities, loading, selectedEntityId, onSelect, columns }) 
 					})}
 					{virtualizationEnabled && paddingBottom > 0 && (
 						<tr className="dbvc-entity-spacer" aria-hidden="true" style={{ height: `${paddingBottom}px` }}>
-							<td colSpan={tableColumns.length} />
+							<td colSpan={tableColumns.length + (selectionEnabled ? 1 : 0)} />
 						</tr>
 					)}
 				</tbody>
@@ -1629,6 +1688,10 @@ const App = () => {
 	const [duplicateError, setDuplicateError] = useState(null);
 	const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 	const [duplicateActionKey, setDuplicateActionKey] = useState('');
+	const [acceptingAllNew, setAcceptingAllNew] = useState(false);
+	const [acceptingSelected, setAcceptingSelected] = useState(false);
+	const [unacceptingSelected, setUnacceptingSelected] = useState(false);
+	const [selectedEntityIds, setSelectedEntityIds] = useState(() => new Set());
 	const visibleColumns = useMemo(
 		() => ENTITY_COLUMN_DEFS.filter((column) => columnVisibility[column.id]),
 		[columnVisibility]
@@ -1794,6 +1857,98 @@ const App = () => {
 		[selectedId, fetchDuplicates, loadEntities, entityFilter]
 	);
 	const [bulkSaving, setBulkSaving] = useState(false);
+	const toggleEntitySelection = useCallback((vfObjectUid) => {
+		setSelectedEntityIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(vfObjectUid)) {
+				next.delete(vfObjectUid);
+			} else {
+				next.add(vfObjectUid);
+			}
+			return next;
+		});
+	}, []);
+
+	const toggleVisibleSelection = useCallback((vfObjectUids, checked) => {
+		setSelectedEntityIds((prev) => {
+			const next = new Set(prev);
+			vfObjectUids.forEach((uid) => {
+				if (checked) {
+					next.add(uid);
+				} else {
+					next.delete(uid);
+				}
+			});
+			return next;
+		});
+	}, []);
+
+	const clearSelection = useCallback(() => {
+		setSelectedEntityIds(new Set());
+	}, []);
+
+	const selectAllEntities = useCallback(() => {
+		setSelectedEntityIds(new Set(entities.map((entity) => entity.vf_object_uid)));
+	}, [entities]);
+
+	const handleAcceptAllNewEntities = useCallback(async () => {
+		if (!selectedId) {
+			return;
+		}
+		setAcceptingAllNew(true);
+		setDuplicateError(null);
+		try {
+			await postJSON(`proposals/${encodeURIComponent(selectedId)}/entities/accept`, {
+				scope: 'new_only',
+			});
+			await loadEntities(selectedId, entityFilter);
+			await fetchDuplicates(selectedId);
+		} catch (err) {
+			setDuplicateError(err?.message || 'Failed to accept new entities.');
+		} finally {
+			setAcceptingAllNew(false);
+		}
+	}, [selectedId, loadEntities, entityFilter, fetchDuplicates]);
+
+	const handleAcceptSelectedEntities = useCallback(async () => {
+		if (!selectedId || selectedEntityIds.size === 0) {
+			return;
+		}
+		setAcceptingSelected(true);
+		setDecisionError(null);
+		try {
+			await postJSON(`proposals/${encodeURIComponent(selectedId)}/entities/accept`, {
+				scope: 'selected',
+				vf_object_uids: Array.from(selectedEntityIds),
+			});
+			await loadEntities(selectedId, entityFilter);
+			clearSelection();
+		} catch (err) {
+			setDecisionError(err?.message || 'Failed to accept selected entities.');
+		} finally {
+			setAcceptingSelected(false);
+		}
+	}, [selectedId, selectedEntityIds, loadEntities, entityFilter, clearSelection]);
+
+	const handleUnacceptSelectedEntities = useCallback(async () => {
+		if (!selectedId || selectedEntityIds.size === 0) {
+			return;
+		}
+		setUnacceptingSelected(true);
+		setDecisionError(null);
+		try {
+			await postJSON(`proposals/${encodeURIComponent(selectedId)}/entities/unaccept`, {
+				scope: 'selected',
+				vf_object_uids: Array.from(selectedEntityIds),
+			});
+			await loadEntities(selectedId, entityFilter);
+			clearSelection();
+		} catch (err) {
+			setDecisionError(err?.message || 'Failed to unaccept selected entities.');
+		} finally {
+			setUnacceptingSelected(false);
+		}
+	}, [selectedId, selectedEntityIds, loadEntities, entityFilter, clearSelection]);
 
 	useEffect(() => {
 		setApplyResult(null);
@@ -2005,6 +2160,19 @@ useEffect(() => {
 		() => entities.find((entity) => entity.vf_object_uid === selectedEntityId),
 		[entities, selectedEntityId]
 	);
+
+	useEffect(() => {
+		setSelectedEntityIds((prev) => {
+			const next = new Set();
+			const entitySet = new Set(entities.map((entity) => entity.vf_object_uid));
+			prev.forEach((id) => {
+				if (entitySet.has(id)) {
+					next.add(id);
+				}
+			});
+			return next;
+		});
+	}, [entities]);
 
 	const selectedProposal = useMemo(
 		() => proposals.find((proposal) => proposal.id === selectedId),
@@ -3147,6 +3315,38 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 		</div>
 		{selectedProposal && (
 			<div className="dbvc-entity-actions">
+				{selectedEntityIds.size > 0 && (
+					<>
+						<Button
+							className="dbvc-new-entities-accept-button"
+							variant="primary"
+							onClick={handleAcceptSelectedEntities}
+							disabled={acceptingSelected}
+							isBusy={acceptingSelected}
+						>
+							{acceptingSelected ? 'Accepting selected…' : `Accept ${selectedEntityIds.size} selected`}
+						</Button>
+						<Button
+							variant="secondary"
+							onClick={handleUnacceptSelectedEntities}
+							disabled={unacceptingSelected}
+							isBusy={unacceptingSelected}
+						>
+							{unacceptingSelected ? 'Unaccepting…' : 'Unaccept selected'}
+						</Button>
+					</>
+				)}
+				{hasNewEntities && (
+					<Button
+						className="dbvc-new-entities-accept-button"
+						variant="primary"
+						onClick={handleAcceptAllNewEntities}
+						disabled={acceptingAllNew}
+						isBusy={acceptingAllNew}
+					>
+						{acceptingAllNew ? 'Accepting…' : 'Accept all new posts'}
+					</Button>
+				)}
 				{hasNewEntities && (
 					<Button
 						className="dbvc-new-entities-button"
@@ -3157,6 +3357,16 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 						}}
 					>
 						Review {newEntities.length} new post{newEntities.length === 1 ? '' : 's'}
+					</Button>
+				)}
+				{selectedEntityIds.size > 0 && (
+					<Button variant="tertiary" onClick={clearSelection}>
+						Clear selection
+					</Button>
+				)}
+				{selectedEntityIds.size === 0 && entities.length > 0 && (
+					<Button variant="tertiary" onClick={selectAllEntities}>
+						Select all ({entities.length})
 					</Button>
 				)}
 				{duplicateReport.count > 0 && (
@@ -3230,13 +3440,16 @@ const mediaReconcile = applyResult?.result?.media_reconcile ?? null;
 						Duplicate manifest entries detected — resolve these first
 					</button>
 				)}
-				<EntityList
-					entities={filteredEntities}
-					loading={loadingEntities}
-					selectedEntityId={selectedEntityId}
-					onSelect={handleSelectEntity}
-					columns={visibleColumns}
-				/>
+			<EntityList
+				entities={filteredEntities}
+				loading={loadingEntities}
+				selectedEntityId={selectedEntityId}
+				onSelect={handleSelectEntity}
+				columns={visibleColumns}
+				selectedIds={selectedEntityIds}
+				onToggleSelection={toggleEntitySelection}
+				onToggleSelectionAll={toggleVisibleSelection}
+			/>
 			</div>
 					<ResolverRulesPanel />
 
