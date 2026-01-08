@@ -1727,7 +1727,7 @@ final class DBVC_Admin_App
                 $cleared_new++;
             }
 
-            if (! isset($target_ids['existing_only']) || $identity['is_new'] === false) {
+            if (! $identity['is_new']) {
                 $paths = self::resolve_entity_diff_paths($proposal_id, $vf_object_uid, $item);
                 if (! empty($paths)) {
                     foreach ($paths as $path) {
@@ -2630,6 +2630,7 @@ final class DBVC_Admin_App
         $summary = [
             'accepted'             => 0,
             'kept'                 => 0,
+            'accepted_new'         => 0,
             'total'                => 0,
             'entities_reviewed'    => 0,
             'entities_with_accept' => 0,
@@ -2654,6 +2655,9 @@ final class DBVC_Admin_App
                     $entity_accepts++;
                 } elseif ($action === 'keep') {
                     $summary['kept']++;
+                } elseif ($action === 'accept_new') {
+                    $summary['accepted_new']++;
+                    $entity_accepts++;
                 }
             }
 
@@ -2662,7 +2666,7 @@ final class DBVC_Admin_App
             }
         }
 
-        $summary['total'] = $summary['accepted'] + $summary['kept'];
+        $summary['total'] = $summary['accepted'] + $summary['kept'] + $summary['accepted_new'];
         return $summary;
     }
 
