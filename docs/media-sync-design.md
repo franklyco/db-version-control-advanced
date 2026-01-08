@@ -5,6 +5,13 @@
 - Enable incremental (“diff”) exports/imports driven by change tracking.
 - Provide structured storage for job progress, hash metadata, and snapshot history.
 
+## Current Implementation Snapshot
+- Proposal exports now package deterministic bundles under `sync/media-bundles/<proposal-id>/...` whenever media capture is enabled. `DBVC_Backup_Manager` stamps bundle path, hash, dimensions, and resolver decisions directly into `dbvc-manifest.json` (schema `3`).
+- `Dbvc\Media\Resolver` runs during proposal upload and prior to apply. Its REST payload feeds the React admin UI so reviewers can filter attachments by status (reused, downloaded, blocked, unresolved) and run bulk actions (reuse, download, skip, remap + remember globally).
+- Resolver rules persist in `dbvc_resolver_decisions`. The admin UI provides CSV import/export plus inline add/edit/delete; every new proposal loads those rules automatically.
+- Duplicate media/conflict overlays block entity review until the resolver reports zero blocking conflicts. Cleanup APIs prune stray JSON/media artifacts so each proposal stays canonical.
+- Import/apply flows reuse the resolver `id_map` so once an attachment is accepted the importer does not redownload it; fallbacks to the legacy media sync are still available via filters.
+
 ## Database Additions
 Create tables on plugin activation (with versioned schema constants).  
 _Status: ✅ Implemented via `DBVC_Database::create_or_update_tables()` (schema version 2) in the production plugin._

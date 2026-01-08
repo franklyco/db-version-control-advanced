@@ -814,11 +814,12 @@ if (! class_exists('DBVC_Media_Sync')) {
                     continue;
                 }
 
-                $original_post_id = isset($item['post_id']) ? (int) $item['post_id'] : 0;
+                $raw_post_id = $item['post_id'] ?? 0;
+                $original_post_id = is_numeric($raw_post_id) ? (int) $raw_post_id : 0;
                 $entity_uid = isset($item['vf_object_uid'])
                     ? (string) $item['vf_object_uid']
                     : (string) $original_post_id;
-                if (! $original_post_id) {
+                if (! $original_post_id && $entity_uid === '') {
                     continue;
                 }
 

@@ -644,9 +644,9 @@ define('DBVC_MEDIA_POLICY_BUNDLE_NEW', true);
 ---
 
 ## 20) Transition Tasks (next steps)
-- Keep the legacy `DBVC_Media_Sync` pathway operational until the new resolver covers every attachment case; document any gaps discovered during analysis.
-- Draft the detailed scope for the upcoming UI enhancement and backfill this handoff with UX notes + endpoint requirements.
-- Audit existing WP-CLI commands/logging so we can map them onto the new apply/diff workflow when implementation starts.
+- Keep the legacy `DBVC_Media_Sync` pathway operational until the resolver covers every attachment case; document gaps surfaced by telemetry so we know when it is safe to decommission.
+- Promote taxonomy entities into the proposal/diff/apply pipeline (see `docs/terms.md`). This requires extending exports, REST payloads, the React grid/drawer, and importer decisions.
+- Audit existing WP-CLI commands/logging so we can map them onto the proposal workflow (list/apply) once taxonomy parity and resolver hardening land.
 
 ---
 
@@ -717,7 +717,7 @@ define('DBVC_MEDIA_POLICY_BUNDLE_NEW', true);
 - Plan the UI changes that surface resolver `conflicts` so reviewers can upload or approve fallback actions.
 - Legacy sync seeds the resolver’s `id_map` into its internal mappings and returns the resolver payload (`media_resolver`) so downstream code can skip duplicate matching; resolver-backed runs mark queue items handled before bundle/remote processing. When the resolver resolves every asset (`unresolved=0`), the legacy queue is skipped unless `dbvc_media_use_legacy_sync` filter forces a fallback.
 - Admin UI and WP-CLI surface resolver metrics/conflicts so reviewers see deterministic reuse vs unresolved counts; unresolved/conflict totals now trigger warnings before apply.
-- React-based admin app scaffold lives in `admin/class-admin-app.php` (asset manifest expected at `build/admin-app.*`); next steps: implement REST endpoints and build the initial React bundle (proposal list → diff detail) wiring in `media_resolver` data.
+- React-based admin app is live (`build/admin-app.*`) with duplicate overlays, new-entity gating, and resolver drawers; keep instrumentation in place so the upcoming taxonomy entity work can reuse these components without retooling.
 
 ### Exporter/Preflight TODOs
 - **Manifest writer** (`includes/class-backup-manager.php::build_media_index_entry`):

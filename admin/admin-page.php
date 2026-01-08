@@ -99,6 +99,7 @@ function dbvc_render_export_page()
   $media_preview_enabled  = get_option(DBVC_Media_Sync::OPTION_PREVIEW_ENABLED, '0');
   $media_allow_external   = get_option(DBVC_Media_Sync::OPTION_ALLOW_EXTERNAL, '0');
   $import_require_review  = get_option('dbvc_import_require_review', '0');
+  $force_reapply_new_posts = get_option('dbvc_force_reapply_new_posts', '0');
   $prefer_entity_uids     = get_option('dbvc_prefer_entity_uids', '0');
   $diff_ignore_option     = get_option('dbvc_diff_ignore_paths', null);
   if ($diff_ignore_option === null || $diff_ignore_option === false) {
@@ -479,6 +480,10 @@ function dbvc_render_export_page()
     $import_review_input = ! empty($_POST['dbvc_import_require_review']) ? '1' : '0';
     update_option('dbvc_import_require_review', $import_review_input);
     $import_require_review = $import_review_input;
+
+    $force_reapply_input = ! empty($_POST['dbvc_force_reapply_new_posts']) ? '1' : '0';
+    update_option('dbvc_force_reapply_new_posts', $force_reapply_input);
+    $force_reapply_new_posts = $force_reapply_input;
 
     $diff_ignore_input = isset($_POST['dbvc_diff_ignore_paths'])
         ? sanitize_textarea_field(wp_unslash($_POST['dbvc_diff_ignore_paths']))
@@ -2259,6 +2264,13 @@ document.addEventListener('DOMContentLoaded', function () {
             <?php esc_html_e('Require DBVC Proposal review before running imports', 'dbvc'); ?>
           </label><br>
           <small><?php esc_html_e('When enabled, the legacy “Run Import” form is disabled so reviewers must use the React proposals/diff workflow.', 'dbvc'); ?></small>
+        </p>
+        <p>
+          <label>
+            <input type="checkbox" name="dbvc_force_reapply_new_posts" value="1" <?php checked($force_reapply_new_posts, '1'); ?> />
+            <?php esc_html_e('When reopening a proposal, auto-mark previously accepted new posts for import', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('Keeps “New post accepted” decisions in place so reopened proposals can re-import media and meta without manually re-selecting each entity.', 'dbvc'); ?></small>
         </p>
 
         <hr />

@@ -29,6 +29,7 @@ class DBVC_Sync_Posts
     private const AUTO_CLEAR_DECISIONS_OPTION = 'dbvc_auto_clear_decisions';
     private const IMPORT_RESULT_APPLIED = 'applied';
     private const IMPORT_RESULT_SKIPPED = 'skipped';
+    private const PROPOSAL_NEW_ENTITIES_OPTION = 'dbvc_proposal_new_entities';
 
     /* @WIP Relationship remapping
     // protected static $relationship_field_keys = []; // You can populate this before calling import
@@ -107,7 +108,7 @@ class DBVC_Sync_Posts
         $entity_uid  = is_string($entity_uid) ? trim($entity_uid) : '';
 
         $use_uid_matching = (get_option('dbvc_prefer_entity_uids', '0') === '1');
-        if ($entity_uid !== '' && $use_uid_matching) {
+        if ($entity_uid !== '' && ($use_uid_matching || $original_id === 0)) {
             $by_uid = self::find_post_id_by_uid($entity_uid, $post_type);
             if ($by_uid) {
                 return $by_uid;
@@ -905,6 +906,9 @@ HT;
             'mode'    => 'full', // full | partial | copy
         ];
         $options = wp_parse_args($options, $defaults);
+        $force_reapply_new_posts = array_key_exists('force_reapply_new_posts', $options)
+            ? (bool) $options['force_reapply_new_posts']
+            : (get_option('dbvc_force_reapply_new_posts', '0') === '1');
 
         $manifest = DBVC_Backup_Manager::read_manifest($backup_path);
         if (! $manifest) {
@@ -1067,8 +1071,8 @@ HT;
                 $vf_object_uid = isset($entry['vf_object_uid'])
                     ? (string) $entry['vf_object_uid']
                     : (string) ($entry['post_id'] ?? '');
-                $entity_decisions = null;
-                if ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])) {
+            $entity_decisions = null;
+            if ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])) {
                 $entity_decisions = $proposal_decisions[$vf_object_uid];
             }
 
@@ -1089,6 +1093,7 @@ HT;
             ]);
 
             $is_new_entity = empty($identity['post_id']);
+            $should_force_new_accept = ($new_entity_decision === 'accept_new') && ($is_new_entity || $force_reapply_new_posts);
             if ($is_new_entity && $new_entity_decision !== 'accept_new') {
                 $skipped++;
                 if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
@@ -1100,7 +1105,7 @@ HT;
                 }
                 continue;
             }
-            if (! $is_new_entity && ! $has_field_decisions) {
+            if (! $is_new_entity && ! $has_field_decisions && ! $should_force_new_accept) {
                 $skipped++;
                 if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
                     DBVC_Sync_Logger::log_import('Post import skipped – no reviewer selections for existing entity', [
@@ -1112,12 +1117,23 @@ HT;
                 continue;
             }
 
-                $result = self::import_post_from_json($tmp, $mode === 'partial', null, $decoded, $entity_decisions, $vf_object_uid);
-                @unlink($tmp);
+            $result = self::import_post_from_json(
+                $tmp,
+                $mode === 'partial',
+                null,
+                $decoded,
+                $entity_decisions,
+                $vf_object_uid,
+                $should_force_new_accept
+            );
+            @unlink($tmp);
 
-                if ($result === self::IMPORT_RESULT_APPLIED) {
+            if ($result === self::IMPORT_RESULT_APPLIED) {
                     $imported++;
                     $applied_entities++;
+                    if ($is_new_entity && $should_force_new_accept && $backup_name !== '' && $vf_object_uid !== '') {
+                        self::record_proposal_new_entity($backup_name, $vf_object_uid);
+                    }
                     if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
                         $selection_keys = [];
                         if (is_array($entity_decisions)) {
@@ -1644,7 +1660,7 @@ $acf_relationship_fields = [
      * Build import posts from Json
      * Added: 08-12-2025
      */
-    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null, ?array $field_decisions = null, ?string $entity_uid = null)
+    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null, ?array $field_decisions = null, ?string $entity_uid = null, bool $force_new_entity_accept = false)
     {
         if (! file_exists($filepath)) {
             return new WP_Error('dbvc_import_missing_file', sprintf(__('Import source missing: %s', 'dbvc'), $filepath));
@@ -1712,6 +1728,9 @@ $acf_relationship_fields = [
         }
         $post_id = null;
         $normalized_decisions = self::normalize_entity_decisions($field_decisions);
+        if ($force_new_entity_accept) {
+            $normalized_decisions = null;
+        }
 
         // Smart import hash check
         if ($smart_import && $existing) {
@@ -3367,5 +3386,40 @@ $acf_relationship_fields = [
         self::ensure_directory_security($path);
 
         $cleaned[$post_type] = true;
+    }
+
+    private static function record_proposal_new_entity(string $proposal_id, string $entity_uid): void
+    {
+        $proposal_id = sanitize_text_field($proposal_id);
+        $entity_uid = is_string($entity_uid) ? trim($entity_uid) : '';
+        if ($proposal_id === '' || $entity_uid === '') {
+            return;
+        }
+
+        $store = get_option(self::PROPOSAL_NEW_ENTITIES_OPTION, []);
+        if (! is_array($store)) {
+            $store = [];
+        }
+        if (! isset($store[$proposal_id]) || ! is_array($store[$proposal_id])) {
+            $store[$proposal_id] = [];
+        }
+
+        $store[$proposal_id][$entity_uid] = true;
+        update_option(self::PROPOSAL_NEW_ENTITIES_OPTION, $store, false);
+    }
+
+    public static function get_proposal_new_entities(string $proposal_id): array
+    {
+        $proposal_id = sanitize_text_field($proposal_id);
+        if ($proposal_id === '') {
+            return [];
+        }
+
+        $store = get_option(self::PROPOSAL_NEW_ENTITIES_OPTION, []);
+        if (! is_array($store) || ! isset($store[$proposal_id]) || ! is_array($store[$proposal_id])) {
+            return [];
+        }
+
+        return array_keys($store[$proposal_id]);
     }
 }

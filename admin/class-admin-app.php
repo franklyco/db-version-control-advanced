@@ -1980,13 +1980,35 @@ final class DBVC_Admin_App
             return new \WP_Error('dbvc_invalid_status', __('Status must be draft or closed.', 'dbvc'), ['status' => 400]);
         }
 
+        $restore_new_entities = null;
+        if (isset($body['restore_new_entities'])) {
+            if (function_exists('rest_sanitize_boolean')) {
+                $restore_new_entities = rest_sanitize_boolean($body['restore_new_entities']);
+            } else {
+                $restore_new_entities = in_array($body['restore_new_entities'], [true, 1, '1', 'true', 'on'], true);
+            }
+        }
+        if ($restore_new_entities === null) {
+            $restore_new_entities = (get_option('dbvc_force_reapply_new_posts', '0') === '1');
+        }
+
         if (! self::mark_proposal_status($proposal_id, $status)) {
             return new \WP_Error('dbvc_status_failed', __('Unable to update proposal status.', 'dbvc'), ['status' => 500]);
+        }
+
+        $restored_entities = [
+            'total'   => 0,
+            'applied' => 0,
+        ];
+        if ($status === 'draft' && $restore_new_entities) {
+            $restored_entities = self::restore_new_entity_decisions($proposal_id);
         }
 
         return new \WP_REST_Response([
             'proposal_id' => $proposal_id,
             'status'      => $status,
+            'restore_new_entities' => (bool) $restore_new_entities,
+            'restored_new_entities'=> $restored_entities,
         ]);
     }
 
@@ -2143,6 +2165,16 @@ final class DBVC_Admin_App
             $ignore_missing_hash = in_array($ignore_param, [true, 1, '1', 'true', 'on'], true);
         }
 
+        $force_reapply_new_posts = get_option('dbvc_force_reapply_new_posts', '0') === '1';
+        $force_param = $request->get_param('force_reapply_new_posts');
+        if ($force_param !== null) {
+            if (function_exists('rest_sanitize_boolean')) {
+                $force_reapply_new_posts = rest_sanitize_boolean($force_param);
+            } else {
+                $force_reapply_new_posts = in_array($force_param, [true, 1, '1', 'true', 'on'], true);
+            }
+        }
+
         $decision_store_before = self::get_decision_store();
         if (
             isset($decision_store_before[$proposal_id]['__summary'])
@@ -2159,6 +2191,9 @@ final class DBVC_Admin_App
         $import_options = ['mode' => $mode];
         if ($ignore_missing_hash) {
             $import_options['ignore_missing_hash'] = true;
+        }
+        if ($force_reapply_new_posts) {
+            $import_options['force_reapply_new_posts'] = true;
         }
 
         $result = apply_filters('dbvc_import_backup_override', null, $proposal_id, $mode, $import_options);
@@ -2217,6 +2252,7 @@ final class DBVC_Admin_App
             'decisions_cleared'  => $decisions_cleared,
             'had_decisions'      => $had_decisions,
             'ignore_missing_hash'=> $ignore_missing_hash,
+            'force_reapply_new_posts' => (bool) $force_reapply_new_posts,
             'status'             => $status_after,
         ];
 
@@ -3151,6 +3187,33 @@ final class DBVC_Admin_App
         }
 
         return '';
+    }
+
+    private static function restore_new_entity_decisions(string $proposal_id): array
+    {
+        if ($proposal_id === '' || ! class_exists('DBVC_Sync_Posts')) {
+            return ['total' => 0, 'applied' => 0];
+        }
+
+        $entity_uids = DBVC_Sync_Posts::get_proposal_new_entities($proposal_id);
+        if (empty($entity_uids)) {
+            return ['total' => 0, 'applied' => 0];
+        }
+
+        $applied = 0;
+        foreach ($entity_uids as $entity_uid) {
+            $entity_uid = (string) $entity_uid;
+            if ($entity_uid === '') {
+                continue;
+            }
+            self::set_entity_decision($proposal_id, $entity_uid, DBVC_NEW_ENTITY_DECISION_KEY, 'accept_new');
+            $applied++;
+        }
+
+        return [
+            'total'   => count($entity_uids),
+            'applied' => $applied,
+        ];
     }
 
     /**

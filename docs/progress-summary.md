@@ -38,14 +38,19 @@
     - Added explicit “New post” detection pipeline (UID/ID/slug heuristics, DBVC entity registry) with UI badges, forced filter, and accept/decline gating that the importer honours.
     - Cleanup API rewrites manifest + deletes stray JSONs so reviewers always see a canonical source of truth.
 ## Remaining / Next Steps
-1. **Testing & Automation**
-   - Expand coverage (resolver bulk actions, CSV parsing edge cases, importer hooks) now that the scaffold exists.
-   - Integrate the suite with CI once available.
-2. **Performance / UX polish**
-   - Extend virtualization/search patterns to additional lists (e.g., resolver attachments drawer) as telemetry demands.
-   - Profile apply drawer rendering when thousands of diff sections are present and consider chunked rendering.
-3. **Media Preview Iteration**
+1. **Term & Taxonomy Entity Parity**
+   - Promote the plan in `docs/terms.md` into engineering tasks: emit term entities in `entities.jsonl`, surface them in the React grid/drawer, and gate applies on Accept/Keep just like posts.
+   - Extend importer/preflight helpers (`DBVC_Sync_Taxonomies`, proposal apply endpoint) to respect reviewer selections, parent remaps, and media references coming from termmeta.
+   - Refresh docs/help text so reviewers know the taxonomy filters and “Accept all new terms” affordances that will ship with the feature.
+2. **Testing & Automation**
+   - Expand coverage (resolver bulk actions, CSV parsing, importer hooks, duplicate cleanup) now that the PHPUnit scaffold exists.
+   - Integrate the suite with CI once infrastructure is available so regressions (like the new-entity gating bug) are caught automatically.
+3. **Performance / UX Polish**
+   - Extend virtualization/search patterns to resolver attachments + global rule drawers as telemetry demands.
+   - Profile apply drawer rendering when thousands of diff sections are present and consider chunked rendering or skeleton states.
+4. **Media Preview Iteration**
    - Finalize manifest/local preview URLs so thumbnails render consistently across environments or fall back gracefully when sync paths differ.
-3. **Documentation & CLI**
-   - Extend CLI commands to manage resolver rules (list, add, delete) for scripted environments.
-   - Update handoff to describe modal UX once implemented. ✅ _Docs updated via current session_
+   - Decide whether large assets should lazy-load to avoid blocking entity review.
+5. **Documentation & CLI**
+   - Extend CLI commands to manage resolver rules (list/add/delete) and eventually trigger proposal applies once parity work lands.
+   - Keep README/handoff updated as new workflows (taxonomy entities, official collections) become available.
