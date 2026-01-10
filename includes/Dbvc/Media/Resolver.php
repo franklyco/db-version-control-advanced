@@ -292,7 +292,18 @@ final class Resolver
             $path = \substr($path, \strlen('media/'));
         }
 
-        return $path;
+        $segments = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                return '';
+            }
+            $segments[] = $segment;
+        }
+
+        return implode('/', $segments);
     }
 
     /**

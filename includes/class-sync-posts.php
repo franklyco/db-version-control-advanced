@@ -3408,6 +3408,35 @@ $acf_relationship_fields = [
         update_option(self::PROPOSAL_NEW_ENTITIES_OPTION, $store, false);
     }
 
+    /**
+     * Remove a previously-recorded new entity so reopen automation honours reviewer intent.
+     *
+     * @param string $proposal_id
+     * @param string $entity_uid
+     * @return void
+     */
+    public static function remove_proposal_new_entity(string $proposal_id, string $entity_uid): void
+    {
+        $proposal_id = sanitize_text_field($proposal_id);
+        $entity_uid  = is_string($entity_uid) ? trim($entity_uid) : '';
+        if ($proposal_id === '' || $entity_uid === '') {
+            return;
+        }
+
+        $store = get_option(self::PROPOSAL_NEW_ENTITIES_OPTION, []);
+        if (! is_array($store) || ! isset($store[$proposal_id]) || ! is_array($store[$proposal_id])) {
+            return;
+        }
+
+        if (isset($store[$proposal_id][$entity_uid])) {
+            unset($store[$proposal_id][$entity_uid]);
+            if (empty($store[$proposal_id])) {
+                unset($store[$proposal_id]);
+            }
+            update_option(self::PROPOSAL_NEW_ENTITIES_OPTION, $store, false);
+        }
+    }
+
     public static function get_proposal_new_entities(string $proposal_id): array
     {
         $proposal_id = sanitize_text_field($proposal_id);

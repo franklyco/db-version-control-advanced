@@ -2783,6 +2783,15 @@ final class DBVC_Admin_App
         $store[$proposal_id] = self::recalculate_proposal_summary($store[$proposal_id]);
         $store = self::cleanup_empty_proposals($store, $proposal_id);
         self::set_decision_store($store);
+
+        if (
+            defined('DBVC_NEW_ENTITY_DECISION_KEY')
+            && $path === DBVC_NEW_ENTITY_DECISION_KEY
+            && $action !== 'accept_new'
+            && class_exists('DBVC_Sync_Posts')
+        ) {
+            DBVC_Sync_Posts::remove_proposal_new_entity($proposal_id, $vf_object_uid);
+        }
     }
 
     private static function clear_entity_decision(string $proposal_id, string $vf_object_uid, string $path): void
@@ -2806,6 +2815,14 @@ final class DBVC_Admin_App
 
         $store = self::cleanup_empty_proposals($store, $proposal_id);
         self::set_decision_store($store);
+
+        if (
+            defined('DBVC_NEW_ENTITY_DECISION_KEY')
+            && $path === DBVC_NEW_ENTITY_DECISION_KEY
+            && class_exists('DBVC_Sync_Posts')
+        ) {
+            DBVC_Sync_Posts::remove_proposal_new_entity($proposal_id, $vf_object_uid);
+        }
     }
 
     private static function clear_all_entity_decisions(string $proposal_id, string $vf_object_uid): void
@@ -2821,6 +2838,13 @@ final class DBVC_Admin_App
         }
         $store = self::cleanup_empty_proposals($store, $proposal_id);
         self::set_decision_store($store);
+
+        if (
+            defined('DBVC_NEW_ENTITY_DECISION_KEY')
+            && class_exists('DBVC_Sync_Posts')
+        ) {
+            DBVC_Sync_Posts::remove_proposal_new_entity($proposal_id, $vf_object_uid);
+        }
     }
 
     private static function recalculate_proposal_summary(array $proposal_store): array

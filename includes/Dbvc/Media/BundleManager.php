@@ -241,9 +241,9 @@ final class BundleManager
      */
     public static function locate_bundle_file(string $proposal_id, string $bundle_path, array $bundle_meta = [], array $options = []): ?string
     {
-        $bundle_path = ltrim(wp_normalize_path($bundle_path), '/');
-        if (strpos($bundle_path, 'media/') === 0) {
-            $bundle_path = substr($bundle_path, strlen('media/'));
+        $bundle_path = self::sanitize_relative_reference($bundle_path);
+        if ($bundle_path === '') {
+            return null;
         }
 
         $candidates = [];
@@ -432,12 +432,38 @@ final class BundleManager
             $relative = (string) $entry['relative_path'];
         }
 
-        $relative = ltrim(wp_normalize_path($relative), '/');
-        if (strpos($relative, 'media/') === 0) {
-            $relative = substr($relative, strlen('media/'));
+        return self::sanitize_relative_reference($relative);
+    }
+
+    /**
+     * Normalize and validate a relative reference to prevent traversal.
+     *
+     * @param string $path
+     * @return string
+     */
+    private static function sanitize_relative_reference(string $path): string
+    {
+        if ($path === '') {
+            return '';
         }
 
-        return $relative;
+        $path = ltrim(wp_normalize_path($path), '/');
+        if (strpos($path, 'media/') === 0) {
+            $path = substr($path, strlen('media/'));
+        }
+
+        $segments = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                return '';
+            }
+            $segments[] = $segment;
+        }
+
+        return implode('/', $segments);
     }
 
     /**
