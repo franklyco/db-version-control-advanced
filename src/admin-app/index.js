@@ -381,6 +381,10 @@ const ProposalList = ({ proposals, selectedId, onSelect }) => {
     }
 
     return (
+        <>
+        <p className="dbvc-entities-tip">
+            New posts that were previously accepted can be auto-restored when reopening a proposal. Enable “Auto-mark accepted new posts on reopen” under Configure → Import to keep their media/meta selections intact.
+        </p>
         <table className="widefat fixed striped dbvc-proposal-table">
             <thead>
                 <tr>
@@ -441,6 +445,7 @@ const ProposalList = ({ proposals, selectedId, onSelect }) => {
                 })}
             </tbody>
         </table>
+        </>
     );
 };
 

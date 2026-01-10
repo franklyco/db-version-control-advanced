@@ -11,6 +11,20 @@
 - Only post entities flow through the diff/apply pipeline; termmeta changes or new terms never reach Site B.
 - Media resolver works per entity, so term ACF fields referencing media can piggyback once terms become entities.
 
+## Platform Updates To Align With
+
+### Deterministic media pipeline
+- Exports can now bundle attachments alongside `entities.jsonl` via `Dbvc\Media\BundleManager`; manifests include a `media_bundle` block describing bundle storage plus the canonical `media_index`.
+- `Dbvc\Media\Resolver` and the new `Dbvc\Media\Reconciler` run automatically during preview/import (manual UI + WP‑CLI). They return deterministic `metrics`, `conflicts`, and an `id_map` that `DBVC_Media_Sync` reuses to avoid duplicate downloads. Resolver decisions (reuse/download/map/skip) are stored per proposal and surfaced through `GET /proposals/{id}/resolver`.
+- Admin shows resolver stats in the proposal list (“Resolver reused/unresolved” columns) and each entity row now carries resolver badges + unresolved counts. Term implementations must emit the same `media_refs` metadata so media previews, per-field resolver badges, and the attachment decision UI work without a fork.
+- Bundled media is ingested into `wp-content/uploads/sync/media-bundles/{proposal}` and copied back during apply. Term exports therefore need to ensure termmeta references emit attachment descriptors (asset UID, hash, bundle path) so the existing bundle/resolve flow can hydrate their ACF/image fields.
+
+### New post gating + reopen automation
+- Every entity uses the `__dbvc_new_entity__` decision key; we only call `wp_insert_post()` when reviewers explicitly set it to `accept_new`. That decision is logged and summarized so “Accept new term” will need to write the same key.
+- `dbvc_force_reapply_new_posts` (Configure → Import) stores applied new entity UIDs inside `dbvc_proposal_new_entities`. When a proposal is reopened, `restore_new_entity_decisions()` re-seeds those `accept_new` flags so media/meta selections survive without re-clicking every field.
+- The React UI exposes a “New posts” filter/badge plus helper text explaining the auto-restore option. Term entities must plug into the same data so reviewers can scan “new terms” separately and rely on the reopen automation to reapply approved creations.
+- Import now refuses to touch existing entities without at least one Accept/Keep selection unless `force_new_entity_accept` is set (for auto-restored new entities). When terms become entities, we need to reuse `entity_has_field_decisions()` and the same skip logging so reopened proposals don’t silently overwrite taxonomies.
+
 ## Proposed End-to-End Flow
 
 ### Export
