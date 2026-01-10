@@ -1,356 +1,112 @@
-# DB Version Control
+# DB Version Control Advanced
 
-**Sync WordPress to version-controlled JSON files for easy Git workflows.**
+**Review, diff, and apply WordPress content safely via proposal bundles, JSON manifests, and a React-based admin workflow.**
 
-[![WordPress](https://img.shields.io/badge/WordPress-5.0%2B-blue.svg)](https://wordpress.org/) [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net/) [![License](https://img.shields.io/badge/License-GPL%20v2%2B-green.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
+[![WordPress](https://img.shields.io/badge/WordPress-6.4%2B-blue.svg)](https://wordpress.org/) [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net/) [![License](https://img.shields.io/badge/License-GPL%20v2%2B-green.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
 
 ## Overview
 
-DB Version Control bridges the gap between WordPress content management and modern development workflows. 
+DB Version Control Advanced extends the original DBVC exporter/importer with deterministic identities, proposal zips, and an end-to-end review pipeline. Export jobs collect posts, terms (legacy), menus, options, and media into a normalized manifest. Reviewers upload that proposal inside WordPress, triage differences with Accept/Keep selectors, resolve media conflicts, and finally apply the curated changes. All of this lives in a single “DBVC Export” admin screen powered by React and backed by REST endpoints.
 
-Instead of wrestling with database dumps or complex migration tools, this plugin exports your WordPress content to clean, readable JSON files that work seamlessly with Git and other version control systems.
+Legacy full-site export/import and WP-CLI commands continue to ship for automation, but production workflows can now block direct imports until a proposal has been reviewed.
 
-**Perfect for:**
+## Feature Highlights
 
-- Development teams managing content across environments
-- DevOps workflows requiring automated content deployment
-- Agencies syncing content between staging and production
-- Content editors who want change tracking and rollback capabilities
-
-## Key Features
-
-### Smart Content Export
-
-- **Selective Post Types**: Choose which post types to include in exports
-- **Automatic Triggers**: Content exports automatically on saves, updates, and changes
-- **Organized Structure**: Each post type gets its own folder for clean organization
-- **Complete Data**: Includes post content, meta fields, options, and navigation menus
-
-### Flexible Sync Options
-
-- **Custom Sync Paths**: Set your own export directory (supports relative and absolute paths)
-- **WP-CLI Integration**: Command-line tools for automation and CI/CD pipelines
-- **Manual Exports**: On-demand exports through the admin interface
-- **Selective Imports**: Import specific content types as needed
-
-### Enterprise Ready
-
-- **Security First**: CSRF protection, capability checks, and input sanitization
-- **Error Handling**: Comprehensive logging and graceful failure handling
-- **Performance Optimized**: Efficient file operations with minimal overhead
-- **Extensible**: 20+ filters and actions for custom integrations
+- **Proposal-driven review** – Upload proposal zips, see resolver metrics, and diff entities inside the React UI. Accept/Keep individual fields, bulk-apply sections, or reject the entity entirely. Drawer-based review keeps context with keyboard & screen-reader support.
+- **Identity layer + diff engine** – Posts, pages, and custom post types are stamped with stable `vf_object_uid` identifiers, allowing cross-environment comparisons. Diffs are grouped by section (content, meta, taxonomies, media references) to make large payloads easier to scan.
+- **New entity gating** – Newly introduced entities are flagged automatically. Reviewers must explicitly “Accept new” before they can be applied, and the importer respects those decisions to prevent surprise inserts.
+- **Duplicate detection & cleanup** – Resolver preflight checks manifest entities against the local site. If duplicate slugs or conflicting manifests are detected an overlay blocks review until reviewers select a canonical entry.
+- **Deterministic media resolver** – Each proposal captures attachment hashes, bundle paths, and resolver decisions. Reviewers can reuse, download, skip, or remap attachments, then persist those decisions per proposal or globally. Resolver bulk tools target conflicts by reason or path, and bundles guarantee offline parity.
+- **Global resolver rules** – CSV import/export, inline add/edit, and validation tooling keep attachment mappings in sync between proposals. New proposals preload these rules so reviewers rarely have to re-decide identical conflicts.
+- **Logging & activity history** – Structured tables record exports, imports, resolver passes, and apply jobs. The React app surfaces recent apply history and toast notifications when background tasks finish.
+- **WP-CLI & automation** – The classic `wp dbvc export`/`import` commands remain for CI and scripted environments, including chunked exports, diff baselines, and menu/option syncing.
 
 ## Requirements
 
-- **WordPress**: 5.0 or higher
-- **PHP**: 7.4 or higher
-- **File Permissions**: Write access to sync directory
-- **WP-CLI**: Optional, for command-line operations
+- **WordPress** 6.0+
+- **PHP** 7.4+
+- **MySQL/MariaDB** with support for InnoDB and `utf8mb4`
+- Ability to write to the configured sync directory (default `wp-content/uploads/dbvc-sync/`)
+- Optional: **WP-CLI** for automation and CI/CD jobs
 
-## 🔧 Installation
+## Installation
 
-### Via WordPress Admin
-
-1. Download the plugin zip file
-2. Go to **Plugins > Add New > Upload Plugin**
-3. Upload and activate the plugin
-4. Navigate to **DBVC Export** in your admin menu
+### WordPress Admin
+1. Download the plugin zip or clone into your project.
+2. Visit **Plugins → Add New → Upload Plugin** and upload the zip.
+3. Activate the plugin. A **DBVC Export** item appears in the admin menu.
+4. Visit **DBVC Export** to configure sync paths, proposal defaults, and media policy.
 
 ### Manual Installation
-1. Upload the `db-version-control` folder to `/wp-content/plugins/`
-2. Activate the plugin through the WordPress admin
-3. Configure your settings under **DBVC Export**
+1. Copy the repository into `/wp-content/plugins/db-version-control-main` (or install via Composer/git submodule).
+2. Activate through **Plugins → Installed Plugins**.
+3. Adjust permissions on your sync directory (`uploads/dbvc-sync` by default) so exports can write JSON and media bundles.
 
-## 🎯 Quick Start
+## Proposal Workflow
 
-### 1. Configure Post Types
+### 1. Generate a proposal
+- Use **DBVC Export → Export/Download** to run a full export, diff export (baseline), or chunked export. Each run writes JSON into your sync folder and logs a snapshot.
+- When “Require DBVC proposal review” is enabled, every import must originate from a proposal zip. Export actions provide a zipped bundle containing:
+  - `dbvc-manifest.json` (schema v3) – site metadata, entity hashes, resolver decisions, and media index entries.
+  - `entities.jsonl` – normalized entity snapshots with UID, metadata, and sections for diffing.
+  - `media/` – optional deterministic bundles for referenced attachments.
+- Export settings let you seed media bundles per proposal, mirror remote domains, and opt into remote-only vs bundle-only transport.
 
-Navigate to **DBVC Export** and select which post types you want to sync:
+### 2. Upload & review
+- Click **Open Proposal Review** inside the DBVC Export page or use the floating “Review proposals” button.
+- Upload a proposal zip via drag-and-drop or pick an existing one from `/uploads/dbvc/proposals/`.
+- The React app loads proposal metadata, resolver metrics, duplicate counts, and new-entity stats.
+- Filter entities by status (needs review, conflicts, media needs attention, with decisions, new posts) or search by title/slug/type.
+- Open an entity to see per-field diffs. Accept means “apply this change from the proposal”; Keep leaves the current site value untouched. Bulk actions exist at section level (content/meta/media) and globally for unresolved sets.
+- “New post” badges highlight entities without a local counterpart. Reviewers can accept/decline the new entity directly from the table header or inside the drawer. Bulk accept controls run `scope=new_only` actions over the REST API.
+- Media attachments render inside the resolver panel. Reviewers can reuse an existing attachment, force a download, skip entirely, or remap to a different attachment ID—optionally persisting the rule globally. Attachments also expose advanced bulk filters (reason, UID, manifest path).
+- Duplicate overlays block navigation until canonical entries are chosen. Cleanup calls ensure extra JSON artifacts are deleted so reviewers only see authoritative data.
 
-- Posts and Pages (enabled by default)
-- Custom post types (WooCommerce products, events, etc.)
-- Choose based on your content strategy
+### 3. Apply curated changes
+- When every required entity decision is made (no unresolved conflicts, duplicates cleared), reviewers click **Apply Proposal** in the React app. The REST apply endpoint enforces permissions, writes per-field updates, and logs summaries.
+- Importer honors Accept/Keep decisions path-by-path. Entities without accepted paths are skipped, and skipped/new-entity declines appear in the apply history so reviewers know why content stayed untouched.
+- After a successful apply the UI can auto-clear proposal decisions (Config → Import Defaults) to keep the option table lean; toggles exist to retain them for auditing.
+- Optional: download deterministic zips or share them with downstream sites. All resolver decisions and bundles travel with the zip so another environment can replay the review process without starting over.
 
-### 2. Set Sync Path
+## Legacy Export/Import & WP-CLI
 
-Choose where to store your JSON files:
-
-```
-wp-content/uploads/dbvc-sync/                # Safe, backed up location
-wp-content/plugins/db-version-control/sync/  # Plugin directory (default)
-../site-content/                             # Outside web root (recommended)
-```
-
-### 3. Run Your First Export
-
-**Via Admin Interface:**
-
-Click "Run Full Export" to generate JSON files for all content.
-
-**Via WP-CLI:**
-```bash
-wp dbvc export
-```
-
-### 4. Version Control Integration
-
-Add your sync folder to Git:
+The proposal workflow is the default for interactive reviews, but legacy automation remains:
 
 ```bash
-cd your-sync-folder/
-git init
-git add .
-git commit -m "Initial content export"
+wp dbvc export --batch-size=100          # batch export
+wp dbvc export --baseline=latest         # diff export vs latest snapshot
+wp dbvc export --chunk-size=250          # resumable chunked export
+wp dbvc import --batch-size=25           # legacy full import (honors Accept state when sync dir already staged)
 ```
 
-## WP-CLI Commands
+CLI commands continue to export menus and options automatically, respect chunked jobs stored in `wp_dbvc_jobs`, and log activity rows for observability. Imports should be restricted to CI/staging unless you deliberately bypass the React workflow.
 
-### Export All Content
+## Settings Overview
 
-```bash
-wp dbvc export
-```
+- **Require DBVC Proposal Review** – hides the legacy Run Import form and forces reviewers into the React workflow.
+- **Mirror Domain & Media Transport** – configure Auto vs Bundled-only vs Remote-only download behavior and whether proposal exports copy attachments into deterministic bundle folders.
+- **Media Bundling Controls** – regenerate bundles, clear caches, and inspect bundle metrics.
+- **Resolver Rule Management** – manage stored resolver decisions (`dbvc_resolver_decisions`), export/import CSVs, or prune stale entries.
+- **Auto-clear Decisions** – automatically purge `dbvc_proposal_decisions` once an apply finishes so future proposals start clean.
 
-Exports all posts, pages, options, and menus to JSON files.
+## Data & Storage
 
-**Batch Processing Options:**
-```bash
-wp dbvc export --batch-size=100 # Process 100 posts per batch
-wp dbvc export --batch-size=0   # Disable batching (process all at once)
-```
+- `wp_dbvc_snapshots`, `wp_dbvc_snapshot_items`, `wp_dbvc_jobs`, `wp_dbvc_media_index`, and `wp_dbvc_activity_log` provide durable history for exports/imports.
+- Proposal decisions live in `dbvc_proposal_decisions` until applied/cleared. Resolver rules live in `dbvc_resolver_decisions`.
+- Proposal zips and media bundles are stored in `wp-content/uploads/dbvc/{proposals,media-bundles,...}`. The cleanup tooling trims empty proposals to keep disk usage predictable.
 
-### Import All Content
+## Troubleshooting & Logs
 
-```bash
-wp dbvc import
-```
+- **Activity log** (`wp_dbvc_activity_log`) captures every export/import/apply event with structured context.
+- **File log** (`dbvc-backup.log`) mirrors high-level notices for deployments that prefer file-based monitoring.
+- **Resolver warnings** – The React UI surfaces unresolved/blocked counts. See the proposal drawer for conflict reasons and recommended actions.
+- **Permissions** – If proposals fail to upload ensure PHP has write access to `uploads/dbvc/proposals/` and that ZipArchive is available.
+- **WP-CLI** – Use `--debug` to inspect chunking or diff baseline calculations; exported snapshot IDs are printed for traceability.
 
-⚠️ **Warning**: This overwrites existing content. Always backup first!
+## Roadmap
 
-**Batch Processing Options:**
-```bash
-wp dbvc import --batch-size=25 # Process 25 files per batch  
-wp dbvc import --batch-size=0  # Disable batching (process all at once)
-```
+- **Taxonomy/T-term parity** – term entities and termmeta will join the review/apply workflow next (see `docs/terms.md`).
+- **CLI parity for proposals** – `wp dbvc proposals apply`/`list` commands are planned once the REST workflow hardens.
+- **Official collections** – curated “official” bundles that can be re-exported on demand remain on the backlog.
 
-### Performance Considerations
-
-**Batch Size Recommendations:**
-- **Small sites** (< 1,000 posts): `--batch-size=100` or `--batch-size=0`
-- **Medium sites** (1,000-10,000 posts): `--batch-size=50` (default)
-- **Large sites** (> 10,000 posts): `--batch-size=25`
-- **Very large sites**: `--batch-size=10` with monitoring
-
-**Real-world Performance:**
-```bash
-# Example output from a site with 395 posts across 6 post types
-wp dbvc export --batch-size=50
-
-Starting batch export with batch size: 50
-Processed batch: 50 posts | Total: 50/398 | Remaining: 348
-Processed batch: 50 posts | Total: 100/398 | Remaining: 298
-...
-Processed batch: 45 posts | Total: 395/398 | Remaining: 3
-Success: Batch export completed! Processed 395 posts across post types: post, page, docupress, boostbox_popups, product, projects
-```
-
-### Example Automation Script
-
-```bash
-#!/bin/bash
-# Daily content backup
-wp dbvc export
-cd /path/to/sync/folder
-git add -A
-git commit -m "Automated content backup $(date)"
-git push origin main
-```
-
-## File Structure
-
-```
-sync-folder/
-├── options.json           # WordPress options/settings
-├── menus.json             # Navigation menus
-├── post/                  # Blog posts
-│   ├── post-1.json
-│   ├── post-2.json
-│   └── ...
-├── page/                  # Static pages
-│   ├── page-10.json
-│   ├── page-15.json
-│   └── ...
-└── product/               # WooCommerce products (if enabled)
-    ├── product-100.json
-    └── ...
-```
-
-## Workflow Examples
-
-### Development to Production
-
-```bash
-# On staging site
-wp dbvc export
-git add sync/
-git commit -m "Content updates for v2.1"
-git push
-
-# On production site  
-git pull
-wp dbvc import
-```
-
-### Team Collaboration
-
-```bash
-# Content editor exports changes
-wp dbvc export
-
-# Developer reviews in pull request
-git diff sync/
-
-# Changes merged and deployed
-wp dbvc import
-```
-
-### Automated Deployment
-
-```yaml
-# GitHub Actions example
-- name: Deploy Content
-  run: |
-    wp dbvc export
-    git add sync/
-    git commit -m "Auto-export: ${{ github.sha }}" || exit 0
-    git push
-```
-
-## Developer Integration
-
-### Filters
-
-**Modify supported post types:**
-```php
-add_filter( 'dbvc_supported_post_types', function( $post_types ) {
-    $post_types[] = 'my_custom_post_type';
-    return $post_types;
-});
-```
-
-**Exclude sensitive options:**
-```php
-add_filter( 'dbvc_excluded_option_keys', function( $excluded ) {
-    $excluded[] = 'my_secret_api_key';
-    return $excluded;
-});
-```
-
-**Modify export data:**
-```php
-add_filter( 'dbvc_export_post_data', function( $data, $post_id, $post ) {
-    // Add custom fields or modify data
-    $data['custom_field'] = get_field( 'my_field', $post_id );
-    return $data;
-}, 10, 3 );
-```
-
-### Actions
-
-**Custom export operations:**
-```php
-add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
-    // Custom logic after post export
-    do_something_with_exported_post( $post_id );
-});
-```
-
-**Skip certain meta keys:**
-```php
-add_filter( 'dbvc_skip_meta_keys', function( $skip_keys ) {
-    $skip_keys[] = '_temporary_data';
-    return $skip_keys;
-});
-```
-
-## ⚠️ Important Considerations
-
-### Security
-- **File Permissions**: Ensure proper write permissions for sync directory
-- **Sensitive Data**: Some options are automatically excluded (API keys, salts, etc.)
-- **Access Control**: Only users with `manage_options` capability can export/import
-
-### Performance
-- **Large Sites**: Batch processing automatically handles large datasets efficiently
-- **Memory Usage**: Batching prevents memory exhaustion on large imports/exports  
-- **Server Load**: Built-in delays (0.1s export, 0.25s import) prevent overwhelming server resources
-- **Progress Tracking**: Real-time feedback shows processed/remaining counts during batch operations
-- **Scalable**: Successfully tested with 395+ posts across 6 different post types
-
-### Data Integrity
-- **Always Backup**: Import operations overwrite existing content
-- **Test First**: Use staging environments for testing import/export workflows
-- **Validate JSON**: Malformed JSON files will be skipped during import
-
-## Troubleshooting
-
-### Common Issues
-
-**Permission Denied Errors:**
-```bash
-# Fix directory permissions
-chmod 755 wp-content/uploads/dbvc-sync/
-chown www-data:www-data wp-content/uploads/dbvc-sync/
-```
-
-**WP-CLI Command Not Found:**
-```bash
-# Verify WP-CLI installation
-wp --info
-
-# Check plugin activation
-wp plugin list | grep db-version-control
-```
-
-**Empty Export Files:**
-- Check if post types are selected in settings
-- Verify posts exist and are published
-- Check error logs for file write issues
-
-### Debug Mode
-Enable WordPress debug logging to troubleshoot issues:
-```php
-// wp-config.php
-define( 'WP_DEBUG', true );
-define( 'WP_DEBUG_LOG', true );
-
-// Check logs at: wp-content/debug.log
-```
-
-## Contributing
-
-Contributions are always welcome! Here's how to get started:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Development Setup
-```bash
-git clone https://github.com/robertdevore/db-version-control.git
-cd db-version-control
-composer install
-```
-
-## License
-
-This project is licensed under the GPL v2+ License - see the [LICENSE](LICENSE) file for details.
-
-## 👨‍💻 Author
-
-**Robert DeVore**
-- Website: [robertdevore.com](https://robertdevore.com)
-- GitHub: [@robertdevore](https://github.com/robertdevore)
-- X: [@deviorobert](https://x.com/deviorobert)
+This repository includes in-depth implementation notes under `handoff.md`, progress tracking inside `docs/progress-summary.md`, and media transport design details inside `docs/media-sync-design.md`.

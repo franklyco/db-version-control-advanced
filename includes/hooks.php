@@ -215,6 +215,9 @@ function dbvc_handle_term_changes()
  */
 function dbvc_handle_option_updates($option, $old_value, $new_value)
 {
+	if (defined('DBVC_PHPUNIT') && DBVC_PHPUNIT) {
+		return;
+	}
 	// Allow other plugins to add their own options to skip
 	$skip_options = apply_filters('dbvc_skip_option_names', ['dbvc_']);
 
@@ -484,6 +487,8 @@ add_action('delete_post', 'dbvc_handle_menu_item_deletion', 10, 1);
 // Register sync-folder download/upload
 add_action('admin_post_dbvc_download_sync', ['DBVC_Sync_Posts', 'handle_download_sync']);
 add_action('admin_post_dbvc_upload_sync',   ['DBVC_Sync_Posts', 'handle_upload_sync']);
+add_action('admin_post_dbvc_download_backup', ['DBVC_Backup_Manager', 'handle_download_request']);
+add_action('admin_post_dbvc_clear_media_cache', ['DBVC_Media_Sync', 'handle_clear_cache_request']);
 
 // FSE hooks - use safer, later hooks that don't interfere with admin loading
 add_action('wp_loaded', function () {

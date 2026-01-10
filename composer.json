@@ -1,5 +1,9 @@
 {
     "require": {
         "robertdevore/wpcom-check": "^1.0"
+    },
+    "require-dev": {
+        "yoast/phpunit-polyfills": "^2",
+        "phpunit/phpunit": "^9.6"
     }
 }
