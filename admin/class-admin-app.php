@@ -13,8 +13,20 @@ final class DBVC_Admin_App
     private const RESOLVER_DECISIONS_OPTION = 'dbvc_resolver_decisions';
     private const DEFAULT_DIFF_IGNORE_PATHS = 'meta.dbvc_post_history.*';
     private const NEW_ENTITY_DECISION_KEY = DBVC_NEW_ENTITY_DECISION_KEY;
+    private const DUPLICATE_BULK_CONFIRM_PHRASE = 'DELETE';
 
     private static $diff_ignore_patterns = null;
+    private static $term_field_roots = [
+        'name',
+        'term_name',
+        'slug',
+        'term_slug',
+        'description',
+        'parent',
+        'parent_slug',
+        'taxonomy',
+        'term_taxonomy',
+    ];
 
     /**
      * Bootstrap hooks.
@@ -632,7 +644,14 @@ final class DBVC_Admin_App
         $items = [];
 
         foreach ($manifest['items'] as $item) {
-            if (($item['item_type'] ?? '') !== 'post') {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if ($item_type !== 'post') {
+                if ($item_type === 'term') {
+                    $term_entry = self::format_term_manifest_entity($proposal_id, $item, $status_filter, $proposal_decisions);
+                    if ($term_entry) {
+                        $items[] = $term_entry;
+                    }
+                }
                 continue;
             }
 
@@ -739,6 +758,7 @@ final class DBVC_Admin_App
                     'attachments' => $attachments,
                     'status'      => $media_needs_review ? 'needs_review' : 'resolved',
                 ],
+                'entity_type'        => 'post',
                 'is_new_entity'      => $is_new_entity,
                 'identity_match'     => $identity_match,
                 'new_entity_decision'=> $new_entity_decision,
@@ -786,8 +806,34 @@ final class DBVC_Admin_App
         $params = $request->get_json_params();
         $vf_object_uid = isset($params['vf_object_uid']) ? sanitize_text_field($params['vf_object_uid']) : '';
         $keep_path     = isset($params['keep_path']) ? ltrim((string) $params['keep_path'], '/\\') : '';
+        $preferred_format = isset($params['preferred_format']) ? sanitize_key($params['preferred_format']) : '';
+        $apply_all = ! empty($params['apply_all']);
+        $confirmation = isset($params['confirm_token']) ? strtoupper(trim((string) $params['confirm_token'])) : '';
+        $allowed_formats = ['id', 'slug', 'slug_id'];
 
-        if ($proposal_id === '' || $vf_object_uid === '' || $keep_path === '') {
+        if ($preferred_format !== '' && ! in_array($preferred_format, $allowed_formats, true)) {
+            $preferred_format = '';
+        }
+
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        if ($apply_all) {
+            if ($preferred_format === '') {
+                return new \WP_Error('dbvc_missing_format', __('Choose which filename format to keep (ID, slug, or slug-ID).', 'dbvc'), ['status' => 400]);
+            }
+            if ($confirmation !== self::DUPLICATE_BULK_CONFIRM_PHRASE) {
+                return new \WP_Error(
+                    'dbvc_missing_confirmation',
+                    sprintf(
+                        __('Type %s to confirm bulk duplicate cleanup.', 'dbvc'),
+                        self::DUPLICATE_BULK_CONFIRM_PHRASE
+                    ),
+                    ['status' => 400]
+                );
+            }
+        } elseif ($vf_object_uid === '' || $keep_path === '') {
             return new \WP_Error('dbvc_invalid_request', __('Specify the entity UID and canonical file path.', 'dbvc'), ['status' => 400]);
         }
 
@@ -796,38 +842,65 @@ final class DBVC_Admin_App
             return new \WP_REST_Response(null, 404);
         }
 
-        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
-        $matches = [];
+        $items  = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        $groups = [];
+
         foreach ($items as $index => $item) {
-            if (($item['item_type'] ?? '') !== 'post') {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
                 continue;
             }
+
             $entity_uid = isset($item['vf_object_uid'])
                 ? (string) $item['vf_object_uid']
                 : (isset($item['post_id']) ? (string) $item['post_id'] : '');
-            if ($entity_uid !== $vf_object_uid) {
+            if ($entity_uid === '') {
                 continue;
             }
+            if (! $apply_all && $entity_uid !== $vf_object_uid) {
+                continue;
+            }
+
             $path = isset($item['path']) ? ltrim((string) $item['path'], '/\\') : '';
             if ($path === '') {
                 continue;
             }
-            $matches[$index] = $path;
-        }
 
-        if (count($matches) <= 1) {
-            return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were found for this entity.', 'dbvc'), ['status' => 400]);
-        }
-
-        $keep_index = null;
-        foreach ($matches as $idx => $path) {
-            if ($path === $keep_path) {
-                $keep_index = $idx;
-                break;
+            if (! isset($groups[$entity_uid])) {
+                $groups[$entity_uid] = [
+                    'vf_object_uid' => $entity_uid,
+                    'entries'       => [],
+                ];
             }
+
+            $groups[$entity_uid]['entries'][$index] = [
+                'index' => $index,
+                'path'  => $path,
+                'item'  => $item,
+            ];
         }
-        if ($keep_index === null) {
-            return new \WP_Error('dbvc_keep_missing', __('Canonical file path was not found among duplicates.', 'dbvc'), ['status' => 400]);
+
+        if ($apply_all) {
+            $groups = array_filter($groups, static function ($group) {
+                return isset($group['entries']) && count($group['entries']) > 1;
+            });
+            if (empty($groups)) {
+                return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were found for this proposal.', 'dbvc'), ['status' => 400]);
+            }
+        } else {
+            if (! isset($groups[$vf_object_uid]) || count($groups[$vf_object_uid]['entries']) <= 1) {
+                return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were found for this entity.', 'dbvc'), ['status' => 400]);
+            }
+            $keep_found = false;
+            foreach ($groups[$vf_object_uid]['entries'] as $entry) {
+                if ($entry['path'] === $keep_path) {
+                    $keep_found = true;
+                    break;
+                }
+            }
+            if (! $keep_found) {
+                return new \WP_Error('dbvc_keep_missing', __('Canonical file path was not found among duplicates.', 'dbvc'), ['status' => 400]);
+            }
         }
 
         if (! class_exists('DBVC_Backup_Manager')) {
@@ -840,15 +913,29 @@ final class DBVC_Admin_App
             return new \WP_Error('dbvc_missing_proposal_dir', __('Proposal directory not found.', 'dbvc'), ['status' => 500]);
         }
 
-        foreach ($matches as $idx => $path) {
-            if ($idx === $keep_index) {
+        foreach ($groups as $uid => $group) {
+            $entries = array_values($group['entries']);
+            $canonical_path = $apply_all
+                ? self::determine_duplicate_keep_path($entries, $preferred_format)
+                : $keep_path;
+
+            if (! $canonical_path) {
+                $canonical_path = $entries[0]['path'] ?? null;
+            }
+            if (! $canonical_path) {
                 continue;
             }
-            $absolute = self::resolve_manifest_entry_path($base_real, $path);
-            if ($absolute && file_exists($absolute) && strpos($absolute, $base_real) === 0) {
-                @unlink($absolute);
+
+            foreach ($entries as $entry) {
+                if ($entry['path'] === $canonical_path) {
+                    continue;
+                }
+                $absolute = self::resolve_manifest_entry_path($base_real, $entry['path']);
+                if ($absolute && file_exists($absolute) && strpos($absolute, $base_real) === 0) {
+                    @unlink($absolute);
+                }
+                unset($items[$entry['index']]);
             }
-            unset($items[$idx]);
         }
 
         $manifest['items'] = array_values($items);
@@ -1400,7 +1487,8 @@ final class DBVC_Admin_App
         $groups = [];
 
         foreach ($items as $item) {
-            if (($item['item_type'] ?? '') !== 'post') {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
                 continue;
             }
             $entity_uid = isset($item['vf_object_uid'])
@@ -1411,12 +1499,30 @@ final class DBVC_Admin_App
                 continue;
             }
             if (! isset($groups[$entity_uid])) {
+                $taxonomy = '';
+                if ($item_type === 'term') {
+                    $taxonomy = isset($item['term_taxonomy']) ? (string) $item['term_taxonomy'] : (isset($item['taxonomy']) ? (string) $item['taxonomy'] : '');
+                }
+
                 $groups[$entity_uid] = [
                     'vf_object_uid' => $entity_uid,
+                    'entity_type'   => $item_type,
                     'post_id'       => $item['post_id'] ?? null,
-                    'post_title'    => $item['post_title'] ?? '',
-                    'post_name'     => $item['post_name'] ?? '',
-                    'post_type'     => $item['post_type'] ?? '',
+                    'post_title'    => $item_type === 'term'
+                        ? ($item['term_name'] ?? $item['post_title'] ?? '')
+                        : ($item['post_title'] ?? ''),
+                    'post_name'     => $item_type === 'term'
+                        ? ($item['term_slug'] ?? $item['slug'] ?? $item['post_name'] ?? '')
+                        : ($item['post_name'] ?? ''),
+                    'post_type'     => $item_type === 'term'
+                        ? ('term:' . ($taxonomy !== '' ? $taxonomy : 'term'))
+                        : ($item['post_type'] ?? ''),
+                    'post_status'   => $item['post_status'] ?? ($item_type === 'term' ? 'term' : ''),
+                    'term_id'       => $item['term_id'] ?? null,
+                    'term_slug'     => $item['term_slug'] ?? $item['slug'] ?? '',
+                    'term_name'     => $item['term_name'] ?? $item['name'] ?? '',
+                    'term_taxonomy' => $taxonomy,
+                    'taxonomy'      => $taxonomy,
                     'entries'       => [],
                 ];
             }
@@ -1427,6 +1533,10 @@ final class DBVC_Admin_App
                 'post_status'   => $item['post_status'] ?? '',
                 'post_modified' => $item['post_modified'] ?? '',
                 'size'          => isset($item['size']) ? (int) $item['size'] : null,
+                'filename_mode' => self::detect_manifest_entry_filename_mode($item, $path),
+                'term_taxonomy' => $item_type === 'term'
+                    ? ($item['term_taxonomy'] ?? $item['taxonomy'] ?? '')
+                    : null,
             ];
         }
 
@@ -1438,6 +1548,122 @@ final class DBVC_Admin_App
         }
 
         return $report;
+    }
+
+    private static function determine_duplicate_keep_path(array $entries, string $preferred_format): ?string
+    {
+        if (empty($entries)) {
+            return null;
+        }
+
+        $allowed = ['slug_id', 'slug', 'id'];
+        $preferred = in_array($preferred_format, $allowed, true)
+            ? array_merge([$preferred_format], array_diff($allowed, [$preferred_format]))
+            : $allowed;
+
+        $paths_by_mode = [];
+        foreach ($entries as $entry) {
+            if (! isset($entry['item']) || ! isset($entry['path'])) {
+                continue;
+            }
+            $mode = self::detect_manifest_entry_filename_mode($entry['item'], $entry['path']);
+            if ($mode && ! isset($paths_by_mode[$mode])) {
+                $paths_by_mode[$mode] = $entry['path'];
+            }
+        }
+
+        foreach ($preferred as $mode) {
+            if (isset($paths_by_mode[$mode])) {
+                return $paths_by_mode[$mode];
+            }
+        }
+
+        $latest_path = null;
+        $latest_stamp = 0;
+        foreach ($entries as $entry) {
+            if (! isset($entry['item']['post_modified'])) {
+                continue;
+            }
+            $timestamp = strtotime((string) $entry['item']['post_modified']);
+            if ($timestamp && $timestamp > $latest_stamp) {
+                $latest_stamp = $timestamp;
+                $latest_path  = $entry['path'];
+            }
+        }
+
+        if ($latest_path) {
+            return $latest_path;
+        }
+
+        return $entries[0]['path'] ?? null;
+    }
+
+    private static function detect_manifest_entry_filename_mode(array $item, string $path): ?string
+    {
+        $basename = basename($path);
+        if ($basename === '') {
+            return null;
+        }
+
+        $candidates = self::build_manifest_entry_filename_candidates($item);
+        foreach ($candidates as $mode => $filename) {
+            if ($filename !== '' && strcasecmp($filename, $basename) === 0) {
+                return $mode;
+            }
+        }
+
+        return null;
+    }
+
+    private static function build_manifest_entry_filename_candidates(array $item): array
+    {
+        $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+        $slug = $item_type === 'term'
+            ? (string) ($item['term_slug'] ?? $item['slug'] ?? '')
+            : (string) ($item['post_name'] ?? '');
+        $id = $item_type === 'term'
+            ? (int) ($item['term_id'] ?? 0)
+            : (int) ($item['post_id'] ?? 0);
+        $prefix = $item_type === 'term'
+            ? (string) ($item['term_taxonomy'] ?? $item['taxonomy'] ?? 'term')
+            : (string) ($item['post_type'] ?? 'post');
+        if ($prefix === '') {
+            $prefix = $item_type === 'term' ? 'term' : 'post';
+        }
+
+        $modes = ['id', 'slug', 'slug_id'];
+        $candidates = [];
+        foreach ($modes as $mode) {
+            $part = self::build_filename_part_for_mode($mode, $slug, $id);
+            if ($part === '') {
+                continue;
+            }
+            $candidates[$mode] = sanitize_file_name($prefix . '-' . $part . '.json');
+        }
+
+        return $candidates;
+    }
+
+    private static function build_filename_part_for_mode(string $mode, string $slug, int $id): string
+    {
+        $slug_token = sanitize_title($slug);
+        $id_token   = (string) ($id ?: 0);
+
+        if ($mode === 'slug_id') {
+            if ($slug_token !== '' && ! is_numeric($slug_token)) {
+                return $slug_token . '-' . $id_token;
+            }
+            return $id_token;
+        }
+
+        if ($mode === 'slug') {
+            if ($slug_token !== '' && ! is_numeric($slug_token)) {
+                return $slug_token;
+            }
+            return $id_token;
+        }
+
+        return $id_token;
     }
 
     private static function resolve_manifest_entry_path(string $base_dir, string $relative_path): ?string
@@ -1598,7 +1824,8 @@ final class DBVC_Admin_App
 
         $manifest_map = [];
         foreach ($manifest['items'] as $item) {
-            if (($item['item_type'] ?? '') !== 'post') {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
                 continue;
             }
             $vf_object_uid = isset($item['vf_object_uid'])
@@ -1691,7 +1918,8 @@ final class DBVC_Admin_App
 
         $manifest_map = [];
         foreach ($manifest['items'] as $item) {
-            if (($item['item_type'] ?? '') !== 'post') {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
                 continue;
             }
             $vf_object_uid = isset($item['vf_object_uid'])
@@ -2505,6 +2733,9 @@ final class DBVC_Admin_App
             case 'post_status':
                 return 'status';
             default:
+                if (in_array($root, self::$term_field_roots, true)) {
+                    return 'term_fields';
+                }
                 return 'other';
         }
     }
@@ -3167,6 +3398,10 @@ final class DBVC_Admin_App
 
     private static function describe_entity_identity(array $item): array
     {
+        if (($item['item_type'] ?? '') === 'term' || isset($item['term_taxonomy']) || isset($item['taxonomy'])) {
+            return self::describe_term_identity($item);
+        }
+
         $vf_object_uid = isset($item['vf_object_uid'])
             ? (string) $item['vf_object_uid']
             : (isset($item['post_id']) ? (string) $item['post_id'] : '');
@@ -3194,6 +3429,131 @@ final class DBVC_Admin_App
             'local_post_id' => $local_post_id ?: null,
             'match_source'  => $match_source !== '' ? $match_source : 'none',
             'is_new'        => $local_post_id ? false : true,
+        ];
+    }
+
+    private static function describe_term_identity(array $item): array
+    {
+        $vf_object_uid = isset($item['vf_object_uid']) ? (string) $item['vf_object_uid'] : '';
+        $taxonomy      = isset($item['term_taxonomy']) ? sanitize_key($item['term_taxonomy']) : (isset($item['taxonomy']) ? sanitize_key($item['taxonomy']) : '');
+        $term_id       = isset($item['term_id']) ? (int) $item['term_id'] : 0;
+        $slug          = isset($item['term_slug']) ? sanitize_title($item['term_slug']) : (isset($item['slug']) ? sanitize_title($item['slug']) : '');
+
+        $match_source = 'none';
+        $local_id     = null;
+
+        if ($vf_object_uid !== '' && class_exists('DBVC_Database')) {
+            $record = DBVC_Database::get_entity_by_uid($vf_object_uid);
+            if ($record && ! empty($record->object_id) && is_string($record->object_type) && strpos($record->object_type, 'term:') === 0) {
+                $local_id = (int) $record->object_id;
+                $match_source = 'uid';
+            }
+        }
+
+        if (! $local_id && $term_id) {
+            $term = get_term($term_id);
+            if ($term && ! is_wp_error($term)) {
+                $local_id = (int) $term->term_id;
+                $match_source = 'id';
+            }
+        }
+
+        if (! $local_id && $slug !== '' && $taxonomy && taxonomy_exists($taxonomy)) {
+            $term = get_term_by('slug', $slug, $taxonomy);
+            if ($term && ! is_wp_error($term)) {
+                $local_id = (int) $term->term_id;
+                $match_source = 'slug';
+            }
+        }
+
+        return [
+            'local_post_id' => $local_id ?: null,
+            'match_source'  => $match_source !== '' ? $match_source : 'none',
+            'is_new'        => $local_id ? false : true,
+        ];
+    }
+
+    private static function format_term_manifest_entity(string $proposal_id, array $item, string $status_filter, array $proposal_decisions): ?array
+    {
+        $vf_object_uid = isset($item['vf_object_uid']) ? (string) $item['vf_object_uid'] : '';
+        $taxonomy      = isset($item['term_taxonomy']) ? sanitize_key($item['term_taxonomy']) : (isset($item['taxonomy']) ? sanitize_key($item['taxonomy']) : '');
+        $term_name     = isset($item['term_name']) ? (string) $item['term_name'] : (isset($item['name']) ? (string) $item['name'] : '');
+        $term_slug     = isset($item['term_slug']) ? (string) $item['term_slug'] : (isset($item['slug']) ? (string) $item['slug'] : '');
+        $term_id       = isset($item['term_id']) ? (int) $item['term_id'] : null;
+
+        $identity = self::describe_term_identity($item);
+        $is_new_entity = $identity['is_new'];
+
+        $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
+        $has_changes = ($diff_counts['total'] ?? 0) > 0;
+
+        $needs_review = $is_new_entity || $has_changes;
+
+        if ($status_filter === 'needs_review' && ! $needs_review) {
+            return null;
+        }
+        if ($status_filter === 'resolved' && $needs_review) {
+            return null;
+        }
+        if ($status_filter === 'needs_review_media') {
+            return null;
+        }
+        if ($status_filter === 'new_entities' && ! $is_new_entity) {
+            return null;
+        }
+
+        $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
+            ? $proposal_decisions[$vf_object_uid]
+            : [];
+        $decision_summary = self::summarize_entity_decisions($entity_decisions);
+        $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $entity_decisions);
+
+        $diff_reason = $is_new_entity ? 'new_term' : ($has_changes ? 'term_modified' : 'term_clean');
+
+        return [
+            'vf_object_uid' => $vf_object_uid !== '' ? $vf_object_uid : ($term_slug !== '' ? $term_slug : uniqid('term_', true)),
+            'post_id'       => $term_id,
+            'post_type'     => $taxonomy ? ('term:' . $taxonomy) : 'term',
+            'post_title'    => $term_name !== '' ? $term_name : ($taxonomy . '/' . $term_slug),
+            'post_status'   => 'term',
+            'post_name'     => $term_slug,
+            'post_modified' => $item['post_modified'] ?? null,
+            'path'          => $item['path'] ?? '',
+            'hash'          => $item['hash'] ?? '',
+            'content_hash'  => $item['content_hash'] ?? null,
+            'media_refs'    => [
+                'meta'    => [],
+                'content' => [],
+            ],
+            'diff_state' => [
+                'needs_review'  => $needs_review,
+                'reason'        => $diff_reason,
+                'expected_hash' => null,
+                'current_hash'  => null,
+                'local_post_id' => $identity['local_post_id'],
+            ],
+            'diff_total'        => $diff_counts['total'] ?? 0,
+            'meta_diff_count'   => $diff_counts['meta'] ?? 0,
+            'tax_diff_count'    => 0,
+            'media_needs_review'=> false,
+            'overall_status'    => $needs_review ? 'needs_review' : 'resolved',
+            'resolver'          => [
+                'summary'     => [
+                    'total'      => 0,
+                    'resolved'   => 0,
+                    'unresolved' => 0,
+                    'conflicts'  => 0,
+                    'unknown'    => 0,
+                ],
+                'attachments' => [],
+                'status'      => 'resolved',
+            ],
+            'entity_type'        => 'term',
+            'term_taxonomy'      => $taxonomy,
+            'is_new_entity'      => $is_new_entity,
+            'identity_match'     => $identity['match_source'],
+            'new_entity_decision'=> $new_entity_decision,
+            'decision_summary'   => $decision_summary,
         ];
     }
 

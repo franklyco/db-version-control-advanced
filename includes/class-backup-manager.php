@@ -53,11 +53,18 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 return;
             }
 
-        $items          = [];
-        $missing_hashes = 0;
-        $media_index    = [];
-        $source_lookup  = [];
-        $backup_name    = basename($backup_path);
+        $items             = [];
+        $missing_hashes    = 0;
+        $media_index       = [];
+        $source_lookup     = [];
+        $backup_name       = basename($backup_path);
+        $term_items        = 0;
+        $entities_written  = 0;
+        $entities_path     = trailingslashit($backup_path) . 'entities.jsonl';
+        $entities_handle   = @fopen($entities_path, 'w');
+        if (! $entities_handle) {
+            $entities_path = null;
+        }
 
             $iterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($backup_path, FilesystemIterator::SKIP_DOTS)
@@ -85,17 +92,25 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     continue;
                 }
 
-                $item_type       = 'generic';
-                $has_import_hash = true;
-                $content_hash    = null;
-                $post_id         = null;
-                $post_type       = '';
-                $post_title      = '';
-                $post_status     = '';
-                $post_name       = '';
-                $post_date       = '';
-                $post_modified   = '';
-                $media_refs      = [
+                $item_type        = 'generic';
+                $has_import_hash  = true;
+                $content_hash     = null;
+                $post_id          = null;
+                $post_type        = '';
+                $post_title       = '';
+                $post_status      = '';
+                $post_name        = '';
+                $post_date        = '';
+                $post_modified    = '';
+                $term_id          = null;
+                $term_taxonomy    = '';
+                $term_slug        = '';
+                $term_name        = '';
+                $term_parent      = null;
+                $term_parent_slug = '';
+                $entity_uid       = '';
+                $entity_payload   = null;
+                $media_refs       = [
                     'meta'    => [],
                     'content' => [],
                 ];
@@ -138,15 +153,78 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $post_modified = isset($decoded['post_modified']) ? sanitize_text_field($decoded['post_modified']) : '';
 
                     $media_refs = self::collect_post_media_refs($decoded, $post_id, $media_index, $source_lookup);
+
+                    if (class_exists('DBVC_Sync_Posts')) {
+                        $entity_uid = DBVC_Sync_Posts::ensure_post_uid($post_id);
+                    }
+
+                    $entity_payload = [
+                        'entity_type'   => 'post',
+                        'vf_object_uid' => $entity_uid,
+                        'post_id'       => $post_id,
+                        'post_type'     => $post_type,
+                        'post_title'    => $post_title,
+                        'post_status'   => $post_status,
+                        'post_name'     => $post_name,
+                        'post_date'     => $post_date,
+                        'post_modified' => $post_modified,
+                        'post_content'  => $decoded['post_content'] ?? '',
+                        'post_excerpt'  => $decoded['post_excerpt'] ?? '',
+                        'meta'          => $decoded['meta'] ?? [],
+                        'tax_input'     => $decoded['tax_input'] ?? [],
+                        'path'          => $relative,
+                    ];
                 } elseif (basename($relative) === 'options.json') {
                     $item_type = 'options';
                 } elseif (basename($relative) === 'menus.json') {
                     $item_type = 'menus';
+                } elseif (isset($decoded['taxonomy'], $decoded['term_id'])) {
+                    $item_type        = 'term';
+                    $term_id          = absint($decoded['term_id']);
+                    $term_taxonomy    = sanitize_key($decoded['taxonomy']);
+                    $term_slug        = isset($decoded['slug']) ? sanitize_title($decoded['slug']) : '';
+                    $term_name        = isset($decoded['name']) ? sanitize_text_field($decoded['name']) : '';
+                    $term_parent      = isset($decoded['parent']) ? (int) $decoded['parent'] : 0;
+                    $term_parent_slug = isset($decoded['parent_slug']) ? sanitize_title($decoded['parent_slug']) : '';
+                    $term_description = isset($decoded['description']) ? wp_kses_post($decoded['description']) : '';
+                    $term_meta        = isset($decoded['meta']) && is_array($decoded['meta']) ? $decoded['meta'] : [];
+                    $entity_uid       = isset($decoded['vf_object_uid']) ? sanitize_text_field($decoded['vf_object_uid']) : '';
+                    $content_hash     = md5(serialize([
+                        $term_name,
+                        $term_description,
+                        $term_meta,
+                        $term_parent,
+                        $term_parent_slug,
+                    ]));
+                    $media_refs       = ['meta' => [], 'content' => []];
+                    $term_items++;
+
+                    if (class_exists('DBVC_Sync_Taxonomies')) {
+                        $entity_uid = DBVC_Sync_Taxonomies::ensure_term_uid($term_id, $term_taxonomy);
+                    }
+
+                    $entity_payload = [
+                        'entity_type'   => 'term',
+                        'vf_object_uid' => $entity_uid,
+                        'term_id'       => $term_id,
+                        'taxonomy'      => $term_taxonomy,
+                        'slug'          => $term_slug,
+                        'name'          => $term_name,
+                        'description'   => $term_description,
+                        'parent'        => $term_parent,
+                        'parent_slug'   => $term_parent_slug,
+                        'meta'          => $term_meta,
+                        'path'          => $relative,
+                    ];
+
+                    // Reuse normalized fields so downstream code can treat terms like posts.
+                    $post_title  = $term_name !== '' ? $term_name : ($term_taxonomy . '/' . $term_slug);
+                    $post_name   = $term_slug;
+                    $post_type   = $term_taxonomy ? 'term:' . $term_taxonomy : 'term';
+                    $post_status = 'term';
                 }
 
-                $entity_uid = class_exists('DBVC_Sync_Posts') ? DBVC_Sync_Posts::ensure_post_uid($post_id) : '';
-
-                $items[] = [
+                $entry = [
                     'path'             => $relative,
                     'hash'             => hash('sha256', $raw),
                     'size'             => $file->getSize(),
@@ -163,6 +241,25 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     'content_hash'     => $content_hash,
                     'media_refs'       => $media_refs,
                 ];
+
+                if ($item_type === 'term') {
+                    $entry['term_id']          = $term_id;
+                    $entry['term_taxonomy']    = $term_taxonomy;
+                    $entry['term_slug']        = $term_slug;
+                    $entry['term_name']        = $term_name;
+                    $entry['term_parent']      = $term_parent;
+                    $entry['term_parent_slug'] = $term_parent_slug;
+                }
+
+                $items[] = $entry;
+
+                if ($entities_handle && $entity_payload) {
+                    $encoded = wp_json_encode($entity_payload, JSON_UNESCAPED_SLASHES);
+                    if ($encoded !== false) {
+                        fwrite($entities_handle, $encoded . "\n");
+                        $entities_written++;
+                    }
+                }
             }
 
             $media_bundle_meta = null;
@@ -200,6 +297,8 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     'files'             => count($items),
                     'missing_import_hash' => $missing_hashes,
                     'media_items'       => count($media_index),
+                    'terms'             => $term_items,
+                    'entities'          => $entities_written,
                 ],
                 'bundle'      => [
                     'media_enabled'  => class_exists('DBVC_Media_Sync') ? DBVC_Media_Sync::is_bundle_enabled() : false,
@@ -209,6 +308,15 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 'media_index'  => array_values($media_index),
                 'media_bundle' => $media_bundle_meta,
             ];
+
+            if ($entities_handle) {
+                fclose($entities_handle);
+                if ($entities_written === 0) {
+                    @unlink($entities_path);
+                } else {
+                    $manifest['entities_file'] = basename($entities_path);
+                }
+            }
 
             $resolver_snapshot = self::export_resolver_decisions($backup_name);
             if (! empty($resolver_snapshot['proposal']) || ! empty($resolver_snapshot['global'])) {
