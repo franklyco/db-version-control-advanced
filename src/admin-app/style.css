@@ -502,6 +502,53 @@
 	overflow-y: auto;
 }
 
+.dbvc-duplicates-modal__title {
+	display: inline-block;
+}
+
+.dbvc-duplicates-modal__lede {
+	display: block;
+	font-size: 13px;
+	font-weight: 400;
+	color: #50575e;
+	margin-top: 4px;
+}
+
+.dbvc-duplicates-modal__bulk {
+	display: flex;
+	flex-direction: row;
+	gap: 16px;
+	align-items: flex-end;
+	margin-bottom: 16px;
+	flex-wrap: wrap;
+}
+
+.dbvc-duplicates-modal__bulk-select {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-weight: 600;
+}
+
+.dbvc-duplicates-modal__bulk-select select {
+	min-width: 200px;
+}
+
+.dbvc-duplicates-modal__bulk-inline {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.dbvc-duplicates-modal__bulk-inline input {
+	min-width: 160px;
+}
+
+.dbvc-duplicates-modal__bulk-inline .components-button.is-primary {
+	white-space: nowrap;
+}
+
 .dbvc-duplicate-group {
 	margin-bottom: 24px;
 	padding-bottom: 16px;

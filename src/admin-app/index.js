@@ -1046,42 +1046,41 @@
                 label: "ID"
               } ];
               return e ? (0, s.jsxs)(t.Modal, {
-                title: `Duplicate entities (${null !== (b = i.count) && void 0 !== b ? b : 0})`,
+                title: (0, s.jsxs)("span", {
+                  className: "dbvc-duplicates-modal__title",
+                  children: [ `Duplicate entities (${null !== (b = i.count) && void 0 !== b ? b : 0})`, (0, s.jsx)("span", {
+                    className: "dbvc-duplicates-modal__lede",
+                    children: "Choose the filename format to keep and confirm the cleanup to delete the rest of the duplicate JSON files."
+                  }) ]
+                }),
                 onRequestClose: n,
                 className: "dbvc-duplicates-modal",
                 children: [ (0, s.jsxs)("div", {
                   className: "dbvc-duplicates-modal__bulk",
-                  children: [ (0, s.jsxs)("p", {
-                    className: "description",
-                    children: [ "Choose the filename format to keep, then type ", (0, s.jsx)("strong", {
-                      children: d
-                    }), " to confirm bulk cleanup. We'll delete other duplicate JSON files for you." ]
-                  }), (0, s.jsx)("div", {
-                    className: "dbvc-duplicates-modal__bulk-modes",
-                    children: w.map(e => (0, s.jsxs)("label", {
-                      className: "dbvc-duplicates-modal__bulk-mode",
-                      children: [ (0, s.jsx)("input", {
-                        type: "radio",
-                        name: "dbvc-duplicate-mode",
+                  children: [ (0, s.jsxs)("label", {
+                    className: "dbvc-duplicates-modal__bulk-select",
+                    children: [ "Keep filenames as:", (0, s.jsx)("select", {
+                      value: r,
+                      onChange: e => c && c(e.target.value),
+                      children: w.map(e => (0, s.jsx)("option", {
                         value: e.value,
-                        checked: r === e.value,
-                        onChange: t => c && c(t.target.value)
-                      }), " ", e.label ]
-                    }, e.value))
-                  }), (0, s.jsxs)("label", {
-                    className: "dbvc-duplicates-modal__bulk-confirm",
-                    children: [ "Confirmation", (0, s.jsx)("input", {
+                        children: e.label
+                      }, e.value))
+                    }) ]
+                  }), (0, s.jsxs)("div", {
+                    className: "dbvc-duplicates-modal__bulk-inline",
+                    children: [ (0, s.jsx)("input", {
                       type: "text",
                       value: u,
                       placeholder: `Type ${d}`,
                       onChange: e => p && p(e.target.value)
+                    }), (0, s.jsx)(t.Button, {
+                      variant: "primary",
+                      onClick: h,
+                      disabled: v,
+                      isBusy: m,
+                      children: m ? "Cleaning…" : "Bulk clean duplicates"
                     }) ]
-                  }), (0, s.jsx)(t.Button, {
-                    variant: "primary",
-                    onClick: h,
-                    disabled: v,
-                    isBusy: m,
-                    children: m ? "Cleaning…" : "Bulk clean duplicates"
                   }) ]
                 }), 0 === (null !== (f = i.items) && void 0 !== f ? f : []).length ? (0, 
                 s.jsx)("p", {
@@ -1138,7 +1137,7 @@
                         })
                       }), (0, s.jsx)("tbody", {
                         children: r.map((n, i) => {
-                          const r = `${e.vf_object_uid}::${n.path || i}`, d = n.post_modified ? Date.parse(n.post_modified.replace(" ", "T")) : 0, u = c && Number.isFinite(d) && d === c;
+                          const r = `${e.vf_object_uid}::${i}::${n.path || "no-path"}`, d = n.post_modified ? Date.parse(n.post_modified.replace(" ", "T")) : 0, u = c && Number.isFinite(d) && d === c;
                           return (0, s.jsxs)("tr", {
                             className: u ? "is-latest" : "",
                             children: [ (0, s.jsx)("td", {
@@ -2330,7 +2329,9 @@
               });
             }, $ = () => {
               const t = document.getElementById("dbvc-admin-app-root");
-              t && (0, e.render)((0, s.jsx)(R, {}), t);
+              if (!t) return;
+              const n = e.createRoot ? e.createRoot(t) : null;
+              n ? n.render((0, s.jsx)(R, {})) : (0, e.render)((0, s.jsx)(R, {}), t);
             };
             "loading" === document.readyState ? document.addEventListener("DOMContentLoaded", $) : $();
             const I = ({section: t, decisions: n, onDecisionChange: i, savingPaths: l}) => {
