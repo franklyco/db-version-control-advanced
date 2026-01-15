@@ -140,6 +140,10 @@ class DBVC_Sync_Taxonomies
 				$parent = get_term($parent_id, $taxonomy);
 				if ($parent && ! is_wp_error($parent)) {
 					$data['parent_slug'] = $parent->slug;
+					$parent_uid = self::ensure_term_uid($parent_id, $taxonomy);
+					if ($parent_uid !== '') {
+						$data['parent_uid'] = $parent_uid;
+					}
 				}
 			}
 		}

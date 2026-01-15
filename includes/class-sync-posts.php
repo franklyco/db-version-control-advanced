@@ -30,6 +30,7 @@ class DBVC_Sync_Posts
     private const IMPORT_RESULT_APPLIED = 'applied';
     private const IMPORT_RESULT_SKIPPED = 'skipped';
     private const PROPOSAL_NEW_ENTITIES_OPTION = 'dbvc_proposal_new_entities';
+    private static $pending_term_parent_links = [];
 
     /* @WIP Relationship remapping
     // protected static $relationship_field_keys = []; // You can populate this before calling import
@@ -135,6 +136,10 @@ class DBVC_Sync_Posts
         $original_id   = isset($context['post_id']) ? (int) $context['post_id'] : 0;
         $slug_source   = isset($context['post_name']) ? sanitize_title($context['post_name']) : '';
 
+        $references   = isset($context['entity_refs']) && is_array($context['entity_refs'])
+            ? array_values($context['entity_refs'])
+            : [];
+
         $match_source = 'none';
         $post_id      = null;
 
@@ -159,6 +164,43 @@ class DBVC_Sync_Posts
             if ($found) {
                 $post_id = $found;
                 $match_source = 'slug';
+            }
+        }
+
+        if (! $post_id && ! empty($references)) {
+            foreach ($references as $reference) {
+                $type  = isset($reference['type']) ? (string) $reference['type'] : '';
+                $value = isset($reference['value']) ? (string) $reference['value'] : '';
+                if ($type === '' || $value === '') {
+                    continue;
+                }
+                if ($type === 'post_slug') {
+                    [$ref_post_type, $ref_slug] = self::parse_entity_reference_value($value);
+                    $ref_slug = sanitize_title($ref_slug);
+                    if ($ref_slug === '') {
+                        continue;
+                    }
+                    $candidate = self::find_post_id_by_slug($ref_slug, $ref_post_type ?: $post_type);
+                    if ($candidate) {
+                        $post_id = $candidate;
+                        $match_source = 'slug';
+                        break;
+                    }
+                } elseif ($type === 'post_id') {
+                    [$ref_post_type, $ref_id_raw] = self::parse_entity_reference_value($value);
+                    $ref_id = (int) $ref_id_raw;
+                    if ($ref_id <= 0) {
+                        continue;
+                    }
+                    $candidate = get_post($ref_id);
+                    if ($candidate instanceof \WP_Post) {
+                        if ($ref_post_type === '' || $candidate->post_type === $ref_post_type || $post_type === '' || $candidate->post_type === $post_type) {
+                            $post_id = (int) $candidate->ID;
+                            $match_source = 'id';
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -1040,6 +1082,7 @@ HT;
             }
         }
 
+        self::$pending_term_parent_links = [];
         $applied_entities = 0;
         foreach ($targets as $entry) {
             $path = trailingslashit($backup_path) . $entry['path'];
@@ -1073,6 +1116,7 @@ HT;
                 $vf_object_uid = isset($entry['vf_object_uid'])
                     ? (string) $entry['vf_object_uid']
                     : (string) ($entry['post_id'] ?? '');
+                $entity_refs = self::extract_entity_references($entry, $decoded);
             $entity_decisions = null;
             if ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])) {
                 $entity_decisions = $proposal_decisions[$vf_object_uid];
@@ -1092,6 +1136,7 @@ HT;
                 'post_id'       => $entry['post_id'] ?? 0,
                 'post_type'     => $entry['post_type'] ?? '',
                 'post_name'     => $entry['post_name'] ?? '',
+                'entity_refs'   => $entity_refs,
             ]);
 
             $is_new_entity = empty($identity['post_id']);
@@ -1195,6 +1240,7 @@ HT;
                     $vf_object_uid = (string) $term_payload['vf_object_uid'];
                 }
 
+                $entity_refs = self::extract_entity_references($entry, $term_payload);
                 $entity_decisions = null;
                 if ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])) {
                     $entity_decisions = $proposal_decisions[$vf_object_uid];
@@ -1215,6 +1261,7 @@ HT;
                     'term_id'       => $term_payload['term_id'] ?? 0,
                     'taxonomy'      => $term_payload['taxonomy'] ?? '',
                     'slug'          => $term_payload['slug'] ?? '',
+                    'entity_refs'   => $entity_refs,
                 ]);
                 $existing_term_id = isset($identity['term_id']) ? (int) $identity['term_id'] : 0;
                 $is_new_term = ! $existing_term_id;
@@ -1254,7 +1301,8 @@ HT;
                     $term_payload,
                     $normalized_decisions,
                     $allow_term_creation,
-                    $vf_object_uid
+                    $vf_object_uid,
+                    $entity_refs
                 );
 
                 if (is_wp_error($term_import)) {
@@ -1322,6 +1370,8 @@ HT;
                 }
             }
         }
+
+        self::process_pending_term_parent_links();
 
         if (! empty($errors)) {
             DBVC_Sync_Logger::log('Restore completed with warnings', ['errors' => $errors]);
@@ -1699,6 +1749,52 @@ HT;
         return is_array($decoded) ? $decoded : null;
     }
 
+    private static function extract_entity_references(array $entry, ?array $payload = null): array
+    {
+        $refs = [];
+        $sources = [$entry];
+        if (is_array($payload)) {
+            $sources[] = $payload;
+        }
+
+        foreach ($sources as $source) {
+            if (! is_array($source) || empty($source['entity_refs']) || ! is_array($source['entity_refs'])) {
+                continue;
+            }
+            foreach ($source['entity_refs'] as $reference) {
+                if (! is_array($reference)) {
+                    continue;
+                }
+                $type  = isset($reference['type']) ? sanitize_key($reference['type']) : '';
+                $value = isset($reference['value']) ? (string) $reference['value'] : '';
+                $path  = isset($reference['path']) ? (string) $reference['path'] : '';
+                if ($type === '' || $value === '' || $path === '') {
+                    continue;
+                }
+                $refs[$path] = [
+                    'type'  => $type,
+                    'value' => $value,
+                    'path'  => $path,
+                ];
+            }
+        }
+
+        return array_values($refs);
+    }
+
+    private static function parse_entity_reference_value(string $value): array
+    {
+        $value = (string) $value;
+        if ($value === '') {
+            return ['', ''];
+        }
+        $parts = explode('/', $value, 2);
+        if (count($parts) === 2) {
+            return [trim($parts[0]), trim($parts[1])];
+        }
+        return ['', trim($parts[0])];
+    }
+
     /**
      * Attempt to locate a local term for an imported entity.
      *
@@ -1711,6 +1807,10 @@ HT;
         $taxonomy      = isset($context['taxonomy']) ? sanitize_key($context['taxonomy']) : '';
         $term_id       = isset($context['term_id']) ? (int) $context['term_id'] : 0;
         $slug          = isset($context['slug']) ? sanitize_title($context['slug']) : '';
+
+        $references   = isset($context['entity_refs']) && is_array($context['entity_refs'])
+            ? array_values($context['entity_refs'])
+            : [];
 
         $match_source = 'none';
         $local_id     = null;
@@ -1739,6 +1839,43 @@ HT;
             }
         }
 
+        if (! $local_id && ! empty($references)) {
+            foreach ($references as $reference) {
+                $type  = isset($reference['type']) ? (string) $reference['type'] : '';
+                $value = isset($reference['value']) ? (string) $reference['value'] : '';
+                if ($type === '' || $value === '') {
+                    continue;
+                }
+                if ($type === 'taxonomy_slug') {
+                    [$ref_taxonomy, $ref_slug] = self::parse_entity_reference_value($value);
+                    $ref_taxonomy = sanitize_key($ref_taxonomy ?: $taxonomy);
+                    $ref_slug     = sanitize_title($ref_slug);
+                    if ($ref_taxonomy === '' || $ref_slug === '' || ! taxonomy_exists($ref_taxonomy)) {
+                        continue;
+                    }
+                    $term = get_term_by('slug', $ref_slug, $ref_taxonomy);
+                    if ($term && ! is_wp_error($term)) {
+                        $local_id = (int) $term->term_id;
+                        $match_source = 'slug';
+                        break;
+                    }
+                } elseif ($type === 'taxonomy_id') {
+                    [$ref_taxonomy, $ref_id_raw] = self::parse_entity_reference_value($value);
+                    $ref_taxonomy = sanitize_key($ref_taxonomy ?: $taxonomy);
+                    $ref_id = (int) $ref_id_raw;
+                    if ($ref_taxonomy === '' || $ref_id <= 0 || ! taxonomy_exists($ref_taxonomy)) {
+                        continue;
+                    }
+                    $term = get_term($ref_id, $ref_taxonomy);
+                    if ($term && ! is_wp_error($term)) {
+                        $local_id = (int) $term->term_id;
+                        $match_source = 'id';
+                        break;
+                    }
+                }
+            }
+        }
+
         return [
             'term_id'      => $local_id ?: null,
             'match_source' => $match_source,
@@ -1755,7 +1892,7 @@ HT;
      * @param string   $vf_object_uid
      * @return array|\WP_Error
      */
-    private static function apply_term_entity(?int $existing_term_id, array $payload, ?array $decisions, bool $allow_create, string $vf_object_uid)
+    private static function apply_term_entity(?int $existing_term_id, array $payload, ?array $decisions, bool $allow_create, string $vf_object_uid, ?array $entity_refs = null)
     {
         $taxonomy = isset($payload['taxonomy']) ? sanitize_key($payload['taxonomy']) : '';
         if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
@@ -1772,7 +1909,6 @@ HT;
         }
 
         $description = isset($payload['description']) ? wp_kses_post($payload['description']) : '';
-        $parent_id   = self::resolve_term_parent_id($taxonomy, $payload);
 
         $term_id = $existing_term_id ? (int) $existing_term_id : 0;
         $created = false;
@@ -1787,10 +1923,6 @@ HT;
             if ($decisions === null || self::decision_allows_path($decisions, 'description')) {
                 $args['description'] = $description;
             }
-            if ($parent_id && ($decisions === null || self::decision_allows_path($decisions, 'parent'))) {
-                $args['parent'] = $parent_id;
-            }
-
             $insert = wp_insert_term($name !== '' ? $name : $slug, $taxonomy, $args);
             if (is_wp_error($insert)) {
                 return $insert;
@@ -1809,10 +1941,6 @@ HT;
             if ($decisions === null || self::decision_allows_path($decisions, 'description')) {
                 $args['description'] = $description;
             }
-            if ($decisions === null || self::decision_allows_path($decisions, 'parent')) {
-                $args['parent'] = $parent_id;
-            }
-
             if (! empty($args)) {
                 $updated = wp_update_term($term_id, $taxonomy, $args);
                 if (is_wp_error($updated)) {
@@ -1821,9 +1949,19 @@ HT;
             }
         }
 
+        $allow_parent_update = ($decisions === null || self::decision_allows_path($decisions, 'parent'));
+
         if ($vf_object_uid !== '') {
             self::sync_term_registry($vf_object_uid, $term_id, $taxonomy);
         }
+
+        self::assign_term_parent(
+            $term_id,
+            $taxonomy,
+            $payload,
+            $entity_refs,
+            $allow_parent_update
+        );
 
         if (isset($payload['meta']) && is_array($payload['meta'])) {
             self::apply_term_meta($term_id, $payload['meta'], $decisions);
@@ -1869,8 +2007,19 @@ HT;
      * @param array  $payload
      * @return int
      */
-    private static function resolve_term_parent_id(string $taxonomy, array $payload): int
+    private static function resolve_term_parent_id(string $taxonomy, array $payload, ?array $entity_refs = null): int
     {
+        $parent_uid = isset($payload['parent_uid']) ? trim((string) $payload['parent_uid']) : '';
+        if ($parent_uid !== '' && class_exists('DBVC_Database')) {
+            $record = DBVC_Database::get_entity_by_uid($parent_uid);
+            if ($record && ! empty($record->object_id) && is_string($record->object_type) && strpos($record->object_type, 'term:') === 0) {
+                $term = get_term((int) $record->object_id, $taxonomy);
+                if ($term && ! is_wp_error($term)) {
+                    return (int) $term->term_id;
+                }
+            }
+        }
+
         $parent_slug = isset($payload['parent_slug']) ? sanitize_title($payload['parent_slug']) : '';
         $parent_id   = isset($payload['parent']) ? (int) $payload['parent'] : 0;
 
@@ -1889,6 +2038,72 @@ HT;
         }
 
         return 0;
+    }
+
+    private static function assign_term_parent(int $term_id, string $taxonomy, array $payload, ?array $entity_refs, bool $allow_update): void
+    {
+        if (! $term_id || ! $allow_update || ! taxonomy_exists($taxonomy)) {
+            return;
+        }
+
+        $parent_id = self::resolve_term_parent_id($taxonomy, $payload, $entity_refs);
+        $has_parent_request = false;
+        if (! empty($payload['parent_uid']) || ! empty($payload['parent_slug']) || ! empty($payload['parent'])) {
+            $has_parent_request = true;
+        }
+
+        if ($parent_id > 0 || ! $has_parent_request) {
+            $desired_parent = $parent_id > 0 ? $parent_id : 0;
+            wp_update_term($term_id, $taxonomy, ['parent' => $desired_parent]);
+            if (isset(self::$pending_term_parent_links[$term_id])) {
+                unset(self::$pending_term_parent_links[$term_id]);
+            }
+            return;
+        }
+
+        $parent_uid  = isset($payload['parent_uid']) ? trim((string) $payload['parent_uid']) : '';
+        $parent_slug = isset($payload['parent_slug']) ? sanitize_title($payload['parent_slug']) : '';
+        $parent_num  = isset($payload['parent']) ? (int) $payload['parent'] : 0;
+
+        if ($parent_uid === '' && $parent_slug === '' && $parent_num <= 0) {
+            return;
+        }
+
+        self::$pending_term_parent_links[$term_id] = [
+            'child_id'    => $term_id,
+            'taxonomy'    => $taxonomy,
+            'parent_uid'  => $parent_uid,
+            'parent_slug' => $parent_slug,
+            'parent'      => $parent_num,
+            'entity_refs' => $entity_refs,
+        ];
+    }
+
+    private static function process_pending_term_parent_links(): void
+    {
+        if (empty(self::$pending_term_parent_links)) {
+            return;
+        }
+
+        foreach (self::$pending_term_parent_links as $link) {
+            $child_id = isset($link['child_id']) ? (int) $link['child_id'] : 0;
+            $taxonomy = isset($link['taxonomy']) ? sanitize_key($link['taxonomy']) : '';
+            if (! $child_id || $taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+                continue;
+            }
+
+            $payload = [
+                'parent_uid'  => $link['parent_uid'] ?? '',
+                'parent_slug' => $link['parent_slug'] ?? '',
+                'parent'      => $link['parent'] ?? 0,
+            ];
+            $parent_id = self::resolve_term_parent_id($taxonomy, $payload, $link['entity_refs'] ?? null);
+            if ($parent_id > 0) {
+                wp_update_term($child_id, $taxonomy, ['parent' => $parent_id]);
+            }
+        }
+
+        self::$pending_term_parent_links = [];
     }
 
     /**

@@ -186,6 +186,10 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $term_name        = isset($decoded['name']) ? sanitize_text_field($decoded['name']) : '';
                     $term_parent      = isset($decoded['parent']) ? (int) $decoded['parent'] : 0;
                     $term_parent_slug = isset($decoded['parent_slug']) ? sanitize_title($decoded['parent_slug']) : '';
+                    $term_parent_uid  = isset($decoded['parent_uid']) ? sanitize_text_field($decoded['parent_uid']) : '';
+                    if ($term_parent_uid === '' && $term_parent > 0) {
+                        $term_parent_uid = (string) get_term_meta($term_parent, 'vf_object_uid', true);
+                    }
                     $term_description = isset($decoded['description']) ? wp_kses_post($decoded['description']) : '';
                     $term_meta        = isset($decoded['meta']) && is_array($decoded['meta']) ? $decoded['meta'] : [];
                     $entity_uid       = isset($decoded['vf_object_uid']) ? sanitize_text_field($decoded['vf_object_uid']) : '';
@@ -224,6 +228,21 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $post_status = 'term';
                 }
 
+                $reference_context = [
+                    'vf_object_uid' => $entity_uid,
+                    'post_type'     => $post_type,
+                    'post_name'     => $post_name,
+                    'post_id'       => $post_id,
+                ];
+                if ($item_type === 'term') {
+                    $reference_context['term_taxonomy'] = $term_taxonomy;
+                    $reference_context['term_slug']     = $term_slug;
+                    $reference_context['term_id']       = $term_id;
+                }
+                $entity_refs = in_array($item_type, ['post', 'term'], true)
+                    ? self::build_entity_reference_index($item_type, $reference_context)
+                    : [];
+
                 $entry = [
                     'path'             => $relative,
                     'hash'             => hash('sha256', $raw),
@@ -249,6 +268,19 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $entry['term_name']        = $term_name;
                     $entry['term_parent']      = $term_parent;
                     $entry['term_parent_slug'] = $term_parent_slug;
+                    if ($term_parent_uid !== '') {
+                        $entry['term_parent_uid'] = $term_parent_uid;
+                        if (is_array($entity_payload)) {
+                            $entity_payload['parent_uid'] = $term_parent_uid;
+                        }
+                    }
+                }
+
+                if (! empty($entity_refs)) {
+                    $entry['entity_refs'] = $entity_refs;
+                    if (is_array($entity_payload)) {
+                        $entity_payload['entity_refs'] = $entity_refs;
+                    }
                 }
 
                 $items[] = $entry;
@@ -359,12 +391,12 @@ if (! class_exists('DBVC_Backup_Manager')) {
          * @param array $source_lookup
          * @return array
          */
-        private static function collect_post_media_refs(array $decoded, $post_id, array &$media_index, array &$source_lookup)
-        {
-            $refs = [
-                'meta'    => [],
-                'content' => [],
-            ];
+    private static function collect_post_media_refs(array $decoded, $post_id, array &$media_index, array &$source_lookup)
+    {
+        $refs = [
+            'meta'    => [],
+            'content' => [],
+        ];
 
             // Meta-based attachment references.
             if (! empty($decoded['meta']) && is_array($decoded['meta'])) {
@@ -426,6 +458,74 @@ if (! class_exists('DBVC_Backup_Manager')) {
             }
 
             return $refs;
+        }
+
+        private static function build_entity_reference_index(string $item_type, array $context): array
+        {
+            $refs  = [];
+            $group = $item_type === 'term' ? 'term' : 'post';
+
+            $append = static function (string $type, string $value, string $path) use (&$refs) {
+                if ($value === '' || $path === '') {
+                    return;
+                }
+                foreach ($refs as $existing) {
+                    if ($existing['path'] === $path) {
+                        return;
+                    }
+                }
+                $refs[] = [
+                    'type'  => $type,
+                    'value' => $value,
+                    'path'  => $path,
+                ];
+            };
+
+            $uid = isset($context['vf_object_uid']) ? (string) $context['vf_object_uid'] : '';
+            if ($uid !== '') {
+                $append('uid', $uid, self::format_entity_reference_path($group, 'uid', $uid));
+            }
+
+            if ($group === 'term') {
+                $taxonomy = isset($context['term_taxonomy']) ? sanitize_key($context['term_taxonomy']) : '';
+                $slug     = isset($context['term_slug']) ? sanitize_title($context['term_slug']) : '';
+                $term_id  = isset($context['term_id']) ? (int) $context['term_id'] : 0;
+
+                if ($taxonomy !== '' && $slug !== '') {
+                    $append('taxonomy_slug', $taxonomy . '/' . $slug, self::format_entity_reference_path('term', $taxonomy, $slug));
+                }
+                if ($taxonomy !== '' && $term_id > 0) {
+                    $append('taxonomy_id', $taxonomy . '/' . $term_id, self::format_entity_reference_path('term', $taxonomy, (string) $term_id));
+                }
+            } else {
+                $post_type = isset($context['post_type']) ? sanitize_key($context['post_type']) : '';
+                $slug      = isset($context['post_name']) ? sanitize_title($context['post_name']) : '';
+                $post_id   = isset($context['post_id']) ? (int) $context['post_id'] : 0;
+
+                if ($post_type !== '' && $slug !== '') {
+                    $append('post_slug', $post_type . '/' . $slug, self::format_entity_reference_path('post', $post_type, $slug));
+                }
+                if ($post_type !== '' && $post_id > 0) {
+                    $append('post_id', $post_type . '/' . $post_id, self::format_entity_reference_path('post', $post_type, (string) $post_id));
+                }
+            }
+
+            return $refs;
+        }
+
+        private static function format_entity_reference_path(string $entity_group, string $first_segment, ?string $second_segment = null): string
+        {
+            $group = trim($entity_group ?: 'post');
+            $segments = ['entities', $group, trim($first_segment)];
+            if ($second_segment !== null && $second_segment !== '') {
+                $segments[] = trim((string) $second_segment);
+            }
+
+            $segments = array_map(static function ($segment) {
+                return rawurlencode((string) $segment);
+            }, $segments);
+
+            return implode('/', $segments);
         }
 
         /**

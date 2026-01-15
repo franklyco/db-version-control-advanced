@@ -102,7 +102,17 @@
                 return t ? `Term (${t})` : "Term";
               }
               return e?.post_type || "Post";
-            }, x = e => "term" === f(e) ? "Term" : e?.post_status || "—", j = e => "term" === f(e) ? e?.term_slug || e?.slug || e?.post_name || "—" : e?.post_name || "—", _ = e => "term" === f(e) ? e?.name || e?.term_name || e?.post_title || e?.vf_object_uid || "Entity detail" : e?.post_title || e?.vf_object_uid || "Entity detail", y = [ {
+            }, x = e => "term" === f(e) ? "Term" : e?.post_status || "—", j = e => "term" === f(e) ? e?.term_slug || e?.slug || e?.post_name || "—" : e?.post_name || "—", _ = e => {
+              if ("term" === f(e)) {
+                const t = e?.name || e?.term_name || e?.post_title || "",
+                  s = e?.term_taxonomy || e?.taxonomy || "",
+                  n = e?.term_slug || e?.slug || e?.post_name || "";
+                if (t) return t;
+                if (s && n) return `${s}/${n}`;
+                if (n) return n;
+              }
+              return e?.post_title || e?.vf_object_uid || "Entity detail";
+            }, y = [ {
               id: "title",
               label: "Title",
               defaultVisible: !0,
@@ -408,10 +418,15 @@
               if (!t.length) return (0, s.jsx)("p", {
                 children: "No entities found for this proposal."
               });
-              const d = a && a.length ? a : y, u = t.length > 200, p = (0, e.useRef)(null), [h, m] = (0, 
-              e.useState)(0), [v, f] = (0, e.useState)(0);
+              const d = a && a.length ? a : y, isVirtualized = t.length > 200, p = (0, e.useRef)(null), [h, m] = (0, 
+              e.useState)(0), [v, f] = (0, e.useState)(0), H = 52, [K, J] = (0, e.useState)(H), q = (0, 
+              e.useRef)(H), W = (0, e.useCallback)(t => {
+                if (!isVirtualized || !t) return;
+                const s = t.getBoundingClientRect().height;
+                s && Math.abs(s - q.current) > 1 && (q.current = s, J(s));
+              }, [ isVirtualized ]);
               (0, e.useEffect)(() => {
-                if (!u) return m(0), void f(0);
+                if (!isVirtualized) return m(0), void f(0);
                 const e = p.current;
                 if (!e) return;
                 const t = () => {
@@ -423,15 +438,15 @@
                 () => {
                   s ? s.disconnect() : window.removeEventListener("resize", t);
                 };
-              }, [ u ]);
-              const g = t.length, x = 52 * g, j = u && h ? Math.ceil(h / 52) + 5 : g, _ = u ? Math.max(0, Math.floor(v / 52) - 5) : 0, w = u ? Math.min(g, _ + j) : g, C = u ? t.slice(_, w) : t, N = u ? 52 * _ : 0, k = u ? Math.max(0, x - N - 52 * C.length) : 0, S = u ? e => {
+              }, [ isVirtualized ]);
+              const G = Math.max(1, K || H), g = t.length, x = G * g, j = isVirtualized && h ? Math.ceil(h / G) + 5 : g, _ = isVirtualized ? Math.max(0, Math.floor(v / G) - 5) : 0, w = isVirtualized ? Math.min(g, _ + j) : g, C = isVirtualized ? t.slice(_, w) : t, N = isVirtualized ? G * _ : 0, k = isVirtualized ? Math.max(0, x - N - G * C.length) : 0, S = isVirtualized ? e => {
                 f(e.currentTarget.scrollTop);
               } : void 0, D = "function" == typeof r, R = o instanceof Set ? o : new Set(o), $ = C.map(e => e.vf_object_uid), I = D && C.length > 0 && C.every(e => R.has(e.vf_object_uid)), A = D && !I && C.some(e => R.has(e.vf_object_uid)), E = (0, 
               e.useRef)(null);
               return (0, e.useEffect)(() => {
                 D && E.current && (E.current.indeterminate = A);
               }, [ D, A ]), (0, s.jsx)("div", {
-                className: "dbvc-entity-table" + (u ? " is-virtualized" : ""),
+                className: "dbvc-entity-table" + (isVirtualized ? " is-virtualized" : ""),
                 ref: p,
                 onScroll: S,
                 children: (0, s.jsxs)("table", {
@@ -451,7 +466,7 @@
                       }, e.id)) ]
                     })
                   }), (0, s.jsxs)("tbody", {
-                    children: [ u && N > 0 && (0, s.jsx)("tr", {
+                    children: [ isVirtualized && N > 0 && (0, s.jsx)("tr", {
                       className: "dbvc-entity-spacer",
                       "aria-hidden": "true",
                       style: {
@@ -460,29 +475,30 @@
                       children: (0, s.jsx)("td", {
                         colSpan: d.length + (D ? 1 : 0)
                       })
-                    }), C.map(e => {
-                      var t, n, a, o, c, u, p, h;
-                      const m = e.vf_object_uid === i, v = D && R.has(e.vf_object_uid), f = null !== (t = e.resolver?.summary) && void 0 !== t ? t : {}, g = null !== (n = e.diff_state) && void 0 !== n ? n : {}, x = e.media_needs_review ? "needs_review" : null !== (a = e.resolver?.status) && void 0 !== a ? a : "resolved", j = e.overall_status || (g.needs_review ? "needs_review" : "resolved"), _ = "missing_local_hash" === g.reason, y = null !== (o = e.decision_summary) && void 0 !== o ? o : {}, w = null !== (c = y.accepted) && void 0 !== c ? c : 0, C = null !== (u = y.kept) && void 0 !== u ? u : 0, N = null !== (p = y.accepted_new) && void 0 !== p ? p : 0, k = (null !== (h = y.total) && void 0 !== h ? h : 0) > 0, S = b(e), $ = e.new_entity_decision || "", I = e.identity_match || "", A = [ `resolver-${j}`, m ? "is-active" : "", v ? "is-selected" : "" ].filter(Boolean).join(" "), E = t => {
-                        t.preventDefault(), t.stopPropagation(), l(e.vf_object_uid);
-                      }, M = {
-                        summary: f,
-                        diffState: g,
-                        mediaStatus: x,
-                        hashMissing: _,
-                        decisionSummary: y,
-                        entityHasSelections: k,
-                        entityAccepted: w,
-                        entityNewAccepted: N,
-                        entityKept: C,
-                        isNewEntity: S,
-                        newDecision: $,
-                        identityMatch: I
+                    }), C.map((t, n) => {
+                      var a, o, c, u, p, h, m, O;
+                      const v = t.vf_object_uid === i, f = D && R.has(t.vf_object_uid), g = null !== (a = t.resolver?.summary) && void 0 !== a ? a : {}, x = null !== (o = t.diff_state) && void 0 !== o ? o : {}, j = t.media_needs_review ? "needs_review" : null !== (c = t.resolver?.status) && void 0 !== c ? c : "resolved", _ = t.overall_status || (x.needs_review ? "needs_review" : "resolved"), y = "missing_local_hash" === x.reason, w = null !== (u = t.decision_summary) && void 0 !== u ? u : {}, C = null !== (p = w.accepted) && void 0 !== p ? p : 0, N = null !== (h = w.kept) && void 0 !== h ? h : 0, k = null !== (m = w.accepted_new) && void 0 !== m ? m : 0, S = (null !== (O = w.total) && void 0 !== O ? O : 0) > 0, $ = b(t), I = t.new_entity_decision || "", A = t.identity_match || "", M = [ `resolver-${_}`, v ? "is-active" : "", f ? "is-selected" : "" ].filter(Boolean).join(" "), L = e => {
+                        e.preventDefault(), e.stopPropagation(), l(t.vf_object_uid);
+                      }, T = {
+                        summary: g,
+                        diffState: x,
+                        mediaStatus: j,
+                        hashMissing: y,
+                        decisionSummary: w,
+                        entityHasSelections: S,
+                        entityAccepted: C,
+                        entityNewAccepted: k,
+                        entityKept: N,
+                        isNewEntity: $,
+                        newDecision: I,
+                        identityMatch: A
                       };
                       return (0, s.jsxs)("tr", {
-                        className: A,
-                        onClick: E,
+                        className: M,
+                        ref: isVirtualized && 0 === n ? W : void 0,
+                        onClick: L,
                         onKeyDown: e => {
-                          "Enter" !== e.key && " " !== e.key || E(e);
+                          "Enter" !== e.key && " " !== e.key || L(e);
                         },
                         style: {
                           cursor: "pointer"
@@ -493,20 +509,20 @@
                           className: "dbvc-entity-select",
                           children: (0, s.jsx)("input", {
                             type: "checkbox",
-                            checked: v,
-                            onChange: t => {
-                              t.stopPropagation(), r?.(e.vf_object_uid);
+                            checked: f,
+                            onChange: e => {
+                              e.stopPropagation(), r?.(t.vf_object_uid);
                             },
                             onClick: e => e.stopPropagation()
                           })
-                        }), d.map(t => {
+                        }), d.map(e => {
                           var n;
                           return (0, s.jsx)("td", {
-                            children: t.renderCell ? t.renderCell(e, M) : null !== (n = e[t.id]) && void 0 !== n ? n : "—"
-                          }, t.id);
+                            children: e.renderCell ? e.renderCell(t, T) : null !== (n = t[e.id]) && void 0 !== n ? n : "—"
+                          }, e.id);
                         }) ]
-                      }, e.vf_object_uid);
-                    }), u && k > 0 && (0, s.jsx)("tr", {
+                      }, t.vf_object_uid);
+                    }), isVirtualized && k > 0 && (0, s.jsx)("tr", {
                       className: "dbvc-entity-spacer",
                       "aria-hidden": "true",
                       style: {
@@ -598,7 +614,13 @@
                 const e = nt[Te] || [];
                 e.length ? e.includes(Fe) || Ve(e[0] || "") : Ve("");
               }, [ Te, Fe, nt ]);
-              const it = (0, e.useMemo)(() => !Fe && (nt[Te] || []).length ? [] : ke.filter(e => {
+              const termSlugDisplay = "term" === ve && be ? `${be}/${he}` : he, termParentSlug = le?.term_parent_slug || le?.parent_slug || oe?.parent_slug || ae?.term_parent_slug || ae?.parent_slug || "", termParentId = le?.term_parent || le?.parent || oe?.parent || ae?.term_parent || ae?.parent || 0, termParentUid = le?.term_parent_uid || oe?.parent_uid || ae?.term_parent_uid || "", termParentDisplay = (() => {
+                if ("term" !== ve) return null;
+                if (termParentSlug) return termParentSlug;
+                if (termParentUid) return termParentUid;
+                if (termParentId) return `ID ${termParentId}`;
+                return "—";
+              })(), titleDisplay = "term" === ve && be ? `${pe} · ${be}` : pe, it = (0, e.useMemo)(() => !Fe && (nt[Te] || []).length ? [] : ke.filter(e => {
                 const t = e.descriptor || {};
                 switch (Te) {
                  case "asset_uid":
@@ -650,19 +672,21 @@
                         href: ue,
                         target: "_blank",
                         rel: "noreferrer",
-                        children: pe
-                      }) : pe
+                        children: titleDisplay
+                      }) : titleDisplay
                     }), (0, s.jsxs)("div", {
                       className: "dbvc-entity-toolbar__sub",
                       children: [ (0, s.jsxs)("span", {
-                        children: [ me, " ", ue && "—" !== he ? (0, s.jsx)("a", {
+                        children: [ me, " ", ue && "—" !== termSlugDisplay ? (0, s.jsx)("a", {
                           href: ue,
                           target: "_blank",
                           rel: "noreferrer",
-                          children: he
-                        }) : he ]
+                          children: termSlugDisplay
+                        }) : termSlugDisplay ]
                       }), "term" === ve && (0, s.jsxs)("span", {
                         children: [ "Taxonomy: ", be || "—" ]
+                      }), "term" === ve && (0, s.jsxs)("span", {
+                        children: [ "Parent: ", termParentDisplay || "—" ]
                       }), (0, s.jsxs)("span", {
                         children: [ "File: ", le?.path || "—" ]
                       }) ]
