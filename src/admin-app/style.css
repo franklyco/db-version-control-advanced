@@ -27,6 +27,9 @@
 	/* Misc */
 	--dbvc-color-background-blur: rgba(255, 255, 255, 0.6);
 	--dbvc-background-blur-filter: blur(18px);
+	--dbvc-badge-bg-alpha: 0.2;
+	--dbvc-badge-border-darken: 12%;
+	--dbvc-badge-text-darken: 18%;
 }
 
 .dbvc-admin-app {
@@ -458,66 +461,86 @@
 	border-radius: 12px;
 	font-size: 12px;
 	line-height: 1.4;
-	background: #f1f1f1;
-	color: var(--dbvc-color-text-primary);
-}
-
-.dbvc-badge--needs_review {
-    background: #fea5a5;
-    color: var(--dbvc-color-text-dark);
-    border: 1px solid var(--dbvc-color-danger-strong);
+	border: 1px solid transparent;
+	--dbvc-badge-h: 210deg;
+	--dbvc-badge-s: 6%;
+	--dbvc-badge-l: 42%;
+	background: hsla(var(--dbvc-badge-h) var(--dbvc-badge-s) var(--dbvc-badge-l) / var(--dbvc-badge-bg-alpha));
+	border-color: hsl(var(--dbvc-badge-h) var(--dbvc-badge-s) calc(var(--dbvc-badge-l) - var(--dbvc-badge-border-darken)));
+	color: hsl(var(--dbvc-badge-h) var(--dbvc-badge-s) calc(var(--dbvc-badge-l) - var(--dbvc-badge-text-darken)));
 }
 
 .dbvc-badge--resolved {
-	background: var(--dbvc-color-success);
-	color: var(--dbvc-color-white);
+background: var(--dbvc-color-success-soft);
+color: var(--dbvc-color-text-dark);
+border: 1px solid var(--dbvc-color-success-dark);
+}
+
+.dbvc-badge--needs_review {
+    --dbvc-badge-h: 0deg;
+    --dbvc-badge-s: 72%;
+    --dbvc-badge-l: 46%;
+}
+
+.dbvc-badge--resolved {
+	background: var(--dbvc-color-success-soft);
+	color: var(--dbvc-color-text-dark);
+	border: 1px solid var(--dbvc-color-success-dark);
 }
 
 .dbvc-badge--conflict {
-	background: var(--dbvc-color-danger);
-	color: var(--dbvc-color-white);
+	--dbvc-badge-h: 358deg;
+	--dbvc-badge-s: 66%;
+	--dbvc-badge-l: 52%;
 }
 
 .dbvc-badge--needs_download,
 .dbvc-badge--missing {
-	background: #f0ad4e;
-	color: var(--dbvc-color-text-primary);
+	--dbvc-badge-h: 35deg;
+	--dbvc-badge-s: 86%;
+	--dbvc-badge-l: 62%;
 }
 
 .dbvc-badge--pending {
-	background: #fff8e1;
-	color: #8a6100;
-	border: 1px solid var(--dbvc-color-accent-gold);
+	--dbvc-badge-h: 38deg;
+	--dbvc-badge-s: 80%;
+	--dbvc-badge-l: 58%;
 }
 
 .dbvc-badge--new {
-	background: #1d4ed8;
-	color: var(--dbvc-color-white);
+	--dbvc-badge-h: 222deg;
+	--dbvc-badge-s: 74%;
+	--dbvc-badge-l: 44%;
 }
 
 .dbvc-badge--new.is-declined {
-	background: var(--dbvc-color-gray-600);
-	color: var(--dbvc-color-white);
+	--dbvc-badge-h: 215deg;
+	--dbvc-badge-s: 8%;
+	--dbvc-badge-l: 45%;
 }
 
 .dbvc-badge--unknown {
-	background: var(--dbvc-color-gray-600);
-	color: var(--dbvc-color-white);
+	--dbvc-badge-h: 215deg;
+	--dbvc-badge-s: 8%;
+	--dbvc-badge-l: 45%;
 }
 
 .dbvc-badge--accept {
-	background: var(--dbvc-color-success-dark);
-	color: var(--dbvc-color-white);
+	--dbvc-badge-h: 136deg;
+	--dbvc-badge-s: 56%;
+	--dbvc-badge-l: 32%;
 }
 
 .dbvc-badge--keep {
-	background: #5a5f62;
-	color: var(--dbvc-color-white);
+	--dbvc-badge-h: 210deg;
+	--dbvc-badge-s: 6%;
+	--dbvc-badge-l: 38%;
 }
 
 .dbvc-badge--reviewed {
-	background: var(--dbvc-color-accent-blue);
-	color: var(--dbvc-color-white);
+	--dbvc-badge-h: 208deg;
+	--dbvc-badge-s: 65%;
+	--dbvc-badge-l: 41%;
 }
 
 .dbvc-badge--resolver {

@@ -164,6 +164,12 @@
                     marginLeft: "0.25rem"
                   },
                   children: "Hash missing"
+                }), t.entityHasSelections && (0, s.jsx)("span", {
+                  className: "dbvc-badge dbvc-badge--pending",
+                  style: {
+                    marginLeft: "0.25rem"
+                  },
+                  children: "Pending"
                 }) ]
               })
             }, {
@@ -418,37 +424,11 @@
               if (!t.length) return (0, s.jsx)("p", {
                 children: "No entities found for this proposal."
               });
-              const d = a && a.length ? a : y, isVirtualized = t.length > 200, p = (0, e.useRef)(null), [h, m] = (0, 
-              e.useState)(0), [v, f] = (0, e.useState)(0), H = 52, [K, J] = (0, e.useState)(H), q = (0, 
-              e.useRef)(H), W = (0, e.useCallback)(t => {
-                if (!isVirtualized || !t) return;
-                const s = t.getBoundingClientRect().height;
-                s && Math.abs(s - q.current) > 1 && (q.current = s, J(s));
-              }, [ isVirtualized ]);
-              (0, e.useEffect)(() => {
-                if (!isVirtualized) return m(0), void f(0);
-                const e = p.current;
-                if (!e) return;
-                const t = () => {
-                  m(e.clientHeight || 0);
-                };
-                t();
-                let s = null;
-                return "undefined" != typeof ResizeObserver ? (s = new ResizeObserver(t), s.observe(e)) : window.addEventListener("resize", t), 
-                () => {
-                  s ? s.disconnect() : window.removeEventListener("resize", t);
-                };
-              }, [ isVirtualized ]);
-              const G = Math.max(1, K || H), g = t.length, x = G * g, j = isVirtualized && h ? Math.ceil(h / G) + 5 : g, _ = isVirtualized ? Math.max(0, Math.floor(v / G) - 5) : 0, w = isVirtualized ? Math.min(g, _ + j) : g, C = isVirtualized ? t.slice(_, w) : t, N = isVirtualized ? G * _ : 0, k = isVirtualized ? Math.max(0, x - N - G * C.length) : 0, S = isVirtualized ? e => {
-                f(e.currentTarget.scrollTop);
-              } : void 0, D = "function" == typeof r, R = o instanceof Set ? o : new Set(o), $ = C.map(e => e.vf_object_uid), I = D && C.length > 0 && C.every(e => R.has(e.vf_object_uid)), A = D && !I && C.some(e => R.has(e.vf_object_uid)), E = (0, 
-              e.useRef)(null);
+              const d = a && a.length ? a : y, D = "function" == typeof r, R = o instanceof Set ? o : new Set(o), $ = t.map(e => e.vf_object_uid), I = D && t.length > 0 && t.every(e => R.has(e.vf_object_uid)), A = D && !I && t.some(e => R.has(e.vf_object_uid)), E = (0, e.useRef)(null);
               return (0, e.useEffect)(() => {
                 D && E.current && (E.current.indeterminate = A);
               }, [ D, A ]), (0, s.jsx)("div", {
-                className: "dbvc-entity-table" + (isVirtualized ? " is-virtualized" : ""),
-                ref: p,
-                onScroll: S,
+                className: "dbvc-entity-table",
                 children: (0, s.jsxs)("table", {
                   className: "widefat striped",
                   children: [ (0, s.jsx)("thead", {
@@ -465,40 +445,30 @@
                         children: e.label
                       }, e.id)) ]
                     })
-                  }), (0, s.jsxs)("tbody", {
-                    children: [ isVirtualized && N > 0 && (0, s.jsx)("tr", {
-                      className: "dbvc-entity-spacer",
-                      "aria-hidden": "true",
-                      style: {
-                        height: `${N}px`
-                      },
-                      children: (0, s.jsx)("td", {
-                        colSpan: d.length + (D ? 1 : 0)
-                      })
-                    }), C.map((t, n) => {
-                      var a, o, c, u, p, h, m, O;
-                      const v = t.vf_object_uid === i, f = D && R.has(t.vf_object_uid), g = null !== (a = t.resolver?.summary) && void 0 !== a ? a : {}, x = null !== (o = t.diff_state) && void 0 !== o ? o : {}, j = t.media_needs_review ? "needs_review" : null !== (c = t.resolver?.status) && void 0 !== c ? c : "resolved", _ = t.overall_status || (x.needs_review ? "needs_review" : "resolved"), y = "missing_local_hash" === x.reason, w = null !== (u = t.decision_summary) && void 0 !== u ? u : {}, C = null !== (p = w.accepted) && void 0 !== p ? p : 0, N = null !== (h = w.kept) && void 0 !== h ? h : 0, k = null !== (m = w.accepted_new) && void 0 !== m ? m : 0, S = (null !== (O = w.total) && void 0 !== O ? O : 0) > 0, $ = b(t), I = t.new_entity_decision || "", A = t.identity_match || "", M = [ `resolver-${_}`, v ? "is-active" : "", f ? "is-selected" : "" ].filter(Boolean).join(" "), L = e => {
-                        e.preventDefault(), e.stopPropagation(), l(t.vf_object_uid);
-                      }, T = {
-                        summary: g,
-                        diffState: x,
-                        mediaStatus: j,
-                        hashMissing: y,
-                        decisionSummary: w,
-                        entityHasSelections: S,
-                        entityAccepted: C,
-                        entityNewAccepted: k,
-                        entityKept: N,
-                        isNewEntity: $,
-                        newDecision: I,
-                        identityMatch: A
+                  }), (0, s.jsx)("tbody", {
+                    children: t.map(e => {
+                      var t, n, a, o, c, u, p, h;
+                      const m = e.vf_object_uid === i, v = D && R.has(e.vf_object_uid), f = null !== (t = e.resolver?.summary) && void 0 !== t ? t : {}, g = null !== (n = e.diff_state) && void 0 !== n ? n : {}, x = e.media_needs_review ? "needs_review" : null !== (a = e.resolver?.status) && void 0 !== a ? a : "resolved", j = e.overall_status || (g.needs_review ? "needs_review" : "resolved"), _ = "missing_local_hash" === g.reason, y = null !== (o = e.decision_summary) && void 0 !== o ? o : {}, w = null !== (c = y.accepted) && void 0 !== c ? c : 0, C = null !== (u = y.kept) && void 0 !== u ? u : 0, N = null !== (p = y.accepted_new) && void 0 !== p ? p : 0, k = (null !== (h = y.total) && void 0 !== h ? h : 0) > 0, S = b(e), $ = e.new_entity_decision || "", I = e.identity_match || "", A = [ `resolver-${j}`, m ? "is-active" : "", v ? "is-selected" : "" ].filter(Boolean).join(" "), E = t => {
+                        t.preventDefault(), t.stopPropagation(), l(e.vf_object_uid);
+                      }, M = {
+                        summary: f,
+                        diffState: g,
+                        mediaStatus: x,
+                        hashMissing: _,
+                        decisionSummary: y,
+                        entityHasSelections: k,
+                        entityAccepted: w,
+                        entityNewAccepted: N,
+                        entityKept: C,
+                        isNewEntity: S,
+                        newDecision: $,
+                        identityMatch: I
                       };
                       return (0, s.jsxs)("tr", {
-                        className: M,
-                        ref: isVirtualized && 0 === n ? W : void 0,
-                        onClick: L,
-                        onKeyDown: e => {
-                          "Enter" !== e.key && " " !== e.key || L(e);
+                        className: A,
+                        onClick: E,
+                        onKeyDown: t => {
+                          "Enter" !== t.key && " " !== t.key || E(t);
                         },
                         style: {
                           cursor: "pointer"
@@ -509,29 +479,20 @@
                           className: "dbvc-entity-select",
                           children: (0, s.jsx)("input", {
                             type: "checkbox",
-                            checked: f,
-                            onChange: e => {
-                              e.stopPropagation(), r?.(t.vf_object_uid);
+                            checked: v,
+                            onChange: t => {
+                              t.stopPropagation(), r?.(e.vf_object_uid);
                             },
                             onClick: e => e.stopPropagation()
                           })
-                        }), d.map(e => {
+                        }), d.map(t => {
                           var n;
                           return (0, s.jsx)("td", {
-                            children: e.renderCell ? e.renderCell(t, T) : null !== (n = t[e.id]) && void 0 !== n ? n : "—"
-                          }, e.id);
+                            children: t.renderCell ? t.renderCell(e, M) : null !== (n = e[t.id]) && void 0 !== n ? n : "—"
+                          }, t.id);
                         }) ]
-                      }, t.vf_object_uid);
-                    }), isVirtualized && k > 0 && (0, s.jsx)("tr", {
-                      className: "dbvc-entity-spacer",
-                      "aria-hidden": "true",
-                      style: {
-                        height: `${k}px`
-                      },
-                      children: (0, s.jsx)("td", {
-                        colSpan: d.length + (D ? 1 : 0)
-                      })
-                    }) ]
+                      }, e.vf_object_uid);
+                    })
                   }) ]
                 })
               });
@@ -1299,7 +1260,9 @@
                 } finally {
                   Ce(!1);
                 }
-              }, []), Kt = (0, e.useCallback)(e => {
+              }, []), refreshEntities = (0, e.useCallback)(() => {
+                Z && Ht(Z, ne);
+              }, [ Z, ne, Ht ]), Kt = (0, e.useCallback)(e => {
                 e.stopPropagation();
               }, []), Jt = (0, e.useCallback)(e => {
                 e.preventDefault(), e.stopPropagation();
@@ -2235,10 +2198,16 @@
                     }), ns && (0, s.jsxs)(t.Button, {
                       className: "dbvc-new-entities-button",
                       variant: "secondary",
-                      onClick: () => {
-                        ie("new_entities"), ae("");
-                      },
-                      children: [ "Review ", ss.length, " new entity", 1 === ss.length ? "" : "ies" ]
+                    onClick: () => {
+                      ie("new_entities"), ae("");
+                    },
+                    children: [ "Review ", ss.length, " new entity", 1 === ss.length ? "" : "ies" ]
+                    }), (0, s.jsx)(t.Button, {
+                      variant: "secondary",
+                      onClick: refreshEntities,
+                      disabled: we,
+                      isBusy: we,
+                      children: we ? "Refreshing…" : "Refresh Entities"
                     }), Ot.size > 0 && (0, s.jsx)(t.Button, {
                       variant: "tertiary",
                       onClick: es,
