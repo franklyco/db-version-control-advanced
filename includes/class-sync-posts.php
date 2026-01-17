@@ -1227,7 +1227,7 @@ HT;
                 if (! is_array($term_payload)) {
                     $errors[] = sprintf(__('Invalid term JSON: %s', 'dbvc'), $entry['path']);
                     if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-                        DBVC_Sync_Logger::log_import('Term import skipped – invalid payload', [
+                    DBVC_Sync_Logger::log_term_import('Term import skipped – invalid payload', [
                             'file'     => $entry['path'],
                             'proposal' => $backup_name,
                         ]);
@@ -1270,7 +1270,7 @@ HT;
                 if ($is_new_term && $new_entity_decision !== 'accept_new') {
                     $skipped++;
                     if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-                        DBVC_Sync_Logger::log_import('Term import skipped – new entity not approved', [
+                    DBVC_Sync_Logger::log_term_import('Term import skipped – new entity not approved', [
                             'file'     => $entry['path'],
                             'term_uid' => $vf_object_uid,
                             'proposal' => $backup_name,
@@ -1282,7 +1282,7 @@ HT;
                 if (! $is_new_term && ! $has_field_decisions && ! $should_force_new_accept) {
                     $skipped++;
                     if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-                        DBVC_Sync_Logger::log_import('Term import skipped – no reviewer selections for existing entity', [
+                    DBVC_Sync_Logger::log_term_import('Term import skipped – no reviewer selections for existing entity', [
                             'file'     => $entry['path'],
                             'term_uid' => $vf_object_uid,
                             'proposal' => $backup_name,
@@ -1308,7 +1308,7 @@ HT;
                 if (is_wp_error($term_import)) {
                     $errors[] = $term_import->get_error_message();
                     if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-                        DBVC_Sync_Logger::log_import('Term import failed', [
+                    DBVC_Sync_Logger::log_term_import('Term import failed', [
                             'file'   => $entry['path'],
                             'error'  => $term_import->get_error_message(),
                             'proposal' => $backup_name,
@@ -1336,7 +1336,7 @@ HT;
                         }
                     }
 
-                    DBVC_Sync_Logger::log_import('Term entity applied', [
+                    DBVC_Sync_Logger::log_term_import('Term entity applied', [
                         'proposal'   => $backup_name,
                         'term_uid'   => $vf_object_uid,
                         'term_id'    => $term_import['term_id'] ?? null,
@@ -2047,6 +2047,7 @@ HT;
         }
 
         $parent_id = self::resolve_term_parent_id($taxonomy, $payload, $entity_refs);
+        $child_slug = isset($payload['slug']) ? (string) $payload['slug'] : (isset($payload['term_slug']) ? (string) $payload['term_slug'] : '');
         $has_parent_request = false;
         if (! empty($payload['parent_uid']) || ! empty($payload['parent_slug']) || ! empty($payload['parent'])) {
             $has_parent_request = true;
@@ -2057,6 +2058,17 @@ HT;
             wp_update_term($term_id, $taxonomy, ['parent' => $desired_parent]);
             if (isset(self::$pending_term_parent_links[$term_id])) {
                 unset(self::$pending_term_parent_links[$term_id]);
+            }
+            if ($has_parent_request && class_exists('DBVC_Sync_Logger')) {
+                $action = $desired_parent > 0 ? 'Term parent applied' : 'Term parent cleared';
+                DBVC_Sync_Logger::log_term_import($action, [
+                    'child_id'    => $term_id,
+                    'child_slug'  => $child_slug,
+                    'taxonomy'    => $taxonomy,
+                    'parent_id'   => $desired_parent,
+                    'parent_uid'  => $payload['parent_uid'] ?? '',
+                    'parent_slug' => $payload['parent_slug'] ?? '',
+                ]);
             }
             return;
         }
@@ -2076,7 +2088,18 @@ HT;
             'parent_slug' => $parent_slug,
             'parent'      => $parent_num,
             'entity_refs' => $entity_refs,
+            'child_slug'  => $child_slug,
         ];
+        if (class_exists('DBVC_Sync_Logger')) {
+            DBVC_Sync_Logger::log_term_import('Term parent deferred', [
+                'child_id'    => $term_id,
+                'child_slug'  => $child_slug,
+                'taxonomy'    => $taxonomy,
+                'parent_uid'  => $parent_uid,
+                'parent_slug' => $parent_slug,
+                'parent_hint' => $parent_num,
+            ]);
+        }
     }
 
     private static function process_pending_term_parent_links(): void
@@ -2100,6 +2123,27 @@ HT;
             $parent_id = self::resolve_term_parent_id($taxonomy, $payload, $link['entity_refs'] ?? null);
             if ($parent_id > 0) {
                 wp_update_term($child_id, $taxonomy, ['parent' => $parent_id]);
+                if (class_exists('DBVC_Sync_Logger')) {
+                    DBVC_Sync_Logger::log_term_import('Term parent resolved after import', [
+                        'child_id'    => $child_id,
+                        'child_slug'  => $link['child_slug'] ?? '',
+                        'taxonomy'    => $taxonomy,
+                        'parent_id'   => $parent_id,
+                        'parent_uid'  => $payload['parent_uid'] ?? '',
+                        'parent_slug' => $payload['parent_slug'] ?? '',
+                    ]);
+                }
+            } else {
+                if (class_exists('DBVC_Sync_Logger')) {
+                    DBVC_Sync_Logger::log_term_import('Term parent unresolved after import', [
+                        'child_id'    => $child_id,
+                        'child_slug'  => $link['child_slug'] ?? '',
+                        'taxonomy'    => $taxonomy,
+                        'parent_uid'  => $payload['parent_uid'] ?? '',
+                        'parent_slug' => $payload['parent_slug'] ?? '',
+                        'parent_hint' => $payload['parent'] ?? 0,
+                    ]);
+                }
             }
         }
 

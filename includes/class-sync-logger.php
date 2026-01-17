@@ -20,6 +20,7 @@ if (! class_exists('DBVC_Sync_Logger')) {
         const OPTION_MAX_SIZE       = 'dbvc_logging_max_size';
         const OPTION_DIRECTORY      = 'dbvc_logging_directory';
         const OPTION_IMPORT_EVENTS  = 'dbvc_logging_imports';
+        const OPTION_TERM_EVENTS    = 'dbvc_logging_term_imports';
         const OPTION_UPLOAD_EVENTS  = 'dbvc_logging_uploads';
         const OPTION_MEDIA_EVENTS   = 'dbvc_logging_media';
         const DEFAULT_MAX_SIZE      = 1048576; // 1MB
@@ -67,6 +68,22 @@ if (! class_exists('DBVC_Sync_Logger')) {
         public static function log_import($message, array $context = [])
         {
             if (! self::is_import_logging_enabled()) {
+                return;
+            }
+
+            self::write_entry($message, $context);
+        }
+
+        /**
+         * Write an entry scoped to term import activity.
+         *
+         * @param string $message
+         * @param array  $context
+         * @return void
+         */
+        public static function log_term_import($message, array $context = [])
+        {
+            if (! self::is_term_logging_enabled()) {
                 return;
             }
 
@@ -174,6 +191,16 @@ if (! class_exists('DBVC_Sync_Logger')) {
         public static function is_import_logging_enabled()
         {
             return self::is_core_logging_enabled() && get_option(self::OPTION_IMPORT_EVENTS, '0') === '1';
+        }
+
+        /**
+         * Determine if term-specific logging is enabled.
+         *
+         * @return bool
+         */
+        public static function is_term_logging_enabled()
+        {
+            return self::is_import_logging_enabled() && get_option(self::OPTION_TERM_EVENTS, '0') === '1';
         }
 
         /**
@@ -327,23 +354,23 @@ if (! class_exists('DBVC_Sync_Logger')) {
             @rename($path, $archive);
         }
 
-    /**
-     * Export current logging toggles/settings for debugging.
-     */
-    private static function export_current_settings(): array
-    {
-        if (! function_exists('get_option')) {
-            return [];
-        }
+        /**
+         * Export current logging toggles/settings for debugging.
+         */
+        private static function export_current_settings(): array
+        {
+            if (! function_exists('get_option')) {
+                return [];
+            }
 
-        return [
-            'enabled'        => get_option(self::OPTION_ENABLED, '0'),
-            'import_events'  => get_option(self::OPTION_IMPORT_EVENTS, '0'),
-            'upload_events'  => get_option(self::OPTION_UPLOAD_EVENTS, '0'),
-            'media_events'   => get_option(self::OPTION_MEDIA_EVENTS, '0'),
-            'directory'      => get_option(self::OPTION_DIRECTORY, ''),
-            'max_size'       => get_option(self::OPTION_MAX_SIZE, self::DEFAULT_MAX_SIZE),
-        ];
+            return [
+                'enabled'        => get_option(self::OPTION_ENABLED, '0'),
+                'import_events'  => get_option(self::OPTION_IMPORT_EVENTS, '0'),
+                'upload_events'  => get_option(self::OPTION_UPLOAD_EVENTS, '0'),
+                'media_events'   => get_option(self::OPTION_MEDIA_EVENTS, '0'),
+                'directory'      => get_option(self::OPTION_DIRECTORY, ''),
+                'max_size'       => get_option(self::OPTION_MAX_SIZE, self::DEFAULT_MAX_SIZE),
+            ];
+        }
     }
-}
 }

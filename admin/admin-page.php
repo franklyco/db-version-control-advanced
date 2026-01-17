@@ -92,6 +92,7 @@ function dbvc_render_export_page()
   $logging_effective_dir  = DBVC_Sync_Logger::get_log_directory();
   $logging_effective_file = $logging_effective_dir ? trailingslashit($logging_effective_dir) . DBVC_Sync_Logger::LOG_FILENAME : '';
   $logging_import_events  = get_option(DBVC_Sync_Logger::OPTION_IMPORT_EVENTS, '0');
+  $logging_term_events    = get_option(DBVC_Sync_Logger::OPTION_TERM_EVENTS, '0');
   $logging_upload_events  = get_option(DBVC_Sync_Logger::OPTION_UPLOAD_EVENTS, '0');
   $logging_media_events   = get_option(DBVC_Sync_Logger::OPTION_MEDIA_EVENTS, '0');
   $media_retrieve_enabled = get_option(DBVC_Media_Sync::OPTION_ENABLED, '0');
@@ -468,6 +469,10 @@ function dbvc_render_export_page()
     $log_import_runs = ! empty($_POST['dbvc_log_import_runs']) ? '1' : '0';
     update_option(DBVC_Sync_Logger::OPTION_IMPORT_EVENTS, $log_import_runs);
     $logging_import_events = $log_import_runs;
+
+    $log_term_runs = ! empty($_POST['dbvc_log_term_imports']) ? '1' : '0';
+    update_option(DBVC_Sync_Logger::OPTION_TERM_EVENTS, $log_term_runs);
+    $logging_term_events = $log_term_runs;
 
     $log_upload_runs = ! empty($_POST['dbvc_log_sync_uploads']) ? '1' : '0';
     update_option(DBVC_Sync_Logger::OPTION_UPLOAD_EVENTS, $log_upload_runs);
@@ -2290,6 +2295,13 @@ document.addEventListener('DOMContentLoaded', function () {
         </p>
         <p>
           <label>
+            <input type="checkbox" name="dbvc_log_term_imports" value="1" <?php checked($logging_term_events, '1'); ?> />
+            <?php esc_html_e('Include term-specific events in import logs', 'dbvc'); ?>
+          </label><br>
+          <small><?php esc_html_e('Adds detailed entries for term matching, parent remapping, and taxonomy creation.', 'dbvc'); ?></small>
+        </p>
+        <p>
+          <label>
             <input type="checkbox" name="dbvc_log_sync_uploads" value="1" <?php checked($logging_upload_events, '1'); ?> />
             <?php esc_html_e('Log sync folder uploads/unpacks', 'dbvc'); ?>
           </label>
@@ -2936,6 +2948,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         <nav class="dbvc-docs__quick-links" aria-label="<?php esc_attr_e('Documentation sections', 'dbvc'); ?>">
           <a href="#dbvc-docs-admin-app"><?php esc_html_e('Admin App Overview', 'dbvc'); ?></a>
+          <a href="#dbvc-docs-terms"><?php esc_html_e('Taxonomy & Term Workflow', 'dbvc'); ?></a>
           <a href="#dbvc-docs-scenarios"><?php esc_html_e('Example Scenarios', 'dbvc'); ?></a>
           <a href="#dbvc-docs-monitoring"><?php esc_html_e('Monitoring & Logs', 'dbvc'); ?></a>
           <a href="#dbvc-docs-developer"><?php esc_html_e('Developer Integration', 'dbvc'); ?></a>
@@ -2949,7 +2962,7 @@ document.addEventListener('DOMContentLoaded', function () {
           </p>
           <div class="dbvc-docs__card">
             <ul class="dbvc-docs__list">
-              <li><?php esc_html_e('Entity Detail Drawer: Inspect diffs without leaving the table, toggle conflict-only view, and apply bulk accept/keep actions.', 'dbvc'); ?></li>
+              <li><?php esc_html_e('Entity Detail Drawer: Inspect diffs without leaving the table, toggle conflict-only view, and apply bulk accept/keep actions for posts and terms (taxonomy, slug, and parent context included).', 'dbvc'); ?></li>
               <li><?php esc_html_e('Resolver Workbench: Compare proposed vs current media, make per-asset decisions (reuse, download, skip), and batch-apply rules by reason, asset UID, or manifest path.', 'dbvc'); ?></li>
               <li><?php esc_html_e('Global Resolver Rules: Inline add/edit forms with CSV import/export, duplicate detection, and search so recurring conflicts are settled once.', 'dbvc'); ?></li>
               <li><?php esc_html_e('Virtualized Entity Table: Instant filtering/search across hundreds of entities without browser slowdown.', 'dbvc'); ?></li>
@@ -2963,6 +2976,30 @@ document.addEventListener('DOMContentLoaded', function () {
             <p>
               <?php esc_html_e('For agencies or distributed teams, it means faster handoffs: export → review → apply becomes one continuous workflow, complete with logs, notifications, and snapshots. It’s the bridge between design/dev environments and editorial production without bolting on extra services.', 'dbvc'); ?>
             </p>
+          </div>
+        </article>
+
+        <article class="dbvc-docs__section" id="dbvc-docs-terms">
+          <h3><?php esc_html_e('Taxonomy & Term Workflow', 'dbvc'); ?></h3>
+          <p class="dbvc-docs__summary">
+            <?php esc_html_e('Terms now flow through the exact same export → review → import pipeline as posts, complete with hierarchy awareness and dedicated logging.', 'dbvc'); ?>
+          </p>
+          <div class="dbvc-docs__card">
+            <ul class="dbvc-docs__list">
+              <li><?php esc_html_e('Exporter writes `entity_refs` (UID + taxonomy/slug fallbacks) and `parent_uid` so the importer can recover matches even when only slugs exist.', 'dbvc'); ?></li>
+              <li><?php esc_html_e('Entity table + drawer display taxonomy, slug (`taxonomy/slug`), parent info, Accept/Keep status, and resolver badges for term entities.', 'dbvc'); ?></li>
+              <li><?php esc_html_e('Importer resolves parents via UID/slug/ID and queues unresolved parents for a second pass so child terms always attach to the correct hierarchy.', 'dbvc'); ?></li>
+              <li><?php esc_html_e('Configure → Import now includes “Include term-specific events in import logs” to capture detailed match/apply messages (requires logging to be enabled).', 'dbvc'); ?></li>
+            </ul>
+          </div>
+          <div class="dbvc-docs__card">
+            <h4><?php esc_html_e('QA checklist', 'dbvc'); ?></h4>
+            <ol class="dbvc-docs__steps">
+              <li><?php esc_html_e('Export a proposal with new + existing terms; confirm manifests list `entity_refs` and `parent_uid`.', 'dbvc'); ?></li>
+              <li><?php esc_html_e('Review in the Admin App, verifying taxonomy/parent context and Accept/Keep gating for new terms.', 'dbvc'); ?></li>
+              <li><?php esc_html_e('Run the import; inspect logs (when enabled) for term match, skip, and parent-resolve entries.', 'dbvc'); ?></li>
+              <li><?php esc_html_e('Reopen the proposal to ensure previously accepted terms remain marked for import.', 'dbvc'); ?></li>
+            </ol>
           </div>
         </article>
 
@@ -3047,7 +3084,7 @@ wp dbvc export --baseline=123</code></pre>
           <h3><?php esc_html_e('Monitoring & Logs', 'dbvc'); ?></h3>
           <ul class="dbvc-docs__list">
             <li><strong><?php esc_html_e('Activity log table', 'dbvc'); ?></strong> <code>wp_dbvc_activity_log</code> — <?php esc_html_e('Structured events for exports, imports, chunk progress, and media sync. Query with your database viewer or run', 'dbvc'); ?> <code>wp db query</code>.</li>
-            <li><strong><?php esc_html_e('File log', 'dbvc'); ?></strong> <code>dbvc-backup.log</code> — <?php esc_html_e('Enable in Import Defaults to capture high-level notices for backups and media operations.', 'dbvc'); ?></li>
+            <li><strong><?php esc_html_e('File log', 'dbvc'); ?></strong> <code>dbvc-backup.log</code> — <?php esc_html_e('Enable in Import Defaults to capture high-level notices. Turn on “Include term-specific events” if you want per-term match/parent logs (requires logging enabled on Backups tab).', 'dbvc'); ?></li>
             <li><strong><?php esc_html_e('Snapshots & Jobs UI', 'dbvc'); ?></strong> — <?php esc_html_e('The Snapshots view lists completed exports/imports and any active chunked jobs with inline resume controls.', 'dbvc'); ?></li>
           </ul>
         </article>
