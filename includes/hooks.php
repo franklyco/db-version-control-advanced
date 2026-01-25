@@ -478,6 +478,10 @@ add_action('edit_comment', 'dbvc_handle_comment_changes', 10, 0);
 add_action('created_term', 'dbvc_handle_term_changes', 10, 0);
 add_action('edited_term', 'dbvc_handle_term_changes', 10, 0);
 add_action('delete_term', 'dbvc_handle_term_changes', 10, 0);
+if (class_exists('DBVC_Sync_Taxonomies')) {
+	add_action('created_term', ['DBVC_Sync_Taxonomies', 'ensure_term_uid_on_change'], 10, 3);
+	add_action('edited_term', ['DBVC_Sync_Taxonomies', 'ensure_term_uid_on_change'], 10, 3);
+}
 add_action('update_option_dbvc_sync_path', 'dbvc_handle_plugin_changes', 10, 0);
 add_action('update_option_dbvc_post_types', 'dbvc_handle_plugin_changes', 10, 0);
 add_action('updated_option', 'dbvc_handle_option_updates', 10, 3);

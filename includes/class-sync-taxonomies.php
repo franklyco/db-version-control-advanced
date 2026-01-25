@@ -122,12 +122,15 @@ class DBVC_Sync_Taxonomies
 		$include_meta   = get_option('dbvc_tax_export_meta', '1') === '1';
 		$include_parent = get_option('dbvc_tax_export_parent_slugs', '1') === '1';
 
+		$entity_uid = self::ensure_term_uid($term->term_id, $taxonomy);
+
 		$data = [
 			'term_id'   => absint($term->term_id),
 			'name'      => $term->name,
 			'slug'      => $term->slug,
 			'taxonomy'  => $taxonomy,
 			'description' => $term->description,
+			'vf_object_uid' => $entity_uid,
 		];
 
 		if ($include_parent) {
@@ -137,6 +140,10 @@ class DBVC_Sync_Taxonomies
 				$parent = get_term($parent_id, $taxonomy);
 				if ($parent && ! is_wp_error($parent)) {
 					$data['parent_slug'] = $parent->slug;
+					$parent_uid = self::ensure_term_uid($parent_id, $taxonomy);
+					if ($parent_uid !== '') {
+						$data['parent_uid'] = $parent_uid;
+					}
 				}
 			}
 		}
@@ -198,6 +205,93 @@ class DBVC_Sync_Taxonomies
 
 		file_put_contents($file_path, $json);
 		do_action('dbvc_after_export_term', $term, $taxonomy, $file_path, $data);
+	}
+
+	/**
+	 * Ensure a term has a persistent entity UID.
+	 *
+	 * @since 1.4.0
+	 *
+	 * @param int    $term_id
+	 * @param string $taxonomy
+	 * @return string
+	 */
+	public static function ensure_term_uid($term_id, $taxonomy = '')
+	{
+		$term_id = absint($term_id);
+		if (! $term_id) {
+			return '';
+		}
+
+		if ($taxonomy === '') {
+			$term = get_term($term_id);
+			if (! $term || is_wp_error($term)) {
+				return '';
+			}
+			$taxonomy = $term->taxonomy;
+		}
+
+		$taxonomy = sanitize_key($taxonomy);
+		if ($taxonomy === '') {
+			return '';
+		}
+
+		$uid = get_term_meta($term_id, 'vf_object_uid', true);
+		if (! is_string($uid) || $uid === '') {
+			$uid = wp_generate_uuid4();
+			update_term_meta($term_id, 'vf_object_uid', $uid);
+		}
+
+		self::sync_term_entity_registry($uid, $term_id, $taxonomy);
+
+		return $uid;
+	}
+
+	/**
+	 * Hooked entry point to ensure a UID exists whenever a term changes.
+	 *
+	 * @since 1.4.0
+	 *
+	 * @param int    $term_id
+	 * @param int    $term_taxonomy_id
+	 * @param string $taxonomy
+	 * @return void
+	 */
+	public static function ensure_term_uid_on_change($term_id, $term_taxonomy_id = 0, $taxonomy = '')
+	{
+		unset($term_taxonomy_id); // Silence unused param; taxonomy slug is provided by hook.
+		if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+			$term = get_term($term_id);
+			if ($term && ! is_wp_error($term)) {
+				$taxonomy = $term->taxonomy;
+			}
+		}
+
+		self::ensure_term_uid($term_id, $taxonomy);
+	}
+
+	/**
+	 * Persist term entity mapping to the registry table.
+	 *
+	 * @since 1.4.0
+	 *
+	 * @param string $entity_uid
+	 * @param int    $term_id
+	 * @param string $taxonomy
+	 * @return void
+	 */
+	protected static function sync_term_entity_registry($entity_uid, $term_id, $taxonomy)
+	{
+		if ($entity_uid === '' || ! class_exists('DBVC_Database')) {
+			return;
+		}
+
+		DBVC_Database::upsert_entity([
+			'entity_uid'    => $entity_uid,
+			'object_id'     => (int) $term_id,
+			'object_type'   => 'term:' . sanitize_key($taxonomy),
+			'object_status' => null,
+		]);
 	}
 
 	/**
