@@ -119,6 +119,17 @@ CLI commands continue to export menus and options automatically, respect chunked
 - `wp dbvc proposals apply <proposal_id> [--mode=partial] [--ignore-missing-hash] [--force-reapply-new-posts]` reuses the React workflow’s importer so CI/staging can apply reviewed bundles.
 - `wp dbvc resolver-rules list|add|delete|import` lets you manage global resolver rules from the terminal, mirroring the React UI’s CSV and inline editors.
 
+## Building the Admin App
+
+Any changes under `src/admin-app/` (React bundle or CSS) must be recompiled before WordPress loads them:
+
+```bash
+npm install
+npm run build
+```
+
+This regenerates `build/admin-app.js`/`build/admin-app.css`, which the plugin enqueues inside WP Admin. Without this step you will not see updates like the masking tools drawer or status badges in the browser.
+
 ## UI → CLI Tutorial Notes
 
 - **Review queue:** Everything you can do in the DBVC Export React screen (list proposals, inspect counts, recapture snapshots, dedupe manifests) now has a CLI counterpart through `wp dbvc proposals list` flags.
@@ -129,6 +140,7 @@ CLI commands continue to export menus and options automatically, respect chunked
 ## Roadmap
 
 - **Snapshot polish** – add helper commands to recapture legacy proposals so term snapshots exist everywhere without manual uploads.
+- **Meta masking presets** – add a toolbar button above the All Entities table that auto-applies configured meta-field/post/term meta masking rules to any live proposal, letting reviewers ignore, auto-accept & suppress, or override masked fields with a single click while updating Needs Review / Unresolved meta labels automatically—keep existing export-time masking behavior untouched and explain the options via tooltips that contain help text plus links to the masking docs.
 - **Official collections** – curated “official” bundles that can be re-exported on demand remain on the backlog.
 
-This repository includes in-depth implementation notes under `handoff.md`, progress tracking inside `docs/progress-summary.md`, and media transport design details inside `docs/media-sync-design.md`.
+This repository includes in-depth implementation notes under `handoff.md`, progress tracking inside `docs/progress-summary.md`, meta masking tooltip/help text plus implementation plan inside `docs/meta-masking.md` and `docs/meta-masking-plan.md`, and media transport design details inside `docs/media-sync-design.md`.

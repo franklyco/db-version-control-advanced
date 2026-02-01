@@ -30,6 +30,8 @@ class DBVC_Sync_Posts
     private const IMPORT_RESULT_APPLIED = 'applied';
     private const IMPORT_RESULT_SKIPPED = 'skipped';
     private const PROPOSAL_NEW_ENTITIES_OPTION = 'dbvc_proposal_new_entities';
+    private const MASK_SUPPRESS_OPTION = 'dbvc_masked_field_suppressions';
+    private const MASK_OVERRIDES_OPTION = 'dbvc_mask_overrides';
     private static $pending_term_parent_links = [];
 
     /* @WIP Relationship remapping
@@ -991,6 +993,15 @@ HT;
         }
         $proposal_processed = false;
 
+        $mask_suppress_store = get_option(self::MASK_SUPPRESS_OPTION, []);
+        $mask_override_store = get_option(self::MASK_OVERRIDES_OPTION, []);
+        $proposal_mask_suppress = isset($mask_suppress_store[$backup_name]) && is_array($mask_suppress_store[$backup_name])
+            ? $mask_suppress_store[$backup_name]
+            : [];
+        $proposal_mask_overrides = isset($mask_override_store[$backup_name]) && is_array($mask_override_store[$backup_name])
+            ? $mask_override_store[$backup_name]
+            : [];
+
         $mode        = $options['mode'];
         $ignore_missing_hash = ! empty($options['ignore_missing_hash']);
         $imported    = 0;
@@ -1164,6 +1175,15 @@ HT;
                 continue;
             }
 
+            $entity_mask_directives = [
+                'overrides'    => isset($proposal_mask_overrides[$vf_object_uid]) && is_array($proposal_mask_overrides[$vf_object_uid])
+                    ? $proposal_mask_overrides[$vf_object_uid]
+                    : [],
+                'suppressions' => isset($proposal_mask_suppress[$vf_object_uid]) && is_array($proposal_mask_suppress[$vf_object_uid])
+                    ? $proposal_mask_suppress[$vf_object_uid]
+                    : [],
+            ];
+
             $result = self::import_post_from_json(
                 $tmp,
                 $mode === 'partial',
@@ -1171,7 +1191,8 @@ HT;
                 $decoded,
                 $entity_decisions,
                 $vf_object_uid,
-                $should_force_new_accept
+                $should_force_new_accept,
+                $entity_mask_directives
             );
             @unlink($tmp);
 
@@ -1963,9 +1984,16 @@ HT;
             $allow_parent_update
         );
 
-        if (isset($payload['meta']) && is_array($payload['meta'])) {
-            self::apply_term_meta($term_id, $payload['meta'], $decisions);
-        }
+                if (isset($payload['meta']) && is_array($payload['meta'])) {
+                    self::apply_term_meta(
+                        $term_id,
+                        $payload['meta'],
+                        $decisions,
+                        isset($proposal_mask_overrides[$vf_object_uid]) && is_array($proposal_mask_overrides[$vf_object_uid])
+                            ? $proposal_mask_overrides[$vf_object_uid]
+                            : []
+                    );
+                }
 
         return [
             'term_id'  => $term_id,
@@ -1982,8 +2010,9 @@ HT;
      * @param array|null $decisions
      * @return void
      */
-    private static function apply_term_meta(int $term_id, array $meta, ?array $decisions): void
+    private static function apply_term_meta(int $term_id, array $meta, ?array $decisions, array $mask_overrides = []): void
     {
+        $mask_overrides = is_array($mask_overrides) ? $mask_overrides : [];
         foreach ($meta as $key => $values) {
             $meta_path = 'meta.' . $key;
             if ($decisions !== null && ! self::decision_allows_path($decisions, $meta_path)) {
@@ -1994,6 +2023,9 @@ HT;
             delete_term_meta($term_id, $meta_key);
 
             $values = is_array($values) ? $values : [$values];
+            if (isset($mask_overrides[$meta_key]['value'])) {
+                $values = [$mask_overrides[$meta_key]['value']];
+            }
             foreach ($values as $value) {
                 add_term_meta($term_id, $meta_key, maybe_unserialize($value));
             }
@@ -2246,7 +2278,7 @@ HT;
 
             $json_files = glob($folder . '/' . sanitize_key($post_type) . '-*.json');
             foreach ($json_files as $filepath) {
-                $result = self::import_post_from_json($filepath, $smart_import, $normalized_mode);
+                $result = self::import_post_from_json($filepath, $smart_import, $normalized_mode, null, null, null, false, []);
                 if ($result === self::IMPORT_RESULT_APPLIED) {
                     $processed++;
                 }
@@ -2286,7 +2318,7 @@ $acf_relationship_fields = [
      * Build import posts from Json
      * Added: 08-12-2025
      */
-    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null, ?array $field_decisions = null, ?string $entity_uid = null, bool $force_new_entity_accept = false)
+    public static function import_post_from_json($filepath, $smart_import = false, $filename_mode = null, ?array $decoded_json = null, ?array $field_decisions = null, ?string $entity_uid = null, bool $force_new_entity_accept = false, array $mask_directives = [])
     {
         if (! file_exists($filepath)) {
             return new WP_Error('dbvc_import_missing_file', sprintf(__('Import source missing: %s', 'dbvc'), $filepath));
@@ -2357,6 +2389,9 @@ $acf_relationship_fields = [
         if ($force_new_entity_accept) {
             $normalized_decisions = null;
         }
+        $mask_overrides = isset($mask_directives['overrides']) && is_array($mask_directives['overrides'])
+            ? $mask_directives['overrides']
+            : [];
 
         // Smart import hash check
         if ($smart_import && $existing) {
@@ -2520,17 +2555,23 @@ $acf_relationship_fields = [
                 // Use sanitize_key for the meta key (preserves underscores)
                 $meta_key = sanitize_key($key);
 
-                if (is_array($values)) {
-                    foreach ($values as $value) {
+                if (! is_array($values)) {
+                    $values = [$values];
+                }
 
-                        // Re-double isolated singles for Bricks keys only
-                        if (in_array($meta_key, $bricks_keys, true)) {
-                            $value = self::reslash_isolated_backslashes($value);
-                        }
+                if (isset($mask_overrides[$meta_key]['value'])) {
+                    $values = [$mask_overrides[$meta_key]['value']];
+                }
 
-                        // Do not unslash/sanitize the value here; just maybe_unserialize
-                        update_post_meta($post_id, $meta_key, maybe_unserialize($value));
+                foreach ($values as $value) {
+
+                    // Re-double isolated singles for Bricks keys only
+                    if (in_array($meta_key, $bricks_keys, true)) {
+                        $value = self::reslash_isolated_backslashes($value);
                     }
+
+                    // Do not unslash/sanitize the value here; just maybe_unserialize
+                    update_post_meta($post_id, $meta_key, maybe_unserialize($value));
                 }
 
                 $did_apply_meta = true;
@@ -3545,7 +3586,7 @@ $acf_relationship_fields = [
 
         $processed = 0;
         foreach ($batch_files as $file) {
-            $result = self::import_post_from_json($file, false, $normalized_mode);
+            $result = self::import_post_from_json($file, false, $normalized_mode, null, null, null, false, []);
             if ($result === self::IMPORT_RESULT_APPLIED) {
                 $processed++;
             }

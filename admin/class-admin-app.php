@@ -14,6 +14,8 @@ final class DBVC_Admin_App
     private const DEFAULT_DIFF_IGNORE_PATHS = 'meta.dbvc_post_history.*';
     private const NEW_ENTITY_DECISION_KEY = DBVC_NEW_ENTITY_DECISION_KEY;
     private const DUPLICATE_BULK_CONFIRM_PHRASE = 'DELETE';
+    private const MASK_SUPPRESS_OPTION = 'dbvc_masked_field_suppressions';
+    private const MASK_OVERRIDES_OPTION = 'dbvc_mask_overrides';
 
     private static $diff_ignore_patterns = null;
     private static $term_field_roots = [
@@ -158,6 +160,26 @@ final class DBVC_Admin_App
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
                 'callback'            => [self::class, 'cleanup_proposal_duplicates'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/masking',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [self::class, 'get_proposal_masking'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/masking/apply',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'apply_proposal_masking'],
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
@@ -981,6 +1003,194 @@ final class DBVC_Admin_App
         return new \WP_REST_Response([
             'proposal_id' => $proposal_id,
             'items'       => $updated_report,
+        ]);
+    }
+
+    /**
+     * REST: list masking candidates for a proposal.
+     */
+    public static function get_proposal_masking(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        if (defined('DBVC_MASK_DEBUG') && DBVC_MASK_DEBUG) {
+            error_log(sprintf('[DBVC Masking] Loading masking data for proposal %s', $proposal_id));
+        }
+
+        $page = max(1, (int) $request->get_param('page') ?: 1);
+        $per_page = (int) apply_filters('dbvc_masking_chunk_size', 25);
+        $fields = self::collect_masking_fields($proposal_id, $manifest, $page, $per_page);
+        $total_items = isset($manifest['items']) && is_array($manifest['items']) ? count($manifest['items']) : 0;
+        $total_pages = $per_page > 0 ? (int) ceil($total_items / $per_page) : 1;
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'updated_at'  => current_time('mysql'),
+            'fields'      => $fields,
+            'chunk'       => [
+                'page'        => $page,
+                'per_page'    => $per_page,
+                'total_pages' => $total_pages,
+                'has_more'    => $page < $total_pages,
+            ],
+        ]);
+    }
+
+    /**
+     * REST: apply masking directives (ignore/auto-accept/override).
+     */
+    public static function apply_proposal_masking(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $debug_mask = defined('DBVC_MASK_DEBUG') && DBVC_MASK_DEBUG;
+        if ($debug_mask) {
+            error_log(sprintf('[DBVC Masking] apply start proposal=%s', $proposal_id));
+        }
+
+        if (defined('DBVC_MASK_DEBUG') && DBVC_MASK_DEBUG) {
+            error_log(sprintf('[DBVC Masking] Applying directives for proposal %s', $proposal_id));
+        }
+
+        $payload = $request->get_json_params();
+        $items   = isset($payload['items']) && is_array($payload['items']) ? $payload['items'] : [];
+        if (empty($items)) {
+            return new \WP_Error('dbvc_missing_mask_items', __('Provide at least one masking directive to apply.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest_index = self::index_manifest_entities($manifest);
+        $patterns       = self::get_mask_meta_patterns();
+        if (empty($patterns['keys']) && empty($patterns['subkeys'])) {
+            return new \WP_Error('dbvc_no_mask_patterns', __('No masking patterns are configured for this site.', 'dbvc'), ['status' => 400]);
+        }
+
+        $suppress_store = self::get_mask_suppression_store();
+        $override_store = self::get_mask_override_store();
+        $proposal_suppress = $suppress_store[$proposal_id] ?? [];
+        $proposal_overrides = $override_store[$proposal_id] ?? [];
+
+        $summary = [
+            'ignore'     => 0,
+            'auto_accept'=> 0,
+            'override'   => 0,
+        ];
+        $errors = [];
+        $affected_entities = [];
+
+        foreach ($items as $idx => $entry) {
+            if (! is_array($entry)) {
+                $errors[] = sprintf(__('Invalid masking payload at index %d.', 'dbvc'), $idx);
+                continue;
+            }
+
+            $vf_object_uid = isset($entry['vf_object_uid']) ? sanitize_text_field($entry['vf_object_uid']) : '';
+            $meta_path     = isset($entry['meta_path']) ? (string) $entry['meta_path'] : '';
+            $action        = isset($entry['action']) ? sanitize_key($entry['action']) : '';
+            $meta_key      = self::extract_meta_key_from_path($meta_path);
+
+            if ($vf_object_uid === '' || $meta_path === '' || $meta_key === '') {
+                $errors[] = __('Masking entries must include vf_object_uid, meta_path, and a valid meta key.', 'dbvc');
+                continue;
+            }
+            if (! isset($manifest_index[$vf_object_uid])) {
+                $errors[] = sprintf(__('Unknown entity %s for masking.', 'dbvc'), $vf_object_uid);
+                continue;
+            }
+            if (! self::mask_path_matches_patterns($meta_path, $patterns['keys'], $patterns['subkeys'])) {
+                $errors[] = sprintf(__('Meta path %s is not covered by masking patterns.', 'dbvc'), $meta_path);
+                continue;
+            }
+
+            if (! in_array($action, ['ignore', 'auto_accept', 'override'], true)) {
+                $errors[] = sprintf(__('Unsupported masking action "%s".', 'dbvc'), $action);
+                continue;
+            }
+
+            if ('ignore' === $action) {
+                self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'keep');
+                if (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
+                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
+                }
+                if (isset($proposal_overrides[$vf_object_uid][$meta_key])) {
+                    unset($proposal_overrides[$vf_object_uid][$meta_key]);
+                }
+                $summary['ignore']++;
+            } elseif ('auto_accept' === $action) {
+                $should_suppress = ! empty($entry['suppress']);
+                self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'accept');
+                if ($should_suppress) {
+                    $proposal_suppress = self::store_mask_suppression($proposal_suppress, $vf_object_uid, $meta_key, $meta_path);
+                } elseif (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
+                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
+                }
+                if (isset($proposal_overrides[$vf_object_uid][$meta_key])) {
+                    unset($proposal_overrides[$vf_object_uid][$meta_key]);
+                }
+                $summary['auto_accept']++;
+            } else {
+                $override_value = isset($entry['override_value']) ? (string) $entry['override_value'] : '';
+                if ($override_value === '') {
+                    $errors[] = sprintf(__('Override requires a replacement value for %s.', 'dbvc'), $meta_path);
+                    continue;
+                }
+                $note = isset($entry['note']) ? sanitize_textarea_field($entry['note']) : '';
+                $proposal_overrides = self::store_mask_override(
+                    $proposal_overrides,
+                    $vf_object_uid,
+                    $meta_key,
+                    $meta_path,
+                    $override_value,
+                    $note
+                );
+                self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'accept');
+                if (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
+                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
+                }
+                $summary['override']++;
+            }
+
+            $affected_entities[$vf_object_uid] = true;
+            if ($debug_mask) {
+                error_log(sprintf('[DBVC Masking] applied %s action=%s entity=%s', $meta_path, $action, $vf_object_uid));
+            }
+        }
+
+        $suppress_store[$proposal_id] = $proposal_suppress;
+        $override_store[$proposal_id] = $proposal_overrides;
+
+        $suppress_store = self::cleanup_mask_store($suppress_store, $proposal_id);
+        $override_store = self::cleanup_mask_store($override_store, $proposal_id);
+
+        self::set_mask_suppression_store($suppress_store);
+        self::set_mask_override_store($override_store);
+
+        $updated_entities = self::summarize_masking_entities($proposal_id, array_keys($affected_entities), $manifest);
+
+        if ($debug_mask) {
+            error_log(sprintf('[DBVC Masking] apply done proposal=%s fields=%d', $proposal_id, $summary['ignore'] + $summary['auto_accept'] + $summary['override']));
+        }
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'applied'     => $summary,
+            'entities'    => $updated_entities,
+            'errors'      => $errors,
         ]);
     }
 
@@ -2828,6 +3038,402 @@ final class DBVC_Admin_App
         }
 
         return false;
+    }
+
+    private static function collect_masking_fields(string $proposal_id, array $manifest, int $page = 1, int $per_page = 25): array
+    {
+        $patterns = self::get_mask_meta_patterns();
+        if (empty($patterns['keys']) && empty($patterns['subkeys'])) {
+            return [];
+        }
+
+        $fields = [];
+        $debug_log_enabled = defined('DBVC_MASK_DEBUG') && DBVC_MASK_DEBUG;
+        if ($debug_log_enabled) {
+            error_log(sprintf('[DBVC Masking] Collecting fields for %s', $proposal_id));
+        }
+        $items  = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        if (empty($items)) {
+            if ($debug_log_enabled) {
+                error_log('[DBVC Masking] No manifest items found.');
+            }
+            return [];
+        }
+
+        $suppress_store = self::get_mask_suppression_store();
+        $override_store = self::get_mask_override_store();
+        $proposal_suppress = $suppress_store[$proposal_id] ?? [];
+        $proposal_overrides = $override_store[$proposal_id] ?? [];
+
+        $offset = max(0, ($page - 1) * $per_page);
+        if ($per_page > 0) {
+            $items = array_slice($items, $offset, $per_page, true);
+        }
+
+        foreach ($items as $item) {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
+                continue;
+            }
+            $vf_object_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($vf_object_uid === '' || empty($item['path'])) {
+                continue;
+            }
+
+            $identity = $item_type === 'term'
+                ? self::describe_term_identity($item)
+                : self::describe_entity_identity($item);
+            $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
+
+            $diff_state = ($item_type === 'term')
+                ? [
+                    'needs_review'  => ($diff_counts['total'] ?? 0) > 0 || ! empty($identity['is_new']),
+                    'reason'        => ! empty($identity['is_new']) ? 'new_term' : 'term_diff',
+                    'expected_hash' => null,
+                    'current_hash'  => null,
+                  ]
+                : self::evaluate_entity_diff_state($item, $vf_object_uid, $diff_counts, $identity);
+
+            $proposed = self::read_entity_payload($proposal_id, (string) $item['path']);
+            if (! is_array($proposed)) {
+                continue;
+            }
+
+            $current = [];
+            if (class_exists('DBVC_Snapshot_Manager')) {
+                $snapshot = DBVC_Snapshot_Manager::read_snapshot($proposal_id, $vf_object_uid);
+                if (is_array($snapshot) && ! empty($snapshot)) {
+                    $current = $snapshot;
+                }
+            }
+            if (empty($current)) {
+                $current = $proposed;
+            }
+
+            $meta_tree = isset($proposed['meta']) ? $proposed['meta'] : [];
+            if (empty($meta_tree)) {
+                if ($debug_log_enabled) {
+                    error_log(sprintf('[DBVC Masking] Skipping %s (no meta payload)', $vf_object_uid));
+                }
+                continue;
+            }
+
+            $current_meta = isset($current['meta']) ? $current['meta'] : [];
+            self::walk_mask_meta_tree(
+                $meta_tree,
+                $current_meta,
+                'meta',
+                $patterns,
+                function ($path, $value, $current_value) use (&$fields, $vf_object_uid, $item, $item_type, $proposal_overrides, $proposal_suppress, $diff_state, $debug_log_enabled) {
+                    $meta_key = self::extract_meta_key_from_path($path);
+                    if ($meta_key === '') {
+                        if ($debug_log_enabled) {
+                            error_log(sprintf('[DBVC Masking] Path %s missing meta key', $path));
+                        }
+                        return;
+                    }
+
+                    $default_action = 'ignore';
+                    $override_entry = $proposal_overrides[$vf_object_uid][$meta_key] ?? null;
+                    $supp_entry     = $proposal_suppress[$vf_object_uid][$meta_key] ?? null;
+                    if ($override_entry) {
+                        $default_action = 'override';
+                    } elseif ($supp_entry) {
+                        $default_action = 'auto_accept';
+                    }
+
+                    $fields[] = [
+                        'vf_object_uid' => $vf_object_uid,
+                        'entity_type'   => $item_type,
+                        'title'         => self::get_entity_display_title($item, $item_type),
+                        'meta_path'     => $path,
+                        'meta_key'      => $meta_key,
+                        'label'         => self::humanize_path($path),
+                        'proposed_value'=> $value,
+                        'current_value' => $current_value,
+                        'default_action'=> $default_action,
+                        'diff_state'    => $diff_state,
+                        'override'      => $override_entry,
+                        'suppressed'    => (bool) $supp_entry,
+                    ];
+                    if ($debug_log_enabled) {
+                        error_log(sprintf('[DBVC Masking] Added %s for %s (action %s)', $path, $vf_object_uid, $default_action));
+                    }
+                }
+            );
+        }
+
+        if ($debug_log_enabled) {
+            error_log(sprintf('[DBVC Masking] Returning %d mask rows', count($fields)));
+        }
+
+        return $fields;
+    }
+
+    private static function walk_mask_meta_tree($proposed, $current, string $path, array $patterns, callable $callback): void
+    {
+        if (is_object($proposed)) {
+            $proposed = (array) $proposed;
+        }
+        if (is_object($current)) {
+            $current = (array) $current;
+        }
+
+        if (is_array($proposed)) {
+            foreach ($proposed as $key => $value) {
+                $child_path = $path === '' ? (string) $key : $path . '.' . $key;
+                $current_child = null;
+                if (is_array($current) && array_key_exists($key, $current)) {
+                    $current_child = $current[$key];
+                } elseif (is_object($current) && isset($current->$key)) {
+                    $current_child = $current->$key;
+                }
+                self::walk_mask_meta_tree($value, $current_child, $child_path, $patterns, $callback);
+            }
+            return;
+        }
+
+        if (is_object($proposed)) {
+            self::walk_mask_meta_tree((array) $proposed, $current, $path, $patterns, $callback);
+            return;
+        }
+
+        if (! self::mask_path_matches_patterns($path, $patterns['keys'], $patterns['subkeys'])) {
+            return;
+        }
+
+        $callback($path, $proposed, (is_array($current) || is_object($current)) ? null : $current);
+    }
+
+    private static function summarize_masking_entities(string $proposal_id, array $vf_object_uids, array $manifest): array
+    {
+        if (empty($vf_object_uids)) {
+            return [];
+        }
+        $vf_object_uids = array_values(array_unique(array_filter(array_map('sanitize_text_field', $vf_object_uids))));
+        if (empty($vf_object_uids)) {
+            return [];
+        }
+
+        $index = self::index_manifest_entities($manifest);
+        $decision_store = self::get_decision_store();
+        $proposal_decisions = $decision_store[$proposal_id] ?? [];
+
+        $results = [];
+        foreach ($vf_object_uids as $vf_object_uid) {
+            if (! isset($index[$vf_object_uid])) {
+                continue;
+            }
+            $item      = $index[$vf_object_uid];
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            $identity  = $item_type === 'term'
+                ? self::describe_term_identity($item)
+                : self::describe_entity_identity($item);
+            $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
+            $diff_state = ($item_type === 'term')
+                ? [
+                    'needs_review'  => ($diff_counts['total'] ?? 0) > 0 || ! empty($identity['is_new']),
+                    'reason'        => ! empty($identity['is_new']) ? 'new_term' : 'term_diff',
+                    'expected_hash' => null,
+                    'current_hash'  => null,
+                ]
+                : self::evaluate_entity_diff_state($item, $vf_object_uid, $diff_counts, $identity);
+
+            $entity_decisions = isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])
+                ? $proposal_decisions[$vf_object_uid]
+                : [];
+
+            $results[] = [
+                'vf_object_uid'    => $vf_object_uid,
+                'diff_state'       => $diff_state,
+                'decision_summary' => self::summarize_entity_decisions($entity_decisions),
+                'overall_status'   => ! empty($diff_state['needs_review']) ? 'needs_review' : 'resolved',
+            ];
+        }
+
+        return $results;
+    }
+
+    private static function index_manifest_entities(array $manifest): array
+    {
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        $index = [];
+        foreach ($items as $item) {
+            $uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($uid === '') {
+                continue;
+            }
+            $index[$uid] = $item;
+        }
+        return $index;
+    }
+
+    private static function get_mask_meta_patterns(): array
+    {
+        $keys_raw = trim((string) get_option('dbvc_mask_meta_keys', '') . "\n" . (string) get_option('dbvc_mask_defaults_meta_keys', ''));
+        $subs_raw = trim((string) get_option('dbvc_mask_subkeys', '') . "\n" . (string) get_option('dbvc_mask_defaults_subkeys', ''));
+
+        if (function_exists('dbvc_mask_parse_list')) {
+            $key_patterns = dbvc_mask_parse_list($keys_raw);
+            $sub_patterns = dbvc_mask_parse_list($subs_raw);
+        } else {
+            $key_patterns = self::simple_mask_list($keys_raw);
+            $sub_patterns = self::simple_mask_list($subs_raw);
+        }
+
+        return [
+            'keys'    => $key_patterns,
+            'subkeys' => $sub_patterns,
+        ];
+    }
+
+    private static function simple_mask_list(string $raw): array
+    {
+        $parts = preg_split('/[\\r\\n,]+/', $raw);
+        $patterns = [];
+        if (is_array($parts)) {
+            foreach ($parts as $part) {
+                $part = trim((string) $part);
+                if ($part !== '') {
+                    $patterns[] = $part;
+                }
+            }
+        }
+        return $patterns;
+    }
+
+    private static function extract_meta_key_from_path(string $path): string
+    {
+        if (strpos($path, 'meta.') !== 0) {
+            return '';
+        }
+        $chunks = explode('.', $path);
+        return isset($chunks[1]) ? (string) $chunks[1] : '';
+    }
+
+    private static function mask_path_matches_patterns(string $path, array $key_patterns, array $sub_patterns): bool
+    {
+        $leaf = $path;
+        $dot  = strrpos($path, '.');
+        if ($dot !== false) {
+            $leaf = substr($path, $dot + 1);
+        }
+
+        if (! empty($key_patterns) && function_exists('dbvc_mask_should_remove_key')) {
+            $meta_key = self::extract_meta_key_from_path($path);
+            if ($meta_key !== '' && dbvc_mask_should_remove_key($meta_key, $key_patterns)) {
+                return true;
+            }
+        }
+
+        if (! empty($sub_patterns) && function_exists('dbvc_mask_should_remove_path')) {
+            if (dbvc_mask_should_remove_path($path, $leaf, $sub_patterns)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function get_mask_suppression_store(): array
+    {
+        $store = get_option(self::MASK_SUPPRESS_OPTION, []);
+        return is_array($store) ? $store : [];
+    }
+
+    private static function set_mask_suppression_store(array $store): void
+    {
+        update_option(self::MASK_SUPPRESS_OPTION, $store, false);
+    }
+
+    private static function get_mask_override_store(): array
+    {
+        $store = get_option(self::MASK_OVERRIDES_OPTION, []);
+        return is_array($store) ? $store : [];
+    }
+
+    private static function set_mask_override_store(array $store): void
+    {
+        update_option(self::MASK_OVERRIDES_OPTION, $store, false);
+    }
+
+    private static function store_mask_suppression(array $store, string $vf_object_uid, string $meta_key, string $path): array
+    {
+        if ($vf_object_uid === '' || $meta_key === '') {
+            return $store;
+        }
+        if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
+            $store[$vf_object_uid] = [];
+        }
+        $store[$vf_object_uid][$meta_key] = [
+            'path'    => $path,
+            'updated' => current_time('mysql'),
+        ];
+        return $store;
+    }
+
+    private static function store_mask_override(array $store, string $vf_object_uid, string $meta_key, string $path, string $value, string $note = ''): array
+    {
+        if ($vf_object_uid === '' || $meta_key === '') {
+            return $store;
+        }
+        if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
+            $store[$vf_object_uid] = [];
+        }
+        $store[$vf_object_uid][$meta_key] = [
+            'path'    => $path,
+            'value'   => $value,
+            'note'    => $note,
+            'updated' => current_time('mysql'),
+        ];
+        return $store;
+    }
+
+    private static function cleanup_mask_store(array $store, string $proposal_id): array
+    {
+        if (! isset($store[$proposal_id]) || ! is_array($store[$proposal_id])) {
+            return $store;
+        }
+
+        foreach ($store[$proposal_id] as $entity_id => $bucket) {
+            if (empty($bucket) || ! is_array($bucket)) {
+                unset($store[$proposal_id][$entity_id]);
+            }
+        }
+
+        if (empty($store[$proposal_id])) {
+            unset($store[$proposal_id]);
+        }
+
+        return $store;
+    }
+
+    private static function get_entity_display_title(array $item, string $item_type): string
+    {
+        if ($item_type === 'term') {
+            if (! empty($item['term_name'])) {
+                return (string) $item['term_name'];
+            }
+            if (! empty($item['name'])) {
+                return (string) $item['name'];
+            }
+            if (! empty($item['taxonomy']) && ! empty($item['term_slug'])) {
+                return sprintf('%s/%s', $item['taxonomy'], $item['term_slug']);
+            }
+            return __('Term', 'dbvc');
+        }
+
+        if (! empty($item['post_title'])) {
+            return (string) $item['post_title'];
+        }
+        if (! empty($item['post_name'])) {
+            return (string) $item['post_name'];
+        }
+        return __('Post', 'dbvc');
     }
 
     private static function match_diff_pattern(string $full_path, string $leaf, string $pattern): bool

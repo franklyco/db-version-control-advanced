@@ -1459,6 +1459,10 @@ function dbvc_render_export_page()
 
       <div class="dbvc-tabs__panels">
         <section id="tab-import" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-import' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-import" role="tabpanel" aria-labelledby="dbvc-nav-tab-import" <?php echo $active_main_tab === 'tab-import' ? '' : 'hidden'; ?>>
+        <?php
+        $masking_doc_url  = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking.md';
+        $masking_plan_url = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking-plan.md';
+        ?>
         <div class="dbvc-subtabs" data-dbvc-subtabs>
           <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import subsections', 'dbvc'); ?>">
 <?php foreach ($import_subtabs as $panel_id => $label) :
@@ -3012,6 +3016,30 @@ document.addEventListener('DOMContentLoaded', function () {
                     <li><?php esc_html_e('Apply once the status pill shows “0 pending”. Choose Full/Partial mode and whether to ignore missing hashes (useful for legacy content).', 'dbvc'); ?></li>
                     <li><?php esc_html_e('Enable Auto-clear Decisions to wipe Accept/Keep selections after import so the proposal starts fresh if you reopen it later.', 'dbvc'); ?></li>
                     <li><?php esc_html_e('Configure → Import Defaults includes “Force reapply new posts/terms” to automatically restore approved inserts when reopening proposals.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Tools Panel & Masking', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Use the “Tools” pill above the entity table to open the inline toolbox containing resolver metrics, hash sync shortcuts, and the meta masking controls.', 'dbvc'); ?></li>
+                    <li><?php
+                      printf(
+                        wp_kses(
+                          __('Review the %1$s for step-by-step masking guidance (ignore, auto-accept & suppress, override) plus tooltip copy.', 'dbvc'),
+                          ['a' => ['href' => [], 'target' => [], 'rel' => []]]
+                        ),
+                        '<a href="' . esc_url($masking_doc_url) . '" target="_blank" rel="noreferrer">' . esc_html__('Masking Guide', 'dbvc') . '</a>'
+                      );
+                    ?></li>
+                    <li><?php
+                      printf(
+                        wp_kses(
+                          __('Need implementation details? See the %1$s for REST endpoints, importer hooks, and UI plans.', 'dbvc'),
+                          ['a' => ['href' => [], 'target' => [], 'rel' => []]]
+                        ),
+                        '<a href="' . esc_url($masking_plan_url) . '" target="_blank" rel="noreferrer">' . esc_html__('Masking reference plan', 'dbvc') . '</a>'
+                      );
+                    ?></li>
                   </ul>
                 </div>
               </article>

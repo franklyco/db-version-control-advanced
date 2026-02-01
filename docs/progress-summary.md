@@ -44,6 +44,9 @@
     - Added `wp dbvc proposals list|upload|apply` commands that reuse the React workflow’s ingestion/apply helpers so CI/staging can manage proposals headlessly.
 13. **CLI Parity for Resolver Rules & Duplicates**
     - Added `wp dbvc resolver-rules list|add|delete|import` plus `wp dbvc proposals list --cleanup-duplicates` so automation can manage global resolver rules and manifest cleanup without the React UI.
+14. **Meta Masking Drawer & REST**
+    - Added `/masking` + `/masking/apply` endpoints plus option stores for per-proposal suppressions/overrides and importer hooks that honor those directives.
+    - React admin now includes status badges, a Tools drawer housing masking controls, and inline tooltips linked to `docs/meta-masking.md`. Remember to run `npm run build` whenever `src/admin-app/` changes.
 ## Remaining / Next Steps
 1. **Term & Taxonomy Entity Polish**
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.
@@ -60,3 +63,15 @@
    - Decide whether large assets should lazy-load to avoid blocking entity review.
 5. **Documentation & CLI**
    - Keep README/handoff updated as new workflows (taxonomy entities, official collections) become available.
+6. **Meta Field Masking Workflow**
+   - ✅ Ship an “Apply masking rules” button above the All Entities table that auto-applies configured post/term meta masking directives (Tools panel, batching, undo).
+   - ✅ Allow reviewers to pick ignore, auto-accept & suppress, or override behaviors via a bulk selector, with override inputs and help tooltips pointing into `docs/meta-masking.md`.
+   - ✅ Ensure the action runs against live proposals so posts/terms/media flagged as Needs Review or Unresolved meta are relabeled once matching masked fields are processed, keeping entity badges and counts accurate after auto-masking.
+   - ✅ Leave existing export-time masking logic untouched so deployments relying on masked exports keep their current behavior.
+   - ✅ Surface the new behaviors through tooltips anchored to the bulk action + help text in docs, plus a progress indicator while masking loads/applies.
+   - ⚪ Chunk the backend `/masking` endpoint further if telemetry shows memory spikes beyond the current paged walker (monitor).
+   - ⚪ Add automated tests around `/masking` pagination + apply/undo flows once new test scaffolding is in place.
+7. **Admin App Refactor**
+   - The compiled UI currently lives in `src/admin-app/index.js` as a single ~3,300 line bundle, which makes day-to-day edits nearly impossible.
+   - Recover or recreate the original modular React source (components, hooks, api helpers) and treat the generated bundle as a build artifact under `build/`.
+   - Update build/docs to clarify the source-of-truth paths so future contributors can work in smaller files and keep reviews manageable.
