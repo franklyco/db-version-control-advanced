@@ -16,6 +16,7 @@ final class DBVC_Admin_App
     private const DUPLICATE_BULK_CONFIRM_PHRASE = 'DELETE';
     private const MASK_SUPPRESS_OPTION = 'dbvc_masked_field_suppressions';
     private const MASK_OVERRIDES_OPTION = 'dbvc_mask_overrides';
+    private const MASKING_CHUNK_DEFAULT = 10;
 
     private static $diff_ignore_patterns = null;
     private static $term_field_roots = [
@@ -131,6 +132,24 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/fixtures/upload',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'upload_fixture'],
+                'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'fixture_name' => [
+                        'required' => false,
+                    ],
+                    'overwrite'    => [
+                        'required' => false,
+                    ],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/proposals/(?P<proposal_id>[^/]+)/entities',
             [
                 'methods'             => \WP_REST_Server::READABLE,
@@ -180,6 +199,16 @@ final class DBVC_Admin_App
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
                 'callback'            => [self::class, 'apply_proposal_masking'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/masking/revert',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'revert_proposal_masking'],
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
@@ -506,6 +535,80 @@ final class DBVC_Admin_App
         }
 
         return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: copy an uploaded ZIP into docs/fixtures for dev/QA.
+     */
+    public static function upload_fixture(\WP_REST_Request $request)
+    {
+        $files = $request->get_file_params();
+        if (empty($files['file']) || ! isset($files['file']['tmp_name'])) {
+            return new \WP_Error('dbvc_missing_file', __('Upload a ZIP file to store as a dev fixture.', 'dbvc'), ['status' => 400]);
+        }
+
+        $file = $files['file'];
+        if (! empty($file['error']) && (int) $file['error'] !== UPLOAD_ERR_OK) {
+            return new \WP_Error('dbvc_upload_error', __('File upload failed.', 'dbvc'), ['status' => 400]);
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+
+        $handled = wp_handle_sideload($file, [
+            'test_form' => false,
+        ]);
+
+        if (isset($handled['error'])) {
+            return new \WP_Error('dbvc_upload_error', $handled['error'], ['status' => 400]);
+        }
+
+        $fixture_dir = self::get_fixture_directory();
+        wp_mkdir_p($fixture_dir);
+        if (! is_dir($fixture_dir) || ! wp_is_writable($fixture_dir)) {
+            @unlink($handled['file']);
+            return new \WP_Error('dbvc_fixture_dir', __('Fixture directory is not writable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $fixture_name = $request->get_param('fixture_name');
+        $fixture_name = sanitize_file_name($fixture_name ?: ($file['name'] ?? 'dev-fixture.zip'));
+        if ($fixture_name === '') {
+            $fixture_name = 'dev-fixture.zip';
+        }
+        if (strtolower(pathinfo($fixture_name, PATHINFO_EXTENSION)) !== 'zip') {
+            $fixture_name .= '.zip';
+        }
+
+        $overwrite = $request->get_param('overwrite');
+        if (function_exists('rest_sanitize_boolean')) {
+            $overwrite = rest_sanitize_boolean($overwrite);
+        } else {
+            $overwrite = in_array($overwrite, [true, 1, '1', 'true', 'on'], true);
+        }
+
+        $destination = trailingslashit($fixture_dir) . $fixture_name;
+        if (file_exists($destination) && ! $overwrite) {
+            @unlink($handled['file']);
+            return new \WP_Error('dbvc_fixture_exists', __('Fixture already exists. Enable overwrite to replace it.', 'dbvc'), ['status' => 409]);
+        }
+
+        if (file_exists($destination)) {
+            @unlink($destination);
+        }
+
+        $moved = @rename($handled['file'], $destination);
+        if (! $moved) {
+            $moved = @copy($handled['file'], $destination);
+            @unlink($handled['file']);
+        }
+
+        if (! $moved) {
+            return new \WP_Error('dbvc_fixture_move_failed', __('Unable to store the fixture ZIP.', 'dbvc'), ['status' => 500]);
+        }
+
+        return new \WP_REST_Response([
+            'fixture' => basename($destination),
+            'path'    => str_replace(DBVC_PLUGIN_PATH, '', $destination),
+        ]);
     }
 
     /**
@@ -1026,7 +1129,15 @@ final class DBVC_Admin_App
         }
 
         $page = max(1, (int) $request->get_param('page') ?: 1);
-        $per_page = (int) apply_filters('dbvc_masking_chunk_size', 25);
+        $default_chunk = (int) apply_filters('dbvc_masking_chunk_size', self::MASKING_CHUNK_DEFAULT);
+        if ($default_chunk <= 0) {
+            $default_chunk = self::MASKING_CHUNK_DEFAULT;
+        }
+
+        $per_page_param = (int) $request->get_param('per_page');
+        $per_page = $per_page_param > 0 ? $per_page_param : $default_chunk;
+        $per_page = max(5, min($per_page, 50));
+
         $fields = self::collect_masking_fields($proposal_id, $manifest, $page, $per_page);
         $total_items = isset($manifest['items']) && is_array($manifest['items']) ? count($manifest['items']) : 0;
         $total_pages = $per_page > 0 ? (int) ceil($total_items / $per_page) : 1;
@@ -1082,8 +1193,8 @@ final class DBVC_Admin_App
 
         $suppress_store = self::get_mask_suppression_store();
         $override_store = self::get_mask_override_store();
-        $proposal_suppress = $suppress_store[$proposal_id] ?? [];
-        $proposal_overrides = $override_store[$proposal_id] ?? [];
+        $proposal_suppress = self::normalize_mask_entity_store($suppress_store[$proposal_id] ?? []);
+        $proposal_overrides = self::normalize_mask_entity_store($override_store[$proposal_id] ?? []);
 
         $summary = [
             'ignore'     => 0,
@@ -1124,24 +1235,18 @@ final class DBVC_Admin_App
 
             if ('ignore' === $action) {
                 self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'keep');
-                if (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
-                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
-                }
-                if (isset($proposal_overrides[$vf_object_uid][$meta_key])) {
-                    unset($proposal_overrides[$vf_object_uid][$meta_key]);
-                }
+                $proposal_suppress = self::remove_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $meta_path);
+                $proposal_overrides = self::remove_mask_store_entry($proposal_overrides, $vf_object_uid, $meta_key, $meta_path);
                 $summary['ignore']++;
             } elseif ('auto_accept' === $action) {
                 $should_suppress = ! empty($entry['suppress']);
                 self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'accept');
                 if ($should_suppress) {
                     $proposal_suppress = self::store_mask_suppression($proposal_suppress, $vf_object_uid, $meta_key, $meta_path);
-                } elseif (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
-                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
+                } else {
+                    $proposal_suppress = self::remove_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $meta_path);
                 }
-                if (isset($proposal_overrides[$vf_object_uid][$meta_key])) {
-                    unset($proposal_overrides[$vf_object_uid][$meta_key]);
-                }
+                $proposal_overrides = self::remove_mask_store_entry($proposal_overrides, $vf_object_uid, $meta_key, $meta_path);
                 $summary['auto_accept']++;
             } else {
                 $override_value = isset($entry['override_value']) ? (string) $entry['override_value'] : '';
@@ -1159,9 +1264,7 @@ final class DBVC_Admin_App
                     $note
                 );
                 self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'accept');
-                if (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
-                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
-                }
+                $proposal_suppress = self::remove_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $meta_path);
                 $summary['override']++;
             }
 
@@ -1191,6 +1294,95 @@ final class DBVC_Admin_App
             'applied'     => $summary,
             'entities'    => $updated_entities,
             'errors'      => $errors,
+        ]);
+    }
+
+    /**
+     * REST: revert previously applied masking directives.
+     */
+    public static function revert_proposal_masking(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $patterns = self::get_mask_meta_patterns();
+        if (empty($patterns['keys']) && empty($patterns['subkeys'])) {
+            return new \WP_Error('dbvc_no_mask_patterns', __('No masking patterns are configured for this site.', 'dbvc'), ['status' => 400]);
+        }
+
+        $decision_store = self::get_decision_store();
+        $proposal_decisions = $decision_store[$proposal_id] ?? [];
+
+        if (empty($proposal_decisions)) {
+            return new \WP_REST_Response([
+                'proposal_id' => $proposal_id,
+                'cleared'     => ['decisions' => 0, 'entities' => 0],
+                'entities'    => [],
+            ]);
+        }
+
+        $affected_entities = [];
+        $cleared = 0;
+
+        foreach ($proposal_decisions as $vf_object_uid => $decisions) {
+            if (! is_array($decisions)) {
+                continue;
+            }
+
+            foreach ($decisions as $path => $action) {
+                if (! is_string($path) || $path === '' || $path === DBVC_NEW_ENTITY_DECISION_KEY) {
+                    continue;
+                }
+
+                if (strpos($path, 'meta.') !== 0) {
+                    continue;
+                }
+
+                if (! self::mask_path_matches_patterns($path, $patterns['keys'], $patterns['subkeys'])) {
+                    continue;
+                }
+
+                self::clear_entity_decision($proposal_id, (string) $vf_object_uid, $path);
+                $affected_entities[(string) $vf_object_uid] = true;
+                $cleared++;
+            }
+        }
+
+        $suppress_store = self::get_mask_suppression_store();
+        $override_store = self::get_mask_override_store();
+
+        if (isset($suppress_store[$proposal_id])) {
+            unset($suppress_store[$proposal_id]);
+        }
+        if (isset($override_store[$proposal_id])) {
+            unset($override_store[$proposal_id]);
+        }
+
+        $suppress_store = self::cleanup_mask_store($suppress_store, $proposal_id);
+        $override_store = self::cleanup_mask_store($override_store, $proposal_id);
+
+        self::set_mask_suppression_store($suppress_store);
+        self::set_mask_override_store($override_store);
+
+        $entities = [];
+        if (! empty($affected_entities)) {
+            $entities = self::summarize_masking_entities($proposal_id, array_keys($affected_entities), $manifest);
+        }
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'cleared'     => [
+                'decisions' => $cleared,
+                'entities'  => count($affected_entities),
+            ],
+            'entities'    => $entities,
         ]);
     }
 
@@ -3040,7 +3232,7 @@ final class DBVC_Admin_App
         return false;
     }
 
-    private static function collect_masking_fields(string $proposal_id, array $manifest, int $page = 1, int $per_page = 25): array
+    private static function collect_masking_fields(string $proposal_id, array $manifest, int $page = 1, int $per_page = self::MASKING_CHUNK_DEFAULT): array
     {
         $patterns = self::get_mask_meta_patterns();
         if (empty($patterns['keys']) && empty($patterns['subkeys'])) {
@@ -3062,8 +3254,8 @@ final class DBVC_Admin_App
 
         $suppress_store = self::get_mask_suppression_store();
         $override_store = self::get_mask_override_store();
-        $proposal_suppress = $suppress_store[$proposal_id] ?? [];
-        $proposal_overrides = $override_store[$proposal_id] ?? [];
+        $proposal_suppress = self::normalize_mask_entity_store($suppress_store[$proposal_id] ?? []);
+        $proposal_overrides = self::normalize_mask_entity_store($override_store[$proposal_id] ?? []);
 
         $offset = max(0, ($page - 1) * $per_page);
         if ($per_page > 0) {
@@ -3136,8 +3328,8 @@ final class DBVC_Admin_App
                     }
 
                     $default_action = 'ignore';
-                    $override_entry = $proposal_overrides[$vf_object_uid][$meta_key] ?? null;
-                    $supp_entry     = $proposal_suppress[$vf_object_uid][$meta_key] ?? null;
+                    $override_entry = self::get_mask_store_entry($proposal_overrides, $vf_object_uid, $meta_key, $path);
+                    $supp_entry     = self::get_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $path);
                     if ($override_entry) {
                         $default_action = 'override';
                     } elseif ($supp_entry) {
@@ -3363,32 +3555,40 @@ final class DBVC_Admin_App
 
     private static function store_mask_suppression(array $store, string $vf_object_uid, string $meta_key, string $path): array
     {
-        if ($vf_object_uid === '' || $meta_key === '') {
+        if ($vf_object_uid === '' || $meta_key === '' || $path === '') {
             return $store;
         }
         if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
             $store[$vf_object_uid] = [];
         }
-        $store[$vf_object_uid][$meta_key] = [
-            'path'    => $path,
-            'updated' => current_time('mysql'),
+        if (! isset($store[$vf_object_uid][$meta_key]) || ! is_array($store[$vf_object_uid][$meta_key])) {
+            $store[$vf_object_uid][$meta_key] = [];
+        }
+        $store[$vf_object_uid][$meta_key][$path] = [
+            'path'     => $path,
+            'meta_key' => $meta_key,
+            'updated'  => current_time('mysql'),
         ];
         return $store;
     }
 
     private static function store_mask_override(array $store, string $vf_object_uid, string $meta_key, string $path, string $value, string $note = ''): array
     {
-        if ($vf_object_uid === '' || $meta_key === '') {
+        if ($vf_object_uid === '' || $meta_key === '' || $path === '') {
             return $store;
         }
         if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
             $store[$vf_object_uid] = [];
         }
-        $store[$vf_object_uid][$meta_key] = [
-            'path'    => $path,
-            'value'   => $value,
-            'note'    => $note,
-            'updated' => current_time('mysql'),
+        if (! isset($store[$vf_object_uid][$meta_key]) || ! is_array($store[$vf_object_uid][$meta_key])) {
+            $store[$vf_object_uid][$meta_key] = [];
+        }
+        $store[$vf_object_uid][$meta_key][$path] = [
+            'path'     => $path,
+            'meta_key' => $meta_key,
+            'value'    => $value,
+            'note'     => $note,
+            'updated'  => current_time('mysql'),
         ];
         return $store;
     }
@@ -3402,11 +3602,141 @@ final class DBVC_Admin_App
         foreach ($store[$proposal_id] as $entity_id => $bucket) {
             if (empty($bucket) || ! is_array($bucket)) {
                 unset($store[$proposal_id][$entity_id]);
+                continue;
+            }
+
+            foreach ($bucket as $meta_key => $entries) {
+                if (empty($entries) || ! is_array($entries)) {
+                    unset($store[$proposal_id][$entity_id][$meta_key]);
+                    continue;
+                }
+
+                // Legacy single-entry support.
+                if (isset($entries['path'])) {
+                    if (empty($entries['path'])) {
+                        unset($store[$proposal_id][$entity_id][$meta_key]);
+                    }
+                    continue;
+                }
+
+                foreach ($entries as $path_key => $entry) {
+                    if (! is_array($entry) || empty($entry['path'])) {
+                        unset($store[$proposal_id][$entity_id][$meta_key][$path_key]);
+                    }
+                }
+
+                if (empty($store[$proposal_id][$entity_id][$meta_key])) {
+                    unset($store[$proposal_id][$entity_id][$meta_key]);
+                }
+            }
+
+            if (empty($store[$proposal_id][$entity_id])) {
+                unset($store[$proposal_id][$entity_id]);
             }
         }
 
         if (empty($store[$proposal_id])) {
             unset($store[$proposal_id]);
+        }
+
+        return $store;
+    }
+
+    private static function normalize_mask_entity_store(array $store): array
+    {
+        $normalized = [];
+
+        foreach ($store as $vf_object_uid => $meta_entries) {
+            if (! is_array($meta_entries)) {
+                continue;
+            }
+
+            $normalized[$vf_object_uid] = self::normalize_mask_meta_entries($meta_entries);
+            if (empty($normalized[$vf_object_uid])) {
+                unset($normalized[$vf_object_uid]);
+            }
+        }
+
+        return $normalized;
+    }
+
+    private static function normalize_mask_meta_entries(array $entries): array
+    {
+        $normalized = [];
+
+        foreach ($entries as $meta_key => $bucket) {
+            if (! is_array($bucket)) {
+                continue;
+            }
+
+            if (self::is_mask_store_leaf($bucket)) {
+                $bucket = [($bucket['path'] ?? (string) $meta_key) => $bucket];
+            }
+
+            foreach ($bucket as $path_key => $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
+
+                $meta_path = isset($entry['path']) ? (string) $entry['path'] : (string) $path_key;
+                $meta_path = $meta_path !== '' ? $meta_path : (string) $path_key;
+                $resolved_meta_key = isset($entry['meta_key']) && $entry['meta_key'] !== ''
+                    ? (string) $entry['meta_key']
+                    : (is_string($meta_key) && $meta_key !== '' ? (string) $meta_key : self::extract_meta_key_from_path($meta_path));
+
+                if ($resolved_meta_key === '') {
+                    continue;
+                }
+
+                if (! isset($normalized[$resolved_meta_key]) || ! is_array($normalized[$resolved_meta_key])) {
+                    $normalized[$resolved_meta_key] = [];
+                }
+
+                $entry['path'] = $meta_path;
+                $entry['meta_key'] = $resolved_meta_key;
+                $normalized[$resolved_meta_key][$meta_path] = $entry;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private static function is_mask_store_leaf(array $entry): bool
+    {
+        return array_key_exists('path', $entry) && ! array_key_exists(0, $entry);
+    }
+
+    private static function get_mask_store_entry(array $store, string $vf_object_uid, string $meta_key, string $meta_path): ?array
+    {
+        if (isset($store[$vf_object_uid][$meta_key][$meta_path])) {
+            return $store[$vf_object_uid][$meta_key][$meta_path];
+        }
+
+        if (isset($store[$vf_object_uid][$meta_key]['path']) && $store[$vf_object_uid][$meta_key]['path'] === $meta_path) {
+            return $store[$vf_object_uid][$meta_key];
+        }
+
+        return null;
+    }
+
+    private static function remove_mask_store_entry(array $store, string $vf_object_uid, string $meta_key, string $meta_path): array
+    {
+        if (isset($store[$vf_object_uid][$meta_key][$meta_path])) {
+            unset($store[$vf_object_uid][$meta_key][$meta_path]);
+            if (empty($store[$vf_object_uid][$meta_key])) {
+                unset($store[$vf_object_uid][$meta_key]);
+            }
+            if (empty($store[$vf_object_uid])) {
+                unset($store[$vf_object_uid]);
+            }
+            return $store;
+        }
+
+        if (isset($store[$vf_object_uid][$meta_key]['path']) && $store[$vf_object_uid][$meta_key]['path'] === $meta_path) {
+            unset($store[$vf_object_uid][$meta_key]);
+            if (empty($store[$vf_object_uid])) {
+                unset($store[$vf_object_uid]);
+            }
         }
 
         return $store;
@@ -4381,5 +4711,13 @@ final class DBVC_Admin_App
         }
 
         return null;
+    }
+
+    /**
+     * Path to docs/fixtures inside the plugin.
+     */
+    private static function get_fixture_directory()
+    {
+        return trailingslashit(DBVC_PLUGIN_PATH . 'docs/fixtures');
     }
 }

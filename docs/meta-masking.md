@@ -43,3 +43,7 @@ Auto-accept lets reviewers treat masked fields as if they were accepted manually
 ## Override Masked Value
 
 Override is designed for cases where masking provides a placeholder but deployment still needs a sanitized replacement value. Reviewers supply the override once; the proposal records that change, and downstream applies inherit the sanitized value without exposing the original data.
+
+## Revert Masked Decisions
+
+If you need to roll back the automated selections stamped by **Apply masking rules**, open the Tools panel and click **Revert masking decisions**. This clears any accept/keep decisions that were created via the masking tool (based on the current mask patterns) and removes the related suppress/override records so the affected fields return to Needs Review. Use this whenever masking rules change or when a proposal requires full reviewer scrutiny again.

@@ -52,6 +52,7 @@
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.
    - Refresh docs/help text so reviewers know the taxonomy filters, parent resolution behaviour, and “Accept all new terms” affordances that now ship with the feature.
    - Backfill existing proposals by rerunning `DBVC_Snapshot_Manager::capture_for_proposal()` (or `wp dbvc proposals list --recapture-snapshots`) so every reopen flow benefits from the new term snapshots.
+   - 🗂️ `docs/term-entity-polish.md` now tracks the QA/backfill checklist so each environment can confirm parity before rollout.
 2. **Testing & Automation**
    - Expand coverage (resolver bulk actions, CSV parsing, importer hooks, duplicate cleanup) now that the PHPUnit scaffold exists.
    - Integrate the suite with CI once infrastructure is available so regressions (like the new-entity gating bug) are caught automatically.
@@ -69,9 +70,13 @@
    - ✅ Ensure the action runs against live proposals so posts/terms/media flagged as Needs Review or Unresolved meta are relabeled once matching masked fields are processed, keeping entity badges and counts accurate after auto-masking.
    - ✅ Leave existing export-time masking logic untouched so deployments relying on masked exports keep their current behavior.
    - ✅ Surface the new behaviors through tooltips anchored to the bulk action + help text in docs, plus a progress indicator while masking loads/applies.
-   - ⚪ Chunk the backend `/masking` endpoint further if telemetry shows memory spikes beyond the current paged walker (monitor).
-   - ⚪ Add automated tests around `/masking` pagination + apply/undo flows once new test scaffolding is in place.
+   - ✅ Tightened backend pagination (10-field default with a guarded `per_page` param) so each `/masking` fetch stays within memory budgets exposed by telemetry.
+   - ✅ Added PHPUnit coverage for `/masking` pagination + apply/undo flows (`tests/phpunit/MaskingEndpointsTest.php`) to lock in the behaviours above.
+   - ✅ Tools panel now ships with a “Revert masking decisions” control backed by `/masking/revert`, clearing stored suppressions/overrides so proposals can be re-reviewed after rule changes.
 7. **Admin App Refactor**
    - The compiled UI currently lives in `src/admin-app/index.js` as a single ~3,300 line bundle, which makes day-to-day edits nearly impossible.
+   - Before touching the bundle, capture a backup copy (tagged commit + `build/` artifact) and document the baseline so a reliable reference exists during the refactor; stage work in a separate branch or staging file to keep master stable.
    - Recover or recreate the original modular React source (components, hooks, api helpers) and treat the generated bundle as a build artifact under `build/`.
+   - Break the work into smaller steps: first extract shared utilities/API calls, then UI primitives, then feature panels (diff table, masking drawer, resolver screens) so each PR stays reviewable and easy to roll back.
    - Update build/docs to clarify the source-of-truth paths so future contributors can work in smaller files and keep reviews manageable.
+   - 📘 `docs/admin-app-refactor-plan.md` captures the staged architecture (data layer, hooks, components) so contributors can chip away at the refactor without editing the compiled bundle directly.

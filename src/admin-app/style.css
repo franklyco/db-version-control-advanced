@@ -924,9 +924,120 @@ border: 1px solid var(--dbvc-color-success-dark);
 	gap: 6px;
 }
 
-.dbvc-resolver-controls select,
-.dbvc-resolver-controls input,
-.dbvc-resolver-controls textarea {
+.dbvc-resolver-controls--decision {
+	border: 1px solid var(--dbvc-color-border);
+	background: var(--dbvc-color-surface-muted);
+	border-radius: 8px;
+	padding: 12px;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 12px 16px;
+	align-items: flex-start;
+}
+
+.dbvc-resolver-control {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 12px;
+	color: var(--dbvc-color-text-muted);
+}
+
+.dbvc-resolver-control__label {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	color: var(--dbvc-color-text-subtle);
+}
+
+.dbvc-resolver-control--note {
+	grid-column: 1 / -1;
+}
+
+.dbvc-resolver-controls--decision select,
+.dbvc-resolver-controls--decision input,
+.dbvc-resolver-controls--decision textarea {
+	width: 100%;
+	max-width: none;
+}
+
+.dbvc-resolver-controls--decision select,
+.dbvc-resolver-controls--decision input {
+	min-height: 34px;
+	border: 1px solid var(--dbvc-color-border);
+	border-radius: 4px;
+	padding: 6px 8px;
+	background: var(--dbvc-color-white);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+	font-size: 13px;
+	color: var(--dbvc-color-text-primary);
+}
+
+.dbvc-resolver-controls--decision textarea {
+	min-height: 62px;
+	border: 1px solid var(--dbvc-color-border);
+	border-radius: 4px;
+	padding: 6px 8px;
+	background: var(--dbvc-color-white);
+	resize: vertical;
+	font-size: 13px;
+	color: var(--dbvc-color-text-primary);
+}
+
+.dbvc-resolver-remember {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	color: var(--dbvc-color-text-primary);
+	grid-column: 1 / -1;
+	padding-top: 4px;
+	border-top: 1px dashed var(--dbvc-color-border);
+}
+
+.dbvc-resolver-remember input[type='checkbox'] {
+	appearance: none;
+	width: 18px;
+	height: 18px;
+	border: 1px solid var(--dbvc-color-border);
+	border-radius: 4px;
+	background: var(--dbvc-color-white);
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.dbvc-resolver-remember input[type='checkbox']::after {
+	content: "";
+	width: 9px;
+	height: 5px;
+	border-left: 2px solid var(--dbvc-color-white);
+	border-bottom: 2px solid var(--dbvc-color-white);
+	transform: rotate(-45deg);
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+
+.dbvc-resolver-remember input[type='checkbox']:checked {
+	background: var(--dbvc-color-accent-blue);
+	border-color: var(--dbvc-color-accent-blue);
+}
+
+.dbvc-resolver-remember input[type='checkbox']:checked::after {
+	opacity: 1;
+}
+
+.dbvc-resolver-remember input[type='checkbox']:focus-visible {
+	outline: 2px solid var(--dbvc-color-focus);
+	outline-offset: 1px;
+}
+
+.dbvc-resolver-controls:not(.dbvc-resolver-controls--decision) select,
+.dbvc-resolver-controls:not(.dbvc-resolver-controls--decision) input,
+.dbvc-resolver-controls:not(.dbvc-resolver-controls--decision) textarea {
 	width: 100%;
 	max-width: 220px;
 }
@@ -1395,4 +1506,66 @@ border: 1px solid var(--dbvc-color-success-dark);
 	100% {
 		opacity: 1;
 	}
+}
+
+.dbvc-tooltip {
+	position: relative;
+	display: inline-flex;
+}
+
+.dbvc-tooltip > * {
+	display: inline-flex;
+}
+
+.dbvc-tooltip::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	left: 50%;
+	bottom: calc(100% + 8px);
+	transform: translate(-50%, 10px);
+	background: #1d2327;
+	color: #fff;
+	font-size: 12px;
+	line-height: 1.4;
+	padding: 4px 8px;
+	border-radius: 4px;
+	white-space: pre-line;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.15s ease, transform 0.15s ease;
+	z-index: 10;
+	max-width: 240px;
+	text-align: center;
+}
+
+.dbvc-tooltip::before {
+	content: "";
+	position: absolute;
+	left: 50%;
+	bottom: 100%;
+	transform: translate(-50%, 0);
+	border: 6px solid transparent;
+	border-top-color: #1d2327;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+.dbvc-tooltip:hover::after,
+.dbvc-tooltip:focus-within::after,
+.dbvc-tooltip:hover::before,
+.dbvc-tooltip:focus-within::before {
+	opacity: 1;
+	transform: translate(-50%, 0);
+}
+
+.dbvc-tooltip--bottom::after {
+	bottom: auto;
+	top: calc(100% + 8px);
+}
+
+.dbvc-tooltip--bottom::before {
+	bottom: auto;
+	top: 100%;
+	border-top-color: transparent;
+	border-bottom-color: #1d2327;
 }

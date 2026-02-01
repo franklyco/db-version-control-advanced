@@ -5,7 +5,18 @@
         "use strict";
         var e, t = {
           435: () => {
-            const e = window.wp.element, t = window.wp.components, s = window.ReactJSXRuntime, n = async (e, {signal: t} = {}) => {
+            const e = window.wp.element, t = window.wp.components, s = window.ReactJSXRuntime, TooltipWrapper = ({content: n, placement: i = "top", children: l}) => {
+              const a = t?.Tooltip;
+              return a ? (0, s.jsx)(a, {
+                text: n,
+                children: l
+              }) : (0, s.jsx)("span", {
+                className: `dbvc-tooltip dbvc-tooltip--${i}`,
+                "data-tooltip": n || "",
+                "aria-label": n || "",
+                children: l
+              });
+            }, n = async (e, {signal: t} = {}) => {
               const s = await window.fetch(`${DBVC_ADMIN_APP.root}${e}`, {
                 headers: {
                   "X-WP-Nonce": DBVC_ADMIN_APP.nonce
@@ -310,16 +321,16 @@
             }) : (0, s.jsx)("p", {
               children: "No proposals found. Generate an export to get started."
             }), C = ({onUploaded: n, onError: i}) => {
-              const [l, a] = (0, e.useState)(!1), [o, r] = (0, e.useState)(!1), [c, d] = (0, e.useState)(""), [u, p] = (0, 
-              e.useState)(""), [h, m] = (0, e.useState)(!1), v = (0, e.useRef)(null), b = (0, 
+            const [l, a] = (0, e.useState)(!1), [o, r] = (0, e.useState)(!1), [c, d] = (0, e.useState)(""), [u, p] = (0, 
+              e.useState)(""), [h, m] = (0, e.useState)(!1), [f, g] = (0, e.useState)(!1), v = (0, e.useRef)(null), b = (0, 
               e.useCallback)(async e => {
                 const t = e && e[0];
                 if (!t) return;
                 const s = new window.FormData;
-                s.append("file", t), s.append("overwrite", h ? "1" : "0"), r(!0), d(""), p("");
+                s.append("file", t), s.append("overwrite", h ? "1" : "0"), f && s.append("fixture_name", t.name), r(!0), d(""), p("");
                 try {
                   const e = await (async (e, t) => {
-                    const s = await window.fetch(`${DBVC_ADMIN_APP.root}proposals/upload`, {
+                    const s = await window.fetch(`${DBVC_ADMIN_APP.root}${e}`, {
                       method: "POST",
                       headers: {
                         "X-WP-Nonce": DBVC_ADMIN_APP.nonce
@@ -331,15 +342,16 @@
                       throw new Error(e || `Request failed (${s.status})`);
                     }
                     return s.json();
-                  })(0, s);
-                  d(`Uploaded ${t.name}`), "function" == typeof n && n(e.proposal_id, e);
+                  })(f ? "fixtures/upload" : "proposals/upload", s);
+                  const l = f ? "Saved dev fixture" : "Uploaded";
+                  d(`${l} ${t.name}`), f || "function" != typeof n || n(e.proposal_id, e);
                 } catch (e) {
                   const t = e?.message || "Upload failed.";
                   p(t), "function" == typeof i && i(t);
                 } finally {
                   r(!1), v.current && (v.current.value = "");
                 }
-              }, [ h, n, i ]);
+              }, [ h, f, n, i ]);
               return (0, s.jsxs)("div", {
                 className: "dbvc-proposal-uploader",
                 children: [ (0, s.jsx)("div", {
@@ -376,6 +388,12 @@
                       help: "Enable if this upload should refresh an existing proposal folder instead of creating a new one.",
                       checked: h,
                       onChange: e => m(e),
+                      disabled: o
+                    }), (0, s.jsx)(t.CheckboxControl, {
+                      label: "Dev upload (store ZIP in docs/fixtures)",
+                      help: "Copies the selected ZIP into docs/fixtures for local QA. Disable to register the proposal normally.",
+                      checked: f,
+                      onChange: e => g(e),
                       disabled: o
                     }) ]
                   })
@@ -1183,7 +1201,7 @@
                 count: 0,
                 items: []
               }), [wt, Ct] = (0, e.useState)(!1), [Nt, kt] = (0, e.useState)(null), [St, Dt] = (0, 
-              e.useState)(!1), [Rt, $t] = (0, e.useState)(""), [duplicateMode, setDuplicateMode] = (0, e.useState)("slug_id"), [duplicateConfirm, setDuplicateConfirm] = (0, e.useState)(""), [duplicateBulkBusy, setDuplicateBulkBusy] = (0, e.useState)(!1), [It, At] = (0, e.useState)(!1), [Et, Mt] = (0, 
+              e.useState)(!1), [duplicateActionKey, setDuplicateActionKey] = (0, e.useState)(""), [duplicateMode, setDuplicateMode] = (0, e.useState)("slug_id"), [duplicateConfirm, setDuplicateConfirm] = (0, e.useState)(""), [duplicateBulkBusy, setDuplicateBulkBusy] = (0, e.useState)(!1), [It, At] = (0, e.useState)(!1), [Et, Mt] = (0, 
               e.useState)(!1), [Ut, Bt] = (0, e.useState)(!1), [Ot, Tt] = (0, e.useState)(() => new Set), [toolsOpen, setToolsOpen] = (0, e.useState)(!1), [maskFields, setMaskFields] = (0, e.useState)([]), [maskLoading, setMaskLoading] = (0, e.useState)(!1), [maskError, setMaskError] = (0, e.useState)(null), [maskApplying, setMaskApplying] = (0, e.useState)(!1), [maskAttention, setMaskAttention] = (0, e.useState)(!1), [maskBulkAction, setMaskBulkAction] = (0, e.useState)("ignore"), [maskBulkOverride, setMaskBulkOverride] = (0, e.useState)(""), [maskBulkNote, setMaskBulkNote] = (0, e.useState)(""), duplicateConfirmPhrase = "DELETE", Pt = (0, 
               e.useMemo)(() => y.filter(e => xt[e.id]), [ xt ]), Ft = (0, e.useCallback)(e => {
                 jt(t => {
@@ -1222,7 +1240,27 @@
               (0, e.useEffect)(() => {
                 Lt.current = oe;
               }, [ oe ]);
-              const MASK_UNDO_STORAGE_KEY = "DBVC_MASK_UNDO";
+              const Ht = (0, e.useCallback)(async (e, t, s) => {
+                if (!e) return se([]), [];
+                Ce(!0), Ae(null);
+                try {
+                  var i;
+                  const l = t && ![ "needs_review", "needs_review_media", "resolved", "new_entities" ].includes(t) || !t || "all" === t ? "" : `?status=${encodeURIComponent(t)}`, a = await n(`proposals/${encodeURIComponent(e)}/entities${l}`, {
+                    signal: s
+                  }), o = null !== (i = a.items) && void 0 !== i ? i : [];
+                  return se(o), a.decision_summary && X(t => t.map(t => t.id === e ? {
+                    ...t,
+                    decisions: a.decision_summary
+                  } : t)), a.resolver_decisions && X(t => t.map(t => t.id === e ? {
+                    ...t,
+                    resolver_decisions: a.resolver_decisions
+                  } : t)), o;
+                } catch (e) {
+                  return "AbortError" !== e.name && Ae(e.message), [];
+                } finally {
+                  Ce(!1);
+                }
+              }, []), MASK_UNDO_STORAGE_KEY = "DBVC_MASK_UNDO";
               const [maskProgress, setMaskProgress] = (0, e.useState)(0), loadMasking = (0, e.useCallback)(async (e, t) => {
                 if (!e) return setMaskFields([]), setMaskProgress(0), void setMaskAttention(!1);
                 setMaskLoading(!0), setMaskError(null), setMaskProgress(0);
@@ -1249,7 +1287,7 @@
                   const t = !e;
                   return t || setMaskAttention(!1), t;
                 });
-              }, []), [pendingMaskUndo, setPendingMaskUndo] = (0, e.useState)(null), [maskApplyProgress, setMaskApplyProgress] = (0, e.useState)(0), applyMasking = (0, e.useCallback)(async () => {
+              }, []), [pendingMaskUndo, setPendingMaskUndo] = (0, e.useState)(null), [maskApplyProgress, setMaskApplyProgress] = (0, e.useState)(0), [maskReverting, setMaskReverting] = (0, e.useState)(!1), applyMasking = (0, e.useCallback)(async () => {
                 const safeFields = Array.isArray(maskFields) ? maskFields : [];
                 if (!Z || !safeFields.length) return setMaskError("No masked meta fields are available to apply."), void setMaskAttention(!1);
                 if ("override" === maskBulkAction && !maskBulkOverride.trim()) return setMaskError("Provide an override value to continue."), void 0;
@@ -1267,22 +1305,28 @@
                 }
                 setMaskApplying(!0), setMaskApplyProgress(0), setMaskError(null);
                 try {
+                  const responses = [];
                   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
                     const batch = batches[batchIndex];
-                    await i(`proposals/${encodeURIComponent(Z)}/masking/apply`, {
+                    const response = await i(`proposals/${encodeURIComponent(Z)}/masking/apply`, {
                       items: batch
-                    }), setMaskApplyProgress(Math.min(99, Math.round((batchIndex + 1) / batches.length * 100)));
+                    });
+                    responses.push(response), setMaskApplyProgress(Math.min(99, Math.round((batchIndex + 1) / batches.length * 100)));
                   }
                   setMaskApplyProgress(100);
-                  Array.isArray(t?.entities) && se(s => s.map(s => {
-                    const n = t.entities.find(e => e.vf_object_uid === s.vf_object_uid);
+                  const merged = [];
+                  responses.forEach(e => {
+                    Array.isArray(e?.entities) && merged.push(...e.entities);
+                  });
+                  merged.length && se(s => s.map(s => {
+                    const n = merged.find(e => e.vf_object_uid === s.vf_object_uid);
                     return n ? {
                       ...s,
                       diff_state: n.diff_state || s.diff_state,
                       decision_summary: n.decision_summary || s.decision_summary,
                       overall_status: n.overall_status || s.overall_status
                     } : s;
-                  })), t?.entities && oe && t.entities.forEach(e => {
+                  })), oe && merged.forEach(e => {
                     e.vf_object_uid === oe && de(t => t ? {
                       ...t,
                       diff_state: e.diff_state || t.diff_state,
@@ -1293,7 +1337,7 @@
                   try {
                     const s = {
                       proposalId: Z,
-                      items: e
+                      items: safeFields
                     };
                     window.sessionStorage && window.sessionStorage.setItem(MASK_UNDO_STORAGE_KEY, JSON.stringify(s)), setPendingMaskUndo(s);
                   } catch (s) {}
@@ -1301,7 +1345,7 @@
                     id: `${Date.now()}-mask`,
                     severity: "success",
                     title: "Meta masking applied",
-                    message: `Updated ${e.length} field${1 === e.length ? "" : "s"}.`,
+                    message: `Updated ${safeFields.length} field${1 === safeFields.length ? "" : "s"}.`,
                     timestamp: new Date().toISOString()
                   } ]);
                 } catch (e) {
@@ -1328,7 +1372,24 @@
                 } finally {
                   setMaskApplying(!1);
                 }
-              }, [ pendingMaskUndo, Z ]);
+              }, [ pendingMaskUndo, Z ]), revertMasking = (0, e.useCallback)(async () => {
+                if (!Z) return;
+                setMaskReverting(!0), setMaskError(null);
+                try {
+                  const e = await i(`proposals/${encodeURIComponent(Z)}/masking/revert`, {});
+                  window.sessionStorage && window.sessionStorage.removeItem(MASK_UNDO_STORAGE_KEY), setPendingMaskUndo(null), await Promise.all([loadMasking(Z), Ht(Z, ne), Vt(Z)]), it(t => [ ...t, {
+                    id: `${Date.now()}-mask-revert`,
+                    severity: "info",
+                    title: "Masking decisions reverted",
+                    message: (e?.cleared?.decisions || 0) > 0 ? `Cleared ${e.cleared.decisions} masked decision${1 === e.cleared.decisions ? "" : "s"}.` : "No masked decisions matched the current masking rules.",
+                    timestamp: new Date().toISOString()
+                  } ]);
+                } catch (e) {
+                  setMaskError(e?.message || "Failed to revert masking decisions.");
+                } finally {
+                  setMaskReverting(!1);
+                }
+              }, [ Z, loadMasking, Ht, ne, Vt ]);
               const zt = (0, e.useCallback)(async (e = {}) => {
                 const {signal: t, focusProposalId: s} = e;
                 je(!0), $e(null);
@@ -1347,26 +1408,6 @@
                 } finally {
                   je(!1), ye(!0);
                 }
-              }, []), Ht = (0, e.useCallback)(async (e, t, s) => {
-                if (!e) return se([]), [];
-                Ce(!0), Ae(null);
-                try {
-                  var i;
-                  const l = t && ![ "needs_review", "needs_review_media", "resolved", "new_entities" ].includes(t) || !t || "all" === t ? "" : `?status=${encodeURIComponent(t)}`, a = await n(`proposals/${encodeURIComponent(e)}/entities${l}`, {
-                    signal: s
-                  }), o = null !== (i = a.items) && void 0 !== i ? i : [];
-                  return se(o), a.decision_summary && X(t => t.map(t => t.id === e ? {
-                    ...t,
-                    decisions: a.decision_summary
-                  } : t)), a.resolver_decisions && X(t => t.map(t => t.id === e ? {
-                    ...t,
-                    resolver_decisions: a.resolver_decisions
-                  } : t)), o;
-                } catch (e) {
-                  return "AbortError" !== e.name && Ae(e.message), [];
-                } finally {
-                  Ce(!1);
-                }
               }, []), refreshEntities = (0, e.useCallback)(() => {
                 Z && Ht(Z, ne);
               }, [ Z, ne, Ht ]), Kt = (0, e.useCallback)(e => {
@@ -1378,7 +1419,7 @@
                 Z && Vt(Z);
               }, [ Z, Vt ]), Gt = (0, e.useCallback)(async (e, t) => {
                 if (Z && e && t) {
-                  $t(`${e}::${t}`), kt(null);
+                  setDuplicateActionKey(`${e}::${t}`), kt(null);
                   try {
                     await i(`proposals/${encodeURIComponent(Z)}/duplicates/cleanup`, {
                       vf_object_uid: e,
@@ -1387,7 +1428,7 @@
                   } catch (e) {
                     kt(e?.message || "Failed to mark canonical entry.");
                   } finally {
-                    $t("");
+                    setDuplicateActionKey("");
                   }
                 }
               }, [ Z, Vt, Ht, ne ]), bulkDuplicateCleanup = (0, e.useCallback)(async () => {
@@ -1647,7 +1688,8 @@
                 apply: `Apply the configured masking rules to every entity in this proposal. Learn more: ${maskDocLink("live-proposal-masking")}`,
                 ignore: `Ignore this masked field so it no longer counts toward Needs Review. Learn more: ${maskDocLink("ignore-masked-field")}`,
                 auto: `Auto-accept the masked value and suppress it from future diffs. Learn more: ${maskDocLink("auto-accept-and-suppress")}`,
-                override: `Override the masked value with a sanitized replacement. Learn more: ${maskDocLink("override-masked-value")}`
+                override: `Override the masked value with a sanitized replacement. Learn more: ${maskDocLink("override-masked-value")}`,
+                revert: `Clear masking decisions that were applied via this tool using the current masking rules. Learn more: ${maskDocLink("revert-masked-decisions")}`
               }), []);
               (0, e.useEffect)(() => {
                 if (!cs.length) return re(null), void pe(!1);
@@ -2365,8 +2407,8 @@
                     }, e.id))
                   }), (0, s.jsx)("div", {
                     className: `dbvc-tools-toggle${toolsOpen ? " is-open" : ""}${maskAttention ? " has-attention" : ""}`,
-                    children: t?.Tooltip ? (0, s.jsx)(t.Tooltip, {
-                      text: `Open resolver summary, hashing helpers, and masking controls. Learn more: ${maskDocLink("live-proposal-masking")}`,
+                    children: (0, s.jsx)(TooltipWrapper, {
+                      content: `Open resolver summary, hashing helpers, and masking controls. Learn more: ${maskDocLink("live-proposal-masking")}`,
                       children: (0, s.jsx)("button", {
                         type: "button",
                         className: "button button-secondary",
@@ -2374,12 +2416,6 @@
                         "aria-expanded": toolsOpen,
                         children: toolsOpen ? "Hide tools" : "Tools"
                       })
-                    }) : (0, s.jsx)("button", {
-                      type: "button",
-                      className: "button button-secondary",
-                      onClick: toggleToolsPanel,
-                      "aria-expanded": toolsOpen,
-                      children: toolsOpen ? "Hide tools" : "Tools"
                     })
                   }) ]
                 }), toolsOpen && (0, s.jsxs)("div", {
@@ -2461,8 +2497,8 @@
                       }), "." ]
                     }), (0, s.jsxs)("div", {
                       className: "dbvc-mask-actions",
-                      children: [ t?.Tooltip ? (0, s.jsx)(t.Tooltip, {
-                        text: maskTooltips.apply,
+                      children: [ (0, s.jsx)(TooltipWrapper, {
+                        content: maskTooltips.apply,
                         children: (0, s.jsx)(t.Button, {
                           variant: "primary",
                           onClick: applyMasking,
@@ -2470,12 +2506,15 @@
                           isBusy: maskApplying,
                           children: maskApplying ? "Applying…" : "Apply masking rules"
                         })
-                      }) : (0, s.jsx)(t.Button, {
-                        variant: "primary",
-                        onClick: applyMasking,
-                        disabled: maskApplying || maskLoading || !maskFieldCount,
-                        isBusy: maskApplying,
-                        children: maskApplying ? "Applying…" : "Apply masking rules"
+                      }), (0, s.jsx)(TooltipWrapper, {
+                        content: maskTooltips.revert,
+                        children: (0, s.jsx)(t.Button, {
+                          variant: "secondary",
+                          onClick: revertMasking,
+                          disabled: maskReverting || maskApplying || maskLoading,
+                          isBusy: maskReverting,
+                          children: maskReverting ? "Reverting…" : "Revert masking decisions"
+                        })
                       }), (0, s.jsx)(t.Button, {
                         variant: "tertiary",
                         onClick: () => Z && loadMasking(Z),
@@ -2621,7 +2660,7 @@
                     open: St,
                     onClose: () => Dt(!1),
                     onMarkCanonical: Gt,
-                    actionKey: Rt,
+                    actionKey: duplicateActionKey,
                     report: _t,
                     bulkMode: duplicateMode,
                     onBulkModeChange: setDuplicateMode,

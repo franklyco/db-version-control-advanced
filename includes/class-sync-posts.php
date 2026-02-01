@@ -1002,6 +1002,9 @@ HT;
             ? $mask_override_store[$backup_name]
             : [];
 
+        $proposal_mask_suppress = self::normalize_mask_directive_store($proposal_mask_suppress);
+        $proposal_mask_overrides = self::normalize_mask_directive_store($proposal_mask_overrides);
+
         $mode        = $options['mode'];
         $ignore_missing_hash = ! empty($options['ignore_missing_hash']);
         $imported    = 0;
@@ -2392,6 +2395,7 @@ $acf_relationship_fields = [
         $mask_overrides = isset($mask_directives['overrides']) && is_array($mask_directives['overrides'])
             ? $mask_directives['overrides']
             : [];
+        $mask_overrides = self::flatten_mask_meta_entries($mask_overrides);
 
         // Smart import hash check
         if ($smart_import && $existing) {
@@ -4117,5 +4121,106 @@ $acf_relationship_fields = [
         }
 
         return array_keys($store[$proposal_id]);
+    }
+
+    private static function normalize_mask_directive_store(array $store): array
+    {
+        $normalized = [];
+
+        foreach ($store as $vf_object_uid => $meta_entries) {
+            if (! is_array($meta_entries)) {
+                continue;
+            }
+
+            $normalized[$vf_object_uid] = self::normalize_mask_meta_entry_bucket($meta_entries);
+            if (empty($normalized[$vf_object_uid])) {
+                unset($normalized[$vf_object_uid]);
+            }
+        }
+
+        return $normalized;
+    }
+
+    private static function normalize_mask_meta_entry_bucket(array $entries): array
+    {
+        $normalized = [];
+
+        foreach ($entries as $meta_key => $bucket) {
+            if (! is_array($bucket)) {
+                continue;
+            }
+
+            if (self::is_mask_directive_leaf($bucket)) {
+                $bucket = [($bucket['path'] ?? (string) $meta_key) => $bucket];
+            }
+
+            foreach ($bucket as $path_key => $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
+
+                $meta_path = isset($entry['path']) ? (string) $entry['path'] : (string) $path_key;
+                $meta_path = $meta_path !== '' ? $meta_path : (string) $path_key;
+                $resolved_meta_key = isset($entry['meta_key']) && $entry['meta_key'] !== ''
+                    ? (string) $entry['meta_key']
+                    : (is_string($meta_key) && $meta_key !== '' ? (string) $meta_key : self::extract_meta_key_from_mask_path($meta_path));
+
+                if ($resolved_meta_key === '') {
+                    continue;
+                }
+
+                if (! isset($normalized[$resolved_meta_key]) || ! is_array($normalized[$resolved_meta_key])) {
+                    $normalized[$resolved_meta_key] = [];
+                }
+
+                $entry['path'] = $meta_path;
+                $entry['meta_key'] = $resolved_meta_key;
+                $normalized[$resolved_meta_key][$meta_path] = $entry;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private static function is_mask_directive_leaf(array $entry): bool
+    {
+        return array_key_exists('path', $entry) && ! array_key_exists(0, $entry);
+    }
+
+    private static function flatten_mask_meta_entries(array $entries): array
+    {
+        $flattened = [];
+
+        foreach ($entries as $meta_key => $bucket) {
+            if (! is_array($bucket)) {
+                continue;
+            }
+
+            if (self::is_mask_directive_leaf($bucket)) {
+                $flattened[$meta_key] = $bucket;
+                continue;
+            }
+
+            $first = reset($bucket);
+            if (is_array($first)) {
+                $flattened[$meta_key] = $first;
+            }
+        }
+
+        return $flattened;
+    }
+
+    private static function extract_meta_key_from_mask_path(string $path): string
+    {
+        if ($path === '') {
+            return '';
+        }
+
+        $parts = explode('.', $path);
+        if (count($parts) > 1 && $parts[0] === 'meta') {
+            return (string) $parts[1];
+        }
+
+        return (string) $parts[0];
     }
 }

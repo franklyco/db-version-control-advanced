@@ -18,6 +18,7 @@ This plan outlines the implementation steps for masking meta fields inside live 
 3. **Apply flow**
    - Apply runs in chunks (50 fields per request by default) and shows a `% applied` ticker in the Tools panel header. Once done, masking data, entity badges, and duplicate info are refetched automatically.
    - The payload is cached in `sessionStorage`, enabling an “Undo last masking” button that replays the inverse (sets fields back to ignore) if the reviewer needs to revert.
+   - Add a persistent “Revert masking decisions” control that replays the masking query in reverse (clearing accept/keep decisions + suppression/override stores for every current mask pattern match) so reviewers can re-open a proposal after rules change.
 
 ## REST API Surface
 
