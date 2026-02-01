@@ -5,6 +5,8 @@
 - Restored pending-new-entity filtering so the bulk Accept tools and drawer hints stay in sync with proposal metadata.
 - Hardened duplicate cleanup + resolver refresh requests to avoid leaving empty proposal shells on disk.
 - Updated documentation to reflect the proposal-first workflow and the React admin requirements.
+- Added full term snapshot capture/diff parity so taxonomy entities behave exactly like posts in reopened proposals; re-upload older proposal zips (or run `DBVC_Snapshot_Manager::capture_for_proposal()`) to backfill term snapshots.
+- Introduced `wp dbvc proposals list|upload|apply` so CI/staging workflows can inspect, ingest, and apply reviewed bundles without visiting WP Admin.
 
 ## 1.3.0
 - Introduced the React-based proposal reviewer: proposal list, entity grid with virtualization/search, Accept/Keep drawer, toast notifications, and apply history.

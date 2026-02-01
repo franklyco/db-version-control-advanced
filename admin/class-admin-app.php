@@ -411,6 +411,8 @@ final class DBVC_Admin_App
 
         $duplicate_summary = self::find_duplicate_manifest_entities($manifest);
 
+        $new_entity_summary = self::summarize_manifest_new_entities($manifest, $proposal_decisions);
+
         $items[] = [
             'id'             => $proposal_id,
             'title'          => $proposal_id,
@@ -427,6 +429,7 @@ final class DBVC_Admin_App
             'decisions'      => $decision_summary,
             'status'        => $manifest['status'] ?? 'draft',
             'duplicate_count' => is_array($duplicate_summary) ? count($duplicate_summary) : 0,
+            'new_entities'    => $new_entity_summary,
         ];
         }
 
@@ -440,14 +443,6 @@ final class DBVC_Admin_App
      */
     public static function upload_proposal(\WP_REST_Request $request)
     {
-        if (! class_exists('DBVC_Backup_Manager')) {
-            return new \WP_Error('dbvc_missing_manager', __('Backup manager is unavailable.', 'dbvc'), ['status' => 500]);
-        }
-
-        if (! class_exists('ZipArchive')) {
-            return new \WP_Error('dbvc_zip_missing', __('ZipArchive is required to upload proposals.', 'dbvc'), ['status' => 500]);
-        }
-
         $files = $request->get_file_params();
         if (empty($files['file']) || ! isset($files['file']['tmp_name'])) {
             return new \WP_Error('dbvc_missing_file', __('Upload a ZIP file that contains a DBVC manifest.', 'dbvc'), ['status' => 400]);
@@ -469,15 +464,59 @@ final class DBVC_Admin_App
         }
 
         $zip_path = $handled['file'];
+        $preferred_id = self::sanitize_proposal_id($request->get_param('proposal_id'));
+        $overwrite = $request->get_param('overwrite');
+        if (function_exists('rest_sanitize_boolean')) {
+            $overwrite = rest_sanitize_boolean($overwrite);
+        } else {
+            $overwrite = in_array($overwrite, [true, 1, '1', 'true', 'on'], true);
+        }
+
+        $result = self::import_proposal_from_zip($zip_path, [
+            'preferred_id' => $preferred_id,
+            'overwrite'    => $overwrite,
+        ]);
+
+        @unlink($zip_path);
+
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * Shared importer used by REST + CLI to ingest proposal zips.
+     *
+     * @param string $zip_path
+     * @param array  $args
+     * @return array|\WP_Error
+     */
+    public static function import_proposal_from_zip(string $zip_path, array $args = [])
+    {
+        if (! class_exists('DBVC_Backup_Manager')) {
+            return new \WP_Error('dbvc_missing_manager', __('Backup manager is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (! class_exists('ZipArchive')) {
+            return new \WP_Error('dbvc_zip_missing', __('ZipArchive is required to upload proposals.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (! file_exists($zip_path) || ! is_readable($zip_path)) {
+            return new \WP_Error('dbvc_missing_file', __('ZIP file could not be read.', 'dbvc'), ['status' => 400]);
+        }
+
         $extension = strtolower(pathinfo($zip_path, PATHINFO_EXTENSION));
         if ($extension !== 'zip') {
-            @unlink($zip_path);
             return new \WP_Error('dbvc_invalid_file', __('Only ZIP archives are supported.', 'dbvc'), ['status' => 400]);
         }
 
+        $preferred_id = isset($args['preferred_id']) ? self::sanitize_proposal_id($args['preferred_id']) : '';
+        $overwrite    = ! empty($args['overwrite']);
+
         $temp_dir = wp_tempnam($zip_path);
         if (! $temp_dir) {
-            @unlink($zip_path);
             return new \WP_Error('dbvc_tmp_failed', __('Unable to prepare a temporary folder for extraction.', 'dbvc'), ['status' => 500]);
         }
 
@@ -488,7 +527,6 @@ final class DBVC_Admin_App
         $open_result = $zip->open($zip_path);
         if (true !== $open_result) {
             self::delete_directory_recursive($temp_dir);
-            @unlink($zip_path);
             return new \WP_Error('dbvc_zip_open_failed', __('Unable to open the uploaded ZIP archive.', 'dbvc'), ['status' => 400]);
         }
 
@@ -497,14 +535,12 @@ final class DBVC_Admin_App
 
         if (! $extracted) {
             self::delete_directory_recursive($temp_dir);
-            @unlink($zip_path);
             return new \WP_Error('dbvc_zip_extract_failed', __('Failed to extract the uploaded archive.', 'dbvc'), ['status' => 400]);
         }
 
         $manifest_path = self::find_manifest_path($temp_dir);
         if (! $manifest_path || ! file_exists($manifest_path)) {
             self::delete_directory_recursive($temp_dir);
-            @unlink($zip_path);
             return new \WP_Error('dbvc_manifest_missing', __('The uploaded bundle is missing manifest.json.', 'dbvc'), ['status' => 400]);
         }
 
@@ -512,21 +548,18 @@ final class DBVC_Admin_App
         $manifest = json_decode($manifest_raw, true);
         if (! is_array($manifest)) {
             self::delete_directory_recursive($temp_dir);
-            @unlink($zip_path);
             return new \WP_Error('dbvc_manifest_invalid', __('manifest.json is not valid JSON.', 'dbvc'), ['status' => 400]);
         }
 
         $duplicates = self::find_duplicate_manifest_entities($manifest);
         if (! empty($duplicates)) {
             self::delete_directory_recursive($temp_dir);
-            @unlink($zip_path);
             $messages = array_map(static function ($dup) {
                 return sprintf('Post ID %d has multiple payloads (paths: %s)', $dup['post_id'], implode(', ', $dup['paths']));
             }, $duplicates);
             return new \WP_Error('dbvc_manifest_duplicates', implode("\n", $messages), ['status' => 400]);
         }
 
-        $preferred_id = self::sanitize_proposal_id($request->get_param('proposal_id'));
         if ($preferred_id === '') {
             $preferred_id = self::derive_proposal_id_from_manifest($manifest);
         }
@@ -534,14 +567,12 @@ final class DBVC_Admin_App
             $preferred_id = 'upload-' . gmdate('Ymd-His');
         }
 
-        $overwrite = rest_sanitize_boolean($request->get_param('overwrite'));
         $proposal_id = self::resolve_proposal_id($preferred_id, $overwrite);
         $target_path = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
 
         if (is_dir($target_path)) {
             if (! $overwrite) {
                 self::delete_directory_recursive($temp_dir);
-                @unlink($zip_path);
                 return new \WP_Error('dbvc_exists', __('A proposal with that ID already exists.', 'dbvc'), ['status' => 409]);
             }
             if (class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'delete_folder_contents')) {
@@ -594,12 +625,11 @@ final class DBVC_Admin_App
         }
 
         self::delete_directory_recursive($temp_dir);
-        @unlink($zip_path);
 
-        return new \WP_REST_Response([
+        return [
             'proposal_id' => $proposal_id,
             'manifest'    => $manifest_for_site,
-        ]);
+        ];
     }
 
     /**
@@ -2934,6 +2964,61 @@ final class DBVC_Admin_App
         }
 
         $summary['total'] = $summary['accepted'] + $summary['kept'] + $summary['accepted_new'];
+        return $summary;
+    }
+
+    private static function summarize_manifest_new_entities(array $manifest, array $proposal_decisions): array
+    {
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        $summary = [
+            'total'   => 0,
+            'accepted'=> 0,
+            'pending' => 0,
+        ];
+
+        if (empty($items)) {
+            return $summary;
+        }
+
+        foreach ($items as $item) {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if ($item_type !== 'post' && $item_type !== 'term') {
+                continue;
+            }
+
+            $identity = ($item_type === 'term')
+                ? self::describe_term_identity($item)
+                : self::describe_entity_identity($item);
+
+            if (empty($identity['is_new'])) {
+                continue;
+            }
+
+            $summary['total']++;
+
+            $vf_object_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+
+            $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
+                ? $proposal_decisions[$vf_object_uid]
+                : [];
+
+            $new_decision = '';
+            if (
+                isset($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
+                && is_string($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
+            ) {
+                $new_decision = $entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY];
+            }
+
+            if ($new_decision === 'accept_new') {
+                $summary['accepted']++;
+            } else {
+                $summary['pending']++;
+            }
+        }
+
         return $summary;
     }
 

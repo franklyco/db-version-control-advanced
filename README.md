@@ -68,6 +68,13 @@ Legacy full-site export/import and WP-CLI commands continue to ship for automati
 - After a successful apply the UI can auto-clear proposal decisions (Config → Import Defaults) to keep the option table lean; toggles exist to retain them for auditing.
 - Optional: download deterministic zips or share them with downstream sites. All resolver decisions and bundles travel with the zip so another environment can replay the review process without starting over.
 
+## Official Collections (WIP)
+
+- Schema + storage scaffolding now exist for “mark official” flows. `DBVC_Database` provisions `wp_dbvc_collections` and `wp_dbvc_collection_items`, and the new `Dbvc\Official\Collections` helper copies manifests + entity snapshots into `uploads/dbvc/official/collection-{id}`.
+- Call `Collections::mark_official( $proposal_id, $entities, $meta )` after a proposal is approved to persist release metadata (title, status, tags, checksum, manifest/archive paths) along with each reviewed entity payload.
+- Snapshots are written as JSON under `entities/{vf_object_uid}.json` so future REST + CLI features can stream immutable bundles without having to rehydrate decisions from proposals.
+- Upcoming work will layer UI tabs, REST endpoints, and CLI commands on top of this storage so teams can list, download, and revoke official bundles directly from WordPress.
+
 ## Legacy Export/Import & WP-CLI
 
 The proposal workflow is the default for interactive reviews, but legacy automation remains:
@@ -102,11 +109,26 @@ CLI commands continue to export menus and options automatically, respect chunked
 - **Resolver warnings** – The React UI surfaces unresolved/blocked counts. See the proposal drawer for conflict reasons and recommended actions.
 - **Permissions** – If proposals fail to upload ensure PHP has write access to `uploads/dbvc/proposals/` and that ZipArchive is available.
 - **WP-CLI** – Use `--debug` to inspect chunking or diff baseline calculations; exported snapshot IDs are printed for traceability.
+- **Legacy proposals** – Term snapshots ship in 1.3.4+. Re-upload older proposal zips (or call `DBVC_Snapshot_Manager::capture_for_proposal()` for each proposal ID) so reopened reviews compare taxonomy changes against the live site instead of treating everything as new.
+
+## WP-CLI Usage
+
+- `wp dbvc export` / `wp dbvc import` keep the legacy JSON sync flows for automation.
+- `wp dbvc proposals list` prints proposal IDs, status, hashes, duplicate counts, resolver pending counts, and new-entity pending totals (add `--fail-on-pending` to exit with an error when anything still needs attention, `--recapture-snapshots` to regenerate snapshots for legacy proposals, or `--cleanup-duplicates` to run the manifest dedupe routine).
+- `wp dbvc proposals upload path/to/proposal.zip [--id=<custom>] [--overwrite]` ingests a proposal ZIP, mirrors media bundles, and captures snapshots without visiting WP Admin.
+- `wp dbvc proposals apply <proposal_id> [--mode=partial] [--ignore-missing-hash] [--force-reapply-new-posts]` reuses the React workflow’s importer so CI/staging can apply reviewed bundles.
+- `wp dbvc resolver-rules list|add|delete|import` lets you manage global resolver rules from the terminal, mirroring the React UI’s CSV and inline editors.
+
+## UI → CLI Tutorial Notes
+
+- **Review queue:** Everything you can do in the DBVC Export React screen (list proposals, inspect counts, recapture snapshots, dedupe manifests) now has a CLI counterpart through `wp dbvc proposals list` flags.
+- **Uploading & applying:** The UI’s “Upload proposal” and “Apply selections” drawer directly map to `wp dbvc proposals upload` and `wp dbvc proposals apply`, so deployment docs can link to these commands when describing the UI workflow.
+- **Resolver rules:** The Configure → Media Handling UI references the `dbvc_resolver_decisions` store; add the `wp dbvc resolver-rules …` snippets to help reviewers follow along when they prefer terminal tutorials.
+- Whenever UI docs mention a button (e.g., “Cleanup duplicates” or “Recapture snapshots”), include the equivalent CLI snippet above so runbooks can embed both approaches side-by-side.
 
 ## Roadmap
 
-- **Taxonomy/T-term parity** – term entities and termmeta will join the review/apply workflow next (see `docs/terms.md`).
-- **CLI parity for proposals** – `wp dbvc proposals apply`/`list` commands are planned once the REST workflow hardens.
+- **Snapshot polish** – add helper commands to recapture legacy proposals so term snapshots exist everywhere without manual uploads.
 - **Official collections** – curated “official” bundles that can be re-exported on demand remain on the backlog.
 
 This repository includes in-depth implementation notes under `handoff.md`, progress tracking inside `docs/progress-summary.md`, and media transport design details inside `docs/media-sync-design.md`.

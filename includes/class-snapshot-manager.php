@@ -45,7 +45,27 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             }
 
             foreach ($items as $item) {
-                if (($item['item_type'] ?? '') !== 'post') {
+                $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+
+                if ($item_type === 'term') {
+                    $taxonomy = isset($item['term_taxonomy'])
+                        ? sanitize_key($item['term_taxonomy'])
+                        : (isset($item['taxonomy']) ? sanitize_key($item['taxonomy']) : '');
+                    if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+                        continue;
+                    }
+
+                    $local_term_id = self::resolve_local_term_id($item, $taxonomy);
+                    if (! $local_term_id) {
+                        continue;
+                    }
+
+                    $term_uid = isset($item['vf_object_uid']) ? (string) $item['vf_object_uid'] : '';
+                    self::capture_term_snapshot($proposal_id, $local_term_id, $taxonomy, $term_uid);
+                    continue;
+                }
+
+                if ($item_type !== 'post') {
                     continue;
                 }
 
@@ -115,6 +135,113 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             }
 
             file_put_contents($file_path, $json);
+        }
+
+        /**
+         * Internal: capture snapshot for a taxonomy term.
+         */
+        public static function capture_term_snapshot(string $proposal_id, int $term_id, string $taxonomy, string $vf_object_uid = ''): void
+        {
+            $term = get_term($term_id, $taxonomy);
+            if (! $term || is_wp_error($term)) {
+                if ($vf_object_uid !== '' || $term_id) {
+                    self::delete_snapshot($proposal_id, $vf_object_uid !== '' ? $vf_object_uid : (string) $term_id);
+                }
+                return;
+            }
+
+            $payload = self::build_term_payload($term);
+            if (empty($payload)) {
+                return;
+            }
+
+            $key = $vf_object_uid !== '' ? $vf_object_uid : (string) $term->term_id;
+            $file_path = self::get_snapshot_file_path($proposal_id, $key);
+            if (! $file_path) {
+                return;
+            }
+
+            $dir = dirname($file_path);
+            if (! is_dir($dir)) {
+                wp_mkdir_p($dir);
+                self::ensure_directory_security($dir);
+            }
+
+            $json = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            if ($json === false) {
+                return;
+            }
+
+            file_put_contents($file_path, $json);
+        }
+
+        /**
+         * Build export-like payload for a term.
+         */
+        private static function build_term_payload(\WP_Term $term): array
+        {
+            $term_id = (int) $term->term_id;
+            if (! $term_id) {
+                return [];
+            }
+
+            $taxonomy = sanitize_key($term->taxonomy);
+            $slug     = sanitize_title($term->slug);
+            $name     = sanitize_text_field($term->name);
+            $payload  = [
+                'term_id'   => $term_id,
+                'taxonomy'  => $taxonomy,
+                'slug'      => $slug,
+                'name'      => $name,
+                'description' => wp_kses_post($term->description),
+            ];
+
+            if (class_exists('DBVC_Sync_Taxonomies')) {
+                $payload['vf_object_uid'] = DBVC_Sync_Taxonomies::ensure_term_uid($term_id, $taxonomy);
+            } else {
+                $uid = get_term_meta($term_id, 'vf_object_uid', true);
+                if (is_string($uid) && $uid !== '') {
+                    $payload['vf_object_uid'] = $uid;
+                }
+            }
+
+            $include_parent = get_option('dbvc_tax_export_parent_slugs', '1') === '1';
+            if ($include_parent) {
+                $payload['parent'] = (int) $term->parent;
+                if ($term->parent) {
+                    $parent = get_term($term->parent, $taxonomy);
+                    if ($parent && ! is_wp_error($parent)) {
+                        $payload['parent_slug'] = sanitize_title($parent->slug);
+                        if (class_exists('DBVC_Sync_Taxonomies')) {
+                            $payload['parent_uid'] = DBVC_Sync_Taxonomies::ensure_term_uid($parent->term_id, $taxonomy);
+                        }
+                    }
+                }
+            }
+
+            $include_meta = get_option('dbvc_tax_export_meta', '1') === '1';
+            if ($include_meta) {
+                $meta = get_term_meta($term_id);
+                $payload['meta'] = self::normalize_term_meta_payload($meta);
+            }
+
+            if (get_option('dbvc_export_sort_meta', '0') === '1'
+                && isset($payload['meta'])
+                && is_array($payload['meta'])
+                && function_exists('dbvc_sort_array_recursive')
+            ) {
+                $payload['meta'] = dbvc_sort_array_recursive($payload['meta']);
+            }
+
+            if (! empty($payload['vf_object_uid'])) {
+                $payload['entity_refs'] = self::build_term_entity_references($payload);
+            }
+
+            if (function_exists('dbvc_normalize_for_json')) {
+                $payload = dbvc_normalize_for_json($payload);
+            }
+
+            return $payload;
         }
 
         /**
@@ -195,6 +322,158 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             }
 
             return $data;
+        }
+
+        private static function normalize_term_meta_payload($meta): array
+        {
+            if (function_exists('dbvc_sanitize_post_meta_safe')) {
+                $meta = dbvc_sanitize_post_meta_safe($meta);
+            } elseif (is_array($meta)) {
+                $meta = array_map(static function ($values) {
+                    if (! is_array($values)) {
+                        $values = [$values];
+                    }
+                    foreach ($values as $index => $value) {
+                        if (is_string($value) && is_serialized($value)) {
+                            $values[$index] = maybe_unserialize($value);
+                        }
+                    }
+                    return $values;
+                }, $meta);
+            }
+
+            return is_array($meta) ? $meta : [];
+        }
+
+        private static function build_term_entity_references(array $payload): array
+        {
+            $refs     = [];
+            $taxonomy = isset($payload['taxonomy']) ? sanitize_key($payload['taxonomy']) : '';
+            $slug     = isset($payload['slug']) ? sanitize_title($payload['slug']) : '';
+            $term_id  = isset($payload['term_id']) ? (int) $payload['term_id'] : 0;
+
+            $append = static function ($type, $value, $path) use (&$refs) {
+                if ($value === '' || $path === '') {
+                    return;
+                }
+                foreach ($refs as $entry) {
+                    if ($entry['path'] === $path) {
+                        return;
+                    }
+                }
+                $refs[] = [
+                    'type'  => $type,
+                    'value' => $value,
+                    'path'  => $path,
+                ];
+            };
+
+            $uid = isset($payload['vf_object_uid']) ? (string) $payload['vf_object_uid'] : '';
+            if ($uid !== '') {
+                $append('uid', $uid, self::format_entity_reference_path('term', 'uid', $uid));
+            }
+            if ($taxonomy !== '' && $slug !== '') {
+                $append('taxonomy_slug', $taxonomy . '/' . $slug, self::format_entity_reference_path('term', $taxonomy, $slug));
+            }
+            if ($taxonomy !== '' && $term_id > 0) {
+                $append('taxonomy_id', $taxonomy . '/' . $term_id, self::format_entity_reference_path('term', $taxonomy, (string) $term_id));
+            }
+
+            return $refs;
+        }
+
+        private static function resolve_local_term_id(array $item, string $taxonomy): ?int
+        {
+            $vf_object_uid = isset($item['vf_object_uid']) ? (string) $item['vf_object_uid'] : '';
+            $term_id       = isset($item['term_id']) ? (int) $item['term_id'] : 0;
+            $slug          = isset($item['term_slug'])
+                ? sanitize_title($item['term_slug'])
+                : (isset($item['slug']) ? sanitize_title($item['slug']) : '');
+
+            if ($vf_object_uid !== '' && class_exists('DBVC_Database')) {
+                $record = DBVC_Database::get_entity_by_uid($vf_object_uid);
+                if ($record && ! empty($record->object_id) && is_string($record->object_type) && strpos($record->object_type, 'term:') === 0) {
+                    $candidate = get_term((int) $record->object_id, $taxonomy);
+                    if ($candidate && ! is_wp_error($candidate)) {
+                        return (int) $candidate->term_id;
+                    }
+                }
+            }
+
+            if ($term_id) {
+                $candidate = get_term($term_id, $taxonomy);
+                if ($candidate && ! is_wp_error($candidate)) {
+                    return (int) $candidate->term_id;
+                }
+            }
+
+            if ($slug !== '' && taxonomy_exists($taxonomy)) {
+                $candidate = get_term_by('slug', $slug, $taxonomy);
+                if ($candidate && ! is_wp_error($candidate)) {
+                    return (int) $candidate->term_id;
+                }
+            }
+
+            $references = isset($item['entity_refs']) && is_array($item['entity_refs']) ? $item['entity_refs'] : [];
+            foreach ($references as $reference) {
+                if (! is_array($reference)) {
+                    continue;
+                }
+                $type  = isset($reference['type']) ? (string) $reference['type'] : '';
+                $value = isset($reference['value']) ? (string) $reference['value'] : '';
+                if ($type === '' || $value === '') {
+                    continue;
+                }
+
+                if ($type === 'taxonomy_slug') {
+                    [$ref_taxonomy, $ref_slug] = self::parse_reference_value($value);
+                    $ref_taxonomy = sanitize_key($ref_taxonomy ?: $taxonomy);
+                    $ref_slug     = sanitize_title($ref_slug);
+                    if ($ref_taxonomy === '' || $ref_slug === '' || ! taxonomy_exists($ref_taxonomy)) {
+                        continue;
+                    }
+                    $candidate = get_term_by('slug', $ref_slug, $ref_taxonomy);
+                    if ($candidate && ! is_wp_error($candidate)) {
+                        return (int) $candidate->term_id;
+                    }
+                } elseif ($type === 'taxonomy_id') {
+                    [$ref_taxonomy, $ref_id] = self::parse_reference_value($value);
+                    $ref_taxonomy = sanitize_key($ref_taxonomy ?: $taxonomy);
+                    $ref_id       = (int) $ref_id;
+                    if ($ref_taxonomy === '' || $ref_id <= 0 || ! taxonomy_exists($ref_taxonomy)) {
+                        continue;
+                    }
+                    $candidate = get_term($ref_id, $ref_taxonomy);
+                    if ($candidate && ! is_wp_error($candidate)) {
+                        return (int) $candidate->term_id;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static function format_entity_reference_path(string $entity_group, string $first_segment, ?string $second_segment = null): string
+        {
+            $segments = ['entities', trim($entity_group ?: 'term'), trim($first_segment)];
+            if ($second_segment !== null && $second_segment !== '') {
+                $segments[] = trim((string) $second_segment);
+            }
+
+            $segments = array_map(static function ($segment) {
+                return rawurlencode((string) $segment);
+            }, $segments);
+
+            return implode('/', $segments);
+        }
+
+        private static function parse_reference_value(string $value): array
+        {
+            $parts = explode('/', (string) $value, 2);
+            if (count($parts) === 2) {
+                return [trim($parts[0]), trim($parts[1])];
+            }
+            return ['', trim($parts[0])];
         }
 
         private static function get_snapshot_file_path(string $proposal_id, string $vf_object_uid): string

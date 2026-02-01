@@ -21,6 +21,8 @@ if ( ! defined( 'WPINC' ) ) {
  */
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
 	WP_CLI::add_command( 'dbvc', 'DBVC_WP_CLI_Commands' );
+	WP_CLI::add_command( 'dbvc proposals', 'DBVC_WP_CLI_Proposals' );
+	WP_CLI::add_command( 'dbvc resolver-rules', 'DBVC_WP_CLI_Resolver_Rules' );
 }
 
 class DBVC_WP_CLI_Commands {
@@ -679,5 +681,589 @@ class DBVC_WP_CLI_Commands {
 		}
 
 		\WP_CLI\Utils\format_items( 'table', $items, [ 'id', 'type', 'created', 'user', 'counts', 'source' ] );
+	}
+}
+
+if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) ) {
+	/**
+	 * Review and apply DBVC proposals via WP-CLI.
+	 */
+	class DBVC_WP_CLI_Proposals extends WP_CLI_Command {
+		/**
+		 * List staged proposals and their review status.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--fields=<fields>]
+		 * : Comma-separated list of fields to display. Default: id,status,files,media,missing_hashes,decisions
+		 *
+		 * [--fail-on-pending]
+		 * : Exit with an error if any proposal has unresolved resolver items or pending new-entity approvals.
+		 *
+		 * [--recapture-snapshots[=<ids>]]
+		 * : Recapture snapshots for the listed proposals (comma-separated IDs). Without a value, recaptures every proposal in the table.
+		 *
+		 * [--cleanup-duplicates]
+		 * : Run duplicate cleanup for every proposal listed (uses bulk slug/ID heuristics).
+
+		 * ## EXAMPLES
+		 * wp dbvc proposals list
+		 * wp dbvc proposals list --fields=id,status,decisions --fail-on-pending
+		 * wp dbvc proposals list --recapture-snapshots=2024-11-05,2024-11-07
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function list_( $args, $assoc_args ) {
+			$this->ensure_admin_app();
+
+			$request  = new \WP_REST_Request( 'GET', '/dbvc/v1/proposals' );
+			$response = \DBVC_Admin_App::get_proposals( $request );
+			if ( is_wp_error( $response ) ) {
+				\WP_CLI::error( $response->get_error_message() );
+			}
+
+			$data  = ( $response instanceof \WP_REST_Response ) ? $response->get_data() : $response;
+			$items = isset( $data['items'] ) && is_array( $data['items'] ) ? $data['items'] : [];
+
+			if ( empty( $items ) ) {
+				\WP_CLI::log( 'No proposals found.' );
+				return;
+			}
+
+			$rows             = [];
+			$fail_on_pending  = \WP_CLI\Utils\get_flag_value( $assoc_args, 'fail-on-pending', false );
+			$recapture_arg    = \WP_CLI\Utils\get_flag_value( $assoc_args, 'recapture-snapshots', false );
+			$cleanup          = \WP_CLI\Utils\get_flag_value( $assoc_args, 'cleanup-duplicates', false );
+			$has_pending     = false;
+			foreach ( $items as $item ) {
+				$decisions = isset( $item['decisions'] ) && is_array( $item['decisions'] ) ? $item['decisions'] : [];
+				$resolver_metrics = isset( $item['resolver']['metrics'] ) && is_array( $item['resolver']['metrics'] )
+					? $item['resolver']['metrics']
+					: [];
+				$new_entities = isset( $item['new_entities'] ) && is_array( $item['new_entities'] )
+					? $item['new_entities']
+					: [];
+
+				$resolver_pending = (int) ( $resolver_metrics['unresolved'] ?? 0 )
+					+ (int) ( $resolver_metrics['conflicts'] ?? 0 )
+					+ (int) ( $resolver_metrics['needs_download'] ?? 0 )
+					+ (int) ( $resolver_metrics['missing'] ?? 0 );
+				$new_pending = (int) ( $new_entities['pending'] ?? 0 );
+
+				if ( $resolver_pending > 0 || $new_pending > 0 ) {
+					$has_pending = true;
+				}
+
+				$rows[]    = [
+					'id'              => $item['id'] ?? '',
+					'status'          => $item['status'] ?? 'draft',
+					'files'           => isset( $item['files'] ) ? (int) $item['files'] : 0,
+					'media'           => isset( $item['media_items'] ) ? (int) $item['media_items'] : 0,
+					'missing_hashes'  => isset( $item['missing_hashes'] ) ? (int) $item['missing_hashes'] : 0,
+					'decisions'       => sprintf(
+						'%d/%d',
+						(int) ( $decisions['accepted'] ?? 0 ),
+						(int) ( $decisions['total'] ?? 0 )
+					),
+					'duplicate_count' => isset( $item['duplicate_count'] ) ? (int) $item['duplicate_count'] : 0,
+					'resolver_pending'=> $resolver_pending,
+					'new_pending'     => $new_pending,
+					'new_total'       => (int) ( $new_entities['total'] ?? 0 ),
+				];
+			}
+
+			$fields = isset( $assoc_args['fields'] ) && is_string( $assoc_args['fields'] )
+				? array_map( 'trim', explode( ',', $assoc_args['fields'] ) )
+				: [ 'id', 'status', 'files', 'media', 'missing_hashes', 'duplicate_count', 'resolver_pending', 'new_pending', 'new_total', 'decisions' ];
+
+			\WP_CLI\Utils\format_items( 'table', $rows, $fields );
+
+			if ( false !== $recapture_arg ) {
+				$target_ids = [];
+				if ( is_string( $recapture_arg ) && '' !== trim( $recapture_arg ) && '1' !== $recapture_arg ) {
+					$target_ids = array_filter( array_map( 'trim', explode( ',', $recapture_arg ) ) );
+				}
+				if ( empty( $target_ids ) ) {
+					$target_ids = array_filter( wp_list_pluck( $items, 'id' ) );
+				}
+				$this->recapture_snapshots( $target_ids );
+			}
+
+			if ( $fail_on_pending && $has_pending ) {
+				\WP_CLI::error( 'Pending resolver conflicts or new-entity approvals detected.' );
+			}
+			if ( $cleanup ) {
+				$this->cleanup_duplicates_bulk( array_filter( wp_list_pluck( $items, 'id' ) ) );
+			}
+		}
+
+		/**
+		 * Upload a proposal ZIP into DBVC (without visiting WP Admin).
+		 *
+		 * ## OPTIONS
+		 *
+		 * <zip>
+		 * : Path to the proposal ZIP file.
+		 *
+		 * [--id=<id>]
+		 * : Preferred proposal ID (defaults to manifest metadata or timestamp).
+		 *
+		 * [--overwrite]
+		 * : Replace an existing proposal with the same ID.
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc proposals upload ./proposal.zip
+		 * wp dbvc proposals upload ./proposal.zip --id=2024-11-05 --overwrite
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function upload( $args, $assoc_args ) {
+			$this->ensure_admin_app();
+
+			if ( empty( $args ) ) {
+				\WP_CLI::error( 'Provide a path to a proposal ZIP file.' );
+			}
+
+			$zip_path = realpath( $args[0] );
+			if ( ! $zip_path || ! file_exists( $zip_path ) ) {
+				\WP_CLI::error( sprintf( 'ZIP file not found: %s', $args[0] ) );
+			}
+
+			$preferred_id = isset( $assoc_args['id'] ) ? sanitize_text_field( $assoc_args['id'] ) : '';
+			$overwrite    = \WP_CLI\Utils\get_flag_value( $assoc_args, 'overwrite', false );
+
+			$result = \DBVC_Admin_App::import_proposal_from_zip(
+				$zip_path,
+				[
+					'preferred_id' => $preferred_id,
+					'overwrite'    => $overwrite,
+				]
+			);
+
+			if ( is_wp_error( $result ) ) {
+				\WP_CLI::error( $result->get_error_message() );
+			}
+
+			$manifest      = isset( $result['manifest'] ) && is_array( $result['manifest'] ) ? $result['manifest'] : [];
+			$total_entities = isset( $manifest['items'] ) && is_array( $manifest['items'] ) ? count( $manifest['items'] ) : 0;
+
+			\WP_CLI::success(
+				sprintf(
+					'Imported proposal %s (%d entities).',
+					$result['proposal_id'],
+					$total_entities
+				)
+			);
+		}
+
+		/**
+		 * Apply a proposal using the same logic as the React workflow.
+		 *
+		 * ## OPTIONS
+		 *
+		 * <proposal_id>
+		 * : ID of the proposal directory under uploads/dbvc.
+		 *
+		 * [--mode=<mode>]
+		 * : Import mode: full (default) or partial.
+		 *
+		 * [--ignore-missing-hash]
+		 * : Skip import-hash validation for entities.
+		 *
+		 * [--force-reapply-new-posts]
+		 * : Reapply previously approved "new entity" decisions even if selections are missing.
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc proposals apply 2024-11-05
+		 * wp dbvc proposals apply 2024-11-05 --mode=partial --ignore-missing-hash
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 * @return void
+		 */
+		public function apply( $args, $assoc_args ) {
+			$this->ensure_admin_app();
+
+			if ( empty( $args ) ) {
+				\WP_CLI::error( 'Provide a proposal ID.' );
+			}
+
+			$proposal_id = sanitize_text_field( $args[0] );
+
+			$request = new \WP_REST_Request( 'POST', '/dbvc/v1/proposals/' . $proposal_id . '/apply' );
+			$request->set_param( 'proposal_id', $proposal_id );
+
+			if ( isset( $assoc_args['mode'] ) ) {
+				$request->set_param( 'mode', sanitize_key( $assoc_args['mode'] ) );
+			}
+
+			if ( \WP_CLI\Utils\get_flag_value( $assoc_args, 'ignore-missing-hash', false ) ) {
+				$request->set_param( 'ignore_missing_hash', true );
+			}
+
+			if ( \WP_CLI\Utils\get_flag_value( $assoc_args, 'force-reapply-new-posts', false ) ) {
+				$request->set_param( 'force_reapply_new_posts', true );
+			}
+
+			$response = \DBVC_Admin_App::apply_proposal( $request );
+			if ( is_wp_error( $response ) ) {
+				\WP_CLI::error( $response->get_error_message() );
+			}
+
+			$data = ( $response instanceof \WP_REST_Response ) ? $response->get_data() : $response;
+			$result = isset( $data['result'] ) && is_array( $data['result'] ) ? $data['result'] : [];
+
+			\WP_CLI::log(
+				sprintf(
+					'Imported: %d | Skipped: %d | Errors: %d',
+					(int) ( $result['imported'] ?? 0 ),
+					(int) ( $result['skipped'] ?? 0 ),
+					! empty( $result['errors'] ) ? count( (array) $result['errors'] ) : 0
+				)
+			);
+
+			if ( ! empty( $result['errors'] ) && is_array( $result['errors'] ) ) {
+				foreach ( $result['errors'] as $error_message ) {
+					\WP_CLI::warning( $error_message );
+				}
+			}
+
+			\WP_CLI::success( sprintf( 'Proposal %s applied in %s mode.', $proposal_id, $data['mode'] ?? 'full' ) );
+		}
+
+		/**
+		 * Ensure DBVC admin helpers are loaded.
+		 *
+		 * @return void
+		 */
+		private function ensure_admin_app() {
+			if ( ! class_exists( 'DBVC_Admin_App' ) ) {
+				\WP_CLI::error( 'DBVC Admin App is not available. Is the plugin active?' );
+			}
+		}
+
+		/**
+		 * Run duplicate cleanup for proposals.
+		 *
+		 * @param array $proposal_ids
+		 * @return void
+		 */
+		private function cleanup_duplicates_bulk( array $proposal_ids ) {
+			$proposal_ids = array_values( array_unique( array_filter( array_map( 'trim', $proposal_ids ) ) ) );
+			if ( empty( $proposal_ids ) ) {
+				return;
+			}
+
+			foreach ( $proposal_ids as $proposal_id ) {
+				$request = new \WP_REST_Request( 'POST', '/dbvc/v1/proposals/' . $proposal_id . '/duplicates/cleanup' );
+				$request->set_param( 'proposal_id', $proposal_id );
+				$request->set_body_params(
+					[
+						'apply_all'       => true,
+						'preferred_format'=> 'slug_id',
+						'confirm_token'   => DBVC_Admin_App::DUPLICATE_BULK_CONFIRM_PHRASE,
+					]
+				);
+
+				$response = DBVC_Admin_App::cleanup_proposal_duplicates( $request );
+				if ( is_wp_error( $response ) ) {
+					\WP_CLI::warning( sprintf( 'Duplicate cleanup failed for %s: %s', $proposal_id, $response->get_error_message() ) );
+					continue;
+				}
+				\WP_CLI::log( sprintf( 'Duplicate cleanup complete for %s.', $proposal_id ) );
+			}
+		}
+
+		/**
+		 * Recapture snapshots for one or more proposals.
+		 *
+		 * @param array $proposal_ids
+		 * @return void
+		 */
+		private function recapture_snapshots( array $proposal_ids ) {
+			$proposal_ids = array_values( array_unique( array_filter( array_map( 'trim', $proposal_ids ) ) ) );
+			if ( empty( $proposal_ids ) ) {
+				\WP_CLI::warning( 'No proposals specified for snapshot recapture.' );
+				return;
+			}
+
+			if ( ! class_exists( 'DBVC_Snapshot_Manager' ) || ! class_exists( 'DBVC_Backup_Manager' ) ) {
+				\WP_CLI::error( 'Snapshot manager or backup manager is unavailable.' );
+			}
+
+			$base_path = trailingslashit( DBVC_Backup_Manager::get_base_path() );
+			$success   = 0;
+
+			foreach ( $proposal_ids as $proposal_id ) {
+				$manifest_path = $base_path . $proposal_id . '/' . DBVC_Backup_Manager::MANIFEST_FILENAME;
+				if ( ! file_exists( $manifest_path ) || ! is_readable( $manifest_path ) ) {
+					\WP_CLI::warning( sprintf( 'Manifest missing for proposal "%s". Skipping.', $proposal_id ) );
+					continue;
+				}
+
+				$manifest_raw = file_get_contents( $manifest_path );
+				$manifest     = json_decode( $manifest_raw, true );
+				if ( ! is_array( $manifest ) ) {
+					\WP_CLI::warning( sprintf( 'Manifest could not be decoded for proposal "%s". Skipping.', $proposal_id ) );
+					continue;
+				}
+
+				try {
+					DBVC_Snapshot_Manager::capture_for_proposal( $proposal_id, $manifest );
+					$success++;
+					\WP_CLI::log( sprintf( 'Snapshots recaptured for %s.', $proposal_id ) );
+				} catch ( \Throwable $e ) {
+					\WP_CLI::warning(
+						sprintf(
+							'Snapshot capture failed for %s: %s',
+							$proposal_id,
+							$e->getMessage()
+						)
+					);
+				}
+			}
+
+			if ( $success > 0 ) {
+				\WP_CLI::success(
+					sprintf(
+						'Snapshots recaptured for %d proposal%s.',
+						$success,
+						$success === 1 ? '' : 's'
+					)
+				);
+			} else {
+				\WP_CLI::warning( 'No snapshots were recaptured.' );
+			}
+		}
+	}
+}
+
+if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Resolver_Rules' ) ) {
+	/**
+	 * Manage global resolver rules via WP-CLI.
+	 */
+	class DBVC_WP_CLI_Resolver_Rules extends WP_CLI_Command {
+		/**
+		 * List global resolver rules.
+		 *
+		 * ## OPTIONS
+		 *
+		 * [--fields=<fields>]
+		 * : Comma-separated list of fields to display. Default: original_id,action,target_id,note
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc resolver-rules list
+		 * wp dbvc resolver-rules list --fields=original_id,action,note
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 */
+		public function list_( $args, $assoc_args ) {
+			$this->ensure_admin_app();
+
+			$response = \DBVC_Admin_App::list_resolver_rules();
+			if ( is_wp_error( $response ) ) {
+				\WP_CLI::error( $response->get_error_message() );
+			}
+
+			$data  = ( $response instanceof \WP_REST_Response ) ? $response->get_data() : $response;
+			$rules = isset( $data['rules'] ) && is_array( $data['rules'] ) ? $data['rules'] : [];
+			if ( empty( $rules ) ) {
+				\WP_CLI::log( 'No resolver rules found.' );
+				return;
+			}
+
+			$fields = isset( $assoc_args['fields'] ) && is_string( $assoc_args['fields'] )
+				? array_map( 'trim', explode( ',', $assoc_args['fields'] ) )
+				: [ 'original_id', 'action', 'target_id', 'note' ];
+
+			\WP_CLI\Utils\format_items( 'table', $rules, $fields );
+		}
+
+		/**
+		 * Add or update a global resolver rule.
+		 *
+		 * ## OPTIONS
+		 *
+		 * <original_id>
+		 * : Original attachment ID (from the manifest) to scope the rule.
+		 *
+		 * <action>
+		 * : Resolver action: reuse, download, map, or skip.
+		 *
+		 * [--target=<attachment_id>]
+		 * : Target attachment ID when using reuse/map actions.
+		 *
+		 * [--note=<text>]
+		 * : Optional description of the rule.
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc resolver-rules add 123 reuse --target=456 --note="Force reuse hero image"
+		 * wp dbvc resolver-rules add 789 skip
+		 *
+		 * @param array $args
+		 * @param array $assoc_args
+		 */
+		public function add( $args, $assoc_args ) {
+			$this->ensure_admin_app();
+
+			if ( count( $args ) < 2 ) {
+				\WP_CLI::error( 'Usage: wp dbvc resolver-rules add <original_id> <action> [--target=<id>] [--note=<text>]' );
+			}
+
+			list( $original_id, $action ) = $args;
+
+			$request = new \WP_REST_Request( 'POST', '/dbvc/v1/resolver-rules' );
+			$request->set_body_params(
+				[
+					'original_id' => $original_id,
+					'action'      => $action,
+					'target_id'   => isset( $assoc_args['target'] ) ? absint( $assoc_args['target'] ) : 0,
+					'note'        => isset( $assoc_args['note'] ) ? $assoc_args['note'] : '',
+				]
+			);
+
+			$response = \DBVC_Admin_App::upsert_resolver_rule( $request );
+			if ( is_wp_error( $response ) ) {
+				\WP_CLI::error( $response->get_error_message() );
+			}
+
+			$data = ( $response instanceof \WP_REST_Response ) ? $response->get_data() : $response;
+			$rule = isset( $data['rule'] ) ? $data['rule'] : $data;
+
+			\WP_CLI::success(
+				sprintf(
+					'Rule saved for original %s (%s).',
+					$rule['original_id'] ?? $original_id,
+					$rule['action'] ?? $action
+				)
+			);
+		}
+
+		/**
+		 * Delete one or more resolver rules.
+		 *
+		 * ## OPTIONS
+		 *
+		 * <original_id>...
+		 * : One or more original IDs to delete.
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc resolver-rules delete 123
+		 * wp dbvc resolver-rules delete 123 456 789
+		 *
+		 * @param array $args
+		 */
+		public function delete( $args ) {
+			$this->ensure_admin_app();
+
+			if ( empty( $args ) ) {
+				\WP_CLI::error( 'Provide at least one original ID to delete.' );
+			}
+
+			if ( count( $args ) === 1 ) {
+				$request = new \WP_REST_Request( 'DELETE', '/dbvc/v1/resolver-rules/' . absint( $args[0] ) );
+				$response = \DBVC_Admin_App::delete_resolver_rule( $request );
+			} else {
+				$request = new \WP_REST_Request( 'POST', '/dbvc/v1/resolver-rules/bulk-delete' );
+				$request->set_body_params( [ 'original_ids' => array_map( 'absint', $args ) ] );
+				$response = \DBVC_Admin_App::bulk_delete_resolver_rules( $request );
+			}
+
+			if ( is_wp_error( $response ) ) {
+				\WP_CLI::error( $response->get_error_message() );
+			}
+
+			\WP_CLI::success( 'Resolver rule(s) deleted.' );
+		}
+
+		/**
+		 * Import resolver rules from a CSV file.
+		 *
+		 * ## OPTIONS
+		 *
+		 * <file>
+		 * : Path to the CSV file with columns original_id,action,target_id,note.
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc resolver-rules import ./rules.csv
+		 *
+		 * @param array $args
+		 */
+		public function import( $args ) {
+			$this->ensure_admin_app();
+
+			if ( empty( $args ) ) {
+				\WP_CLI::error( 'Provide a CSV file to import.' );
+			}
+
+			$file = realpath( $args[0] );
+			if ( ! $file || ! file_exists( $file ) ) {
+				\WP_CLI::error( sprintf( 'File not found: %s', $args[0] ) );
+			}
+
+			$rows = $this->parse_csv( $file );
+			if ( empty( $rows ) ) {
+				\WP_CLI::error( 'CSV file contained no rows.' );
+			}
+
+			$request = new \WP_REST_Request( 'POST', '/dbvc/v1/resolver-rules/import' );
+			$request->set_body_params( [ 'rules' => $rows ] );
+
+			$response = \DBVC_Admin_App::import_resolver_rules( $request );
+			if ( is_wp_error( $response ) ) {
+				\WP_CLI::error( $response->get_error_message() );
+			}
+
+			$data = ( $response instanceof \WP_REST_Response ) ? $response->get_data() : $response;
+
+			\WP_CLI::log( sprintf( 'Imported %d rules.', isset( $data['imported'] ) ? count( $data['imported'] ) : 0 ) );
+			if ( ! empty( $data['errors'] ) ) {
+				foreach ( (array) $data['errors'] as $error ) {
+					\WP_CLI::warning( $error );
+				}
+			}
+		}
+
+		/**
+		 * Parse resolver rule CSV.
+		 *
+		 * @param string $file
+		 * @return array
+		 */
+		private function parse_csv( string $file ): array {
+			$rows   = [];
+			$handle = fopen( $file, 'r' );
+			if ( ! $handle ) {
+				return $rows;
+			}
+
+			$header = null;
+			while ( ( $data = fgetcsv( $handle ) ) !== false ) {
+				if ( null === $header ) {
+					$header = array_map( 'trim', $data );
+					continue;
+				}
+
+				$row = [];
+				foreach ( $header as $index => $column ) {
+					$row[ $column ] = $data[ $index ] ?? '';
+				}
+				$rows[] = $row;
+			}
+
+			fclose( $handle );
+			return $rows;
+		}
+
+		private function ensure_admin_app() {
+			if ( ! class_exists( 'DBVC_Admin_App' ) ) {
+				\WP_CLI::error( 'DBVC Admin App is not available. Is the plugin active?' );
+			}
+		}
 	}
 }

@@ -37,11 +37,18 @@
     - Proposal load now queries duplicate count + report, shows flashing overlay, and prevents entity review until all duplicates are resolved.
     - Added explicit “New post” detection pipeline (UID/ID/slug heuristics, DBVC entity registry) with UI badges, forced filter, and accept/decline gating that the importer honours.
     - Cleanup API rewrites manifest + deletes stray JSONs so reviewers always see a canonical source of truth.
+11. **Term Snapshot & Diff Parity**
+    - Snapshot manager now captures taxonomy entities (UIDs, parent chains, sanitized termmeta) alongside posts.
+    - React diffs and Accept/Keep gating compare term snapshots against proposal payloads, so term decisions behave exactly like post decisions when reopening proposals.
+12. **WP-CLI Proposals Namespace**
+    - Added `wp dbvc proposals list|upload|apply` commands that reuse the React workflow’s ingestion/apply helpers so CI/staging can manage proposals headlessly.
+13. **CLI Parity for Resolver Rules & Duplicates**
+    - Added `wp dbvc resolver-rules list|add|delete|import` plus `wp dbvc proposals list --cleanup-duplicates` so automation can manage global resolver rules and manifest cleanup without the React UI.
 ## Remaining / Next Steps
-1. **Term & Taxonomy Entity Parity**
-   - Promote the plan in `docs/terms.md` into engineering tasks: emit term entities in `entities.jsonl`, surface them in the React grid/drawer, and gate applies on Accept/Keep just like posts.
-   - Extend importer/preflight helpers (`DBVC_Sync_Taxonomies`, proposal apply endpoint) to respect reviewer selections, parent remaps, and media references coming from termmeta.
-   - Refresh docs/help text so reviewers know the taxonomy filters and “Accept all new terms” affordances that will ship with the feature.
+1. **Term & Taxonomy Entity Polish**
+   - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.
+   - Refresh docs/help text so reviewers know the taxonomy filters, parent resolution behaviour, and “Accept all new terms” affordances that now ship with the feature.
+   - Backfill existing proposals by rerunning `DBVC_Snapshot_Manager::capture_for_proposal()` (or `wp dbvc proposals list --recapture-snapshots`) so every reopen flow benefits from the new term snapshots.
 2. **Testing & Automation**
    - Expand coverage (resolver bulk actions, CSV parsing, importer hooks, duplicate cleanup) now that the PHPUnit scaffold exists.
    - Integrate the suite with CI once infrastructure is available so regressions (like the new-entity gating bug) are caught automatically.
@@ -52,5 +59,4 @@
    - Finalize manifest/local preview URLs so thumbnails render consistently across environments or fall back gracefully when sync paths differ.
    - Decide whether large assets should lazy-load to avoid blocking entity review.
 5. **Documentation & CLI**
-   - Extend CLI commands to manage resolver rules (list/add/delete) and eventually trigger proposal applies once parity work lands.
    - Keep README/handoff updated as new workflows (taxonomy entities, official collections) become available.
