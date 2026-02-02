@@ -265,6 +265,15 @@ final class DBVC_Admin_App
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/unkeep',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'unkeep_entities_bulk'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
 
         register_rest_route(
             'dbvc/v1',
@@ -2407,6 +2416,93 @@ final class DBVC_Admin_App
             'cleared_new'      => $cleared_new,
             'cleared_existing' => $cleared_diff,
             'proposal_summary' => $proposal_summary,
+        ]);
+    }
+
+    /**
+     * REST: Clear only Keep decisions for multiple entities.
+     */
+    public static function unkeep_entities_bulk(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $body = $request->get_json_params();
+        $scope = isset($body['scope']) ? sanitize_key($body['scope']) : 'selected';
+        $requested_ids = [];
+        if (! empty($body['vf_object_uids']) && is_array($body['vf_object_uids'])) {
+            $requested_ids = array_filter(array_map('sanitize_text_field', $body['vf_object_uids']));
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $manifest_map = [];
+        foreach ($manifest['items'] as $item) {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
+                continue;
+            }
+            $vf_object_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($vf_object_uid !== '') {
+                $manifest_map[$vf_object_uid] = $item;
+            }
+        }
+
+        $target_ids = [];
+        if ($scope === 'all') {
+            $target_ids = array_keys($manifest_map);
+        } else {
+            $target_ids = $requested_ids;
+        }
+
+        if (empty($target_ids)) {
+            return new \WP_Error('dbvc_no_entities', __('No entities were selected.', 'dbvc'), ['status' => 400]);
+        }
+
+        $cleared_keep = 0;
+        $entities_updated = 0;
+
+        foreach ($target_ids as $vf_object_uid) {
+            if (! isset($manifest_map[$vf_object_uid])) {
+                continue;
+            }
+
+            $decisions = self::get_entity_decisions($proposal_id, $vf_object_uid);
+            if (empty($decisions)) {
+                continue;
+            }
+
+            $cleared_for_entity = 0;
+            foreach ($decisions as $path => $action) {
+                if ($action !== 'keep') {
+                    continue;
+                }
+                self::clear_entity_decision($proposal_id, $vf_object_uid, $path);
+                $cleared_keep++;
+                $cleared_for_entity++;
+            }
+
+            if ($cleared_for_entity > 0) {
+                $entities_updated++;
+            }
+        }
+
+        $store            = self::get_decision_store();
+        $proposal_store   = isset($store[$proposal_id]) && is_array($store[$proposal_id]) ? $store[$proposal_id] : [];
+        $proposal_summary = self::summarize_proposal_decisions($proposal_store);
+
+        return new \WP_REST_Response([
+            'proposal_id'       => $proposal_id,
+            'cleared_keep'      => $cleared_keep,
+            'entities_updated'  => $entities_updated,
+            'proposal_summary'  => $proposal_summary,
         ]);
     }
 

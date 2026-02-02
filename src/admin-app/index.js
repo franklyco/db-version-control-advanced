@@ -1202,7 +1202,8 @@
                 items: []
               }), [wt, Ct] = (0, e.useState)(!1), [Nt, kt] = (0, e.useState)(null), [St, Dt] = (0, 
               e.useState)(!1), [duplicateActionKey, setDuplicateActionKey] = (0, e.useState)(""), [duplicateMode, setDuplicateMode] = (0, e.useState)("slug_id"), [duplicateConfirm, setDuplicateConfirm] = (0, e.useState)(""), [duplicateBulkBusy, setDuplicateBulkBusy] = (0, e.useState)(!1), [It, At] = (0, e.useState)(!1), [Et, Mt] = (0, 
-              e.useState)(!1), [Ut, Bt] = (0, e.useState)(!1), [Ot, Tt] = (0, e.useState)(() => new Set), [toolsOpen, setToolsOpen] = (0, e.useState)(!1), [maskFields, setMaskFields] = (0, e.useState)([]), [maskLoading, setMaskLoading] = (0, e.useState)(!1), [maskError, setMaskError] = (0, e.useState)(null), [maskApplying, setMaskApplying] = (0, e.useState)(!1), [maskAttention, setMaskAttention] = (0, e.useState)(!1), [maskBulkAction, setMaskBulkAction] = (0, e.useState)("ignore"), [maskBulkOverride, setMaskBulkOverride] = (0, e.useState)(""), [maskBulkNote, setMaskBulkNote] = (0, e.useState)(""), duplicateConfirmPhrase = "DELETE", Pt = (0, 
+              e.useState)(!1), [Ut, Bt] = (0, e.useState)(!1), [unkeepBusy, setUnkeepBusy] = (0, e.useState)(!1), [Ot, Tt] = (0, e.useState)(() => new Set), [toolsOpen, setToolsOpen] = (0, e.useState)(!1), [maskFields, setMaskFields] = (0, e.useState)([]), [maskLoading, setMaskLoading] = (0, e.useState)(!1), [maskError, setMaskError] = (0, e.useState)(null), [maskApplying, setMaskApplying] = (0, e.useState)(!1), [maskAttention, setMaskAttention] = (0, e.useState)(!1), [maskBulkAction, setMaskBulkAction] = (0, e.useState)("ignore"), [maskBulkOverride, setMaskBulkOverride] = (0, e.useState)(""), [maskBulkNote, setMaskBulkNote] = (0, e.useState)(""), [columnToggleOpen, setColumnToggleOpen] = (0, 
+              e.useState)(!1), columnToggleRef = (0, e.useRef)(null), duplicateConfirmPhrase = "DELETE", Pt = (0, 
               e.useMemo)(() => y.filter(e => xt[e.id]), [ xt ]), Ft = (0, e.useCallback)(e => {
                 jt(t => {
                   const s = y.find(t => t.id === e);
@@ -1503,6 +1504,20 @@
                     Bt(!1);
                   }
                 }
+              }, [ Z, Ot, Ht, ne, es ]), unkeepSelected = (0, e.useCallback)(async () => {
+                if (Z && 0 !== Ot.size) {
+                  setUnkeepBusy(!0), ge(null);
+                  try {
+                    await i(`proposals/${encodeURIComponent(Z)}/entities/unkeep`, {
+                      scope: "selected",
+                      vf_object_uids: Array.from(Ot)
+                    }), await Ht(Z, ne), es();
+                  } catch (e) {
+                    ge(e?.message || "Failed to unkeep selected entities.");
+                  } finally {
+                    setUnkeepBusy(!1);
+                  }
+                }
               }, [ Z, Ot, Ht, ne, es ]);
               (0, e.useEffect)(() => {
                 Je(null), We(null), Te(!1), Xe(!1), Qe("full"), et(!1), it([]);
@@ -1530,7 +1545,17 @@
                 } catch (t) {
                   window.sessionStorage.removeItem(MASK_UNDO_STORAGE_KEY), setPendingMaskUndo(null);
                 }
-              }, [ Z ]);
+              }, [ Z ]), (0, e.useEffect)(() => {
+                if (!columnToggleOpen) return;
+                const e = e => {
+                  columnToggleRef.current && columnToggleRef.current.contains(e.target) || setColumnToggleOpen(!1);
+                }, t = e => {
+                  "Escape" === e.key && setColumnToggleOpen(!1);
+                };
+                return document.addEventListener("mousedown", e), document.addEventListener("keyup", t), () => {
+                  document.removeEventListener("mousedown", e), document.removeEventListener("keyup", t);
+                };
+              }, [ columnToggleOpen ]);
               const os = (0, e.useCallback)(async (e, t) => {
                 if (e) {
                   ke(!0), Me(null);
@@ -2540,6 +2565,12 @@
                         disabled: Ut,
                         isBusy: Ut,
                         children: Ut ? "Unaccepting…" : "Unaccept selected"
+                      }), (0, s.jsx)(t.Button, {
+                        variant: "secondary",
+                        onClick: unkeepSelected,
+                        disabled: unkeepBusy,
+                        isBusy: unkeepBusy,
+                        children: unkeepBusy ? "Unkeeping…" : "Unkeep selected"
                       }) ]
                     }), ns && (0, s.jsx)(t.Button, {
                       className: "dbvc-new-entities-accept-button",
@@ -2593,24 +2624,55 @@
                       className: "description",
                       children: "Some entities are missing their stored import hash. Sync them to prevent repeat reviews across environments."
                     }) ]
-                  }), (0, s.jsxs)("div", {
-                    className: "dbvc-column-toggle",
-                    children: [ (0, s.jsx)("span", {
-                      children: "Columns:"
-                    }), y.map(e => (0, s.jsxs)("label", {
-                      children: [ (0, s.jsx)("input", {
-                        type: "checkbox",
-                        checked: xt[e.id],
-                        onChange: () => Ft(e.id),
-                        disabled: e.lockVisible
-                      }), e.label ]
-                    }, e.id)) ]
-                  }), Ie && (0, s.jsx)("div", {
-                    className: "notice notice-error",
-                    children: (0, s.jsxs)("p", {
-                      children: [ "Failed to load entities: ", Ie ]
-                    })
-                  }), (0, s.jsxs)("div", {
+                }), (0, s.jsx)("div", {
+                  className: `dbvc-column-toggle${columnToggleOpen ? " is-open" : ""}`,
+                  ref: columnToggleRef,
+                  onMouseEnter: () => setColumnToggleOpen(!0),
+                  onMouseLeave: () => setColumnToggleOpen(!1),
+                  children: (0, s.jsxs)(s.Fragment, {
+                    children: [ (0, s.jsx)(TooltipWrapper, {
+                      content: "Choose which columns are visible in the All Entities table.",
+                      children: (0, s.jsxs)(t.Button, {
+                        variant: "secondary",
+                        className: "dbvc-column-toggle__button",
+                        onClick: () => setColumnToggleOpen(e => !e),
+                        "aria-haspopup": "true",
+                        "aria-expanded": columnToggleOpen,
+                        "aria-controls": "dbvc-column-toggle-menu",
+                        children: [ (0, s.jsx)("span", {
+                          className: "dashicons dashicons-screenoptions",
+                          "aria-hidden": "true"
+                        }), (0, s.jsx)("span", {
+                          className: "dbvc-column-toggle__button-label",
+                          children: "Columns"
+                        }), (0, s.jsx)("span", {
+                          className: "screen-reader-text",
+                          children: "Toggle column visibility menu"
+                        }) ]
+                      })
+                    }), columnToggleOpen && (0, s.jsx)("div", {
+                      id: "dbvc-column-toggle-menu",
+                      className: "dbvc-column-toggle__menu",
+                      role: "menu",
+                      children: y.map(e => (0, s.jsxs)("label", {
+                        className: "dbvc-column-toggle__option",
+                        children: [ (0, s.jsx)("input", {
+                          type: "checkbox",
+                          checked: xt[e.id],
+                          onChange: () => Ft(e.id),
+                          disabled: e.lockVisible
+                        }), (0, s.jsx)("span", {
+                          children: e.label
+                        }) ]
+                      }, e.id))
+                    }) ]
+                  })
+                }), Ie && (0, s.jsx)("div", {
+                  className: "notice notice-error",
+                  children: (0, s.jsxs)("p", {
+                    children: [ "Failed to load entities: ", Ie ]
+                  })
+                }), (0, s.jsxs)("div", {
                     className: "dbvc-entity-table-wrapper",
                     children: [ _t.count > 0 && (0, s.jsx)("button", {
                       type: "button",
@@ -2900,11 +2962,19 @@
                       }) ]
                     }), (0, s.jsxs)("label", {
                       className: "dbvc-resolver-remember",
-                      children: [ (0, s.jsx)("input", {
-                        type: "checkbox",
-                        checked: f,
-                        onChange: e => g(e.target.checked)
+                      children: [ (0, s.jsxs)("span", {
+                        className: "dbvc-toggle",
+                        children: [ (0, s.jsx)("input", {
+                          type: "checkbox",
+                          className: "dbvc-toggle__input",
+                          checked: f,
+                          onChange: e => g(e.target.checked)
+                        }), (0, s.jsx)("span", {
+                          className: "dbvc-toggle__track",
+                          "aria-hidden": "true"
+                        }) ]
                       }), (0, s.jsx)("span", {
+                        className: "dbvc-toggle__label",
                         children: "Remember for future proposals"
                       }) ]
                     }) ]
