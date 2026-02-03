@@ -14,6 +14,7 @@ This plan outlines the implementation steps for masking meta fields inside live 
    - The panel now streams masked entities in paged chunks so large proposals don’t blow memory. A progress indicator (“XX% loaded”) surfaces while pages load.
    - Instead of per-entity rows, reviewers pick a single bulk action (Ignore / Auto-accept & suppress / Override) that applies to every masked field in the current proposal.
    - When `Override` is chosen, override value + optional note inputs appear. Tooltip copy links to `docs/meta-masking.md#override-masked-value`.
+   - The loader auto-prefetches once entity rows settle and caches the results per proposal/session so reopening the drawer is instantaneous unless reviewers explicitly hit Refresh.
 
 3. **Apply flow**
    - Apply runs in chunks (50 fields per request by default) and shows a `% applied` ticker in the Tools panel header. Once done, masking data, entity badges, and duplicate info are refetched automatically.

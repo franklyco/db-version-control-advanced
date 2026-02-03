@@ -45,8 +45,12 @@
 13. **CLI Parity for Resolver Rules & Duplicates**
     - Added `wp dbvc resolver-rules list|add|delete|import` plus `wp dbvc proposals list --cleanup-duplicates` so automation can manage global resolver rules and manifest cleanup without the React UI.
 14. **Meta Masking Drawer & REST**
-    - Added `/masking` + `/masking/apply` endpoints plus option stores for per-proposal suppressions/overrides and importer hooks that honor those directives.
-    - React admin now includes status badges, a Tools drawer housing masking controls, and inline tooltips linked to `docs/meta-masking.md`. Remember to run `npm run build` whenever `src/admin-app/` changes.
+   - Added `/masking` + `/masking/apply` endpoints plus option stores for per-proposal suppressions/overrides and importer hooks that honor those directives.
+   - React admin now includes status badges, a Tools drawer housing masking controls, and inline tooltips linked to `docs/meta-masking.md`. Remember to run `npm run build` whenever `src/admin-app/` changes.
+15. **All Entities Toolbar Consolidation**
+   - The Actions & Tools popover, Columns toggle, and selection utilities now live inside a single toolbar row so the layout stays stable while swapping filters or resizing the viewport.
+   - “Clear selection” and “Select all” buttons only appear when they can act on the current table state, keeping the UI calm for reviewers who are browsing without an active selection.
+   - The popover groups bulk Accept/Unaccept/Unkeep controls, new-entity approvals, maintenance operations (refresh, snapshots, hashes, duplicate resolver), and the masking drawer so future refactors can extract this block into a dedicated component.
 ## Remaining / Next Steps
 1. **Term & Taxonomy Entity Polish**
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.
@@ -73,6 +77,7 @@
    - ✅ Tightened backend pagination (10-field default with a guarded `per_page` param) so each `/masking` fetch stays within memory budgets exposed by telemetry.
    - ✅ Added PHPUnit coverage for `/masking` pagination + apply/undo flows (`tests/phpunit/MaskingEndpointsTest.php`) to lock in the behaviours above.
    - ✅ Tools panel now ships with a “Revert masking decisions” control backed by `/masking/revert`, clearing stored suppressions/overrides so proposals can be re-reviewed after rule changes.
+   - ✅ Masking candidates now auto-prefetch after the entity table loads and persist in sessionStorage/cache, so reopening the drawer or switching tabs no longer re-fetches everything unless you hit Refresh.
 7. **Admin App Refactor**
    - The compiled UI currently lives in `src/admin-app/index.js` as a single ~3,300 line bundle, which makes day-to-day edits nearly impossible.
    - Before touching the bundle, capture a backup copy (tagged commit + `build/` artifact) and document the baseline so a reliable reference exists during the refactor; stage work in a separate branch or staging file to keep master stable.

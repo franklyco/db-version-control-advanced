@@ -207,12 +207,108 @@
 	font-size: 13px;
 }
 
-.dbvc-tools-toggle {
-	margin-left: auto;
+.dbvc-entity-tools-row {
+	display: flex;
+	align-items: flex-start;
+	flex-wrap: wrap;
+	gap: 16px;
+	justify-content: flex-start;
+	margin: 16px 0;
 }
 
-.dbvc-tools-toggle.has-attention .button {
+.dbvc-selection-controls {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.dbvc-selection-controls__button {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.dbvc-selection-controls__button .dashicons {
+	font-size: 16px;
+	line-height: 1;
+}
+
+.dbvc-entity-tools-row > .dbvc-column-toggle {
+	margin: 0;
+}
+
+.dbvc-actions-tray {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.dbvc-actions-tray__button {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.dbvc-actions-tray.has-attention .dbvc-actions-tray__button {
 	animation: dbvc-pulse 1.6s ease-in-out infinite;
+}
+
+.dbvc-actions-tray__panel {
+	margin-top: 12px;
+	border: 1px solid var(--dbvc-color-border-default);
+	border-radius: 8px;
+	background: var(--dbvc-color-white);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+	padding: 20px;
+	display: flex;
+	flex-direction: row;
+	gap: 20px;
+}
+
+.dbvc-actions-tray__section {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.dbvc-actions-tray__section-heading strong {
+	display: block;
+	font-size: 14px;
+}
+
+.dbvc-actions-tray__section-heading p {
+	margin: 4px 0 0;
+	color: var(--dbvc-color-text-muted);
+	font-size: 12px;
+}
+
+.dbvc-actions-tray__items {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+	gap: 12px;
+}
+
+.dbvc-actions-tray__item {
+	border: 1px solid var(--dbvc-color-border-default);
+	border-radius: 6px;
+	padding: 12px;
+	background: var(--dbvc-color-surface-table);
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.dbvc-actions-tray__item p {
+	margin: 0;
+	font-size: 12px;
+	color: var(--dbvc-color-text-muted);
+}
+
+.dbvc-actions-tray__section--masking .dbvc-tools-panel__section {
+	border-bottom: 0;
+	padding-bottom: 0;
+	margin-bottom: 0;
 }
 
 .dbvc-tools-panel {
@@ -381,7 +477,6 @@
 	color: var(--dbvc-color-success-text) !important;
 	animation: dbvc-pulse-green 1.6s ease-in-out infinite;
 	box-shadow: 0 0 0 0 rgba(39, 167, 68, 0.35);
-	margin-right: 8px;
 }
 
 @keyframes dbvc-pulse {

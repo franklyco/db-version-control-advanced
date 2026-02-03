@@ -1202,8 +1202,8 @@
                 items: []
               }), [wt, Ct] = (0, e.useState)(!1), [Nt, kt] = (0, e.useState)(null), [St, Dt] = (0, 
               e.useState)(!1), [duplicateActionKey, setDuplicateActionKey] = (0, e.useState)(""), [duplicateMode, setDuplicateMode] = (0, e.useState)("slug_id"), [duplicateConfirm, setDuplicateConfirm] = (0, e.useState)(""), [duplicateBulkBusy, setDuplicateBulkBusy] = (0, e.useState)(!1), [It, At] = (0, e.useState)(!1), [Et, Mt] = (0, 
-              e.useState)(!1), [Ut, Bt] = (0, e.useState)(!1), [unkeepBusy, setUnkeepBusy] = (0, e.useState)(!1), [Ot, Tt] = (0, e.useState)(() => new Set), [toolsOpen, setToolsOpen] = (0, e.useState)(!1), [maskFields, setMaskFields] = (0, e.useState)([]), [maskLoading, setMaskLoading] = (0, e.useState)(!1), [maskError, setMaskError] = (0, e.useState)(null), [maskApplying, setMaskApplying] = (0, e.useState)(!1), [maskAttention, setMaskAttention] = (0, e.useState)(!1), [maskBulkAction, setMaskBulkAction] = (0, e.useState)("ignore"), [maskBulkOverride, setMaskBulkOverride] = (0, e.useState)(""), [maskBulkNote, setMaskBulkNote] = (0, e.useState)(""), [columnToggleOpen, setColumnToggleOpen] = (0, 
-              e.useState)(!1), columnToggleRef = (0, e.useRef)(null), duplicateConfirmPhrase = "DELETE", Pt = (0, 
+              e.useState)(!1), [Ut, Bt] = (0, e.useState)(!1), [unkeepBusy, setUnkeepBusy] = (0, e.useState)(!1), [Ot, Tt] = (0, e.useState)(() => new Set), [actionsTrayOpen, setActionsTrayOpen] = (0, e.useState)(!1), [maskFields, setMaskFields] = (0, e.useState)([]), [maskLoading, setMaskLoading] = (0, e.useState)(!1), [maskError, setMaskError] = (0, e.useState)(null), [maskApplying, setMaskApplying] = (0, e.useState)(!1), [maskAttention, setMaskAttention] = (0, e.useState)(!1), [maskBulkAction, setMaskBulkAction] = (0, e.useState)("ignore"), [maskBulkOverride, setMaskBulkOverride] = (0, e.useState)(""), [maskBulkNote, setMaskBulkNote] = (0, e.useState)(""), [columnToggleOpen, setColumnToggleOpen] = (0, 
+              e.useState)(!1), columnToggleRef = (0, e.useRef)(null), actionsTrayRef = (0, e.useRef)(null), duplicateConfirmPhrase = "DELETE", Pt = (0, 
               e.useMemo)(() => y.filter(e => xt[e.id]), [ xt ]), Ft = (0, e.useCallback)(e => {
                 jt(t => {
                   const s = y.find(t => t.id === e);
@@ -1261,34 +1261,80 @@
                 } finally {
                   Ce(!1);
                 }
-              }, []), MASK_UNDO_STORAGE_KEY = "DBVC_MASK_UNDO";
-              const [maskProgress, setMaskProgress] = (0, e.useState)(0), loadMasking = (0, e.useCallback)(async (e, t) => {
-                if (!e) return setMaskFields([]), setMaskProgress(0), void setMaskAttention(!1);
+              }, []), MASK_UNDO_STORAGE_KEY = "DBVC_MASK_UNDO", MASK_CACHE_PREFIX = "DBVC_MASK_CACHE_", MASK_CACHE_TTL = 3e5;
+              const maskPrefetchRef = (0, e.useRef)({});
+              const getMaskPrefetchState = (0, e.useCallback)(e => maskPrefetchRef.current[e], []);
+              const setMaskPrefetchState = (0, e.useCallback)((e, t) => {
+                if (!e) return;
+                maskPrefetchRef.current[e] = t;
+              }, []);
+              const getMaskCacheKey = (0, e.useCallback)(e => `${MASK_CACHE_PREFIX}${e}`, []);
+              const readMaskCache = (0, e.useCallback)(t => {
+                if (!t || "undefined" == typeof window || !window.sessionStorage) return null;
+                const s = window.sessionStorage.getItem(getMaskCacheKey(t));
+                if (!s) return null;
+                try {
+                  const e = JSON.parse(s);
+                  if (!e || !Array.isArray(e.fields)) return null;
+                  if (e.updatedAt && Date.now() - e.updatedAt > MASK_CACHE_TTL) return null;
+                  return e;
+                } catch (e) {
+                  return null;
+                }
+              }, [ getMaskCacheKey ]);
+              const writeMaskCache = (0, e.useCallback)((t, s) => {
+                if (!t || "undefined" == typeof window || !window.sessionStorage) return;
+                try {
+                  window.sessionStorage.setItem(getMaskCacheKey(t), JSON.stringify({
+                    fields: s,
+                    updatedAt: Date.now()
+                  }));
+                } catch (e) {}
+              }, [ getMaskCacheKey ]);
+              const [maskProgress, setMaskProgress] = (0, e.useState)(0), loadMasking = (0, e.useCallback)(async (proposalId, t) => {
+                if (!proposalId) return setMaskFields([]), setMaskProgress(0), void setMaskAttention(!1);
                 setMaskLoading(!0), setMaskError(null), setMaskProgress(0);
+                const normalizeRequestOptions = s => {
+                  if (!s) return void 0;
+                  if ("object" == typeof s && "signal" in s) return s;
+                  return {
+                    signal: s
+                  };
+                };
+                setMaskPrefetchState(proposalId, "loading");
                 try {
                   let s = 1, i = [], l = !0, a = 1, o = 1;
                   for (;l;) {
-                    const r = await n(`proposals/${encodeURIComponent(e)}/masking?page=${s}`, t ? {
-                      signal: t
-                    } : void 0);
+                    const r = await n(`proposals/${encodeURIComponent(proposalId)}/masking?page=${s}`, normalizeRequestOptions(t));
                     Array.isArray(r?.fields) && (i = i.concat(r.fields));
                     const c = r?.chunk?.total_pages ? parseInt(r.chunk.total_pages, 10) : 1;
                     o = c > 0 ? c : 1, a = s, r?.chunk?.has_more ? s++ : l = !1, setMaskProgress(Math.min(100, Math.round(a / o * 100)));
                   }
-                  setMaskFields(i), toolsOpen ? setMaskAttention(!1) : setMaskAttention(i.length > 0), setMaskProgress(100);
-                } catch (e) {
-                  if ("AbortError" === e.name) return;
-                  console.error("DBVC masking fetch failed:", e);
-                  setMaskError(e?.message || "Failed to load masking candidates.");
+                  setMaskFields(i), actionsTrayOpen ? setMaskAttention(!1) : setMaskAttention(i.length > 0), setMaskProgress(100), writeMaskCache(proposalId, i), setMaskPrefetchState(proposalId, "success");
+                } catch (error) {
+                  if ("AbortError" === error.name) {
+                    setMaskPrefetchState(proposalId, "failed");
+                    return;
+                  }
+                  console.error("DBVC masking fetch failed:", error);
+                  setMaskError(error?.message || "Failed to load masking candidates."), setMaskPrefetchState(proposalId, "failed");
                 } finally {
                   setMaskLoading(!1), setTimeout(() => setMaskProgress(0), 1500);
                 }
-              }, [ toolsOpen ]), toggleToolsPanel = (0, e.useCallback)(() => {
-                setToolsOpen(e => {
-                  const t = !e;
-                  return t || setMaskAttention(!1), t;
-                });
-              }, []), [pendingMaskUndo, setPendingMaskUndo] = (0, e.useState)(null), [maskApplyProgress, setMaskApplyProgress] = (0, e.useState)(0), [maskReverting, setMaskReverting] = (0, e.useState)(!1), applyMasking = (0, e.useCallback)(async () => {
+              }, [ actionsTrayOpen, writeMaskCache, setMaskPrefetchState ]);
+              (0, e.useEffect)(() => {
+                if (!Z) {
+                  setMaskFields([]), setMaskProgress(0);
+                  return;
+                }
+                const cached = readMaskCache(Z);
+                if (cached && Array.isArray(cached.fields)) {
+                  setMaskFields(cached.fields), setMaskProgress(100), actionsTrayOpen || setMaskAttention(cached.fields.length > 0), maskPrefetchRef.current[Z] = !0;
+                } else {
+                  setMaskFields([]), setMaskProgress(0), maskPrefetchRef.current[Z] = !1;
+                }
+              }, [ Z, readMaskCache, actionsTrayOpen ]);
+              const [pendingMaskUndo, setPendingMaskUndo] = (0, e.useState)(null), [maskApplyProgress, setMaskApplyProgress] = (0, e.useState)(0), [maskReverting, setMaskReverting] = (0, e.useState)(!1), applyMasking = (0, e.useCallback)(async () => {
                 const safeFields = Array.isArray(maskFields) ? maskFields : [];
                 if (!Z || !safeFields.length) return setMaskError("No masked meta fields are available to apply."), void setMaskAttention(!1);
                 if ("override" === maskBulkAction && !maskBulkOverride.trim()) return setMaskError("Provide an override value to continue."), void 0;
@@ -1555,7 +1601,17 @@
                 return document.addEventListener("mousedown", e), document.addEventListener("keyup", t), () => {
                   document.removeEventListener("mousedown", e), document.removeEventListener("keyup", t);
                 };
-              }, [ columnToggleOpen ]);
+              }, [ columnToggleOpen ]), (0, e.useEffect)(() => {
+                if (!actionsTrayOpen) return;
+                const e = e => {
+                  actionsTrayRef.current && actionsTrayRef.current.contains(e.target) || setActionsTrayOpen(!1);
+                }, t = e => {
+                  "Escape" === e.key && setActionsTrayOpen(!1);
+                };
+                return document.addEventListener("mousedown", e), document.addEventListener("keyup", t), () => {
+                  document.removeEventListener("mousedown", e), document.removeEventListener("keyup", t);
+                };
+              }, [ actionsTrayOpen ]);
               const os = (0, e.useCallback)(async (e, t) => {
                 if (e) {
                   ke(!0), Me(null);
@@ -1610,12 +1666,23 @@
                   }
                 })(), () => e.abort();
               }, [ Z, oe ]), (0, e.useEffect)(() => {
-                if (!Z || !toolsOpen) return;
+                if (!Z || actionsTrayOpen || maskLoading || we) return;
+                if (Array.isArray(maskFields) && maskFields.length) return;
+                const state = getMaskPrefetchState(Z);
+                if (void 0 !== state) return;
                 const e = new AbortController;
-                return loadMasking(Z, e.signal), () => e.abort();
-              }, [ Z, toolsOpen, loadMasking ]), (0, e.useEffect)(() => {
-                toolsOpen || setMaskAttention(maskFields.length > 0);
-              }, [ maskFields, toolsOpen ]);
+                return loadMasking(Z, {
+                  signal: e.signal
+                }), () => e.abort();
+              }, [ Z, actionsTrayOpen, maskLoading, maskFields, we, loadMasking, getMaskPrefetchState ]), (0, e.useEffect)(() => {
+                if (!Z || !actionsTrayOpen) return;
+                const e = new AbortController;
+                return loadMasking(Z, {
+                  signal: e.signal
+                }), () => e.abort();
+              }, [ Z, actionsTrayOpen, loadMasking ]), (0, e.useEffect)(() => {
+                actionsTrayOpen || setMaskAttention(maskFields.length > 0);
+              }, [ maskFields, actionsTrayOpen ]);
               const rs = (0, e.useCallback)((e, t) => {
                 const s = Number(e), n = (e = []) => e.map(e => {
                   if ((void 0 !== e.original_id ? e.original_id : e.descriptor?.original_id) === s) {
@@ -1701,10 +1768,10 @@
                   filter: "with_decisions"
                 } ];
               }, [ te ]), maskActionOptions = (0, e.useMemo)(() => [ {
-                label: "Ignore & hide",
+                label: "Keep & ignore current meta (uses mask config)",
                 value: "ignore"
               }, {
-                label: "Auto-accept & suppress",
+                label: "Auto-accept new meta & suppress future reviews",
                 value: "auto_accept"
               }, {
                 label: "Override masked value",
@@ -2430,249 +2497,360 @@
                         children: e.count
                       }) ]
                     }, e.id))
-                  }), (0, s.jsx)("div", {
-                    className: `dbvc-tools-toggle${toolsOpen ? " is-open" : ""}${maskAttention ? " has-attention" : ""}`,
-                    children: (0, s.jsx)(TooltipWrapper, {
-                      content: `Open resolver summary, hashing helpers, and masking controls. Learn more: ${maskDocLink("live-proposal-masking")}`,
-                      children: (0, s.jsx)("button", {
-                        type: "button",
-                        className: "button button-secondary",
-                        onClick: toggleToolsPanel,
-                        "aria-expanded": toolsOpen,
-                        children: toolsOpen ? "Hide tools" : "Tools"
-                      })
-                    })
                   }) ]
-                }), toolsOpen && (0, s.jsxs)("div", {
-                  className: `dbvc-tools-panel${maskAttention ? " has-attention" : ""}`,
-                  children: [ (0, s.jsxs)("div", {
-                    className: "dbvc-tools-panel__section dbvc-tools-panel__section--masking",
-                    children: [ (0, s.jsxs)("div", {
-                      className: "dbvc-tools-panel__section-heading",
-                      children: [ (0, s.jsx)("strong", {
-                        children: "Meta masking"
-                      }), (maskLoading || maskApplying) && (0, s.jsxs)("span", {
-                        className: "dbvc-mask-progress",
-                        children: [ maskLoading ? maskProgress : maskApplyProgress, maskLoading ? "% loaded" : "% applied" ]
-                      }), (0, s.jsx)("a", {
-                        href: maskDocLink("live-proposal-masking"),
-                        target: "_blank",
-                        rel: "noreferrer",
-                        children: "Masking guide ↗"
-                      }), pendingMaskUndo && (0, s.jsx)(t.Button, {
-                        variant: "tertiary",
-                        onClick: undoMasking,
-                        disabled: maskApplying,
-                        children: maskApplying ? "Reverting…" : "Undo last masking"
-                      }) ]
-                    }), maskError && (0, s.jsx)("div", {
-                      className: "notice notice-error",
-                      children: (0, s.jsxs)("p", {
-                        children: [ "Masking error: ", maskError ]
-                      })
-                    }), maskLoading ? (0, s.jsx)("p", {
-                      children: "Loading masking rules…"
-                    }) : Array.isArray(maskFields) && maskFields.length ? (0, s.jsxs)(s.Fragment, {
-                      children: [ (0, s.jsx)("p", {
-                        children: `Found ${maskFieldCount} masked field${1 === maskFieldCount ? "" : "s"} across ${maskEntityCount} entit${1 === maskEntityCount ? "y" : "ies"} in this proposal. Choose how you want to handle them.`
-                      }), t?.SelectControl ? (0, s.jsx)(t.SelectControl, {
-                        label: "Action",
-                        value: maskBulkAction,
-                        options: maskActionOptions,
-                        onChange: e => setMaskBulkAction(e)
-                      }) : (0, s.jsxs)("label", {
-                        children: [ "Action", (0, s.jsxs)("select", {
-                          value: maskBulkAction,
-                          onChange: e => setMaskBulkAction(e.target.value),
-                          children: maskActionOptions.map(e => (0, s.jsx)("option", {
-                            value: e.value,
-                            children: e.label
-                          }, e.value))
-                        }) ]
-                      }), "override" === maskBulkAction && (0, s.jsxs)("div", {
-                        className: "dbvc-mask-field__override",
-                        children: [ t?.TextareaControl ? (0, s.jsx)(t.TextareaControl, {
-                          label: "Override value",
-                          value: maskBulkOverride,
-                          onChange: e => setMaskBulkOverride(e),
-                          rows: 3
-                        }) : (0, s.jsxs)("label", {
-                          children: [ "Override value", (0, s.jsx)("textarea", {
-                            value: maskBulkOverride,
-                            onChange: e => setMaskBulkOverride(e.target.value)
-                          }) ]
-                        }), t?.TextControl ? (0, s.jsx)(t.TextControl, {
-                          label: "Note (optional)",
-                          value: maskBulkNote,
-                          onChange: e => setMaskBulkNote(e)
-                        }) : (0, s.jsxs)("label", {
-                          children: [ "Note (optional)", (0, s.jsx)("input", {
-                            type: "text",
-                            value: maskBulkNote,
-                            onChange: e => setMaskBulkNote(e.target.value)
-                          }) ]
-                        }) ]
-                      }) ]
-                    }) : (0, s.jsxs)("p", {
-                      children: [ "No masked meta pending in this proposal. Learn more in the ", (0, s.jsx)("a", {
-                        href: maskDocLink("live-proposal-masking"),
-                        target: "_blank",
-                        rel: "noreferrer",
-                        children: "masking reference"
-                      }), "." ]
-                    }), (0, s.jsxs)("div", {
-                      className: "dbvc-mask-actions",
-                      children: [ (0, s.jsx)(TooltipWrapper, {
-                        content: maskTooltips.apply,
-                        children: (0, s.jsx)(t.Button, {
-                          variant: "primary",
-                          onClick: applyMasking,
-                          disabled: maskApplying || maskLoading || !maskFieldCount,
-                          isBusy: maskApplying,
-                          children: maskApplying ? "Applying…" : "Apply masking rules"
-                        })
-                      }), (0, s.jsx)(TooltipWrapper, {
-                        content: maskTooltips.revert,
-                        children: (0, s.jsx)(t.Button, {
-                          variant: "secondary",
-                          onClick: revertMasking,
-                          disabled: maskReverting || maskApplying || maskLoading,
-                          isBusy: maskReverting,
-                          children: maskReverting ? "Reverting…" : "Revert masking decisions"
-                        })
-                      }), (0, s.jsx)(t.Button, {
-                        variant: "tertiary",
-                        onClick: () => Z && loadMasking(Z),
-                        disabled: maskLoading,
-                        isBusy: maskLoading,
-                        children: maskLoading ? "Refreshing…" : "Refresh list"
-                      }) ]
-                    }) ]
-                  }) ]
-                }), ps && (0, s.jsxs)("div", {
-                  className: "dbvc-entity-actions",
-                  children: [ Ot.size > 0 && (0, s.jsxs)(s.Fragment, {
-                    children: [ (0, s.jsx)(t.Button, {
-                      className: "dbvc-new-entities-accept-button",
-                      variant: "primary",
-                        onClick: ls,
-                        disabled: Et,
-                        isBusy: Et,
-                        children: Et ? "Accepting selected…" : `Accept ${Ot.size} selected`
-                      }), (0, s.jsx)(t.Button, {
-                        variant: "secondary",
-                        onClick: as,
-                        disabled: Ut,
-                        isBusy: Ut,
-                        children: Ut ? "Unaccepting…" : "Unaccept selected"
-                      }), (0, s.jsx)(t.Button, {
-                        variant: "secondary",
-                        onClick: unkeepSelected,
-                        disabled: unkeepBusy,
-                        isBusy: unkeepBusy,
-                        children: unkeepBusy ? "Unkeeping…" : "Unkeep selected"
-                      }) ]
-                    }), ns && (0, s.jsx)(t.Button, {
-                      className: "dbvc-new-entities-accept-button",
-                      variant: "primary",
-                      onClick: is,
-                      disabled: It,
-                      isBusy: It,
-                      children: It ? "Accepting…" : `Accept all new entities (${ss.length})`
-                    }), ns && (0, s.jsxs)(t.Button, {
-                      className: "dbvc-new-entities-button",
-                      variant: "secondary",
-                    onClick: () => {
-                      ie("new_entities"), ae("");
-                    },
-                    children: [ "Review ", ss.length, " new entity", 1 === ss.length ? "" : "ies" ]
-                    }), (0, s.jsx)(t.Button, {
-                      variant: "secondary",
-                      onClick: refreshEntities,
-                      disabled: we,
-                      isBusy: we,
-                      children: we ? "Refreshing…" : "Refresh Entities"
-                    }), Ot.size > 0 && (0, s.jsx)(t.Button, {
-                      variant: "tertiary",
-                      onClick: es,
-                      children: "Clear selection"
-                    }), 0 === Ot.size && te.length > 0 && (0, s.jsxs)(t.Button, {
-                      variant: "tertiary",
-                      onClick: ts,
-                      children: [ "Select all (", te.length, ")" ]
-                    }), _t.count > 0 && (0, s.jsxs)(t.Button, {
-                      variant: "primary",
-                      className: "dbvc-duplicates-button",
-                      onClick: () => Dt(!0),
-                      children: [ "Resolve ", _t.count, " duplicate", 1 === _t.count ? "" : "s" ]
-                    }), (0, s.jsx)(t.Button, {
-                      variant: "secondary",
-                      onClick: Rs,
-                      disabled: vt,
-                      isBusy: vt,
-                      children: vt ? "Capturing snapshots…" : "Capture Full Snapshot"
-                    }), us.length > 0 && (0, s.jsx)(t.Button, {
-                      variant: "secondary",
-                      onClick: vs,
-                      disabled: Ve && "bulk" === ze,
-                      isBusy: Ve && "bulk" === ze,
-                      children: Ve && "bulk" === ze ? "Storing hashes…" : `Store hashes for ${us.length} entity hash${1 === us.length ? "" : "es"}`
-                    }), (0, s.jsxs)("p", {
-                      className: "description",
-                      children: [ "Captures current-state JSON for ", zs > 0 ? `${zs} unresolved` : "all", " entity(ies) so the diff shows live vs. proposed." ]
-                    }), us.length > 0 && (0, s.jsx)("p", {
-                      className: "description",
-                      children: "Some entities are missing their stored import hash. Sync them to prevent repeat reviews across environments."
-                    }) ]
                 }), (0, s.jsx)("div", {
-                  className: `dbvc-column-toggle${columnToggleOpen ? " is-open" : ""}`,
-                  ref: columnToggleRef,
-                  onMouseEnter: () => setColumnToggleOpen(!0),
-                  onMouseLeave: () => setColumnToggleOpen(!1),
-                  children: (0, s.jsxs)(s.Fragment, {
+                  className: "dbvc-entity-tools-row",
+                  children: [ Ot.size > 0 || te.length > Ot.size ? (0, s.jsxs)("div", {
+                    className: "dbvc-selection-controls",
+                    children: [ te.length > Ot.size ? (0, s.jsxs)(t.Button, {
+                      variant: "secondary",
+                      className: "dbvc-selection-controls__button",
+                      onClick: ts,
+                      disabled: 0 === te.length,
+                      children: [ (0, s.jsx)("span", {
+                        className: "dashicons dashicons-yes",
+                        "aria-hidden": "true"
+                      }), (0, s.jsxs)("span", {
+                        children: [ "Select all (", te.length, ")" ]
+                      }) ]
+                    }) : null, Ot.size > 0 ? (0, s.jsxs)(t.Button, {
+                      variant: "secondary",
+                      className: "dbvc-selection-controls__button",
+                      onClick: es,
+                      children: [ (0, s.jsx)("span", {
+                        className: "dashicons dashicons-dismiss",
+                        "aria-hidden": "true"
+                      }), (0, s.jsxs)("span", {
+                        children: [ "Clear selection (", Ot.size, ")" ]
+                      }) ]
+                    }) : null ]
+                  }) : null, (0, s.jsx)("div", {
+                    className: `dbvc-column-toggle${columnToggleOpen ? " is-open" : ""}`,
+                    ref: columnToggleRef,
+                    onMouseEnter: () => setColumnToggleOpen(!0),
+                    onMouseLeave: () => setColumnToggleOpen(!1),
+                    children: (0, s.jsxs)(s.Fragment, {
+                      children: [ (0, s.jsx)(TooltipWrapper, {
+                        content: "Choose which columns are visible in the All Entities table.",
+                        children: (0, s.jsxs)(t.Button, {
+                          variant: "secondary",
+                          className: "dbvc-column-toggle__button",
+                          onClick: () => setColumnToggleOpen(e => !e),
+                          "aria-haspopup": "true",
+                          "aria-expanded": columnToggleOpen,
+                          "aria-controls": "dbvc-column-toggle-menu",
+                          children: [ (0, s.jsx)("span", {
+                            className: "dashicons dashicons-screenoptions",
+                            "aria-hidden": "true"
+                          }), (0, s.jsx)("span", {
+                            className: "dbvc-column-toggle__button-label",
+                            children: "Columns"
+                          }), (0, s.jsx)("span", {
+                            className: "screen-reader-text",
+                            children: "Toggle column visibility menu"
+                          }) ]
+                        })
+                      }), columnToggleOpen && (0, s.jsx)("div", {
+                        id: "dbvc-column-toggle-menu",
+                        className: "dbvc-column-toggle__menu",
+                        role: "menu",
+                        children: y.map(e => (0, s.jsxs)("label", {
+                          className: "dbvc-column-toggle__option",
+                          children: [ (0, s.jsx)("input", {
+                            type: "checkbox",
+                            checked: xt[e.id],
+                            onChange: () => Ft(e.id),
+                            disabled: e.lockVisible
+                          }), (0, s.jsx)("span", {
+                            children: e.label
+                          }) ]
+                        }, e.id))
+                      }) ]
+                    })
+                  }), ps ? (0, s.jsxs)("div", {
+                    className: `dbvc-actions-tray${actionsTrayOpen ? " is-open" : ""}${maskAttention ? " has-attention" : ""}`,
+                    ref: actionsTrayRef,
                     children: [ (0, s.jsx)(TooltipWrapper, {
-                      content: "Choose which columns are visible in the All Entities table.",
+                      content: "Open Accept/Keep actions, snapshots, and masking tools.",
                       children: (0, s.jsxs)(t.Button, {
                         variant: "secondary",
-                        className: "dbvc-column-toggle__button",
-                        onClick: () => setColumnToggleOpen(e => !e),
+                        className: "dbvc-actions-tray__button",
+                        onClick: () => setActionsTrayOpen(e => {
+                          const t = !e;
+                          return t && setMaskAttention(!1), t;
+                        }),
+                        "aria-expanded": actionsTrayOpen,
                         "aria-haspopup": "true",
-                        "aria-expanded": columnToggleOpen,
-                        "aria-controls": "dbvc-column-toggle-menu",
                         children: [ (0, s.jsx)("span", {
-                          className: "dashicons dashicons-screenoptions",
+                          className: "dashicons dashicons-admin-tools",
                           "aria-hidden": "true"
                         }), (0, s.jsx)("span", {
-                          className: "dbvc-column-toggle__button-label",
-                          children: "Columns"
+                          children: "Actions & tools"
                         }), (0, s.jsx)("span", {
                           className: "screen-reader-text",
-                          children: "Toggle column visibility menu"
+                          children: "Toggle bulk actions tray"
                         }) ]
                       })
-                    }), columnToggleOpen && (0, s.jsx)("div", {
-                      id: "dbvc-column-toggle-menu",
-                      className: "dbvc-column-toggle__menu",
-                      role: "menu",
-                      children: y.map(e => (0, s.jsxs)("label", {
-                        className: "dbvc-column-toggle__option",
-                        children: [ (0, s.jsx)("input", {
-                          type: "checkbox",
-                          checked: xt[e.id],
-                          onChange: () => Ft(e.id),
-                          disabled: e.lockVisible
-                        }), (0, s.jsx)("span", {
-                          children: e.label
+                    }), actionsTrayOpen && (0, s.jsxs)("div", {
+                      className: "dbvc-actions-tray__panel",
+                      children: [ (0, s.jsxs)("div", {
+                        className: "dbvc-actions-tray__section",
+                        children: [ (0, s.jsxs)("div", {
+                          className: "dbvc-actions-tray__section-heading",
+                          children: [ (0, s.jsx)("strong", {
+                            children: "Selected entities"
+                          }), (0, s.jsx)("p", {
+                            children: "Bulk Accept/Keep controls for the entities you checked in the table."
+                          }) ]
+                        }), (0, s.jsxs)("div", {
+                          className: "dbvc-actions-tray__items",
+                          children: [ (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              className: "dbvc-new-entities-accept-button",
+                              variant: "primary",
+                              onClick: ls,
+                              disabled: Et || 0 === Ot.size,
+                              isBusy: Et,
+                              children: Et ? "Accepting selected…" : Ot.size > 0 ? `Accept ${Ot.size} selected` : "Accept selected"
+                            }), (0, s.jsx)("p", {
+                              children: Ot.size > 0 ? "Apply the proposal values to every selected entity." : "Select one or more entities to enable bulk Accept."
+                            }) ]
+                          }), (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              variant: "secondary",
+                              onClick: as,
+                              disabled: Ut || 0 === Ot.size,
+                              isBusy: Ut,
+                              children: Ut ? "Unaccepting…" : "Unaccept selected"
+                            }), (0, s.jsx)("p", {
+                              children: "Clear Accept decisions for every selected entity."
+                            }) ]
+                          }), (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              variant: "secondary",
+                              onClick: unkeepSelected,
+                              disabled: unkeepBusy || 0 === Ot.size,
+                              isBusy: unkeepBusy,
+                              children: unkeepBusy ? "Unkeeping…" : "Unkeep selected"
+                            }), (0, s.jsx)("p", {
+                              children: "Remove Keep decisions so fields return to Needs Review."
+                            }) ]
+                          }) ]
                         }) ]
-                      }, e.id))
+                      }), (0, s.jsxs)("div", {
+                        className: "dbvc-actions-tray__section",
+                        children: [ (0, s.jsxs)("div", {
+                          className: "dbvc-actions-tray__section-heading",
+                          children: [ (0, s.jsx)("strong", {
+                            children: "New entities"
+                          }), (0, s.jsx)("p", {
+                            children: "Decide what to do with content that doesn’t exist locally yet."
+                          }) ]
+                        }), (0, s.jsxs)("div", {
+                          className: "dbvc-actions-tray__items",
+                          children: [ (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              className: "dbvc-new-entities-accept-button",
+                              variant: "primary",
+                              onClick: is,
+                              disabled: It || !ns,
+                              isBusy: It,
+                              children: It ? "Accepting…" : `Accept all new entities (${ss.length})`
+                            }), (0, s.jsx)("p", {
+                              children: "Import every pending new post or term with one click."
+                            }) ]
+                          }), (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              className: "dbvc-new-entities-button",
+                              variant: "secondary",
+                              onClick: () => {
+                                ie("new_entities"), ae("");
+                              },
+                              children: `Review ${ss.length} new ${1 === ss.length ? "entity" : "entities"}`
+                            }), (0, s.jsx)("p", {
+                              children: "Open the New entities filter to inspect each diff."
+                            }) ]
+                          }) ]
+                        }) ]
+                      }), (0, s.jsxs)("div", {
+                        className: "dbvc-actions-tray__section",
+                        children: [ (0, s.jsxs)("div", {
+                          className: "dbvc-actions-tray__section-heading",
+                          children: [ (0, s.jsx)("strong", {
+                            children: "Snapshots & maintenance"
+                          }), (0, s.jsx)("p", {
+                            children: "Keep proposal data in sync before you apply decisions."
+                          }) ]
+                        }), (0, s.jsxs)("div", {
+                          className: "dbvc-actions-tray__items",
+                          children: [ (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              variant: "secondary",
+                              onClick: refreshEntities,
+                              disabled: we,
+                              isBusy: we,
+                              children: we ? "Refreshing…" : "Refresh entities"
+                            }), (0, s.jsx)("p", {
+                              children: "Reload entity rows, selections, and resolver stats."
+                            }) ]
+                          }), (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              variant: "secondary",
+                              onClick: Rs,
+                              disabled: vt,
+                              isBusy: vt,
+                              children: vt ? "Capturing snapshots…" : "Capture full snapshot"
+                            }), (0, s.jsx)("p", {
+                              children: zs > 0 ? `Capture JSON snapshots for ${zs} unresolved entity ${1 === zs ? "diff" : "diffs"}.` : "Capture fresh JSON snapshots for every entity."
+                            }) ]
+                          }), us.length > 0 && (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              variant: "secondary",
+                              onClick: vs,
+                              disabled: Ve && "bulk" === ze,
+                              isBusy: Ve && "bulk" === ze,
+                              children: Ve && "bulk" === ze ? "Storing hashes…" : `Store hashes (${us.length})`
+                            }), (0, s.jsx)("p", {
+                              children: "Sync import hashes for entities missing their stored value."
+                            }) ]
+                          }), (0, s.jsxs)("div", {
+                            className: "dbvc-actions-tray__item",
+                            children: [ (0, s.jsx)(t.Button, {
+                              variant: "primary",
+                              className: "dbvc-duplicates-button",
+                              onClick: () => Dt(!0),
+                              disabled: 0 === _t.count,
+                              children: _t.count > 0 ? `Resolve ${_t.count} duplicate${1 === _t.count ? "" : "s"}` : "No duplicates detected"
+                            }), (0, s.jsx)("p", {
+                              children: _t.count > 0 ? "Launch the duplicate modal to pick a canonical entity before continuing." : "All manifest entries look unique."
+                            }) ]
+                          }) ]
+                        }) ]
+                      }), (0, s.jsxs)("div", {
+                        className: "dbvc-actions-tray__section dbvc-actions-tray__section--masking",
+                        children: [ (0, s.jsxs)("div", {
+                          className: "dbvc-tools-panel__section dbvc-tools-panel__section--masking",
+                          children: [ (0, s.jsxs)("div", {
+                            className: "dbvc-tools-panel__section-heading",
+                            children: [ (0, s.jsx)("strong", {
+                              children: "Meta masking"
+                            }), (maskLoading || maskApplying) && (0, s.jsxs)("span", {
+                              className: "dbvc-mask-progress",
+                              children: [ maskLoading ? maskProgress : maskApplyProgress, maskLoading ? "% loaded" : "% applied" ]
+                            }), (0, s.jsx)("a", {
+                              href: maskDocLink("live-proposal-masking"),
+                              target: "_blank",
+                              rel: "noreferrer",
+                              children: "Masking guide ↗"
+                            }), pendingMaskUndo && (0, s.jsx)(t.Button, {
+                              variant: "tertiary",
+                              onClick: undoMasking,
+                              disabled: maskApplying,
+                              children: maskApplying ? "Reverting…" : "Undo last masking"
+                            }) ]
+                          }), maskError && (0, s.jsx)("div", {
+                            className: "notice notice-error",
+                            children: (0, s.jsxs)("p", {
+                              children: [ "Masking error: ", maskError ]
+                            })
+                          }), maskLoading ? (0, s.jsx)("p", {
+                            children: "Loading masking rules…"
+                          }) : maskFieldCount > 0 ? (0, s.jsxs)(s.Fragment, {
+                            children: [ (0, s.jsxs)("p", {
+                              children: [ "Found ", maskFieldCount, " masked field", 1 === maskFieldCount ? "" : "s", " across ", maskEntityCount, " entit", 1 === maskEntityCount ? "y" : "ies", ". Choose how to handle them." ]
+                            }), t?.SelectControl ? (0, s.jsx)(t.SelectControl, {
+                              label: "Bulk action",
+                              value: maskBulkAction,
+                              options: maskActionOptions,
+                              onChange: e => setMaskBulkAction(e)
+                            }) : (0, s.jsxs)("label", {
+                              children: [ "Bulk action", (0, s.jsxs)("select", {
+                                value: maskBulkAction,
+                                onChange: e => setMaskBulkAction(e.target.value),
+                                children: maskActionOptions.map(e => (0, s.jsx)("option", {
+                                  value: e.value,
+                                  children: e.label
+                                }, e.value))
+                              }) ]
+                            }), "override" === maskBulkAction && (0, s.jsxs)("div", {
+                              className: "dbvc-mask-field__override",
+                              children: [ t?.TextareaControl ? (0, s.jsx)(t.TextareaControl, {
+                                label: "Override value",
+                                value: maskBulkOverride,
+                                onChange: e => setMaskBulkOverride(e),
+                                rows: 3
+                              }) : (0, s.jsxs)("label", {
+                                children: [ "Override value", (0, s.jsx)("textarea", {
+                                  value: maskBulkOverride,
+                                  onChange: e => setMaskBulkOverride(e.target.value)
+                                }) ]
+                              }), t?.TextControl ? (0, s.jsx)(t.TextControl, {
+                                label: "Note (optional)",
+                                value: maskBulkNote,
+                                onChange: e => setMaskBulkNote(e)
+                              }) : (0, s.jsxs)("label", {
+                                children: [ "Note (optional)", (0, s.jsx)("input", {
+                                  type: "text",
+                                  value: maskBulkNote,
+                                  onChange: e => setMaskBulkNote(e.target.value)
+                                }) ]
+                              }) ]
+                            }), (0, s.jsxs)("div", {
+                              className: "dbvc-mask-actions",
+                              children: [ (0, s.jsx)(TooltipWrapper, {
+                                content: maskTooltips.apply,
+                                children: (0, s.jsx)(t.Button, {
+                                  variant: "primary",
+                                  onClick: applyMasking,
+                                  disabled: maskApplying || maskLoading || !maskFieldCount,
+                                  isBusy: maskApplying,
+                                  children: maskApplying ? "Applying…" : "Apply masking rules"
+                                })
+                              }), (0, s.jsx)(TooltipWrapper, {
+                                content: maskTooltips.revert,
+                                children: (0, s.jsx)(t.Button, {
+                                  variant: "secondary",
+                                  onClick: revertMasking,
+                                  disabled: maskReverting || maskApplying || maskLoading,
+                                  isBusy: maskReverting,
+                                  children: maskReverting ? "Reverting…" : "Revert masking decisions"
+                                })
+                              }), (0, s.jsx)(t.Button, {
+                                variant: "tertiary",
+                                onClick: () => Z && loadMasking(Z),
+                                disabled: maskLoading,
+                                isBusy: maskLoading,
+                                children: maskLoading ? "Refreshing…" : "Refresh list"
+                              }) ]
+                            }) ]
+                          }) : (0, s.jsxs)("p", {
+                            children: [ "No masked meta pending in this proposal. Learn more in the ", (0, s.jsx)("a", {
+                              href: maskDocLink("live-proposal-masking"),
+                              target: "_blank",
+                              rel: "noreferrer",
+                              children: "masking reference"
+                            }), "." ]
+                          }) ]
+                        }) ]
+                      }) ]
                     }) ]
-                  })
-                }), Ie && (0, s.jsx)("div", {
-                  className: "notice notice-error",
-                  children: (0, s.jsxs)("p", {
-                    children: [ "Failed to load entities: ", Ie ]
-                  })
-                }), (0, s.jsxs)("div", {
+                  }) : null ]
+                }),
+
+              Ie && (0, s.jsx)("div", {
+                className: "notice notice-error",
+                children: (0, s.jsxs)("p", {
+                  children: [ "Failed to load entities: ", Ie ]
+                })
+              }), (0, s.jsxs)("div", {
                     className: "dbvc-entity-table-wrapper",
                     children: [ _t.count > 0 && (0, s.jsx)("button", {
                       type: "button",

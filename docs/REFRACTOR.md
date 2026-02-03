@@ -110,6 +110,7 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 - `useEntitySelection` (Set management)
 
 **Refactor steps**
+- [x] Consolidate the entity toolbar so the Actions & Tools popover, Columns toggle, and conditional selection buttons share a single flex row (`dbvc-entity-tools-row`), reducing layout jitter before the pieces are extracted into components.
 - [ ] Split data fetching into `useEntities(proposalId, filter)` returning list + summary + refresh.
 - [ ] Extract table, filters, status badges, and column toggle UIs into separate components (e.g., `EntityFilters`, `EntityStatusBadges`, `EntityTable`).
 - [ ] Replace raw `Set` manipulations with dedicated selection hook so the drawer/bulk actions can subscribe cleanly.
