@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Unreleased
+- Added a "View All" mode in the entity drawer to list every meta field (including unchanged values).
+- Added a "UID mismatch" filter badge for entities whose local `vf_object_uid` differs from the proposal.
+- Added an entities totals summary (proposed/current breakdown with posts/terms/media plus filtered count).
+
 ## 1.3.4
 - Fixed the new-entity gating regression that caused `ReferenceError: Cannot access '…' before initialization` when the admin app loaded.
 - Restored pending-new-entity filtering so the bulk Accept tools and drawer hints stay in sync with proposal metadata.

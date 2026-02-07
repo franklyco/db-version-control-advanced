@@ -110,6 +110,8 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 $term_parent_slug = '';
                 $entity_uid       = '';
                 $entity_payload   = null;
+                $options_group_id = '';
+                $options_group_type = '';
                 $media_refs       = [
                     'meta'    => [],
                     'content' => [],
@@ -174,6 +176,15 @@ if (! class_exists('DBVC_Backup_Manager')) {
                         'tax_input'     => $decoded['tax_input'] ?? [],
                         'path'          => $relative,
                     ];
+                } elseif (strpos($relative, 'options/') === 0) {
+                    $item_type = 'options_group';
+                    $meta = isset($decoded['meta']) && is_array($decoded['meta']) ? $decoded['meta'] : [];
+                    if (! empty($meta['group_id'])) {
+                        $options_group_id = (string) $meta['group_id'];
+                    }
+                    if (! empty($meta['type'])) {
+                        $options_group_type = (string) $meta['type'];
+                    }
                 } elseif (basename($relative) === 'options.json') {
                     $item_type = 'options';
                 } elseif (basename($relative) === 'menus.json') {
@@ -260,6 +271,11 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     'content_hash'     => $content_hash,
                     'media_refs'       => $media_refs,
                 ];
+
+                if ($item_type === 'options_group') {
+                    $entry['options_group_id'] = $options_group_id;
+                    $entry['options_group_type'] = $options_group_type;
+                }
 
                 if ($item_type === 'term') {
                     $entry['term_id']          = $term_id;

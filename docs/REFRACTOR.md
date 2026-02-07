@@ -16,7 +16,7 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 | Status | Area | Focus | Key references | Depends on |
 | --- | --- | --- | --- | --- |
 | ⬜ | Shared HTTP + formatting utilities | Fetch helpers, doc links, badge maps, diff render helpers | `src/admin-app/index.js:8-210` | — |
-| ⬜ | Proposal intake & uploader | Proposal list, uploader dropzone, refresh, toasts | `src/admin-app/index.js:240-360`, `1349-1408`, `2052-2140` | Shared utilities |
+| ⬜ | Proposal intake & uploader | Proposal list, uploader dropzone, refresh, toasts | `src/admin-app/index.js:240-420`, `1349-1408`, `2052-2140`; `src/admin-app/style.css:48-138, 1100-1130` | Shared utilities |
 | ⬜ | Duplicate summary & gating | `/duplicates` fetch, modal, canonical marking, bulk cleanup | `src/admin-app/index.js:1164-1442`, `2304-2356`, `2570-2650` | Proposal intake, HTTP helpers |
 | ⬜ | Entities dataset, filters & All Entities table | Status filters, search, selections, column toggles, table render | `src/admin-app/index.js:420-520`, `2300-2560` | Proposal intake, duplicates |
 | ⬜ | Entity drawer & diff engine | Drawer focus trap, field decisions, bulk Accept/Keep, snapshot capture | `src/admin-app/index.js:499-900`, `2650-2890` | Entities dataset |
@@ -51,8 +51,10 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 - [ ] Add unit tests verifying date/value formatting handles empty/null/boolean inputs as expected.
 - [ ] QA: smoke test formatter usage in the All Entities table + badges to ensure nothing regresses.
 
-### 2. Proposal Intake & Uploader (`src/admin-app/index.js:240-360`, `1349-1408`, `2052-2140`)
+### 2. Proposal Intake & Uploader (`src/admin-app/index.js:240-420`, `1349-1408`, `2052-2140`; `src/admin-app/style.css:48-138, 1100-1130`)
 **Scope:** Proposal table component (`w`), uploader dropzone (`C`), GET `/proposals` loader (`zt`), refresh button, upload success/error toasts (`Zs`, `Qs`).
+
+**Recent updates:** Dropzone now splits copy + actions across `dbvc-proposal-uploader__text`/`__actions` with a dedicated options row, inline “ZIP files only” hint, and muted panel styling. The proposal table renders inside `dbvc-proposal-table-wrapper`, which caps the viewport to ~3 rows, keeps headers sticky, and exposes overflow scrolling for older submissions—future refactors must preserve these classes/hooks so layout regressions don’t reappear. Proposal rows now include a Delete action (REST-backed) that allows removing any non-current proposal, including open ones, while locked rows stay protected.
 
 **State/hooks:** `G` (proposal list), `Z` (selected id), `_e`/`Re` (loading/error), `nt` (toasts). Hooks also set `Q` for selection and `zt` to reload.
 
@@ -70,6 +72,8 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 - [ ] Encapsulate toast creation/dismissal so other modules can dispatch notifications without touching proposal state.
 - [ ] Wire the reducer + components into the legacy bundle via a bridge to keep behavior identical during migration.
 - [ ] Add storybook or visual regression fixtures for the proposal table + uploader to aid QA.
+- [ ] Preserve the sticky-head + scroll-limited wrapper (3-row default via CSS vars) when extracting `ProposalTable` so consuming pages keep the shorter viewport.
+- [ ] Preserve the non-current delete action (including open proposals) + server delete endpoint when extracting proposal tooling so cleanup remains accessible.
 - [ ] Provide stubs/mocks for WP nonce + REST endpoints to facilitate automated tests (Jest/React Testing Library).
 - [ ] QA: upload proposal ZIPs, refresh list, select proposal, verify toast copy matches current flow.
 
@@ -98,6 +102,8 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 ### 4. Entities Dataset, Filters & All Entities Table (`src/admin-app/index.js:420-520`, `2300-2560`)
 **Scope:** `Ht` loads `/entities`, filters (`ne`, `le`), status badges, column toggle state (`xt`), selection tracking (`Ot`), table renderer (`k`).
 
+**Recent updates:** Added a UID mismatch filter badge (flags entities where the local `vf_object_uid` differs from the proposal), and exposed it in the filter dropdown. Inserted a totals summary between the Entities header and filters that breaks down proposal/current counts (posts/terms/media) and shows the filtered result count.
+
 **State/actions:** Entities array `te`, filter `ne`, search `le`, column toggles `xt`, selection set `Ot`, refresh button `refreshEntities`.
 
 **Dependencies:** Shared columns metadata, duplicates (to disable actions), new-entity subset (`ss`), mask attention.
@@ -121,6 +127,8 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 
 ### 5. Entity Drawer & Diff Engine (`src/admin-app/index.js:499-900`, `2650-2890`)
 **Scope:** Drawer focus trap, diff renderer with Accept/Keep radios, new-entity card/gating, bulk Accept/Keep, snapshot capture, hash sync, inline resolver summary.
+
+**Recent updates:** Snapshot capture now falls back to manifest-based identity matching when a proposed `vf_object_uid` doesn’t exist locally, and emits a debug log entry when `WP_DEBUG` is enabled. Added a "View All" mode to list every meta field (including unchanged values) alongside the standard diff views.
 
 **State/actions:** `oe` (active entity id), `de` (detail payload), `me` (decisions), `pt`/`mt` flags for clear/snapshot, `T`/`P` for hash sync, `S` component props `onDecisionChange`, `onBulkDecision`.
 

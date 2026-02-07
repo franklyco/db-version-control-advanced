@@ -183,6 +183,59 @@ if (! class_exists('DBVC_Media_Sync')) {
         }
 
         /**
+         * Remove a bundled media file from the sync directory.
+         *
+         * @param int $attachment_id
+         * @return void
+         */
+        public static function delete_bundle_file_for_attachment($attachment_id)
+        {
+            $attachment_id = (int) $attachment_id;
+            if (! $attachment_id) {
+                return;
+            }
+
+            $base = trailingslashit(dbvc_get_sync_path());
+            $candidates = [];
+
+            $relative = self::get_relative_bundle_path($attachment_id);
+            if ($relative !== '') {
+                $candidates[] = $relative;
+            }
+
+            if (class_exists('DBVC_Database')) {
+                $row = DBVC_Database::get_media_by_attachment_id($attachment_id);
+                if ($row && ! empty($row->relative_path)) {
+                    $candidates[] = (string) $row->relative_path;
+                }
+            }
+
+            $candidates = array_unique(array_filter($candidates));
+            foreach ($candidates as $relative_path) {
+                $relative_path = ltrim(str_replace('\\', '/', $relative_path), '/');
+                if ($relative_path === '') {
+                    continue;
+                }
+
+                $absolute = wp_normalize_path($base . $relative_path);
+                if (is_file($absolute)) {
+                    @unlink($absolute);
+                }
+
+                $bundle_base = wp_normalize_path(trailingslashit(self::get_bundle_base_dir()));
+                $dir = dirname($absolute);
+                while ($dir && strpos(wp_normalize_path($dir) . '/', $bundle_base) === 0) {
+                    $items = @scandir($dir);
+                    if ($items === false || count($items) > 2) {
+                        break;
+                    }
+                    @rmdir($dir);
+                    $dir = dirname($dir);
+                }
+            }
+        }
+
+        /**
          * Ensure hashes carry a consistent prefix.
          *
          * @param string $hash

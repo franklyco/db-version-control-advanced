@@ -25,6 +25,10 @@ class DBVC_Sync_Posts
 {
     // Static variables
     protected static $imported_post_id_map = [];
+    protected static $suppress_export_on_import = false;
+    private static $needs_rewrite_flush = false;
+    protected static $allow_clean_export_directory = false;
+    protected static $deleting_posts = [];
     private const PROPOSAL_DECISIONS_OPTION = 'dbvc_proposal_decisions';
     private const AUTO_CLEAR_DECISIONS_OPTION = 'dbvc_auto_clear_decisions';
     private const IMPORT_RESULT_APPLIED = 'applied';
@@ -61,6 +65,87 @@ class DBVC_Sync_Posts
         }
 
         self::ensure_post_uid($post_id, $post);
+    }
+
+    /**
+     * Mark a post as being deleted to avoid export side effects during cleanup.
+     *
+     * @param int $post_id
+     * @return void
+     */
+    public static function mark_post_deleting($post_id): void
+    {
+        $post_id = (int) $post_id;
+        if (! $post_id) {
+            return;
+        }
+        self::$deleting_posts[$post_id] = true;
+    }
+
+    /**
+     * Check if a post is currently being deleted.
+     *
+     * @param int $post_id
+     * @return bool
+     */
+    public static function is_post_deleting($post_id): bool
+    {
+        $post_id = (int) $post_id;
+        if (! $post_id) {
+            return false;
+        }
+        return ! empty(self::$deleting_posts[$post_id]);
+    }
+
+    /**
+     * Update entity registry status for a post without creating new UIDs.
+     *
+     * @param int $post_id
+     * @param string $status
+     * @return void
+     */
+    public static function update_entity_status_for_post($post_id, $status, $force_supported = false): void
+    {
+        $post_id = (int) $post_id;
+        if (! $post_id || ! class_exists('DBVC_Database')) {
+            return;
+        }
+
+        $post = get_post($post_id);
+        if (! $post || ! is_object($post)) {
+            return;
+        }
+
+        if (! $force_supported && ! self::is_supported_post_type($post->post_type)) {
+            return;
+        }
+
+        $uid = get_post_meta($post_id, 'vf_object_uid', true);
+        $uid = is_string($uid) ? trim($uid) : '';
+        if ($uid === '') {
+            $history = get_post_meta($post_id, 'dbvc_post_history', true);
+            if (is_array($history) && ! empty($history['vf_object_uid'])) {
+                $uid = trim((string) $history['vf_object_uid']);
+            }
+        }
+        if ($uid === '') {
+            $uid = get_post_meta($post_id, 'uuid', true);
+            $uid = is_string($uid) ? trim($uid) : '';
+        }
+        if ($uid === '' && $force_supported) {
+            $uid = wp_generate_uuid4();
+            update_post_meta($post_id, 'vf_object_uid', $uid);
+        }
+        if ($uid === '') {
+            return;
+        }
+
+        DBVC_Database::upsert_entity([
+            'entity_uid'    => $uid,
+            'object_id'     => $post_id,
+            'object_type'   => $post->post_type,
+            'object_status' => $status !== '' ? $status : null,
+        ]);
     }
 
     /**
@@ -415,6 +500,10 @@ class DBVC_Sync_Posts
      */
     public static function ensure_directory_security($path)
     {
+        if (function_exists('dbvc_is_sync_ftp_window_active') && dbvc_is_sync_ftp_window_active()) {
+            return;
+        }
+
         if (! is_dir($path)) {
             return;
         }
@@ -1096,9 +1185,11 @@ HT;
             }
         }
 
-        self::$pending_term_parent_links = [];
-        $applied_entities = 0;
-        foreach ($targets as $entry) {
+        self::$suppress_export_on_import = true;
+        try {
+            self::$pending_term_parent_links = [];
+            $applied_entities = 0;
+            foreach ($targets as $entry) {
             $path = trailingslashit($backup_path) . $entry['path'];
             if (! file_exists($path)) {
                 $errors[] = sprintf(__('File missing: %s', 'dbvc'), $entry['path']);
@@ -1377,6 +1468,10 @@ HT;
                     }
                     $imported++;
                 }
+            } elseif (($entry['item_type'] ?? '') === 'options_group') {
+                if (class_exists('DBVC_Options_Groups') && DBVC_Options_Groups::import_group_from_file($path)) {
+                    $imported++;
+                }
             } elseif (($entry['item_type'] ?? '') === 'menus') {
                 $payload = json_decode(file_get_contents($path), true);
                 if (! empty($payload) && is_array($payload)) {
@@ -1393,9 +1488,17 @@ HT;
                     }
                 }
             }
-        }
+            }
 
-        self::process_pending_term_parent_links();
+            self::process_pending_term_parent_links();
+
+            if (self::$needs_rewrite_flush) {
+                flush_rewrite_rules(false);
+                self::$needs_rewrite_flush = false;
+            }
+        } finally {
+            self::$suppress_export_on_import = false;
+        }
 
         if (! empty($errors)) {
             DBVC_Sync_Logger::log('Restore completed with warnings', ['errors' => $errors]);
@@ -1690,6 +1793,23 @@ HT;
             return false;
         }
 
+        $candidates = [$path];
+        if (strpos($path, 'meta.') !== 0 && strpos($path, 'post.') !== 0 && strpos($path, '.') === false) {
+            $candidates[] = 'post.' . $path;
+        }
+
+        foreach ($candidates as $candidate) {
+            $action = self::resolve_decision_action($decisions, $candidate);
+            if ($action !== null) {
+                return $action === 'accept';
+            }
+        }
+
+        return false;
+    }
+
+    private static function resolve_decision_action(array $decisions, string $path): ?string
+    {
         $best_action = null;
         $best_length = -1;
 
@@ -1714,11 +1834,7 @@ HT;
             }
         }
 
-        if ($best_action === null) {
-            return false;
-        }
-
-        return $best_action === 'accept';
+        return $best_action;
     }
 
     /**
@@ -1975,9 +2091,26 @@ HT;
 
         $allow_parent_update = ($decisions === null || self::decision_allows_path($decisions, 'parent'));
 
-        if ($vf_object_uid !== '') {
-            self::sync_term_registry($vf_object_uid, $term_id, $taxonomy);
+        $effective_uid = $vf_object_uid;
+        if ($effective_uid !== '') {
+            self::sync_term_registry($effective_uid, $term_id, $taxonomy);
+        } elseif (class_exists('DBVC_Sync_Taxonomies')) {
+            $effective_uid = DBVC_Sync_Taxonomies::ensure_term_uid($term_id, $taxonomy);
+        } else {
+            $effective_uid = wp_generate_uuid4();
+            self::sync_term_registry($effective_uid, $term_id, $taxonomy);
         }
+
+        update_term_meta($term_id, 'dbvc_term_history', [
+            'imported_from'    => 'proposal',
+            'original_term_id' => isset($payload['term_id']) ? absint($payload['term_id']) : 0,
+            'original_slug'    => isset($payload['slug']) ? sanitize_title($payload['slug']) : '',
+            'taxonomy'         => $taxonomy,
+            'imported_at'      => current_time('mysql'),
+            'imported_by'      => get_current_user_id(),
+            'status'           => $created ? 'imported' : 'existing',
+            'vf_object_uid'    => $effective_uid,
+        ]);
 
         self::assign_term_parent(
             $term_id,
@@ -1987,16 +2120,17 @@ HT;
             $allow_parent_update
         );
 
-                if (isset($payload['meta']) && is_array($payload['meta'])) {
-                    self::apply_term_meta(
-                        $term_id,
-                        $payload['meta'],
-                        $decisions,
-                        isset($proposal_mask_overrides[$vf_object_uid]) && is_array($proposal_mask_overrides[$vf_object_uid])
-                            ? $proposal_mask_overrides[$vf_object_uid]
-                            : []
-                    );
-                }
+		if (isset($payload['meta']) && is_array($payload['meta'])) {
+			$term_mask_overrides = isset($proposal_mask_overrides[$vf_object_uid]) && is_array($proposal_mask_overrides[$vf_object_uid])
+				? self::flatten_mask_meta_entries($proposal_mask_overrides[$vf_object_uid])
+				: ['meta' => [], 'post' => []];
+			self::apply_term_meta(
+				$term_id,
+				$payload['meta'],
+				$decisions,
+				$term_mask_overrides['meta'] ?? []
+			);
+		}
 
         return [
             'term_id'  => $term_id,
@@ -2273,6 +2407,8 @@ HT;
             ]);
         }
 
+        self::$suppress_export_on_import = true;
+        try {
         foreach ($supported_types as $post_type) {
             $folder = trailingslashit($path) . sanitize_key($post_type);
             if (! is_dir($folder)) {
@@ -2280,12 +2416,55 @@ HT;
             }
 
             $json_files = glob($folder . '/' . sanitize_key($post_type) . '-*.json');
+            if (class_exists('DBVC_Sync_Logger')) {
+                $scan_payload = [
+                    'post_type' => $post_type,
+                    'count'     => is_array($json_files) ? count($json_files) : 0,
+                    'files'     => is_array($json_files) ? array_map('basename', $json_files) : [],
+                ];
+                if (DBVC_Sync_Logger::is_import_logging_enabled()) {
+                    DBVC_Sync_Logger::log_import('Import scan found files', $scan_payload);
+                } else {
+                    DBVC_Sync_Logger::log_upload('Import scan found files (fallback)', $scan_payload);
+                }
+            }
             foreach ($json_files as $filepath) {
                 $result = self::import_post_from_json($filepath, $smart_import, $normalized_mode, null, null, null, false, []);
                 if ($result === self::IMPORT_RESULT_APPLIED) {
                     $processed++;
                 }
+                if (class_exists('DBVC_Sync_Logger')) {
+                    $file_payload = [
+                        'post_type' => $post_type,
+                        'file'      => basename($filepath),
+                        'result'    => is_string($result) ? $result : (is_wp_error($result) ? $result->get_error_message() : $result),
+                    ];
+                    if (DBVC_Sync_Logger::is_import_logging_enabled()) {
+                        DBVC_Sync_Logger::log_import('Import file result', $file_payload);
+                    } else {
+                        DBVC_Sync_Logger::log_upload('Import file result (fallback)', $file_payload);
+                    }
+                }
             }
+
+            if (class_exists('DBVC_Sync_Logger')) {
+                $remaining = glob($folder . '/' . sanitize_key($post_type) . '-*.json');
+                $remaining_payload = [
+                    'post_type' => $post_type,
+                    'count'     => is_array($remaining) ? count($remaining) : 0,
+                    'files'     => is_array($remaining) ? array_map('basename', $remaining) : [],
+                ];
+                if (DBVC_Sync_Logger::is_import_logging_enabled()) {
+                    DBVC_Sync_Logger::log_import('Import scan remaining files', $remaining_payload);
+                } else {
+                    DBVC_Sync_Logger::log_upload('Import scan remaining files (fallback)', $remaining_payload);
+                }
+            }
+        }
+
+
+        } finally {
+            self::$suppress_export_on_import = false;
         }
 
         /*      @WIP Relationship remapping   
@@ -2312,6 +2491,11 @@ $acf_relationship_fields = [
                 'mode'          => $normalized_mode ?: 'all',
                 'post_types'    => $supported_types,
             ]);
+        }
+
+        if (self::$needs_rewrite_flush) {
+            flush_rewrite_rules(false);
+            self::$needs_rewrite_flush = false;
         }
 
         return $result;
@@ -2396,6 +2580,15 @@ $acf_relationship_fields = [
             ? $mask_directives['overrides']
             : [];
         $mask_overrides = self::flatten_mask_meta_entries($mask_overrides);
+        $mask_suppressions_raw = isset($mask_directives['suppressions']) && is_array($mask_directives['suppressions'])
+            ? $mask_directives['suppressions']
+            : [];
+        $mask_suppressions = self::flatten_mask_meta_entries($mask_suppressions_raw);
+
+        $meta_overrides = $mask_overrides['meta'] ?? [];
+        $post_field_overrides = $mask_overrides['post'] ?? [];
+        $meta_suppressions = $mask_suppressions['meta'] ?? [];
+        $post_field_suppressions = $mask_suppressions['post'] ?? [];
 
         // Smart import hash check
         if ($smart_import && $existing) {
@@ -2462,7 +2655,15 @@ $acf_relationship_fields = [
                     continue;
                 }
 
+                $bucket_key = self::build_mask_storage_key('post', $path);
+                if (! empty($post_field_suppressions[$bucket_key])) {
+                    continue;
+                }
+
                 $value = $callback();
+                if (isset($post_field_overrides[$bucket_key]['value'])) {
+                    $value = $post_field_overrides[$bucket_key]['value'];
+                }
                 if ($value !== null) {
                     $post_array[$path] = $value;
                 }
@@ -2520,6 +2721,7 @@ $acf_relationship_fields = [
                 return $post_id;
             }
 
+            self::$needs_rewrite_flush = true;
             self::$imported_post_id_map[$original_id] = $post_id;
             error_log("[DBVC] Created new post ID {$post_id} (from original ID {$original_id})");
 
@@ -2558,13 +2760,18 @@ $acf_relationship_fields = [
 
                 // Use sanitize_key for the meta key (preserves underscores)
                 $meta_key = sanitize_key($key);
+                $bucket_key = self::build_mask_storage_key('meta', $meta_key);
+
+                if (! empty($meta_suppressions[$bucket_key])) {
+                    continue;
+                }
 
                 if (! is_array($values)) {
                     $values = [$values];
                 }
 
-                if (isset($mask_overrides[$meta_key]['value'])) {
-                    $values = [$mask_overrides[$meta_key]['value']];
+                if (isset($meta_overrides[$bucket_key]['value'])) {
+                    $values = [$meta_overrides[$bucket_key]['value']];
                 }
 
                 foreach ($values as $value) {
@@ -2734,12 +2941,17 @@ $acf_relationship_fields = [
      */
     public static function export_post_to_json($post_id, $post, $filename_mode = null)
     {
+        if (self::$suppress_export_on_import || self::is_post_deleting($post_id)) {
+            return;
+        }
         $prepared = self::prepare_post_export($post_id, $post, $filename_mode);
         if (is_wp_error($prepared) || empty($prepared)) {
             return;
         }
 
-        self::ensure_clean_export_directory($post->post_type);
+        if (self::$allow_clean_export_directory) {
+            self::ensure_clean_export_directory($post->post_type);
+        }
         self::write_export_payload($prepared, $post_id, $post);
     }
 
@@ -2751,6 +2963,16 @@ $acf_relationship_fields = [
      * @param mixed  $filename_mode
      * @return array|\WP_Error
      */
+
+    public static function begin_full_export(): void
+    {
+        self::$allow_clean_export_directory = true;
+    }
+
+    public static function end_full_export(): void
+    {
+        self::$allow_clean_export_directory = false;
+    }
     private static function prepare_post_export($post_id, $post, $filename_mode = null)
     {
         // Validate inputs.
@@ -3897,11 +4119,17 @@ $acf_relationship_fields = [
         }
 
         $raw_name = isset($_FILES['dbvc_sync_upload']['name']) ? wp_unslash($_FILES['dbvc_sync_upload']['name']) : '';
+        if (is_array($raw_name)) {
+            $raw_name = reset($raw_name) ?: '';
+        }
         $filename = sanitize_file_name($raw_name);
         $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
         $current_user = get_current_user_id();
 
-        if (empty($_FILES['dbvc_sync_upload']['tmp_name'])) {
+        $uploads = class_exists('DBVC_Import_Router')
+            ? DBVC_Import_Router::normalize_uploads($_FILES['dbvc_sync_upload'])
+            : [];
+        if (empty($uploads)) {
             if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
                 DBVC_Sync_Logger::log_upload('Sync upload aborted: no file supplied', [
                     'filename' => $filename,
@@ -3913,7 +4141,8 @@ $acf_relationship_fields = [
             exit;
         }
 
-        $tmp      = $_FILES['dbvc_sync_upload']['tmp_name'];
+        $primary  = $uploads[0];
+        $tmp      = $primary['tmp_name'];
         $sync_dir = dbvc_get_sync_path();
         wp_mkdir_p($sync_dir);
 
@@ -3928,18 +4157,58 @@ $acf_relationship_fields = [
             DBVC_Sync_Logger::log_upload('Sync upload started', $log_context);
         }
 
-        $success = false;
-        $failure_reason = '';
-
-        // Always clear existing sync folder first.
-        self::delete_folder_contents($sync_dir);
+        $upload_names = [];
+        foreach ($uploads as $upload) {
+            if (! empty($upload['name'])) {
+                $upload_names[] = (string) $upload['name'];
+            }
+        }
         if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
-            DBVC_Sync_Logger::log_upload('Sync folder cleared prior to upload', [
-                'sync_dir' => $sync_dir,
+            DBVC_Sync_Logger::log_upload('Sync upload files received', [
+                'count' => count($upload_names),
+                'files' => $upload_names,
             ]);
         }
 
-        if ('zip' === $extension && class_exists('ZipArchive')) {
+        $success = false;
+        $failure_reason = '';
+        $dry_run = ! empty($_POST['dbvc_sync_dry_run']);
+        $route_report = null;
+        $has_multiple = count($uploads) > 1;
+        $has_zip = false;
+        foreach ($uploads as $upload) {
+            $ext = strtolower(pathinfo($upload['name'] ?? '', PATHINFO_EXTENSION));
+            if ($ext === 'zip') {
+                $has_zip = true;
+                break;
+            }
+        }
+
+        if (! $dry_run) {
+            $should_clear = true;
+            if ($has_multiple && $extension === 'json') {
+                $should_clear = false;
+            }
+            // Always clear existing sync folder first.
+            if ($should_clear) {
+                self::delete_folder_contents($sync_dir);
+                if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+                    DBVC_Sync_Logger::log_upload('Sync folder cleared prior to upload', [
+                        'sync_dir' => $sync_dir,
+                    ]);
+                }
+            } elseif (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+                DBVC_Sync_Logger::log_upload('Sync folder retained for multi-file JSON upload', [
+                    'sync_dir' => $sync_dir,
+                ]);
+            }
+        }
+
+        if ($dry_run && $has_zip) {
+            $failure_reason = 'dry_run_zip_unsupported';
+        } elseif ($has_multiple && $has_zip) {
+            $failure_reason = 'mixed_upload_types';
+        } elseif ('zip' === $extension && class_exists('ZipArchive')) {
             $zip = new \ZipArchive();
             $open_result = $zip->open($tmp);
 
@@ -3967,6 +4236,19 @@ $acf_relationship_fields = [
             } else {
                 $failure_reason = 'zip_open_failed';
             }
+        } elseif ('json' === $extension && class_exists('DBVC_Import_Router')) {
+            $route_stats = DBVC_Import_Router::route_uploaded_json($uploads, [
+                'sync_dir'          => $sync_dir,
+                'overwrite'         => true,
+                'log_enabled'       => class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled(),
+                'generate_manifest' => false,
+                'dry_run'           => $dry_run,
+            ]);
+            $route_report = $route_stats;
+            $success = ($route_stats['errors'] ?? 0) === 0;
+            if (! $success) {
+                $failure_reason = ($route_stats['errors'] ?? 0) > 0 ? 'json_route_failed' : 'json_route_skipped';
+            }
         } elseif ('json' === $extension) {
             require_once ABSPATH . 'wp-admin/includes/file.php';
             WP_Filesystem();
@@ -3987,6 +4269,19 @@ $acf_relationship_fields = [
             ]));
         } elseif ($success && class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
             DBVC_Sync_Logger::log_upload('Sync upload completed', $log_context);
+        }
+
+        if ($route_report !== null) {
+            $route_report['dry_run'] = $dry_run;
+            $route_report['timestamp'] = current_time('mysql');
+            if (! empty($upload_names)) {
+                $route_report['files'] = $upload_names;
+            }
+            update_option('dbvc_sync_upload_report', $route_report, false);
+        }
+
+        if ($success && class_exists('DBVC_Sync_Taxonomies') && method_exists('DBVC_Sync_Taxonomies', 'normalize_term_json_files')) {
+            DBVC_Sync_Taxonomies::normalize_term_json_files();
         }
 
         $status = $success ? 'success' : 'fail';
@@ -4039,6 +4334,142 @@ $acf_relationship_fields = [
             } else {
                 @unlink($item->getPathname());
             }
+        }
+    }
+
+
+    public static function delete_post_json_for_entity($post_id, $preserve_entity = false, $force_supported = false): void
+    {
+        $post_id = (int) $post_id;
+        if (! $post_id) {
+            return;
+        }
+        self::mark_post_deleting($post_id);
+        $preserve_entity = (bool) $preserve_entity;
+        $force_supported = (bool) $force_supported;
+
+        $post = get_post($post_id);
+        if (! $post || ! is_object($post)) {
+            return;
+        }
+
+        if (! $force_supported && ! self::is_supported_post_type($post->post_type)) {
+            return;
+        }
+
+        $folder = trailingslashit(dbvc_get_sync_path($post->post_type));
+        if (! is_dir($folder)) {
+            return;
+        }
+
+        // keep logging minimal for deletes
+
+        $slug = sanitize_title($post->post_name);
+        $uuid = get_post_meta($post_id, 'uuid', true);
+        $uuid = is_string($uuid) ? trim($uuid) : '';
+        $uid = get_post_meta($post_id, 'vf_object_uid', true);
+        $uid = is_string($uid) ? trim($uid) : '';
+
+        $files = glob($folder . '*.json');
+        if (empty($files)) {
+        if (! $preserve_entity && class_exists('DBVC_Database')) {
+            DBVC_Database::delete_entity_by_object('post:' . sanitize_key($post->post_type), $post_id);
+        }
+        return;
+        }
+
+        // 1) Match by UUID
+        if ($uuid !== '') {
+            $matches = [];
+            foreach ($files as $file) {
+                $raw = file_get_contents($file);
+                if ($raw === false) {
+                    continue;
+                }
+                $payload = json_decode($raw, true);
+                if (! is_array($payload)) {
+                    continue;
+                }
+                $payload_uuid = isset($payload['uuid']) ? (string) $payload['uuid'] : '';
+                if ($payload_uuid === '' && isset($payload['meta']['uuid'])) {
+                    $payload_uuid = is_array($payload['meta']['uuid']) ? (string) ($payload['meta']['uuid'][0] ?? '') : (string) $payload['meta']['uuid'];
+                }
+                if ($payload_uuid !== '' && $payload_uuid === $uuid) {
+                    $matches[] = $file;
+                }
+            }
+            if (count($matches) === 1) {
+                @unlink($matches[0]);
+                if (! $preserve_entity && class_exists('DBVC_Database')) {
+                    DBVC_Database::delete_entity_by_uid($uuid);
+                }
+                return;
+            }
+        }
+
+        // 2) Match by vf_object_uid (payload or history)
+        if ($uid !== '') {
+            $matches = [];
+            foreach ($files as $file) {
+                $raw = file_get_contents($file);
+                if ($raw === false) {
+                    continue;
+                }
+                $payload = json_decode($raw, true);
+                if (! is_array($payload)) {
+                    continue;
+                }
+                $payload_uid = isset($payload['vf_object_uid']) ? (string) $payload['vf_object_uid'] : '';
+                if ($payload_uid === '' && isset($payload['meta']['dbvc_post_history']['vf_object_uid'])) {
+                    $payload_uid = (string) $payload['meta']['dbvc_post_history']['vf_object_uid'];
+                }
+                if ($payload_uid !== '' && $payload_uid === $uid) {
+                    $matches[] = $file;
+                }
+            }
+            if (count($matches) === 1) {
+                @unlink($matches[0]);
+                if (! $preserve_entity && class_exists('DBVC_Database')) {
+                    DBVC_Database::delete_entity_by_uid($uid);
+                }
+                return;
+            }
+        }
+
+        $basename_prefix = sanitize_key($post->post_type) . '-';
+        $slug_id = ($slug !== '' && $post_id) ? $basename_prefix . $slug . '-' . $post_id . '.json' : '';
+        $id_name = $basename_prefix . $post_id . '.json';
+        $slug_name = ($slug !== '') ? $basename_prefix . $slug . '.json' : '';
+
+        // 3) slug_id
+        if ($slug_id !== '' && file_exists($folder . $slug_id)) {
+            @unlink($folder . $slug_id);
+            if (! $preserve_entity && class_exists('DBVC_Database')) {
+                DBVC_Database::delete_entity_by_object('post:' . sanitize_key($post->post_type), $post_id);
+            }
+            return;
+        }
+
+        // 4) id
+        if (file_exists($folder . $id_name)) {
+            @unlink($folder . $id_name);
+            if (! $preserve_entity && class_exists('DBVC_Database')) {
+                DBVC_Database::delete_entity_by_object('post:' . sanitize_key($post->post_type), $post_id);
+            }
+            return;
+        }
+
+        // 5) slug
+        if ($slug_name !== '' && file_exists($folder . $slug_name)) {
+            @unlink($folder . $slug_name);
+            if (! $preserve_entity && class_exists('DBVC_Database')) {
+                DBVC_Database::delete_entity_by_object('post:' . sanitize_key($post->post_type), $post_id);
+            }
+            return;
+        }
+
+        if (! $preserve_entity && class_exists('DBVC_Database')) {
+            DBVC_Database::delete_entity_by_object('post:' . sanitize_key($post->post_type), $post_id);
         }
     }
 
@@ -4132,9 +4563,9 @@ $acf_relationship_fields = [
                 continue;
             }
 
-            $normalized[$vf_object_uid] = self::normalize_mask_meta_entry_bucket($meta_entries);
-            if (empty($normalized[$vf_object_uid])) {
-                unset($normalized[$vf_object_uid]);
+            $scoped = self::normalize_mask_meta_entry_bucket($meta_entries);
+            if (! empty($scoped)) {
+                $normalized[$vf_object_uid] = $scoped;
             }
         }
 
@@ -4142,6 +4573,81 @@ $acf_relationship_fields = [
     }
 
     private static function normalize_mask_meta_entry_bucket(array $entries): array
+    {
+        $normalized = [];
+        $has_scopes = false;
+
+        foreach (['meta', 'post'] as $scope_key) {
+            if (isset($entries[$scope_key]) && is_array($entries[$scope_key])) {
+                $has_scopes = true;
+                $bucket = self::normalize_mask_meta_entries($entries[$scope_key], $scope_key);
+                if (! empty($bucket)) {
+                    $normalized[$scope_key] = $bucket;
+                }
+            }
+        }
+
+        if (! $has_scopes) {
+            $bucket = self::normalize_mask_meta_entries($entries, 'meta');
+            if (! empty($bucket)) {
+                $normalized['meta'] = $bucket;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private static function is_mask_directive_leaf(array $entry): bool
+    {
+        return array_key_exists('path', $entry) && ! array_key_exists(0, $entry);
+    }
+
+    private static function flatten_mask_meta_entries(array $entries): array
+    {
+        $flattened = [
+            'meta' => [],
+            'post' => [],
+        ];
+
+        $has_scopes = isset($entries['meta']) || isset($entries['post']);
+        if ($has_scopes) {
+            foreach (['meta', 'post'] as $scope_key) {
+                if (! isset($entries[$scope_key]) || ! is_array($entries[$scope_key])) {
+                    continue;
+                }
+                $flattened[$scope_key] = self::flatten_mask_scope_bucket($entries[$scope_key]);
+            }
+        } else {
+            $flattened['meta'] = self::flatten_mask_scope_bucket($entries);
+        }
+
+        return $flattened;
+    }
+
+    private static function flatten_mask_scope_bucket(array $entries): array
+    {
+        $flattened = [];
+
+        foreach ($entries as $meta_key => $bucket) {
+            if (! is_array($bucket)) {
+                continue;
+            }
+
+            if (self::is_mask_directive_leaf($bucket)) {
+                $flattened[$meta_key] = $bucket;
+                continue;
+            }
+
+            $first = reset($bucket);
+            if (is_array($first)) {
+                $flattened[$meta_key] = $first;
+            }
+        }
+
+        return $flattened;
+    }
+
+    private static function normalize_mask_meta_entries(array $entries, string $scope = 'meta'): array
     {
         $normalized = [];
 
@@ -4169,58 +4675,66 @@ $acf_relationship_fields = [
                     continue;
                 }
 
-                if (! isset($normalized[$resolved_meta_key]) || ! is_array($normalized[$resolved_meta_key])) {
-                    $normalized[$resolved_meta_key] = [];
+                $bucket_key = $resolved_meta_key;
+                if ($scope === 'post' && strpos($bucket_key, 'post:') !== 0) {
+                    $bucket_key = self::build_mask_storage_key('post', $resolved_meta_key);
+                }
+
+                if (! isset($normalized[$bucket_key]) || ! is_array($normalized[$bucket_key])) {
+                    $normalized[$bucket_key] = [];
                 }
 
                 $entry['path'] = $meta_path;
-                $entry['meta_key'] = $resolved_meta_key;
-                $normalized[$resolved_meta_key][$meta_path] = $entry;
+                $entry['meta_key'] = $bucket_key;
+                $entry['scope'] = ($scope === 'post') ? 'post' : 'meta';
+                if (! isset($entry['field_key']) || $entry['field_key'] === '') {
+                    $parsed = self::parse_mask_path_info($meta_path);
+                    $entry['field_key'] = $parsed['field'];
+                }
+
+                $normalized[$bucket_key][$meta_path] = $entry;
             }
         }
 
         return $normalized;
     }
 
-    private static function is_mask_directive_leaf(array $entry): bool
-    {
-        return array_key_exists('path', $entry) && ! array_key_exists(0, $entry);
-    }
-
-    private static function flatten_mask_meta_entries(array $entries): array
-    {
-        $flattened = [];
-
-        foreach ($entries as $meta_key => $bucket) {
-            if (! is_array($bucket)) {
-                continue;
-            }
-
-            if (self::is_mask_directive_leaf($bucket)) {
-                $flattened[$meta_key] = $bucket;
-                continue;
-            }
-
-            $first = reset($bucket);
-            if (is_array($first)) {
-                $flattened[$meta_key] = $first;
-            }
-        }
-
-        return $flattened;
-    }
-
     private static function extract_meta_key_from_mask_path(string $path): string
     {
-        if ($path === '') {
-            return '';
+        $parsed = self::parse_mask_path_info($path);
+        return $parsed['bucket_key'];
+    }
+
+    private static function parse_mask_path_info(string $path): array
+    {
+        $path = (string) $path;
+        $scope = 'meta';
+        $field = '';
+
+        if (strpos($path, 'post.') === 0) {
+            $scope = 'post';
+            $field = substr($path, 5);
+        } elseif (strpos($path, 'meta.') === 0) {
+            $parts = explode('.', $path);
+            $field = $parts[1] ?? '';
+        } elseif ($path !== '') {
+            $field = $path;
         }
 
-        $parts = explode('.', $path);
-        if (count($parts) > 1 && $parts[0] === 'meta') {
-            return (string) $parts[1];
+        $field = trim($field);
+        if ($field === '') {
+            $field = $path;
         }
 
-        return (string) $parts[0];
+        return [
+            'scope'      => ($scope === 'post') ? 'post' : 'meta',
+            'field'      => $field,
+            'bucket_key' => self::build_mask_storage_key($scope, $field),
+        ];
+    }
+
+    private static function build_mask_storage_key(string $scope, string $field): string
+    {
+        return ($scope === 'post') ? 'post:' . (string) $field : (string) $field;
     }
 }

@@ -133,6 +133,11 @@ Exporter behaviour _(✅ `DBVC_Backup_Manager` + `DBVC_Sync_Posts::export_post_t
 - Provide chunking controls (`chunk_size`, `max_files_per_chunk`). Store chunk metadata in `dbvc_jobs` and manifest (`chunks`: array of file lists).
 - Diff mode consults `dbvc_snapshot_items` to select only items whose `content_hash` changed since the chosen baseline snapshot.
 
+## Lifecycle Cleanup
+- **Attachment trash:** JSON is removed (if present) while the entity registry row remains with `object_status = trash` so restores can reconcile cleanly.
+- **Attachment restore:** Entity status flips back to `publish` for consistent tracking.
+- **Attachment delete:** JSON is removed, `dbvc_media_index` is cleaned, and the bundled file under `sync/media/...` is deleted (plus empty directory cleanup).
+
 ## Logging & Integrity Checks
 - Continue writing to `dbvc-backup.log`, but insert structured rows into `dbvc_activity_log` when available.
 - Before import/export, run integrity pass:

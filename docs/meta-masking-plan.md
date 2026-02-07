@@ -52,6 +52,7 @@ Server logic:
 - Load manifest + snapshots.
 - Run `dbvc_mask_parse_list` on `dbvc_mask_meta_keys` + `dbvc_mask_subkeys`.
 - For each entity diff path that falls under `meta.*` or term meta, check if the key or dot-path matches the mask patterns.
+- When post-field masking is enabled, emit pseudo-paths like `post.post_date` for each selected field and reuse the same action pipeline as meta.
 - Include only entities marked `needs_review` / `diff_state.needs_review` or flagged `media_needs_review`.
 - Determine `default_action` through settings (default to `ignore`, future preference keys stored per proposal).
 - Server returns chunk metadata (page, per_page, total_pages, has_more) so clients can stream the list without exhausting memory.

@@ -31,11 +31,13 @@ function dbvc_render_export_page()
     wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'dbvc'));
   }
 
-  echo '<div id="dbvc-admin-app-root"></div>';
-
   $custom_path            = get_option('dbvc_sync_path', '');
   $selected_post_types    = get_option('dbvc_post_types', []);
   $selected_taxonomies    = dbvc_get_selected_taxonomies();
+  $available_options_groups = function_exists('dbvc_get_available_options_groups')
+    ? dbvc_get_available_options_groups()
+    : [];
+  $selected_options_groups = array_map('sanitize_text_field', (array) get_option('dbvc_options_groups', []));
   $current_import_mode    = dbvc_get_import_filename_format();
   $taxonomy_include_meta  = get_option('dbvc_tax_export_meta', '1');
   $taxonomy_include_parent = get_option('dbvc_tax_export_parent_slugs', '1');
@@ -60,6 +62,10 @@ function dbvc_render_export_page()
 
   $existing_defaults_meta = (string) get_option('dbvc_mask_defaults_meta_keys', '');
   $existing_defaults_sub  = (string) get_option('dbvc_mask_defaults_subkeys', '');
+  $maskable_post_fields   = function_exists('dbvc_get_maskable_post_fields')
+    ? dbvc_get_maskable_post_fields()
+    : [];
+  $selected_post_field_masks = (array) get_option('dbvc_mask_post_fields', []);
 
   $config_feedback = [
     'post_types' => ['success' => [], 'error' => []],
@@ -82,6 +88,7 @@ function dbvc_render_export_page()
   $active_import_subtab = 'dbvc-import-content';
   $active_export_subtab = 'dbvc-export-full';
   $active_config_subtab = 'dbvc-config-post-types';
+  $active_import_defaults_subtab = 'dbvc-config-import-settings';
   $backup_feedback      = ['success' => [], 'error' => []];
   $selected_backup      = isset($_GET['dbvc_backup']) ? sanitize_text_field(wp_unslash($_GET['dbvc_backup'])) : '';
   $selected_backup_page = isset($_GET['dbvc_backup_page']) ? max(1, absint($_GET['dbvc_backup_page'])) : 1;
@@ -102,6 +109,12 @@ function dbvc_render_export_page()
   $import_require_review  = get_option('dbvc_import_require_review', '0');
   $force_reapply_new_posts = get_option('dbvc_force_reapply_new_posts', '0');
   $prefer_entity_uids     = get_option('dbvc_prefer_entity_uids', '0');
+  $sync_ftp_window_until  = function_exists('dbvc_get_sync_ftp_window_until')
+    ? dbvc_get_sync_ftp_window_until()
+    : 0;
+  $sync_ftp_window_active = function_exists('dbvc_is_sync_ftp_window_active')
+    ? dbvc_is_sync_ftp_window_active()
+    : false;
   $diff_ignore_option     = get_option('dbvc_diff_ignore_paths', null);
   if ($diff_ignore_option === null || $diff_ignore_option === false) {
     $diff_ignore_paths = 'meta.dbvc_post_history.*';
@@ -309,6 +322,34 @@ function dbvc_render_export_page()
     }
   }
 
+  if (isset($_POST['dbvc_options_groups_export']) && isset($_POST['dbvc_options_groups_export_nonce']) && wp_verify_nonce(wp_unslash($_POST['dbvc_options_groups_export_nonce']), 'dbvc_options_groups_export_action')) {
+    $active_main_tab = 'tab-config';
+    $active_config_subtab = 'dbvc-config-import';
+    $active_import_defaults_subtab = 'dbvc-config-import-options';
+    if (! current_user_can('manage_options')) {
+      wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+    }
+
+    if (class_exists('DBVC_Options_Groups')) {
+      $exported = DBVC_Options_Groups::export_selected_groups();
+      $options_dir = trailingslashit(dbvc_get_sync_path()) . DBVC_Options_Groups::OPTIONS_DIR;
+      if ($exported > 0) {
+        $config_feedback['import']['success'][] = sprintf(
+          esc_html__('%1$d options group file(s) exported to: %2$s', 'dbvc'),
+          (int) $exported,
+          esc_html($options_dir)
+        );
+      } else {
+        $config_feedback['import']['error'][] = sprintf(
+          esc_html__('No options groups were exported. Check your selections and ACF availability. Target path: %s', 'dbvc'),
+          esc_html($options_dir)
+        );
+      }
+    } else {
+      $config_feedback['import']['error'][] = esc_html__('Options group exporter unavailable.', 'dbvc');
+    }
+  }
+
 
   // Unified Configure (Tab 3) save handler.
   if (isset($_POST['dbvc_config_save']) && isset($_POST['dbvc_config_nonce']) && wp_verify_nonce($_POST['dbvc_config_nonce'], 'dbvc_config_save_action')) {
@@ -322,6 +363,16 @@ function dbvc_render_export_page()
     $primary_section           = $config_sections_submitted ? $config_sections_submitted[0] : 'post_types';
     if (isset($config_section_mapping[$primary_section])) {
       $active_config_subtab = $config_section_mapping[$primary_section];
+    }
+    $import_defaults_subtabs = [
+      'dbvc-config-import-settings',
+      'dbvc-config-import-options',
+    ];
+    if (isset($_POST['dbvc_import_defaults_subtab'])) {
+      $requested_subtab = sanitize_text_field(wp_unslash($_POST['dbvc_import_defaults_subtab']));
+      if (in_array($requested_subtab, $import_defaults_subtabs, true)) {
+        $active_import_defaults_subtab = $requested_subtab;
+      }
     }
 
     // --- Post Types ---
@@ -368,6 +419,14 @@ function dbvc_render_export_page()
     update_option('dbvc_mask_defaults_subkeys',  $sub_defaults);
     $existing_defaults_meta = $meta_defaults;
     $existing_defaults_sub  = $sub_defaults;
+
+    $post_field_request = isset($_POST['dbvc_mask_post_fields']) && is_array($_POST['dbvc_mask_post_fields'])
+      ? array_map('sanitize_key', wp_unslash($_POST['dbvc_mask_post_fields']))
+      : [];
+    $available_post_fields = array_keys($maskable_post_fields);
+    $post_field_selection = array_values(array_intersect($post_field_request, $available_post_fields));
+    update_option('dbvc_mask_post_fields', $post_field_selection);
+    $selected_post_field_masks = $post_field_selection;
 
     $auto_mode_input   = isset($_POST['dbvc_auto_export_mask_mode']) ? sanitize_key($_POST['dbvc_auto_export_mask_mode']) : 'none';
     $allowed_auto_modes = (array) apply_filters('dbvc_auto_export_mask_modes', ['none', 'remove_defaults', 'redact_defaults']);
@@ -434,6 +493,41 @@ function dbvc_render_export_page()
 
     $prefer_entity_uids = ! empty($_POST['dbvc_prefer_entity_uids']) ? '1' : '0';
     update_option('dbvc_prefer_entity_uids', $prefer_entity_uids);
+
+    // --- FTP Upload Window ---
+    if (isset($_POST['dbvc_sync_ftp_window_action'])) {
+      $ftp_action = sanitize_key(wp_unslash($_POST['dbvc_sync_ftp_window_action']));
+      if ($ftp_action === 'open' && function_exists('dbvc_open_sync_ftp_window')) {
+        $removed = dbvc_open_sync_ftp_window(300);
+        $config_feedback['import']['success'][] = sprintf(
+          esc_html__('FTP upload window opened for 5 minutes. Removed %d .htaccess file(s).', 'dbvc'),
+          (int) $removed
+        );
+      } elseif ($ftp_action === 'close' && function_exists('dbvc_close_sync_ftp_window')) {
+        $secured = dbvc_close_sync_ftp_window();
+        $config_feedback['import']['success'][] = sprintf(
+          esc_html__('FTP upload window closed. Secured %d folder(s).', 'dbvc'),
+          (int) $secured
+        );
+      }
+    }
+
+    $options_group_ids = [];
+    if (isset($_POST['dbvc_options_groups']) && is_array($_POST['dbvc_options_groups'])) {
+      $requested_groups = array_map('sanitize_text_field', wp_unslash($_POST['dbvc_options_groups']));
+      $available_groups = function_exists('dbvc_get_available_options_groups')
+        ? dbvc_get_available_options_groups()
+        : [];
+      $available_ids = [];
+      foreach ($available_groups as $group) {
+        if (! empty($group['id'])) {
+          $available_ids[] = (string) $group['id'];
+        }
+      }
+      $options_group_ids = array_values(array_intersect($requested_groups, $available_ids));
+    }
+    update_option('dbvc_options_groups', $options_group_ids);
+    $selected_options_groups = $options_group_ids;
 
     if (in_array('media', $config_sections_submitted, true)) {
       $media_retrieve_enabled = ! empty($_POST['dbvc_media_retrieve_enabled']) ? '1' : '0';
@@ -626,12 +720,14 @@ function dbvc_render_export_page()
       }
       $strip_checked  = ! empty($_POST['dbvc_strip_domain_urls']);
       $mirror_checked = ! empty($_POST['dbvc_export_use_mirror_domain']);
+      $options_groups_checked = ! empty($_POST['dbvc_export_options_groups']);
       $bundle_checked = ! empty($_POST['dbvc_media_bundle_enabled']);
 
       // Persist filename format, mirror checkbox, and meta sorting behavior (mirror domain itself is saved in Tab 3)
       update_option('dbvc_export_filename_format', $filename_mode);
       update_option('dbvc_use_slug_in_filenames', $filename_mode === 'id' ? '0' : '1'); // legacy flag
       update_option('dbvc_export_use_mirror_domain', $mirror_checked ? '1' : '0');
+      update_option('dbvc_export_options_groups', $options_groups_checked ? '1' : '0');
       if (class_exists('DBVC_Media_Sync')) {
           update_option(DBVC_Media_Sync::OPTION_BUNDLE_ENABLED, $bundle_checked ? '1' : '0');
       }
@@ -755,6 +851,7 @@ function dbvc_render_export_page()
     add_filter('dbvc_skip_read_cap_check', '__return_true', 10, 3);
 
     try {
+      DBVC_Sync_Posts::begin_full_export();
       // --- Exports ---
       DBVC_Sync_Posts::export_options_to_json();
       DBVC_Sync_Posts::export_menus_to_json();
@@ -872,6 +969,7 @@ function dbvc_render_export_page()
 
       echo '<div class="notice notice-success"><p>' . esc_html__('Full export completed!', 'dbvc') . '</p></div>';
     } finally {
+      DBVC_Sync_Posts::end_full_export();
       // --- Cleanup (mirror filter + strip restoration; temp filters; restore masking options) ---
       if ($mirror_cb) {
         remove_filter('dbvc_export_post_data', $mirror_cb, 9);
@@ -1463,7 +1561,7 @@ function dbvc_render_export_page()
         $masking_doc_url  = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking.md';
         $masking_plan_url = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking-plan.md';
         ?>
-        <div class="dbvc-subtabs" data-dbvc-subtabs>
+        <div class="dbvc-subtabs dbvc-subtabs--horizontal" data-dbvc-subtabs data-dbvc-subtabs-value-target="dbvc_import_defaults_subtab">
           <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import subsections', 'dbvc'); ?>">
 <?php foreach ($import_subtabs as $panel_id => $label) :
   $button_id = 'dbvc-nav-' . $panel_id;
@@ -1625,10 +1723,61 @@ function dbvc_render_export_page()
                 <?php wp_nonce_field('dbvc_upload_sync', 'dbvc_upload_sync_nonce'); ?>
                 <input type="hidden" name="action" value="dbvc_upload_sync" />
                 <h2><?php esc_html_e('Upload to Sync Folder', 'dbvc'); ?></h2>
-                <p><?php esc_html_e('Upload a .zip of JSON files (or a single .json) to overwrite your sync folder.', 'dbvc'); ?></p>
-                <input type="file" name="dbvc_sync_upload" accept=".zip,.json" required />
+                <p><?php esc_html_e('Upload one or more .json files (or a .zip) to overwrite your sync folder. JSON files will be auto-routed into the correct folders.', 'dbvc'); ?></p>
+                <input type="file" name="dbvc_sync_upload[]" accept=".zip,.json" multiple required />
+                <p><label><input type="checkbox" name="dbvc_sync_dry_run" value="1" /> <?php esc_html_e('Dry run (analyze + report only, no files written)', 'dbvc'); ?></label></p>
                 <?php submit_button(__('Upload', 'dbvc'), 'secondary'); ?>
               </form>
+
+              <?php
+              if (isset($_GET['dbvc_sync_report']) && $_GET['dbvc_sync_report'] === 'dismiss') {
+                delete_option('dbvc_sync_upload_report');
+              }
+              $upload_report = get_option('dbvc_sync_upload_report');
+              if (is_array($upload_report)) :
+                $report_timestamp = isset($upload_report['timestamp']) ? $upload_report['timestamp'] : '';
+                $report_title = ! empty($upload_report['dry_run']) ? __('Dry run report', 'dbvc') : __('Upload routing report', 'dbvc');
+                $summary = sprintf(
+                  /* translators: 1: processed 2: routed 3: skipped 4: errors */
+                  __('Processed %1$d, routed %2$d, skipped %3$d, errors %4$d.', 'dbvc'),
+                  (int) ($upload_report['processed'] ?? 0),
+                  (int) ($upload_report['routed'] ?? 0),
+                  (int) ($upload_report['skipped'] ?? 0),
+                  (int) ($upload_report['errors'] ?? 0)
+                );
+              ?>
+                <div class="notice notice-info" style="margin-top:1em;">
+                  <p><strong><?php echo esc_html($report_title); ?></strong></p>
+                  <?php if ($report_timestamp) : ?>
+                    <p><small><?php echo esc_html($report_timestamp); ?></small></p>
+                  <?php endif; ?>
+                  <p><?php echo esc_html($summary); ?></p>
+                  <?php if (! empty($upload_report['details']) && is_array($upload_report['details'])) : ?>
+                    <ul>
+                      <?php foreach (array_slice($upload_report['details'], 0, 10) as $detail) :
+                        $detail_file = $detail['file'] ?? '';
+                        $detail_scenario = $detail['scenario'] ?? '';
+                        $detail_status = $detail['status'] ?? '';
+                        $detail_path = $detail['path'] ?? '';
+                      ?>
+                        <li>
+                          <?php echo esc_html($detail_file); ?>
+                          <?php if ($detail_scenario !== '') : ?>
+                            <?php echo esc_html(' → ' . $detail_scenario); ?>
+                          <?php endif; ?>
+                          <?php if ($detail_status !== '') : ?>
+                            <?php echo esc_html(' (' . $detail_status . ')'); ?>
+                          <?php endif; ?>
+                          <?php if ($detail_path) : ?>
+                            <br><small><?php echo esc_html($detail_path); ?></small>
+                          <?php endif; ?>
+                        </li>
+                      <?php endforeach; ?>
+                    </ul>
+                  <?php endif; ?>
+                  <p><a href="<?php echo esc_url(add_query_arg('dbvc_sync_report', 'dismiss', wp_get_referer())); ?>"><?php esc_html_e('Dismiss report', 'dbvc'); ?></a></p>
+                </div>
+              <?php endif; ?>
 
               <?php if (isset($_GET['dbvc_upload'])) :
                 $state = sanitize_key($_GET['dbvc_upload']);
@@ -1734,6 +1883,13 @@ document.addEventListener('DOMContentLoaded', function () {
               ?>
               <br>
               <br>
+              <label>
+                <input type="checkbox" name="dbvc_export_options_groups" value="1"
+                  <?php checked(get_option('dbvc_export_options_groups', '1'), '1'); ?> />
+                <?php esc_html_e('Include selected Options Groups (ACF) in export', 'dbvc'); ?>
+              </label>
+              <br><small><?php esc_html_e('Uses selections from Configure → Import Defaults → Options Groups (ACF).', 'dbvc'); ?></small>
+              <br><br>
 <?php if (class_exists('DBVC_Media_Sync')) : ?>
               <label>
                 <input type="checkbox" name="dbvc_media_bundle_enabled" value="1" <?php checked(DBVC_Media_Sync::is_bundle_enabled(), '1'); ?> />
@@ -2039,6 +2195,7 @@ document.addEventListener('DOMContentLoaded', function () {
 <section id="tab-config" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-config' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-config" role="tabpanel" aria-labelledby="dbvc-nav-tab-config" <?php echo $active_main_tab === 'tab-config' ? '' : 'hidden'; ?>>
   <form method="post" id="dbvc-config-form">
     <?php wp_nonce_field('dbvc_config_save_action', 'dbvc_config_nonce'); ?>
+    <input type="hidden" name="dbvc_import_defaults_subtab" id="dbvc-import-defaults-subtab" value="<?php echo esc_attr($active_import_defaults_subtab); ?>" />
     <div class="dbvc-subtabs" data-dbvc-subtabs>
       <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Configure subsections', 'dbvc'); ?>">
 <?php foreach ($config_subtabs as $panel_id => $label) :
@@ -2159,6 +2316,29 @@ document.addEventListener('DOMContentLoaded', function () {
           <small><?php esc_html_e('One per line or comma separated. Match full dot-path (e.g. metaKey.*.path.leaf) or just a leaf key name. Wildcards and /regex/ supported.', 'dbvc'); ?></small>
         </p>
 
+        <?php if (! empty($maskable_post_fields)) : ?>
+        <fieldset class="dbvc-mask-post-fields" style="margin:1rem 0;">
+          <legend><strong><?php esc_html_e('Post fields to mask', 'dbvc'); ?></strong></legend>
+          <p class="description" style="margin-top:0;">
+            <?php esc_html_e('Select root post fields that should flow through live masking alongside meta values.', 'dbvc'); ?>
+          </p>
+          <div class="dbvc-mask-post-fields__grid" style="display:flex;flex-wrap:wrap;gap:0.75rem;">
+            <?php foreach ($maskable_post_fields as $field_key => $field_label) : ?>
+              <label style="flex:1 1 220px;display:flex;align-items:center;gap:0.4rem;">
+                <input type="checkbox"
+                  name="dbvc_mask_post_fields[]"
+                  value="<?php echo esc_attr($field_key); ?>"
+                  <?php checked(in_array($field_key, $selected_post_field_masks, true)); ?> />
+                <span>
+                  <?php echo esc_html($field_label); ?>
+                  <code style="display:block;font-size:11px;">post.<?php echo esc_html($field_key); ?></code>
+                </span>
+              </label>
+            <?php endforeach; ?>
+          </div>
+        </fieldset>
+        <?php endif; ?>
+
         <fieldset id="dbvc-auto-mask-mode-wrap" style="margin-bottom:1rem;">
           <legend><strong><?php esc_html_e('Automatic Export Masking', 'dbvc'); ?></strong></legend>
           <p class="description" style="margin-top:0;"><?php esc_html_e('Controls how DBVC handles background exports triggered by post saves or meta updates.', 'dbvc'); ?></p>
@@ -2187,137 +2367,243 @@ document.addEventListener('DOMContentLoaded', function () {
 
       <section id="dbvc-config-import" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-import' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-import" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-import" <?php echo $active_config_subtab === 'dbvc-config-import' ? '' : 'hidden'; ?>>
         <?php $render_config_feedback($config_feedback['import']); ?>
-        <h2><?php esc_html_e('Custom Sync Folder Path', 'dbvc'); ?></h2>
-        <p><?php esc_html_e('Enter the path where JSON files should be saved.', 'dbvc'); ?></p>
-        <input type="text" name="dbvc_sync_path" value="<?php echo esc_attr($custom_path); ?>" style="width:100%;"
-          placeholder="<?php esc_attr_e('e.g., wp-content/plugins/db-version-control/sync/', 'dbvc'); ?>" /><br><br>
-        <strong><?php esc_html_e('Resolved path:', 'dbvc'); ?></strong> <code><?php echo esc_html($resolved_path); ?></code><br><br>
-
-        <hr />
-
-        <h2><?php esc_html_e('Post Creation & Mirror Domain Settings', 'dbvc'); ?></h2>
-
-        <p><label>
-            <input type="checkbox" name="dbvc_allow_new_posts" value="1" <?php checked(get_option('dbvc_allow_new_posts'), '1'); ?> />
-            <?php esc_html_e('Allow importing new posts that do not already exist on this site', 'dbvc'); ?>
-          </label></p>
-
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_auto_clear_decisions" value="1" <?php checked(get_option('dbvc_auto_clear_decisions', '1'), '1'); ?> />
-            <?php esc_html_e('Auto-clear proposal decisions after successful imports', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('Keeps reviewer selections in sync by clearing Accept/Keep choices once an import completes without errors.', 'dbvc'); ?></small>
-        </p>
-
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_prefer_entity_uids" value="1" <?php checked($prefer_entity_uids, '1'); ?> />
-            <?php esc_html_e('Prefer entity UIDs when matching posts', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('When enabled, DBVC matches proposal entities by their stored UID before falling back to IDs or slugs.', 'dbvc'); ?></small>
-        </p>
-
-        <p>
-          <label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
-          <select name="dbvc_new_post_status" id="dbvc_new_post_status">
+        <div class="dbvc-subtabs" data-dbvc-subtabs>
+          <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import Defaults subsections', 'dbvc'); ?>">
             <?php
-            $status = get_option('dbvc_new_post_status', 'draft');
-            foreach (['draft', 'publish', 'pending'] as $s) {
-              echo '<option value="' . esc_attr($s) . '" ' . selected($status, $s, false) . '>' . esc_html($s) . '</option>';
-            }
+            $import_defaults_subtabs = [
+              'dbvc-config-import-settings' => esc_html__('Import Settings', 'dbvc'),
+              'dbvc-config-import-options'  => esc_html__('Options Groups (ACF)', 'dbvc'),
+            ];
+            foreach ($import_defaults_subtabs as $panel_id => $label) :
+              $button_id = 'dbvc-nav-' . $panel_id;
+              $is_active = ($active_import_defaults_subtab === $panel_id);
             ?>
-          </select>
-        </p>
+              <button type="button"
+                id="<?php echo esc_attr($button_id); ?>"
+                class="dbvc-subtabs-nav__item<?php echo $is_active ? ' is-active' : ''; ?>"
+                data-dbvc-subtab="<?php echo esc_attr($panel_id); ?>"
+                role="tab"
+                aria-controls="<?php echo esc_attr($panel_id); ?>"
+                aria-selected="<?php echo $is_active ? 'true' : 'false'; ?>">
+                <?php echo esc_html($label); ?>
+              </button>
+            <?php endforeach; ?>
+          </nav>
 
-        <p>
-          <label for="dbvc_new_post_types_whitelist"><?php esc_html_e('Restrict creation to selected post types (optional):', 'dbvc'); ?></label><br>
-          <select name="dbvc_new_post_types_whitelist[]" multiple size="5" style="width:100%;">
-            <?php
-            $selected_types = (array) get_option('dbvc_new_post_types_whitelist', []);
-            foreach (dbvc_get_available_post_types() as $pt => $obj) {
-              echo '<option value="' . esc_attr($pt) . '" ' . selected(in_array($pt, $selected_types, true), true, false) . '>' . esc_html($obj->label) . ' (' . esc_html($pt) . ')</option>';
-            }
-            ?>
-          </select>
-        </p>
+          <div class="dbvc-subtabs-panels">
+            <section id="dbvc-config-import-settings" class="dbvc-subtab-panel<?php echo $active_import_defaults_subtab === 'dbvc-config-import-settings' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-import-settings" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-import-settings" <?php echo $active_import_defaults_subtab === 'dbvc-config-import-settings' ? '' : 'hidden'; ?>>
+              <h2><?php esc_html_e('Custom Sync Folder Path', 'dbvc'); ?></h2>
+              <p><?php esc_html_e('Enter the path where JSON files should be saved.', 'dbvc'); ?></p>
+              <input type="text" name="dbvc_sync_path" value="<?php echo esc_attr($custom_path); ?>" style="width:100%;"
+                placeholder="<?php esc_attr_e('e.g., wp-content/plugins/db-version-control/sync/', 'dbvc'); ?>" /><br><br>
+              <strong><?php esc_html_e('Resolved path:', 'dbvc'); ?></strong> <code><?php echo esc_html($resolved_path); ?></code><br><br>
 
-        <p>
-          <label for="dbvc_mirror_domain"><?php esc_html_e('Mirror domain (optional):', 'dbvc'); ?></label><br>
-          <input type="text" name="dbvc_mirror_domain" id="dbvc_mirror_domain"
-            value="<?php echo esc_attr(get_option('dbvc_mirror_domain', '')); ?>"
-            style="width:100%;" placeholder="e.g., https://staging.example.com" />
-          <small><?php esc_html_e('Any URLs containing this domain will be replaced with the current site domain during import.', 'dbvc'); ?></small>
-        </p>
+              <hr />
 
-        <p style="margin-top:.5rem;">
-          <label>
-            <input type="checkbox" name="dbvc_export_use_mirror_domain" value="1" <?php checked(get_option('dbvc_export_use_mirror_domain'), '1'); ?> />
-            <?php esc_html_e('Replace current site domain with the Mirror Domain during export', 'dbvc'); ?>
-          </label>
-          <br><small><?php esc_html_e('When enabled, URLs that start with the current site domain will be rewritten to the Mirror Domain in exported content and meta.', 'dbvc'); ?></small>
-        </p>
+              <h2><?php esc_html_e('FTP Upload Window', 'dbvc'); ?></h2>
+              <p><?php esc_html_e('Temporarily allow FTP uploads by removing .htaccess protections in the sync folder and all subfolders. This window auto-closes after 5 minutes.', 'dbvc'); ?></p>
+              <p>
+                <strong><?php esc_html_e('Status:', 'dbvc'); ?></strong>
+                <?php if ($sync_ftp_window_active) : ?>
+                  <?php
+                  $expires = $sync_ftp_window_until
+                    ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $sync_ftp_window_until)
+                    : '';
+                  ?>
+                  <?php echo esc_html(sprintf(__('Active until %s', 'dbvc'), $expires ?: __('soon', 'dbvc'))); ?>
+                <?php else : ?>
+                  <?php esc_html_e('Inactive', 'dbvc'); ?>
+                <?php endif; ?>
+              </p>
+              <input type="hidden" name="dbvc_sync_ftp_window_action" id="dbvc-sync-ftp-window-action" value="" />
+              <p>
+                <?php
+                submit_button(
+                  esc_html__('Allow FTP uploads for 5 minutes', 'dbvc'),
+                  'secondary',
+                  'dbvc_config_save[import]',
+                  false,
+                  ['onclick' => "document.getElementById('dbvc-sync-ftp-window-action').value='open'"]
+                );
+                ?>
+                <?php if ($sync_ftp_window_active) : ?>
+                  <?php
+                  submit_button(
+                    esc_html__('Disable FTP window now', 'dbvc'),
+                    'secondary',
+                    'dbvc_config_save[import]',
+                    false,
+                    ['onclick' => "document.getElementById('dbvc-sync-ftp-window-action').value='close'"]
+                  );
+                  ?>
+                <?php endif; ?>
+              </p>
 
-        <h3><?php esc_html_e('Ignore Fields During Proposal Review', 'dbvc'); ?></h3>
-        <p class="description">
-          <?php esc_html_e('Enter dot-path patterns (one per line or comma separated) for meta or taxonomy fields that should be excluded from diff counts and review queues.', 'dbvc'); ?>
-        </p>
-        <textarea name="dbvc_diff_ignore_paths" rows="4" style="width:100%;"><?php echo esc_textarea($diff_ignore_paths); ?></textarea>
-        <p class="description">
-          <?php esc_html_e('Supports wildcards (*) and regular expressions using /pattern/. Example: meta.dbvc_post_history.*', 'dbvc'); ?>
-        </p>
+              <hr />
 
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_import_require_review" value="1" <?php checked($import_require_review, '1'); ?> />
-            <?php esc_html_e('Require DBVC Proposal review before running imports', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('When enabled, the legacy “Run Import” form is disabled so reviewers must use the React proposals/diff workflow.', 'dbvc'); ?></small>
-        </p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_force_reapply_new_posts" value="1" <?php checked($force_reapply_new_posts, '1'); ?> />
-            <?php esc_html_e('When reopening a proposal, auto-mark previously accepted new posts for import', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('Keeps “New post accepted” decisions in place so reopened proposals can re-import media and meta without manually re-selecting each entity.', 'dbvc'); ?></small>
-        </p>
+              <h2><?php esc_html_e('Post Creation & Mirror Domain Settings', 'dbvc'); ?></h2>
 
-        <hr />
-        <p class="description">
-          <?php esc_html_e('Media ingestion, bundling, and resolver settings moved to Configure → Media Handling.', 'dbvc'); ?>
-        </p>
+              <p><label>
+                  <input type="checkbox" name="dbvc_allow_new_posts" value="1" <?php checked(get_option('dbvc_allow_new_posts'), '1'); ?> />
+                  <?php esc_html_e('Allow importing new posts that do not already exist on this site', 'dbvc'); ?>
+                </label></p>
 
-        <hr />
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_auto_clear_decisions" value="1" <?php checked(get_option('dbvc_auto_clear_decisions', '1'), '1'); ?> />
+                  <?php esc_html_e('Auto-clear proposal decisions after successful imports', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('Keeps reviewer selections in sync by clearing Accept/Keep choices once an import completes without errors.', 'dbvc'); ?></small>
+              </p>
 
-        <h2><?php esc_html_e('Import Logging', 'dbvc'); ?></h2>
-        <p class="description"><?php esc_html_e('Requires logging to be enabled under the Backups tab.', 'dbvc'); ?></p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_log_import_runs" value="1" <?php checked($logging_import_events, '1'); ?> />
-            <?php esc_html_e('Log content imports (manual and WP-CLI)', 'dbvc'); ?>
-          </label>
-        </p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_log_term_imports" value="1" <?php checked($logging_term_events, '1'); ?> />
-            <?php esc_html_e('Include term-specific events in import logs', 'dbvc'); ?>
-          </label><br>
-          <small><?php esc_html_e('Adds detailed entries for term matching, parent remapping, and taxonomy creation.', 'dbvc'); ?></small>
-        </p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_log_sync_uploads" value="1" <?php checked($logging_upload_events, '1'); ?> />
-            <?php esc_html_e('Log sync folder uploads/unpacks', 'dbvc'); ?>
-          </label>
-        </p>
-        <p>
-          <label>
-            <input type="checkbox" name="dbvc_log_media_sync" value="1" <?php checked($logging_media_events, '1'); ?> />
-            <?php esc_html_e('Log automatic media retrieval events', 'dbvc'); ?>
-          </label>
-        </p>
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_prefer_entity_uids" value="1" <?php checked($prefer_entity_uids, '1'); ?> />
+                  <?php esc_html_e('Prefer entity UIDs when matching posts', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('When enabled, DBVC matches proposal entities by their stored UID before falling back to IDs or slugs.', 'dbvc'); ?></small>
+              </p>
 
-        <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_config_save[import]', false); ?>
+              <p>
+                <label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
+                <select name="dbvc_new_post_status" id="dbvc_new_post_status">
+                  <?php
+                  $status = get_option('dbvc_new_post_status', 'draft');
+                  foreach (['draft', 'publish', 'pending'] as $s) {
+                    echo '<option value="' . esc_attr($s) . '" ' . selected($status, $s, false) . '>' . esc_html($s) . '</option>';
+                  }
+                  ?>
+                </select>
+              </p>
+
+              <p>
+                <label for="dbvc_new_post_types_whitelist"><?php esc_html_e('Restrict creation to selected post types (optional):', 'dbvc'); ?></label><br>
+                <select name="dbvc_new_post_types_whitelist[]" multiple size="5" style="width:100%;">
+                  <?php
+                  $selected_types = (array) get_option('dbvc_new_post_types_whitelist', []);
+                  foreach (dbvc_get_available_post_types() as $pt => $obj) {
+                    echo '<option value="' . esc_attr($pt) . '" ' . selected(in_array($pt, $selected_types, true), true, false) . '>' . esc_html($obj->label) . ' (' . esc_html($pt) . ')</option>';
+                  }
+                  ?>
+                </select>
+              </p>
+
+              <p>
+                <label for="dbvc_mirror_domain"><?php esc_html_e('Mirror domain (optional):', 'dbvc'); ?></label><br>
+                <input type="text" name="dbvc_mirror_domain" id="dbvc_mirror_domain"
+                  value="<?php echo esc_attr(get_option('dbvc_mirror_domain', '')); ?>"
+                  style="width:100%;" placeholder="e.g., https://staging.example.com" />
+                <small><?php esc_html_e('Any URLs containing this domain will be replaced with the current site domain during import.', 'dbvc'); ?></small>
+              </p>
+
+              <p style="margin-top:.5rem;">
+                <label>
+                  <input type="checkbox" name="dbvc_export_use_mirror_domain" value="1" <?php checked(get_option('dbvc_export_use_mirror_domain'), '1'); ?> />
+                  <?php esc_html_e('Replace current site domain with the Mirror Domain during export', 'dbvc'); ?>
+                </label>
+                <br><small><?php esc_html_e('When enabled, URLs that start with the current site domain will be rewritten to the Mirror Domain in exported content and meta.', 'dbvc'); ?></small>
+              </p>
+
+              <hr />
+
+              <h3><?php esc_html_e('Ignore Fields During Proposal Review', 'dbvc'); ?></h3>
+              <p class="description">
+                <?php esc_html_e('Enter dot-path patterns (one per line or comma separated) for meta or taxonomy fields that should be excluded from diff counts and review queues.', 'dbvc'); ?>
+              </p>
+              <textarea name="dbvc_diff_ignore_paths" rows="4" style="width:100%;"><?php echo esc_textarea($diff_ignore_paths); ?></textarea>
+              <p class="description">
+                <?php esc_html_e('Supports wildcards (*) and regular expressions using /pattern/. Example: meta.dbvc_post_history.*', 'dbvc'); ?>
+              </p>
+
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_import_require_review" value="1" <?php checked($import_require_review, '1'); ?> />
+                  <?php esc_html_e('Require DBVC Proposal review before running imports', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('When enabled, the legacy “Run Import” form is disabled so reviewers must use the React proposals/diff workflow.', 'dbvc'); ?></small>
+              </p>
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_force_reapply_new_posts" value="1" <?php checked($force_reapply_new_posts, '1'); ?> />
+                  <?php esc_html_e('When reopening a proposal, auto-mark previously accepted new posts for import', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('Keeps “New post accepted” decisions in place so reopened proposals can re-import media and meta without manually re-selecting each entity.', 'dbvc'); ?></small>
+              </p>
+
+              <hr />
+              <p class="description">
+                <?php esc_html_e('Media ingestion, bundling, and resolver settings moved to Configure → Media Handling.', 'dbvc'); ?>
+              </p>
+
+              <hr />
+
+              <h2><?php esc_html_e('Import Logging', 'dbvc'); ?></h2>
+              <p class="description"><?php esc_html_e('Requires logging to be enabled under the Backups tab.', 'dbvc'); ?></p>
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_log_import_runs" value="1" <?php checked($logging_import_events, '1'); ?> />
+                  <?php esc_html_e('Log content imports (manual and WP-CLI)', 'dbvc'); ?>
+                </label>
+              </p>
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_log_term_imports" value="1" <?php checked($logging_term_events, '1'); ?> />
+                  <?php esc_html_e('Include term-specific events in import logs', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('Adds detailed entries for term matching, parent remapping, and taxonomy creation.', 'dbvc'); ?></small>
+              </p>
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_log_sync_uploads" value="1" <?php checked($logging_upload_events, '1'); ?> />
+                  <?php esc_html_e('Log sync folder uploads/unpacks', 'dbvc'); ?>
+                </label>
+              </p>
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_log_media_sync" value="1" <?php checked($logging_media_events, '1'); ?> />
+                  <?php esc_html_e('Log automatic media retrieval events', 'dbvc'); ?>
+                </label>
+              </p>
+
+              <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_config_save[import]', false); ?>
+            </section>
+
+            <section id="dbvc-config-import-options" class="dbvc-subtab-panel<?php echo $active_import_defaults_subtab === 'dbvc-config-import-options' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-import-options" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-import-options" <?php echo $active_import_defaults_subtab === 'dbvc-config-import-options' ? '' : 'hidden'; ?>>
+              <h2><?php esc_html_e('Options Groups (ACF)', 'dbvc'); ?></h2>
+              <p class="description"><?php esc_html_e('Select ACF options pages or field groups to export/import into the /options/ folder.', 'dbvc'); ?></p>
+              <?php if (empty($available_options_groups)) : ?>
+                <p><?php esc_html_e('No ACF options groups detected. Ensure ACF is active and options pages/field groups exist.', 'dbvc'); ?></p>
+              <?php else : ?>
+                <div class="dbvc-options-groups" style="display:flex;flex-wrap:wrap;gap:0.75rem;">
+                  <?php foreach ($available_options_groups as $group) : ?>
+                    <?php
+                    $group_id = isset($group['id']) ? (string) $group['id'] : '';
+                    $group_label = isset($group['label']) ? (string) $group['label'] : $group_id;
+                    $group_source = isset($group['source']) ? (string) $group['source'] : '';
+                    $source_label = $group_source !== '' ? ' • ' . $group_source : '';
+                    ?>
+                    <label style="flex:1 1 240px;display:flex;align-items:center;gap:0.4rem;">
+                      <input type="checkbox" name="dbvc_options_groups[]"
+                        value="<?php echo esc_attr($group_id); ?>"
+                        <?php checked(in_array($group_id, $selected_options_groups, true)); ?> />
+                      <span>
+                        <?php echo esc_html($group_label); ?>
+                        <code style="display:block;font-size:11px;"><?php echo esc_html($group_id . $source_label); ?></code>
+                      </span>
+                    </label>
+                  <?php endforeach; ?>
+                </div>
+              <?php endif; ?>
+
+              <p style="margin-top:1rem;">
+                <?php wp_nonce_field('dbvc_options_groups_export_action', 'dbvc_options_groups_export_nonce'); ?>
+                <?php submit_button(__('Export Options Groups Now', 'dbvc'), 'secondary', 'dbvc_options_groups_export', false); ?>
+              </p>
+
+              <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_config_save[import]', false); ?>
+            </section>
+          </div>
+        </div>
       </section>
 
       <section id="dbvc-config-media" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-media' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-media" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-media" <?php echo $active_config_subtab === 'dbvc-config-media' ? '' : 'hidden'; ?>>
@@ -3160,6 +3446,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
       </div>
     </div>
   </div><!-- .wrap -->
+  <div id="dbvc-admin-app-root"></div>
 
   <style>
     .dbvc-tabs { display:flex; flex-direction:column; gap:1.5rem; }
@@ -3178,6 +3465,9 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     .dbvc-subtabs-nav__item.is-active { background:#fff; border-color:#2271b1; box-shadow:0 0 0 1px #2271b1; color:#1d2327; }
     .dbvc-subtabs-panels { flex:1; min-width:0; }
     .dbvc-subtab-panel[hidden] { display:none; }
+    .dbvc-subtabs--horizontal { flex-direction:column; }
+    .dbvc-subtabs--horizontal .dbvc-subtabs-nav { flex:0 0 auto; flex-direction:row; flex-wrap:wrap; gap:0.5rem; width:100%; }
+    .dbvc-subtabs--horizontal .dbvc-subtabs-nav__item { flex:0 0 auto; }
     .dbvc-config-feedback { margin:0 0 1rem; }
     .dbvc-config-feedback .notice { margin:0 0 .75rem; }
     .dbvc-tools-panel form { margin-bottom:2rem; }
@@ -3292,8 +3582,10 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
       }
 
       function initSubtabs(container) {
-        const buttons = Array.from(container.querySelectorAll('[data-dbvc-subtab]'));
-        const panels  = Array.from(container.querySelectorAll('[data-dbvc-subpanel]'));
+        const nav = container.querySelector(':scope > .dbvc-subtabs-nav');
+        const panelsWrap = container.querySelector(':scope > .dbvc-subtabs-panels');
+        const buttons = nav ? Array.from(nav.querySelectorAll('[data-dbvc-subtab]')) : [];
+        const panels  = panelsWrap ? Array.from(panelsWrap.querySelectorAll('[data-dbvc-subpanel]')) : [];
         if (!buttons.length || !panels.length) {
           return null;
         }
@@ -3324,6 +3616,14 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
 
           if (matched && options.updateHash !== false) {
             updateHash(panelId);
+          }
+
+          const targetName = container.getAttribute('data-dbvc-subtabs-value-target');
+          if (matched && targetName) {
+            const targetInput = document.querySelector('input[name="' + targetName + '"]');
+            if (targetInput) {
+              targetInput.value = panelId;
+            }
           }
         }
 

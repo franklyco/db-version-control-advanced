@@ -50,6 +50,7 @@ if (! defined('DBVC_NEW_ENTITY_DECISION_KEY')) {
 }
 
 require_once DBVC_PLUGIN_PATH . 'includes/class-database.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-options-groups.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php';
@@ -61,6 +62,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Resolver.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Reconciler.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Official/Collections.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-export-manager.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-import-router.php';
 // require_once DBVC_PLUGIN_PATH . 'includes/class-menu-importer.php'; // Added new menu importer/exporter class - removed later to avoid over-complicating the class-sync-posts.php
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-posts.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-taxonomies.php';

@@ -51,6 +51,15 @@
    - The Actions & Tools popover, Columns toggle, and selection utilities now live inside a single toolbar row so the layout stays stable while swapping filters or resizing the viewport.
    - “Clear selection” and “Select all” buttons only appear when they can act on the current table state, keeping the UI calm for reviewers who are browsing without an active selection.
    - The popover groups bulk Accept/Unaccept/Unkeep controls, new-entity approvals, maintenance operations (refresh, snapshots, hashes, duplicate resolver), and the masking drawer so future refactors can extract this block into a dedicated component.
+16. **Proposal Intake UI Polish**
+   - The uploader dropzone now uses a compact two-column layout (`__text` + `__actions`) with a muted panel background, inline "ZIP files only" hint, and a separate options row so overwrite/dev checkboxes stay aligned even on narrow screens.
+   - Proposal tables live inside `dbvc-proposal-table-wrapper`, limiting the viewport to roughly the three most recent proposals, pinning the header row, and enabling smooth scrolling for older uploads without pushing the entity area down the page.
+   - Added per-row delete actions (server-backed) so reviewers can remove any non-current proposal, including open ones, while locked proposals remain protected.
+17. **Sync Folder Intake + Deletion Handling**
+   - Multi-file upload routing now supports flat JSON batches and auto-creates target folders.
+   - Import/export guards prevent sync folder wipes during post saves and imports.
+   - Deletion handling now cleans JSONs and entity registry rows for posts/terms, with trash-aware status updates for posts and attachments.
+   - Media deletes now clear `dbvc_media_index` and remove bundled files under `sync/media/...`.
 ## Remaining / Next Steps
 1. **Term & Taxonomy Entity Polish**
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.

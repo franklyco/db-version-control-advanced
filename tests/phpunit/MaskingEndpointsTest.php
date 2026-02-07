@@ -73,6 +73,67 @@ class MaskingEndpointsTest extends WP_UnitTestCase
         );
     }
 
+    public function test_masking_endpoint_includes_post_fields(): void
+    {
+        update_option('dbvc_mask_post_fields', ['post_date']);
+        $server = rest_get_server();
+        $request = new WP_REST_Request('GET', '/dbvc/v1/proposals/' . self::PROPOSAL_ID . '/masking');
+        $response = $server->dispatch($request);
+
+        $this->assertSame(200, $response->get_status());
+        $data = $response->get_data();
+        $this->assertIsArray($data['fields']);
+
+        $postField = null;
+        foreach ($data['fields'] as $field) {
+            if ($field['meta_path'] === 'post.post_date') {
+                $postField = $field;
+                break;
+            }
+        }
+
+        $this->assertNotNull($postField, 'Expected to receive a post.post_date mask entry.');
+        $this->assertSame('mask-post-0', $postField['vf_object_uid']);
+        $this->assertSame('post.post_date', $postField['meta_path']);
+    }
+
+    public function test_apply_masking_accepts_post_fields(): void
+    {
+        update_option('dbvc_mask_post_fields', ['post_modified']);
+        $server = rest_get_server();
+        $payload = [
+            'items' => [
+                [
+                    'vf_object_uid' => 'mask-post-1',
+                    'meta_path'     => 'post.post_modified',
+                    'action'        => 'auto_accept',
+                    'suppress'      => true,
+                ],
+            ],
+        ];
+
+        $request = new WP_REST_Request('POST', '/dbvc/v1/proposals/' . self::PROPOSAL_ID . '/masking/apply');
+        $request->set_header('content-type', 'application/json');
+        $request->set_body(wp_json_encode($payload));
+        $response = $server->dispatch($request);
+
+        $this->assertSame(200, $response->get_status());
+        $data = $response->get_data();
+        $this->assertSame(1, $data['applied']['auto_accept']);
+
+        $suppress_store = get_option('dbvc_masked_field_suppressions');
+        $this->assertArrayHasKey(self::PROPOSAL_ID, $suppress_store);
+        $entity_store = $suppress_store[self::PROPOSAL_ID]['mask-post-1'] ?? [];
+        $this->assertArrayHasKey('post', $entity_store);
+        $this->assertArrayHasKey('post:post_modified', $entity_store['post']);
+
+        $decision_store = get_option('dbvc_proposal_decisions');
+        $this->assertSame(
+            'accept',
+            $decision_store[self::PROPOSAL_ID]['mask-post-1']['post_modified'] ?? ''
+        );
+    }
+
     public function test_revert_masking_clears_applied_decisions(): void
     {
         $this->applySampleMaskingPayload();
@@ -93,6 +154,41 @@ class MaskingEndpointsTest extends WP_UnitTestCase
         $override_store = (array) get_option('dbvc_mask_overrides');
         $this->assertArrayNotHasKey(self::PROPOSAL_ID, $suppress_store);
         $this->assertArrayNotHasKey(self::PROPOSAL_ID, $override_store);
+    }
+
+    public function test_revert_clears_post_field_decisions(): void
+    {
+        update_option('dbvc_mask_post_fields', ['post_modified']);
+        $server = rest_get_server();
+        $payload = [
+            'items' => [
+                [
+                    'vf_object_uid' => 'mask-post-1',
+                    'meta_path'     => 'post.post_modified',
+                    'action'        => 'auto_accept',
+                    'suppress'      => true,
+                ],
+            ],
+        ];
+
+        $apply = new WP_REST_Request('POST', '/dbvc/v1/proposals/' . self::PROPOSAL_ID . '/masking/apply');
+        $apply->set_header('content-type', 'application/json');
+        $apply->set_body(wp_json_encode($payload));
+        $response = $server->dispatch($apply);
+        $this->assertSame(200, $response->get_status());
+
+        $decision_store = get_option('dbvc_proposal_decisions');
+        $this->assertSame(
+            'accept',
+            $decision_store[self::PROPOSAL_ID]['mask-post-1']['post_modified'] ?? ''
+        );
+
+        $revert = new WP_REST_Request('POST', '/dbvc/v1/proposals/' . self::PROPOSAL_ID . '/masking/revert');
+        $revert_response = $server->dispatch($revert);
+        $this->assertSame(200, $revert_response->get_status());
+
+        $decision_store = get_option('dbvc_proposal_decisions');
+        $this->assertArrayNotHasKey('post_modified', $decision_store[self::PROPOSAL_ID]['mask-post-1'] ?? []);
     }
 
     private function applySampleMaskingPayload(): array
@@ -125,6 +221,80 @@ class MaskingEndpointsTest extends WP_UnitTestCase
         return $response->get_data();
     }
 
+    public function test_import_post_respects_post_field_masking(): void
+    {
+        $post_id = self::factory()->post->create([
+            'post_type'    => 'page',
+            'post_title'   => 'Import Target',
+            'post_status'  => 'publish',
+            'post_date'    => '2020-01-01 10:00:00',
+            'post_modified'=> '2020-01-02 11:00:00',
+        ]);
+
+        $json = [
+            'ID'            => $post_id,
+            'post_type'     => 'page',
+            'post_title'    => 'Import Target',
+            'post_status'   => 'publish',
+            'post_date'     => '2030-05-01 08:00:00',
+            'post_modified' => '2030-05-02 08:30:00',
+            'vf_object_uid' => 'mask-post-override',
+            'meta'          => [
+                '_secret_key' => ['value-before'],
+            ],
+            'tax_input'     => [],
+        ];
+
+        $file = tempnam(sys_get_temp_dir(), 'dbvc');
+        file_put_contents($file, wp_json_encode($json));
+
+        $mask_directives = [
+            'overrides' => [
+                'post' => [
+                    'post:post_modified' => [
+                        'post.post_modified' => [
+                            'path'      => 'post.post_modified',
+                            'meta_key'  => 'post:post_modified',
+                            'scope'     => 'post',
+                            'field_key' => 'post_modified',
+                            'value'     => '2026-01-01 00:00:00',
+                        ],
+                    ],
+                ],
+            ],
+            'suppressions' => [
+                'post' => [
+                    'post:post_date' => [
+                        'post.post_date' => [
+                            'path'      => 'post.post_date',
+                            'meta_key'  => 'post:post_date',
+                            'scope'     => 'post',
+                            'field_key' => 'post_date',
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $result = DBVC_Sync_Posts::import_post_from_json(
+            $file,
+            false,
+            null,
+            $json,
+            null,
+            'mask-post-override',
+            false,
+            $mask_directives
+        );
+
+        @unlink($file);
+
+        $this->assertSame('applied', $result);
+        $post = get_post($post_id);
+        $this->assertSame('2020-01-01 10:00:00', $post->post_date);
+        $this->assertSame('2026-01-01 00:00:00', $post->post_modified);
+    }
+
     private function create_manifest_fixture(int $count): void
     {
         $dir = $this->get_proposal_dir();
@@ -150,6 +320,8 @@ class MaskingEndpointsTest extends WP_UnitTestCase
                 'ID'            => $i + 1,
                 'post_type'     => 'page',
                 'post_title'    => 'Masked ' . $i,
+                'post_date'     => '2024-01-0' . ($i + 1) . ' 10:00:00',
+                'post_modified' => '2024-01-0' . ($i + 1) . ' 12:00:00',
                 'post_status'   => 'draft',
                 'vf_object_uid' => $uid,
                 'meta'          => [
@@ -203,5 +375,6 @@ class MaskingEndpointsTest extends WP_UnitTestCase
         delete_option('dbvc_masked_field_suppressions');
         delete_option('dbvc_mask_overrides');
         delete_option('dbvc_proposal_decisions');
+        delete_option('dbvc_mask_post_fields');
     }
 }

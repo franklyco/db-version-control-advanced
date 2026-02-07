@@ -69,5 +69,6 @@
 - **CLI parity:** WP-CLI imports reuse the same code path; enable logging to trace term events when running automated jobs.
 - **Performance:** Large taxonomies may produce many entities; virtualization and search/filtering are already handled, but keep an eye on parent queues during large imports.
 - **Legacy proposals:** Term snapshots landed after 1.3.4. Re-upload older proposal zips, invoke `DBVC_Snapshot_Manager::capture_for_proposal($proposal_id, $manifest)`, or run `wp dbvc proposals list --recapture-snapshots=<ids>` so reopened reviews diff against the current site instead of treating every term as new.
+- **Deletion behavior:** Term deletion removes the JSON file (when present) and clears the matching entity registry row. Terms do not have a trash state, so deletes are permanent.
 
 With these pieces in place, term/taxonomy objects behave exactly like posts throughout export, review, and import workflows, providing full cross-environment parity.

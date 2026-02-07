@@ -115,9 +115,11 @@ class DBVC_WP_CLI_Commands {
 
 			WP_CLI::log( "Exporting all posts at once (no batching)" );
 
+			DBVC_Sync_Posts::begin_full_export();
 			foreach ( $posts as $post ) {
 				DBVC_Sync_Posts::export_post_to_json( $post->ID, $post );
 			}
+			DBVC_Sync_Posts::end_full_export();
 			
 			WP_CLI::success( sprintf( 'All %d posts exported to JSON. Post types: %s', count( $posts ), implode( ', ', $post_types ) ) );
 		} else {
@@ -185,6 +187,9 @@ class DBVC_WP_CLI_Commands {
 		
 		// Import options and menus first
         DBVC_Sync_Posts::import_options_from_json();
+        if ( class_exists( 'DBVC_Options_Groups' ) ) {
+            DBVC_Options_Groups::import_selected_groups_from_sync();
+        }
         DBVC_Sync_Posts::import_menus_from_json();
         if ( class_exists( 'DBVC_Sync_Taxonomies' ) ) {
             DBVC_Sync_Taxonomies::import_taxonomies();

@@ -1,0 +1,7 @@
+[2026-02-07 03:05:27] Post delete cleanup started {"post_id":120459,"post_type":"service","status":"publish","sync_dir":"\/Users\/rhettbutler\/Documents\/LocalWP\/dbvc-codexchanges\/app\/public\/wp-content\/themes\/vertical\/sync\/db-version-control-main\/service\/"}
+[2026-02-07 03:05:27] Post delete cleanup removed file {"post_id":120459,"match":"vf_object_uid","file":"service-exterior-door-repair-and-replacement-91973.json"}
+[2026-02-07 03:05:27] Post entity status updated {"post_id":120459,"post_type":"service","status":"trash","entity_uid":"1122603a-294d-45a4-84e4-d0f255f1406e"}
+[2026-02-07 03:05:27] Post delete cleanup started {"post_id":120459,"post_type":"service","status":"trash","sync_dir":"\/Users\/rhettbutler\/Documents\/LocalWP\/dbvc-codexchanges\/app\/public\/wp-content\/themes\/vertical\/sync\/db-version-control-main\/service\/"}
+[2026-02-07 03:05:27] Post delete cleanup no matching file {"post_id":120459,"post_type":"service"}
+[2026-02-07 03:05:55] Post entity status updated {"post_id":120459,"post_type":"service","status":"publish","entity_uid":"1122603a-294d-45a4-84e4-d0f255f1406e"}
+[2026-02-07 04:57:38] Media preview generated {"event":"media_preview_generated","level":"info","total_detected":130,"total_candidates":8,"preview_count":8,"blocked_count":0,"skipped_existing":122,"hosts":{"dbvc-codexchanges.local":8},"relative_path_use":{"with_relative_path":8,"without_relative_path":0}}
