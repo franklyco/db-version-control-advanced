@@ -56,12 +56,26 @@
                 throw new Error(e || `Request failed (${t.status})`);
               }
               return t.json();
-            }, maskDocsBase = DBVC_ADMIN_APP?.docs?.masking || (window.location && window.location.origin ? `${window.location.origin.replace(/\/$/, "")}/wp-content/plugins/db-version-control-main/docs/meta-masking.md` : "https://example.com/docs/meta-masking.md"), maskDocLink = e => e ? `${maskDocsBase}#${e}` : maskDocsBase, a = e => {
+            }, maskDocsBase = DBVC_ADMIN_APP?.docs?.masking || (window.location && window.location.origin ? `${window.location.origin.replace(/\/$/, "")}/wp-content/plugins/db-version-control-main/docs/meta-masking.md` : "https://example.com/docs/meta-masking.md"), maskDocLink = e => e ? `${maskDocsBase}#${e}` : maskDocsBase, isThenable = e => !!e && ("object" == typeof e || "function" == typeof e) && "function" == typeof e.then, warnedAsyncValue = !1, warnedAsyncKeys = new Set, logAsyncValue = (e, t, s) => {
+              const n = `${e || "unknown"}::${t || "unknown"}`;
+              if (warnedAsyncKeys.has(n)) return;
+              warnedAsyncKeys.add(n), console.warn("DBVC: Promise detected in entity drawer values.", {
+                entity_uid: e,
+                path: t,
+                value: s
+              });
+            }, a = e => {
               if (!e) return "—";
               const t = new Date(e);
               return Number.isNaN(t.getTime()) ? e : t.toLocaleString();
-            }, o = e => null == e ? "—" : "boolean" == typeof e ? e ? "true" : "false" : "number" == typeof e ? e.toString() : "" === e ? "(empty)" : "string" == typeof e ? e : r(e), r = e => {
+            }, o = e => null == e ? "—" : isThenable(e) ? "[async]" : "boolean" == typeof e ? e ? "true" : "false" : "number" == typeof e ? e.toString() : "" === e ? "(empty)" : "string" == typeof e ? e : r(e), r = e => {
               if (null == e) return "";
+              if (isThenable(e)) {
+                if (!warnedAsyncValue) {
+                  warnedAsyncValue = !0, console.warn("DBVC: Promise detected in entity drawer values. Inspect the data source returning a Promise.", e);
+                }
+                return "[async]";
+              }
               if ("string" == typeof e) return e;
               if ("number" == typeof e || "boolean" == typeof e) return String(e);
               try {
@@ -2480,7 +2494,7 @@
               }
               return !_e && Re ? (0, s.jsxs)("p", {
                 className: "dbvc-admin-app-error",
-                children: [ "Error loading proposals: ", Re ]
+                children: [ "Error loading proposals: ", o(Re) ]
               }) : (0, s.jsxs)("div", {
                 className: "dbvc-admin-app",
                 onClick: Kt,
@@ -2493,11 +2507,11 @@
                     children: [ (0, s.jsxs)("div", {
                       className: "dbvc-toast__content",
                       children: [ (0, s.jsx)("strong", {
-                        children: e.title
+                        children: o(e.title)
                       }), (0, s.jsx)("span", {
-                        children: e.message
+                        children: o(e.message)
                       }), e.detail && (0, s.jsx)("small", {
-                        children: e.detail
+                        children: o(e.detail)
                       }), (0, s.jsx)("small", {
                         className: "dbvc-toast__time",
                         children: a(e.timestamp)
@@ -2532,7 +2546,7 @@
                 }), Re && (0, s.jsx)("div", {
                   className: "notice notice-error",
                   children: (0, s.jsxs)("p", {
-                    children: [ "Failed to load proposals: ", Re ]
+                    children: [ "Failed to load proposals: ", o(Re) ]
                   })
                 }), (0, s.jsx)(w, {
                   proposals: G,
@@ -2607,7 +2621,7 @@
                   }), qe && (0, s.jsx)("div", {
                     className: "notice notice-error",
                     children: (0, s.jsxs)("p", {
-                      children: [ "Apply failed: ", qe ]
+                      children: [ "Apply failed: ", o(qe) ]
                     })
                   }), Ke && (0, s.jsxs)("div", {
                     className: Ks,
@@ -2621,7 +2635,7 @@
                       children: [ "Resolver decisions applied — reuse: ", null !== (K = Ke.resolver_decisions.reuse) && void 0 !== K ? K : 0, ", map:", " ", null !== (J = Ke.resolver_decisions.map) && void 0 !== J ? J : 0, ", download: ", null !== (q = Ke.resolver_decisions.download) && void 0 !== q ? q : 0, ", skip:", " ", null !== (W = Ke.resolver_decisions.skip) && void 0 !== W ? W : 0 ]
                     }), Hs.length > 0 && (0, s.jsx)("ul", {
                       children: Hs.map((e, t) => (0, s.jsx)("li", {
-                        children: e
+                        children: o(e)
                       }, t))
                     }) ]
                   }), Ts && (0, s.jsx)("div", {
@@ -3332,11 +3346,68 @@
                   }) ]
                 }) ]
               });
+            };
+            class ErrorBoundary extends e.Component {
+              constructor(e) {
+                super(e), this.state = {
+                  hasError: !1,
+                  error: null
+                };
+              }
+              static getDerivedStateFromError(e) {
+                return {
+                  hasError: !0,
+                  error: e
+                };
+              }
+              componentDidCatch(e, t) {
+                this.props.onError && this.props.onError(e, t);
+              }
+              render() {
+                if (this.state.hasError) return (0, s.jsxs)("div", {
+                  className: "dbvc-admin-app dbvc-admin-app--crashed",
+                  children: [ (0, s.jsx)("h2", {
+                    children: "DBVC Proposals encountered an error"
+                  }), (0, s.jsxs)("div", {
+                    className: "notice notice-error",
+                    children: [ (0, s.jsx)("p", {
+                      children: "The interface hit an unexpected error. You can reload this page to try again."
+                    }), (0, s.jsx)("p", {
+                      children: (0, s.jsx)("button", {
+                        type: "button",
+                        className: "button",
+                        onClick: () => window.location.reload(),
+                        children: "Reload"
+                      })
+                    }) ]
+                  }), this.state.error && (0, s.jsxs)("p", {
+                    className: "dbvc-admin-app__error-detail",
+                    children: [ "Error: ", o(this.state.error.message || this.state.error) ]
+                  }) ]
+                });
+                return this.props.children;
+              }
+            }
+            const logClientError = (e, t) => {
+              try {
+                const s = {
+                  message: e && e.message ? e.message : String(e),
+                  stack: e && e.stack ? e.stack : null,
+                  componentStack: t && t.componentStack ? t.componentStack : null,
+                  path: window.location && window.location.href ? window.location.href : null,
+                  context: "admin-app"
+                };
+                void i("logs/client", s);
+              } catch (e) {}
             }, $ = () => {
               const t = document.getElementById("dbvc-admin-app-root");
               if (!t) return;
               const n = e.createRoot ? e.createRoot(t) : null;
-              n ? n.render((0, s.jsx)(R, {})) : (0, e.render)((0, s.jsx)(R, {}), t);
+              const l = (0, s.jsx)(ErrorBoundary, {
+                onError: logClientError,
+                children: (0, s.jsx)(R, {})
+              });
+              n ? n.render(l) : (0, e.render)(l, t);
             };
             "loading" === document.readyState ? document.addEventListener("DOMContentLoaded", $) : $();
             const I = ({section: t, decisions: n, onDecisionChange: i, savingPaths: l}) => {
@@ -3399,6 +3470,7 @@
                           }
                         };
                       })(e.from, e.to), d = null !== (t = n?.[e.path]) && void 0 !== t ? t : "", u = !!l[e.path], m = !!e.is_equal, p = [ "dbvc-diff-row" ];
+                      (isThenable(e.from) || isThenable(e.to)) && logAsyncValue(n?.item?.vf_object_uid || n?.vf_object_uid || "", e.path, isThenable(e.from) ? e.from : e.to);
                       return m ? p.push("is-equal") : "accept" === d ? p.push("is-accepted") : "keep" === d ? p.push("is-kept") : p.push("is-unreviewed"), 
                       (0, s.jsxs)("tr", {
                         className: p.join(" "),
@@ -4018,7 +4090,7 @@
                         children: "Import completed with warnings:"
                       }), (0, s.jsx)("ul", {
                         children: A.errors.map((e, t) => (0, s.jsx)("li", {
-                          children: e
+                          children: o(e)
                         }, t))
                       }) ]
                     }) ]

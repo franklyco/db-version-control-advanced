@@ -4,6 +4,11 @@
 
 This document maps the current React bundle (`src/admin-app/index.js`) into logical domains so we can rebuild the admin UI from manageable modules. The plan emphasizes keeping a backup/staging copy of the generated bundle (`build/admin-app.js` + the current `src/admin-app/index.js`) while new source files are created, and encourages working branch-by-branch so the production plugin always has a working reference artifact.
 
+## Companion Docs
+- UI structure and component hierarchy blueprint: `docs/UI-ARCHITECTURE.md`
+- Implementation ticket seed (component `props/events/state/dependencies` contracts): `docs/UI-ARCHITECTURE.md#component-contracts-implementation-ticket-seed`
+- Epic parity audit table: `docs/UI-ARCHITECTURE.md#refractor-coverage-matrix`
+
 ## Goals
 - Preserve a pristine copy of the compiled bundle before each major extraction (tag + archive `src/admin-app/index.js`/`build/admin-app.js`), mirror work in a staging branch, and document any temporary toggles needed for QA.
 - Identify every feature area, the actions/hooks it uses, and how those pieces depend on each other so refactors can be sliced into safe, reviewable chunks.
@@ -25,7 +30,7 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 | ⬜ | Bulk entity actions & new-entity gating | Accept new entities, selection batches, snapshot capture, hash sync | `src/admin-app/index.js:2320-2560`, `1390-1485` | Entities dataset |
 | ⬜ | Apply flow & history | Apply modal, close/apply POST, success/failure toasts, backups | `src/admin-app/index.js:1720-2295` | Entities dataset, resolver |
 | ⬜ | Global resolver rules manager | Rule table, search, selection, add/edit/delete forms | `src/admin-app/index.js:3000-3320` | Media resolver attachments, shared utilities |
-| ⬜ | Notifications & toast stack | Toast state, dismissal, severity rendering | `src/admin-app/index.js:2052-2105` | Proposal intake |
+| ⬜ | Notifications & toast stack | Toast state, dismissal, severity rendering, error boundary + client logging | `src/admin-app/index.js:2052-2105, 3340-3385` | Proposal intake |
 
 ## Detailed Areas & Refactor Steps
 
@@ -45,9 +50,11 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 **Refactor steps**
 - [ ] Create `src/admin-app/api/client.ts` with shared headers/nonces + `getJson/postJson/deleteJson`.
 - [ ] Move formatters/badge maps/column definitions into `src/admin-app/utils/format.ts` and `src/admin-app/constants/tables.ts` with unit tests.
+- [ ] Define and centralize finalized diff/resolver display terminology in one constants module so all UI surfaces consume the same labels (target set: `Change Summary`, `Additions`, `Deletions`, `Modifications`, `Total Changes`).
 - [ ] Document these helpers in `AGENT.md`/README so contributors know which files are generated vs. source.
 - [ ] Update downstream modules to import helpers instead of relying on closure scope.
 - [ ] Add lint rule or CI check to prevent direct `window.fetch` usage outside the client module.
+- [ ] Preserve the error boundary + `/logs/client` reporting hook when extracting the root render path.
 - [ ] Add unit tests verifying date/value formatting handles empty/null/boolean inputs as expected.
 - [ ] QA: smoke test formatter usage in the All Entities table + badges to ensure nothing regresses.
 
@@ -137,14 +144,47 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 **Sub-components:**
 - `EntityDrawerShell` (modal + focus trap)
 - `EntityToolbar` (meta/status badges)
+- `ChangeSummaryRail` (summary counts + navigation + quick actions)
 - `EntityDiffSections` (accordion)
 - `DecisionControls` (Accept/Keep radios + bulk buttons)
+- `RawDiffView` (line-oriented fallback diff for power review/debug)
 - `NewEntityCard` (gating UI)
 - `SnapshotControls` (hash/snapshot actions)
+
+**Target review layout (side-by-side)**
+- Use a 3-column drawer workspace: `Source (Current)` panel, center `Change Summary` rail, `Destination (Proposed)` panel.
+- Keep both side panels structurally identical so each section renders in the same order and reviewers can compare like-for-like without scanning.
+- Pin core metadata in each header (ID, author, created/updated timestamps, status, open-in-new action) and keep it visible while scrolling sections.
+- Center rail responsibilities:
+  - Summary counts using finalized labels: `Additions`, `Deletions`, `Modifications`, `Total Changes`.
+  - Change navigation: previous/next + index (`1 of N`) based on changed fields only.
+  - Quick actions: toggle metadata visibility, switch `Raw Diff View`, export review report.
+- Section registry (must exist in both side panels):
+  - `Content`
+  - `Custom Fields`
+  - `SEO Metadata`
+  - `Categories & Tags`
+  - `Media Attachments` (with resolver badges/conflict markers)
+  - `Raw Diff View` (full payload diff fallback, including unchanged context when needed)
+- Accordion behavior:
+  - Section headers show per-section change counts (`X changes`).
+  - Default to collapsed sections except the first changed section.
+  - Support `View All` mode to include unchanged rows for auditing.
+- Field-level review model:
+  - Each row carries `changeType` (`addition|deletion|modification|unchanged`), source value, destination value, and decision state.
+  - Decision controls (`Accept proposed` / `Keep current`) must be reachable inline without leaving the section context.
+  - Token/line highlighting should emphasize changed spans, not entire field blocks.
+- Media resolver integration:
+  - `Media Attachments` rows should surface resolver state inline (unresolved/conflict/resolved).
+  - Resolver actions opened from drawer must round-trip to the shared resolver store and immediately refresh section badges/counts.
 
 **Refactor steps**
 - [ ] Move drawer UI into `components/entity-drawer/EntityDrawer.tsx` that accepts typed props (entity, decisions, callbacks).
 - [ ] Extract diff table + decision controls into smaller components (`DiffSection`, `FieldDecisionRow`) for readability.
+- [ ] Implement the 3-column drawer shell (`Source` / `Change Summary` / `Destination`) and keep headers + section order symmetric across both side panels.
+- [ ] Apply the naming pass for diff badges/labels in the drawer (`Change Summary`, `Additions`, `Deletions`, `Modifications`, `Total Changes`) and ensure legacy wording is removed from component copy/tests.
+- [ ] Add `RawDiffView` mode as a first-class section/toggle (not a debug-only afterthought), with QA coverage for large payloads and unchanged-context rendering.
+- [ ] Integrate `Media Attachments` section with resolver states/actions so drawer-level reviews can resolve conflicts without losing position in the entity diff.
 - [ ] Centralize decision persistence (currently `Ss`, `Ws`, etc.) into a `useEntityDecisions` hook shared by drawer + bulk actions.
 - [ ] Port accessibility behaviors (focus trap, Escape to close) and document them for QA.
 - [ ] Snapshot test diff rendering to ensure before/after highlighting matches legacy markup.
@@ -168,6 +208,7 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 **Refactor steps**
 - [ ] Build `useResolverConflicts(proposalId)` to encapsulate GET/POST/DELETE plus optimistic updates (`rs`).
 - [ ] Break UI into `ResolverSummary`, `ResolverConflictList`, `ResolverBulkApplyForm`, `ResolverDecisionForm` components.
+- [ ] Align resolver badges/summaries with the shared naming vocabulary (`Change Summary`, `Additions`, `Deletions`, `Modifications`, `Total Changes`) so resolver and entity drawer terminology stays consistent.
 - [ ] Ensure applying decisions updates both entity drawer data and resolver panel via shared store, not duplicated `setState`.
 - [ ] Add automated tests around bulk filter combinations (reason/asset UID/manifest path) and map/download/reuse flows.
 - [ ] Record resolver action telemetry (counts, failure reasons) to help monitor post-refactor stability.
@@ -317,6 +358,26 @@ Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 
 Document any deviations from this matrix in PR notes and update the matrix as new tooling appears.
 
+### Naming & Schema Timing
+- [ ] Run a UI naming pass in late beta (before RC) to finalize labels/badges across the modular app.
+- [ ] Keep display-label updates (badges/headings/copy) decoupled from stored-key changes so text can evolve without data risk.
+- [ ] Schedule plugin-created meta field/key renames only after schema freeze, with backward-read compatibility and one-time migration logic.
+- [ ] Add migration tests covering old-key read/new-key write behavior before enabling renamed meta keys by default.
+- [ ] Freeze naming/schema changes at RC; avoid additional terminology or key churn after release candidate cut.
+
+### Data Attribute Strategy
+- [ ] Standardize `data-*` attribute hooks for refactored components and generated child elements to improve QA automation, instrumentation, and debugging.
+- [ ] Define and document a shared attribute convention in `docs/UI-ARCHITECTURE.md` (e.g., `data-component`, `data-slot`, `data-entity-id`, `data-field-key`, `data-change-type`, `data-decision-state`, `data-resolver-state`).
+- [ ] Ensure stable selectors exist across critical review surfaces:
+  - Entity table rows/cells/actions
+  - Entity drawer sections/field rows/decision controls
+  - Resolver conflicts/actions
+  - Apply CTA/modal/summary states
+- [ ] Keep `data-*` attributes out of styling logic (`CSS` should not depend on these selectors).
+- [ ] Avoid placing sensitive/raw content values in attributes; use IDs/enums only.
+- [ ] Update QA tests to prefer `data-*` selectors over brittle text/class-based selectors.
+- [ ] Add a PR checklist item to prevent selector drift while refactoring.
+
 ### Logging & Telemetry
 - Add structured logging (via `console.info` in dev or remote logging hook) for critical actions: masking apply, resolver bulk actions, proposal apply, duplicate cleanup.
 - Include correlation IDs (proposal ID, vf_object_uid) so support can trace issues quickly.
@@ -338,6 +399,488 @@ Document every extraction in this file (update status + add notes) and keep stag
 - **Decision/badge UI:** Badge rendering logic is scattered (`v()`, inline `<span className="dbvc-badge ...">`, resolver status chips, new-entity badges). Introduce a shared `Badge`/`Pill` component fed by entity state so labels, colors, and tooltips update automatically when selection counts change (e.g., dynamic “Pending decisions” or “New term accepted” copy).
 - **Bulk action handlers:** Accept/keep/clear/new-entity handlers (`ls`, `as`, `is`, `Ss`, `Rs`, etc.) use near-identical POST payload setup and toast logic. Consider a `useBulkEntityMutation` hook (or reducer) that centralizes confirmation prompts, loading states, and success/error toasts so every bulk action inherits consistent UX and analytics.
 - **Tooltip system:** We now ship a `TooltipWrapper` fallback plus CSS tooling in `src/admin-app/index.js`/`style.css`. As each component is modularized, wrap contextual hints (buttons, badges, status chips) with this shared wrapper (or a future dedicated tooltip component) rather than sprinkling ad-hoc `t?.Tooltip` checks. This keeps UX consistent and makes it easy to swap to a formal tooltip library later.
+
+## Canonical Entity Notes (Draft)
+
+### dbvc_entity meta object (single meta value)
+- Store as one serialized meta object named `dbvc_entity`.
+- Scope: per-entity "current state" only. Do not duplicate immutable history.
+- Suggested shape:
+  - `pStatus_current`: `NONE | REVIEW | CANONICAL | DIVERGED`
+  - `canonical_revision_id`: `uuid|null`
+  - `canonical_hash`: `sha256|null`
+  - `canonical_version`: `int|semver|null`
+  - `canonical_status`: `GOD|MOD|null`
+  - `last_review_packet_id`: `uuid|null`
+  - `last_review_at`: `iso8601|null`
+  - `last_sync_at`: `iso8601|null`
+  - `source_site_id`: `string|null` (authority that last approved)
+  - `forked_from_revision_id`: `uuid|null` (if local divergence)
+
+### Normalized hashing rules (canonical comparison)
+- Input payload must be normalized before hashing to avoid order/format drift.
+- Normalization steps:
+  - Strip non-deterministic fields (timestamps, IDs, GUIDs, site-specific paths).
+  - Sort object keys recursively (lexicographic).
+  - For arrays that are order-insensitive (terms, meta lists), sort by stable key (e.g., `id` or `slug`).
+  - Convert all numbers to JSON numbers, booleans to JSON booleans, nulls preserved.
+  - Normalize strings by trimming trailing whitespace and normalizing line endings to `\n`.
+  - Encode as UTF-8 JSON with no pretty-printing and no escaped slashes.
+- Hashing:
+  - `sha256(normalized_json)`
+  - Store as `sha256:<hex>` in both history entries and `dbvc_entity`.
+
+### Canonical authority settings (Authority Site)
+- Store in one settings option (single object).
+- Suggested shape:
+  - `canonical_authority`:
+    - `mode`: `authority_site`
+    - `authority_url`: `https://example.com`
+    - `auth_method`: `app_password | oauth | shared_token`
+    - `auth_username`: `string|null` (app_password only)
+    - `auth_secret`: `string|null` (token/app password)
+    - `site_id`: `string|null` (optional)
+    - `sync_direction`: `pull_only | pull_and_submit`
+    - `last_test_at`: `iso8601|null`
+    - `last_test_status`: `ok|error|null`
+    - `last_test_error`: `string|null`
+    - `last_sync_at`: `iso8601|null`
+    - `last_sync_status`: `ok|error|null`
+    - `last_sync_error`: `string|null`
+
+### Canonical authority UI spec (Configure → Certified Canonicals → Authority Site)
+- Fields:
+  - `Authority URL` (required, URL)
+  - `Auth method` (select: `Application Password`, `OAuth`, `Shared Token`)
+  - `Username` (required only for Application Password)
+  - `Secret/Token` (required for all auth methods)
+  - `Site ID` (optional, text)
+  - `Sync direction` (select: `Pull only`, `Pull + Submit proposals`)
+  - `Test connection` (button)
+  - `Last test status` (read-only)
+  - `Last test time` (read-only)
+  - `Last sync status` (read-only)
+  - `Last sync time` (read-only)
+- Validation:
+  - Block save if `Authority URL` or `Secret/Token` is empty.
+  - Require `Username` only when `Auth method` is `Application Password`.
+  - Normalize URL (strip trailing slash).
+- Defaults:
+  - `Auth method`: `Shared Token`
+  - `Sync direction`: `Pull + Submit proposals`
+  - Status fields default to `null`/empty.
+
+### Concrete settings API code (WP option registration + sanitization)
+```php
+// In plugin bootstrap or admin settings file.
+add_action('admin_init', function () {
+    register_setting(
+        'dbvc_settings',
+        'dbvc_canonical_authority',
+        [
+            'type' => 'array',
+            'description' => 'Canonical authority (WordPress site) configuration.',
+            'sanitize_callback' => 'dbvc_sanitize_canonical_authority',
+            'default' => [
+                'mode' => 'authority_site',
+                'authority_url' => '',
+                'auth_method' => 'shared_token',
+                'auth_username' => '',
+                'auth_secret' => '',
+                'site_id' => '',
+                'sync_direction' => 'pull_and_submit',
+                'last_test_at' => null,
+                'last_test_status' => null,
+                'last_test_error' => null,
+                'last_sync_at' => null,
+                'last_sync_status' => null,
+                'last_sync_error' => null,
+            ],
+            'show_in_rest' => [
+                'schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'mode' => ['type' => 'string'],
+                        'authority_url' => ['type' => 'string'],
+                        'auth_method' => ['type' => 'string'],
+                        'auth_username' => ['type' => 'string'],
+                        'auth_secret' => ['type' => 'string'],
+                        'site_id' => ['type' => 'string'],
+                        'sync_direction' => ['type' => 'string'],
+                        'last_test_at' => ['type' => ['string', 'null']],
+                        'last_test_status' => ['type' => ['string', 'null']],
+                        'last_test_error' => ['type' => ['string', 'null']],
+                        'last_sync_at' => ['type' => ['string', 'null']],
+                        'last_sync_status' => ['type' => ['string', 'null']],
+                        'last_sync_error' => ['type' => ['string', 'null']],
+                    ],
+                    'additionalProperties' => false,
+                ],
+            ],
+        ]
+    );
+});
+
+function dbvc_sanitize_canonical_authority($raw) {
+    $raw = is_array($raw) ? $raw : [];
+    $auth_method = isset($raw['auth_method']) ? sanitize_key($raw['auth_method']) : 'shared_token';
+    $sync_direction = isset($raw['sync_direction']) ? sanitize_key($raw['sync_direction']) : 'pull_and_submit';
+    $authority_url = isset($raw['authority_url']) ? esc_url_raw(trim($raw['authority_url'])) : '';
+    $authority_url = rtrim($authority_url, '/');
+
+    $out = [
+        'mode' => 'authority_site',
+        'authority_url' => $authority_url,
+        'auth_method' => in_array($auth_method, ['app_password', 'oauth', 'shared_token'], true) ? $auth_method : 'shared_token',
+        'auth_username' => sanitize_text_field($raw['auth_username'] ?? ''),
+        'auth_secret' => sanitize_text_field($raw['auth_secret'] ?? ''),
+        'site_id' => sanitize_text_field($raw['site_id'] ?? ''),
+        'sync_direction' => in_array($sync_direction, ['pull_only', 'pull_and_submit'], true) ? $sync_direction : 'pull_and_submit',
+        'last_test_at' => null,
+        'last_test_status' => null,
+        'last_test_error' => null,
+        'last_sync_at' => null,
+        'last_sync_status' => null,
+        'last_sync_error' => null,
+    ];
+
+    // Guard: require username for app_password
+    if ($out['auth_method'] === 'app_password' && $out['auth_username'] === '') {
+        add_settings_error('dbvc_canonical_authority', 'dbvc_auth_username', 'Username required for Application Password.', 'error');
+    }
+
+    // Guard: require authority URL + secret for all methods
+    if ($out['authority_url'] === '' || $out['auth_secret'] === '') {
+        add_settings_error('dbvc_canonical_authority', 'dbvc_auth_missing', 'Authority URL and Secret/Token are required.', 'error');
+    }
+
+    return $out;
+}
+```
+
+### Additional specs to define before implementation
+- REST endpoints and payloads for:
+  - `POST /dbvc/v1/canonical/test-connection`
+  - `POST /dbvc/v1/canonical/proposals`
+  - `GET /dbvc/v1/canonical/entities/{entity_id}`
+  - `POST /dbvc/v1/canonical/reviews/{packet_id}` (approve/reject)
+- Auth strategy details (Application Password vs OAuth vs shared token):
+  - Required headers/nonce usage and how secrets are stored/rotated.
+  - How to verify authority site identity (site ID, public key, or fingerprint).
+- Hash normalization contract (exact field allow/deny list per CPT/taxonomy).
+- Canonical registry schema (WP CPT or custom table) and migration strategy.
+- Sync cadence (manual vs scheduled) and retry/backoff policy.
+- Conflict handling rules (two competing proposals, stale approvals).
+
+### REST endpoint contracts (Authority Site)
+
+#### Auth headers (examples)
+- Shared Token:
+  - `Authorization: Bearer <shared_token>`
+- Application Password (WP):
+  - `Authorization: Basic base64("username:app_password")`
+- OAuth:
+  - `Authorization: Bearer <oauth_access_token>`
+
+#### Standard error schema (all endpoints)
+```json
+{
+  "ok": false,
+  "error": "string_code",
+  "message": "Human-readable message",
+  "details": {
+    "field": "optional field info",
+    "hint": "optional hint"
+  }
+}
+```
+
+#### Standard success envelope (when applicable)
+```json
+{
+  "ok": true,
+  "data": { "any": "payload" }
+}
+```
+
+#### `POST /dbvc/v1/canonical/test-connection`
+- Purpose: validate auth + reachability of authority site.
+- Auth: `Authorization` header (method-dependent).
+- Request body:
+  - `site_id` (optional)
+- Example request:
+```json
+{
+  "site_id": "client-site-001"
+}
+```
+- Response `200`:
+  - `ok`: `true`
+  - `authority_site_id`
+  - `authority_version`
+  - `timestamp`
+- Example response:
+```json
+{
+  "ok": true,
+  "authority_site_id": "authority-site-main",
+  "authority_version": "1.8.0",
+  "timestamp": "2026-02-07T18:31:00Z"
+}
+```
+- Error responses:
+  - `400` invalid request (`error`: `invalid_request`)
+  - `401/403` auth failure (`error`: `auth_failed`)
+  - `500` server error (`error`: `server_error`)
+
+#### `POST /dbvc/v1/canonical/proposals`
+- Purpose: submit a revision for review/promote.
+- Auth: `Authorization` header.
+- Request body:
+  - `packet_id`
+  - `entity_id`
+  - `revision_id`
+  - `hash`
+  - `payload` (normalized source payload)
+  - `proposed_status`: `GOD|MOD`
+  - `submitted_by_site`
+  - `submitted_at`
+  - `notes` (optional)
+- Example request:
+```json
+{
+  "packet_id": "pkt_9c3f",
+  "entity_id": "ent_2b1a",
+  "revision_id": "rev_8f2d",
+  "hash": "sha256:8a7f...c2",
+  "payload": {
+    "post_type": "bricks_template",
+    "title": "Global Header",
+    "content": "<div>...</div>"
+  },
+  "proposed_status": "GOD",
+  "submitted_by_site": "client-site-001",
+  "submitted_at": "2026-02-07T18:42:00Z",
+  "notes": "New conditional logic for VF ACF fields."
+}
+```
+- Response `201`:
+  - `ok`: `true`
+  - `packet_id`
+  - `status`: `REVIEW`
+- Example response:
+```json
+{
+  "ok": true,
+  "packet_id": "pkt_9c3f",
+  "status": "REVIEW"
+}
+```
+- Error responses:
+  - `400` invalid payload (`error`: `invalid_payload`)
+  - `401/403` auth failure (`error`: `auth_failed`)
+  - `409` duplicate packet (`error`: `duplicate_packet`)
+  - `422` hash mismatch (`error`: `hash_mismatch`)
+  - `500` server error (`error`: `server_error`)
+
+#### `GET /dbvc/v1/canonical/entities/{entity_id}`
+- Purpose: fetch canonical record for entity.
+- Auth: `Authorization` header (or public read if desired).
+- Response `200`:
+  - `entity_id`
+  - `canonical_revision_id`
+  - `canonical_hash`
+  - `canonical_version`
+  - `canonical_status`: `GOD|MOD`
+  - `updated_at`
+  - `signature` (optional)
+- Example response:
+```json
+{
+  "entity_id": "ent_2b1a",
+  "canonical_revision_id": "rev_8f2d",
+  "canonical_hash": "sha256:8a7f...c2",
+  "canonical_version": "3",
+  "canonical_status": "GOD",
+  "updated_at": "2026-02-01T12:10:00Z",
+  "signature": "sig_abc123"
+}
+```
+- Error responses:
+  - `401/403` auth failure (`error`: `auth_failed`) if private
+  - `404` not found (`error`: `not_found`)
+  - `500` server error (`error`: `server_error`)
+
+#### `POST /dbvc/v1/canonical/reviews/{packet_id}`
+- Purpose: authority approves/rejects a proposal.
+- Auth: authority-only (e.g., capability check).
+- Request body:
+  - `decision`: `approve|reject`
+  - `reason` (optional)
+  - `canonical_version` (required on approve)
+  - `canonical_status`: `GOD|MOD` (required on approve)
+- Example request (approve):
+```json
+{
+  "decision": "approve",
+  "canonical_version": "4",
+  "canonical_status": "GOD",
+  "reason": "Approved for global rollout."
+}
+```
+- Example request (reject):
+```json
+{
+  "decision": "reject",
+  "reason": "Fails template QA checks."
+}
+```
+- Response `200`:
+  - `ok`: `true`
+  - `packet_id`
+  - `decision`
+  - `canonical_revision_id` (on approve)
+  - `canonical_hash` (on approve)
+  - `reviewed_at`
+- Example response:
+```json
+{
+  "ok": true,
+  "packet_id": "pkt_9c3f",
+  "decision": "approve",
+  "canonical_revision_id": "rev_8f2d",
+  "canonical_hash": "sha256:8a7f...c2",
+  "reviewed_at": "2026-02-07T19:05:00Z"
+}
+```
+- Error responses:
+  - `400` invalid decision (`error`: `invalid_decision`)
+  - `401/403` auth failure (`error`: `auth_failed`)
+  - `404` packet not found (`error`: `packet_not_found`)
+  - `409` stale packet (`error`: `stale_packet`)
+  - `500` server error (`error`: `server_error`)
+
+### UI documentation tab: steps to add these contracts
+- Add a new “Canonical Authority API” section in the existing Documentation tab.
+- Include:
+  - Auth header examples (Shared Token, App Password, OAuth).
+  - Standard error schema and success envelope.
+  - Each endpoint with:
+    - Purpose
+    - Method/path
+    - Request JSON example
+    - Response JSON example
+    - Error codes list
+- Provide a collapsible UI for each endpoint to keep the docs scannable.
+- Link to the Configure → Certified Canonicals → Authority Site settings panel for setup prerequisites.
+
+### PHP settings page stub (Authority Site subtab)
+```php
+// Admin menu hookup (existing Configure page assumed).
+add_action('admin_menu', function () {
+    add_submenu_page(
+        'dbvc-configure',
+        'Certified Canonicals',
+        'Certified Canonicals',
+        'manage_options',
+        'dbvc-certified-canonicals',
+        'dbvc_render_certified_canonicals_page'
+    );
+});
+
+function dbvc_render_certified_canonicals_page() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    $options = get_option('dbvc_canonical_authority', []);
+    $defaults = [
+        'authority_url' => '',
+        'auth_method' => 'shared_token',
+        'auth_username' => '',
+        'auth_secret' => '',
+        'site_id' => '',
+        'sync_direction' => 'pull_and_submit',
+        'last_test_at' => '',
+        'last_test_status' => '',
+        'last_sync_at' => '',
+        'last_sync_status' => '',
+    ];
+    $options = wp_parse_args($options, $defaults);
+    ?>
+    <div class="wrap">
+        <h1>Certified Canonicals</h1>
+        <h2 class="nav-tab-wrapper">
+            <a href="#" class="nav-tab nav-tab-active">Authority Site</a>
+            <!-- Future tabs: Object Types, Status Rules, Logs -->
+        </h2>
+        <form method="post" action="options.php">
+            <?php settings_fields('dbvc_settings'); ?>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="authority_url">Authority URL</label></th>
+                    <td><input type="url" id="authority_url" name="dbvc_canonical_authority[authority_url]" value="<?php echo esc_attr($options['authority_url']); ?>" class="regular-text" required></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="auth_method">Auth method</label></th>
+                    <td>
+                        <select id="auth_method" name="dbvc_canonical_authority[auth_method]">
+                            <option value="shared_token" <?php selected($options['auth_method'], 'shared_token'); ?>>Shared Token</option>
+                            <option value="app_password" <?php selected($options['auth_method'], 'app_password'); ?>>Application Password</option>
+                            <option value="oauth" <?php selected($options['auth_method'], 'oauth'); ?>>OAuth</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="auth_username">Username (App Password)</label></th>
+                    <td><input type="text" id="auth_username" name="dbvc_canonical_authority[auth_username]" value="<?php echo esc_attr($options['auth_username']); ?>" class="regular-text"></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="auth_secret">Secret/Token</label></th>
+                    <td><input type="password" id="auth_secret" name="dbvc_canonical_authority[auth_secret]" value="<?php echo esc_attr($options['auth_secret']); ?>" class="regular-text" required></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="site_id">Site ID (optional)</label></th>
+                    <td><input type="text" id="site_id" name="dbvc_canonical_authority[site_id]" value="<?php echo esc_attr($options['site_id']); ?>" class="regular-text"></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sync_direction">Sync direction</label></th>
+                    <td>
+                        <select id="sync_direction" name="dbvc_canonical_authority[sync_direction]">
+                            <option value="pull_only" <?php selected($options['sync_direction'], 'pull_only'); ?>>Pull only</option>
+                            <option value="pull_and_submit" <?php selected($options['sync_direction'], 'pull_and_submit'); ?>>Pull + Submit proposals</option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button(); ?>
+        </form>
+
+        <h2>Status</h2>
+        <table class="widefat striped" style="max-width: 760px;">
+            <tbody>
+                <tr>
+                    <th>Last test status</th>
+                    <td><?php echo esc_html($options['last_test_status']); ?></td>
+                </tr>
+                <tr>
+                    <th>Last test time</th>
+                    <td><?php echo esc_html($options['last_test_at']); ?></td>
+                </tr>
+                <tr>
+                    <th>Last sync status</th>
+                    <td><?php echo esc_html($options['last_sync_status']); ?></td>
+                </tr>
+                <tr>
+                    <th>Last sync time</th>
+                    <td><?php echo esc_html($options['last_sync_at']); ?></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+```
+
 
 ---
 

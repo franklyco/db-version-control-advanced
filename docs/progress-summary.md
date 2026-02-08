@@ -60,6 +60,9 @@
    - Import/export guards prevent sync folder wipes during post saves and imports.
    - Deletion handling now cleans JSONs and entity registry rows for posts/terms, with trash-aware status updates for posts and attachments.
    - Media deletes now clear `dbvc_media_index` and remove bundled files under `sync/media/...`.
+18. **Admin App Resilience**
+   - Added an error boundary around the React admin app so render-time errors no longer crash the entire UI.
+   - Client-side crashes are logged via the new `/logs/client` REST endpoint to the DBVC file log and activity table for troubleshooting.
 ## Remaining / Next Steps
 1. **Term & Taxonomy Entity Polish**
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.

@@ -1534,8 +1534,51 @@ function dbvc_render_export_page()
   }
 
 ?>
-  <div class="wrap">
-    <h1><?php esc_html_e('DB Version Control', 'dbvc'); ?></h1>
+  <style>
+    .dbvc-core-toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px 0;
+    }
+    .dbvc-core-toggle {
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 1px solid #c3c4c7;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      padding: 0;
+    }
+    .dbvc-core-toggle:focus {
+      outline: 2px solid #2271b1;
+      outline-offset: 2px;
+    }
+    .dbvc-core-wrap.is-collapsed > :not(.dbvc-core-toggle-row) {
+      display: none !important;
+    }
+    .dbvc-core-wrap.is-collapsed {
+      min-height: 36px;
+    }
+  </style>
+  <div class="wrap dbvc-core-wrap" id="dbvc-core-wrap">
+    <div class="dbvc-core-toggle-row">
+      <button
+        type="button"
+        class="dbvc-core-toggle"
+        id="dbvc-core-toggle"
+        aria-controls="dbvc-core-wrap"
+        aria-expanded="true"
+        title="<?php echo esc_attr__('Toggle core controls', 'dbvc'); ?>">
+        <span class="dashicons dashicons-minus" aria-hidden="true"></span>
+        <span class="screen-reader-text"><?php esc_html_e('Toggle core controls', 'dbvc'); ?></span>
+      </button>
+      <h1><?php esc_html_e('DB Version Control', 'dbvc'); ?></h1>
+    </div>
 
     <div class="dbvc-tabs" data-dbvc-tabs>
       <nav class="dbvc-tabs__nav" role="tablist" aria-label="<?php esc_attr_e('DBVC Sections', 'dbvc'); ?>">
@@ -3731,6 +3774,46 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
       }
 
     });
+
+    (function() {
+      var wrap = document.getElementById('dbvc-core-wrap');
+      var toggle = document.getElementById('dbvc-core-toggle');
+      if (! wrap || ! toggle) {
+        return;
+      }
+
+      var storageKey = 'dbvc_core_collapsed';
+      var savedState = null;
+      try {
+        savedState = window.localStorage.getItem(storageKey);
+      } catch (e) {
+        savedState = null;
+      }
+      if (savedState === '1') {
+        wrap.classList.add('is-collapsed');
+        toggle.setAttribute('aria-expanded', 'false');
+        var savedIcon = toggle.querySelector('.dashicons');
+        if (savedIcon) {
+          savedIcon.classList.add('dashicons-plus');
+          savedIcon.classList.remove('dashicons-minus');
+        }
+      }
+
+      toggle.addEventListener('click', function() {
+        var collapsed = wrap.classList.toggle('is-collapsed');
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        var icon = toggle.querySelector('.dashicons');
+        if (icon) {
+          icon.classList.toggle('dashicons-plus', collapsed);
+          icon.classList.toggle('dashicons-minus', ! collapsed);
+        }
+        try {
+          window.localStorage.setItem(storageKey, collapsed ? '1' : '0');
+        } catch (e) {
+          // ignore storage failures
+        }
+      });
+    })();
   </script>
 <?php
 }

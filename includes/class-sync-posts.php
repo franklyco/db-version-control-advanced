@@ -1199,7 +1199,7 @@ HT;
 
             if (($entry['item_type'] ?? '') === 'post') {
                 $proposal_processed = true;
-                $tmp = wp_tempnam();
+                $tmp = self::get_temp_file();
                 if (! $tmp) {
                     $errors[] = sprintf(__('Failed to create temp file for %s', 'dbvc'), $entry['path']);
                     continue;
@@ -1475,7 +1475,7 @@ HT;
             } elseif (($entry['item_type'] ?? '') === 'menus') {
                 $payload = json_decode(file_get_contents($path), true);
                 if (! empty($payload) && is_array($payload)) {
-                    $tmp = wp_tempnam();
+                    $tmp = self::get_temp_file();
                     if ($tmp && file_put_contents($tmp, wp_json_encode($payload)) !== false) {
                         // Temporarily place file in sync dir for existing importer to reuse.
                         $sync_dir = trailingslashit(dbvc_get_sync_path());
@@ -1601,6 +1601,25 @@ HT;
     public static function get_total_export_post_count()
     {
         return self::wp_count_posts_by_type(self::get_supported_post_types());
+    }
+
+    /**
+     * Create a temporary file path that works even when wp_tempnam is unavailable.
+     *
+     * @return string|false
+     */
+    private static function get_temp_file()
+    {
+        if (function_exists('wp_tempnam')) {
+            return wp_tempnam();
+        }
+
+        $dir = sys_get_temp_dir();
+        if (! is_dir($dir) || ! is_writable($dir)) {
+            return false;
+        }
+
+        return tempnam($dir, 'dbvc_');
     }
 
     /* Import taxonomy inputs based on post meta
@@ -4035,7 +4054,7 @@ $acf_relationship_fields = [
             wp_die(__('Sync directory does not exist.', 'dbvc'));
         }
 
-        $tmp_zip = wp_tempnam();
+        $tmp_zip = self::get_temp_file();
         $zip     = new ZipArchive();
 
         if (true !== $zip->open($tmp_zip, ZipArchive::OVERWRITE)) {
@@ -4213,7 +4232,7 @@ $acf_relationship_fields = [
             $open_result = $zip->open($tmp);
 
             if ($open_result === true) {
-                $tmp_dir = trailingslashit(wp_tempnam() . '-extract');
+                $tmp_dir = trailingslashit(self::get_temp_file() . '-extract');
                 wp_mkdir_p($tmp_dir);
 
                 if ($zip->extractTo($tmp_dir)) {

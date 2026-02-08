@@ -5,14 +5,14 @@
 This guide summarizes how to work on the DB Version Control admin React app safely. Use it alongside `docs/REFRACTOR.md`, `README.md`, and the existing WordPress build docs.
 
 ## Repo Layout & Generated Assets
-- Source JS/CSS lives under `src/admin-app/**` (goal of the refactor). The current compiled bundle is `src/admin-app/index.js` (legacy) with output at `build/admin-app.js`.
+- Source JS/CSS lives under `src/admin-app/**` (goal of the refactor). The current compiled bundle is `src/admin-app/index.js` (core) with output at `build/admin-app.js`.
 - Before editing, tag or copy the current bundle (`git tag refactor-backup-<date>`, archive `build/admin-app.js`) so a working reference exists.
 - Never edit `build/*.js` directly; always run `npm run build` to regenerate artifacts.
 - Drop anonymized QA bundles under `docs/fixtures/` (see `docs/fixtures/README.md`). Use the “Dev upload” option in the admin uploader to copy new ZIPs there when you need refreshed fixtures.
 
 ## Workflow & Branching
 1. Create a feature branch per epic/sub-epic (e.g., `feature/resolver-bulk-refactor`).
-2. Keep `main` using the legacy bundle until the modular replacement reaches parity.
+2. Keep `main` using the core bundle until the modular replacement reaches parity.
 3. Update `docs/REFRACTOR.md` when you start/finish a sub-step (status + QA notes).
 4. Run lint/tests + manual QA (see Testing Matrix) before opening a PR.
 5. Use feature flag `DBVC_USE_MODULAR_APP` (see below) to toggle between bundles in dev/staging.

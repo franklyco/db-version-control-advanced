@@ -441,6 +441,16 @@ final class DBVC_Admin_App
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/logs/client',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'log_client_error'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
     }
 
     /**
@@ -3130,6 +3140,26 @@ final class DBVC_Admin_App
             $result = DBVC_Sync_Posts::import_backup($proposal_id, $import_options);
         }
         if (is_wp_error($result)) {
+            if (class_exists('DBVC_Sync_Logger')) {
+                DBVC_Sync_Logger::log('Proposal apply failed', [
+                    'proposal' => $proposal_id,
+                    'mode'     => $mode,
+                    'error'    => $result->get_error_message(),
+                    'code'     => $result->get_error_code(),
+                ]);
+            }
+            if (class_exists('DBVC_Database') && method_exists('DBVC_Database', 'log_activity')) {
+                DBVC_Database::log_activity(
+                    'proposal_apply_failed',
+                    'error',
+                    $result->get_error_message(),
+                    [
+                        'proposal' => $proposal_id,
+                        'mode'     => $mode,
+                        'code'     => $result->get_error_code(),
+                    ]
+                );
+            }
             $status = 500;
             $error_data = $result->get_error_data();
             if (is_array($error_data) && isset($error_data['status'])) {
@@ -3163,13 +3193,39 @@ final class DBVC_Admin_App
 
         $status_after = ($summary_after['total'] ?? 0) === 0 ? 'closed' : 'draft';
 
+        $errors = isset($result['errors']) && is_array($result['errors'])
+            ? array_map('strval', $result['errors'])
+            : [];
+
+        if (! empty($errors)) {
+            if (class_exists('DBVC_Sync_Logger')) {
+                DBVC_Sync_Logger::log('Proposal apply completed with errors', [
+                    'proposal' => $proposal_id,
+                    'mode'     => $mode,
+                    'errors'   => $errors,
+                ]);
+            }
+            if (class_exists('DBVC_Database') && method_exists('DBVC_Database', 'log_activity')) {
+                DBVC_Database::log_activity(
+                    'proposal_apply_completed_with_errors',
+                    'warning',
+                    'Proposal apply completed with errors.',
+                    [
+                        'proposal' => $proposal_id,
+                        'mode'     => $mode,
+                        'errors'   => $errors,
+                    ]
+                );
+            }
+        }
+
         $response = [
             'proposal_id'         => $proposal_id,
             'mode'                => $mode,
             'result'              => [
                 'imported'       => isset($result['imported']) ? (int) $result['imported'] : 0,
                 'skipped'        => isset($result['skipped']) ? (int) $result['skipped'] : 0,
-                'errors'         => array_map('strval', isset($result['errors']) && is_array($result['errors']) ? $result['errors'] : []),
+                'errors'         => $errors,
                 'media'          => isset($result['media']) ? $result['media'] : [],
                 'media_resolver' => isset($result['media_resolver']) ? $result['media_resolver'] : [],
                 'media_reconcile'=> isset($result['media_reconcile']) ? $result['media_reconcile'] : [],
@@ -4785,6 +4841,48 @@ final class DBVC_Admin_App
 
         return new \WP_REST_Response([
             'status' => 'cleared',
+        ]);
+    }
+
+    /**
+     * Capture client-side app errors for logging.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public static function log_client_error(\WP_REST_Request $request)
+    {
+        $message = sanitize_text_field((string) $request->get_param('message'));
+        $stack   = sanitize_textarea_field((string) $request->get_param('stack'));
+        $component_stack = sanitize_textarea_field((string) $request->get_param('componentStack'));
+        $path    = sanitize_text_field((string) $request->get_param('path'));
+        $context = sanitize_text_field((string) $request->get_param('context'));
+
+        $payload = [
+            'context'        => $context,
+            'path'           => $path,
+            'stack'          => $stack,
+            'componentStack' => $component_stack,
+        ];
+
+        if (class_exists('DBVC_Sync_Logger')) {
+            DBVC_Sync_Logger::log('Admin app error boundary captured an error', array_merge(
+                ['message' => $message],
+                array_filter($payload)
+            ));
+        }
+
+        if (class_exists('DBVC_Database') && method_exists('DBVC_Database', 'log_activity')) {
+            DBVC_Database::log_activity(
+                'admin_app_error',
+                'error',
+                $message,
+                array_filter($payload)
+            );
+        }
+
+        return new \WP_REST_Response([
+            'logged' => true,
         ]);
     }
 
