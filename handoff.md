@@ -22,7 +22,7 @@ _Last updated: 2025-11-06 (America/New_York)_
 - **Identity layer** — ✅ Shipped. Posts/terms/attachments receive `vf_object_uid`/`vf_asset_uid`, persisted via `DBVC_Sync_Posts` hooks + `wp_dbvc_entities`.
 - **Media resolver** — ✅ Live resolver (`DBVC_Media_Sync` + resolver REST) handles duplicates, downloads, and global rules; duplicate blocking + cleanup APIs enforced in the React app.
 - **Exporter / Diff / REST + React UI / Official collections** — ✅ Exporter + manifest writer + React workflow are production-ready (proposal upload, diff review, Accept/Keep, resolver tooling). Official “collections” export remains future work.
-- **Apply & CLI parity** — ✅ Apply pipeline honours decisions/duplicates/new-entity gating; CLI parity for the new workflow is still pending (legacy WP-CLI commands remain available).
+- **Apply & CLI parity** — ✅ Apply pipeline honours decisions/duplicates/new-entity gating; WP-CLI now ships `dbvc proposals` commands for list/upload/apply flows.
 
 ---
 
@@ -36,7 +36,7 @@ _Last updated: 2025-11-06 (America/New_York)_
 4. **Diff engine** (type-aware comparisons for core/meta/ACF/blocks/tax). _Status: ✅ Complete (entity snapshots + React diff + Accept/Keep pipeline)_  
 5. **REST + UI** (proposal list → drill-down → per-field accept/keep). _Status: ✅ Complete (React admin app, duplicate modal, new-entity gating)_  
 6. **Official collections & export** (snapshot store + zip export). _Status: planned_  
-7. **Apply engine + CLI parity** (write decisions; strategies; logs). _Status: 🚧 Apply is live; CLI parity pending._  
+7. **Apply engine + CLI parity** (write decisions; strategies; logs). _Status: ✅ Apply + CLI workflows complete (automation enhancements + resolver CLI surface still planned)._  
 8. **Hardening** (perf, security, tests). _Status: ongoing_
 
 ---
@@ -203,6 +203,8 @@ _Term example line_
   ]
 }
 ```
+
+**Term snapshot parity.** Snapshot capture now ingests taxonomy entities alongside posts so reopened proposals diff real local term data. Any proposal uploaded before this change still lacks term snapshots; rerun `DBVC_Snapshot_Manager::capture_for_proposal($proposal_id, $manifest)` (or re-upload the zip) so Accept/Keep gating, duplicate overlays, and “hash match” logic use the new snapshots instead of assuming every term is new.
 
 ---
 
@@ -744,3 +746,44 @@ This document is formatted for direct inclusion in your Codex/README or as inlin
 - **Resolver rule form QoL**: new rules pre-fill the last attachment ID and flag duplicate IDs before submission, reducing accidental conflicts.
 - **Media preview backlog**: groundwork is in place to show proposed/current thumbnails, but we need another iteration to handle differing sync paths and oversized assets before enabling it by default.
 - **Review-only mode**: Configure → Import Defaults now exposes “Require DBVC Proposal review” so admins can disable the legacy Run Import form and force every change through the new React diff/resolver workflow.
+## 6) Official Collections & Export
+
+### Current Implementation
+- **Schema & storage** — `DBVC_Database` now provisions `wp_dbvc_collections` + `wp_dbvc_collection_items` (schema version 3). Each collection stores proposal metadata, release notes, manifest/archive paths, and counts. Items table tracks every entity UID + decision + snapshot reference.
+- **PHP helper** — `Dbvc\Official\Collections::mark_official($proposal_id, $entities, $meta)` validates input, copies manifests/zips into `uploads/dbvc/official/collection-{id}/`, and writes normalized entity snapshots to `entities/{vf_object_uid}.json`. Additional helpers (`Collections::get()`, `Collections::query()`) will feed REST + CLI surfaces.
+- **Directory layout** — Base folder `uploads/dbvc/official/` stays locked down via `DBVC_Sync_Posts::ensure_directory_security`. Each collection gets its own `collection-{id}/` folder plus nested `entities/` (JSON snapshots) alongside archived manifest/zip copies.
+- **Metadata blob** — `notes` column stores JSON for release notes + tags; `checksum` is available for future download integrity checks. Pass `media_count`, `manifest_path`, and `archive_path` into `mark_official()` so downstream automation knows what was bundled.
+
+### Purpose
+- Allow reviewers to "mark official" once a proposal is fully vetted, generating a curated collection ZIP stored in `uploads/dbvc/official/`.
+- Collections encapsulate the final manifest + entity decisions so downstream sites can import the approved state without re-reviewing.
+- Provide UI + CLI paths to promote, download, list, and revoke official collections.
+
+### Proposed Workflow
+1. **Promotion**
+   - From the Proposal Review UI, add a "Mark Official" action once resolver/new-entity counts hit zero.
+   - Prompt for collection metadata (title, release notes, tags).
+   - Persist metadata + manifest snapshot in a new table (`wp_dbvc_collections`) and copy bundle assets into `/uploads/dbvc/official/{collection_id}`.
+2. **Storage & Metadata**
+   - `wp_dbvc_collections`: id, proposal_id, title, status (draft/published), created_at, created_by, notes JSON (tags, changelog), manifest_path, entities_count, media_count.
+   - Optionally `wp_dbvc_collection_items` mirroring manifest rows for quick lookup/search.
+3. **Download / Distribution**
+   - UI tab to list collections with filters (status, tag, created_at). Provide download links + checksum and expose publish toggles for sharing.
+   - Add signed download URLs (nonce-limited) so vetted bundles can be consumed without giving full admin access.
+4. **Import Parity**
+   - Collections ZIP mirrors proposal structure but includes an `official.json` descriptor summarizing who approved it and when.
+   - CLI: `wp dbvc collections list|promote|download|delete` reuses the same APIs for automation.
+5. **Revocation / Updates**
+   - Allow deleting a collection or re-promoting a proposal, creating versioned releases (e.g., v1, v2).
+   - Keep an audit trail (link to activity log) noting who marked it official and when.
+6. **UI/REST Surface**
+   - REST endpoints under `/dbvc/v1/collections` (list, create from proposal, update status, delete, download tokens).
+   - Admin app surfaces collection details on the proposal sidebar and on a dedicated tab next to Snapshots.
+   - Snapshot list references any collections derived from that run for traceability.
+
+### Next Steps
+- Wire the new storage layer into the React UI, REST endpoints, and WP-CLI so reviewers can promote proposals and download the resulting bundles without touching PHP.
+- React components (Promote modal, Collections list table, detail drawer with download/publish controls).
+- REST controllers + capability checks (`manage_options`).
+- WP-CLI parity (`wp dbvc collections ...`).
+- Documentation updates + automated tests covering promotion, download, and import of official bundles.

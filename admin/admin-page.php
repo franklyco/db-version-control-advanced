@@ -1459,6 +1459,10 @@ function dbvc_render_export_page()
 
       <div class="dbvc-tabs__panels">
         <section id="tab-import" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-import' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-import" role="tabpanel" aria-labelledby="dbvc-nav-tab-import" <?php echo $active_main_tab === 'tab-import' ? '' : 'hidden'; ?>>
+        <?php
+        $masking_doc_url  = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking.md';
+        $masking_plan_url = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking-plan.md';
+        ?>
         <div class="dbvc-subtabs" data-dbvc-subtabs>
           <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import subsections', 'dbvc'); ?>">
 <?php foreach ($import_subtabs as $panel_id => $label) :
@@ -2939,160 +2943,189 @@ document.addEventListener('DOMContentLoaded', function () {
 <?php endif; ?>
         </section>
 
-        <section id="tab-docs" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-docs' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-docs" role="tabpanel" aria-labelledby="dbvc-nav-tab-docs" <?php echo $active_main_tab === 'tab-docs' ? '' : 'hidden'; ?>>
+                <section id="tab-docs" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-docs' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-docs" role="tabpanel" aria-labelledby="dbvc-nav-tab-docs" <?php echo $active_main_tab === 'tab-docs' ? '' : 'hidden'; ?>>
       <div class="dbvc-docs">
         <header class="dbvc-docs__header">
           <h2><?php esc_html_e('Docs & Workflows', 'dbvc'); ?></h2>
-          <p class="dbvc-docs__summary"><?php esc_html_e('Quick-reference walkthroughs for exporting, importing, bundling media, and monitoring DBVC runs.', 'dbvc'); ?></p>
+          <p><?php esc_html_e('Use these runbooks to configure DBVC, review proposals inside the UI, and monitor pipelines without leaving WordPress.', 'dbvc'); ?></p>
         </header>
 
-        <nav class="dbvc-docs__quick-links" aria-label="<?php esc_attr_e('Documentation sections', 'dbvc'); ?>">
-          <a href="#dbvc-docs-admin-app"><?php esc_html_e('Admin App Overview', 'dbvc'); ?></a>
-          <a href="#dbvc-docs-terms"><?php esc_html_e('Taxonomy & Term Workflow', 'dbvc'); ?></a>
-          <a href="#dbvc-docs-scenarios"><?php esc_html_e('Example Scenarios', 'dbvc'); ?></a>
-          <a href="#dbvc-docs-monitoring"><?php esc_html_e('Monitoring & Logs', 'dbvc'); ?></a>
-          <a href="#dbvc-docs-developer"><?php esc_html_e('Developer Integration', 'dbvc'); ?></a>
-          <a href="#dbvc-docs-considerations"><?php esc_html_e('Key Considerations', 'dbvc'); ?></a>
-        </nav>
+        <div class="dbvc-subtabs" data-dbvc-subtabs>
+          <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Documentation subsections', 'dbvc'); ?>">
+            <button class="dbvc-subtabs-nav__item is-active" data-dbvc-subtab="docs-overview" role="tab" aria-selected="true"><?php esc_html_e('Overview & Quick Start', 'dbvc'); ?></button>
+            <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-proposals" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Proposal Review Workflow', 'dbvc'); ?></button>
+            <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-media" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Media & Resolver', 'dbvc'); ?></button>
+            <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-snapshots" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Snapshots & Backups', 'dbvc'); ?></button>
+            <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-monitoring" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Monitoring & Logs', 'dbvc'); ?></button>
+            <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-automation" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Automation & Extensions', 'dbvc'); ?></button>
+          </nav>
 
-        <article class="dbvc-docs__section" id="dbvc-docs-admin-app">
-          <h3><?php esc_html_e('Admin App Overview', 'dbvc'); ?></h3>
-          <p class="dbvc-docs__summary">
-            <?php esc_html_e('The new DBVC Admin App brings the entire review workflow—entity diffs, resolver decisions, bulk tooling, and apply history—into one React experience.', 'dbvc'); ?>
-          </p>
-          <div class="dbvc-docs__card">
-            <ul class="dbvc-docs__list">
-              <li><?php esc_html_e('Entity Detail Drawer: Inspect diffs without leaving the table, toggle conflict-only view, and apply bulk accept/keep actions for posts and terms (taxonomy, slug, and parent context included).', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Resolver Workbench: Compare proposed vs current media, make per-asset decisions (reuse, download, skip), and batch-apply rules by reason, asset UID, or manifest path.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Global Resolver Rules: Inline add/edit forms with CSV import/export, duplicate detection, and search so recurring conflicts are settled once.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Virtualized Entity Table: Instant filtering/search across hundreds of entities without browser slowdown.', 'dbvc'); ?></li>
-            </ul>
-          </div>
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('Share-ready summary', 'dbvc'); ?></h4>
-            <p>
-              <?php esc_html_e('DBVC vNext gives teams a purpose-built “git for content” UI: reviewers browse diffs, flag conflicts, and sign off media decisions before a single row touches production. Restore safety nets stay in place, but now the entire review runs inside WordPress—with hashes, media checks, and resolver history baked in.', 'dbvc'); ?>
-            </p>
-            <p>
-              <?php esc_html_e('For agencies or distributed teams, it means faster handoffs: export → review → apply becomes one continuous workflow, complete with logs, notifications, and snapshots. It’s the bridge between design/dev environments and editorial production without bolting on extra services.', 'dbvc'); ?>
-            </p>
-          </div>
-        </article>
+          <div class="dbvc-subtabs-panels">
+            <div class="dbvc-docs-panel is-active" data-dbvc-subpanel="docs-overview">
+              <article class="dbvc-docs__section">
+                <h3><?php esc_html_e('Overview & Quick Start', 'dbvc'); ?></h3>
+                <p class="dbvc-docs__summary"><?php esc_html_e('The entire workflow happens inside DBVC → Export: configure, export, upload proposals, review diffs, and apply changes.', 'dbvc'); ?></p>
+                <ol class="dbvc-docs__steps">
+                  <li><?php esc_html_e('Configure → Import Defaults: pick post types/taxonomies, enable identity backfill, configure media transport, and decide if proposals should be required.', 'dbvc'); ?></li>
+                  <li><?php esc_html_e('Export/Download: run a full, diff, or chunked export. Each run writes manifest.json, entities.jsonl, and optional media bundles into uploads/dbvc.', 'dbvc'); ?></li>
+                  <li><?php esc_html_e('Open Proposal Review: upload the bundle, resolve duplicates, clear resolver conflicts, and Accept/Keep field-level diffs until nothing remains.', 'dbvc'); ?></li>
+                  <li><?php esc_html_e('Apply: choose full or partial mode, optionally ignore missing hashes, and let the importer honor every Accept/Keep decision.', 'dbvc'); ?></li>
+                </ol>
+                <p><?php esc_html_e('Enable “Require DBVC proposal review” as soon as the team is ready so the legacy import form stays hidden and every change flows through proposals.', 'dbvc'); ?></p>
+              </article>
+            </div>
 
-        <article class="dbvc-docs__section" id="dbvc-docs-terms">
-          <h3><?php esc_html_e('Taxonomy & Term Workflow', 'dbvc'); ?></h3>
-          <p class="dbvc-docs__summary">
-            <?php esc_html_e('Terms now flow through the exact same export → review → import pipeline as posts, complete with hierarchy awareness and dedicated logging.', 'dbvc'); ?>
-          </p>
-          <div class="dbvc-docs__card">
-            <ul class="dbvc-docs__list">
-              <li><?php esc_html_e('Exporter writes `entity_refs` (UID + taxonomy/slug fallbacks) and `parent_uid` so the importer can recover matches even when only slugs exist.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Entity table + drawer display taxonomy, slug (`taxonomy/slug`), parent info, Accept/Keep status, and resolver badges for term entities.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Importer resolves parents via UID/slug/ID and queues unresolved parents for a second pass so child terms always attach to the correct hierarchy.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Configure → Import now includes “Include term-specific events in import logs” to capture detailed match/apply messages (requires logging to be enabled).', 'dbvc'); ?></li>
-            </ul>
-          </div>
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('QA checklist', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Export a proposal with new + existing terms; confirm manifests list `entity_refs` and `parent_uid`.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Review in the Admin App, verifying taxonomy/parent context and Accept/Keep gating for new terms.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Run the import; inspect logs (when enabled) for term match, skip, and parent-resolve entries.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Reopen the proposal to ensure previously accepted terms remain marked for import.', 'dbvc'); ?></li>
-            </ol>
-          </div>
-        </article>
+            <div class="dbvc-docs-panel" data-dbvc-subpanel="docs-proposals">
+              <article class="dbvc-docs__section">
+                <h3><?php esc_html_e('Proposal Review Workflow', 'dbvc'); ?></h3>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Upload & Staging', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Use “Upload proposal” to select a ZIP. DBVC validates schema, resolver metadata, and duplication before staging.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Bundles live in uploads/dbvc/{proposal-id}. Delete old proposals from the list to reclaim space.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Snapshots capture immediately so the diff drawer compares live data against the manifest—even for older proposals once you recapture.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Duplicate Gating', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('If multiple JSON files point at the same UID, the overlay blocks review until a canonical file is chosen.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Bulk cleanup asks for DELETE confirmation to guard against accidental removal. Once complete, DBVC rewrites manifest entries.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Use the duplicate report link to audit what changed; it’s always available from the proposal status pill.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Resolver Pass', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Conflicts are grouped by reason (missing bundle, duplicate hash, remote download error). Filter, bulk-select, or drill into a single attachment.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Pick reuse/download/skip/map per attachment. Toggle “remember globally” to add the decision to dbvc_resolver_decisions for future proposals.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Resolver metrics feed the proposal list so you can block applies until everything is resolved.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Entity Drawer & Decisions', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Keyboard shortcuts (A/K) and a section navigator make large diffs manageable. Accept/Keep per field, including blocks, meta, tax, and term data.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('New entities require explicit approval. Click “Accept new entity” for posts or terms before applying or they will be skipped.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Media badges appear inline so you can jump directly into the resolver for the entity you are reviewing.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Apply & Reset', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Apply once the status pill shows “0 pending”. Choose Full/Partial mode and whether to ignore missing hashes (useful for legacy content).', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Enable Auto-clear Decisions to wipe Accept/Keep selections after import so the proposal starts fresh if you reopen it later.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Configure → Import Defaults includes “Force reapply new posts/terms” to automatically restore approved inserts when reopening proposals.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Tools Panel & Masking', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Use the “Tools” pill above the entity table to open the inline toolbox containing resolver metrics, hash sync shortcuts, and the meta masking controls.', 'dbvc'); ?></li>
+                    <li><?php
+                      printf(
+                        wp_kses(
+                          __('Review the %1$s for step-by-step masking guidance (ignore, auto-accept & suppress, override) plus tooltip copy.', 'dbvc'),
+                          ['a' => ['href' => [], 'target' => [], 'rel' => []]]
+                        ),
+                        '<a href="' . esc_url($masking_doc_url) . '" target="_blank" rel="noreferrer">' . esc_html__('Masking Guide', 'dbvc') . '</a>'
+                      );
+                    ?></li>
+                    <li><?php
+                      printf(
+                        wp_kses(
+                          __('Need implementation details? See the %1$s for REST endpoints, importer hooks, and UI plans.', 'dbvc'),
+                          ['a' => ['href' => [], 'target' => [], 'rel' => []]]
+                        ),
+                        '<a href="' . esc_url($masking_plan_url) . '" target="_blank" rel="noreferrer">' . esc_html__('Masking reference plan', 'dbvc') . '</a>'
+                      );
+                    ?></li>
+                  </ul>
+                </div>
+              </article>
+            </div>
 
-        <article class="dbvc-docs__section" id="dbvc-docs-scenarios">
-          <h3><?php esc_html_e('Example Scenarios', 'dbvc'); ?></h3>
-          <p class="dbvc-docs__summary"><?php esc_html_e('Common UI flows with matching CLI notes where available.', 'dbvc'); ?></p>
+            <div class="dbvc-docs-panel" data-dbvc-subpanel="docs-media">
+              <article class="dbvc-docs__section">
+                <h3><?php esc_html_e('Media & Resolver', 'dbvc'); ?></h3>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Transport Modes & Bundles', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Configure → Media Handling centralizes Auto, Bundle-only, and Remote-only modes. Auto prefers bundles and falls back to remote URLs.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Exports with bundling copy hashed files into sync/media/YYYY/MM and record the hashes in manifest.json.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Use “Clear media cache” to rebuild bundles after moving storage paths or when you need a fresh export.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Global Resolver Rules', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Manage global rules within the UI: search, filter, add/edit inline, or import/export CSV to share with other environments.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Per-proposal decisions are stored alongside the ZIP and reloaded whenever you reopen the proposal.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Every resolver decision is logged with timestamps so you can audit why assets were reused, downloaded, or skipped.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Term & Attachment Snapshots', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Snapshots now capture terms alongside posts. Use “Recapture snapshots” from the proposal list for bundles created before term parity shipped.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Resolver badges show per-entity conflicts (including taxonomy media references) so reviewers can filter by attachment status.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('During Apply, resolver metrics are printed so you know exactly how many attachments were reused, downloaded, or skipped.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+              </article>
+            </div>
 
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('1. Full Site Export (UI)', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Open DBVC Export → Export/Download → Full Export.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Review filename format, masking, and mirror settings.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Click Run Full Export to regenerate JSON in the sync folder.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Commit or download the updated sync directory for your target site.', 'dbvc'); ?></li>
-            </ol>
-          </div>
+            <div class="dbvc-docs-panel" data-dbvc-subpanel="docs-snapshots">
+              <article class="dbvc-docs__section">
+                <h3><?php esc_html_e('Snapshots & Backups', 'dbvc'); ?></h3>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Snapshots Tab', 'dbvc'); ?></h4>
+                  <ol class="dbvc-docs__steps">
+                    <li><?php esc_html_e('Open the Snapshots tab to see finished exports/imports, chunked jobs, and their manifests.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Click any snapshot to preview manifest metadata, counts, and bundle statistics before restoring.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Use “Restore snapshot” to copy JSON/media back into the sync directory for reruns or local debugging.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Need to share with another team? Download the bundle directly from the same table.', 'dbvc'); ?></li>
+                  </ol>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Integrity & Recovery', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('wp_dbvc_snapshots and wp_dbvc_snapshot_items store structured metadata so BI tools can plot changes over time.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Manifest hashes + media index ensure exports match imports. “Missing import hash” counters tell you when posts need re-exporting.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('When relocating storage, update the sync path under Configure → Paths and regenerate bundles to avoid stale references.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+              </article>
+            </div>
 
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('2. Differential Export Between Releases', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Go to Export/Download → Snapshots & Diff.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Select a baseline snapshot or choose the latest full export.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Click Run Diff Export to write only changed JSON files and register a snapshot.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Commit just the files that changed; unchanged content is skipped automatically.', 'dbvc'); ?></li>
-            </ol>
-            <p class="dbvc-docs__note"><?php esc_html_e('CLI equivalent:', 'dbvc'); ?></p>
-            <pre><code>wp dbvc export --baseline=latest
-wp dbvc export --baseline=123</code></pre>
-          </div>
+            <div class="dbvc-docs-panel" data-dbvc-subpanel="docs-monitoring">
+              <article class="dbvc-docs__section">
+                <h3><?php esc_html_e('Monitoring & Logs', 'dbvc'); ?></h3>
+                <p class="dbvc-docs__summary"><?php esc_html_e('Observe every step: UI badges show what’s pending, logs capture what happened, and database tables keep permanent audit trails.', 'dbvc'); ?></p>
+                <ul class="dbvc-docs__list">
+                  <li><strong><?php esc_html_e('Activity log table', 'dbvc'); ?></strong> <code>wp_dbvc_activity_log</code> — <?php esc_html_e('Structured events for exports, imports, resolver passes, and chunk restarts. Ideal for dashboards or automated alerts.', 'dbvc'); ?></li>
+                  <li><strong><?php esc_html_e('File log', 'dbvc'); ?></strong> <code>dbvc-backup.log</code> — <?php esc_html_e('Enable logging in Import Defaults to capture high-level notices. Turn on “Include term-specific events” for term matching details.', 'dbvc'); ?></li>
+                  <li><strong><?php esc_html_e('Logging controls', 'dbvc'); ?></strong> — <?php esc_html_e('Use the Backup tab to toggle logging, change directories, limit file size, and clear logs between deployments.', 'dbvc'); ?></li>
+                  <li><strong><?php esc_html_e('On-screen indicators', 'dbvc'); ?></strong> — <?php esc_html_e('Resolver metrics, pending counts, and Apply summaries mirror the REST responses so reviewers can verify status instantly.', 'dbvc'); ?></li>
+                </ul>
+              </article>
+            </div>
 
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('3. Chunked Export for Large Sites', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Set a chunk size under Snapshots & Diff and click Start Chunked Export.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Process chunks from the job table or resume later via WP-CLI.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('When the processed count reaches zero, the manifest refresh and snapshot entry confirm completion.', 'dbvc'); ?></li>
-            </ol>
-          </div>
-
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('4. Importing JSON into Another Environment', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Pull or upload the sync folder onto the target site.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Open Import/Upload → Content Import.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Choose filename filters, enable Smart Import to skip unchanged records, and toggle media retrieval.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Run the import and review the completion notice for content and media counts.', 'dbvc'); ?></li>
-            </ol>
-          </div>
-
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('5. Mirroring Domains & Media Retrieval', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Configure the mirror domain under Configure → Import Defaults.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Pick a media transport mode: Auto, Bundled only, or Remote only.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Enable Retrieve missing media when running an import to sideload attachments.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Review logs for redirects, hash checks, and any blocked downloads.', 'dbvc'); ?></li>
-            </ol>
-          </div>
-
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('6. Restoring from a Backup Snapshot', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Visit the Backup/Archive tab and select a snapshot folder.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Choose Restore or download the bundle before copying.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Run a standard import after the snapshot repopulates the sync directory.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('If the bundle includes media, ensure the transport mode allows bundled files.', 'dbvc'); ?></li>
-            </ol>
-          </div>
-
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('7. Media Bundles & Validation', 'dbvc'); ?></h4>
-            <ol class="dbvc-docs__steps">
-              <li><?php esc_html_e('Enable media bundling under Configure → Import Defaults.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Run an export to populate sync/media/YYYY/MM/ with hashed copies.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Use Clear Media Cache if you need to rebuild the bundle.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('During import, mismatches are surfaced in the activity log so you can retry.', 'dbvc'); ?></li>
-            </ol>
-          </div>
-        </article>
-
-        <article class="dbvc-docs__section" id="dbvc-docs-monitoring">
-          <h3><?php esc_html_e('Monitoring & Logs', 'dbvc'); ?></h3>
-          <ul class="dbvc-docs__list">
-            <li><strong><?php esc_html_e('Activity log table', 'dbvc'); ?></strong> <code>wp_dbvc_activity_log</code> — <?php esc_html_e('Structured events for exports, imports, chunk progress, and media sync. Query with your database viewer or run', 'dbvc'); ?> <code>wp db query</code>.</li>
-            <li><strong><?php esc_html_e('File log', 'dbvc'); ?></strong> <code>dbvc-backup.log</code> — <?php esc_html_e('Enable in Import Defaults to capture high-level notices. Turn on “Include term-specific events” if you want per-term match/parent logs (requires logging enabled on Backups tab).', 'dbvc'); ?></li>
-            <li><strong><?php esc_html_e('Snapshots & Jobs UI', 'dbvc'); ?></strong> — <?php esc_html_e('The Snapshots view lists completed exports/imports and any active chunked jobs with inline resume controls.', 'dbvc'); ?></li>
-          </ul>
-        </article>
-
-        <article class="dbvc-docs__section" id="dbvc-docs-developer">
-          <h3><?php esc_html_e('Developer Integration', 'dbvc'); ?></h3>
-          <p class="dbvc-docs__summary"><?php esc_html_e('Filters and actions let you tailor exports, masking, and automation.', 'dbvc'); ?></p>
-
+            <div class="dbvc-docs-panel" data-dbvc-subpanel="docs-automation">
+              <article class="dbvc-docs__section">
+                <h3><?php esc_html_e('Automation & Extensions', 'dbvc'); ?></h3>
+                <p class="dbvc-docs__summary"><?php esc_html_e('Once the UI workflow is second nature, mirror it in CI/CD via WP-CLI or extend it with hooks and filters.', 'dbvc'); ?></p>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('CLI Parity Highlights', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><code>wp dbvc proposals list --fail-on-pending --recapture-snapshots</code> <?php esc_html_e('prints resolver/new-entity counts just like the UI and can regenerate snapshots from the command line.', 'dbvc'); ?></li>
+                    <li><code>wp dbvc proposals upload</code> <?php esc_html_e('stages bundles programmatically so CI can seed staging sites before reviewers log in.', 'dbvc'); ?></li>
+                    <li><code>wp dbvc resolver-rules list|add|delete|import</code> <?php esc_html_e('keeps the global resolver rule store in sync across environments.', 'dbvc'); ?></li>
+                    <li><code>wp dbvc proposals list --cleanup-duplicates</code> <?php esc_html_e('runs the duplicate canonicalization routine that the UI surfaces when multiple JSON files share a UID.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Hooks & Filters', 'dbvc'); ?></h4>
 <pre><code>&lt;?php
 add_filter( 'dbvc_supported_post_types', function( $post_types ) {
     $post_types[] = 'my_custom_post_type';
@@ -3108,35 +3141,19 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     // Custom logic after each exported post.
 }, 10, 3 );
 </code></pre>
-        </article>
-
-        <article class="dbvc-docs__section" id="dbvc-docs-considerations">
-          <h3><?php esc_html_e('Key Considerations', 'dbvc'); ?></h3>
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('Security', 'dbvc'); ?></h4>
-            <ul class="dbvc-docs__list">
-              <li><?php esc_html_e('Ensure the sync folder is writable only by trusted processes.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Review masking defaults so exports avoid sensitive data.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Only administrators (manage_options) can run DBVC tools.', 'dbvc'); ?></li>
-            </ul>
+                </div>
+                <div class="dbvc-docs__card">
+                  <h4><?php esc_html_e('Operational Considerations', 'dbvc'); ?></h4>
+                  <ul class="dbvc-docs__list">
+                    <li><?php esc_html_e('Restrict sync directories to trusted system users and purge sensitive bundles once projects wrap.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Use chunked exports/imports for massive datasets; resume from Snapshots if jobs pause.', 'dbvc'); ?></li>
+                    <li><?php esc_html_e('Hash mismatches usually indicate stale exports. Re-run exports or snapshot recapture before applying to production.', 'dbvc'); ?></li>
+                  </ul>
+                </div>
+              </article>
+            </div>
           </div>
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('Performance', 'dbvc'); ?></h4>
-            <ul class="dbvc-docs__list">
-              <li><?php esc_html_e('Chunked exports and imports prevent timeouts on large datasets.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Built-in delays (0.1s export, 0.25s import) smooth out server load.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Snapshots record counts so you can track impact between runs.', 'dbvc'); ?></li>
-            </ul>
-          </div>
-          <div class="dbvc-docs__card">
-            <h4><?php esc_html_e('Data Integrity', 'dbvc'); ?></h4>
-            <ul class="dbvc-docs__list">
-              <li><?php esc_html_e('Hashes in manifest.json and the media index detect mismatched files.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Backups can restore JSON, manifests, and bundled media together.', 'dbvc'); ?></li>
-              <li><?php esc_html_e('Rebuild bundles after moving media outside the sync path to avoid stale assets.', 'dbvc'); ?></li>
-            </ul>
-          </div>
-        </article>
+        </div>
       </div>
     </section>
 

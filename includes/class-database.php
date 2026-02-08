@@ -15,7 +15,7 @@ if (! defined('WPINC')) {
 if (! class_exists('DBVC_Database')) {
     class DBVC_Database
     {
-        const SCHEMA_VERSION = 2;
+        const SCHEMA_VERSION = 3;
         const OPTION_SCHEMA_VERSION = 'dbvc_schema_version';
 
         /**
@@ -72,6 +72,8 @@ if (! class_exists('DBVC_Database')) {
             $media_index = self::table_name('media_index');
             $jobs = self::table_name('jobs');
             $activity = self::table_name('activity_log');
+            $collections = self::table_name('collections');
+            $collection_items = self::table_name('collection_items');
 
             $sql = [];
 
@@ -163,6 +165,39 @@ if (! class_exists('DBVC_Database')) {
                 KEY job_id (job_id)
             ) {$charset_collate};";
 
+            $sql[] = "CREATE TABLE {$collections} (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                proposal_id varchar(191) NOT NULL DEFAULT '',
+                title varchar(191) NOT NULL,
+                status varchar(20) NOT NULL DEFAULT 'draft',
+                notes longtext NULL,
+                manifest_path text,
+                archive_path text,
+                checksum varchar(64) DEFAULT NULL,
+                entities_count int unsigned NOT NULL DEFAULT 0,
+                media_count int unsigned NOT NULL DEFAULT 0,
+                created_at datetime NOT NULL,
+                created_by bigint(20) unsigned DEFAULT NULL,
+                PRIMARY KEY  (id),
+                KEY proposal_status (proposal_id, status),
+                KEY created_at (created_at)
+            ) {$charset_collate};";
+
+            $sql[] = "CREATE TABLE {$collection_items} (
+                id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                collection_id bigint(20) unsigned NOT NULL,
+                entity_uid varchar(64) NOT NULL,
+                entity_type varchar(32) NOT NULL DEFAULT 'post',
+                entity_label varchar(191) DEFAULT NULL,
+                decision varchar(20) NOT NULL DEFAULT 'accept',
+                snapshot_path text,
+                payload longtext,
+                created_at datetime NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY collection_entity (collection_id, entity_uid),
+                KEY entity_uid (entity_uid)
+            ) {$charset_collate};";
+
             foreach ($sql as $statement) {
                 dbDelta($statement);
             }
@@ -186,6 +221,8 @@ if (! class_exists('DBVC_Database')) {
                 'jobs'           => "{$wpdb->prefix}dbvc_jobs",
                 'activity_log'   => "{$wpdb->prefix}dbvc_activity_log",
                 'entities'       => "{$wpdb->prefix}dbvc_entities",
+                'collections'    => "{$wpdb->prefix}dbvc_collections",
+                'collection_items' => "{$wpdb->prefix}dbvc_collection_items",
             ];
 
             return $map[$suffix] ?? "{$wpdb->prefix}dbvc_{$suffix}";

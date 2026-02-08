@@ -46,6 +46,9 @@
 3. **React Admin UI**
    - Entity table and drawer provide taxonomy/slug/parent context for terms.
    - Duplicate modal, Accept/Keep bulk controls, resolver filters, and “Store hashes” flows are term-aware.
+4. **Snapshots & Diff Engine**
+   - Snapshot manager captures taxonomy entities (UIDs, parents, termmeta) so reviewer diffs compare real local data to the proposal payload instead of defaulting to “no changes.”
+   - Accept/Keep gating for reopened proposals honours those snapshots, keeping term workflows identical to post workflows.
 
 ## QA / Testing Checklist
 
@@ -65,5 +68,6 @@
 - **Slug conflicts:** Duplicate slugs across taxonomies still need reviewer intervention; the duplicate modal now displays term metadata to help resolve collisions quickly.
 - **CLI parity:** WP-CLI imports reuse the same code path; enable logging to trace term events when running automated jobs.
 - **Performance:** Large taxonomies may produce many entities; virtualization and search/filtering are already handled, but keep an eye on parent queues during large imports.
+- **Legacy proposals:** Term snapshots landed after 1.3.4. Re-upload older proposal zips, invoke `DBVC_Snapshot_Manager::capture_for_proposal($proposal_id, $manifest)`, or run `wp dbvc proposals list --recapture-snapshots=<ids>` so reopened reviews diff against the current site instead of treating every term as new.
 
 With these pieces in place, term/taxonomy objects behave exactly like posts throughout export, review, and import workflows, providing full cross-environment parity.
