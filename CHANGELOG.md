@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Unreleased
+- Added a "View All" mode in the entity drawer to list every meta field (including unchanged values).
+- Added a "UID mismatch" filter badge for entities whose local `vf_object_uid` differs from the proposal.
+- Added an entities totals summary (proposed/current breakdown with posts/terms/media plus filtered count).
+- Added an admin app error boundary with client-side logging to DBVC’s core log + activity table.
+- Added a REST endpoint (`/logs/client`) for capturing React render crashes and surfacing them in logs.
+- Added a temp file fallback to avoid `wp_tempnam()` fatals when WordPress helpers are unavailable.
+
 ## 1.3.4
 - Fixed the new-entity gating regression that caused `ReferenceError: Cannot access '…' before initialization` when the admin app loaded.
 - Restored pending-new-entity filtering so the bulk Accept tools and drawer hints stay in sync with proposal metadata.
@@ -13,7 +21,7 @@
 - Added duplicate overlays, canonical-entry cleanup APIs, and the new-entity acceptance gate so reviewers explicitly approve inserts before apply.
 - Expanded the media resolver UI with attachment previews, conflict filters, bulk actions, remember-globally toggles, and CSV-backed rule management.
 - Added REST endpoints for proposals, selections, bulk accept/unaccept actions, resolver inspection, apply executions, and maintenance helpers.
-- Enabled “Require DBVC proposal review” to disable the legacy Run Import form when teams want to enforce the new workflow.
+- Enabled “Require DBVC proposal review” to disable the core Run Import form when teams want to enforce the new workflow.
 
 ## 1.2.0
 - Landed the identity layer (`vf_object_uid`, `vf_asset_uid`, `vf_file_hash`) plus registry tables that keep site A/B entities aligned.

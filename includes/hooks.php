@@ -27,6 +27,31 @@ add_filter('dbvc_export_post_data', function($data, $post_id, $post) {
 	return $data;
 }, 20, 3);
 
+if (class_exists('DBVC_Options_Groups')) {
+	add_action('dbvc_after_export_options', function() {
+		$enabled = get_option('dbvc_export_options_groups', '1');
+		if ($enabled !== '1') {
+			return;
+		}
+
+		DBVC_Options_Groups::export_selected_groups();
+	});
+}
+
+// Ensure FTP upload window expiry hook is available.
+add_action('dbvc_sync_ftp_window_expire', function () {
+	if (function_exists('dbvc_close_sync_ftp_window')) {
+		dbvc_close_sync_ftp_window();
+	}
+});
+
+// Safety net: if cron misses, expire on admin requests.
+add_action('admin_init', function () {
+	if (function_exists('dbvc_sync_ftp_window_maybe_expire')) {
+		dbvc_sync_ftp_window_maybe_expire();
+	}
+});
+
 /**
  * Handle post deletion by removing corresponding JSON files.
  * 
@@ -38,16 +63,76 @@ add_filter('dbvc_export_post_data', function($data, $post_id, $post) {
 function dbvc_handle_post_deletion($post_id)
 {
 	$post = get_post($post_id);
-	if ($post && in_array($post->post_type, DBVC_Sync_Posts::get_supported_post_types(), true)) {
-		$path = dbvc_get_sync_path($post->post_type);
-		$file_path = $path . $post->post_type . '-' . $post_id . '.json';
-		if (file_exists($file_path)) {
-			unlink($file_path);
-		}
-	}
+	DBVC_Sync_Posts::mark_post_deleting($post_id);
+	DBVC_Sync_Posts::delete_post_json_for_entity($post_id, false);
 
 	// Allow other plugins to hook into post deletion
 	do_action('dbvc_after_post_deletion', $post_id, $post);
+}
+
+/**
+ * Handle post trashing by removing corresponding JSON files.
+ *
+ * @param int $post_id The post ID being trashed.
+ * @return void
+ */
+function dbvc_handle_post_trash($post_id)
+{
+	DBVC_Sync_Posts::mark_post_deleting($post_id);
+	DBVC_Sync_Posts::delete_post_json_for_entity($post_id, true);
+	DBVC_Sync_Posts::update_entity_status_for_post($post_id, 'trash');
+	do_action('dbvc_after_post_trash', $post_id);
+}
+
+/**
+ * Handle post restore by updating entity registry status.
+ *
+ * @param int $post_id
+ * @return void
+ */
+function dbvc_handle_post_untrash($post_id)
+{
+	$post = get_post($post_id);
+	if ($post && $post->post_type === 'attachment') {
+		DBVC_Sync_Posts::update_entity_status_for_post($post_id, 'publish', true);
+	} else {
+		DBVC_Sync_Posts::update_entity_status_for_post($post_id, 'publish');
+	}
+	do_action('dbvc_after_post_untrash', $post_id);
+}
+
+/**
+ * Handle media trash by removing JSON + marking entity as trash.
+ *
+ * @param int $post_id
+ * @return void
+ */
+function dbvc_handle_media_trash($post_id)
+{
+	DBVC_Sync_Posts::mark_post_deleting($post_id);
+	DBVC_Sync_Posts::delete_post_json_for_entity($post_id, true, true);
+	DBVC_Sync_Posts::update_entity_status_for_post($post_id, 'trash', true);
+	do_action('dbvc_after_media_trash', $post_id);
+}
+
+/**
+ * Handle media delete by removing JSON + entity row + media index entry.
+ *
+ * @param int $post_id
+ * @return void
+ */
+function dbvc_handle_media_delete($post_id)
+{
+	DBVC_Sync_Posts::mark_post_deleting($post_id);
+	DBVC_Sync_Posts::delete_post_json_for_entity($post_id, false, true);
+	if (class_exists('DBVC_Media_Sync')) {
+		DBVC_Media_Sync::delete_bundle_file_for_attachment($post_id);
+	}
+	if (class_exists('DBVC_Database')) {
+		DBVC_Database::delete_media_by_attachment_id($post_id);
+		DBVC_Database::delete_entity_by_object('attachment', $post_id);
+	}
+	do_action('dbvc_after_media_delete', $post_id);
 }
 
 /**
@@ -63,6 +148,11 @@ function dbvc_handle_post_deletion($post_id)
 function dbvc_handle_post_status_transition($new_status, $old_status, $post)
 {
 	if ($new_status !== $old_status) {
+		if ($new_status === 'trash') {
+			DBVC_Sync_Posts::mark_post_deleting($post->ID);
+			DBVC_Sync_Posts::delete_post_json_for_entity($post->ID, true);
+			return;
+		}
 		dbvc_run_auto_export_with_mask(function () use ($post) {
 			DBVC_Sync_Posts::export_post_to_json($post->ID, $post);
 		});
@@ -92,7 +182,11 @@ function dbvc_handle_post_meta_update($meta_id, $object_id, $meta_key, $meta_val
 	}
 
 	$post = get_post($object_id);
-	if ($post && in_array($post->post_type, DBVC_Sync_Posts::get_supported_post_types(), true)) {
+	if (
+		$post
+		&& in_array($post->post_type, DBVC_Sync_Posts::get_supported_post_types(), true)
+		&& ! DBVC_Sync_Posts::is_post_deleting($object_id)
+	) {
 		dbvc_run_auto_export_with_mask(function () use ($object_id, $post) {
 			DBVC_Sync_Posts::export_post_to_json($object_id, $post);
 		});
@@ -195,6 +289,27 @@ function dbvc_handle_comment_changes()
  * @since  1.0.0
  * @return void
  */
+
+/**
+ * Handle term deletion by removing corresponding JSON files.
+ *
+ * @param int $term_id Term ID.
+ * @param int $tt_id   Term taxonomy ID.
+ * @param string $taxonomy Taxonomy slug.
+ *
+ * @since 1.0.0
+ * @return void
+ */
+function dbvc_handle_term_deletion($term_id, $tt_id = 0, $taxonomy = '')
+{
+	unset($tt_id); // unused
+	if (class_exists('DBVC_Sync_Taxonomies')) {
+		DBVC_Sync_Taxonomies::delete_term_json_for_entity($term_id, $taxonomy);
+	}
+
+	do_action('dbvc_after_term_deletion', $term_id, $taxonomy);
+}
+
 function dbvc_handle_term_changes()
 {
 	DBVC_Sync_Posts::export_options_to_json();
@@ -463,6 +578,10 @@ function dbvc_handle_pattern_changes()
 
 // Register all action hooks.
 add_action('before_delete_post', 'dbvc_handle_post_deletion', 10, 1);
+add_action('wp_trash_post', 'dbvc_handle_post_trash', 10, 1);
+add_action('untrash_post', 'dbvc_handle_post_untrash', 10, 1);
+add_action('trash_attachment', 'dbvc_handle_media_trash', 10, 1);
+add_action('delete_attachment', 'dbvc_handle_media_delete', 10, 1);
 add_action('transition_post_status', 'dbvc_handle_post_status_transition', 10, 3);
 add_action('updated_post_meta', 'dbvc_handle_post_meta_update', 10, 4);
 add_action('added_post_meta', 'dbvc_handle_post_meta_update', 10, 4);
@@ -478,6 +597,7 @@ add_action('edit_comment', 'dbvc_handle_comment_changes', 10, 0);
 add_action('created_term', 'dbvc_handle_term_changes', 10, 0);
 add_action('edited_term', 'dbvc_handle_term_changes', 10, 0);
 add_action('delete_term', 'dbvc_handle_term_changes', 10, 0);
+add_action('delete_term', 'dbvc_handle_term_deletion', 10, 3);
 if (class_exists('DBVC_Sync_Taxonomies')) {
 	add_action('created_term', ['DBVC_Sync_Taxonomies', 'ensure_term_uid_on_change'], 10, 3);
 	add_action('edited_term', ['DBVC_Sync_Taxonomies', 'ensure_term_uid_on_change'], 10, 3);

@@ -193,6 +193,37 @@ if (! function_exists('dbvc_mask_apply_to_meta')) {
 	}
 }
 
+if (! function_exists('dbvc_get_maskable_post_fields')) {
+	/**
+	 * List core post fields that can be masked via live masking.
+	 *
+	 * @since 1.6.0
+	 * @return array<string,string>
+	 */
+	function dbvc_get_maskable_post_fields(): array
+	{
+		$fields = [
+			'post_date'             => __('Post date', 'dbvc'),
+			'post_date_gmt'         => __('Post date (GMT)', 'dbvc'),
+			'post_modified'         => __('Post modified', 'dbvc'),
+			'post_modified_gmt'     => __('Post modified (GMT)', 'dbvc'),
+			'post_excerpt'          => __('Excerpt', 'dbvc'),
+			'post_parent'           => __('Parent ID', 'dbvc'),
+			'post_author'           => __('Author ID', 'dbvc'),
+			'post_password'         => __('Password', 'dbvc'),
+			'post_content_filtered' => __('Filtered content', 'dbvc'),
+			'menu_order'            => __('Menu order', 'dbvc'),
+			'guid'                  => __('GUID', 'dbvc'),
+			'comment_status'        => __('Comment status', 'dbvc'),
+			'ping_status'           => __('Ping status', 'dbvc'),
+			'post_mime_type'        => __('MIME type', 'dbvc'),
+			'vf_object_uid'         => __('Entity UID', 'dbvc'),
+		];
+
+		return apply_filters('dbvc_maskable_post_fields', $fields);
+	}
+}
+
 if (! function_exists('dbvc_get_auto_mask_settings')) {
 	/**
 	 * Resolve masking settings that should be applied during automatic exports.
@@ -375,6 +406,199 @@ function dbvc_get_sync_path($subfolder = '')
 	return $base_path;
 }
 
+if (! function_exists('dbvc_sync_collect_directories')) {
+	/**
+	 * Collect all directories under the sync path (including the root).
+	 *
+	 * @param string $base_path
+	 * @return array<int,string>
+	 */
+	function dbvc_sync_collect_directories($base_path)
+	{
+		$dirs = [];
+		if (! is_dir($base_path)) {
+			return $dirs;
+		}
+
+		$base_path = rtrim($base_path, '/');
+		$dirs[]    = $base_path;
+
+		$iterator = new RecursiveIteratorIterator(
+			new RecursiveDirectoryIterator($base_path, FilesystemIterator::SKIP_DOTS),
+			RecursiveIteratorIterator::SELF_FIRST
+		);
+
+		foreach ($iterator as $item) {
+			if ($item->isDir()) {
+				$dirs[] = $item->getPathname();
+			}
+		}
+
+		return $dirs;
+	}
+}
+
+if (! function_exists('dbvc_sync_remove_htaccess_recursive')) {
+	/**
+	 * Remove .htaccess files from the sync directory tree.
+	 *
+	 * @param string $base_path
+	 * @return int Number of .htaccess files removed.
+	 */
+	function dbvc_sync_remove_htaccess_recursive($base_path)
+	{
+		$removed = 0;
+		$dirs    = dbvc_sync_collect_directories($base_path);
+		foreach ($dirs as $dir) {
+			$htaccess = trailingslashit($dir) . '.htaccess';
+			if (file_exists($htaccess)) {
+				if (@unlink($htaccess)) {
+					$removed++;
+				}
+			}
+		}
+		return $removed;
+	}
+}
+
+if (! function_exists('dbvc_sync_ensure_security_recursive')) {
+	/**
+	 * Ensure .htaccess/index.php protections across the sync directory tree.
+	 *
+	 * @param string $base_path
+	 * @return int Number of directories secured.
+	 */
+	function dbvc_sync_ensure_security_recursive($base_path)
+	{
+		$secured = 0;
+		$dirs    = dbvc_sync_collect_directories($base_path);
+		foreach ($dirs as $dir) {
+			if (class_exists('DBVC_Sync_Posts')) {
+				DBVC_Sync_Posts::ensure_directory_security($dir);
+				$secured++;
+				continue;
+			}
+
+			if (! is_dir($dir)) {
+				continue;
+			}
+
+			$htaccess = trailingslashit($dir) . '.htaccess';
+			if (! file_exists($htaccess)) {
+				$contents = "# Block direct access to DBVC sync files\nOrder allow,deny\nDeny from all\n\n<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n\nOptions -Indexes\n";
+				file_put_contents($htaccess, $contents);
+			}
+
+			$index = trailingslashit($dir) . 'index.php';
+			if (! file_exists($index)) {
+				file_put_contents($index, "<?php\n// Silence is golden.\nexit;\n");
+			}
+			$secured++;
+		}
+		return $secured;
+	}
+}
+
+if (! function_exists('dbvc_get_sync_ftp_window_until')) {
+	/**
+	 * Get the FTP upload window expiry timestamp.
+	 *
+	 * @return int
+	 */
+	function dbvc_get_sync_ftp_window_until()
+	{
+		return (int) get_option('dbvc_sync_ftp_window_until', 0);
+	}
+}
+
+if (! function_exists('dbvc_is_sync_ftp_window_active')) {
+	/**
+	 * Determine if the FTP upload window is currently active.
+	 *
+	 * @return bool
+	 */
+	function dbvc_is_sync_ftp_window_active()
+	{
+		$until = dbvc_get_sync_ftp_window_until();
+		return $until > time();
+	}
+}
+
+if (! function_exists('dbvc_open_sync_ftp_window')) {
+	/**
+	 * Open the FTP upload window for a limited time and remove .htaccess protections.
+	 *
+	 * @param int $duration_seconds
+	 * @return int Number of .htaccess files removed.
+	 */
+function dbvc_open_sync_ftp_window($duration_seconds = 300)
+{
+	$duration_seconds = max(60, (int) $duration_seconds);
+	$until            = time() + $duration_seconds;
+	update_option('dbvc_sync_ftp_window_until', $until);
+
+		if (function_exists('wp_clear_scheduled_hook')) {
+			wp_clear_scheduled_hook('dbvc_sync_ftp_window_expire');
+		}
+		if (function_exists('wp_schedule_single_event')) {
+			wp_schedule_single_event($until, 'dbvc_sync_ftp_window_expire');
+		}
+
+	$sync_path = dbvc_get_sync_path();
+	$removed   = dbvc_sync_remove_htaccess_recursive($sync_path);
+
+	if (class_exists('DBVC_Sync_Logger')) {
+		DBVC_Sync_Logger::log_upload('FTP upload window opened', [
+			'expires_at' => $until,
+			'duration'   => $duration_seconds,
+			'removed'    => $removed,
+			'sync_path'  => $sync_path,
+		]);
+	}
+
+	return $removed;
+}
+}
+
+if (! function_exists('dbvc_close_sync_ftp_window')) {
+	/**
+	 * Close the FTP upload window and restore protections.
+	 *
+	 * @return int Number of directories secured.
+	 */
+function dbvc_close_sync_ftp_window()
+{
+	update_option('dbvc_sync_ftp_window_until', 0);
+	if (function_exists('wp_clear_scheduled_hook')) {
+		wp_clear_scheduled_hook('dbvc_sync_ftp_window_expire');
+	}
+	$sync_path = dbvc_get_sync_path();
+	$secured = dbvc_sync_ensure_security_recursive($sync_path);
+
+	if (class_exists('DBVC_Sync_Logger')) {
+		DBVC_Sync_Logger::log_upload('FTP upload window closed', [
+			'secured'   => $secured,
+			'sync_path' => $sync_path,
+		]);
+	}
+
+	return $secured;
+}
+}
+
+if (! function_exists('dbvc_sync_ftp_window_maybe_expire')) {
+	/**
+	 * Ensure FTP window expiry is enforced even if WP-Cron doesn't fire.
+	 */
+	function dbvc_sync_ftp_window_maybe_expire()
+	{
+		$until = dbvc_get_sync_ftp_window_until();
+		if ($until > 0 && $until <= time()) {
+			dbvc_close_sync_ftp_window();
+		}
+	}
+}
+
 /**
  * Determine the preferred filename format for exported posts.
  *
@@ -460,6 +684,21 @@ function dbvc_get_available_taxonomies()
 	 * @param array $taxonomies Array of taxonomy objects keyed by taxonomy slug.
 	 */
 	return apply_filters('dbvc_available_taxonomies', $taxonomies);
+}
+
+/**
+ * Retrieve available ACF options groups for DBVC configuration.
+ *
+ * @since 1.4.0
+ * @return array
+ */
+function dbvc_get_available_options_groups()
+{
+	if (class_exists('DBVC_Options_Groups')) {
+		return DBVC_Options_Groups::get_available_groups();
+	}
+
+	return [];
 }
 
 /**

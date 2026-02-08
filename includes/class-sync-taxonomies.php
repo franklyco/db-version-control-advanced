@@ -29,8 +29,181 @@ class DBVC_Sync_Taxonomies
 	 *
 	 * @since 1.3.0
 	 */
-	protected static function ensure_directory_security($path)
+	
+	public static function delete_term_json_for_entity($term_id, $taxonomy = ''): void
 	{
+		$term_id = absint($term_id);
+		if (! $term_id) {
+			return;
+		}
+
+		if ($taxonomy === '') {
+			$term = get_term($term_id);
+			if (! $term || is_wp_error($term)) {
+				return;
+			}
+			$taxonomy = $term->taxonomy;
+		}
+
+		$taxonomy = sanitize_key($taxonomy);
+		if ($taxonomy === '') {
+			return;
+		}
+
+		$folder = self::get_taxonomy_sync_path($taxonomy);
+		if (! is_dir($folder)) {
+			return;
+		}
+
+		$term = get_term($term_id, $taxonomy);
+		$slug = ($term && ! is_wp_error($term)) ? sanitize_title($term->slug) : '';
+		$uuid = get_term_meta($term_id, 'uuid', true);
+		$uuid = is_string($uuid) ? trim($uuid) : '';
+		$uid = get_term_meta($term_id, 'vf_object_uid', true);
+		$uid = is_string($uid) ? trim($uid) : '';
+
+	$files = glob(trailingslashit($folder) . '*.json');
+	if (empty($files)) {
+		if (class_exists('DBVC_Database')) {
+			DBVC_Database::delete_entity_by_object('term:' . sanitize_key($taxonomy), $term_id);
+		}
+		return;
+	}
+
+		// 1) Match by UUID
+		if ($uuid !== '') {
+			$matches = [];
+			foreach ($files as $file) {
+				$raw = file_get_contents($file);
+				if ($raw === false) {
+					continue;
+				}
+				$payload = json_decode($raw, true);
+				if (! is_array($payload)) {
+					continue;
+				}
+				$payload_uuid = isset($payload['uuid']) ? (string) $payload['uuid'] : '';
+				if ($payload_uuid === '' && isset($payload['meta']['uuid'])) {
+					$payload_uuid = is_array($payload['meta']['uuid']) ? (string) ($payload['meta']['uuid'][0] ?? '') : (string) $payload['meta']['uuid'];
+				}
+				if ($payload_uuid !== '' && $payload_uuid === $uuid) {
+					$matches[] = $file;
+				}
+			}
+			if (count($matches) === 1) {
+				@unlink($matches[0]);
+				if (class_exists('DBVC_Database')) {
+					DBVC_Database::delete_entity_by_uid($uuid);
+				}
+				return;
+			}
+		}
+
+		// 2) Match by vf_object_uid
+		if ($uid !== '') {
+			$matches = [];
+			foreach ($files as $file) {
+				$raw = file_get_contents($file);
+				if ($raw === false) {
+					continue;
+				}
+				$payload = json_decode($raw, true);
+				if (! is_array($payload)) {
+					continue;
+				}
+				$payload_uid = isset($payload['vf_object_uid']) ? (string) $payload['vf_object_uid'] : '';
+				if ($payload_uid !== '' && $payload_uid === $uid) {
+					$matches[] = $file;
+				}
+			}
+			if (count($matches) === 1) {
+				@unlink($matches[0]);
+				if (class_exists('DBVC_Database')) {
+					DBVC_Database::delete_entity_by_uid($uid);
+				}
+				return;
+			}
+		}
+
+		// 2b) Match by payload term_id + slug/taxonomy if filename deviates
+		$payload_matches = [];
+		foreach ($files as $file) {
+			$raw = file_get_contents($file);
+			if ($raw === false) {
+				continue;
+			}
+			$payload = json_decode($raw, true);
+			if (! is_array($payload)) {
+				continue;
+			}
+			$payload_tax = isset($payload['taxonomy']) ? sanitize_key($payload['taxonomy']) : '';
+			$payload_id  = isset($payload['term_id']) ? absint($payload['term_id']) : 0;
+			$payload_slug = isset($payload['slug']) ? sanitize_title($payload['slug']) : '';
+
+			if ($payload_tax !== '' && $payload_tax !== $taxonomy) {
+				continue;
+			}
+
+			if ($payload_id && $payload_id === $term_id) {
+				$payload_matches[] = $file;
+				continue;
+			}
+
+			if ($slug !== '' && $payload_slug !== '' && $payload_slug === $slug) {
+				$payload_matches[] = $file;
+			}
+		}
+		if (count($payload_matches) === 1) {
+			@unlink($payload_matches[0]);
+			if (class_exists('DBVC_Database')) {
+				DBVC_Database::delete_entity_by_object('term:' . sanitize_key($taxonomy), $term_id);
+			}
+			return;
+		}
+
+		$prefix = sanitize_file_name($taxonomy) . '-';
+		$slug_id = ($slug !== '' && $term_id) ? $prefix . $slug . '-' . $term_id . '.json' : '';
+		$id_name = $prefix . $term_id . '.json';
+		$slug_name = ($slug !== '') ? $prefix . $slug . '.json' : '';
+
+		// 3) slug_id
+		if ($slug_id !== '' && file_exists($folder . $slug_id)) {
+			@unlink($folder . $slug_id);
+			if (class_exists('DBVC_Database')) {
+				DBVC_Database::delete_entity_by_object('term:' . sanitize_key($taxonomy), $term_id);
+			}
+			return;
+		}
+
+		// 4) id
+		if (file_exists($folder . $id_name)) {
+			@unlink($folder . $id_name);
+			if (class_exists('DBVC_Database')) {
+				DBVC_Database::delete_entity_by_object('term:' . sanitize_key($taxonomy), $term_id);
+			}
+			return;
+		}
+
+		// 5) slug
+	if ($slug_name !== '' && file_exists($folder . $slug_name)) {
+		@unlink($folder . $slug_name);
+		if (class_exists('DBVC_Database')) {
+			DBVC_Database::delete_entity_by_object('term:' . sanitize_key($taxonomy), $term_id);
+		}
+		return;
+	}
+
+	if (class_exists('DBVC_Database')) {
+		DBVC_Database::delete_entity_by_object('term:' . sanitize_key($taxonomy), $term_id);
+	}
+}
+
+public static function ensure_directory_security($path)
+	{
+		if (function_exists('dbvc_is_sync_ftp_window_active') && dbvc_is_sync_ftp_window_active()) {
+			return;
+		}
+
 		if (! is_dir($path)) {
 			return;
 		}
@@ -364,6 +537,135 @@ class DBVC_Sync_Taxonomies
 	}
 
 	/**
+	 * Normalize existing term JSON files by ensuring vf_object_uid + history metadata.
+	 *
+	 * @since 1.4.0
+	 *
+	 * @param array|null $selected Optional list of taxonomies to scan.
+	 * @return array{processed:int,updated:int,skipped:int,errors:int}
+	 */
+	public static function normalize_term_json_files($selected = null)
+	{
+		$stats = [
+			'processed' => 0,
+			'updated'   => 0,
+			'skipped'   => 0,
+			'errors'    => 0,
+		];
+
+		$base = trailingslashit(dbvc_get_sync_path('taxonomy'));
+		if (! is_dir($base)) {
+			return $stats;
+		}
+
+		$taxonomies = [];
+		if ($selected === null) {
+			$entries = array_diff(scandir($base), ['.', '..']);
+			foreach ($entries as $entry) {
+				if (is_dir($base . $entry)) {
+					$taxonomies[] = sanitize_key($entry);
+				}
+			}
+		} else {
+			$taxonomies = array_map('sanitize_key', (array) $selected);
+		}
+
+		if (empty($taxonomies)) {
+			return $stats;
+		}
+
+		foreach ($taxonomies as $taxonomy) {
+			if ($taxonomy === '') {
+				continue;
+			}
+			$path = trailingslashit($base . $taxonomy);
+			if (! is_dir($path)) {
+				continue;
+			}
+
+			$files = glob($path . '*.json');
+			if (empty($files)) {
+				continue;
+			}
+
+			foreach ($files as $file_path) {
+				$stats['processed']++;
+				$contents = file_get_contents($file_path);
+				if ($contents === false) {
+					$stats['errors']++;
+					continue;
+				}
+
+				$data = json_decode($contents, true);
+				if (! is_array($data) || empty($data['slug'])) {
+					$stats['skipped']++;
+					continue;
+				}
+
+				$changed = false;
+				$slug = sanitize_title($data['slug']);
+				$incoming_uid = isset($data['vf_object_uid']) ? trim((string) $data['vf_object_uid']) : '';
+				$resolved_uid = $incoming_uid;
+				$term = null;
+
+				if ($slug !== '' && taxonomy_exists($taxonomy)) {
+					$term = get_term_by('slug', $slug, $taxonomy);
+				}
+
+				if ($term && ! is_wp_error($term)) {
+					$term_uid = self::ensure_term_uid($term->term_id, $taxonomy);
+					if ($term_uid !== '' && $term_uid !== $resolved_uid) {
+						$resolved_uid = $term_uid;
+						$changed = true;
+					}
+				} elseif ($resolved_uid === '') {
+					$resolved_uid = wp_generate_uuid4();
+					$changed = true;
+				}
+
+				if ($resolved_uid !== $incoming_uid) {
+					$data['vf_object_uid'] = $resolved_uid;
+					$changed = true;
+				}
+
+				if (! isset($data['meta']) || ! is_array($data['meta'])) {
+					$data['meta'] = [];
+					$changed = true;
+				}
+
+				$history = [
+					'normalized_from' => 'local-json',
+					'original_term_id'=> isset($data['term_id']) ? absint($data['term_id']) : ($term ? (int) $term->term_id : 0),
+					'original_slug'   => $slug,
+					'taxonomy'        => $taxonomy,
+					'normalized_at'   => current_time('mysql'),
+					'normalized_by'   => get_current_user_id(),
+					'json_filename'   => basename($file_path),
+					'status'          => ($term && ! is_wp_error($term)) ? 'existing' : 'unknown',
+					'vf_object_uid'   => $resolved_uid,
+				];
+
+				if (! isset($data['meta']['dbvc_term_history']) || empty($data['meta']['dbvc_term_history'])) {
+					$data['meta']['dbvc_term_history'] = [$history];
+					$changed = true;
+				}
+
+				if ($changed) {
+					$new_json = wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+					if ($new_json === false) {
+						$stats['errors']++;
+						continue;
+					}
+					file_put_contents($file_path, $new_json);
+					$stats['updated']++;
+				}
+			}
+		}
+
+		return $stats;
+	}
+
+	/**
 	 * Import a single term from a JSON file.
 	 *
 	 * @since 1.3.0
@@ -381,6 +683,7 @@ class DBVC_Sync_Taxonomies
 			return;
 		}
 
+		$incoming_uid = isset($data['vf_object_uid']) ? trim((string) $data['vf_object_uid']) : '';
 		$slug        = sanitize_title($data['slug']);
 		$name        = sanitize_text_field($data['name'] ?? $slug);
 		$description = isset($data['description']) ? wp_kses_post($data['description']) : '';
@@ -403,6 +706,7 @@ class DBVC_Sync_Taxonomies
 			}
 		}
 
+		$created = false;
 		if ($term && ! is_wp_error($term)) {
 			wp_update_term($term->term_id, $taxonomy, ['name' => $name] + $args);
 			$term_id = $term->term_id;
@@ -413,7 +717,36 @@ class DBVC_Sync_Taxonomies
 				return;
 			}
 			$term_id = $insert['term_id'];
+			$created = true;
 		}
+
+		$effective_uid = $incoming_uid;
+		if ($effective_uid !== '') {
+			update_term_meta($term_id, 'vf_object_uid', $effective_uid);
+			self::sync_term_entity_registry($effective_uid, $term_id, $taxonomy);
+		} else {
+			$effective_uid = self::ensure_term_uid($term_id, $taxonomy);
+		}
+
+		$data['vf_object_uid'] = $effective_uid;
+
+		$history = [
+			'imported_from'    => 'local-json',
+			'original_term_id' => isset($data['term_id']) ? absint($data['term_id']) : 0,
+			'original_slug'    => $slug,
+			'taxonomy'         => $taxonomy,
+			'imported_at'      => current_time('mysql'),
+			'imported_by'      => get_current_user_id(),
+			'json_filename'    => basename($file_path),
+			'status'           => $created ? 'imported' : 'existing',
+			'vf_object_uid'    => $effective_uid,
+		];
+
+		update_term_meta($term_id, 'dbvc_term_history', $history);
+		if (! isset($data['meta']) || ! is_array($data['meta'])) {
+			$data['meta'] = [];
+		}
+		$data['meta']['dbvc_term_history'] = [$history];
 
 		if (isset($data['meta']) && is_array($data['meta'])) {
 			foreach ($data['meta'] as $meta_key => $values) {
@@ -426,6 +759,11 @@ class DBVC_Sync_Taxonomies
 					add_term_meta($term_id, $meta_key, maybe_unserialize($value));
 				}
 			}
+		}
+
+		$new_json = wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+		if ($new_json !== false) {
+			file_put_contents($file_path, $new_json);
 		}
 
 		do_action('dbvc_after_import_term', $term_id, $taxonomy, $data);

@@ -45,13 +45,30 @@
 13. **CLI Parity for Resolver Rules & Duplicates**
     - Added `wp dbvc resolver-rules list|add|delete|import` plus `wp dbvc proposals list --cleanup-duplicates` so automation can manage global resolver rules and manifest cleanup without the React UI.
 14. **Meta Masking Drawer & REST**
-    - Added `/masking` + `/masking/apply` endpoints plus option stores for per-proposal suppressions/overrides and importer hooks that honor those directives.
-    - React admin now includes status badges, a Tools drawer housing masking controls, and inline tooltips linked to `docs/meta-masking.md`. Remember to run `npm run build` whenever `src/admin-app/` changes.
+   - Added `/masking` + `/masking/apply` endpoints plus option stores for per-proposal suppressions/overrides and importer hooks that honor those directives.
+   - React admin now includes status badges, a Tools drawer housing masking controls, and inline tooltips linked to `docs/meta-masking.md`. Remember to run `npm run build` whenever `src/admin-app/` changes.
+15. **All Entities Toolbar Consolidation**
+   - The Actions & Tools popover, Columns toggle, and selection utilities now live inside a single toolbar row so the layout stays stable while swapping filters or resizing the viewport.
+   - “Clear selection” and “Select all” buttons only appear when they can act on the current table state, keeping the UI calm for reviewers who are browsing without an active selection.
+   - The popover groups bulk Accept/Unaccept/Unkeep controls, new-entity approvals, maintenance operations (refresh, snapshots, hashes, duplicate resolver), and the masking drawer so future refactors can extract this block into a dedicated component.
+16. **Proposal Intake UI Polish**
+   - The uploader dropzone now uses a compact two-column layout (`__text` + `__actions`) with a muted panel background, inline "ZIP files only" hint, and a separate options row so overwrite/dev checkboxes stay aligned even on narrow screens.
+   - Proposal tables live inside `dbvc-proposal-table-wrapper`, limiting the viewport to roughly the three most recent proposals, pinning the header row, and enabling smooth scrolling for older uploads without pushing the entity area down the page.
+   - Added per-row delete actions (server-backed) so reviewers can remove any non-current proposal, including open ones, while locked proposals remain protected.
+17. **Sync Folder Intake + Deletion Handling**
+   - Multi-file upload routing now supports flat JSON batches and auto-creates target folders.
+   - Import/export guards prevent sync folder wipes during post saves and imports.
+   - Deletion handling now cleans JSONs and entity registry rows for posts/terms, with trash-aware status updates for posts and attachments.
+   - Media deletes now clear `dbvc_media_index` and remove bundled files under `sync/media/...`.
+18. **Admin App Resilience**
+   - Added an error boundary around the React admin app so render-time errors no longer crash the entire UI.
+   - Client-side crashes are logged via the new `/logs/client` REST endpoint to the DBVC file log and activity table for troubleshooting.
 ## Remaining / Next Steps
 1. **Term & Taxonomy Entity Polish**
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.
    - Refresh docs/help text so reviewers know the taxonomy filters, parent resolution behaviour, and “Accept all new terms” affordances that now ship with the feature.
    - Backfill existing proposals by rerunning `DBVC_Snapshot_Manager::capture_for_proposal()` (or `wp dbvc proposals list --recapture-snapshots`) so every reopen flow benefits from the new term snapshots.
+   - 🗂️ `docs/term-entity-polish.md` now tracks the QA/backfill checklist so each environment can confirm parity before rollout.
 2. **Testing & Automation**
    - Expand coverage (resolver bulk actions, CSV parsing, importer hooks, duplicate cleanup) now that the PHPUnit scaffold exists.
    - Integrate the suite with CI once infrastructure is available so regressions (like the new-entity gating bug) are caught automatically.
@@ -69,9 +86,14 @@
    - ✅ Ensure the action runs against live proposals so posts/terms/media flagged as Needs Review or Unresolved meta are relabeled once matching masked fields are processed, keeping entity badges and counts accurate after auto-masking.
    - ✅ Leave existing export-time masking logic untouched so deployments relying on masked exports keep their current behavior.
    - ✅ Surface the new behaviors through tooltips anchored to the bulk action + help text in docs, plus a progress indicator while masking loads/applies.
-   - ⚪ Chunk the backend `/masking` endpoint further if telemetry shows memory spikes beyond the current paged walker (monitor).
-   - ⚪ Add automated tests around `/masking` pagination + apply/undo flows once new test scaffolding is in place.
+   - ✅ Tightened backend pagination (10-field default with a guarded `per_page` param) so each `/masking` fetch stays within memory budgets exposed by telemetry.
+   - ✅ Added PHPUnit coverage for `/masking` pagination + apply/undo flows (`tests/phpunit/MaskingEndpointsTest.php`) to lock in the behaviours above.
+   - ✅ Tools panel now ships with a “Revert masking decisions” control backed by `/masking/revert`, clearing stored suppressions/overrides so proposals can be re-reviewed after rule changes.
+   - ✅ Masking candidates now auto-prefetch after the entity table loads and persist in sessionStorage/cache, so reopening the drawer or switching tabs no longer re-fetches everything unless you hit Refresh.
 7. **Admin App Refactor**
    - The compiled UI currently lives in `src/admin-app/index.js` as a single ~3,300 line bundle, which makes day-to-day edits nearly impossible.
+   - Before touching the bundle, capture a backup copy (tagged commit + `build/` artifact) and document the baseline so a reliable reference exists during the refactor; stage work in a separate branch or staging file to keep master stable.
    - Recover or recreate the original modular React source (components, hooks, api helpers) and treat the generated bundle as a build artifact under `build/`.
+   - Break the work into smaller steps: first extract shared utilities/API calls, then UI primitives, then feature panels (diff table, masking drawer, resolver screens) so each PR stays reviewable and easy to roll back.
    - Update build/docs to clarify the source-of-truth paths so future contributors can work in smaller files and keep reviews manageable.
+   - 📘 `docs/admin-app-refactor-plan.md` captures the staged architecture (data layer, hooks, components) so contributors can chip away at the refactor without editing the compiled bundle directly.

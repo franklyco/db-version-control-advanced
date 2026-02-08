@@ -16,6 +16,7 @@ final class DBVC_Admin_App
     private const DUPLICATE_BULK_CONFIRM_PHRASE = 'DELETE';
     private const MASK_SUPPRESS_OPTION = 'dbvc_masked_field_suppressions';
     private const MASK_OVERRIDES_OPTION = 'dbvc_mask_overrides';
+    private const MASKING_CHUNK_DEFAULT = 10;
 
     private static $diff_ignore_patterns = null;
     private static $term_field_roots = [
@@ -131,6 +132,39 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)',
+            [
+                'methods'             => \WP_REST_Server::DELETABLE,
+                'callback'            => [self::class, 'delete_proposal'],
+                'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'proposal_id' => [
+                        'required' => true,
+                    ],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/fixtures/upload',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'upload_fixture'],
+                'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'fixture_name' => [
+                        'required' => false,
+                    ],
+                    'overwrite'    => [
+                        'required' => false,
+                    ],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/proposals/(?P<proposal_id>[^/]+)/entities',
             [
                 'methods'             => \WP_REST_Server::READABLE,
@@ -186,6 +220,16 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/masking/revert',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'revert_proposal_masking'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)',
             [
                 'methods'             => \WP_REST_Server::READABLE,
@@ -233,6 +277,15 @@ final class DBVC_Admin_App
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
                 'callback'            => [self::class, 'unaccept_entities_bulk'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/unkeep',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'unkeep_entities_bulk'],
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
@@ -388,6 +441,16 @@ final class DBVC_Admin_App
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/logs/client',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'log_client_error'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
     }
 
     /**
@@ -506,6 +569,144 @@ final class DBVC_Admin_App
         }
 
         return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: delete a closed proposal backup.
+     */
+    public static function delete_proposal(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Backup_Manager')) {
+            return new \WP_Error('dbvc_missing_manager', __('Backup manager unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $proposal_id = self::sanitize_proposal_id($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_invalid_proposal', __('Invalid proposal ID.', 'dbvc'), ['status' => 400]);
+        }
+
+        $backup_path = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
+        $manifest = DBVC_Backup_Manager::read_manifest($backup_path);
+        if (! $manifest) {
+            return new \WP_Error('dbvc_backup_missing', __('Backup folder not found.', 'dbvc'), ['status' => 404]);
+        }
+
+        $deleted = DBVC_Backup_Manager::delete_backup($proposal_id);
+        if (is_wp_error($deleted)) {
+            return $deleted;
+        }
+
+        if (class_exists('DBVC_Snapshot_Manager')) {
+            $snapshot_dir = trailingslashit(DBVC_Snapshot_Manager::get_base_path()) . sanitize_file_name($proposal_id);
+            if (is_dir($snapshot_dir)) {
+                self::delete_directory_recursive($snapshot_dir);
+            }
+        }
+
+        $decision_store = self::get_decision_store();
+        if (isset($decision_store[$proposal_id])) {
+            unset($decision_store[$proposal_id]);
+            update_option(self::DECISIONS_OPTION, $decision_store, false);
+        }
+
+        $resolver_store = get_option(self::RESOLVER_DECISIONS_OPTION, []);
+        if (is_array($resolver_store) && isset($resolver_store[$proposal_id])) {
+            unset($resolver_store[$proposal_id]);
+            update_option(self::RESOLVER_DECISIONS_OPTION, $resolver_store, false);
+        }
+
+        $suppress_store = self::get_mask_suppression_store();
+        if (isset($suppress_store[$proposal_id])) {
+            unset($suppress_store[$proposal_id]);
+            $suppress_store = self::cleanup_mask_store($suppress_store, $proposal_id);
+            self::set_mask_suppression_store($suppress_store);
+        }
+
+        $override_store = self::get_mask_override_store();
+        if (isset($override_store[$proposal_id])) {
+            unset($override_store[$proposal_id]);
+            $override_store = self::cleanup_mask_store($override_store, $proposal_id);
+            self::set_mask_override_store($override_store);
+        }
+
+        return new \WP_REST_Response([
+            'deleted'     => true,
+            'proposal_id' => $proposal_id,
+        ]);
+    }
+
+    /**
+     * REST: copy an uploaded ZIP into docs/fixtures for dev/QA.
+     */
+    public static function upload_fixture(\WP_REST_Request $request)
+    {
+        $files = $request->get_file_params();
+        if (empty($files['file']) || ! isset($files['file']['tmp_name'])) {
+            return new \WP_Error('dbvc_missing_file', __('Upload a ZIP file to store as a dev fixture.', 'dbvc'), ['status' => 400]);
+        }
+
+        $file = $files['file'];
+        if (! empty($file['error']) && (int) $file['error'] !== UPLOAD_ERR_OK) {
+            return new \WP_Error('dbvc_upload_error', __('File upload failed.', 'dbvc'), ['status' => 400]);
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+
+        $handled = wp_handle_sideload($file, [
+            'test_form' => false,
+        ]);
+
+        if (isset($handled['error'])) {
+            return new \WP_Error('dbvc_upload_error', $handled['error'], ['status' => 400]);
+        }
+
+        $fixture_dir = self::get_fixture_directory();
+        wp_mkdir_p($fixture_dir);
+        if (! is_dir($fixture_dir) || ! wp_is_writable($fixture_dir)) {
+            @unlink($handled['file']);
+            return new \WP_Error('dbvc_fixture_dir', __('Fixture directory is not writable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $fixture_name = $request->get_param('fixture_name');
+        $fixture_name = sanitize_file_name($fixture_name ?: ($file['name'] ?? 'dev-fixture.zip'));
+        if ($fixture_name === '') {
+            $fixture_name = 'dev-fixture.zip';
+        }
+        if (strtolower(pathinfo($fixture_name, PATHINFO_EXTENSION)) !== 'zip') {
+            $fixture_name .= '.zip';
+        }
+
+        $overwrite = $request->get_param('overwrite');
+        if (function_exists('rest_sanitize_boolean')) {
+            $overwrite = rest_sanitize_boolean($overwrite);
+        } else {
+            $overwrite = in_array($overwrite, [true, 1, '1', 'true', 'on'], true);
+        }
+
+        $destination = trailingslashit($fixture_dir) . $fixture_name;
+        if (file_exists($destination) && ! $overwrite) {
+            @unlink($handled['file']);
+            return new \WP_Error('dbvc_fixture_exists', __('Fixture already exists. Enable overwrite to replace it.', 'dbvc'), ['status' => 409]);
+        }
+
+        if (file_exists($destination)) {
+            @unlink($destination);
+        }
+
+        $moved = @rename($handled['file'], $destination);
+        if (! $moved) {
+            $moved = @copy($handled['file'], $destination);
+            @unlink($handled['file']);
+        }
+
+        if (! $moved) {
+            return new \WP_Error('dbvc_fixture_move_failed', __('Unable to store the fixture ZIP.', 'dbvc'), ['status' => 500]);
+        }
+
+        return new \WP_REST_Response([
+            'fixture' => basename($destination),
+            'path'    => str_replace(DBVC_PLUGIN_PATH, '', $destination),
+        ]);
     }
 
     /**
@@ -813,6 +1014,8 @@ final class DBVC_Admin_App
                 'entity_type'        => 'post',
                 'is_new_entity'      => $is_new_entity,
                 'identity_match'     => $identity_match,
+                'local_uid'          => $identity['local_uid'] ?? '',
+                'uid_mismatch'       => $identity['uid_mismatch'] ?? false,
                 'new_entity_decision'=> $new_entity_decision,
                 'decision_summary' => $decision_summary,
             ];
@@ -1026,7 +1229,15 @@ final class DBVC_Admin_App
         }
 
         $page = max(1, (int) $request->get_param('page') ?: 1);
-        $per_page = (int) apply_filters('dbvc_masking_chunk_size', 25);
+        $default_chunk = (int) apply_filters('dbvc_masking_chunk_size', self::MASKING_CHUNK_DEFAULT);
+        if ($default_chunk <= 0) {
+            $default_chunk = self::MASKING_CHUNK_DEFAULT;
+        }
+
+        $per_page_param = (int) $request->get_param('per_page');
+        $per_page = $per_page_param > 0 ? $per_page_param : $default_chunk;
+        $per_page = max(5, min($per_page, 50));
+
         $fields = self::collect_masking_fields($proposal_id, $manifest, $page, $per_page);
         $total_items = isset($manifest['items']) && is_array($manifest['items']) ? count($manifest['items']) : 0;
         $total_pages = $per_page > 0 ? (int) ceil($total_items / $per_page) : 1;
@@ -1076,14 +1287,17 @@ final class DBVC_Admin_App
 
         $manifest_index = self::index_manifest_entities($manifest);
         $patterns       = self::get_mask_meta_patterns();
-        if (empty($patterns['keys']) && empty($patterns['subkeys'])) {
+        $post_fields    = isset($patterns['post_fields']) && is_array($patterns['post_fields'])
+            ? $patterns['post_fields']
+            : [];
+        if (empty($patterns['keys']) && empty($patterns['subkeys']) && empty($post_fields)) {
             return new \WP_Error('dbvc_no_mask_patterns', __('No masking patterns are configured for this site.', 'dbvc'), ['status' => 400]);
         }
 
         $suppress_store = self::get_mask_suppression_store();
         $override_store = self::get_mask_override_store();
-        $proposal_suppress = $suppress_store[$proposal_id] ?? [];
-        $proposal_overrides = $override_store[$proposal_id] ?? [];
+        $proposal_suppress = self::normalize_mask_entity_store($suppress_store[$proposal_id] ?? []);
+        $proposal_overrides = self::normalize_mask_entity_store($override_store[$proposal_id] ?? []);
 
         $summary = [
             'ignore'     => 0,
@@ -1102,7 +1316,10 @@ final class DBVC_Admin_App
             $vf_object_uid = isset($entry['vf_object_uid']) ? sanitize_text_field($entry['vf_object_uid']) : '';
             $meta_path     = isset($entry['meta_path']) ? (string) $entry['meta_path'] : '';
             $action        = isset($entry['action']) ? sanitize_key($entry['action']) : '';
-            $meta_key      = self::extract_meta_key_from_path($meta_path);
+            $path_parts    = self::parse_mask_path($meta_path);
+            $meta_key      = $path_parts['bucket_key'];
+            $scope         = $path_parts['scope'];
+            $field_key     = $path_parts['field'];
 
             if ($vf_object_uid === '' || $meta_path === '' || $meta_key === '') {
                 $errors[] = __('Masking entries must include vf_object_uid, meta_path, and a valid meta key.', 'dbvc');
@@ -1112,10 +1329,19 @@ final class DBVC_Admin_App
                 $errors[] = sprintf(__('Unknown entity %s for masking.', 'dbvc'), $vf_object_uid);
                 continue;
             }
-            if (! self::mask_path_matches_patterns($meta_path, $patterns['keys'], $patterns['subkeys'])) {
-                $errors[] = sprintf(__('Meta path %s is not covered by masking patterns.', 'dbvc'), $meta_path);
+            $matches = ($scope === 'post')
+                ? in_array($field_key, $post_fields, true)
+                : self::mask_path_matches_patterns($meta_path, $patterns['keys'], $patterns['subkeys']);
+            if (! $matches) {
+                if ($scope === 'post') {
+                    $errors[] = sprintf(__('Post field %s is not enabled for masking.', 'dbvc'), $field_key ?: $meta_path);
+                } else {
+                    $errors[] = sprintf(__('Meta path %s is not covered by masking patterns.', 'dbvc'), $meta_path);
+                }
                 continue;
             }
+
+            $decision_path = ($scope === 'post' && $field_key !== '') ? $field_key : $meta_path;
 
             if (! in_array($action, ['ignore', 'auto_accept', 'override'], true)) {
                 $errors[] = sprintf(__('Unsupported masking action "%s".', 'dbvc'), $action);
@@ -1123,25 +1349,19 @@ final class DBVC_Admin_App
             }
 
             if ('ignore' === $action) {
-                self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'keep');
-                if (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
-                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
-                }
-                if (isset($proposal_overrides[$vf_object_uid][$meta_key])) {
-                    unset($proposal_overrides[$vf_object_uid][$meta_key]);
-                }
+                self::set_entity_decision($proposal_id, $vf_object_uid, $decision_path, 'keep');
+                $proposal_suppress = self::remove_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $meta_path, $scope);
+                $proposal_overrides = self::remove_mask_store_entry($proposal_overrides, $vf_object_uid, $meta_key, $meta_path, $scope);
                 $summary['ignore']++;
             } elseif ('auto_accept' === $action) {
                 $should_suppress = ! empty($entry['suppress']);
-                self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'accept');
+                self::set_entity_decision($proposal_id, $vf_object_uid, $decision_path, 'accept');
                 if ($should_suppress) {
-                    $proposal_suppress = self::store_mask_suppression($proposal_suppress, $vf_object_uid, $meta_key, $meta_path);
-                } elseif (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
-                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
+                    $proposal_suppress = self::store_mask_suppression($proposal_suppress, $vf_object_uid, $meta_key, $meta_path, $scope);
+                } else {
+                    $proposal_suppress = self::remove_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $meta_path, $scope);
                 }
-                if (isset($proposal_overrides[$vf_object_uid][$meta_key])) {
-                    unset($proposal_overrides[$vf_object_uid][$meta_key]);
-                }
+                $proposal_overrides = self::remove_mask_store_entry($proposal_overrides, $vf_object_uid, $meta_key, $meta_path, $scope);
                 $summary['auto_accept']++;
             } else {
                 $override_value = isset($entry['override_value']) ? (string) $entry['override_value'] : '';
@@ -1156,12 +1376,12 @@ final class DBVC_Admin_App
                     $meta_key,
                     $meta_path,
                     $override_value,
-                    $note
+                    $note,
+                    $scope,
+                    $field_key
                 );
-                self::set_entity_decision($proposal_id, $vf_object_uid, $meta_path, 'accept');
-                if (isset($proposal_suppress[$vf_object_uid][$meta_key])) {
-                    unset($proposal_suppress[$vf_object_uid][$meta_key]);
-                }
+                self::set_entity_decision($proposal_id, $vf_object_uid, $decision_path, 'accept');
+                $proposal_suppress = self::remove_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $meta_path, $scope);
                 $summary['override']++;
             }
 
@@ -1191,6 +1411,107 @@ final class DBVC_Admin_App
             'applied'     => $summary,
             'entities'    => $updated_entities,
             'errors'      => $errors,
+        ]);
+    }
+
+    /**
+     * REST: revert previously applied masking directives.
+     */
+    public static function revert_proposal_masking(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $patterns = self::get_mask_meta_patterns();
+        $post_fields = isset($patterns['post_fields']) && is_array($patterns['post_fields'])
+            ? $patterns['post_fields']
+            : [];
+        if (empty($patterns['keys']) && empty($patterns['subkeys']) && empty($post_fields)) {
+            return new \WP_Error('dbvc_no_mask_patterns', __('No masking patterns are configured for this site.', 'dbvc'), ['status' => 400]);
+        }
+
+        $decision_store = self::get_decision_store();
+        $proposal_decisions = $decision_store[$proposal_id] ?? [];
+
+        if (empty($proposal_decisions)) {
+            return new \WP_REST_Response([
+                'proposal_id' => $proposal_id,
+                'cleared'     => ['decisions' => 0, 'entities' => 0],
+                'entities'    => [],
+            ]);
+        }
+
+        $affected_entities = [];
+        $cleared = 0;
+
+        foreach ($proposal_decisions as $vf_object_uid => $decisions) {
+            if (! is_array($decisions)) {
+                continue;
+            }
+
+            foreach ($decisions as $path => $action) {
+                if (! is_string($path) || $path === '' || $path === DBVC_NEW_ENTITY_DECISION_KEY) {
+                    continue;
+                }
+
+                $parts = self::parse_mask_path($path);
+                $scope = $parts['scope'];
+                $field = $parts['field'];
+                $normalized_path = $scope === 'post' && $field !== ''
+                    ? 'post.' . $field
+                    : (string) $path;
+
+                if ($scope === 'post') {
+                    if ($field === '' || ! in_array($field, $post_fields, true)) {
+                        continue;
+                    }
+                } else {
+                    if (! self::mask_path_matches_patterns($normalized_path, $patterns['keys'], $patterns['subkeys'])) {
+                        continue;
+                    }
+                }
+
+                self::clear_entity_decision($proposal_id, (string) $vf_object_uid, $path);
+                $affected_entities[(string) $vf_object_uid] = true;
+                $cleared++;
+            }
+        }
+
+        $suppress_store = self::get_mask_suppression_store();
+        $override_store = self::get_mask_override_store();
+
+        if (isset($suppress_store[$proposal_id])) {
+            unset($suppress_store[$proposal_id]);
+        }
+        if (isset($override_store[$proposal_id])) {
+            unset($override_store[$proposal_id]);
+        }
+
+        $suppress_store = self::cleanup_mask_store($suppress_store, $proposal_id);
+        $override_store = self::cleanup_mask_store($override_store, $proposal_id);
+
+        self::set_mask_suppression_store($suppress_store);
+        self::set_mask_override_store($override_store);
+
+        $entities = [];
+        if (! empty($affected_entities)) {
+            $entities = self::summarize_masking_entities($proposal_id, array_keys($affected_entities), $manifest);
+        }
+
+        return new \WP_REST_Response([
+            'proposal_id' => $proposal_id,
+            'cleared'     => [
+                'decisions' => $cleared,
+                'entities'  => count($affected_entities),
+            ],
+            'entities'    => $entities,
         ]);
     }
 
@@ -1318,6 +1639,16 @@ final class DBVC_Admin_App
         $identity = self::describe_entity_identity($entity);
 
         $diff_summary = self::compare_snapshots($current, $proposed_data);
+        $diff_paths = [];
+        if (! empty($diff_summary['changes'])) {
+            foreach ($diff_summary['changes'] as $change) {
+                $path = isset($change['path']) ? (string) $change['path'] : '';
+                if ($path !== '') {
+                    $diff_paths[] = $path;
+                }
+            }
+        }
+        self::prune_entity_decisions_for_paths($proposal_id, $vf_object_uid, $diff_paths);
         $meta_changes = 0;
         $tax_changes  = 0;
         foreach ($diff_summary['changes'] as $change) {
@@ -1939,21 +2270,31 @@ final class DBVC_Admin_App
         $path   = isset($params['path']) ? sanitize_text_field($params['path']) : '';
         $action = isset($params['action']) ? sanitize_key($params['action']) : '';
 
+        $skip_action = false;
         if ($path === '' && $action !== 'clear_all') {
-            return new \WP_Error('dbvc_missing_path', __('Path is required.', 'dbvc'), ['status' => 400]);
+            // Gracefully ignore stale requests that arrive with an empty path (often caused by
+            // entities whose diff paths were regenerated after snapshot capture). Returning a
+            // soft success prevents the React app from crashing while we recompute decisions.
+            $skip_action = true;
+        }
+
+        if ($action === '') {
+            $skip_action = true;
         }
 
         $allowed_actions = ['accept', 'keep', 'clear', 'clear_all', 'accept_new', 'decline_new'];
-        if (! in_array($action, $allowed_actions, true)) {
+        if (! $skip_action && ! in_array($action, $allowed_actions, true)) {
             return new \WP_Error('dbvc_invalid_action', __('Invalid action supplied.', 'dbvc'), ['status' => 400]);
         }
 
-        if ($action === 'clear') {
-            self::clear_entity_decision($proposal_id, $vf_object_uid, $path);
-        } elseif ($action === 'clear_all') {
-            self::clear_all_entity_decisions($proposal_id, $vf_object_uid);
-        } else {
-            self::set_entity_decision($proposal_id, $vf_object_uid, $path, $action);
+        if (! $skip_action) {
+            if ($action === 'clear') {
+                self::clear_entity_decision($proposal_id, $vf_object_uid, $path);
+            } elseif ($action === 'clear_all') {
+                self::clear_all_entity_decisions($proposal_id, $vf_object_uid);
+            } else {
+                self::set_entity_decision($proposal_id, $vf_object_uid, $path, $action);
+            }
         }
 
         $store             = self::get_decision_store();
@@ -2219,6 +2560,93 @@ final class DBVC_Admin_App
     }
 
     /**
+     * REST: Clear only Keep decisions for multiple entities.
+     */
+    public static function unkeep_entities_bulk(\WP_REST_Request $request)
+    {
+        $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
+        if ($proposal_id === '') {
+            return new \WP_Error('dbvc_missing_proposal', __('Proposal ID is required.', 'dbvc'), ['status' => 400]);
+        }
+
+        $body = $request->get_json_params();
+        $scope = isset($body['scope']) ? sanitize_key($body['scope']) : 'selected';
+        $requested_ids = [];
+        if (! empty($body['vf_object_uids']) && is_array($body['vf_object_uids'])) {
+            $requested_ids = array_filter(array_map('sanitize_text_field', $body['vf_object_uids']));
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_REST_Response(null, 404);
+        }
+
+        $manifest_map = [];
+        foreach ($manifest['items'] as $item) {
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
+                continue;
+            }
+            $vf_object_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($vf_object_uid !== '') {
+                $manifest_map[$vf_object_uid] = $item;
+            }
+        }
+
+        $target_ids = [];
+        if ($scope === 'all') {
+            $target_ids = array_keys($manifest_map);
+        } else {
+            $target_ids = $requested_ids;
+        }
+
+        if (empty($target_ids)) {
+            return new \WP_Error('dbvc_no_entities', __('No entities were selected.', 'dbvc'), ['status' => 400]);
+        }
+
+        $cleared_keep = 0;
+        $entities_updated = 0;
+
+        foreach ($target_ids as $vf_object_uid) {
+            if (! isset($manifest_map[$vf_object_uid])) {
+                continue;
+            }
+
+            $decisions = self::get_entity_decisions($proposal_id, $vf_object_uid);
+            if (empty($decisions)) {
+                continue;
+            }
+
+            $cleared_for_entity = 0;
+            foreach ($decisions as $path => $action) {
+                if ($action !== 'keep') {
+                    continue;
+                }
+                self::clear_entity_decision($proposal_id, $vf_object_uid, $path);
+                $cleared_keep++;
+                $cleared_for_entity++;
+            }
+
+            if ($cleared_for_entity > 0) {
+                $entities_updated++;
+            }
+        }
+
+        $store            = self::get_decision_store();
+        $proposal_store   = isset($store[$proposal_id]) && is_array($store[$proposal_id]) ? $store[$proposal_id] : [];
+        $proposal_summary = self::summarize_proposal_decisions($proposal_store);
+
+        return new \WP_REST_Response([
+            'proposal_id'       => $proposal_id,
+            'cleared_keep'      => $cleared_keep,
+            'entities_updated'  => $entities_updated,
+            'proposal_summary'  => $proposal_summary,
+        ]);
+    }
+
+    /**
      * REST: capture snapshot for a single entity on demand.
      */
     public static function capture_entity_snapshot(\WP_REST_Request $request)
@@ -2231,6 +2659,35 @@ final class DBVC_Admin_App
         $vf_object_uid = sanitize_text_field($request->get_param('vf_object_uid'));
         $post_id       = DBVC_Sync_Posts::resolve_local_post_id(0, $vf_object_uid);
 
+        if (! $post_id && $proposal_id !== '' && $vf_object_uid !== '' && class_exists('DBVC_Sync_Posts')) {
+            $manifest = self::read_manifest_by_id($proposal_id);
+            if ($manifest && ! empty($manifest['items']) && is_array($manifest['items'])) {
+                $matched_item = null;
+                foreach ($manifest['items'] as $item) {
+                    $item_uid = isset($item['vf_object_uid']) ? (string) $item['vf_object_uid'] : '';
+                    if ($item_uid !== '' && $item_uid === $vf_object_uid) {
+                        $matched_item = $item;
+                        break;
+                    }
+                }
+                if ($matched_item) {
+                    $identity = DBVC_Sync_Posts::identify_local_entity([
+                        'vf_object_uid' => $vf_object_uid,
+                        'post_id'       => $matched_item['post_id'] ?? 0,
+                        'post_type'     => $matched_item['post_type'] ?? '',
+                        'post_name'     => $matched_item['post_name'] ?? '',
+                    ]);
+                    if (! empty($identity['post_id'])) {
+                        $post_id = (int) $identity['post_id'];
+                        if (defined('WP_DEBUG') && WP_DEBUG) {
+                            $match_source = isset($identity['match_source']) ? (string) $identity['match_source'] : 'unknown';
+                            error_log(sprintf('[DBVC Snapshot] Fallback matched local entity for proposal %s uid %s via %s (post_id=%d).', $proposal_id, $vf_object_uid, $match_source, $post_id));
+                        }
+                    }
+                }
+            }
+        }
+
         if (! $post_id) {
             return new \WP_Error('dbvc_invalid_entity', __('Entity is not available on this site yet.', 'dbvc'), ['status' => 400]);
         }
@@ -2238,6 +2695,7 @@ final class DBVC_Admin_App
         try {
             DBVC_Snapshot_Manager::capture_post_snapshot($proposal_id, $post_id, $vf_object_uid);
             $snapshot = DBVC_Snapshot_Manager::read_snapshot($proposal_id, $vf_object_uid);
+            self::rebuild_entity_decisions_for_manifest_item($proposal_id, $vf_object_uid);
         } catch (\Throwable $e) {
             return new \WP_Error('dbvc_snapshot_failed', $e->getMessage(), ['status' => 500]);
         }
@@ -2282,6 +2740,16 @@ final class DBVC_Admin_App
             return new \WP_Error('dbvc_manifest_empty', __('Proposal contains no entities to snapshot.', 'dbvc'), ['status' => 400]);
         }
 
+        $manifest_index = [];
+        foreach ($items as $item) {
+            $entity_uid = isset($item['vf_object_uid'])
+                ? (string) $item['vf_object_uid']
+                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            if ($entity_uid !== '') {
+                $manifest_index[$entity_uid] = $item;
+            }
+        }
+
         $targets = [];
         foreach ($items as $item) {
             if (($item['item_type'] ?? '') !== 'post') {
@@ -2316,6 +2784,9 @@ final class DBVC_Admin_App
             try {
                 DBVC_Snapshot_Manager::capture_post_snapshot($proposal_id, $post_id, $entity_uid);
                 $captured++;
+                if (isset($manifest_index[$entity_uid])) {
+                    self::rebuild_entity_decisions_for_manifest_item($proposal_id, $entity_uid, $manifest_index[$entity_uid]);
+                }
             } catch (\Throwable $e) {
                 // Continue with remaining entities; optionally log.
             }
@@ -2669,6 +3140,26 @@ final class DBVC_Admin_App
             $result = DBVC_Sync_Posts::import_backup($proposal_id, $import_options);
         }
         if (is_wp_error($result)) {
+            if (class_exists('DBVC_Sync_Logger')) {
+                DBVC_Sync_Logger::log('Proposal apply failed', [
+                    'proposal' => $proposal_id,
+                    'mode'     => $mode,
+                    'error'    => $result->get_error_message(),
+                    'code'     => $result->get_error_code(),
+                ]);
+            }
+            if (class_exists('DBVC_Database') && method_exists('DBVC_Database', 'log_activity')) {
+                DBVC_Database::log_activity(
+                    'proposal_apply_failed',
+                    'error',
+                    $result->get_error_message(),
+                    [
+                        'proposal' => $proposal_id,
+                        'mode'     => $mode,
+                        'code'     => $result->get_error_code(),
+                    ]
+                );
+            }
             $status = 500;
             $error_data = $result->get_error_data();
             if (is_array($error_data) && isset($error_data['status'])) {
@@ -2702,13 +3193,39 @@ final class DBVC_Admin_App
 
         $status_after = ($summary_after['total'] ?? 0) === 0 ? 'closed' : 'draft';
 
+        $errors = isset($result['errors']) && is_array($result['errors'])
+            ? array_map('strval', $result['errors'])
+            : [];
+
+        if (! empty($errors)) {
+            if (class_exists('DBVC_Sync_Logger')) {
+                DBVC_Sync_Logger::log('Proposal apply completed with errors', [
+                    'proposal' => $proposal_id,
+                    'mode'     => $mode,
+                    'errors'   => $errors,
+                ]);
+            }
+            if (class_exists('DBVC_Database') && method_exists('DBVC_Database', 'log_activity')) {
+                DBVC_Database::log_activity(
+                    'proposal_apply_completed_with_errors',
+                    'warning',
+                    'Proposal apply completed with errors.',
+                    [
+                        'proposal' => $proposal_id,
+                        'mode'     => $mode,
+                        'errors'   => $errors,
+                    ]
+                );
+            }
+        }
+
         $response = [
             'proposal_id'         => $proposal_id,
             'mode'                => $mode,
             'result'              => [
                 'imported'       => isset($result['imported']) ? (int) $result['imported'] : 0,
                 'skipped'        => isset($result['skipped']) ? (int) $result['skipped'] : 0,
-                'errors'         => array_map('strval', isset($result['errors']) && is_array($result['errors']) ? $result['errors'] : []),
+                'errors'         => $errors,
                 'media'          => isset($result['media']) ? $result['media'] : [],
                 'media_resolver' => isset($result['media_resolver']) ? $result['media_resolver'] : [],
                 'media_reconcile'=> isset($result['media_reconcile']) ? $result['media_reconcile'] : [],
@@ -2860,6 +3377,141 @@ final class DBVC_Admin_App
         return array_values(array_unique(array_filter($paths)));
     }
 
+    /**
+     * Re-evaluate decisions for an entity using the latest snapshot diff.
+     *
+     * @param string     $proposal_id
+     * @param string     $vf_object_uid
+     * @param array|null $manifest_item
+     * @return void
+     */
+    private static function rebuild_entity_decisions_for_manifest_item(string $proposal_id, string $vf_object_uid, ?array $manifest_item = null): void
+    {
+        if ($manifest_item === null) {
+            $manifest = self::read_manifest_by_id($proposal_id);
+            if (! $manifest || empty($manifest['items']) || ! is_array($manifest['items'])) {
+                return;
+            }
+            foreach ($manifest['items'] as $item) {
+                $entity_uid = isset($item['vf_object_uid'])
+                    ? (string) $item['vf_object_uid']
+                    : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+                if ($entity_uid === $vf_object_uid) {
+                    $manifest_item = $item;
+                    break;
+                }
+            }
+        }
+
+        if (! $manifest_item) {
+            return;
+        }
+
+        $paths = self::resolve_entity_diff_paths($proposal_id, $vf_object_uid, $manifest_item);
+        self::prune_entity_decisions_for_paths($proposal_id, $vf_object_uid, $paths);
+    }
+
+    /**
+     * Remove stored decisions that no longer match any diff paths.
+     *
+     * @param string $proposal_id
+     * @param string $vf_object_uid
+     * @param array  $paths
+     * @return void
+     */
+    private static function prune_entity_decisions_for_paths(string $proposal_id, string $vf_object_uid, array $paths): void
+    {
+        $store = self::get_decision_store();
+        if (
+            ! isset($store[$proposal_id][$vf_object_uid])
+            || ! is_array($store[$proposal_id][$vf_object_uid])
+        ) {
+            return;
+        }
+
+        $entity_store = $store[$proposal_id][$vf_object_uid];
+        if (empty($entity_store)) {
+            return;
+        }
+
+        $normalized_paths = [];
+        foreach ($paths as $path) {
+            $path = trim((string) $path);
+            if ($path === '') {
+                continue;
+            }
+            $normalized_paths[] = $path;
+            if (
+                strpos($path, 'meta.') !== 0
+                && strpos($path, 'tax.') !== 0
+                && strpos($path, 'post.') !== 0
+                && strpos($path, '.') === false
+            ) {
+                $normalized_paths[] = 'post.' . $path;
+            }
+        }
+        $normalized_paths = array_values(array_unique($normalized_paths));
+
+        $changed = false;
+        foreach ($entity_store as $path => $action) {
+            if (! is_string($path) || $path === '' || $path === self::NEW_ENTITY_DECISION_KEY) {
+                continue;
+            }
+            if (! self::decision_path_overlaps_list($path, $normalized_paths)) {
+                unset($entity_store[$path]);
+                $changed = true;
+            }
+        }
+
+        if (! $changed) {
+            return;
+        }
+
+        if (! isset($store[$proposal_id])) {
+            $store[$proposal_id] = [];
+        }
+
+        if (! empty($entity_store)) {
+            $store[$proposal_id][$vf_object_uid] = $entity_store;
+        } else {
+            unset($store[$proposal_id][$vf_object_uid]);
+        }
+
+        if (! empty($store[$proposal_id])) {
+            $store[$proposal_id] = self::recalculate_proposal_summary($store[$proposal_id]);
+        }
+
+        $store = self::cleanup_empty_proposals($store, $proposal_id);
+        self::set_decision_store($store);
+    }
+
+    private static function decision_path_overlaps_list(string $decision_path, array $valid_paths): bool
+    {
+        if ($decision_path === self::NEW_ENTITY_DECISION_KEY) {
+            return true;
+        }
+
+        if (empty($valid_paths)) {
+            return false;
+        }
+
+        foreach ($valid_paths as $path) {
+            if ($path === '') {
+                continue;
+            }
+
+            if (
+                $decision_path === $path
+                || strpos($decision_path, $path . '.') === 0
+                || strpos($path, $decision_path . '.') === 0
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function summarize_entity_diff_counts(string $proposal_id, array $item, string $vf_object_uid): array
     {
         $path = isset($item['path']) ? (string) $item['path'] : '';
@@ -2961,6 +3613,8 @@ final class DBVC_Admin_App
         switch ($root) {
             case 'meta':
                 return 'meta';
+            case 'post':
+                return 'post_fields';
             case 'tax_input':
             case 'taxonomies':
                 return 'tax';
@@ -3040,12 +3694,17 @@ final class DBVC_Admin_App
         return false;
     }
 
-    private static function collect_masking_fields(string $proposal_id, array $manifest, int $page = 1, int $per_page = 25): array
+    private static function collect_masking_fields(string $proposal_id, array $manifest, int $page = 1, int $per_page = self::MASKING_CHUNK_DEFAULT): array
     {
         $patterns = self::get_mask_meta_patterns();
-        if (empty($patterns['keys']) && empty($patterns['subkeys'])) {
+        $post_fields = isset($patterns['post_fields']) && is_array($patterns['post_fields'])
+            ? $patterns['post_fields']
+            : [];
+        $has_meta_patterns = ! empty($patterns['keys']) || ! empty($patterns['subkeys']);
+        if (! $has_meta_patterns && empty($post_fields)) {
             return [];
         }
+        $post_field_labels = ! empty($post_fields) ? self::get_maskable_post_fields_map() : [];
 
         $fields = [];
         $debug_log_enabled = defined('DBVC_MASK_DEBUG') && DBVC_MASK_DEBUG;
@@ -3062,8 +3721,8 @@ final class DBVC_Admin_App
 
         $suppress_store = self::get_mask_suppression_store();
         $override_store = self::get_mask_override_store();
-        $proposal_suppress = $suppress_store[$proposal_id] ?? [];
-        $proposal_overrides = $override_store[$proposal_id] ?? [];
+        $proposal_suppress = self::normalize_mask_entity_store($suppress_store[$proposal_id] ?? []);
+        $proposal_overrides = self::normalize_mask_entity_store($override_store[$proposal_id] ?? []);
 
         $offset = max(0, ($page - 1) * $per_page);
         if ($per_page > 0) {
@@ -3113,36 +3772,36 @@ final class DBVC_Admin_App
             }
 
             $meta_tree = isset($proposed['meta']) ? $proposed['meta'] : [];
-            if (empty($meta_tree)) {
-                if ($debug_log_enabled) {
-                    error_log(sprintf('[DBVC Masking] Skipping %s (no meta payload)', $vf_object_uid));
-                }
-                continue;
-            }
-
             $current_meta = isset($current['meta']) ? $current['meta'] : [];
-            self::walk_mask_meta_tree(
-                $meta_tree,
-                $current_meta,
-                'meta',
-                $patterns,
-                function ($path, $value, $current_value) use (&$fields, $vf_object_uid, $item, $item_type, $proposal_overrides, $proposal_suppress, $diff_state, $debug_log_enabled) {
-                    $meta_key = self::extract_meta_key_from_path($path);
-                    if ($meta_key === '') {
-                        if ($debug_log_enabled) {
-                            error_log(sprintf('[DBVC Masking] Path %s missing meta key', $path));
-                        }
-                        return;
-                    }
 
-                    $default_action = 'ignore';
-                    $override_entry = $proposal_overrides[$vf_object_uid][$meta_key] ?? null;
-                    $supp_entry     = $proposal_suppress[$vf_object_uid][$meta_key] ?? null;
-                    if ($override_entry) {
-                        $default_action = 'override';
-                    } elseif ($supp_entry) {
-                        $default_action = 'auto_accept';
+            if ($has_meta_patterns) {
+                if (empty($meta_tree)) {
+                    if ($debug_log_enabled) {
+                        error_log(sprintf('[DBVC Masking] Skipping meta scan for %s (no meta payload)', $vf_object_uid));
                     }
+                } else {
+                    self::walk_mask_meta_tree(
+                        $meta_tree,
+                        $current_meta,
+                        'meta',
+                        $patterns,
+                        function ($path, $value, $current_value) use (&$fields, $vf_object_uid, $item, $item_type, $proposal_overrides, $proposal_suppress, $diff_state, $debug_log_enabled) {
+                            $meta_key = self::extract_meta_key_from_path($path);
+                            if ($meta_key === '') {
+                                if ($debug_log_enabled) {
+                                    error_log(sprintf('[DBVC Masking] Path %s missing meta key', $path));
+                                }
+                                return;
+                            }
+
+                            $default_action = 'ignore';
+                            $override_entry = self::get_mask_store_entry($proposal_overrides, $vf_object_uid, $meta_key, $path, 'meta');
+                            $supp_entry     = self::get_mask_store_entry($proposal_suppress, $vf_object_uid, $meta_key, $path, 'meta');
+                            if ($override_entry) {
+                                $default_action = 'override';
+                            } elseif ($supp_entry) {
+                                $default_action = 'auto_accept';
+                            }
 
                     $fields[] = [
                         'vf_object_uid' => $vf_object_uid,
@@ -3151,18 +3810,54 @@ final class DBVC_Admin_App
                         'meta_path'     => $path,
                         'meta_key'      => $meta_key,
                         'label'         => self::humanize_path($path),
+                        'section'       => self::determine_section($path),
                         'proposed_value'=> $value,
                         'current_value' => $current_value,
+                        'default_action'=> $default_action,
+                                'diff_state'    => $diff_state,
+                                'override'      => $override_entry,
+                                'suppressed'    => (bool) $supp_entry,
+                            ];
+                            if ($debug_log_enabled) {
+                                error_log(sprintf('[DBVC Masking] Added %s for %s (action %s)', $path, $vf_object_uid, $default_action));
+                            }
+                        }
+                    );
+                }
+            }
+
+            if (! empty($post_fields) && $item_type === 'post') {
+                foreach ($post_fields as $field_key) {
+                    if (! array_key_exists($field_key, $proposed)) {
+                        continue;
+                    }
+                    $path = 'post.' . $field_key;
+                    $bucket_key = self::build_mask_bucket_key('post', $field_key);
+                    $override_entry = self::get_mask_store_entry($proposal_overrides, $vf_object_uid, $bucket_key, $path, 'post');
+                    $supp_entry     = self::get_mask_store_entry($proposal_suppress, $vf_object_uid, $bucket_key, $path, 'post');
+                    $default_action = $override_entry ? 'override' : ($supp_entry ? 'auto_accept' : 'ignore');
+
+                    $fields[] = [
+                        'vf_object_uid' => $vf_object_uid,
+                        'entity_type'   => $item_type,
+                        'title'         => self::get_entity_display_title($item, $item_type),
+                        'meta_path'     => $path,
+                        'meta_key'      => $bucket_key,
+                        'section'       => 'post_fields',
+                        'label'         => $post_field_labels[$field_key] ?? self::humanize_path($path),
+                        'proposed_value'=> $proposed[$field_key],
+                        'current_value' => $current[$field_key] ?? null,
                         'default_action'=> $default_action,
                         'diff_state'    => $diff_state,
                         'override'      => $override_entry,
                         'suppressed'    => (bool) $supp_entry,
                     ];
+
                     if ($debug_log_enabled) {
-                        error_log(sprintf('[DBVC Masking] Added %s for %s (action %s)', $path, $vf_object_uid, $default_action));
+                        error_log(sprintf('[DBVC Masking] Added %s for %s (scope post)', $path, $vf_object_uid));
                     }
                 }
-            );
+            }
         }
 
         if ($debug_log_enabled) {
@@ -3285,9 +3980,18 @@ final class DBVC_Admin_App
             $sub_patterns = self::simple_mask_list($subs_raw);
         }
 
+        $post_field_input = get_option('dbvc_mask_post_fields', []);
+        $post_fields = [];
+        if (is_array($post_field_input) && ! empty($post_field_input)) {
+            $available = array_keys(self::get_maskable_post_fields_map());
+            $requested = array_map('sanitize_key', $post_field_input);
+            $post_fields = array_values(array_intersect($requested, $available));
+        }
+
         return [
-            'keys'    => $key_patterns,
-            'subkeys' => $sub_patterns,
+            'keys'        => $key_patterns,
+            'subkeys'     => $sub_patterns,
+            'post_fields' => $post_fields,
         ];
     }
 
@@ -3308,11 +4012,94 @@ final class DBVC_Admin_App
 
     private static function extract_meta_key_from_path(string $path): string
     {
-        if (strpos($path, 'meta.') !== 0) {
-            return '';
+        $parsed = self::parse_mask_path($path);
+        return $parsed['bucket_key'];
+    }
+
+    private static function parse_mask_path(string $path): array
+    {
+        $path = (string) $path;
+        $scope = 'meta';
+        $field = '';
+
+        if (strpos($path, 'post.') === 0) {
+            $scope = 'post';
+            $field = substr($path, 5);
+        } elseif (strpos($path, 'meta.') === 0) {
+            $chunks = explode('.', $path);
+            $field = $chunks[1] ?? '';
+        } elseif ($path !== '') {
+            $field = $path;
         }
-        $chunks = explode('.', $path);
-        return isset($chunks[1]) ? (string) $chunks[1] : '';
+
+        $field = trim($field);
+        if ($field === '') {
+            $field = $path;
+        }
+
+        if ($scope !== 'post' && self::is_maskable_post_field($field)) {
+            $scope = 'post';
+        }
+
+        return [
+            'scope'      => self::normalize_mask_scope($scope),
+            'field'      => $field,
+            'bucket_key' => self::build_mask_bucket_key($scope, $field),
+        ];
+    }
+
+    private static function build_mask_bucket_key(string $scope, string $field): string
+    {
+        $scope_key = self::normalize_mask_scope($scope);
+        return $scope_key === 'post' ? 'post:' . (string) $field : (string) $field;
+    }
+
+    private static function normalize_mask_scope(string $scope): string
+    {
+        return $scope === 'post' ? 'post' : 'meta';
+    }
+
+    private static function get_maskable_post_fields_map(): array
+    {
+        if (function_exists('dbvc_get_maskable_post_fields')) {
+            $fields = dbvc_get_maskable_post_fields();
+            if (is_array($fields)) {
+                return $fields;
+            }
+        }
+
+        return [
+            'post_date'             => __('Post Date', 'dbvc'),
+            'post_date_gmt'         => __('Post Date (GMT)', 'dbvc'),
+            'post_modified'         => __('Post Modified', 'dbvc'),
+            'post_modified_gmt'     => __('Post Modified (GMT)', 'dbvc'),
+            'post_excerpt'          => __('Excerpt', 'dbvc'),
+            'post_parent'           => __('Parent ID', 'dbvc'),
+            'post_author'           => __('Author ID', 'dbvc'),
+            'post_password'         => __('Password', 'dbvc'),
+            'post_content_filtered' => __('Filtered Content', 'dbvc'),
+            'menu_order'            => __('Menu Order', 'dbvc'),
+            'guid'                  => __('GUID', 'dbvc'),
+            'comment_status'        => __('Comment Status', 'dbvc'),
+            'ping_status'           => __('Ping Status', 'dbvc'),
+            'post_mime_type'        => __('MIME Type', 'dbvc'),
+            'vf_object_uid'         => __('Entity UID', 'dbvc'),
+        ];
+    }
+
+    private static function is_maskable_post_field(string $field): bool
+    {
+        $field = trim((string) $field);
+        if ($field === '') {
+            return false;
+        }
+
+        static $cache = null;
+        if ($cache === null) {
+            $cache = array_keys(self::get_maskable_post_fields_map());
+        }
+
+        return in_array($field, $cache, true);
     }
 
     private static function mask_path_matches_patterns(string $path, array $key_patterns, array $sub_patterns): bool
@@ -3361,34 +4148,62 @@ final class DBVC_Admin_App
         update_option(self::MASK_OVERRIDES_OPTION, $store, false);
     }
 
-    private static function store_mask_suppression(array $store, string $vf_object_uid, string $meta_key, string $path): array
+    private static function store_mask_suppression(array $store, string $vf_object_uid, string $meta_key, string $path, string $scope = 'meta'): array
     {
-        if ($vf_object_uid === '' || $meta_key === '') {
+        if ($vf_object_uid === '' || $meta_key === '' || $path === '') {
             return $store;
         }
+
+        $path_parts = self::parse_mask_path($path);
+        $scope_key = self::normalize_mask_scope($scope !== '' ? $scope : $path_parts['scope']);
+        $field_key = $path_parts['field'];
+
         if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
             $store[$vf_object_uid] = [];
         }
-        $store[$vf_object_uid][$meta_key] = [
-            'path'    => $path,
-            'updated' => current_time('mysql'),
+        if (! isset($store[$vf_object_uid][$scope_key]) || ! is_array($store[$vf_object_uid][$scope_key])) {
+            $store[$vf_object_uid][$scope_key] = [];
+        }
+        if (! isset($store[$vf_object_uid][$scope_key][$meta_key]) || ! is_array($store[$vf_object_uid][$scope_key][$meta_key])) {
+            $store[$vf_object_uid][$scope_key][$meta_key] = [];
+        }
+        $store[$vf_object_uid][$scope_key][$meta_key][$path] = [
+            'path'      => $path,
+            'meta_key'  => $meta_key,
+            'scope'     => $scope_key,
+            'field_key' => $field_key,
+            'updated'   => current_time('mysql'),
         ];
         return $store;
     }
 
-    private static function store_mask_override(array $store, string $vf_object_uid, string $meta_key, string $path, string $value, string $note = ''): array
+    private static function store_mask_override(array $store, string $vf_object_uid, string $meta_key, string $path, string $value, string $note = '', string $scope = 'meta', string $field_key = ''): array
     {
-        if ($vf_object_uid === '' || $meta_key === '') {
+        if ($vf_object_uid === '' || $meta_key === '' || $path === '') {
             return $store;
         }
+
+        $path_parts = self::parse_mask_path($path);
+        $scope_key = self::normalize_mask_scope($scope !== '' ? $scope : $path_parts['scope']);
+        $resolved_field = $field_key !== '' ? $field_key : $path_parts['field'];
+
         if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
             $store[$vf_object_uid] = [];
         }
-        $store[$vf_object_uid][$meta_key] = [
-            'path'    => $path,
-            'value'   => $value,
-            'note'    => $note,
-            'updated' => current_time('mysql'),
+        if (! isset($store[$vf_object_uid][$scope_key]) || ! is_array($store[$vf_object_uid][$scope_key])) {
+            $store[$vf_object_uid][$scope_key] = [];
+        }
+        if (! isset($store[$vf_object_uid][$scope_key][$meta_key]) || ! is_array($store[$vf_object_uid][$scope_key][$meta_key])) {
+            $store[$vf_object_uid][$scope_key][$meta_key] = [];
+        }
+        $store[$vf_object_uid][$scope_key][$meta_key][$path] = [
+            'path'      => $path,
+            'meta_key'  => $meta_key,
+            'value'     => $value,
+            'note'      => $note,
+            'scope'     => $scope_key,
+            'field_key' => $resolved_field,
+            'updated'   => current_time('mysql'),
         ];
         return $store;
     }
@@ -3399,14 +4214,182 @@ final class DBVC_Admin_App
             return $store;
         }
 
-        foreach ($store[$proposal_id] as $entity_id => $bucket) {
-            if (empty($bucket) || ! is_array($bucket)) {
-                unset($store[$proposal_id][$entity_id]);
+        $normalized = self::normalize_mask_entity_store($store[$proposal_id]);
+        if (empty($normalized)) {
+            unset($store[$proposal_id]);
+        } else {
+            $store[$proposal_id] = $normalized;
+        }
+
+        return $store;
+    }
+
+    private static function normalize_mask_entity_store(array $store): array
+    {
+        $normalized = [];
+
+        foreach ($store as $vf_object_uid => $meta_entries) {
+            if (! is_array($meta_entries)) {
+                continue;
+            }
+
+            $scoped = self::normalize_mask_scope_entries($meta_entries);
+            if (! empty($scoped)) {
+                $normalized[$vf_object_uid] = $scoped;
             }
         }
 
-        if (empty($store[$proposal_id])) {
-            unset($store[$proposal_id]);
+        return $normalized;
+    }
+
+    private static function normalize_mask_scope_entries(array $entries): array
+    {
+        $scoped = [];
+        $has_explicit_scopes = false;
+
+        foreach (['meta', 'post'] as $scope_key) {
+            if (isset($entries[$scope_key]) && is_array($entries[$scope_key])) {
+                $has_explicit_scopes = true;
+                $bucket = self::normalize_mask_meta_entries($entries[$scope_key], $scope_key);
+                if (! empty($bucket)) {
+                    $scoped[$scope_key] = $bucket;
+                }
+            }
+        }
+
+        if (! $has_explicit_scopes) {
+            $bucket = self::normalize_mask_meta_entries($entries, 'meta');
+            if (! empty($bucket)) {
+                $scoped['meta'] = $bucket;
+            }
+        }
+
+        return $scoped;
+    }
+
+    private static function normalize_mask_meta_entries(array $entries, string $scope = 'meta'): array
+    {
+        $normalized = [];
+
+        foreach ($entries as $meta_key => $bucket) {
+            if (! is_array($bucket)) {
+                continue;
+            }
+
+            if (self::is_mask_store_leaf($bucket)) {
+                $bucket = [($bucket['path'] ?? (string) $meta_key) => $bucket];
+            }
+
+            foreach ($bucket as $path_key => $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
+
+                $meta_path = isset($entry['path']) ? (string) $entry['path'] : (string) $path_key;
+                $meta_path = $meta_path !== '' ? $meta_path : (string) $path_key;
+                $resolved_meta_key = isset($entry['meta_key']) && $entry['meta_key'] !== ''
+                    ? (string) $entry['meta_key']
+                    : (is_string($meta_key) && $meta_key !== '' ? (string) $meta_key : self::extract_meta_key_from_path($meta_path));
+
+                if ($resolved_meta_key === '') {
+                    continue;
+                }
+
+                $bucket_key = $resolved_meta_key;
+                if ($scope === 'post' && strpos($bucket_key, 'post:') !== 0) {
+                    $bucket_key = self::build_mask_bucket_key('post', $resolved_meta_key);
+                }
+
+                if (! isset($normalized[$bucket_key]) || ! is_array($normalized[$bucket_key])) {
+                    $normalized[$bucket_key] = [];
+                }
+
+                $entry['path'] = $meta_path;
+                $entry['meta_key'] = $bucket_key;
+                $entry['scope'] = self::normalize_mask_scope($scope);
+                if (! isset($entry['field_key']) || $entry['field_key'] === '') {
+                    $parsed = self::parse_mask_path($meta_path);
+                    $entry['field_key'] = $parsed['field'];
+                }
+
+                $normalized[$bucket_key][$meta_path] = $entry;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private static function is_mask_store_leaf(array $entry): bool
+    {
+        return array_key_exists('path', $entry) && ! array_key_exists(0, $entry);
+    }
+
+    private static function get_mask_store_entry(array $store, string $vf_object_uid, string $meta_key, string $meta_path, string $scope = 'meta'): ?array
+    {
+        if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
+            return null;
+        }
+
+        $scope_key = self::normalize_mask_scope($scope);
+        $scoped = null;
+        if (isset($store[$vf_object_uid][$scope_key]) && is_array($store[$vf_object_uid][$scope_key])) {
+            $scoped = $store[$vf_object_uid][$scope_key];
+        } elseif (isset($store[$vf_object_uid][$meta_key])) {
+            $scoped = $store[$vf_object_uid]; // legacy flat structure
+        }
+
+        if (! is_array($scoped)) {
+            return null;
+        }
+
+        if (isset($scoped[$meta_key][$meta_path])) {
+            return $scoped[$meta_key][$meta_path];
+        }
+
+        if (isset($scoped[$meta_key]['path']) && $scoped[$meta_key]['path'] === $meta_path) {
+            return $scoped[$meta_key];
+        }
+
+        return null;
+    }
+
+    private static function remove_mask_store_entry(array $store, string $vf_object_uid, string $meta_key, string $meta_path, string $scope = 'meta'): array
+    {
+        if (! isset($store[$vf_object_uid]) || ! is_array($store[$vf_object_uid])) {
+            return $store;
+        }
+
+        $scope_key = self::normalize_mask_scope($scope);
+        $removed = false;
+
+        if (isset($store[$vf_object_uid][$scope_key][$meta_key][$meta_path])) {
+            unset($store[$vf_object_uid][$scope_key][$meta_key][$meta_path]);
+            if (empty($store[$vf_object_uid][$scope_key][$meta_key])) {
+                unset($store[$vf_object_uid][$scope_key][$meta_key]);
+            }
+            if (empty($store[$vf_object_uid][$scope_key])) {
+                unset($store[$vf_object_uid][$scope_key]);
+            }
+            $removed = true;
+        } elseif (isset($store[$vf_object_uid][$scope_key][$meta_key]['path']) && $store[$vf_object_uid][$scope_key][$meta_key]['path'] === $meta_path) {
+            unset($store[$vf_object_uid][$scope_key][$meta_key]);
+            if (empty($store[$vf_object_uid][$scope_key])) {
+                unset($store[$vf_object_uid][$scope_key]);
+            }
+            $removed = true;
+        } elseif (isset($store[$vf_object_uid][$meta_key][$meta_path])) {
+            unset($store[$vf_object_uid][$meta_key][$meta_path]);
+            if (empty($store[$vf_object_uid][$meta_key])) {
+                unset($store[$vf_object_uid][$meta_key]);
+            }
+            $removed = true;
+        } elseif (isset($store[$vf_object_uid][$meta_key]['path']) && $store[$vf_object_uid][$meta_key]['path'] === $meta_path) {
+            unset($store[$vf_object_uid][$meta_key]);
+            $removed = true;
+        }
+
+        if ($removed && empty($store[$vf_object_uid])) {
+            unset($store[$vf_object_uid]);
         }
 
         return $store;
@@ -3680,7 +4663,26 @@ final class DBVC_Admin_App
     private static function get_entity_decisions(string $proposal_id, string $vf_object_uid): array
     {
         $store = self::get_decision_store();
-        return $store[$proposal_id][$vf_object_uid] ?? [];
+        $decisions = $store[$proposal_id][$vf_object_uid] ?? [];
+        if (! is_array($decisions) || empty($decisions)) {
+            return is_array($decisions) ? $decisions : [];
+        }
+
+        $normalized = $decisions;
+        foreach ($decisions as $path => $action) {
+            if (! is_string($path) || strpos($path, 'post.') !== 0) {
+                continue;
+            }
+            $alias = substr($path, 5);
+            if ($alias === '') {
+                continue;
+            }
+            if (! isset($normalized[$alias])) {
+                $normalized[$alias] = $action;
+            }
+        }
+
+        return $normalized;
     }
 
     /**
@@ -3839,6 +4841,48 @@ final class DBVC_Admin_App
 
         return new \WP_REST_Response([
             'status' => 'cleared',
+        ]);
+    }
+
+    /**
+     * Capture client-side app errors for logging.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public static function log_client_error(\WP_REST_Request $request)
+    {
+        $message = sanitize_text_field((string) $request->get_param('message'));
+        $stack   = sanitize_textarea_field((string) $request->get_param('stack'));
+        $component_stack = sanitize_textarea_field((string) $request->get_param('componentStack'));
+        $path    = sanitize_text_field((string) $request->get_param('path'));
+        $context = sanitize_text_field((string) $request->get_param('context'));
+
+        $payload = [
+            'context'        => $context,
+            'path'           => $path,
+            'stack'          => $stack,
+            'componentStack' => $component_stack,
+        ];
+
+        if (class_exists('DBVC_Sync_Logger')) {
+            DBVC_Sync_Logger::log('Admin app error boundary captured an error', array_merge(
+                ['message' => $message],
+                array_filter($payload)
+            ));
+        }
+
+        if (class_exists('DBVC_Database') && method_exists('DBVC_Database', 'log_activity')) {
+            DBVC_Database::log_activity(
+                'admin_app_error',
+                'error',
+                $message,
+                array_filter($payload)
+            );
+        }
+
+        return new \WP_REST_Response([
+            'logged' => true,
         ]);
     }
 
@@ -4116,10 +5160,21 @@ final class DBVC_Admin_App
         $match_source = isset($identity['match_source']) ? (string) $identity['match_source'] : 'none';
         $local_post_id = isset($identity['post_id']) ? (int) $identity['post_id'] : null;
 
+        $local_uid = '';
+        if ($local_post_id) {
+            $stored_uid = get_post_meta($local_post_id, 'vf_object_uid', true);
+            if (is_string($stored_uid)) {
+                $local_uid = $stored_uid;
+            }
+        }
+        $uid_mismatch = ($local_post_id && $vf_object_uid !== '' && $local_uid !== '' && $local_uid !== $vf_object_uid);
+
         return [
             'local_post_id' => $local_post_id ?: null,
             'match_source'  => $match_source !== '' ? $match_source : 'none',
             'is_new'        => $local_post_id ? false : true,
+            'local_uid'     => $local_uid,
+            'uid_mismatch'  => $uid_mismatch,
         ];
     }
 
@@ -4157,10 +5212,21 @@ final class DBVC_Admin_App
             }
         }
 
+        $local_uid = '';
+        if ($local_id) {
+            $stored_uid = get_term_meta($local_id, 'vf_object_uid', true);
+            if (is_string($stored_uid)) {
+                $local_uid = $stored_uid;
+            }
+        }
+        $uid_mismatch = ($local_id && $vf_object_uid !== '' && $local_uid !== '' && $local_uid !== $vf_object_uid);
+
         return [
             'local_post_id' => $local_id ?: null,
             'match_source'  => $match_source !== '' ? $match_source : 'none',
             'is_new'        => $local_id ? false : true,
+            'local_uid'     => $local_uid,
+            'uid_mismatch'  => $uid_mismatch,
         ];
     }
 
@@ -4243,6 +5309,8 @@ final class DBVC_Admin_App
             'term_taxonomy'      => $taxonomy,
             'is_new_entity'      => $is_new_entity,
             'identity_match'     => $identity['match_source'],
+            'local_uid'          => $identity['local_uid'] ?? '',
+            'uid_mismatch'       => $identity['uid_mismatch'] ?? false,
             'new_entity_decision'=> $new_entity_decision,
             'decision_summary'   => $decision_summary,
         ];
@@ -4381,5 +5449,13 @@ final class DBVC_Admin_App
         }
 
         return null;
+    }
+
+    /**
+     * Path to docs/fixtures inside the plugin.
+     */
+    private static function get_fixture_directory()
+    {
+        return trailingslashit(DBVC_PLUGIN_PATH . 'docs/fixtures');
     }
 }

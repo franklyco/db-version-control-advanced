@@ -14,10 +14,12 @@ This plan outlines the implementation steps for masking meta fields inside live 
    - The panel now streams masked entities in paged chunks so large proposals don’t blow memory. A progress indicator (“XX% loaded”) surfaces while pages load.
    - Instead of per-entity rows, reviewers pick a single bulk action (Ignore / Auto-accept & suppress / Override) that applies to every masked field in the current proposal.
    - When `Override` is chosen, override value + optional note inputs appear. Tooltip copy links to `docs/meta-masking.md#override-masked-value`.
+   - The loader auto-prefetches once entity rows settle and caches the results per proposal/session so reopening the drawer is instantaneous unless reviewers explicitly hit Refresh.
 
 3. **Apply flow**
    - Apply runs in chunks (50 fields per request by default) and shows a `% applied` ticker in the Tools panel header. Once done, masking data, entity badges, and duplicate info are refetched automatically.
    - The payload is cached in `sessionStorage`, enabling an “Undo last masking” button that replays the inverse (sets fields back to ignore) if the reviewer needs to revert.
+   - Add a persistent “Revert masking decisions” control that replays the masking query in reverse (clearing accept/keep decisions + suppression/override stores for every current mask pattern match) so reviewers can re-open a proposal after rules change.
 
 ## REST API Surface
 
@@ -50,6 +52,7 @@ Server logic:
 - Load manifest + snapshots.
 - Run `dbvc_mask_parse_list` on `dbvc_mask_meta_keys` + `dbvc_mask_subkeys`.
 - For each entity diff path that falls under `meta.*` or term meta, check if the key or dot-path matches the mask patterns.
+- When post-field masking is enabled, emit pseudo-paths like `post.post_date` for each selected field and reuse the same action pipeline as meta.
 - Include only entities marked `needs_review` / `diff_state.needs_review` or flagged `media_needs_review`.
 - Determine `default_action` through settings (default to `ignore`, future preference keys stored per proposal).
 - Server returns chunk metadata (page, per_page, total_pages, has_more) so clients can stream the list without exhausting memory.

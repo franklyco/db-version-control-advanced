@@ -398,6 +398,47 @@ if (! class_exists('DBVC_Database')) {
         }
 
         /**
+         * Retrieve a media index row by attachment ID.
+         *
+         * @param int $attachment_id
+         * @return object|null
+         */
+        public static function get_media_by_attachment_id($attachment_id)
+        {
+            global $wpdb;
+            $attachment_id = (int) $attachment_id;
+            if (! $attachment_id) {
+                return null;
+            }
+
+            $table = self::table_name('media_index');
+            return $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM {$table} WHERE attachment_id = %d LIMIT 1",
+                    $attachment_id
+                )
+            );
+        }
+
+        /**
+         * Delete media index entries by attachment ID.
+         *
+         * @param int $attachment_id
+         * @return void
+         */
+        public static function delete_media_by_attachment_id($attachment_id)
+        {
+            global $wpdb;
+            $attachment_id = (int) $attachment_id;
+            if (! $attachment_id) {
+                return;
+            }
+
+            $table = self::table_name('media_index');
+            $wpdb->delete($table, ['attachment_id' => $attachment_id], ['%d']);
+        }
+
+        /**
          * Upsert entity registry entry keyed by UID.
          *
          * @param array $data
@@ -464,6 +505,45 @@ if (! class_exists('DBVC_Database')) {
                     $entity_uid
                 )
             );
+        }
+
+
+        /**
+         * Delete an entity registry row by UID.
+         *
+         * @param string $entity_uid
+         * @return void
+         */
+        public static function delete_entity_by_uid($entity_uid)
+        {
+            global $wpdb;
+            $entity_uid = trim((string) $entity_uid);
+            if ($entity_uid === '') {
+                return;
+            }
+
+            $table = self::table_name('entities');
+            $wpdb->delete($table, ['entity_uid' => $entity_uid], ['%s']);
+        }
+
+        /**
+         * Delete entity registry rows by object mapping.
+         *
+         * @param string $object_type
+         * @param int $object_id
+         * @return void
+         */
+        public static function delete_entity_by_object($object_type, $object_id)
+        {
+            global $wpdb;
+            $object_type = sanitize_key($object_type);
+            $object_id = (int) $object_id;
+            if ($object_type === '' || ! $object_id) {
+                return;
+            }
+
+            $table = self::table_name('entities');
+            $wpdb->delete($table, ['object_type' => $object_type, 'object_id' => $object_id], ['%s', '%d']);
         }
 
         /**
