@@ -66,6 +66,7 @@
               });
             }, a = e => {
               if (!e) return "—";
+              if (isThenable(e)) return "[async]";
               const t = new Date(e);
               return Number.isNaN(t.getTime()) ? e : t.toLocaleString();
             }, o = e => null == e ? "—" : isThenable(e) ? "[async]" : "boolean" == typeof e ? e ? "true" : "false" : "number" == typeof e ? e.toString() : "" === e ? "(empty)" : "string" == typeof e ? e : r(e), r = e => {
@@ -129,19 +130,19 @@
             }, b = e => Boolean(void 0 !== e?.is_new_entity ? e.is_new_entity : "missing_local_post" === e?.diff_state?.reason), f = e => e?.entity_type ? e.entity_type : "string" == typeof e?.post_type && e.post_type.startsWith("term:") ? "term" : "post", g = e => {
               if ("term" === f(e)) {
                 const t = (e?.term_taxonomy || e?.post_type || "").replace(/^term:/, "");
-                return t ? `Term (${t})` : "Term";
+                return o(t ? `Term (${t})` : "Term");
               }
-              return e?.post_type || "Post";
-            }, x = e => "term" === f(e) ? "Term" : e?.post_status || "—", j = e => "term" === f(e) ? e?.term_slug || e?.slug || e?.post_name || "—" : e?.post_name || "—", _ = e => {
+              return o(e?.post_type || "Post");
+            }, x = e => o("term" === f(e) ? "Term" : e?.post_status || "—"), j = e => o("term" === f(e) ? e?.term_slug || e?.slug || e?.post_name || "—" : e?.post_name || "—"), _ = e => {
               if ("term" === f(e)) {
                 const t = e?.name || e?.term_name || e?.post_title || "",
                   s = e?.term_taxonomy || e?.taxonomy || "",
                   n = e?.term_slug || e?.slug || e?.post_name || "";
-                if (t) return t;
-                if (s && n) return `${s}/${n}`;
-                if (n) return n;
+                if (t) return o(t);
+                if (s && n) return o(`${s}/${n}`);
+                if (n) return o(n);
               }
-              return e?.post_title || e?.vf_object_uid || "Entity detail";
+              return o(e?.post_title || e?.vf_object_uid || "Entity detail");
             }, normalizeEntitySort = e => (e || "").toString().trim().toLowerCase(), getEntityObjectType = e => {
               if ("term" === f(e)) {
                 const t = e?.term_taxonomy || e?.taxonomy;
