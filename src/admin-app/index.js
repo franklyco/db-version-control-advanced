@@ -526,7 +526,7 @@
                 if (!t.length) return (0, s.jsx)("p", {
                   children: "No entities found for this proposal."
                 });
-              const d = a && a.length ? a : y, D = "function" == typeof r, R = o instanceof Set ? o : new Set(o), $ = t.map(e => e.vf_object_uid), I = D && t.length > 0 && t.every(e => R.has(e.vf_object_uid)), A = D && !I && t.some(e => R.has(e.vf_object_uid)), E = (0, e.useRef)(null);
+              const d = a && a.length ? a : y, D = "function" == typeof r, R = o instanceof Set ? o : new Set(o), $ = t.map(e => e.vf_object_uid), I = D && t.length > 0 && t.every(e => R.has(e.vf_object_uid)), A = D && !I && t.some(e => R.has(e.vf_object_uid)), formatCellValue = o, E = (0, e.useRef)(null);
               return (0, e.useEffect)(() => {
                 D && E.current && (E.current.indeterminate = A);
               }, [ D, A ]), (0, s.jsx)("div", {
@@ -590,7 +590,7 @@
                         }), d.map(t => {
                           var n;
                           return (0, s.jsx)("td", {
-                            children: t.renderCell ? t.renderCell(e, M) : null !== (n = e[t.id]) && void 0 !== n ? o(n) : "—"
+                            children: t.renderCell ? t.renderCell(e, M) : null !== (n = e[t.id]) && void 0 !== n ? formatCellValue(n) : "—"
                           }, t.id);
                         }) ]
                       }, e.vf_object_uid);

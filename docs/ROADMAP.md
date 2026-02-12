@@ -16,6 +16,11 @@
    - Document pStatus state diagram and allowed transitions.
    - Define minimal REST endpoints for canonical authority (submit proposal, approve/reject, fetch canonical).
    - Configure "Authority Site (WordPress)" mode in Configure → Certified Canonicals UI (authority URL, auth, sync direction, test connection).
+3. Granular options import/export controls
+   - Add include/exclude controls for option keys/prefixes instead of all-or-nothing `options.json` handling.
+   - Support preview/dry-run summaries for options changes before apply.
+   - Add per-option-group toggles in UI + CLI parity for scripted imports/exports.
+   - Preserve safe defaults for sensitive/core options while allowing explicit overrides.
 
 ## In Progress
 - Triage and stabilize import/export edge cases across posts, terms, and media.
