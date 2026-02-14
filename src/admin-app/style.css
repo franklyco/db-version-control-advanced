@@ -1293,6 +1293,33 @@ border: 1px solid var(--dbvc-color-success-dark);
 	color: var(--dbvc-color-white);
 }
 
+.dbvc-admin-app__menu {
+	display: flex;
+	gap: 8px;
+	margin: 12px 0 16px;
+}
+
+.dbvc-entity-editor-shell {
+	border: 1px solid var(--dbvc-color-border);
+	background: var(--dbvc-color-white);
+	border-radius: 6px;
+	padding: 12px;
+	margin-bottom: 16px;
+}
+
+.dbvc-entity-editor-shell__layout {
+	display: grid;
+	grid-template-columns: 280px 1fr;
+	gap: 12px;
+}
+
+.dbvc-entity-editor-shell__pane {
+	border: 1px dashed var(--dbvc-color-border);
+	background: var(--dbvc-color-surface-table);
+	padding: 12px;
+	border-radius: 4px;
+}
+
 .dbvc-resolver-controls {
 	display: flex;
 	flex-direction: column;

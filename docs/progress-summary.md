@@ -97,3 +97,8 @@
    - Break the work into smaller steps: first extract shared utilities/API calls, then UI primitives, then feature panels (diff table, masking drawer, resolver screens) so each PR stays reviewable and easy to roll back.
    - Update build/docs to clarify the source-of-truth paths so future contributors can work in smaller files and keep reviews manageable.
    - 📘 `docs/admin-app-refactor-plan.md` captures the staged architecture (data layer, hooks, components) so contributors can chip away at the refactor without editing the compiled bundle directly.
+8. **Granular Options Import/Export Controls**
+   - Replace coarse `options.json` import/apply behavior with key-level and prefix-level include/exclude controls.
+   - Add preview/dry-run output that summarizes added/changed/removed option keys before writing.
+   - Provide UI controls for selected option groups (core/plugin/theme/custom prefixes) plus WP-CLI flags for parity.
+   - Keep current safe excludes by default; require explicit opt-in for risky/core option keys.
