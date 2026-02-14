@@ -2447,6 +2447,18 @@
                   message: e,
                   timestamp: t
                 } ]);
+              }, []), parseAppRoute = () => {
+                const e = (window.location.hash || "").replace(/^#/, "");
+                return "entity-editor" === e ? "entity-editor" : "proposal-review";
+              }, [ route, setRoute ] = (0, e.useState)(parseAppRoute), changeRoute = (0, e.useCallback)(e => {
+                const t = "entity-editor" === e ? "entity-editor" : "proposal-review";
+                setRoute(t);
+                const s = `#${t}`;
+                window.location.hash !== s && window.history.replaceState(null, "", s);
+              }, []);
+              (0, e.useEffect)(() => {
+                const e = () => setRoute(parseAppRoute());
+                return window.addEventListener("hashchange", e), () => window.removeEventListener("hashchange", e);
               }, []);
               if (! _e && xe) {
                 const loadingIndicator = t?.Spinner ? (0, s.jsx)(t.Spinner, {}) : (0, s.jsx)("span", {
@@ -2493,11 +2505,97 @@
                   })
                 });
               }
+              if ("entity-editor" === route) return (0, s.jsxs)("div", {
+                className: `dbvc-admin-app is-route-${route}`,
+                onClick: Kt,
+                onMouseDown: Kt,
+                onSubmit: Jt,
+                children: [ nt.length > 0 && (0, s.jsx)("div", {
+                  className: "dbvc-toasts",
+                  children: nt.map(e => (0, s.jsxs)("div", {
+                    className: `dbvc-toast dbvc-toast--${e.severity}`,
+                    children: [ (0, s.jsxs)("div", {
+                      className: "dbvc-toast__content",
+                      children: [ (0, s.jsx)("strong", {
+                        children: e.title
+                      }), (0, s.jsx)("span", {
+                        children: e.message
+                      }), e.detail && (0, s.jsx)("small", {
+                        children: e.detail
+                      }), (0, s.jsx)("small", {
+                        className: "dbvc-toast__time",
+                        children: a(e.timestamp)
+                      }) ]
+                    }), (0, s.jsx)("button", {
+                      type: "button",
+                      className: "dbvc-toast__dismiss",
+                      onClick: () => js(e.id),
+                      "aria-label": "Dismiss notification",
+                      children: "×"
+                    }) ]
+                  }, e.id))
+                }), (0, s.jsxs)("div", {
+                  className: "dbvc-admin-app__header",
+                  children: [ (0, s.jsx)("h1", {
+                    children: "DBVC Proposals"
+                  }), (0, s.jsx)(t.Button, {
+                    variant: "secondary",
+                    onClick: () => zt(),
+                    disabled: xe && _e,
+                    children: xe && _e ? "Refreshing…" : "Refresh list"
+                  }), (0, s.jsx)(t.Button, {
+                    variant: "tertiary",
+                    onClick: $s,
+                    disabled: ft,
+                    isBusy: ft,
+                    children: ft ? "Clearing…" : "Clear all backups"
+                  }) ]
+                }), (0, s.jsxs)("nav", {
+                  className: "dbvc-admin-app__menu",
+                  "aria-label": "DBVC admin sections",
+                  children: [ (0, s.jsx)("button", {
+                    type: "button",
+                    className: "button" + ("proposal-review" === route ? " button-primary" : ""),
+                    onClick: () => changeRoute("proposal-review"),
+                    children: "Proposal Review"
+                  }), (0, s.jsx)("button", {
+                    type: "button",
+                    className: "button" + ("entity-editor" === route ? " button-primary" : ""),
+                    onClick: () => changeRoute("entity-editor"),
+                    children: "Entity Editor"
+                  }) ]
+                }), (0, s.jsxs)("section", {
+                  className: "dbvc-entity-editor-shell",
+                  children: [ (0, s.jsx)("h2", {
+                    children: "Entity Editor"
+                  }), (0, s.jsx)("p", {
+                    className: "description",
+                    children: "Phase 1 routing skeleton is active. Entity menu + editor pane wiring will land in the next phases."
+                  }), (0, s.jsxs)("div", {
+                    className: "dbvc-entity-editor-shell__layout",
+                    children: [ (0, s.jsxs)("aside", {
+                      className: "dbvc-entity-editor-shell__pane",
+                      children: [ (0, s.jsx)("h3", {
+                        children: "Menu Pane"
+                      }), (0, s.jsx)("p", {
+                        children: "Placeholder for entity groups and navigation."
+                      }) ]
+                    }), (0, s.jsxs)("div", {
+                      className: "dbvc-entity-editor-shell__pane",
+                      children: [ (0, s.jsx)("h3", {
+                        children: "Editor Pane"
+                      }), (0, s.jsx)("p", {
+                        children: "Placeholder for routed entity editor views."
+                      }) ]
+                    }) ]
+                  }) ]
+                }) ]
+              });
               return !_e && Re ? (0, s.jsxs)("p", {
                 className: "dbvc-admin-app-error",
                 children: [ "Error loading proposals: ", o(Re) ]
               }) : (0, s.jsxs)("div", {
-                className: "dbvc-admin-app",
+                className: `dbvc-admin-app is-route-${route}`,
                 onClick: Kt,
                 onMouseDown: Kt,
                 onSubmit: Jt,
@@ -2540,6 +2638,20 @@
                     disabled: ft,
                     isBusy: ft,
                     children: ft ? "Clearing…" : "Clear all backups"
+                  }) ]
+                }), (0, s.jsxs)("nav", {
+                  className: "dbvc-admin-app__menu",
+                  "aria-label": "DBVC admin sections",
+                  children: [ (0, s.jsx)("button", {
+                    type: "button",
+                    className: "button" + ("proposal-review" === route ? " button-primary" : ""),
+                    onClick: () => changeRoute("proposal-review"),
+                    children: "Proposal Review"
+                  }), (0, s.jsx)("button", {
+                    type: "button",
+                    className: "button" + ("entity-editor" === route ? " button-primary" : ""),
+                    onClick: () => changeRoute("entity-editor"),
+                    children: "Entity Editor"
                   }) ]
                 }), (0, s.jsx)(C, {
                   onUploaded: Zs,

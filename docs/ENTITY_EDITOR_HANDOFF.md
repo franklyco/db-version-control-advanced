@@ -4,6 +4,12 @@
 **Date:** 2026-02-12  
 **Status:** Implementation handoff for Codex (VS Code)
 
+## Current source of truth
+
+- Historical proposal workflow notes live in `handoff.md`.
+- Track Entity Editor phase execution in `docs/ENTITY_EDITOR_CHECKLIST.md`.
+- Phase 1 (admin app routing skeleton) has been implemented in the admin app source/build.
+
 ---
 
 ## 0) Executive summary
@@ -453,4 +459,3 @@ Add minimal bootstrapping in the DBVC main loader:
 - **Must** read `DBVC_ENGINE_INVENTORY.md` and other `.md` docs first.
 - Prefer **reuse** of existing import/export/match/logging functions over re-implementing.
 - Keep the feature self-contained and lazy-loaded to avoid performance regression across wp-admin.
-

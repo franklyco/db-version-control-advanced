@@ -19,7 +19,7 @@ We will begin with a **Discovery Phase**. Codex must first analyze the latest re
 ---
 
 ## Key Terms
-- **Mothership**: the designated central WordPress install (or service) that stores approved “golden” Bricks packages and receives proposals from client sites.
+- **Mothership**: the designated central WordPress install (or service) that stores approved “golden” Bricks packages and receives proposals from configured client sites.
 - **ClientSite**: any customer website running VerticalFramework and (optionally) DBVC.
 - **Bricks Assets**: Bricks templates + global design system/state that we treat as versioned artifacts:
   - `bricks_template` (CPT posts)
