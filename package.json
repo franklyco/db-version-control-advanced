@@ -5,9 +5,9 @@
   "main": "build/admin-app.js",
   "source": "src/admin-app.js",
   "scripts": {
-    "start": "wp-scripts start admin-app",
-    "build": "wp-scripts build admin-app",
-    "lint": "wp-scripts lint-js admin-app"
+    "start": "wp-scripts start admin-app admin-entity-editor",
+    "build": "wp-scripts build admin-app admin-entity-editor",
+    "lint": "wp-scripts lint-js admin-app.js admin-entity-editor.js src/admin-app/index.js src/admin-entity-editor/index.js"
   },
   "devDependencies": {
     "@babel/runtime": "^7.26.0",

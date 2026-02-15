@@ -8,3 +8,6 @@
 
 sync/*
 node_modules
+.phpunit.result.cache
+tmp/wordpress/wp-content/uploads/
+/tmp/

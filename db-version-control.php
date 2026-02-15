@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.4.3
+ * Version:     1.5.0
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -63,13 +63,16 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Reconciler.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Official/Collections.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-export-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-import-router.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-entity-editor-indexer.php';
 // require_once DBVC_PLUGIN_PATH . 'includes/class-menu-importer.php'; // Added new menu importer/exporter class - removed later to avoid over-complicating the class-sync-posts.php
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-posts.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-taxonomies.php';
 require_once DBVC_PLUGIN_PATH . 'includes/hooks.php';
 require_once DBVC_PLUGIN_PATH . 'commands/class-wp-cli-commands.php';
 require_once DBVC_PLUGIN_PATH . 'admin/class-admin-app.php';
+require_once DBVC_PLUGIN_PATH . 'admin/class-entity-editor-app.php';
 DBVC_Admin_App::init();
+DBVC_Entity_Editor_App::init();
 
 if (is_admin()) {
 	require_once DBVC_PLUGIN_PATH . 'admin/admin-menu.php';
@@ -113,7 +116,13 @@ add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'dbvc_add_setting
 
 function dbvc_enqueue_admin_assets($hook)
 {
-	if ($hook !== 'toplevel_page_dbvc-export') {
+	$allowed_hooks = [
+		'toplevel_page_dbvc-export',
+		'db-version-control_page_dbvc-entity-editor',
+		'dbvc-export_page_dbvc-entity-editor',
+	];
+
+	if (! in_array($hook, $allowed_hooks, true)) {
 		return;
 	}
 

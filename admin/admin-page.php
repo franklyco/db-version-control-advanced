@@ -18,6 +18,28 @@ if (! function_exists('dbvc_get_selected_taxonomies')) {
   require_once dirname(__DIR__) . '/includes/functions.php';
 }
 
+
+
+/**
+ * Render the Entity Editor submenu page.
+ *
+ * @since 1.0.0
+ * @return void
+ */
+function dbvc_render_entity_editor_page()
+{
+  if (! current_user_can('manage_options')) {
+    wp_die(esc_html__('You do not have sufficient permissions to access this page.', 'dbvc'));
+  }
+
+  ?>
+  <div class="wrap">
+<!--     <h1><?php esc_html_e('DBVC Entity Editor', 'dbvc'); ?></h1> -->
+    <div id="dbvc-entity-editor-root"></div>
+  </div>
+  <?php
+}
+
 /**
  * Render the export settings page
  * 

@@ -1320,6 +1320,64 @@ border: 1px solid var(--dbvc-color-success-dark);
 	border-radius: 4px;
 }
 
+textarea.dbvc-entity-editor__textarea {
+	width: 100%;
+	height: 700px;
+	min-height: 0;
+	flex: 1 1 auto;
+	font-family: monospace;
+}
+
+.components-modal__frame.dbvc-entity-editor-modal {
+	--modal-frame-animation-duration: 200ms;
+	width: clamp(50vw, 100%, 1000px);
+	max-width: 90vw;
+	height: 100%;
+	max-height: 90%;
+}
+
+.dbvc-entity-editor-modal-overlay .components-modal__frame {
+	--modal-frame-animation-duration: 200ms;
+	width: clamp(50vw, 100%, 1000px) !important;
+	max-width: 90vw !important;
+	height: 100% !important;
+	max-height: 90% !important;
+}
+
+.dbvc-entity-editor-modal-overlay .components-modal__content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.dbvc-entity-editor__editor {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+.dbvc-entity-editor__actions {
+	align-items: center;
+}
+
+.dbvc-entity-editor__search {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-right: auto;
+	flex-wrap: wrap;
+}
+
+.dbvc-entity-editor__search input[type="search"] {
+	min-width: 220px;
+}
+
+.dbvc-entity-editor__search-count {
+	color: var(--dbvc-color-text-muted);
+	font-size: 12px;
+}
+
 .dbvc-resolver-controls {
 	display: flex;
 	flex-direction: column;

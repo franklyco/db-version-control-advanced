@@ -50,7 +50,11 @@ final class DBVC_Admin_App
      */
     public static function enqueue_assets($hook)
     {
-        if ($hook !== 'toplevel_page_dbvc-export') {
+        $allowed_hooks = [
+            'toplevel_page_dbvc-export',
+        ];
+
+        if (! in_array($hook, $allowed_hooks, true)) {
             return;
         }
 
@@ -86,9 +90,10 @@ final class DBVC_Admin_App
             'dbvc-admin-app',
             'DBVC_ADMIN_APP',
             [
-                'root'     => esc_url_raw(rest_url('dbvc/v1/')),
-                'nonce'    => wp_create_nonce('wp_rest'),
-                'features' => [
+                'root'         => esc_url_raw(rest_url('dbvc/v1/')),
+                'nonce'        => wp_create_nonce('wp_rest'),
+                'initialRoute' => (isset($_GET['dbvc_route']) && $_GET['dbvc_route'] === 'entity-editor') ? 'entity-editor' : 'proposal-review', // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+                'features'     => [
                     'resolver' => true,
                 ],
             ]
@@ -449,6 +454,119 @@ final class DBVC_Admin_App
                 'methods'             => \WP_REST_Server::CREATABLE,
                 'callback'            => [self::class, 'log_client_error'],
                 'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/index',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [self::class, 'get_entity_editor_index'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/index/rebuild',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'rebuild_entity_editor_index'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/file',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [self::class, 'get_entity_editor_file'],
+                'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'path' => [
+                        'required' => true,
+                    ],
+                    'force_takeover' => [
+                        'required' => false,
+                    ],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/file/save',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'save_entity_editor_file'],
+                'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'path' => [
+                        'required' => true,
+                    ],
+                    'content' => [
+                        'required' => true,
+                    ],
+                    'lock_token' => [
+                        'required' => false,
+                    ],
+                    'force_takeover' => [
+                        'required' => false,
+                    ],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/file/import-partial',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'save_and_partial_import_entity_editor_file'],
+                'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'path' => [
+                        'required' => true,
+                    ],
+                    'content' => [
+                        'required' => true,
+                    ],
+                    'lock_token' => [
+                        'required' => false,
+                    ],
+                    'force_takeover' => [
+                        'required' => false,
+                    ],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/file/import-replace',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'save_and_full_replace_entity_editor_file'],
+                'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'path' => [
+                        'required' => true,
+                    ],
+                    'content' => [
+                        'required' => true,
+                    ],
+                    'confirm_phrase' => [
+                        'required' => true,
+                    ],
+                    'lock_token' => [
+                        'required' => false,
+                    ],
+                    'force_takeover' => [
+                        'required' => false,
+                    ],
+                ],
             ]
         );
     }
@@ -1804,6 +1922,160 @@ final class DBVC_Admin_App
             'id_map'      => [],
             'attachments' => [],
         ]);
+    }
+
+
+    /**
+     * REST: Return cached Entity Editor index payload.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public static function get_entity_editor_index(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_REST_Response([
+                'items' => [],
+                'stats' => [
+                    'scanned_files' => 0,
+                    'indexed_files' => 0,
+                    'excluded_files' => 0,
+                ],
+                'generated_at' => gmdate('c'),
+                'sync_root' => '',
+            ]);
+        }
+
+        return new \WP_REST_Response(DBVC_Entity_Editor_Indexer::get_index(false));
+    }
+
+    /**
+     * REST: Force a rebuild of the Entity Editor index payload.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public static function rebuild_entity_editor_index(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_REST_Response([
+                'message' => __('Entity indexer unavailable.', 'dbvc'),
+            ], 500);
+        }
+
+        return new \WP_REST_Response(DBVC_Entity_Editor_Indexer::get_index(true));
+    }
+
+
+    /**
+     * REST: Load an entity JSON file for editor view.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function get_entity_editor_file(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_Error('dbvc_entity_editor_unavailable', __('Entity Editor indexer unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $relative_path = (string) $request->get_param('path');
+        $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
+        $loaded = DBVC_Entity_Editor_Indexer::load_entity_file($relative_path, get_current_user_id(), $force_takeover);
+        if (is_wp_error($loaded)) {
+            return $loaded;
+        }
+
+        $decoded = isset($loaded['decoded']) && is_array($loaded['decoded']) ? $loaded['decoded'] : [];
+        $kind = isset($decoded['taxonomy']) ? 'term' : 'post';
+        $subtype = $kind === 'term'
+            ? (string) ($decoded['taxonomy'] ?? '')
+            : (string) ($decoded['post_type'] ?? '');
+
+        return new \WP_REST_Response([
+            'relative_path' => $loaded['relative_path'],
+            'content' => $loaded['content'],
+            'mtime' => $loaded['mtime'],
+            'mtime_gmt' => $loaded['mtime_gmt'],
+            'entity_kind' => $kind,
+            'subtype' => $subtype,
+            'uid' => (string) ($decoded['vf_object_uid'] ?? $decoded['dbvc_object_uid'] ?? ''),
+            'lock' => isset($loaded['lock']) && is_array($loaded['lock']) ? $loaded['lock'] : null,
+        ]);
+    }
+
+
+    /**
+     * REST: Save entity JSON file from editor view.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function save_entity_editor_file(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_Error('dbvc_entity_editor_unavailable', __('Entity Editor indexer unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $relative_path = (string) $request->get_param('path');
+        $content = (string) $request->get_param('content');
+        $lock_token = (string) $request->get_param('lock_token');
+        $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
+        $saved = DBVC_Entity_Editor_Indexer::save_entity_file($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover);
+        if (is_wp_error($saved)) {
+            return $saved;
+        }
+
+        return new \WP_REST_Response($saved);
+    }
+
+    /**
+     * REST: Save entity JSON then run non-destructive partial import.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function save_and_partial_import_entity_editor_file(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_Error('dbvc_entity_editor_unavailable', __('Entity Editor indexer unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $relative_path = (string) $request->get_param('path');
+        $content = (string) $request->get_param('content');
+        $lock_token = (string) $request->get_param('lock_token');
+        $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
+        $result = DBVC_Entity_Editor_Indexer::save_and_partial_import($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: Save entity JSON then run destructive full replace import.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function save_and_full_replace_entity_editor_file(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_Error('dbvc_entity_editor_unavailable', __('Entity Editor indexer unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $relative_path = (string) $request->get_param('path');
+        $content = (string) $request->get_param('content');
+        $confirm_phrase = (string) $request->get_param('confirm_phrase');
+        $lock_token = (string) $request->get_param('lock_token');
+        $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
+        $result = DBVC_Entity_Editor_Indexer::save_and_full_replace($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover, $confirm_phrase);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
     }
 
     /**
