@@ -3,6 +3,12 @@
 Date: 2026-02-12  
 Status: Discovery draft (planning only)
 
+## 0) Concrete Field Matrix Reference
+
+Use this as the concrete configuration contract for implementation:
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
+
 ## 1) Contract Intent (Updated)
 
 This contract is now DBVC-native and Add-on driven:
@@ -226,6 +232,11 @@ Implementation note:
 - Current DBVC has no add-on registry and no Add-ons subtab yet (`admin/admin-page.php` currently defines fixed `$config_subtabs`).
 - Recommended path: add a new Configure subtab (e.g., `dbvc-config-addons`) and nested subtab panel for Bricks first.
 
+Activation/menu rule:
+- Add-on enable flag (`dbvc_addon_bricks_enabled`) is controlled from Configure -> Add-ons.
+- Bricks submenu under DBVC (`dbvc-export`) is registered only when enabled.
+- Bricks add-on REST/routes/jobs are also registered only when enabled.
+
 ## 7) UID and Entity Strategy
 
 - Entity-backed Bricks artifacts (`bricks_template`) use existing `vf_object_uid` and `dbvc_entities` mapping.
@@ -252,3 +263,42 @@ Add-on-specific storage only if needed:
 3. Wire drift scan using canonical + fingerprint.
 4. Add package list/fetch + proposal submit/list/status REST endpoints.
 5. Keep apply/restore flows on top of existing DBVC backup/manifest/import primitives.
+
+## 10) Additional Contract Requirements (to reduce bugs)
+
+### 10.1 API requirements
+- Mutating endpoints (`apply`, `proposal submit`, `proposal status change`) must support idempotency keys.
+- Mutating endpoints must emit structured activity logs with actor, artifact, old/new status, and correlation id.
+- Endpoint errors must be deterministic and schema-stable:
+  - `code`, `message`, `details`, `retryable`.
+
+### 10.2 Apply contract requirements
+- Apply flow contract:
+  1. preflight validation,
+  2. restore point creation,
+  3. policy evaluation,
+  4. ordered apply,
+  5. verification hash pass,
+  6. rollback if verification fails.
+- Default apply mode must be dry-run unless explicitly overridden.
+
+### 10.3 Drift contract requirements
+- Drift statuses are authoritative and finite:
+  - `CLEAN`, `DIVERGED`, `OVERRIDDEN`, `PENDING_REVIEW`.
+- Diff summaries must include count + path list + truncation flag.
+- Large diffs must return summarized payload + "raw available" metadata rather than oversized responses.
+
+### 10.4 Proposal governance requirements
+- Required status machine:
+  - `DRAFT -> SUBMITTED -> RECEIVED -> APPROVED|REJECTED|NEEDS_CHANGES`.
+- Dedupe key:
+  - `(artifact_uid, base_hash, proposed_hash)`.
+- Approval must require explicit artifact-level decision and reviewer attribution.
+
+### 10.5 Canonicalization requirements
+- Canonicalization must be deterministic across environments and PHP versions:
+  - recursive key sort,
+  - stable list ordering,
+  - volatile/noisy field stripping.
+- Fingerprint format is fixed to:
+  - `sha256:<hex>`.

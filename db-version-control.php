@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.5.0
+ * Version:     1.5.1
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -71,8 +71,17 @@ require_once DBVC_PLUGIN_PATH . 'includes/hooks.php';
 require_once DBVC_PLUGIN_PATH . 'commands/class-wp-cli-commands.php';
 require_once DBVC_PLUGIN_PATH . 'admin/class-admin-app.php';
 require_once DBVC_PLUGIN_PATH . 'admin/class-entity-editor-app.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-addon.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-artifacts.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-drift.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-apply.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-proposals.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-packages.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-idempotency.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-connected-sites.php';
 DBVC_Admin_App::init();
 DBVC_Entity_Editor_App::init();
+DBVC_Bricks_Addon::bootstrap();
 
 if (is_admin()) {
 	require_once DBVC_PLUGIN_PATH . 'admin/admin-menu.php';

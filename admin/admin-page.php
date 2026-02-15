@@ -88,12 +88,24 @@ function dbvc_render_export_page()
     ? dbvc_get_maskable_post_fields()
     : [];
   $selected_post_field_masks = (array) get_option('dbvc_mask_post_fields', []);
+  $addon_bricks_settings = [];
+  $addon_bricks_groups   = [];
+  $addon_bricks_field_meta = [];
+  if (class_exists('DBVC_Bricks_Addon')) {
+    DBVC_Bricks_Addon::ensure_defaults();
+    $addon_bricks_settings = DBVC_Bricks_Addon::get_all_settings();
+    $addon_bricks_groups = DBVC_Bricks_Addon::get_settings_groups();
+    $addon_bricks_field_meta = DBVC_Bricks_Addon::get_field_meta();
+  }
+  $addon_bricks_enabled = $addon_bricks_settings['dbvc_addon_bricks_enabled'] ?? get_option('dbvc_addon_bricks_enabled', '0');
+  $addon_bricks_visibility = $addon_bricks_settings['dbvc_addon_bricks_visibility'] ?? get_option('dbvc_addon_bricks_visibility', 'configure_and_submenu');
 
   $config_feedback = [
     'post_types' => ['success' => [], 'error' => []],
     'taxonomies' => ['success' => [], 'error' => []],
     'masking'    => ['success' => [], 'error' => []],
     'import'     => ['success' => [], 'error' => []],
+    'addons'     => ['success' => [], 'error' => []],
     'media'      => ['success' => [], 'error' => []],
   ];
   $config_section_mapping = [
@@ -101,6 +113,7 @@ function dbvc_render_export_page()
     'taxonomies' => 'dbvc-config-taxonomies',
     'masking'    => 'dbvc-config-masking',
     'import'     => 'dbvc-config-import',
+    'addons'     => 'dbvc-config-addons',
     'media'      => 'dbvc-config-media',
   ];
   $config_sections_submitted = [];
@@ -580,6 +593,23 @@ function dbvc_render_export_page()
       update_option(DBVC_Media_Sync::OPTION_BUNDLE_CHUNK, $bundle_chunk);
 
       $config_feedback['media']['success'][] = esc_html__('Media handling settings saved.', 'dbvc');
+    }
+
+    if (in_array('addons', $config_sections_submitted, true)) {
+      if (class_exists('DBVC_Bricks_Addon')) {
+        $save_result = DBVC_Bricks_Addon::save_settings((array) $_POST);
+        foreach ((array) ($save_result['errors'] ?? []) as $save_error) {
+          $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
+        }
+        if (empty($config_feedback['addons']['error'])) {
+          $config_feedback['addons']['success'][] = esc_html__('Add-on settings saved.', 'dbvc');
+        }
+        $addon_bricks_settings = DBVC_Bricks_Addon::get_all_settings();
+        $addon_bricks_enabled = $addon_bricks_settings['dbvc_addon_bricks_enabled'] ?? '0';
+        $addon_bricks_visibility = $addon_bricks_settings['dbvc_addon_bricks_visibility'] ?? 'configure_and_submenu';
+      } else {
+        $config_feedback['addons']['error'][] = esc_html__('Bricks add-on module unavailable.', 'dbvc');
+      }
     }
 
     $log_import_runs = ! empty($_POST['dbvc_log_import_runs']) ? '1' : '0';
@@ -1406,6 +1436,7 @@ function dbvc_render_export_page()
     'dbvc-config-taxonomies' => esc_html__('Taxonomies', 'dbvc'),
     'dbvc-config-masking'    => esc_html__('Masking & Auto-Exports', 'dbvc'),
     'dbvc-config-import'     => esc_html__('Import Defaults', 'dbvc'),
+    'dbvc-config-addons'     => esc_html__('Add-ons', 'dbvc'),
     'dbvc-config-media'      => esc_html__('Media Handling', 'dbvc'),
     'dbvc-config-tools'      => esc_html__('Maintenance & Tools', 'dbvc'),
   ];
@@ -2669,6 +2700,86 @@ document.addEventListener('DOMContentLoaded', function () {
             </section>
           </div>
         </div>
+      </section>
+
+      <section id="dbvc-config-addons" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-addons' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-addons" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-addons" <?php echo $active_config_subtab === 'dbvc-config-addons' ? '' : 'hidden'; ?>>
+        <?php $render_config_feedback($config_feedback['addons']); ?>
+        <h2><?php esc_html_e('Add-ons', 'dbvc'); ?></h2>
+        <p class="description"><?php esc_html_e('Enable add-ons and configure Bricks settings by tab.', 'dbvc'); ?></p>
+
+        <?php if (! empty($addon_bricks_groups) && ! empty($addon_bricks_field_meta)) : ?>
+          <h3><?php esc_html_e('Bricks Add-on', 'dbvc'); ?></h3>
+          <?php foreach ($addon_bricks_groups as $group) : ?>
+            <?php
+            $group_label = isset($group['label']) ? (string) $group['label'] : '';
+            $group_fields = isset($group['fields']) && is_array($group['fields']) ? $group['fields'] : [];
+            ?>
+            <?php if ($group_label !== '') : ?>
+              <h4><?php echo esc_html($group_label); ?></h4>
+            <?php endif; ?>
+            <?php foreach ($group_fields as $field_key) : ?>
+              <?php
+              $field_key = (string) $field_key;
+              if (! isset($addon_bricks_field_meta[$field_key])) {
+                continue;
+              }
+              $field_meta = $addon_bricks_field_meta[$field_key];
+              $input_type = isset($field_meta['input']) ? (string) $field_meta['input'] : 'text';
+              $field_label = isset($field_meta['label']) ? (string) $field_meta['label'] : $field_key;
+              $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
+              $field_value = isset($addon_bricks_settings[$field_key]) ? (string) $addon_bricks_settings[$field_key] : '';
+              $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
+              ?>
+
+              <?php if ($input_type === 'checkbox') : ?>
+                <p>
+                  <label>
+                    <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
+                    <?php echo esc_html($field_label); ?>
+                  </label>
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php elseif ($input_type === 'select') : ?>
+                <p>
+                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
+                  <select id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>">
+                    <?php foreach ((array) ($field_meta['options'] ?? []) as $option_value => $option_label) : ?>
+                      <option value="<?php echo esc_attr((string) $option_value); ?>" <?php selected($field_value, (string) $option_value); ?>>
+                        <?php echo esc_html((string) $option_label); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php elseif ($input_type === 'textarea') : ?>
+                <p>
+                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
+                  <textarea id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" rows="3" style="width:100%;"><?php echo esc_textarea($field_value); ?></textarea>
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php else : ?>
+                <?php $html_type = $input_type === 'number' || $input_type === 'url' || $input_type === 'password' ? $input_type : 'text'; ?>
+                <p>
+                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
+                  <input type="<?php echo esc_attr($html_type); ?>" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="<?php echo esc_attr($field_value); ?>" class="regular-text" />
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php endif; ?>
+            <?php endforeach; ?>
+          <?php endforeach; ?>
+        <?php else : ?>
+          <p><?php esc_html_e('Bricks add-on settings metadata unavailable.', 'dbvc'); ?></p>
+        <?php endif; ?>
+
+        <?php submit_button(__('Save Add-ons', 'dbvc'), 'secondary', 'dbvc_config_save[addons]', false); ?>
       </section>
 
       <section id="dbvc-config-media" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-media' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-media" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-media" <?php echo $active_config_subtab === 'dbvc-config-media' ? '' : 'hidden'; ?>>

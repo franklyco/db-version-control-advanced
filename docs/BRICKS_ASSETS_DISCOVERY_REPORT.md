@@ -197,3 +197,29 @@ This section summarizes findings from:
 - Preferred architecture: **DBVC Add-on module**.
 - Reason: required Bricks capabilities are mostly additive on top of existing engines; forking would still require extracting most of the same core and introduces long-term divergence/security patch lag.
 - If a fork is chosen for organizational reasons, namespace/prefix and storage isolation must be planned up front to avoid collision with DBVC.
+
+## Bricks Add-on Field Matrix + Missing Task Inventory
+
+Concrete matrix source:
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
+
+Highlights captured there:
+- full artifact registry (Entity-backed and option-backed Bricks artifacts),
+- per-field UI configuration contract (keys, types, defaults, validation),
+- canonicalization/fingerprint rules by artifact type,
+- required REST surface and endpoint guardrails,
+- missing implementation tasks/sub-tasks grouped by:
+  - data contract hardening,
+  - safety rails,
+  - governance pipeline details,
+  - performance controls,
+  - test/QA coverage.
+
+This matrix should be treated as the implementation rails document for the Bricks Add-on.
+
+Add-on activation architecture (updated):
+- Add-ons are configured in core `Configure -> Add-ons`.
+- Bricks add-on has enable/disable toggle (`dbvc_addon_bricks_enabled`).
+- Bricks submenu is registered under DBVC wp-admin menu only when enabled.
+- Disabled state must suppress Bricks routes/hooks/jobs to avoid accidental execution.
