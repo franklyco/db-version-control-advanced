@@ -141,3 +141,14 @@ dbvc-bricks/
   - organizational policy requires independent release/security lifecycle from DBVC core.
 
 Current technical evidence favors Add-on.
+## Implementation Guardrails (Added)
+
+To keep Bricks Add-on implementation on-rails, use:
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_PLAN.md`
+
+These now include:
+- concrete settings field matrix (keys, defaults, validators),
+- phased checklist with sub-tasks,
+- required API/apply/proposal safety constraints,
+- explicit missing-item inventory before implementation starts.
