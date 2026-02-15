@@ -50,6 +50,8 @@ final class DBVC_Bricks_Connected_Sites
             'status' => sanitize_key((string) ($payload['status'] ?? ($existing['status'] ?? 'online'))),
             'auth_mode' => sanitize_key((string) ($payload['auth_mode'] ?? ($existing['auth_mode'] ?? 'wp_app_password'))),
             'allow_receive_packages' => ! empty($payload['allow_receive_packages']) ? 1 : (! empty($existing['allow_receive_packages']) ? 1 : 0),
+            'onboarding_state' => strtoupper(sanitize_text_field((string) ($payload['onboarding_state'] ?? ($existing['onboarding_state'] ?? '')))),
+            'onboarding_updated_at' => sanitize_text_field((string) ($payload['onboarding_updated_at'] ?? ($existing['onboarding_updated_at'] ?? ''))),
             'last_seen_at' => sanitize_text_field((string) ($payload['last_seen_at'] ?? gmdate('c'))),
             'updated_at' => gmdate('c'),
         ];
@@ -62,6 +64,9 @@ final class DBVC_Bricks_Connected_Sites
         }
         if (! in_array($site['auth_mode'], ['wp_app_password', 'api_key', 'hmac'], true)) {
             $site['auth_mode'] = 'wp_app_password';
+        }
+        if (! in_array($site['onboarding_state'], ['', 'PENDING_INTRO', 'VERIFIED', 'REJECTED', 'DISABLED'], true)) {
+            $site['onboarding_state'] = '';
         }
         if ($site['base_url'] === '' && isset($existing['base_url'])) {
             $site['base_url'] = (string) $existing['base_url'];
@@ -101,6 +106,11 @@ final class DBVC_Bricks_Connected_Sites
      */
     public static function rest_list(\WP_REST_Request $request)
     {
+        $mode = 'registry_table';
+        if (class_exists('DBVC_Bricks_Addon')) {
+            $mode = DBVC_Bricks_Addon::get_enum_setting('dbvc_bricks_connected_sites_mode', ['packages_backfill', 'registry_table'], 'registry_table');
+        }
+        self::sync_from_registry($mode);
         $status_filter = sanitize_key((string) $request->get_param('status'));
         $items = array_values(self::get_sites());
         if ($status_filter !== '') {
@@ -110,7 +120,117 @@ final class DBVC_Bricks_Connected_Sites
         }
         return rest_ensure_response([
             'items' => $items,
+            'registry_mode' => $mode,
         ]);
+    }
+
+    /**
+     * @param string $mode
+     * @return void
+     */
+    private static function sync_from_registry($mode)
+    {
+        if ($mode === 'packages_backfill') {
+            self::sync_from_packages_sources();
+            self::sync_from_onboarding_registry();
+            return;
+        }
+
+        self::sync_from_onboarding_registry();
+        if (empty(self::get_sites())) {
+            self::sync_from_packages_sources();
+        }
+    }
+
+    /**
+     * Backfill connected-site registry from known package source metadata.
+     *
+     * @return void
+     */
+    public static function sync_from_packages_sources()
+    {
+        if (! class_exists('DBVC_Bricks_Packages') || ! method_exists('DBVC_Bricks_Packages', 'get_packages')) {
+            return;
+        }
+        $packages = DBVC_Bricks_Packages::get_packages();
+        if (! is_array($packages) || empty($packages)) {
+            return;
+        }
+        foreach ($packages as $package) {
+            if (! is_array($package)) {
+                continue;
+            }
+            $source_site = isset($package['source_site']) && is_array($package['source_site']) ? $package['source_site'] : [];
+            $site_uid = sanitize_key((string) ($source_site['site_uid'] ?? ''));
+            if ($site_uid === '') {
+                continue;
+            }
+            $existing = self::get_site($site_uid);
+            self::upsert_site([
+                'site_uid' => $site_uid,
+                'site_label' => (string) ($existing['site_label'] ?? $site_uid),
+                'base_url' => esc_url_raw((string) ($source_site['base_url'] ?? ($existing['base_url'] ?? ''))),
+                'status' => (string) ($existing['status'] ?? 'online'),
+                'auth_mode' => (string) ($existing['auth_mode'] ?? 'wp_app_password'),
+                'allow_receive_packages' => ! empty($existing['allow_receive_packages']) ? 1 : 0,
+                'onboarding_state' => (string) ($existing['onboarding_state'] ?? ''),
+                'onboarding_updated_at' => (string) ($existing['onboarding_updated_at'] ?? ''),
+                'last_seen_at' => sanitize_text_field((string) ($package['updated_at'] ?? gmdate('c'))),
+            ]);
+        }
+    }
+
+    /**
+     * Sync connected-site records from onboarding registry option.
+     *
+     * @return void
+     */
+    public static function sync_from_onboarding_registry()
+    {
+        if (! class_exists('DBVC_Bricks_Onboarding') || ! method_exists('DBVC_Bricks_Onboarding', 'get_clients')) {
+            return;
+        }
+        $clients = DBVC_Bricks_Onboarding::get_clients();
+        if (! is_array($clients) || empty($clients)) {
+            return;
+        }
+
+        foreach ($clients as $client) {
+            if (! is_array($client)) {
+                continue;
+            }
+            $site_uid = sanitize_key((string) ($client['site_uid'] ?? ''));
+            if ($site_uid === '') {
+                continue;
+            }
+
+            $existing = self::get_site($site_uid);
+            $onboarding_state = strtoupper(sanitize_text_field((string) ($client['onboarding_state'] ?? 'PENDING_INTRO')));
+            $status = (string) ($existing['status'] ?? 'online');
+            if (in_array($onboarding_state, ['REJECTED', 'DISABLED'], true)) {
+                $status = 'disabled';
+            }
+            $allow_receive = ! empty($existing['allow_receive_packages']) ? 1 : 0;
+            if ($onboarding_state === 'VERIFIED') {
+                $allow_receive = 1;
+            }
+            if (in_array($onboarding_state, ['REJECTED', 'DISABLED'], true)) {
+                $allow_receive = 0;
+            }
+
+            $auth_profile = isset($client['auth_profile']) && is_array($client['auth_profile']) ? $client['auth_profile'] : [];
+            self::upsert_site([
+                'site_uid' => $site_uid,
+                'site_label' => sanitize_text_field((string) ($client['site_label'] ?? ($existing['site_label'] ?? $site_uid))),
+                'base_url' => esc_url_raw((string) ($client['base_url'] ?? ($existing['base_url'] ?? ''))),
+                'status' => $status,
+                'auth_mode' => sanitize_key((string) ($auth_profile['method'] ?? ($existing['auth_mode'] ?? 'wp_app_password'))),
+                'allow_receive_packages' => $allow_receive,
+                'onboarding_state' => $onboarding_state,
+                'onboarding_updated_at' => sanitize_text_field((string) ($client['last_handshake_at'] ?? ($client['last_intro_at'] ?? ''))),
+                'last_seen_at' => sanitize_text_field((string) ($client['last_seen_at'] ?? gmdate('c'))),
+            ]);
+        }
     }
 
     /**
@@ -133,4 +253,3 @@ final class DBVC_Bricks_Connected_Sites
         ]);
     }
 }
-

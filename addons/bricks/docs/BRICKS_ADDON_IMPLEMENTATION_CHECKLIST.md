@@ -504,6 +504,12 @@ Phase 2 field help text requirements (must appear beneath inputs):
 - Staging environment prepared with Bricks add-on enabled and representative data.
 - Release candidate branch/build frozen for validation window.
 
+Progress update (2026-02-15):
+- `P15-T5-S1` implemented: intro packet endpoint contract added (`POST /dbvc/v1/bricks/intro/packet`).
+- `P15-T5-S2` implemented: handshake accept/reject endpoint with signed acknowledgement added (`POST /dbvc/v1/bricks/intro/handshake`).
+- connected-sites now supports registry-first sourcing mode from onboarding records (`dbvc_bricks_clients` option-backed) with onboarding lifecycle visibility in Packages -> Connected Sites.
+- signed command verification scaffolding added (`DBVC_Bricks_Command_Auth`, `POST /dbvc/v1/bricks/commands/ping`) with timestamp/nonce HMAC verification and replay protection.
+
 ### Tasks / Sub-tasks
 - `P15-T1` Staging workflow drill execution
   - `P15-T1-S1` Lock validation dataset + package manifest fixtures used for staging drills.
@@ -521,6 +527,14 @@ Phase 2 field help text requirements (must appear beneath inputs):
   - `P15-T4-S1` Update progress tracker statuses and attach command/output evidence.
   - `P15-T4-S2` Produce release decision summary (`GO` or `NO_GO`) with explicit blocker list.
   - `P15-T4-S3` Open follow-on phases/tasks for non-blocking enhancements discovered in validation.
+- `P15-T5` Connected-network onboarding enhancement (Introduction Packet + handshake registry)
+  - `P15-T5-S1` Add client introduction packet endpoint and payload (`site_uid`, `site_label`, `base_url`, capabilities, environment marker).
+  - `P15-T5-S2` Add mothership accept/reject handshake endpoint with signed acknowledgement (`accepted`, `mothership_uid`, `registered_at`, `handshake_token`).
+  - `P15-T5-S3` Add dedicated DBVC registry table (`dbvc_bricks_clients`) and migrate connected-sites table source to registry-first.
+  - `P15-T5-S4` Add onboarding state machine (`PENDING_INTRO`, `VERIFIED`, `REJECTED`, `DISABLED`) and UI status badges.
+  - `P15-T5-S5` Add idempotent auto-intro trigger once valid mothership credentials are configured on client.
+  - `P15-T5-S6` Persist per-site onboarding transport state (`ping_sent`, `intro_sent`, `handshake_state`, `approved_at`) on activation/configure save.
+  - `P15-T5-S7` Add bounded retry cron until `ping + intro + handshake` reach terminal success/failure state (idempotent retries, capped attempts, diagnostics).
 
 ### Required tests
 - `P15-TEST-01` Staging apply + restore + rollback drill evidence.
@@ -529,6 +543,8 @@ Phase 2 field help text requirements (must appear beneath inputs):
 - `P15-TEST-04` Capability + nonce enforcement verification.
 - `P15-TEST-05` Legacy manifest/snapshot compatibility verification.
 - `P15-TEST-06` Live `bricks_theme_styles` + component slug/label schema verification.
+- `P15-TEST-07` Force-channel policy tests (default, override, stable confirmation, audit fields).
+- `P15-TEST-08` Introduction packet + handshake tests (client submit, mothership accept/reject, registry persistence, idempotency).
 
 ### Exit criteria
 - All required tests pass with evidence captured in tracker.
@@ -589,6 +605,9 @@ Phase 2 field help text requirements (must appear beneath inputs):
 
 ## Phase 14: Push/pull operations + governance hardening
 
+Phase status: DONE (2026-02-15)
+Manual gate: `P14-TEST-01` PASS (clientA -> mothership -> clientA/clientB, `all` + `selected` targeting verified)
+
 ### Entry criteria
 - Phase 13 complete.
 - Connected-site registry populated with at least one local/staging client.
@@ -610,6 +629,8 @@ Phase 2 field help text requirements (must appear beneath inputs):
   - `P14-T4-S1` Enforce least-privilege integration accounts per connected site.
   - `P14-T4-S2` Add key rotation workflow and expiration warnings.
   - `P14-T4-S3` Enforce channel protection rules (stable promotion requires approval gate).
+  - `P14-T4-S4` Add client publish force-channel policy (`none|canary|beta|stable`) with audit metadata (`channel_forced`, `forced_from`, `forced_to`, `forced_by`).
+  - `P14-T4-S5` Require explicit confirmation when force-channel is `stable` and show warning banner in client packages UI.
 - `P14-T5` Documentation + tracker updates
   - `P14-T5-S1` Update progress tracker statuses.
   - `P14-T5-S2` Record phase 14 completion note with operator runbook links.
@@ -650,6 +671,18 @@ Phase 2 field help text requirements (must appear beneath inputs):
   - role-based page composition and role action controls.
   - differences panel + simple diff viewer for Entity/option artifacts.
   - apply/proposals/packages panel wiring inside submenu.
+- User documentation library rollout (`DBVC_USER_DOCUMENTATION_LIBRARY`):
+  - owner: `P15-T4-S3` follow-on enhancement (or new blocking phase if release-critical).
+  - seed file: `docs/DBVC_USER_DOCUMENTATION_LIBRARY.md`.
+  - scope: add a dedicated user-facing docs/library area in plugin UI and keep drift/package transport behavior documentation synchronized with shipped behavior.
+- Drift-noise masking and ignore rules:
+  - owner: `P15-T4-S3` follow-on enhancement (or new blocking phase if release-critical).
+  - add artifact/meta masking + ignore-rule support so known noisy values can be excluded from drift/proposal/apply comparisons.
+  - include option-level and nested option-object ignore paths (example: `bricks_color_palette` values that intentionally vary by site).
+- Differences + Packages metadata clarity:
+  - owner: `P15-T4-S3` follow-on enhancement.
+  - add template title column/metadata in Differences table rows for `bricks_template` artifacts.
+  - show site-domain/source-site metadata with package rows/detail so operators can quickly map package -> site and site -> package.
 
 Tracking rule:
 - Every open missing item must be linked to an owning phase/task/sub-task ID above.

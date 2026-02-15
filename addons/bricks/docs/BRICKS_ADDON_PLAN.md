@@ -273,6 +273,41 @@ Namespace: `dbvc/v1/bricks`
 11. `POST /packages/{package_id}/ack`
 - Purpose: client acknowledges receipt/pull/apply outcome back to mothership.
 
+12. `POST /intro/packet`
+- Purpose: client submits one-time (idempotent) introduction packet after mothership credentials are configured/validated.
+- Request body (shape):
+```json
+{
+  "site_uid": "client-site-1",
+  "site_label": "Client Site 1",
+  "base_url": "https://client-site.local",
+  "environment": "local",
+  "capabilities": ["publish", "pull", "ack"],
+  "auth_profile": {"method":"wp_app_password","key_id":"integration-user"}
+}
+```
+
+13. `POST /intro/handshake`
+- Purpose: mothership accepts/rejects intro packet and returns signed acknowledgement for client trust establishment.
+- Request body (shape):
+```json
+{
+  "site_uid": "client-site-1",
+  "decision": "accept",
+  "notes": "Verified credentials"
+}
+```
+- Response:
+```json
+{
+  "ok": true,
+  "accepted": true,
+  "mothership_uid": "mship-main",
+  "registered_at": "2026-02-15T00:00:00Z",
+  "handshake_token": "hs_..."
+}
+```
+
 ### Connected-sites selective rollout UI contract
 - Add mothership table panel:
   - columns: `Site`, `Site UID`, `Base URL`, `Status`, `Last Seen`, `Auth Mode`, `Allowed`.
@@ -295,6 +330,14 @@ Namespace: `dbvc/v1/bricks`
   - source site,
   - target mode + selected sites,
   - correlation ID.
+- Client force-channel policy (planned):
+  - optional `none|canary|beta|stable` override on outgoing client publish package channel,
+  - stable override requires explicit confirmation,
+  - audit metadata persisted (`channel_forced`, `forced_from`, `forced_to`, `forced_by`).
+- Introduction/handshake lifecycle hardening (planned):
+  - seed onboarding state row on add-on activation/configure save (before first intro attempt),
+  - track transport lifecycle markers (`ping_sent`, `intro_sent`, `handshake_state`, attempt counters),
+  - schedule bounded retry cron until onboarding reaches terminal state (`VERIFIED|REJECTED|DISABLED`) with idempotent request keys.
 
 ## 7) Minimal Storage Plan
 
@@ -319,6 +362,18 @@ Namespace: `dbvc/v1/bricks`
 - `base_golden_version`, `base_hash`, `proposed_hash`
 - payload ref / diff summary
 - `status`, reviewer metadata, timestamps
+
+3. `dbvc_bricks_clients` (planned)
+- `site_uid` (PK), `site_label`, `base_url`
+- `registry_state` (`PENDING_INTRO|VERIFIED|REJECTED|DISABLED`)
+- `handshake_token_hash`
+- `auth_method`, `key_id`
+- `last_intro_at`, `last_handshake_at`, `last_seen_at`
+- `ping_sent_at`, `intro_attempt_count`, `handshake_attempt_count`, `onboarding_last_error`
+- `created_at`, `updated_at`
+
+Registry strategy:
+- Move connected-sites panel to registry-first records (`dbvc_bricks_clients`) and treat package-source backfill as fallback/auxiliary enrichment only.
 
 ## 8) Risks / Unknowns for Live Validation
 

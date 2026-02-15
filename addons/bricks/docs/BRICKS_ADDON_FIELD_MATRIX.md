@@ -154,6 +154,19 @@ Input instructions (render as help text beneath input):
 | Connected Sites Table Filter | n/a | UI control | `all`, `online`, `offline`, `disabled` | `all` | n/a | mothership targeting table |
 | Select All Connected Sites | n/a | action | table bulk action | n/a | n/a | publish target assignment |
 | Selected Site Rows | n/a | action | row checkbox list by `site_uid` | n/a | if target mode=selected_sites | package targeting |
+| Registry Mode | `dbvc_bricks_connected_sites_mode` | select | `packages_backfill`, `registry_table` | `packages_backfill` | yes | connected-sites data source strategy |
+| Intro Packet Auto-send | `dbvc_bricks_intro_auto_send` | checkbox | `0/1` | `1` | no | trigger first-time client introduction workflow |
+
+## 3.7 Channel governance + onboarding controls
+
+| Field Label | Option Key | Type | Allowed Values / Validation | Default | Required | Used By |
+|---|---|---|---|---|---|---|
+| Client Publish Force Channel | `dbvc_bricks_client_force_channel` | select | `none`, `canary`, `beta`, `stable` | `none` | yes | outgoing client publish governance |
+| Require Stable Force Confirmation | `dbvc_bricks_force_stable_confirm` | checkbox | `0/1` | `1` | no | additional operator safeguard |
+| Intro Handshake Token | `dbvc_bricks_intro_handshake_token` | key/secret | sanitized token string | empty | conditional | client/mothership trust handshake |
+| Client Registry State | `dbvc_bricks_client_registry_state` | status | `PENDING_INTRO`, `VERIFIED`, `REJECTED`, `DISABLED` | `PENDING_INTRO` | n/a | onboarding lifecycle UI/status |
+| Intro Retry Max Attempts | `dbvc_bricks_intro_retry_max_attempts` | integer | min 1, max 20 | `6` | no | bounded onboarding retries |
+| Intro Retry Interval Minutes | `dbvc_bricks_intro_retry_interval_minutes` | integer | min 5, max 1440 | `30` | no | onboarding retry schedule |
 
 Connected sites table expected columns:
 - `site_uid`
@@ -237,6 +250,16 @@ All endpoints:
   - proposal submit/review/approve flow.
 - Manual QA checklist:
   - satellite -> mothership -> approve -> satellite apply.
+
+### 6.6 Drift-noise controls and operator UX clarity
+- Add masking/ignore rule contract for artifact payload paths:
+  - support targeted meta/path masking to suppress known noisy values in drift/proposals.
+- Add option and nested option-object ignore rule contract:
+  - support path-based ignores for option payloads (example: selected `bricks_color_palette` value paths that intentionally differ per site).
+- Add Differences table metadata enhancements:
+  - include template title for `bricks_template` rows in Differences UI.
+- Add Packages metadata enhancements:
+  - include source site domain metadata in Packages table/detail for clear package-to-site mapping.
 
 ## 7) Implementation Order (on-rails sequence)
 

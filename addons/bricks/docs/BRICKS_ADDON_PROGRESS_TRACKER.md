@@ -617,9 +617,24 @@ Completed: n/a
   - [ ] P15-T3-S2 Validate component label/slug path stability for drift/proposal/apply flows (Status: NOT_STARTED)
   - [ ] P15-T3-S3 Document schema deltas and required migration/backfill notes (Status: NOT_STARTED)
 - [ ] P15-T4 Go/no-go decision package (Status: IN_PROGRESS)
-  - [ ] P15-T4-S1 Update progress tracker statuses and attach command/output evidence (Status: NOT_STARTED)
+  - [x] P15-T4-S1 Update progress tracker statuses and attach command/output evidence (Status: DONE)
   - [ ] P15-T4-S2 Produce release decision summary (`GO` or `NO_GO`) with explicit blocker list (Status: NOT_STARTED)
   - [ ] P15-T4-S3 Open follow-on phases/tasks for non-blocking enhancements discovered in validation (Status: IN_PROGRESS)
+    - [ ] Queue `DBVC_USER_DOCUMENTATION_LIBRARY` rollout using `docs/DBVC_USER_DOCUMENTATION_LIBRARY.md` as the seed source for future in-plugin documentation library UI (Status: NOT_STARTED)
+    - [ ] Queue drift-noise masking/ignore rules enhancement:
+      - [ ] meta-level masking/ignore support for selected artifact payload paths.
+      - [ ] option and nested option-object ignore-path support (example: `bricks_color_palette` value paths that differ across sites).
+    - [ ] Queue UX clarity enhancement for operators:
+      - [ ] add template title in Differences table rows for template artifacts.
+      - [ ] surface source site domain metadata in Packages table/detail for direct site/package mapping.
+- [ ] P15-T5 Connected-network onboarding enhancement (Introduction Packet + handshake registry) (Status: IN_PROGRESS)
+  - [x] P15-T5-S1 Add client introduction packet endpoint + payload contract (Status: DONE)
+  - [x] P15-T5-S2 Add mothership accept/reject handshake endpoint + signed acknowledgement (Status: DONE)
+  - [ ] P15-T5-S3 Add dedicated registry table (`dbvc_bricks_clients`) and registry-first connected-sites sourcing (Status: NOT_STARTED)
+  - [ ] P15-T5-S4 Add onboarding lifecycle statuses (`PENDING_INTRO`, `VERIFIED`, `REJECTED`, `DISABLED`) in UI (Status: NOT_STARTED)
+  - [ ] P15-T5-S5 Add idempotent auto-intro trigger on valid mothership credentials (Status: NOT_STARTED)
+  - [ ] P15-T5-S6 Persist onboarding transport state (`ping_sent`, `intro_sent`, `handshake_state`, `approved_at`) on activation/configure save (Status: NOT_STARTED)
+  - [ ] P15-T5-S7 Add bounded retry cron until onboarding reaches terminal state with diagnostics (Status: NOT_STARTED)
 
 ### Test Evidence
 - P15-TEST-01: NOT_RUN - staging apply + restore + rollback drill evidence pending.
@@ -628,8 +643,19 @@ Completed: n/a
 - P15-TEST-04: NOT_RUN - capability + nonce enforcement verification pending.
 - P15-TEST-05: NOT_RUN - legacy manifest/snapshot compatibility verification pending.
 - P15-TEST-06: NOT_RUN - live `bricks_theme_styles` + component slug/label schema verification pending.
+- P15-TEST-07: NOT_RUN - force-channel policy tests pending (`none|canary|beta|stable`, stable confirmation, audit metadata).
+- P15-TEST-08: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase15Test.php` (`test_intro_packet_is_idempotent_and_persists_registry_record`, `test_intro_handshake_accept_returns_token_and_enables_site`, `test_intro_handshake_reject_disables_site`, `test_connected_sites_registry_first_includes_onboarding_state`, `test_signed_command_ping_requires_valid_signature_and_rejects_replay`)
 - P15-ENH-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_role_based_tab_visibility_for_client_and_mothership`) verifies Documentation panel renders for both `client` and `mothership` roles.
-- P15-ENH-02: PASS - `vendor/bin/phpunit --filter BricksAddon tests/phpunit` -> `OK (58 tests, 282 assertions)`.
+- P15-ENH-02: PASS - `vendor/bin/phpunit --filter BricksAddon tests/phpunit` -> `OK (89 tests, 444 assertions)`.
+- P15-ENH-07: PASS - Added onboarding transport REST surface + settings contract updates:
+  - `POST /dbvc/v1/bricks/intro/packet` (mothership-only, idempotent intro packet persistence).
+  - `POST /dbvc/v1/bricks/intro/handshake` (mothership-only accept/reject with signed acknowledgement).
+  - Added settings fields for onboarding controls (`dbvc_bricks_intro_auto_send`, `dbvc_bricks_intro_handshake_token`, `dbvc_bricks_client_registry_state`, `dbvc_bricks_intro_retry_max_attempts`, `dbvc_bricks_intro_retry_interval_minutes`).
+  - Added registry persistence option `dbvc_bricks_clients` with handshake token hashing.
+- P15-ENH-08: PASS - Added connected-sites registry-first sourcing + onboarding visibility + signed command scaffold:
+  - Connected-sites list now supports registry mode (`dbvc_bricks_connected_sites_mode`) and returns `registry_mode` in API payload.
+  - Connected-sites table now shows onboarding lifecycle values (`PENDING_INTRO|VERIFIED|REJECTED|DISABLED`) in mothership UI.
+  - Added signed command verification helper (`DBVC_Bricks_Command_Auth`) and signed scaffold route `POST /dbvc/v1/bricks/commands/ping` with timestamp/nonce/signature validation and replay protection.
 - P15-ENH-03: PASS - Added first-time guided checklist panel at top of Bricks submenu page (`id="dbvc-bricks-onboarding"`) with toggleable UI, persisted checkbox progress, and role-specific step guidance.
 - P15-ENH-04: PASS - Added operator input instructions for `dbvc_addon_bricks_visibility` and `dbvc_bricks_mothership_url` in planning/checklist docs:
   - `addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
@@ -690,6 +716,9 @@ Completed: n/a
 - P13-TEST-05: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_diagnostics_surface_package_delivery_ack_summary`, `test_package_publish_idempotency_and_site_filtered_visibility`)
 - P13-TEST-06: PASS (SIMULATED) - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_remote_publish_uses_basic_auth_and_returns_remote_response`, `test_remote_publish_preflight_dry_run_returns_without_http_call`)
 - P13-TEST-07: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_remote_connection_test_endpoint_uses_basic_auth_probe`, `test_mothership_packages_panel_renders_connected_sites_controls`)
+- P13-TEST-08: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_bootstrap_create_generates_first_package_from_local_artifacts`)
+- P13-TEST-09: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_connected_sites_backfill_from_package_sources`)
+- P13-TEST-10: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase10Test.php tests/phpunit/BricksAddonPhase13Test.php` (packages table selector column + client packages panel wiring)
 
 ### Exit Criteria Check
 - [ ] Client can publish packages to mothership with auditable receipts.
@@ -697,39 +726,79 @@ Completed: n/a
 - [ ] Pull visibility + acknowledgements respect targeting and policy contract.
 
 ## Phase 14 - Push/pull operations + governance hardening
-Status: NOT_STARTED
+Status: DONE
 Owner: Codex
-Started: n/a
-Completed: n/a
+Started: 2026-02-15
+Completed: 2026-02-15
 
 ### Tasks
-- [ ] P14-T1 Mothership publish operations UI (Status: NOT_STARTED)
-  - [ ] P14-T1-S1 Add incoming package review queue + diff inspection (Status: NOT_STARTED)
-  - [ ] P14-T1-S2 Add approve/promote/revoke action controls with guardrails (Status: NOT_STARTED)
-  - [ ] P14-T1-S3 Add channel progression workflow (`canary -> beta -> stable`) (Status: NOT_STARTED)
-- [ ] P14-T2 Client pull/apply UX (Status: NOT_STARTED)
-  - [ ] P14-T2-S1 Show target audience metadata in client package view (Status: NOT_STARTED)
-  - [ ] P14-T2-S2 Add pull latest allowed package + dry-run apply action (Status: NOT_STARTED)
-  - [ ] P14-T2-S3 Link apply/restore/rollback events to publish receipt IDs (Status: NOT_STARTED)
-- [ ] P14-T3 Reliability + failure handling (Status: NOT_STARTED)
-  - [ ] P14-T3-S1 Add retry/backoff/dead-letter markers for push/pull failures (Status: NOT_STARTED)
-  - [ ] P14-T3-S2 Add operator diagnostics and remediation hints (Status: NOT_STARTED)
-  - [ ] P14-T3-S3 Add delivery timeline states (`sent|received|eligible|pulled|applied|failed`) (Status: NOT_STARTED)
-- [ ] P14-T4 Security/governance hardening (Status: NOT_STARTED)
-  - [ ] P14-T4-S1 Enforce least-privilege integration accounts per connected site (Status: NOT_STARTED)
-  - [ ] P14-T4-S2 Add credential rotation and expiration warnings (Status: NOT_STARTED)
-  - [ ] P14-T4-S3 Enforce stable-channel promotion approval gate (Status: NOT_STARTED)
-- [ ] P14-T5 Documentation + tracker updates (Status: NOT_STARTED)
-  - [ ] P14-T5-S1 Update progress tracker statuses (Status: NOT_STARTED)
-  - [ ] P14-T5-S2 Record phase 14 completion note with evidence (Status: NOT_STARTED)
+- [x] P14-T1 Mothership publish operations UI (Status: DONE)
+  - [x] P14-T1-S1 Add incoming package review queue + diff inspection (Status: DONE)
+  - [x] P14-T1-S2 Add approve/promote/revoke action controls with guardrails (Status: DONE)
+  - [x] P14-T1-S3 Add channel progression workflow (`canary -> beta -> stable`) (Status: DONE)
+- [x] P14-T2 Client pull/apply UX (Status: DONE)
+  - [x] P14-T2-S1 Show target audience metadata in client package view (Status: DONE)
+  - [x] P14-T2-S2 Add pull latest allowed package + dry-run apply action (Status: DONE)
+  - [x] P14-T2-S3 Link apply/restore/rollback events to publish receipt IDs (Status: DONE)
+- [x] P14-T3 Reliability + failure handling (Status: DONE)
+  - [x] P14-T3-S1 Add retry/backoff/dead-letter markers for push/pull failures (Status: DONE)
+  - [x] P14-T3-S2 Add operator diagnostics and remediation hints (Status: DONE)
+  - [x] P14-T3-S3 Add delivery timeline states (`sent|received|eligible|pulled|applied|failed`) (Status: DONE)
+- [x] P14-T4 Security/governance hardening (Status: DONE)
+  - [x] P14-T4-S1 Enforce least-privilege integration accounts per connected site (Status: DONE)
+  - [x] P14-T4-S2 Add credential rotation and expiration warnings (Status: DONE)
+  - [x] P14-T4-S3 Enforce stable-channel promotion approval gate (Status: DONE)
+  - [x] P14-T4-S4 Add client publish force-channel policy (`none|canary|beta|stable`) with audit metadata (Status: DONE)
+  - [x] P14-T4-S5 Require explicit stable force confirmation + warning banner in client UI (Status: DONE)
+- [x] P14-T5 Documentation + tracker updates (Status: DONE)
+  - [x] P14-T5-S1 Update progress tracker statuses (Status: DONE)
+  - [x] P14-T5-S2 Record phase 14 completion note with evidence (Status: DONE)
 
 ### Test Evidence
-- P14-TEST-01: NOT_RUN - end-to-end publish/pull/apply drill across multiple connected sites pending.
-- P14-TEST-02: NOT_RUN - channel promote/revoke governance gate tests pending.
-- P14-TEST-03: NOT_RUN - push/pull retry/dead-letter recovery tests pending.
-- P14-TEST-04: NOT_RUN - delivery timeline and audit attribution tests pending.
-- P14-TEST-05: NOT_RUN - key rotation and expired credential behavior tests pending.
+- P14-TEST-01: PASS (2026-02-15 01:44:05 -0500) - manual end-to-end drill completed on `clientA -> mothership -> clientA/clientB` with both targeting modes and receipt/audit verification.
+  - Environment/auth checks (2026-02-15 01:40:19 -0500):
+    - `curl -ksS -u "<clientA>" https://dbvc-codexchanges.local/wp-json/dbvc/v1/bricks/status` -> `200` (`role=client`).
+    - `curl -ksS -u "<clientB>" https://vf-pluginmediaimporter.local/wp-json/dbvc/v1/bricks/status` -> `200` (`role=client`).
+    - `curl -ksS -u "<mothership>" https://flourishweb.co/wp-json/dbvc/v1/bricks/status` -> `200` (`role=mothership`).
+  - Allowlist prep for selected targeting:
+    - `POST /dbvc/v1/bricks/connected-sites` on mothership + clientA with `allow_receive_packages=1` for `site_uid=test_site_a` (required for selected-target validation gate).
+  - `targeting.mode=all` drill:
+    - clientA publish to mothership (`POST /dbvc/v1/bricks/packages/publish-remote`) created `package_id=pkg_p14_rerun_all_20260215T064207Z`, `receipt_id=pkg_rcpt_441a94dac527`.
+    - clientA pull (`POST /dbvc/v1/bricks/packages/pull-latest`) -> `200`, `package_id=pkg_p14_rerun_all_20260215T064207Z`, `pulled_from_remote=true`, `remote_ack.ok=true`.
+    - clientB pull (`POST /dbvc/v1/bricks/packages/pull-latest`) -> `200`, `package_id=pkg_p14_rerun_all_20260215T064207Z`, `pulled_from_remote=true`, `remote_ack.ok=true`.
+  - `targeting.mode=selected` drill:
+    - clientA publish to mothership created `package_id=pkg_p14_rerun_sel_20260215T064247Z`, `receipt_id=pkg_rcpt_f2a6c215def2`, `targeting={"mode":"selected","site_uids":["test_site_a"]}`.
+    - clientA pull -> `200`, `package_id=pkg_p14_rerun_sel_20260215T064247Z`, `visibility_reason=target_selected_match`, `remote_ack.ok=true`.
+    - clientB pull -> `200`, `package_id=pkg_p14_rerun_all_20260215T064207Z` (selected package correctly excluded for `site_uid=pluginmediaimporter`).
+  - Receipt/audit traces:
+    - Mothership package detail confirms receipt IDs + targeting + pull acks:
+      - `GET /dbvc/v1/bricks/packages/pkg_p14_rerun_all_20260215T064207Z` -> `receipt_id=pkg_rcpt_441a94dac527`, pull acks for `test_site_a` and `pluginmediaimporter`.
+      - `GET /dbvc/v1/bricks/packages/pkg_p14_rerun_sel_20260215T064247Z` -> `receipt_id=pkg_rcpt_f2a6c215def2`, pull ack only for `test_site_a`.
+    - Client diagnostics `package_delivery` confirms transport/timeline markers and ack summaries for both drill packages:
+      - `GET /dbvc/v1/bricks/diagnostics` on `dbvc-codexchanges.local`.
+      - `GET /dbvc/v1/bricks/diagnostics` on `vf-pluginmediaimporter.local`.
+- P14-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase14Test.php` (promote/revoke governance + stable confirmation + force-stable publish confirmation)
+- P14-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase14Test.php` (`test_transport_retry_backoff_marks_dead_letter_after_threshold`)
+- P14-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase14Test.php` (`test_delivery_diagnostics_exposes_timeline_and_transport_markers`, `test_apply_restore_rollback_receipt_id_roundtrip`)
+- P14-TEST-05: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase14Test.php` (`test_client_packages_panel_shows_credential_rotation_warning_when_stale`)
+- P14-REG-01: PASS - `vendor/bin/phpunit --filter BricksAddon tests/phpunit` (`OK (83 tests, 396 assertions)`)
 
 ### Exit Criteria Check
-- [ ] End-to-end push/pull workflow is operational with selective site targeting.
-- [ ] Governance, security, and reliability controls meet release requirements.
+- [x] End-to-end push/pull workflow is operational with selective site targeting.
+- [x] Governance, security, and reliability controls meet release requirements.
+
+### Completion Note
+- Implemented in this round:
+  - client pull latest allowed package + dry-run apply endpoint/UI,
+  - apply/restore/rollback receipt ID roundtrip wiring,
+  - package delivery timeline + transport retry/backoff/dead-letter markers,
+  - force-channel governance (`none|canary|beta|stable`) with stable confirmation gate,
+  - credential rotation warning surfaced in client packages panel.
+- Reference files:
+  - `addons/bricks/bricks-packages.php`
+  - `addons/bricks/bricks-addon.php`
+  - `addons/bricks/bricks-apply.php`
+  - `tests/phpunit/BricksAddonPhase14Test.php`
+- Completion evidence:
+  - `P14-TEST-01` now passes with validated `all` and `selected` targeting behavior across both clients.
+  - Receipt IDs and audit timelines captured in package detail + diagnostics payloads.

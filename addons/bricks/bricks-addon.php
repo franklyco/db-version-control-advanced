@@ -89,6 +89,16 @@ final class DBVC_Bricks_Addon
                 'type'    => 'secret',
                 'default' => '',
             ],
+            'dbvc_bricks_credentials_updated_at' => [
+                'type'    => 'text',
+                'default' => '',
+            ],
+            'dbvc_bricks_credentials_rotate_days' => [
+                'type'    => 'int',
+                'default' => '90',
+                'min'     => 1,
+                'max'     => 365,
+            ],
             'dbvc_bricks_http_timeout' => [
                 'type'    => 'int',
                 'default' => '30',
@@ -116,6 +126,50 @@ final class DBVC_Bricks_Addon
                 'type'    => 'enum',
                 'default' => 'stable',
                 'allowed' => ['stable', 'beta', 'canary'],
+            ],
+            'dbvc_bricks_client_force_channel' => [
+                'type'    => 'enum',
+                'default' => 'none',
+                'allowed' => ['none', 'canary', 'beta', 'stable'],
+            ],
+            'dbvc_bricks_force_stable_confirm' => [
+                'type'    => 'bool',
+                'default' => '1',
+            ],
+            'dbvc_bricks_intro_auto_send' => [
+                'type'    => 'bool',
+                'default' => '1',
+            ],
+            'dbvc_bricks_intro_handshake_token' => [
+                'type'    => 'secret',
+                'default' => '',
+            ],
+            'dbvc_bricks_client_registry_state' => [
+                'type'    => 'enum',
+                'default' => 'PENDING_INTRO',
+                'allowed' => ['PENDING_INTRO', 'VERIFIED', 'REJECTED', 'DISABLED'],
+            ],
+            'dbvc_bricks_intro_retry_max_attempts' => [
+                'type'    => 'int',
+                'default' => '6',
+                'min'     => 1,
+                'max'     => 20,
+            ],
+            'dbvc_bricks_intro_retry_interval_minutes' => [
+                'type'    => 'int',
+                'default' => '30',
+                'min'     => 5,
+                'max'     => 1440,
+            ],
+            'dbvc_bricks_connected_sites_source' => [
+                'type'    => 'enum',
+                'default' => 'manual',
+                'allowed' => ['manual', 'heartbeat_auto'],
+            ],
+            'dbvc_bricks_connected_sites_mode' => [
+                'type'    => 'enum',
+                'default' => 'registry_table',
+                'allowed' => ['packages_backfill', 'registry_table'],
             ],
             'dbvc_bricks_pinned_version' => [
                 'type'    => 'text',
@@ -252,6 +306,7 @@ final class DBVC_Bricks_Addon
                     'dbvc_bricks_auth_method',
                     'dbvc_bricks_api_key_id',
                     'dbvc_bricks_api_secret',
+                    'dbvc_bricks_credentials_rotate_days',
                     'dbvc_bricks_http_timeout',
                     'dbvc_bricks_tls_verify',
                     'dbvc_bricks_read_only',
@@ -263,6 +318,15 @@ final class DBVC_Bricks_Addon
                 'fields' => [
                     'dbvc_bricks_source_mode',
                     'dbvc_bricks_channel',
+                    'dbvc_bricks_client_force_channel',
+                    'dbvc_bricks_force_stable_confirm',
+                    'dbvc_bricks_intro_auto_send',
+                    'dbvc_bricks_intro_handshake_token',
+                    'dbvc_bricks_client_registry_state',
+                    'dbvc_bricks_intro_retry_max_attempts',
+                    'dbvc_bricks_intro_retry_interval_minutes',
+                    'dbvc_bricks_connected_sites_source',
+                    'dbvc_bricks_connected_sites_mode',
                     'dbvc_bricks_pinned_version',
                     'dbvc_bricks_verify_signature',
                     'dbvc_bricks_allow_fallback',
@@ -329,12 +393,22 @@ final class DBVC_Bricks_Addon
             'dbvc_bricks_auth_method' => ['label' => 'Auth Method', 'input' => 'select', 'options' => ['hmac' => 'hmac', 'api_key' => 'api_key', 'wp_app_password' => 'wp_app_password']],
             'dbvc_bricks_api_key_id' => ['label' => 'API Key ID', 'input' => 'text'],
             'dbvc_bricks_api_secret' => ['label' => 'API Secret', 'input' => 'password'],
+            'dbvc_bricks_credentials_rotate_days' => ['label' => 'Credential Rotation Warning (days)', 'input' => 'number'],
             'dbvc_bricks_http_timeout' => ['label' => 'Request Timeout (sec)', 'input' => 'number'],
             'dbvc_bricks_tls_verify' => ['label' => 'Strict TLS Verify', 'input' => 'checkbox'],
             'dbvc_bricks_read_only' => ['label' => 'Read-only Mode', 'input' => 'checkbox'],
             self::OPTION_FLEET_MODE_ENABLED => ['label' => 'Fleet Mode Planning (Multisite)', 'input' => 'checkbox'],
             'dbvc_bricks_source_mode' => ['label' => 'Source Mode', 'input' => 'select', 'options' => ['mothership_api' => 'mothership_api', 'pinned_version' => 'pinned_version', 'local_package' => 'local_package']],
             'dbvc_bricks_channel' => ['label' => 'Channel', 'input' => 'select', 'options' => ['stable' => 'stable', 'beta' => 'beta', 'canary' => 'canary']],
+            'dbvc_bricks_client_force_channel' => ['label' => 'Client Publish Force Channel', 'input' => 'select', 'options' => ['none' => 'none', 'canary' => 'canary', 'beta' => 'beta', 'stable' => 'stable']],
+            'dbvc_bricks_force_stable_confirm' => ['label' => 'Require Stable Force Confirmation', 'input' => 'checkbox'],
+            'dbvc_bricks_intro_auto_send' => ['label' => 'Intro Packet Auto-send', 'input' => 'checkbox'],
+            'dbvc_bricks_intro_handshake_token' => ['label' => 'Intro Handshake Token', 'input' => 'password'],
+            'dbvc_bricks_client_registry_state' => ['label' => 'Client Registry State', 'input' => 'select', 'options' => ['PENDING_INTRO' => 'PENDING_INTRO', 'VERIFIED' => 'VERIFIED', 'REJECTED' => 'REJECTED', 'DISABLED' => 'DISABLED']],
+            'dbvc_bricks_intro_retry_max_attempts' => ['label' => 'Intro Retry Max Attempts', 'input' => 'number'],
+            'dbvc_bricks_intro_retry_interval_minutes' => ['label' => 'Intro Retry Interval Minutes', 'input' => 'number'],
+            'dbvc_bricks_connected_sites_source' => ['label' => 'Connected Sites Registry Source', 'input' => 'select', 'options' => ['manual' => 'manual', 'heartbeat_auto' => 'heartbeat_auto']],
+            'dbvc_bricks_connected_sites_mode' => ['label' => 'Connected Sites Registry Mode', 'input' => 'select', 'options' => ['registry_table' => 'registry_table', 'packages_backfill' => 'packages_backfill']],
             'dbvc_bricks_pinned_version' => ['label' => 'Pinned Package Version', 'input' => 'text'],
             'dbvc_bricks_verify_signature' => ['label' => 'Verify Package Signature', 'input' => 'checkbox'],
             'dbvc_bricks_allow_fallback' => ['label' => 'Allow Fallback to Last Applied', 'input' => 'checkbox'],
@@ -384,12 +458,22 @@ final class DBVC_Bricks_Addon
             'dbvc_bricks_auth_method' => 'Choose request auth mode used for mothership calls. Use `wp_app_password` for WordPress Application Password authentication.',
             'dbvc_bricks_api_key_id' => 'Credential identifier. For `wp_app_password`, use the integration username/login on the mothership site.',
             'dbvc_bricks_api_secret' => 'Credential secret. For `wp_app_password`, paste the generated Application Password (spaces are allowed).',
+            'dbvc_bricks_credentials_rotate_days' => 'Show warning when credentials are older than this number of days.',
             'dbvc_bricks_http_timeout' => 'HTTP request timeout in seconds for package/proposal operations.',
             'dbvc_bricks_tls_verify' => 'Keep enabled to verify TLS certificates on HTTPS requests.',
             'dbvc_bricks_read_only' => 'Disables mutating operations (apply/rollback/approval) while keeping review visibility.',
             self::OPTION_FLEET_MODE_ENABLED => 'Future multisite planning hook. Keep disabled unless fleet orchestration is intentionally enabled.',
             'dbvc_bricks_source_mode' => 'Select how this site resolves golden artifacts: API channel, pinned version, or local package.',
-            'dbvc_bricks_channel' => 'Default package channel when source mode uses mothership API.',
+            'dbvc_bricks_channel' => 'Default channel to consume when source mode uses mothership API (`canary` early validation, `beta` pre-release, `stable` production).',
+            'dbvc_bricks_client_force_channel' => 'Optional channel override for outgoing client publish operations (`none` keeps selected channel).',
+            'dbvc_bricks_force_stable_confirm' => 'Require explicit operator confirmation before forcing outgoing publishes to `stable`.',
+            'dbvc_bricks_intro_auto_send' => 'Automatically attempt introduction packet submission when valid mothership credentials are present.',
+            'dbvc_bricks_intro_handshake_token' => 'Last accepted handshake token for trust establishment (if issued).',
+            'dbvc_bricks_client_registry_state' => 'Onboarding lifecycle state for this client registry record.',
+            'dbvc_bricks_intro_retry_max_attempts' => 'Maximum intro/handshake retry attempts before marking onboarding as blocked.',
+            'dbvc_bricks_intro_retry_interval_minutes' => 'Retry interval in minutes for intro/handshake transport.',
+            'dbvc_bricks_connected_sites_source' => 'Controls how connected-site records are populated (`manual` or heartbeat-assisted automation).',
+            'dbvc_bricks_connected_sites_mode' => 'Data source strategy for Packages -> Connected Sites table (`registry_table` preferred, `packages_backfill` fallback).',
             'dbvc_bricks_pinned_version' => 'Set explicit package version/id when source mode is pinned version.',
             'dbvc_bricks_verify_signature' => 'Verify package signature before apply when signatures are available.',
             'dbvc_bricks_allow_fallback' => 'Allow fallback to last applied package when source retrieval fails.',
@@ -440,6 +524,19 @@ final class DBVC_Bricks_Addon
     {
         $current = self::get_all_settings();
         $result = self::sanitize_settings_input($request_data, $current);
+        $credential_keys = ['dbvc_bricks_auth_method', 'dbvc_bricks_api_key_id', 'dbvc_bricks_api_secret'];
+        $credentials_changed = false;
+        foreach ($credential_keys as $credential_key) {
+            $old_value = isset($current[$credential_key]) ? (string) $current[$credential_key] : '';
+            $new_value = isset($result['values'][$credential_key]) ? (string) $result['values'][$credential_key] : '';
+            if ($old_value !== $new_value) {
+                $credentials_changed = true;
+                break;
+            }
+        }
+        if ($credentials_changed) {
+            $result['values']['dbvc_bricks_credentials_updated_at'] = gmdate('c');
+        }
         foreach ($result['values'] as $key => $value) {
             update_option($key, $value);
         }
@@ -1001,9 +1098,44 @@ final class DBVC_Bricks_Addon
             echo '<section id="dbvc-bricks-panel-packages" class="dbvc-bricks-panel" role="tabpanel" aria-labelledby="dbvc-bricks-tab-packages" tabindex="0"' . ($current_tab === 'packages' ? '' : ' hidden') . '>';
             echo '<h2>' . esc_html__('Packages', 'dbvc') . '</h2>';
             echo '<p>' . esc_html__('Mothership package listing and inspection controls.', 'dbvc') . '</p>';
+            $force_channel = self::get_enum_setting('dbvc_bricks_client_force_channel', ['none', 'canary', 'beta', 'stable'], 'none');
+            $credentials_updated_at = self::get_setting('dbvc_bricks_credentials_updated_at', '');
+            $credentials_rotate_days = self::get_int_setting('dbvc_bricks_credentials_rotate_days', 90);
+            if ($credentials_rotate_days < 1) {
+                $credentials_rotate_days = 90;
+            }
+            $credentials_warning = '';
+            if ($credentials_updated_at !== '') {
+                $age_seconds = time() - (int) strtotime($credentials_updated_at);
+                if ($age_seconds > ($credentials_rotate_days * DAY_IN_SECONDS)) {
+                    $credentials_warning = sprintf(
+                        'Credential rotation warning: credentials are older than %d days (last updated %s UTC).',
+                        $credentials_rotate_days,
+                        gmdate('Y-m-d H:i', (int) strtotime($credentials_updated_at))
+                    );
+                }
+            }
+            if ($role_mode === 'client') {
+                $site_uid_display = self::get_setting('dbvc_bricks_site_uid', '');
+                if ($site_uid_display === '') {
+                    $site_uid_display = 'site_' . get_current_blog_id();
+                }
+                echo '<p><em>' . esc_html__('Client view is filtered to packages eligible for this site UID:', 'dbvc') . ' <code>' . esc_html($site_uid_display) . '</code>.</em></p>';
+                if ($force_channel === 'stable') {
+                    echo '<div class="notice notice-warning" style="margin:8px 0 12px 0;"><p><strong>' . esc_html__('Stable Force Channel Active:', 'dbvc') . '</strong> ' . esc_html__('Outgoing client publish channel is forced to stable. Explicit confirmation is required before publish.', 'dbvc') . '</p></div>';
+                }
+                if ($credentials_warning !== '') {
+                    echo '<div class="notice notice-warning" style="margin:8px 0 12px 0;"><p>' . esc_html($credentials_warning) . '</p></div>';
+                }
+            }
+            echo '<div class="notice notice-info" style="margin:8px 0 12px 0;"><p><strong>' . esc_html__('Channel definitions:', 'dbvc') . '</strong> '
+                . esc_html__('canary = first validation group, beta = wider pre-release rollout, stable = production-ready release.', 'dbvc')
+                . ' ' . esc_html__('Create on client with the channel you need; promote forward on mothership only (canary -> beta -> stable).', 'dbvc')
+                . '</p></div>';
             echo '<p><label for="dbvc-bricks-packages-channel-filter">' . esc_html__('Channel', 'dbvc') . '</label> ';
             echo '<select id="dbvc-bricks-packages-channel-filter"><option value="">' . esc_html__('All', 'dbvc') . '</option><option value="stable">stable</option><option value="beta">beta</option><option value="canary">canary</option></select> ';
-            echo '<button type="button" class="button" id="dbvc-bricks-refresh-packages">' . esc_html__('Refresh Packages', 'dbvc') . '</button></p>';
+            echo '<button type="button" class="button" id="dbvc-bricks-refresh-packages">' . esc_html__('Refresh Packages', 'dbvc') . '</button> ';
+            echo '<button type="button" class="button" id="dbvc-bricks-bootstrap-package">' . esc_html__('Create Package from Current Site', 'dbvc') . '</button></p>';
             echo '<h3>' . esc_html__('Connected Sites Targeting', 'dbvc') . '</h3>';
             echo '<p><label for="dbvc-bricks-target-mode">' . esc_html__('Target Mode', 'dbvc') . '</label> ';
             echo '<select id="dbvc-bricks-target-mode"><option value="all">all</option><option value="selected">selected</option></select> ';
@@ -1018,15 +1150,26 @@ final class DBVC_Bricks_Addon
             echo '<button type="button" class="button" id="dbvc-bricks-select-visible-sites">' . esc_html__('Select Visible', 'dbvc') . '</button> ';
             echo '<button type="button" class="button" id="dbvc-bricks-clear-visible-sites">' . esc_html__('Clear Visible', 'dbvc') . '</button></p>';
             echo '<table class="widefat striped" id="dbvc-bricks-connected-sites-table" aria-label="' . esc_attr__('Bricks connected sites', 'dbvc') . '">';
-            echo '<thead><tr><th>' . esc_html__('Allow', 'dbvc') . '</th><th>' . esc_html__('Site UID', 'dbvc') . '</th><th>' . esc_html__('Label', 'dbvc') . '</th><th>' . esc_html__('Status', 'dbvc') . '</th><th>' . esc_html__('Last Seen', 'dbvc') . '</th></tr></thead>';
-            echo '<tbody id="dbvc-bricks-connected-sites-body"><tr><td colspan="5">' . esc_html__('No connected sites loaded.', 'dbvc') . '</td></tr></tbody>';
+            echo '<thead><tr><th>' . esc_html__('Allow', 'dbvc') . '</th><th>' . esc_html__('Site UID', 'dbvc') . '</th><th>' . esc_html__('Label', 'dbvc') . '</th><th>' . esc_html__('Status', 'dbvc') . '</th><th>' . esc_html__('Onboarding', 'dbvc') . '</th><th>' . esc_html__('Last Seen', 'dbvc') . '</th></tr></thead>';
+            echo '<tbody id="dbvc-bricks-connected-sites-body"><tr><td colspan="6">' . esc_html__('No connected sites loaded.', 'dbvc') . '</td></tr></tbody>';
             echo '</table>';
             echo '<p><button type="button" class="button" id="dbvc-bricks-publish-remote-preflight">' . esc_html__('Run Publish Preflight', 'dbvc') . '</button> ';
             echo '<button type="button" class="button" id="dbvc-bricks-test-remote-connection">' . esc_html__('Test Mothership Connection', 'dbvc') . '</button> ';
+            if ($role_mode === 'client' && ! $is_read_only) {
+                echo '<label style="margin-right:8px;"><input type="checkbox" id="dbvc-bricks-force-stable-confirm" /> ' . esc_html__('Confirm forced stable publish', 'dbvc') . '</label> ';
+                echo '<button type="button" class="button" id="dbvc-bricks-pull-latest-dry-run">' . esc_html__('Pull Latest Allowed + Dry Run', 'dbvc') . '</button> ';
+                echo '<button type="button" class="button" id="dbvc-bricks-publish-remote-packages">' . esc_html__('Publish Package to Mothership', 'dbvc') . '</button> ';
+            }
+            if ($role_mode === 'mothership' && ! $is_read_only) {
+                echo '<label for="dbvc-bricks-promote-channel" class="screen-reader-text">' . esc_html__('Promote Channel', 'dbvc') . '</label> ';
+                echo '<select id="dbvc-bricks-promote-channel"><option value="beta">beta</option><option value="stable">stable</option></select> ';
+                echo '<button type="button" class="button" id="dbvc-bricks-promote-package">' . esc_html__('Promote Selected Package', 'dbvc') . '</button> ';
+                echo '<button type="button" class="button" id="dbvc-bricks-revoke-package">' . esc_html__('Revoke Selected Package', 'dbvc') . '</button> ';
+            }
             echo '<button type="button" class="button button-primary" id="dbvc-bricks-publish-local-targeted">' . esc_html__('Publish Selected Package (Targeting Applied)', 'dbvc') . '</button></p>';
             echo '<table class="widefat striped" id="dbvc-bricks-packages-table" aria-label="' . esc_attr__('Bricks packages', 'dbvc') . '">';
-            echo '<thead><tr><th>' . esc_html__('Package', 'dbvc') . '</th><th>' . esc_html__('Version', 'dbvc') . '</th><th>' . esc_html__('Channel', 'dbvc') . '</th></tr></thead>';
-            echo '<tbody id="dbvc-bricks-packages-table-body"><tr><td colspan="3">' . esc_html__('No packages loaded.', 'dbvc') . '</td></tr></tbody>';
+            echo '<thead><tr><th>' . esc_html__('Select', 'dbvc') . '</th><th>' . esc_html__('Package', 'dbvc') . '</th><th>' . esc_html__('Version', 'dbvc') . '</th><th>' . esc_html__('Channel', 'dbvc') . '</th><th>' . esc_html__('Audience', 'dbvc') . '</th></tr></thead>';
+            echo '<tbody id="dbvc-bricks-packages-table-body"><tr><td colspan="5">' . esc_html__('No packages loaded.', 'dbvc') . '</td></tr></tbody>';
             echo '</table>';
             echo '<pre id="dbvc-bricks-package-detail" style="max-height:260px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:12px;margin-top:12px;" tabindex="0"></pre>';
             echo '</section>';
@@ -1048,6 +1191,13 @@ final class DBVC_Bricks_Addon
             echo '<h3>' . esc_html__('Role Guidance', 'dbvc') . '</h3>';
             echo '<p>' . esc_html__('Client role: use `Apply & Restore` for dry-run/apply/rollback, and `Proposals` for submission and review.', 'dbvc') . '</p>';
             echo '<p>' . esc_html__('Mothership role: use `Packages` to inspect package manifests and channel versions before distribution.', 'dbvc') . '</p>';
+            echo '<h3>' . esc_html__('Channel Definitions & Usage', 'dbvc') . '</h3>';
+            echo '<ul>';
+            echo '<li><strong>' . esc_html__('canary', 'dbvc') . ':</strong> ' . esc_html__('First validation stage for a small, controlled audience. Use this for initial verification after package creation.', 'dbvc') . '</li>';
+            echo '<li><strong>' . esc_html__('beta', 'dbvc') . ':</strong> ' . esc_html__('Wider pre-release stage after canary passes. Use this to expand confidence before production.', 'dbvc') . '</li>';
+            echo '<li><strong>' . esc_html__('stable', 'dbvc') . ':</strong> ' . esc_html__('Production-ready stage. Promote to stable only after canary and beta checks complete.', 'dbvc') . '</li>';
+            echo '</ul>';
+            echo '<p>' . esc_html__('How to use: clients create packages at a starting channel, then mothership promotes forward (`canary -> beta -> stable`) or revokes if needed.', 'dbvc') . '</p>';
             echo '<h3>' . esc_html__('Additional Functionality', 'dbvc') . '</h3>';
             echo '<ul>';
             echo '<li>' . esc_html__('Export Review JSON: export current drift review data for offline approvals or ticket attachments.', 'dbvc') . '</li>';
@@ -1082,6 +1232,8 @@ final class DBVC_Bricks_Addon
         $status_config = [
             'statusEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/status')),
             'packagesEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages')),
+            'pullLatestEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages/pull-latest')),
+            'bootstrapPackageEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages/bootstrap-create')),
             'publishRemoteEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages/publish-remote')),
             'testRemoteConnectionEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages/test-remote-connection')),
             'connectedSitesEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites')),
@@ -1092,9 +1244,13 @@ final class DBVC_Bricks_Addon
             'diagnosticsEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/diagnostics')),
             'uiEventEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/ui-event')),
             'nonce' => wp_create_nonce('wp_rest'),
+            'siteUid' => self::get_setting('dbvc_bricks_site_uid', ''),
+            'clientForceChannel' => self::get_enum_setting('dbvc_bricks_client_force_channel', ['none', 'canary', 'beta', 'stable'], 'none'),
+            'forceStableConfirm' => self::get_bool_setting('dbvc_bricks_force_stable_confirm', true),
             'messages' => [
                 'statusLoaded' => esc_html__('Status loaded.', 'dbvc'),
                 'packagesLoaded' => esc_html__('Packages loaded.', 'dbvc'),
+                'packageBootstrapped' => esc_html__('Package created from current site.', 'dbvc'),
                 'scanComplete' => esc_html__('Drift scan complete.', 'dbvc'),
                 'applyComplete' => esc_html__('Apply request completed.', 'dbvc'),
                 'restoreCreated' => esc_html__('Restore point created.', 'dbvc'),
@@ -1105,6 +1261,8 @@ final class DBVC_Bricks_Addon
                 'diagnosticsLoaded' => esc_html__('Diagnostics loaded.', 'dbvc'),
                 'packagePublished' => esc_html__('Package published.', 'dbvc'),
                 'connectionTestPassed' => esc_html__('Mothership connection succeeded.', 'dbvc'),
+                'packagePromoted' => esc_html__('Package promoted.', 'dbvc'),
+                'packageRevoked' => esc_html__('Package revoked.', 'dbvc'),
                 'connectedSitesLoaded' => esc_html__('Connected sites loaded.', 'dbvc'),
                 'connectedSitesSaved' => esc_html__('Connected sites allowlist saved.', 'dbvc'),
             ],
@@ -1125,7 +1283,7 @@ final class DBVC_Bricks_Addon
         echo 'function setLoading(active){ if(!loadingNotice){ return; } loadingNotice.style.display = active ? "block" : "none"; }';
         echo 'function genCorrelationId(){ return "dbvc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10); }';
         echo 'function emitUiEvent(eventType, payload){ if(!cfg.uiEventEndpoint){ return Promise.resolve(); } const body = {event_type: eventType, payload: payload || {}}; return fetch(cfg.uiEventEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "Content-Type":"application/json"}, body: JSON.stringify(body)}).catch(function(){ return null; }); }';
-        echo 'function setSuccess(message, eventType){ if(!successNotice){ return; } const p = successNotice.querySelector("p"); if(p){ p.textContent = message || ""; } successNotice.style.display = message ? "block" : "none"; if(message && eventType){ emitUiEvent(eventType, {message: message}); } }';
+        echo 'function setSuccess(message, eventType, payload){ if(!successNotice){ return; } const p = successNotice.querySelector("p"); if(p){ p.textContent = message || ""; } successNotice.style.display = message ? "block" : "none"; if(message && eventType){ emitUiEvent(eventType, Object.assign({message: message}, (payload && typeof payload === "object") ? payload : {})); } }';
         echo 'function setError(message, retryAction, context){ if(!errorNotice){ return; } const p = errorNotice.querySelector("p"); if(p){ p.textContent = message || ""; } errorNotice.style.display = message ? "block" : "none"; if(retryLastActionBtn){ retryLastActionBtn.style.display = (message && typeof retryAction === "function") ? "inline-block" : "none"; retryLastActionBtn.onclick = typeof retryAction === "function" ? function(){ retryAction(); } : null; } if(message){ emitUiEvent("ui_error", {message: message, context: context || ""}); } }';
         echo 'function stamp(){ if(lastUpdatedEl){ lastUpdatedEl.textContent = new Date().toLocaleString(); } }';
         echo 'const packagesSelect = document.getElementById("dbvc-bricks-package-select");';
@@ -1161,6 +1319,7 @@ final class DBVC_Bricks_Addon
         echo 'const proposalsTableBody = document.getElementById("dbvc-bricks-proposals-table-body");';
         echo 'const proposalDetail = document.getElementById("dbvc-bricks-proposal-detail");';
         echo 'const refreshPackagesPanelBtn = document.getElementById("dbvc-bricks-refresh-packages");';
+        echo 'const bootstrapPackageBtn = document.getElementById("dbvc-bricks-bootstrap-package");';
         echo 'const packagesChannelFilter = document.getElementById("dbvc-bricks-packages-channel-filter");';
         echo 'const packagesTableBody = document.getElementById("dbvc-bricks-packages-table-body");';
         echo 'const packageDetail = document.getElementById("dbvc-bricks-package-detail");';
@@ -1176,6 +1335,12 @@ final class DBVC_Bricks_Addon
         echo 'const connectedSitesBody = document.getElementById("dbvc-bricks-connected-sites-body");';
         echo 'const publishRemotePreflightBtn = document.getElementById("dbvc-bricks-publish-remote-preflight");';
         echo 'const testRemoteConnectionBtn = document.getElementById("dbvc-bricks-test-remote-connection");';
+        echo 'const publishRemotePackagesBtn = document.getElementById("dbvc-bricks-publish-remote-packages");';
+        echo 'const forceStableConfirmToggle = document.getElementById("dbvc-bricks-force-stable-confirm");';
+        echo 'const pullLatestDryRunBtn = document.getElementById("dbvc-bricks-pull-latest-dry-run");';
+        echo 'const promoteChannelSelect = document.getElementById("dbvc-bricks-promote-channel");';
+        echo 'const promotePackageBtn = document.getElementById("dbvc-bricks-promote-package");';
+        echo 'const revokePackageBtn = document.getElementById("dbvc-bricks-revoke-package");';
         echo 'const publishLocalTargetedBtn = document.getElementById("dbvc-bricks-publish-local-targeted");';
         echo 'const onboardingRoot = document.getElementById("dbvc-bricks-onboarding");';
         echo 'const onboardingProgress = document.getElementById("dbvc-bricks-onboarding-progress");';
@@ -1200,26 +1365,31 @@ final class DBVC_Bricks_Addon
         echo 'function renderTable(){ if(!tableBody){ return; } const items = filteredArtifacts(); if(items.length === 0){ tableBody.innerHTML = "<tr><td colspan=\\"3\\">No artifacts match current filters.</td></tr>"; if(!state.selected){ renderDetail(null); } return; } tableBody.innerHTML = items.map(function(item){ const selectedClass = state.selected === item.artifact_uid ? " style=\\"background:#f0f6fc;\\"" : ""; return "<tr data-uid=\\"" + esc(item.artifact_uid) + "\\"" + selectedClass + "><td><code>" + esc(item.artifact_uid) + "</code></td><td>" + esc(artifactClass(item)) + "</td><td>" + esc(item.status) + "</td></tr>"; }).join(""); Array.prototype.forEach.call(tableBody.querySelectorAll("tr[data-uid]"), function(row){ row.addEventListener("click", function(){ state.selected = row.getAttribute("data-uid"); const found = items.find(function(entry){ return entry.artifact_uid === state.selected; }); renderDetail(found || null); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } renderTable(); }); }); if(!state.selected && items[0]){ state.selected = items[0].artifact_uid; renderDetail(items[0]); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } } }';
         echo 'function loadStatus(){ if(!cfg.statusEndpoint || !statusEl){ return; } setLoading(true); setError(""); fetch(cfg.statusEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Status request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ statusEl.textContent = JSON.stringify(data, null, 2); stamp(); setSuccess((cfg.messages && cfg.messages.statusLoaded) || "Status loaded.", "status_loaded"); }).catch(function(err){ setError(err.message || "Failed to load status.", loadStatus, "status"); }).finally(function(){ setLoading(false); }); }';
         echo 'function loadDiagnostics(){ if(!cfg.diagnosticsEndpoint || !diagnosticsEl){ return; } setLoading(true); setError(""); fetch(cfg.diagnosticsEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Diagnostics request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ diagnosticsEl.textContent = JSON.stringify(data, null, 2); setSuccess((cfg.messages && cfg.messages.diagnosticsLoaded) || "Diagnostics loaded.", "diagnostics_loaded"); }).catch(function(err){ setError(err.message || "Failed to load diagnostics.", loadDiagnostics, "diagnostics"); }).finally(function(){ setLoading(false); }); }';
-        echo 'function loadPackages(){ if(!cfg.packagesEndpoint || !packagesSelect){ return Promise.resolve(); } setLoading(true); setError(""); const channel = packagesChannelFilter && packagesChannelFilter.value ? ("?channel=" + encodeURIComponent(packagesChannelFilter.value)) : ""; return fetch(cfg.packagesEndpoint + channel, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Packages request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.packages = Array.isArray(data.items) ? data.items : []; if(state.packages.length === 0){ packagesSelect.innerHTML = "<option value=\\"\\">No packages available</option>"; if(packagesTableBody){ packagesTableBody.innerHTML = "<tr><td colspan=\\"3\\">No packages available.</td></tr>"; } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); return; } packagesSelect.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const label = (pkg.version || id || "package") + (pkg.channel ? " (" + pkg.channel + ")" : ""); return "<option value=\\"" + esc(id) + "\\">" + esc(label) + "</option>"; }).join(""); if(packagesTableBody){ packagesTableBody.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const version = pkg.version || ""; const channelName = pkg.channel || ""; return "<tr data-package-id=\\"" + esc(id) + "\\"><td><code>" + esc(id) + "</code></td><td>" + esc(version) + "</td><td>" + esc(channelName) + "</td></tr>"; }).join(""); Array.prototype.forEach.call(packagesTableBody.querySelectorAll("tr[data-package-id]"), function(row){ row.addEventListener("click", function(){ const id = row.getAttribute("data-package-id"); state.selectedPackageId = id; loadPackageDetail(id); }); }); } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); }).catch(function(err){ setError(err.message || "Failed to load packages.", loadPackages, "packages"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function loadPackages(){ if(!cfg.packagesEndpoint || !packagesSelect){ return Promise.resolve(); } setLoading(true); setError(""); const role = roleNode ? String(roleNode.getAttribute("data-role") || "") : ""; const params = []; if(packagesChannelFilter && packagesChannelFilter.value){ params.push("channel=" + encodeURIComponent(packagesChannelFilter.value)); } const siteUid = cfg.siteUid ? String(cfg.siteUid) : ""; if(role === "client" && siteUid){ params.push("site_uid=" + encodeURIComponent(siteUid)); } const suffix = params.length ? ("?" + params.join("&")) : ""; return fetch(cfg.packagesEndpoint + suffix, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Packages request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.packages = Array.isArray(data.items) ? data.items : []; if(state.packages.length === 0){ state.selectedPackageId = null; packagesSelect.innerHTML = "<option value=\\"\\">No packages available</option>"; if(packagesTableBody){ packagesTableBody.innerHTML = "<tr><td colspan=\\"5\\">No packages available.</td></tr>"; } if(packageDetail){ packageDetail.textContent = ""; } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); return; } packagesSelect.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const label = (pkg.version || id || "package") + (pkg.channel ? " (" + pkg.channel + ")" : ""); return "<option value=\\"" + esc(id) + "\\">" + esc(label) + "</option>"; }).join(""); const packageIds = state.packages.map(function(pkg){ return String(pkg.package_id || pkg.id || ""); }); let selectedId = state.selectedPackageId && packageIds.indexOf(state.selectedPackageId) !== -1 ? state.selectedPackageId : null; if(!selectedId && packagesSelect.value && packageIds.indexOf(String(packagesSelect.value)) !== -1){ selectedId = String(packagesSelect.value); } if(!selectedId){ selectedId = packageIds[0] || ""; } state.selectedPackageId = selectedId || null; if(packagesSelect && selectedId){ packagesSelect.value = selectedId; } if(packagesTableBody){ packagesTableBody.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const version = pkg.version || ""; const channelName = pkg.channel || ""; const targeting = pkg.targeting && typeof pkg.targeting === "object" ? pkg.targeting : {mode:"all",site_uids:[]}; const audience = String(targeting.mode || "all") === "selected" ? ("selected (" + (Array.isArray(targeting.site_uids) ? targeting.site_uids.length : 0) + ")") : "all"; const visibility = pkg.visibility_reason ? (" / " + String(pkg.visibility_reason)) : ""; const audienceText = audience + visibility; const isSelected = selectedId && id === selectedId; const checked = isSelected ? " checked=\\"checked\\"" : ""; const rowStyle = isSelected ? " style=\\"background:#f0f6fc;\\"" : ""; return "<tr data-package-id=\\"" + esc(id) + "\\"" + rowStyle + "><td><input type=\\"radio\\" name=\\"dbvc-bricks-package-select-row\\" data-package-id=\\"" + esc(id) + "\\"" + checked + " /></td><td><code>" + esc(id) + "</code></td><td>" + esc(version) + "</td><td>" + esc(channelName) + "</td><td>" + esc(audienceText) + "</td></tr>"; }).join(""); const setPackageSelectionUI = function(id){ Array.prototype.forEach.call(packagesTableBody.querySelectorAll("tr[data-package-id]"), function(row){ const rowId = String(row.getAttribute("data-package-id") || ""); row.style.background = rowId === id ? "#f0f6fc" : ""; }); Array.prototype.forEach.call(packagesTableBody.querySelectorAll("input[name=\\"dbvc-bricks-package-select-row\\"]"), function(input){ const inputId = String(input.getAttribute("data-package-id") || ""); input.checked = inputId === id; }); }; const selectPackage = function(id){ if(!id){ return; } state.selectedPackageId = id; state.currentManifest = null; if(packagesSelect){ packagesSelect.value = id; } setPackageSelectionUI(id); loadPackageDetail(id); }; Array.prototype.forEach.call(packagesTableBody.querySelectorAll("tr[data-package-id]"), function(row){ row.addEventListener("click", function(){ const id = String(row.getAttribute("data-package-id") || ""); selectPackage(id); }); }); Array.prototype.forEach.call(packagesTableBody.querySelectorAll("input[name=\\"dbvc-bricks-package-select-row\\"]"), function(input){ input.addEventListener("change", function(ev){ if(ev && ev.stopPropagation){ ev.stopPropagation(); } const id = String(input.getAttribute("data-package-id") || ""); selectPackage(id); }); input.addEventListener("click", function(ev){ if(ev && ev.stopPropagation){ ev.stopPropagation(); } }); }); } if(selectedId){ return loadPackageDetail(selectedId); } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); }).then(function(){ setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); }).catch(function(err){ setError(err.message || "Failed to load packages.", loadPackages, "packages"); }).finally(function(){ setLoading(false); }); }';
         echo 'function loadPackageDetail(packageId){ if(!cfg.packagesEndpoint || !packageId){ return Promise.resolve(); } setLoading(true); return fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ state.currentManifest = detail && detail.manifest ? detail.manifest : null; if(packageDetail){ packageDetail.textContent = JSON.stringify(detail, null, 2); if(typeof packageDetail.focus === "function"){ packageDetail.focus(); } } }).catch(function(err){ setError(err.message || "Failed to load package detail.", function(){ loadPackageDetail(packageId); }, "package_detail"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function selectedPackageRecord(){ if(!state.selectedPackageId || !Array.isArray(state.packages)){ return null; } return state.packages.find(function(pkg){ const id = String(pkg && (pkg.package_id || pkg.id) || ""); return id === String(state.selectedPackageId); }) || null; }';
+        echo 'function createBootstrapPackage(){ if(!cfg.bootstrapPackageEndpoint){ return; } const selectedChannel = packagesChannelFilter && packagesChannelFilter.value ? String(packagesChannelFilter.value) : "stable"; setLoading(true); fetch(cfg.bootstrapPackageEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-bootstrap-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({channel: selectedChannel})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Bootstrap package create failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.packageBootstrapped) || "Package created from current site.", "package_bootstrapped"); return loadPackages().then(function(){ if(packagesSelect && data && data.package_id){ packagesSelect.value = data.package_id; state.selectedPackageId = data.package_id; return loadPackageDetail(data.package_id); } return null; }); }).catch(function(err){ setError(err.message || "Failed to create package from current site.", createBootstrapPackage, "package_bootstrap"); }).finally(function(){ setLoading(false); }); }';
         echo 'function selectedConnectedSiteUids(){ if(!connectedSitesBody){ return []; } const out = []; Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("input[data-site-uid]"), function(input){ if(input.checked){ out.push(String(input.getAttribute("data-site-uid") || "")); } }); return out.filter(function(v){ return !!v; }); }';
         echo 'function getConnectedSiteSortValue(site, key){ if(key === "last_seen"){ return String(site && site.last_seen_at || ""); } if(key === "site_label"){ return String(site && site.site_label || "").toLowerCase(); } return String(site && site.site_uid || "").toLowerCase(); }';
-        echo 'function filterSortConnectedSites(items){ const query = connectedSitesSearch ? String(connectedSitesSearch.value || "").toLowerCase().trim() : ""; const status = connectedSitesStatusFilter ? String(connectedSitesStatusFilter.value || "") : ""; const sortVal = connectedSitesSort ? String(connectedSitesSort.value || "site_uid_asc") : "site_uid_asc"; const parts = sortVal.split("_"); const key = parts.length > 1 ? parts.slice(0, -1).join("_") : "site_uid"; const dir = parts.length > 1 ? parts[parts.length - 1] : "asc"; let out = Array.isArray(items) ? items.slice() : []; if(status){ out = out.filter(function(site){ return String(site && site.status || "") === status; }); } if(query){ out = out.filter(function(site){ const uid = String(site && site.site_uid || "").toLowerCase(); const label = String(site && site.site_label || "").toLowerCase(); return uid.indexOf(query) !== -1 || label.indexOf(query) !== -1; }); } out.sort(function(a, b){ const aVal = getConnectedSiteSortValue(a, key); const bVal = getConnectedSiteSortValue(b, key); if(aVal === bVal){ return 0; } if(dir === "desc"){ return aVal < bVal ? 1 : -1; } return aVal > bVal ? 1 : -1; }); return out; }';
-        echo 'function renderConnectedSites(items){ if(!connectedSitesBody){ return; } const rows = filterSortConnectedSites(items); state.connectedSitesView = rows; if(!Array.isArray(rows) || rows.length === 0){ connectedSitesBody.innerHTML = "<tr><td colspan=\\"5\\">No connected sites match current filters.</td></tr>"; return; } connectedSitesBody.innerHTML = rows.map(function(site){ const uid = site.site_uid || ""; const label = site.site_label || uid; const status = site.status || ""; const lastSeen = site.last_seen_at || ""; const checked = site.allow_receive_packages ? " checked=\\"checked\\"" : ""; return "<tr><td><input type=\\"checkbox\\" data-site-uid=\\"" + esc(uid) + "\\"" + checked + " /></td><td><code>" + esc(uid) + "</code></td><td>" + esc(label) + "</td><td>" + esc(status) + "</td><td>" + esc(lastSeen) + "</td></tr>"; }).join(""); }';
+        echo 'function filterSortConnectedSites(items){ const query = connectedSitesSearch ? String(connectedSitesSearch.value || "").toLowerCase().trim() : ""; const status = connectedSitesStatusFilter ? String(connectedSitesStatusFilter.value || "") : ""; const sortVal = connectedSitesSort ? String(connectedSitesSort.value || "site_uid_asc") : "site_uid_asc"; const parts = sortVal.split("_"); const key = parts.length > 1 ? parts.slice(0, -1).join("_") : "site_uid"; const dir = parts.length > 1 ? parts[parts.length - 1] : "asc"; let out = Array.isArray(items) ? items.slice() : []; if(status){ out = out.filter(function(site){ return String(site && site.status || "") === status; }); } if(query){ out = out.filter(function(site){ const uid = String(site && site.site_uid || "").toLowerCase(); const label = String(site && site.site_label || "").toLowerCase(); const onboarding = String(site && site.onboarding_state || "").toLowerCase(); return uid.indexOf(query) !== -1 || label.indexOf(query) !== -1 || onboarding.indexOf(query) !== -1; }); } out.sort(function(a, b){ const aVal = getConnectedSiteSortValue(a, key); const bVal = getConnectedSiteSortValue(b, key); if(aVal === bVal){ return 0; } if(dir === "desc"){ return aVal < bVal ? 1 : -1; } return aVal > bVal ? 1 : -1; }); return out; }';
+        echo 'function renderConnectedSites(items){ if(!connectedSitesBody){ return; } const rows = filterSortConnectedSites(items); state.connectedSitesView = rows; if(!Array.isArray(rows) || rows.length === 0){ connectedSitesBody.innerHTML = "<tr><td colspan=\\"6\\">No connected sites match current filters.</td></tr>"; return; } connectedSitesBody.innerHTML = rows.map(function(site){ const uid = site.site_uid || ""; const label = site.site_label || uid; const status = site.status || ""; const onboarding = site.onboarding_state || ""; const onboardingBadge = onboarding ? ("<code>" + esc(onboarding) + "</code>") : ""; const lastSeen = site.last_seen_at || ""; const checked = site.allow_receive_packages ? " checked=\\"checked\\"" : ""; return "<tr><td><input type=\\"checkbox\\" data-site-uid=\\"" + esc(uid) + "\\"" + checked + " /></td><td><code>" + esc(uid) + "</code></td><td>" + esc(label) + "</td><td>" + esc(status) + "</td><td>" + onboardingBadge + "</td><td>" + esc(lastSeen) + "</td></tr>"; }).join(""); }';
         echo 'function loadConnectedSites(){ if(!cfg.connectedSitesEndpoint){ return Promise.resolve(); } setLoading(true); return fetch(cfg.connectedSitesEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Connected sites request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.connectedSites = Array.isArray(data.items) ? data.items : []; renderConnectedSites(state.connectedSites); setSuccess((cfg.messages && cfg.messages.connectedSitesLoaded) || "Connected sites loaded.", "connected_sites_loaded"); }).catch(function(err){ setError(err.message || "Failed to load connected sites.", loadConnectedSites, "connected_sites"); }).finally(function(){ setLoading(false); }); }';
         echo 'function saveConnectedSites(){ if(!cfg.connectedSitesEndpoint || !connectedSitesBody){ return; } const rows = Array.prototype.slice.call(connectedSitesBody.querySelectorAll("input[data-site-uid]")); if(rows.length === 0){ return; } setLoading(true); let chain = Promise.resolve(); rows.forEach(function(input){ chain = chain.then(function(){ const uid = String(input.getAttribute("data-site-uid") || ""); return fetch(cfg.connectedSitesEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({site_uid: uid, allow_receive_packages: !!input.checked})}).then(function(r){ if(!r.ok){ throw new Error("Connected site save failed (" + r.status + ")"); } return r.json(); }); }); }); chain.then(function(){ setSuccess((cfg.messages && cfg.messages.connectedSitesSaved) || "Connected sites allowlist saved.", "connected_sites_saved"); loadConnectedSites(); }).catch(function(err){ setError(err.message || "Failed to save connected sites.", saveConnectedSites, "connected_sites_save"); }).finally(function(){ setLoading(false); }); }';
         echo 'function setVisibleSitesChecked(checked){ if(!connectedSitesBody){ return; } Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("input[data-site-uid]"), function(input){ input.checked = !!checked; }); }';
-        echo 'function runPublishPreflight(){ if(!cfg.publishRemoteEndpoint || !cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? packagesSelect.value : ""); if(!packageId){ setError("Select a package first.", runPublishPreflight, "publish_preflight"); return; } const mode = targetModeSelect ? String(targetModeSelect.value || "all") : "all"; const siteUids = mode === "selected" ? selectedConnectedSiteUids() : []; if(mode === "selected" && siteUids.length === 0){ setError("Select at least one connected site for selected mode.", runPublishPreflight, "publish_preflight"); return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : null; if(!manifest){ throw new Error("Selected package manifest missing."); } return fetch(cfg.publishRemoteEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-preflight-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({package: manifest, targeting: {mode: mode, site_uids: siteUids}, dry_run: true})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Preflight failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess("Publish preflight passed.", "package_publish_preflight"); }).catch(function(err){ setError(err.message || "Publish preflight failed.", runPublishPreflight, "publish_preflight"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function runPublishPreflight(){ if(!cfg.publishRemoteEndpoint || !cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? packagesSelect.value : ""); if(!packageId){ setError("Select a package first.", runPublishPreflight, "publish_preflight"); return; } const mode = targetModeSelect ? String(targetModeSelect.value || "all") : "all"; const siteUids = mode === "selected" ? selectedConnectedSiteUids() : []; if(mode === "selected" && siteUids.length === 0){ setError("Select at least one connected site for selected mode.", runPublishPreflight, "publish_preflight"); return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : null; if(!manifest){ throw new Error("Selected package manifest missing."); } return fetch(cfg.publishRemoteEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-preflight-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({package: manifest, targeting: {mode: mode, site_uids: siteUids}, dry_run: true})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Preflight failed."; const details = data && data.data ? data.data : null; const err = new Error(msg); err.details = details; throw err; } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess("Publish preflight passed.", "package_publish_preflight"); }).catch(function(err){ if(packageDetail){ packageDetail.textContent = JSON.stringify({ok:false, error: err && err.message ? err.message : "Publish preflight failed.", details: err && err.details ? err.details : null}, null, 2); } setError(err.message || "Publish preflight failed.", runPublishPreflight, "publish_preflight"); }).finally(function(){ setLoading(false); }); }';
         echo 'function runRemoteConnectionTest(){ if(!cfg.testRemoteConnectionEndpoint){ return; } setLoading(true); fetch(cfg.testRemoteConnectionEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Connection test failed."; const details = data && data.data ? data.data : null; const err = new Error(msg); err.details = details; throw err; } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.connectionTestPassed) || "Mothership connection succeeded.", "connection_test_passed"); }).catch(function(err){ if(packageDetail){ packageDetail.textContent = JSON.stringify({ok:false, error: err && err.message ? err.message : "Mothership connection failed.", details: err && err.details ? err.details : null}, null, 2); } setError(err.message || "Mothership connection failed.", runRemoteConnectionTest, "connection_test"); }).finally(function(){ setLoading(false); }); }';
         echo 'function publishLocalTargeted(){ if(!cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? packagesSelect.value : ""); if(!packageId){ setError("Select a package first.", publishLocalTargeted, "publish_local_targeted"); return; } const mode = targetModeSelect ? String(targetModeSelect.value || "all") : "all"; const siteUids = mode === "selected" ? selectedConnectedSiteUids() : []; if(mode === "selected" && siteUids.length === 0){ setError("Select at least one connected site for selected mode.", publishLocalTargeted, "publish_local_targeted"); return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : null; if(!manifest){ throw new Error("Selected package manifest missing."); } return fetch(cfg.packagesEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-local-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({package: manifest, targeting: {mode: mode, site_uids: siteUids}})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Publish failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.packagePublished) || "Package published.", "package_published"); loadPackages(); }).catch(function(err){ setError(err.message || "Failed to publish package.", publishLocalTargeted, "publish_local_targeted"); }).finally(function(){ setLoading(false); }); }';
-        echo 'function publishRemotePackage(){ if(!cfg.publishRemoteEndpoint){ return; } const packageId = packagesSelect ? packagesSelect.value : ""; if(!packageId){ setError("Select a package first.", publishRemotePackage, "publish_remote"); return; } const mode = targetModeSelect ? String(targetModeSelect.value || "all") : "all"; const siteUids = mode === "selected" ? selectedConnectedSiteUids() : []; if(mode === "selected" && siteUids.length === 0){ setError("Select at least one connected site for selected mode.", publishRemotePackage, "publish_remote"); return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : null; if(!manifest){ throw new Error("Selected package manifest missing."); } return fetch(cfg.publishRemoteEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-remote-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({package: manifest, targeting: {mode: mode, site_uids: siteUids}})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Remote publish failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.packagePublished) || "Package published.", "package_published_remote"); }).catch(function(err){ setError(err.message || "Failed to publish package to mothership.", publishRemotePackage, "publish_remote"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function publishRemotePackage(){ if(!cfg.publishRemoteEndpoint){ return; } const packageId = packagesSelect ? packagesSelect.value : ""; if(!packageId){ setError("Select a package first.", publishRemotePackage, "publish_remote"); return; } const mode = targetModeSelect ? String(targetModeSelect.value || "all") : "all"; const siteUids = mode === "selected" ? selectedConnectedSiteUids() : []; if(mode === "selected" && siteUids.length === 0){ setError("Select at least one connected site for selected mode.", publishRemotePackage, "publish_remote"); return; } const forceChannel = cfg.clientForceChannel ? String(cfg.clientForceChannel) : "none"; const requireStableConfirm = !!cfg.forceStableConfirm; const confirmStable = !!(forceStableConfirmToggle && forceStableConfirmToggle.checked); if(forceChannel === "stable" && requireStableConfirm && !confirmStable){ setError("Confirm forced stable publish before sending package.", publishRemotePackage, "publish_remote"); return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : null; if(!manifest){ throw new Error("Selected package manifest missing."); } return fetch(cfg.publishRemoteEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-remote-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({package: manifest, targeting: {mode: mode, site_uids: siteUids}, confirm_force_stable: confirmStable})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Remote publish failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } const receiptId = data && data.response && data.response.receipt_id ? String(data.response.receipt_id) : ""; setSuccess((cfg.messages && cfg.messages.packagePublished) || "Package published.", "package_published_remote", {package_id: packageId, receipt_id: receiptId}); }).catch(function(err){ setError(err.message || "Failed to publish package to mothership.", publishRemotePackage, "publish_remote"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function pullLatestAllowedDryRun(){ if(!cfg.pullLatestEndpoint){ return; } const selectedChannel = packagesChannelFilter && packagesChannelFilter.value ? String(packagesChannelFilter.value) : ""; setLoading(true); fetch(cfg.pullLatestEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({channel: selectedChannel})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Pull latest dry-run failed."; throw new Error(msg); } return data; }); }).then(function(data){ if(data && data.package_id){ state.selectedPackageId = String(data.package_id); if(packagesSelect){ packagesSelect.value = String(data.package_id); } } if(data && data.manifest){ state.currentManifest = data.manifest; } if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } if(applyOutput && data && data.dry_run_apply){ applyOutput.textContent = JSON.stringify(data.dry_run_apply, null, 2); } setSuccess("Pulled latest allowed package and completed dry-run apply.", "package_pull_dry_run"); return loadPackages(); }).catch(function(err){ setError(err.message || "Failed to pull latest allowed package.", pullLatestAllowedDryRun, "package_pull_dry_run"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function promoteSelectedPackage(){ if(!cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? String(packagesSelect.value || "") : ""); if(!packageId){ setError("Select a package first.", promoteSelectedPackage, "package_promote"); return; } const record = selectedPackageRecord(); const currentChannel = record && record.channel ? String(record.channel) : ""; const targetChannel = promoteChannelSelect ? String(promoteChannelSelect.value || "beta") : "beta"; const order = {canary:1,beta:2,stable:3}; if(order[currentChannel] && order[targetChannel] && order[targetChannel] <= order[currentChannel]){ setError("Promotion must move forward (canary -> beta -> stable).", promoteSelectedPackage, "package_promote"); return; } if(targetChannel === "stable"){ const ok = window.confirm("Confirm promotion to stable channel."); if(!ok){ return; } } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId) + "/promote", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-promote-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({channel: targetChannel, confirm_stable_promotion: targetChannel === "stable"})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Promote failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.packagePromoted) || "Package promoted.", "package_promoted"); return loadPackages(); }).catch(function(err){ setError(err.message || "Package promotion failed.", promoteSelectedPackage, "package_promote"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function revokeSelectedPackage(){ if(!cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? String(packagesSelect.value || "") : ""); if(!packageId){ setError("Select a package first.", revokeSelectedPackage, "package_revoke"); return; } const ok = window.confirm("Revoke selected package? This stops rollout immediately."); if(!ok){ return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId) + "/revoke", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-revoke-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({confirm_revoke: true})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Revoke failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.packageRevoked) || "Package revoked.", "package_revoked"); return loadPackages(); }).catch(function(err){ setError(err.message || "Package revoke failed.", revokeSelectedPackage, "package_revoke"); }).finally(function(){ setLoading(false); }); }';
         echo 'function runDriftScan(){ if(!cfg.packagesEndpoint || !cfg.driftScanEndpoint || !packagesSelect){ return; } const packageId = packagesSelect.value; if(!packageId){ setError("Select a package first.", runDriftScan, "drift_scan"); return; } setLoading(true); setError(""); state.scan = null; state.selected = null; fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : {}; state.currentManifest = manifest; return fetch(cfg.driftScanEndpoint, {method: "POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type": "application/json"}, body: JSON.stringify({manifest: manifest, options: {max_changes: 50}})}); }).then(function(r){ if(!r.ok){ throw new Error("Drift scan failed (" + r.status + ")"); } return r.json(); }).then(function(scan){ state.scan = scan; setCounts(scan); renderTable(); setSuccess((cfg.messages && cfg.messages.scanComplete) || "Drift scan complete.", "drift_scan_complete"); }).catch(function(err){ setError(err.message || "Failed to run drift scan.", runDriftScan, "drift_scan"); }).finally(function(){ setLoading(false); }); }';
         echo 'function writeApplyOutput(data){ if(applyOutput){ applyOutput.textContent = JSON.stringify(data, null, 2); } }';
         echo 'function exportReview(){ if(!state.scan){ setError("Run a drift scan before exporting review JSON.", exportReview, "export_review"); return; } const payload = {exported_at: new Date().toISOString(), role: document.getElementById("dbvc-bricks-admin-panels") ? document.getElementById("dbvc-bricks-admin-panels").getAttribute("data-role") : "", scan: state.scan, selected_artifact_uid: state.selected, selected_proposal_id: state.selectedProposalId}; const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "dbvc-bricks-review-" + Date.now() + ".json"; a.click(); URL.revokeObjectURL(url); setSuccess("Review export generated.", "review_export"); }';
         echo 'function ensureManifest(){ if(state.currentManifest){ return Promise.resolve(state.currentManifest); } const packageId = packagesSelect ? packagesSelect.value : ""; if(!packageId){ return Promise.reject(new Error("Select a package first.")); } return fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ state.currentManifest = detail && detail.manifest ? detail.manifest : {}; return state.currentManifest; }); }';
-        echo 'function runApply(dryRun){ if(!cfg.applyEndpoint){ return; } ensureManifest().then(function(manifest){ const selected = selectedArtifact(); const allowDestructive = !!(applyAllowDestructiveToggle && applyAllowDestructiveToggle.checked); const bulkMode = !!(bulkModeToggle && bulkModeToggle.checked); const chunkSize = bulkChunkSizeInput ? Math.max(1, Number(bulkChunkSizeInput.value || 25)) : 25; if(!dryRun && allowDestructive){ const ok = window.confirm("Confirm destructive operations are allowed for this apply run."); if(!ok){ throw new Error("Apply cancelled by operator."); } } const baseUids = selected ? [selected.artifact_uid] : filteredArtifacts().map(function(item){ return item.artifact_uid; }); const chunked = bulkMode ? chunkArray(baseUids, chunkSize) : [baseUids]; setLoading(true); const runs = []; let chain = Promise.resolve(); chunked.forEach(function(chunk){ chain = chain.then(function(){ const selection = chunk.length > 0 ? {artifact_uids: chunk} : {}; return fetch(cfg.applyEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({manifest: manifest, selection: selection, options: {dry_run: dryRun, allow_destructive: allowDestructive}})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : ("Apply failed (" + r.status + ")"); throw new Error(msg); } return data; }); }).then(function(data){ runs.push({selection: selection, response: data}); }); }); }); return chain.then(function(){ return {bulk_mode: bulkMode, chunk_size: chunkSize, run_count: runs.length, runs: runs}; }); }).then(function(data){ writeApplyOutput(data); setSuccess((cfg.messages && cfg.messages.applyComplete) || "Apply request completed.", "apply_complete"); }).catch(function(err){ setError(err.message || "Apply failed.", function(){ runApply(dryRun); }, "apply"); }).finally(function(){ setLoading(false); }); }';
-        echo 'function runCreateRestorePoint(){ if(!cfg.restoreEndpoint){ return; } ensureManifest().then(function(manifest){ return fetch(cfg.applyEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({manifest: manifest, options: {dry_run: true}})}); }).then(function(r){ if(!r.ok){ throw new Error("Unable to build plan for restore point."); } return r.json(); }).then(function(planRes){ const plan = planRes && planRes.plan ? planRes.plan : null; if(!plan){ throw new Error("Dry-run plan missing."); } return fetch(cfg.restoreEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({plan: plan})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Create restore point failed."); } return data; }); }).then(function(data){ writeApplyOutput(data); if(rollbackIdInput && data.restore_id){ rollbackIdInput.value = data.restore_id; } setSuccess((cfg.messages && cfg.messages.restoreCreated) || "Restore point created.", "restore_created"); }).catch(function(err){ setError(err.message || "Create restore point failed.", runCreateRestorePoint, "restore_create"); }).finally(function(){ setLoading(false); }); }';
-        echo 'function runRollback(){ if(!cfg.restoreEndpoint || !rollbackIdInput){ return; } const restoreId = String(rollbackIdInput.value || "").trim(); if(!restoreId){ setError("Enter a restore ID.", runRollback, "rollback"); return; } setLoading(true); fetch(cfg.restoreEndpoint + "/" + encodeURIComponent(restoreId) + "/rollback", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Rollback failed."); } return data; }); }).then(function(data){ writeApplyOutput(data); setSuccess((cfg.messages && cfg.messages.rollbackComplete) || "Rollback completed.", "rollback_complete"); }).catch(function(err){ setError(err.message || "Rollback failed.", runRollback, "rollback"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function runApply(dryRun){ if(!cfg.applyEndpoint){ return; } ensureManifest().then(function(manifest){ const selected = selectedArtifact(); const allowDestructive = !!(applyAllowDestructiveToggle && applyAllowDestructiveToggle.checked); const bulkMode = !!(bulkModeToggle && bulkModeToggle.checked); const chunkSize = bulkChunkSizeInput ? Math.max(1, Number(bulkChunkSizeInput.value || 25)) : 25; const receiptId = manifest && manifest.receipt_id ? String(manifest.receipt_id) : ""; if(!dryRun && allowDestructive){ const ok = window.confirm("Confirm destructive operations are allowed for this apply run."); if(!ok){ throw new Error("Apply cancelled by operator."); } } const baseUids = selected ? [selected.artifact_uid] : filteredArtifacts().map(function(item){ return item.artifact_uid; }); const chunked = bulkMode ? chunkArray(baseUids, chunkSize) : [baseUids]; setLoading(true); const runs = []; let chain = Promise.resolve(); chunked.forEach(function(chunk){ chain = chain.then(function(){ const selection = chunk.length > 0 ? {artifact_uids: chunk} : {}; return fetch(cfg.applyEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({manifest: manifest, selection: selection, options: {dry_run: dryRun, allow_destructive: allowDestructive}, receipt_id: receiptId})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : ("Apply failed (" + r.status + ")"); throw new Error(msg); } return data; }); }).then(function(data){ runs.push({selection: selection, response: data}); }); }); }); return chain.then(function(){ return {bulk_mode: bulkMode, chunk_size: chunkSize, run_count: runs.length, receipt_id: receiptId, runs: runs}; }); }).then(function(data){ writeApplyOutput(data); if(!dryRun && cfg.packagesEndpoint && state.selectedPackageId){ fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(state.selectedPackageId) + "/ack", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({site_uid: cfg.siteUid || "", state: "applied", receipt_id: data && data.receipt_id ? data.receipt_id : ""})}); } setSuccess((cfg.messages && cfg.messages.applyComplete) || "Apply request completed.", "apply_complete", {receipt_id: data && data.receipt_id ? data.receipt_id : ""}); }).catch(function(err){ setError(err.message || "Apply failed.", function(){ runApply(dryRun); }, "apply"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function runCreateRestorePoint(){ if(!cfg.restoreEndpoint){ return; } ensureManifest().then(function(manifest){ const receiptId = manifest && manifest.receipt_id ? String(manifest.receipt_id) : ""; return fetch(cfg.applyEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({manifest: manifest, options: {dry_run: true}, receipt_id: receiptId})}).then(function(r){ if(!r.ok){ throw new Error("Unable to build plan for restore point."); } return r.json(); }).then(function(planRes){ const plan = planRes && planRes.plan ? planRes.plan : null; if(!plan){ throw new Error("Dry-run plan missing."); } return fetch(cfg.restoreEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({plan: plan, receipt_id: receiptId})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Create restore point failed."); } return data; }); }).then(function(data){ writeApplyOutput(data); if(rollbackIdInput && data.restore_id){ rollbackIdInput.value = data.restore_id; } setSuccess((cfg.messages && cfg.messages.restoreCreated) || "Restore point created.", "restore_created", {receipt_id: data && data.receipt_id ? data.receipt_id : receiptId}); }); }).catch(function(err){ setError(err.message || "Create restore point failed.", runCreateRestorePoint, "restore_create"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function runRollback(){ if(!cfg.restoreEndpoint || !rollbackIdInput){ return; } const restoreId = String(rollbackIdInput.value || "").trim(); if(!restoreId){ setError("Enter a restore ID.", runRollback, "rollback"); return; } const receiptId = state.currentManifest && state.currentManifest.receipt_id ? String(state.currentManifest.receipt_id) : ""; setLoading(true); fetch(cfg.restoreEndpoint + "/" + encodeURIComponent(restoreId) + "/rollback", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({receipt_id: receiptId})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Rollback failed."); } return data; }); }).then(function(data){ writeApplyOutput(data); setSuccess((cfg.messages && cfg.messages.rollbackComplete) || "Rollback completed.", "rollback_complete", {receipt_id: data && data.receipt_id ? data.receipt_id : receiptId}); }).catch(function(err){ setError(err.message || "Rollback failed.", runRollback, "rollback"); }).finally(function(){ setLoading(false); }); }';
         echo 'function renderProposals(items){ if(!proposalsTableBody){ return; } if(!Array.isArray(items) || items.length === 0){ proposalsTableBody.innerHTML = "<tr><td colspan=\\"3\\">No proposals found.</td></tr>"; if(proposalDetail){ proposalDetail.textContent = ""; } return; } proposalsTableBody.innerHTML = items.map(function(item){ const id = item.proposal_id || ""; return "<tr data-proposal-id=\\"" + esc(id) + "\\"><td><code>" + esc(id) + "</code></td><td><code>" + esc(item.artifact_uid || "") + "</code></td><td>" + esc(item.status || "") + "</td></tr>"; }).join(""); Array.prototype.forEach.call(proposalsTableBody.querySelectorAll("tr[data-proposal-id]"), function(row){ row.addEventListener("click", function(){ state.selectedProposalId = row.getAttribute("data-proposal-id"); const found = items.find(function(it){ return it.proposal_id === state.selectedProposalId; }); if(proposalDetail){ proposalDetail.textContent = JSON.stringify(found || {}, null, 2); if(typeof proposalDetail.focus === "function"){ proposalDetail.focus(); } } }); }); if(!state.selectedProposalId && items[0]){ state.selectedProposalId = items[0].proposal_id || null; if(proposalDetail){ proposalDetail.textContent = JSON.stringify(items[0], null, 2); if(typeof proposalDetail.focus === "function"){ proposalDetail.focus(); } } } }';
         echo 'function loadProposals(){ if(!cfg.proposalsEndpoint){ return; } setLoading(true); const status = proposalStatusFilter && proposalStatusFilter.value ? ("?status=" + encodeURIComponent(proposalStatusFilter.value)) : ""; fetch(cfg.proposalsEndpoint + status, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Proposals request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ renderProposals(data.items || []); setSuccess((cfg.messages && cfg.messages.proposalsLoaded) || "Proposals loaded.", "proposals_loaded"); }).catch(function(err){ setError(err.message || "Failed to load proposals.", loadProposals, "proposals"); }).finally(function(){ setLoading(false); }); }';
         echo 'function submitProposal(){ if(!cfg.proposalsEndpoint){ return; } const artifact = selectedArtifact(); if(!artifact){ setError("Select a diff artifact before submitting a proposal.", submitProposal, "proposal_submit"); return; } const notes = proposalReviewNotes ? proposalReviewNotes.value : ""; const payload = {artifact_uid: artifact.artifact_uid, artifact_type: artifact.artifact_type || "", base_hash: artifact.local_hash || "", proposed_hash: artifact.golden_hash || "", notes: notes}; setLoading(true); fetch(cfg.proposalsEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify(payload)}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Submit proposal failed."); } return data; }); }).then(function(){ setSuccess((cfg.messages && cfg.messages.proposalSubmitted) || "Proposal submitted.", "proposal_submitted"); loadProposals(); }).catch(function(err){ setError(err.message || "Submit proposal failed.", submitProposal, "proposal_submit"); }).finally(function(){ setLoading(false); }); }';
@@ -1239,6 +1409,7 @@ final class DBVC_Bricks_Addon
         echo 'if(proposalRejectBtn){ proposalRejectBtn.addEventListener("click", function(){ transitionProposal("REJECTED"); }); }';
         echo 'if(proposalNeedsChangesBtn){ proposalNeedsChangesBtn.addEventListener("click", function(){ transitionProposal("NEEDS_CHANGES"); }); }';
         echo 'if(refreshPackagesPanelBtn){ refreshPackagesPanelBtn.addEventListener("click", loadPackages); }';
+        echo 'if(bootstrapPackageBtn){ bootstrapPackageBtn.addEventListener("click", createBootstrapPackage); }';
         echo 'if(refreshConnectedSitesBtn){ refreshConnectedSitesBtn.addEventListener("click", loadConnectedSites); }';
         echo 'if(saveConnectedSitesBtn){ saveConnectedSitesBtn.addEventListener("click", saveConnectedSites); }';
         echo 'if(connectedSitesSearch){ connectedSitesSearch.addEventListener("input", function(){ renderConnectedSites(state.connectedSites); }); }';
@@ -1248,10 +1419,14 @@ final class DBVC_Bricks_Addon
         echo 'if(clearVisibleSitesBtn){ clearVisibleSitesBtn.addEventListener("click", function(){ setVisibleSitesChecked(false); }); }';
         echo 'if(publishRemotePreflightBtn){ publishRemotePreflightBtn.addEventListener("click", runPublishPreflight); }';
         echo 'if(testRemoteConnectionBtn){ testRemoteConnectionBtn.addEventListener("click", runRemoteConnectionTest); }';
+        echo 'if(publishRemotePackagesBtn){ publishRemotePackagesBtn.addEventListener("click", publishRemotePackage); }';
+        echo 'if(pullLatestDryRunBtn){ pullLatestDryRunBtn.addEventListener("click", pullLatestAllowedDryRun); }';
+        echo 'if(promotePackageBtn){ promotePackageBtn.addEventListener("click", promoteSelectedPackage); }';
+        echo 'if(revokePackageBtn){ revokePackageBtn.addEventListener("click", revokeSelectedPackage); }';
         echo 'if(publishLocalTargetedBtn){ publishLocalTargetedBtn.addEventListener("click", publishLocalTargeted); }';
         echo 'if(publishRemoteBtn){ publishRemoteBtn.addEventListener("click", publishRemotePackage); }';
         echo 'if(packagesChannelFilter){ packagesChannelFilter.addEventListener("change", loadPackages); }';
-        echo 'if(packagesSelect){ packagesSelect.addEventListener("change", function(){ state.currentManifest = null; }); }';
+        echo 'if(packagesSelect){ packagesSelect.addEventListener("change", function(){ const id = String(packagesSelect.value || ""); state.selectedPackageId = id || null; state.currentManifest = null; if(id){ loadPackageDetail(id); } }); }';
         echo 'if(filterClassEl){ filterClassEl.addEventListener("change", renderTable); }';
         echo 'if(filterStatusEl){ filterStatusEl.addEventListener("change", renderTable); }';
         echo 'if(filterSearchEl){ filterSearchEl.addEventListener("input", renderTable); }';
@@ -1643,6 +1818,26 @@ final class DBVC_Bricks_Addon
 
         register_rest_route(
             'dbvc/v1/bricks',
+            '/packages/bootstrap-create',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Packages::class, 'rest_bootstrap_create'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/packages/pull-latest',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Packages::class, 'rest_pull_latest'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
             '/packages/publish-remote',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -1715,6 +1910,36 @@ final class DBVC_Bricks_Addon
                     'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_upsert'],
                     'permission_callback' => [self::class, 'can_manage'],
                 ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/intro/packet',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Onboarding::class, 'rest_intro_packet'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/intro/handshake',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Onboarding::class, 'rest_intro_handshake'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/commands/ping',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Command_Auth::class, 'rest_signed_ping'],
+                'permission_callback' => '__return_true',
             ]
         );
 
@@ -1842,9 +2067,14 @@ final class DBVC_Bricks_Addon
             'ui_error',
             'package_published',
             'package_published_remote',
+            'package_promoted',
+            'package_revoked',
             'connected_sites_loaded',
             'connected_sites_saved',
             'package_publish_preflight',
+            'package_bootstrapped',
+            'package_pull_dry_run',
+            'connection_test_passed',
             'unknown',
         ];
         if (! in_array($event_type, $allowed_event_types, true)) {
