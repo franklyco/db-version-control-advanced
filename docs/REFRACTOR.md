@@ -15,6 +15,79 @@ This document maps the current React bundle (`src/admin-app/index.js`) into logi
 - Define the future module boundaries (data layer, tables, drawers, drawers, tools, resolver panels, masking drawer, apply modal, etc.) with checklists so progress is easy to track.
 - Maintain anonymized proposals inside `docs/fixtures/` (refresh via the new “Dev upload” control) so every epic can rely on the same baseline ZIP when running QA.
 
+## Entity Editor Extraction Status (2026-02-13)
+The Entity Editor is now split out of the monolithic proposal-review app into a dedicated submenu page, a dedicated JS entrypoint, and a dedicated React root. This section records the exact scope, review findings, and refactor follow-ups so the broader DBVC refactor has an accurate baseline.
+
+### What is now implemented
+- Dedicated submenu page + root mount:
+  - `admin/admin-page.php` (`dbvc_render_entity_editor_page()` renders `#dbvc-entity-editor-root`)
+- Dedicated asset loader:
+  - `admin/class-entity-editor-app.php`
+  - localized object `DBVC_ENTITY_EDITOR_APP` (`root`, `nonce`)
+- Plugin bootstrap wiring:
+  - `db-version-control.php` now requires + initializes `DBVC_Entity_Editor_App`
+- Monolith split:
+  - entrypoint: `admin-entity-editor.js`
+  - app source: `src/admin-entity-editor/index.js`
+  - build outputs: `build/admin-entity-editor.js`, `build/admin-entity-editor.asset.php`
+  - scripts updated: `package.json` uses `wp-scripts build/start admin-app admin-entity-editor`
+- Proposal app no longer routes internally to entity editor:
+  - `src/admin-app/index.js` navigates to `admin.php?page=dbvc-entity-editor`
+- Entity Editor UX additions:
+  - paged/sortable table with “Actions” after “Matched WP”
+  - hover tooltips on action controls
+  - JSON editor as modal (not inline pane)
+  - full replace typed confirmation modal
+  - in-editor search with next/prev navigation and keyboard shortcuts
+
+### Deep review findings (current)
+Priority legend: P1 high risk, P2 medium risk, P3 low risk.
+
+1. [P1] Entity Editor CSS asset filenames do not match generated build artifact names.
+: `admin/class-entity-editor-app.php:97` and `admin/class-entity-editor-app.php:100` enqueue `style-admin-entity-editor*.css`, but build emits `build/style-admin-app.css` and `build/style-admin-app-rtl.css`.
+: Impact: Entity Editor page styling can silently fail or depend on runtime JS style mutation instead of deterministic stylesheet loading.
+: Refactor action: centralize manifest/CSS discovery so loaders read actual emitted files (or share a reusable asset resolver across admin loaders).
+
+2. [P2] Runtime DOM style mutation is carrying layout responsibilities that belong in CSS/component props.
+: `src/admin-entity-editor/index.js:221` (modal/frame/textarea styles applied via `querySelector` + `style.*`).
+: Impact: brittle against WordPress modal DOM changes and harder to test/maintain during refactor.
+: Refactor action: replace DOM mutation with stable class targeting (or modal slot/props that guarantee selector ownership).
+
+3. [P2] Entity Editor lint coverage is not wired into project scripts.
+: `package.json:10` currently lints `admin-app` only.
+: Impact: split bundle can regress without lint catching issues.
+: Refactor action: expand lint script to include `admin-entity-editor` sources.
+
+4. [P3] PHPUnit default suite configuration does not execute Entity Editor tests without explicit path.
+: Running `vendor/bin/phpunit --testsuite default` currently executes no tests; endpoint suite passes when run directly via `tests/phpunit/EntityEditorEndpointsTest.php`.
+: Impact: CI/local confidence depends on command knowledge.
+: Refactor action: align `phpunit.xml.dist` suites so default run includes new Entity Editor tests.
+
+### Verified tests and checks
+- Build: `npm run build` passes with both bundles.
+- Entity Editor endpoint tests: `vendor/bin/phpunit tests/phpunit/EntityEditorEndpointsTest.php` passes (`7 tests, 32 assertions`).
+- Coverage currently includes:
+  - capability guard
+  - traversal/unsafe path rejection
+  - save-only (no DB mutation)
+  - partial import non-destructive meta behavior
+  - full replace confirmation + snapshot behavior
+
+### Refactor-ready next moves (Entity Editor track)
+- Introduce `EntityEditorAssetManifest` helper shared by `DBVC_Admin_App` and `DBVC_Entity_Editor_App`.
+- Extract Entity Editor into modules under `src/admin-entity-editor/`:
+  - `api/client.js`
+  - `hooks/useEntityIndex.js`
+  - `hooks/useEntityFile.js`
+  - `components/EntityTable.js`
+  - `components/EntityEditorModal.js`
+  - `components/FullReplaceModal.js`
+- Replace DOM mutation styling with class-based CSS in `src/admin-app/style.css` (or isolated entity-editor stylesheet).
+- Expand automated checks:
+  - add `admin-entity-editor` lint target
+  - ensure default PHPUnit suite executes `EntityEditorEndpointsTest`
+  - add front-end behavior tests for search/nav + modal close interactions
+
 ## Tracking Board
 Status legend: ⬜ Not started · ⏳ In progress · ✅ Done
 

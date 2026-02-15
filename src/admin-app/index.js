@@ -2447,19 +2447,222 @@
                   message: e,
                   timestamp: t
                 } ]);
-              }, []), parseAppRoute = () => {
-                const e = (window.location.hash || "").replace(/^#/, "");
-                return "entity-editor" === e ? "entity-editor" : "proposal-review";
-              }, [ route, setRoute ] = (0, e.useState)(parseAppRoute), changeRoute = (0, e.useCallback)(e => {
+              }, []), parseHashState = () => {
+                const e = (window.location.hash || "").replace(/^#/, ""), t = e.split("?"), s = t[0] || "", n = t[1] || "", i = "entity-editor" === DBVC_ADMIN_APP?.initialRoute ? "entity-editor" : "proposal-review";
+                return {
+                  route: s ? "entity-editor" === s ? "entity-editor" : "proposal-review" : i,
+                  filePath: (() => {
+                    if (!n) return "";
+                    const e = new URLSearchParams(n), t = e.get("file") || "";
+                    try {
+                      return decodeURIComponent(t);
+                    } catch (e) {
+                      return t;
+                    }
+                  })()
+                };
+              }, [ hashState, setHashState ] = (0, e.useState)(parseHashState), route = hashState.route, selectedEntityFile = hashState.filePath, [ entityFileData, setEntityFileData ] = (0, e.useState)(null), [ entityFileLoading, setEntityFileLoading ] = (0, e.useState)(!1), [ entityFileError, setEntityFileError ] = (0, e.useState)(""), [ entityEditorDraft, setEntityEditorDraft ] = (0, e.useState)(""), [ entitySaveBusy, setEntitySaveBusy ] = (0, e.useState)(!1), [ entityImportBusy, setEntityImportBusy ] = (0, e.useState)(!1), [ entityReplaceBusy, setEntityReplaceBusy ] = (0, e.useState)(!1), [ entitySaveNotice, setEntitySaveNotice ] = (0, e.useState)(""), [ entitySaveError, setEntitySaveError ] = (0, e.useState)(""), [ entityLockToken, setEntityLockToken ] = (0, e.useState)(""), [ entityLockInfo, setEntityLockInfo ] = (0, e.useState)(null), [ entityLockConflict, setEntityLockConflict ] = (0, e.useState)(null), [ fullReplaceModalOpen, setFullReplaceModalOpen ] = (0, e.useState)(!1), [ fullReplaceConfirmPhrase, setFullReplaceConfirmPhrase ] = (0, e.useState)(""), [ fullReplaceModalError, setFullReplaceModalError ] = (0, e.useState)(""), [ fullReplaceNeedsTakeover, setFullReplaceNeedsTakeover ] = (0, e.useState)(!1), [ entityIndex, setEntityIndex ] = (0, e.useState)([]), [ entityIndexStats, setEntityIndexStats ] = (0, e.useState)(null), [ entityIndexLoading, setEntityIndexLoading ] = (0, e.useState)(!1), [ entityIndexError, setEntityIndexError ] = (0, e.useState)(""), [ entityKindFilter, setEntityKindFilter ] = (0, e.useState)("all"), [ entitySubtypeFilter, setEntitySubtypeFilter ] = (0, e.useState)("all"), [ entitySearch, setEntitySearch ] = (0, e.useState)(""), [ entitySort, setEntitySort ] = (0, e.useState)({
+                key: "mtime",
+                direction: "desc"
+              }), [ entityPage, setEntityPage ] = (0, e.useState)(1), entityPerPage = 20, changeRoute = (0, e.useCallback)(e => {
                 const t = "entity-editor" === e ? "entity-editor" : "proposal-review";
-                setRoute(t);
                 const s = `#${t}`;
-                window.location.hash !== s && window.history.replaceState(null, "", s);
+                setHashState({
+                  route: t,
+                  filePath: ""
+                }), window.location.hash !== s && window.history.replaceState(null, "", s);
+              }, []), openEntityEditorFile = (0, e.useCallback)(e => {
+                const t = encodeURIComponent(e || ""), s = `#entity-editor?file=${t}`;
+                setHashState({
+                  route: "entity-editor",
+                  filePath: e || ""
+                }), window.location.hash !== s && window.history.replaceState(null, "", s);
+              }, []), clearEntityEditorFile = (0, e.useCallback)(() => {
+                setHashState({
+                  route: "entity-editor",
+                  filePath: ""
+                }), setEntityFileData(null), setEntityEditorDraft(""), setEntitySaveNotice(""), setEntitySaveError(""), setEntityLockToken(""), setEntityLockInfo(null), setEntityLockConflict(null), window.location.hash !== "#entity-editor" && window.history.replaceState(null, "", "#entity-editor");
+              }, []), loadEntityEditorFile = (0, e.useCallback)(async (e, t = !1) => {
+                if (!e) return;
+                setEntityFileLoading(!0), setEntityFileError(""), setEntityLockConflict(null);
+                try {
+                  const s = await n(`entity-editor/file?path=${encodeURIComponent(e)}${t ? "&force_takeover=1" : ""}`);
+                  return setEntityFileData(s), setEntityEditorDraft(s?.content || ""), setEntitySaveError(""), setEntitySaveNotice(""), 
+                  setEntityLockToken(s?.lock?.token || ""), void setEntityLockInfo(s?.lock || null);
+                } catch (s) {
+                  const n = s?.body?.data?.lock || null;
+                  setEntityFileData(null), setEntityFileError(s?.message || "Failed to load entity file"), setEntityLockToken(""), 
+                  setEntityLockInfo(null), setEntityLockConflict(n);
+                } finally {
+                  setEntityFileLoading(!1);
+                }
+              }, []), saveEntityEditorFile = (0, e.useCallback)(async (forceTakeover = !1) => {
+                if (!selectedEntityFile) return;
+                setEntitySaveError(""), setEntitySaveNotice(""), setEntityLockConflict(null);
+                try {
+                  JSON.parse(entityEditorDraft || "{}");
+                } catch (e) {
+                  return void setEntitySaveError(e?.message || "Invalid JSON");
+                }
+                setEntitySaveBusy(!0);
+                try {
+                  const t = await i("entity-editor/file/save", {
+                    path: selectedEntityFile,
+                    content: entityEditorDraft,
+                    lock_token: entityLockToken || "",
+                    force_takeover: !!forceTakeover
+                  });
+                  setEntityFileData(e => ({
+                    ...e,
+                    ...t
+                  })), setEntityEditorDraft(t?.content || entityEditorDraft), setEntitySaveNotice(forceTakeover ? "Saved JSON to sync folder and took over lock." : "Saved JSON to sync folder."), 
+                  setEntityLockToken(t?.lock?.token || entityLockToken), setEntityLockInfo(t?.lock || entityLockInfo), setEntityIndex([]);
+                } catch (e) {
+                  const t = e?.body?.data?.lock || null;
+                  setEntitySaveError(e?.message || "Failed to save JSON"), setEntityLockConflict(t);
+                } finally {
+                  setEntitySaveBusy(!1);
+                }
+              }, [ selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo ]), partialImportEntityEditorFile = (0, e.useCallback)(async (forceTakeover = !1) => {
+                if (!selectedEntityFile) return;
+                setEntitySaveError(""), setEntitySaveNotice(""), setEntityLockConflict(null);
+                try {
+                  JSON.parse(entityEditorDraft || "{}");
+                } catch (e) {
+                  return void setEntitySaveError(e?.message || "Invalid JSON");
+                }
+                setEntityImportBusy(!0);
+                try {
+                  const t = await i("entity-editor/file/import-partial", {
+                    path: selectedEntityFile,
+                    content: entityEditorDraft,
+                    lock_token: entityLockToken || "",
+                    force_takeover: !!forceTakeover
+                  });
+                  const n = t?.import_result?.counts || {};
+                  setEntityFileData(e => ({
+                    ...e,
+                    ...t
+                  })), setEntityEditorDraft(t?.content || entityEditorDraft), setEntityLockToken(t?.lock?.token || entityLockToken), 
+                  setEntityLockInfo(t?.lock || entityLockInfo), setEntitySaveNotice(`Saved + partial import complete (fields: ${n.core_fields_updated ?? 0}, meta: ${n.meta_keys_updated ?? 0}, tax: ${n.taxonomies_updated ?? 0}).`), 
+                  setEntityIndex([]);
+                } catch (e) {
+                  const t = e?.body?.data?.lock || null;
+                  setEntitySaveError(e?.message || "Failed to run partial import"), setEntityLockConflict(t);
+                } finally {
+                  setEntityImportBusy(!1);
+                }
+              }, [ selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo ]), fullReplaceEntityEditorFile = (0, e.useCallback)(async (forceTakeover = !1, confirmPhrase = "") => {
+                if (!selectedEntityFile) return;
+                setEntitySaveError(""), setEntitySaveNotice(""), setEntityLockConflict(null);
+                const t = (confirmPhrase || "").trim();
+                if ("REPLACE" !== t) return void setEntitySaveError('Full replace requires typing "REPLACE".');
+                try {
+                  JSON.parse(entityEditorDraft || "{}");
+                } catch (e) {
+                  return void setEntitySaveError(e?.message || "Invalid JSON");
+                }
+                setEntityReplaceBusy(!0);
+                try {
+                  const e = await i("entity-editor/file/import-replace", {
+                    path: selectedEntityFile,
+                    content: entityEditorDraft,
+                    confirm_phrase: t,
+                    lock_token: entityLockToken || "",
+                    force_takeover: !!forceTakeover
+                  }), n = e?.import_result?.counts || {}, l = e?.import_result?.snapshot_path || "";
+                  setEntityFileData(t => ({
+                    ...t,
+                    ...e
+                  })), setEntityEditorDraft(e?.content || entityEditorDraft), setEntityLockToken(e?.lock?.token || entityLockToken), 
+                  setEntityLockInfo(e?.lock || entityLockInfo), setEntitySaveNotice(`Saved + full replace complete (fields: ${n.core_fields_updated ?? 0}, meta updated: ${n.meta_keys_updated ?? 0}, meta deleted: ${n.meta_keys_deleted ?? 0}, tax: ${n.taxonomies_updated ?? 0})${l ? `; snapshot: ${l}` : ""}.`), 
+                  setEntityIndex([]);
+                } catch (e) {
+                  const t = e?.body?.data?.lock || null;
+                  setEntitySaveError(e?.message || "Failed to run full replace"), setEntityLockConflict(t);
+                } finally {
+                  setEntityReplaceBusy(!1);
+                }
+              }, [ selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo ]), openFullReplaceModal = (0, e.useCallback)((e = !1) => {
+                setFullReplaceNeedsTakeover(!!e), setFullReplaceConfirmPhrase(""), setFullReplaceModalError(""), setFullReplaceModalOpen(!0);
+              }, []), closeFullReplaceModal = (0, e.useCallback)(() => {
+                setFullReplaceModalOpen(!1), setFullReplaceConfirmPhrase(""), setFullReplaceModalError(""), setFullReplaceNeedsTakeover(!1);
+              }, []), confirmFullReplaceModal = (0, e.useCallback)(async () => {
+                if ("REPLACE" !== (fullReplaceConfirmPhrase || "").trim()) return void setFullReplaceModalError('Type "REPLACE" to continue.');
+                setFullReplaceModalError(""), setFullReplaceModalOpen(!1), await fullReplaceEntityEditorFile(fullReplaceNeedsTakeover, (fullReplaceConfirmPhrase || "").trim());
+              }, [ fullReplaceConfirmPhrase, fullReplaceNeedsTakeover, fullReplaceEntityEditorFile ]), takeoverEntityEditorLock = (0, e.useCallback)(() => {
+                selectedEntityFile && loadEntityEditorFile(selectedEntityFile, !0);
+              }, [ selectedEntityFile, loadEntityEditorFile ]), loadEntityIndex = (0, e.useCallback)(async (e = !1) => {
+                setEntityIndexLoading(!0), setEntityIndexError("");
+                try {
+                  const t = e ? await i("entity-editor/index/rebuild", {}) : await n("entity-editor/index");
+                  setEntityIndex(Array.isArray(t?.items) ? t.items : []), setEntityIndexStats(t?.stats || null);
+                } catch (e) {
+                  setEntityIndexError(e?.message || "Failed to load entity index");
+                } finally {
+                  setEntityIndexLoading(!1);
+                }
               }, []);
               (0, e.useEffect)(() => {
-                const e = () => setRoute(parseAppRoute());
+                const e = () => setHashState(parseHashState());
                 return window.addEventListener("hashchange", e), () => window.removeEventListener("hashchange", e);
-              }, []);
+              }, []), (0, e.useEffect)(() => {
+                "entity-editor" === route && 0 === entityIndex.length && !entityIndexLoading && !entityIndexError && loadEntityIndex(!1);
+              }, [ route, entityIndex.length, entityIndexLoading, entityIndexError, loadEntityIndex ]), (0, e.useEffect)(() => {
+                if ("entity-editor" !== route || !selectedEntityFile) return setEntityFileData(null), setEntityLockToken(""), 
+                setEntityLockInfo(null), setEntityLockConflict(null), void setEntityFileError("");
+                loadEntityEditorFile(selectedEntityFile, !1);
+              }, [ route, selectedEntityFile, loadEntityEditorFile ]), (0, e.useEffect)(() => {
+                setEntitySubtypeFilter("all"), setEntityPage(1);
+              }, [ entityKindFilter ]);
+              const entitySubtypeOptions = (0, e.useMemo)(() => {
+                const t = new Set;
+                entityIndex.forEach(s => {
+                  if (("all" === entityKindFilter || s.entity_kind === entityKindFilter) && s.subtype) {
+                    t.add(s.subtype);
+                  }
+                });
+                return Array.from(t).sort((e, t) => e.localeCompare(t, void 0, {
+                  sensitivity: "base"
+                }));
+              }, [ entityIndex, entityKindFilter ]);
+              const filteredEntityIndex = (0, e.useMemo)(() => {
+                const t = entitySearch.trim().toLowerCase();
+                return entityIndex.filter(e => {
+                  if ("all" !== entityKindFilter && e.entity_kind !== entityKindFilter) return !1;
+                  if ("all" !== entitySubtypeFilter && e.subtype !== entitySubtypeFilter) return !1;
+                  if (!t) return !0;
+                  const s = [ e.title, e.slug, e.uid, e.relative_path, e.subtype, e.entity_kind ].map(e => (e || "").toString().toLowerCase());
+                  return s.some(e => e.includes(t));
+                });
+              }, [ entityIndex, entityKindFilter, entitySubtypeFilter, entitySearch ]);
+              const sortedEntityIndex = (0, e.useMemo)(() => {
+                const t = [ ...filteredEntityIndex ], getValue = (e, t) => {
+                  if ("mtime" === t) return Number(e?.mtime || 0);
+                  return (e?.[t] || "").toString().toLowerCase();
+                };
+                return t.sort((t, s) => {
+                  const n = getValue(t, entitySort.key), i = getValue(s, entitySort.key);
+                  if (n === i) return 0;
+                  const l = n > i ? 1 : -1;
+                  return "asc" === entitySort.direction ? l : -1 * l;
+                }), t;
+              }, [ filteredEntityIndex, entitySort ]);
+              const entityTotalPages = Math.max(1, Math.ceil(sortedEntityIndex.length / entityPerPage));
+              const safeEntityPage = Math.min(entityPage, entityTotalPages);
+              const pagedEntityIndex = (0, e.useMemo)(() => {
+                const e = (safeEntityPage - 1) * entityPerPage;
+                return sortedEntityIndex.slice(e, e + entityPerPage);
+              }, [ sortedEntityIndex, safeEntityPage, entityPerPage ]);
+              const toggleEntitySort = e => {
+                setEntityPage(1), setEntitySort(t => t.key === e ? {
+                  key: e,
+                  direction: "asc" === t.direction ? "desc" : "asc"
+                } : {
+                  key: e,
+                  direction: "asc"
+                });
+              };
               if (! _e && xe) {
                 const loadingIndicator = t?.Spinner ? (0, s.jsx)(t.Spinner, {}) : (0, s.jsx)("span", {
                   style: {
@@ -2537,18 +2740,18 @@
                 }), (0, s.jsxs)("div", {
                   className: "dbvc-admin-app__header",
                   children: [ (0, s.jsx)("h1", {
-                    children: "DBVC Proposals"
+                    children: "DBVC Entity Editor"
                   }), (0, s.jsx)(t.Button, {
                     variant: "secondary",
-                    onClick: () => zt(),
-                    disabled: xe && _e,
-                    children: xe && _e ? "Refreshing…" : "Refresh list"
+                    onClick: () => loadEntityIndex(!1),
+                    disabled: entityIndexLoading,
+                    children: entityIndexLoading ? "Refreshing…" : "Refresh index"
                   }), (0, s.jsx)(t.Button, {
                     variant: "tertiary",
-                    onClick: $s,
-                    disabled: ft,
-                    isBusy: ft,
-                    children: ft ? "Clearing…" : "Clear all backups"
+                    onClick: () => loadEntityIndex(!0),
+                    disabled: entityIndexLoading,
+                    isBusy: entityIndexLoading,
+                    children: entityIndexLoading ? "Rebuilding…" : "Rebuild index"
                   }) ]
                 }), (0, s.jsxs)("nav", {
                   className: "dbvc-admin-app__menu",
@@ -2561,37 +2764,347 @@
                   }), (0, s.jsx)("button", {
                     type: "button",
                     className: "button" + ("entity-editor" === route ? " button-primary" : ""),
-                    onClick: () => changeRoute("entity-editor"),
+                    onClick: () => window.location.assign("admin.php?page=dbvc-entity-editor"),
                     children: "Entity Editor"
                   }) ]
                 }), (0, s.jsxs)("section", {
                   className: "dbvc-entity-editor-shell",
                   children: [ (0, s.jsx)("h2", {
-                    children: "Entity Editor"
-                  }), (0, s.jsx)("p", {
+                    children: "Entity index"
+                  }), (0, s.jsxs)("p", {
                     className: "description",
-                    children: "Phase 1 routing skeleton is active. Entity menu + editor pane wiring will land in the next phases."
+                    children: [ "Showing ", sortedEntityIndex.length, " indexed entities from sync (posts + terms only)." ]
+                  }), entityIndexError && (0, s.jsx)("div", {
+                    className: "notice notice-error",
+                    children: (0, s.jsx)("p", {
+                      children: entityIndexError
+                    })
                   }), (0, s.jsxs)("div", {
-                    className: "dbvc-entity-editor-shell__layout",
-                    children: [ (0, s.jsxs)("aside", {
-                      className: "dbvc-entity-editor-shell__pane",
-                      children: [ (0, s.jsx)("h3", {
-                        children: "Menu Pane"
-                      }), (0, s.jsx)("p", {
-                        children: "Placeholder for entity groups and navigation."
+                    style: {
+                      display: "flex",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                      marginBottom: "12px"
+                    },
+                    children: [ (0, s.jsxs)("label", {
+                      children: [ "Kind ", (0, s.jsxs)("select", {
+                        value: entityKindFilter,
+                        onChange: e => {
+                          setEntityKindFilter(e.target.value), setEntityPage(1);
+                        },
+                        children: [ (0, s.jsx)("option", {
+                          value: "all",
+                          children: "All"
+                        }), (0, s.jsx)("option", {
+                          value: "post",
+                          children: "Posts"
+                        }), (0, s.jsx)("option", {
+                          value: "term",
+                          children: "Terms"
+                        }) ]
                       }) ]
-                    }), (0, s.jsxs)("div", {
-                      className: "dbvc-entity-editor-shell__pane",
-                      children: [ (0, s.jsx)("h3", {
-                        children: "Editor Pane"
-                      }), (0, s.jsx)("p", {
-                        children: "Placeholder for routed entity editor views."
+                    }), (0, s.jsxs)("label", {
+                      children: [ "Subtype ", (0, s.jsxs)("select", {
+                        value: entitySubtypeFilter,
+                        onChange: e => {
+                          setEntitySubtypeFilter(e.target.value), setEntityPage(1);
+                        },
+                        children: [ (0, s.jsx)("option", {
+                          value: "all",
+                          children: "All"
+                        }), entitySubtypeOptions.map(e => (0, s.jsx)("option", {
+                          value: e,
+                          children: e
+                        }, e)) ]
+                      }) ]
+                    }), (0, s.jsxs)("label", {
+                      children: [ "Search ", (0, s.jsx)("input", {
+                        type: "search",
+                        value: entitySearch,
+                        onChange: e => {
+                          setEntitySearch(e.target.value), setEntityPage(1);
+                        },
+                        placeholder: "title, slug, uid, file"
                       }) ]
                     }) ]
-                  }) ]
+                  }), (0, s.jsx)("div", {
+                    className: "dbvc-entity-editor-shell__pane dbvc-entity-editor__table",
+                    children: (0, s.jsxs)("table", {
+                      className: "widefat striped",
+                      children: [ (0, s.jsx)("thead", {
+                        children: (0, s.jsxs)("tr", {
+                          children: [ (0, s.jsx)("th", {
+                            children: (0, s.jsxs)("button", {
+                              type: "button",
+                              className: "button button-link",
+                              onClick: () => toggleEntitySort("entity_kind"),
+                              children: [ "Kind", entitySort.key === "entity_kind" ? "asc" === entitySort.direction ? " ↑" : " ↓" : "" ]
+                            })
+                          }), (0, s.jsx)("th", {
+                            children: "Matched WP"
+                          }), (0, s.jsx)("th", {
+                            children: (0, s.jsxs)("button", {
+                              type: "button",
+                              className: "button button-link",
+                              onClick: () => toggleEntitySort("subtype"),
+                              children: [ "Subtype", entitySort.key === "subtype" ? "asc" === entitySort.direction ? " ↑" : " ↓" : "" ]
+                            })
+                          }), (0, s.jsx)("th", {
+                            children: (0, s.jsxs)("button", {
+                              type: "button",
+                              className: "button button-link",
+                              onClick: () => toggleEntitySort("title"),
+                              children: [ "Title", entitySort.key === "title" ? "asc" === entitySort.direction ? " ↑" : " ↓" : "" ]
+                            })
+                          }), (0, s.jsx)("th", {
+                            children: (0, s.jsxs)("button", {
+                              type: "button",
+                              className: "button button-link",
+                              onClick: () => toggleEntitySort("slug"),
+                              children: [ "Slug", entitySort.key === "slug" ? "asc" === entitySort.direction ? " ↑" : " ↓" : "" ]
+                            })
+                          }), (0, s.jsx)("th", {
+                            children: (0, s.jsxs)("button", {
+                              type: "button",
+                              className: "button button-link",
+                              onClick: () => toggleEntitySort("uid"),
+                              children: [ "UID", entitySort.key === "uid" ? "asc" === entitySort.direction ? " ↑" : " ↓" : "" ]
+                            })
+                          }), (0, s.jsx)("th", {
+                            children: (0, s.jsxs)("button", {
+                              type: "button",
+                              className: "button button-link",
+                              onClick: () => toggleEntitySort("mtime"),
+                              children: [ "Modified", entitySort.key === "mtime" ? "asc" === entitySort.direction ? " ↑" : " ↓" : "" ]
+                            })
+                          }), (0, s.jsx)("th", {
+                            children: (0, s.jsxs)("button", {
+                              type: "button",
+                              className: "button button-link",
+                              onClick: () => toggleEntitySort("relative_path"),
+                              children: [ "File", entitySort.key === "relative_path" ? "asc" === entitySort.direction ? " ↑" : " ↓" : "" ]
+                            })
+                          }), (0, s.jsx)("th", {
+                            children: "Actions"
+                          }) ]
+                        })
+                      }), (0, s.jsx)("tbody", {
+                        children: pagedEntityIndex.length ? pagedEntityIndex.map(e => (0, s.jsxs)("tr", {
+                          children: [ (0, s.jsx)("td", {
+                            children: e.entity_kind || "—"
+                          }), (0, s.jsx)("td", {
+                            children: e.matched_wp?.id ? (0, s.jsxs)("a", {
+                              href: e.matched_wp?.edit_url || "#",
+                              children: [ e.matched_wp?.kind || "wp", " #", e.matched_wp?.id ]
+                            }) : "—"
+                          }), (0, s.jsx)("td", {
+                            children: e.subtype || "—"
+                          }), (0, s.jsx)("td", {
+                            children: e.title || "—"
+                          }), (0, s.jsx)("td", {
+                            children: e.slug || "—"
+                          }), (0, s.jsx)("td", {
+                            children: e.uid || "—"
+                          }), (0, s.jsx)("td", {
+                            children: e.mtime_gmt ? a(e.mtime_gmt) : "—"
+                          }), (0, s.jsx)("td", {
+                            children: e.relative_path || "—"
+                          }), (0, s.jsx)("td", {
+                            children: (0, s.jsx)("button", {
+                              type: "button",
+                              className: "button button-small",
+                              onClick: () => openEntityEditorFile(e.relative_path),
+                              children: "Edit JSON"
+                            })
+                          }) ]
+                        }, e.relative_path)) : (0, s.jsx)("tr", {
+                          children: (0, s.jsx)("td", {
+                            colSpan: 9,
+                            children: entityIndexLoading ? "Loading index…" : "No matching entities found."
+                          })
+                        })
+                      }) ]
+                    })
+                  }), selectedEntityFile && (0, s.jsxs)("div", {
+                    className: "dbvc-entity-editor-shell__pane dbvc-entity-editor__editor",
+                    style: {
+                      marginTop: "12px"
+                    },
+                    children: [ (0, s.jsxs)("div", {
+                      style: {
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center"
+                      },
+                      children: [ (0, s.jsxs)("h3", {
+                        children: [ "Editing: ", selectedEntityFile ]
+                      }), (0, s.jsx)("button", {
+                        type: "button",
+                        className: "button",
+                        onClick: clearEntityEditorFile,
+                        children: "Back to list"
+                      }) ]
+                    }), entityFileLoading && (0, s.jsx)("p", {
+                      children: "Loading file…"
+                    }), entityFileError && (0, s.jsx)("div", {
+                      className: "notice notice-error",
+                      children: (0, s.jsx)("p", {
+                        children: entityFileError
+                      })
+                    }), entityLockConflict && (0, s.jsxs)("div", {
+                      className: "notice notice-warning",
+                      children: [ (0, s.jsxs)("p", {
+                        children: [ "Current lock owner: ", entityLockConflict?.user_display || "another user", entityLockConflict?.expires_at ? ` (expires ${a(entityLockConflict.expires_at)})` : "" ]
+                      }), (0, s.jsx)("button", {
+                        type: "button",
+                        className: "button",
+                        onClick: takeoverEntityEditorLock,
+                        children: "Take over lock"
+                      }) ]
+                    }), entityFileData && (0, s.jsxs)(s.Fragment, {
+                      children: [ (0, s.jsxs)("p", {
+                        className: "description",
+                        children: [ "Kind: ", entityFileData.entity_kind || "—", " · Subtype: ", entityFileData.subtype || "—", " · UID: ", entityFileData.uid || "—" ]
+                      }), entityLockInfo && (0, s.jsxs)("p", {
+                        className: "description",
+                        children: [ "Editor lock: ", entityLockInfo?.user_display || "unknown", entityLockInfo?.expires_at ? ` · expires ${a(entityLockInfo.expires_at)}` : "" ]
+                      }), (0, s.jsx)("textarea", {
+                        style: {
+                          width: "100%",
+                          minHeight: "280px",
+                          fontFamily: "monospace"
+                        },
+                        value: entityEditorDraft,
+                        onChange: e => {
+                          setEntityEditorDraft(e.target.value), setEntitySaveNotice(""), setEntitySaveError("");
+                        }
+                      }), entitySaveError && (0, s.jsx)("div", {
+                        className: "notice notice-error",
+                        children: (0, s.jsxs)(s.Fragment, {
+                          children: [ (0, s.jsx)("p", {
+                            children: entitySaveError
+                          }), entityLockConflict && (0, s.jsx)("button", {
+                            type: "button",
+                            className: "button",
+                            onClick: () => saveEntityEditorFile(!0),
+                            disabled: entitySaveBusy || entityImportBusy || entityReplaceBusy,
+                            children: "Take over lock and save"
+                          }), entityLockConflict && (0, s.jsx)("button", {
+                            type: "button",
+                            className: "button",
+                            onClick: () => openFullReplaceModal(!0),
+                            disabled: entitySaveBusy || entityImportBusy || entityReplaceBusy,
+                            children: "Take over lock and full replace"
+                          }) ]
+                        })
+                      }), entitySaveNotice && (0, s.jsx)("div", {
+                        className: "notice notice-success",
+                        children: (0, s.jsx)("p", {
+                          children: entitySaveNotice
+                        })
+                      }), (0, s.jsx)(t.Button, {
+                        variant: "primary",
+                        onClick: saveEntityEditorFile,
+                        disabled: entitySaveBusy || entityImportBusy || entityReplaceBusy || !entityLockToken,
+                        isBusy: entitySaveBusy,
+                        children: entitySaveBusy ? "Saving…" : "Save JSON"
+                      }), (0, s.jsx)(t.Button, {
+                        variant: "secondary",
+                        onClick: partialImportEntityEditorFile,
+                        disabled: entityImportBusy || entitySaveBusy || entityReplaceBusy || !entityLockToken,
+                        isBusy: entityImportBusy,
+                        children: entityImportBusy ? "Importing…" : "Save + Partial Import"
+                      }), (0, s.jsx)(t.Button, {
+                        variant: "secondary",
+                        onClick: () => openFullReplaceModal(!1),
+                        disabled: entityReplaceBusy || entityImportBusy || entitySaveBusy || !entityLockToken,
+                        isBusy: entityReplaceBusy,
+                        children: entityReplaceBusy ? "Replacing…" : "Save + Full Replace"
+                      }) ]
+                    }) ]
+                  }), (0, s.jsxs)("div", {
+                    style: {
+                      marginTop: "10px",
+                      display: "flex",
+                      gap: "8px",
+                      alignItems: "center"
+                    },
+                    children: [ (0, s.jsx)("button", {
+                      type: "button",
+                      className: "button",
+                      disabled: safeEntityPage <= 1,
+                      onClick: () => setEntityPage(e => Math.max(1, e - 1)),
+                      children: "Previous"
+                    }), (0, s.jsxs)("span", {
+                      children: [ "Page ", safeEntityPage, " of ", entityTotalPages ]
+                    }), (0, s.jsx)("button", {
+                      type: "button",
+                      className: "button",
+                      disabled: safeEntityPage >= entityTotalPages,
+                      onClick: () => setEntityPage(e => Math.min(entityTotalPages, e + 1)),
+                      children: "Next"
+                    }), entityIndexStats && (0, s.jsxs)("small", {
+                      children: [ " · indexed: ", entityIndexStats?.indexed_files ?? 0, ", scanned: ", entityIndexStats?.scanned_files ?? 0, ", excluded: ", entityIndexStats?.excluded_files ?? 0 ]
+                    }) ]
+                  }), fullReplaceModalOpen && (t?.Modal ? (0, s.jsxs)(t.Modal, {
+                    title: "Confirm Full Replace",
+                    onRequestClose: closeFullReplaceModal,
+                    children: [ (0, s.jsx)("p", {
+                      children: "This operation is destructive. Meta keys not present in JSON will be deleted (except protected keys)."
+                    }), fullReplaceNeedsTakeover && (0, s.jsx)("p", {
+                      children: "This action will also take over the editor lock."
+                    }), (0, s.jsxs)("p", {
+                      children: [ "Type ", (0, s.jsx)("code", {
+                        children: "REPLACE"
+                      }), " to confirm." ]
+                    }), (0, s.jsx)("input", {
+                      type: "text",
+                      value: fullReplaceConfirmPhrase,
+                      onChange: e => {
+                        setFullReplaceConfirmPhrase(e.target.value), setFullReplaceModalError("");
+                      },
+                      placeholder: "REPLACE",
+                      style: {
+                        width: "100%"
+                      }
+                    }), fullReplaceModalError && (0, s.jsx)("p", {
+                      style: {
+                        color: "#b32d2e"
+                      },
+                      children: fullReplaceModalError
+                    }), (0, s.jsxs)("div", {
+                      style: {
+                        display: "flex",
+                        gap: "8px",
+                        justifyContent: "flex-end",
+                        marginTop: "12px"
+                      },
+                      children: [ (0, s.jsx)(t.Button, {
+                        variant: "tertiary",
+                        onClick: closeFullReplaceModal,
+                        children: "Cancel"
+                      }), (0, s.jsx)(t.Button, {
+                        variant: "primary",
+                        onClick: confirmFullReplaceModal,
+                        disabled: entityReplaceBusy,
+                        isBusy: entityReplaceBusy,
+                        children: "Confirm Replace"
+                      }) ]
+                    }) ]
+                  }) : (0, s.jsxs)("div", {
+                    className: "notice notice-warning",
+                    children: [ (0, s.jsx)("p", {
+                      children: 'Typed confirmation needed: enter "REPLACE" then use Save + Full Replace.'
+                    }), (0, s.jsx)("button", {
+                      type: "button",
+                      className: "button",
+                      onClick: closeFullReplaceModal,
+                      children: "Close"
+                    }) ]
+                  })) ]
                 }) ]
               });
-              return !_e && Re ? (0, s.jsxs)("p", {
+                            return !_e && Re ? (0, s.jsxs)("p", {
                 className: "dbvc-admin-app-error",
                 children: [ "Error loading proposals: ", o(Re) ]
               }) : (0, s.jsxs)("div", {
@@ -2650,7 +3163,7 @@
                   }), (0, s.jsx)("button", {
                     type: "button",
                     className: "button" + ("entity-editor" === route ? " button-primary" : ""),
-                    onClick: () => changeRoute("entity-editor"),
+                    onClick: () => window.location.assign("admin.php?page=dbvc-entity-editor"),
                     children: "Entity Editor"
                   }) ]
                 }), (0, s.jsx)(C, {

@@ -30,5 +30,14 @@ function dbvc_register_admin_menu()
 		'dashicons-download',
 		80
 	);
+
+	add_submenu_page(
+		'dbvc-export',
+		esc_html__('Entity Editor', 'dbvc'),
+		esc_html__('Entity Editor', 'dbvc'),
+		'manage_options',
+		'dbvc-entity-editor',
+		'dbvc_render_entity_editor_page'
+	);
 }
 add_action('admin_menu', 'dbvc_register_admin_menu');
