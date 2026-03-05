@@ -32,6 +32,10 @@ final class DBVC_Bricks_Addon
         self::maybe_migrate_settings();
         self::ensure_defaults();
         self::refresh_runtime_registration();
+        if (class_exists('DBVC_Bricks_Onboarding')) {
+            DBVC_Bricks_Onboarding::persist_local_transport_state('bootstrap');
+            DBVC_Bricks_Onboarding::run_client_onboarding_tick('bootstrap');
+        }
     }
 
     /**
@@ -539,6 +543,10 @@ final class DBVC_Bricks_Addon
         }
         foreach ($result['values'] as $key => $value) {
             update_option($key, $value);
+        }
+        if (class_exists('DBVC_Bricks_Onboarding')) {
+            DBVC_Bricks_Onboarding::persist_local_transport_state('configure_save');
+            DBVC_Bricks_Onboarding::run_client_onboarding_tick('configure_save');
         }
         self::refresh_runtime_registration();
         return $result;
@@ -1613,17 +1621,26 @@ final class DBVC_Bricks_Addon
      */
     public static function normalize_manifest_payload(array $payload)
     {
+        $source_shape = 'canonical';
         if (isset($payload['manifest']) && is_array($payload['manifest'])) {
             $payload = $payload['manifest'];
+        } elseif (isset($payload['snapshot']) && is_array($payload['snapshot']) && isset($payload['snapshot']['manifest']) && is_array($payload['snapshot']['manifest'])) {
+            $payload = $payload['snapshot']['manifest'];
+            $source_shape = 'snapshot_manifest';
+        } elseif (isset($payload['data']) && is_array($payload['data']) && isset($payload['data']['manifest']) && is_array($payload['data']['manifest'])) {
+            $payload = $payload['data']['manifest'];
+            $source_shape = 'data_manifest';
         }
 
         $manifest = [
             'package_id' => (string) ($payload['package_id'] ?? $payload['id'] ?? ''),
             'version' => (string) ($payload['version'] ?? ''),
             'channel' => (string) ($payload['channel'] ?? ''),
+            'schema_version' => (string) ($payload['schema_version'] ?? ''),
+            'parse_mode' => (string) ($payload['parse_mode'] ?? 'strict'),
             'artifacts' => [],
             'compatibility' => [
-                'source_shape' => 'canonical',
+                'source_shape' => $source_shape,
             ],
         ];
 
@@ -1632,7 +1649,9 @@ final class DBVC_Bricks_Addon
             $rows = $payload['artifacts'];
         } elseif (isset($payload['items']) && is_array($payload['items'])) {
             $rows = $payload['items'];
-            $manifest['compatibility']['source_shape'] = 'legacy_items';
+            $manifest['compatibility']['source_shape'] = $source_shape === 'canonical'
+                ? 'legacy_items'
+                : $source_shape . '_legacy_items';
         }
 
         foreach ($rows as $row) {
@@ -1713,6 +1732,24 @@ final class DBVC_Bricks_Addon
             ],
             'deprecations' => self::get_deprecation_notices(),
         ]);
+    }
+
+    /**
+     * Return live schema verification report for critical Bricks payloads.
+     *
+     * @return \WP_REST_Response
+     */
+    public static function get_schema_verification()
+    {
+        $report = class_exists('DBVC_Bricks_Artifacts')
+            ? DBVC_Bricks_Artifacts::verify_live_schema()
+            : [
+                'generated_at' => gmdate('c'),
+                'theme_styles' => ['present' => false, 'warnings' => ['artifacts_runtime_missing']],
+                'components' => ['present' => false, 'warnings' => ['artifacts_runtime_missing']],
+                'migration_notes' => ['Artifacts runtime unavailable.'],
+            ];
+        return rest_ensure_response($report);
     }
 
     /**
@@ -1965,6 +2002,16 @@ final class DBVC_Bricks_Addon
 
         register_rest_route(
             'dbvc/v1/bricks',
+            '/schema-verify',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [self::class, 'get_schema_verification'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
             '/ui-event',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -2167,6 +2214,9 @@ final class DBVC_Bricks_Addon
     public static function run_scheduled_job()
     {
         do_action('dbvc_bricks_addon_job_run');
+        if (class_exists('DBVC_Bricks_Onboarding')) {
+            DBVC_Bricks_Onboarding::run_client_onboarding_tick('cron');
+        }
         if (
             self::get_bool_setting(self::OPTION_FLEET_MODE_ENABLED, false)
             && is_multisite()

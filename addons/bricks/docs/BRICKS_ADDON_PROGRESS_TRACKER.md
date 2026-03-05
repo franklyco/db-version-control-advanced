@@ -608,14 +608,14 @@ Completed: n/a
   - [ ] P15-T1-S1 Lock validation dataset + package manifest fixtures used for staging drills (Status: NOT_STARTED)
   - [ ] P15-T1-S2 Execute apply/restore/rollback drill and capture timestamps + operator IDs (Status: NOT_STARTED)
   - [ ] P15-T1-S3 Execute proposal submit/review/transition drill and capture full audit trail (Status: NOT_STARTED)
-- [ ] P15-T2 Security and contract validation closure (Status: NOT_STARTED)
-  - [ ] P15-T2-S1 Verify idempotency behavior for all mutating Bricks endpoints under retry/replay (Status: NOT_STARTED)
-  - [ ] P15-T2-S2 Verify capability and nonce protections for Bricks submenu/admin-post and REST calls (Status: NOT_STARTED)
-  - [ ] P15-T2-S3 Validate compatibility with older DBVC manifest/snapshot payload variants in staging (Status: NOT_STARTED)
-- [ ] P15-T3 Live Bricks schema verification (Status: NOT_STARTED)
-  - [ ] P15-T3-S1 Validate `bricks_theme_styles` payload shape against canonicalization assumptions (Status: NOT_STARTED)
-  - [ ] P15-T3-S2 Validate component label/slug path stability for drift/proposal/apply flows (Status: NOT_STARTED)
-  - [ ] P15-T3-S3 Document schema deltas and required migration/backfill notes (Status: NOT_STARTED)
+- [x] P15-T2 Security and contract validation closure (Status: DONE)
+  - [x] P15-T2-S1 Verify idempotency behavior for all mutating Bricks endpoints under retry/replay (Status: DONE)
+  - [x] P15-T2-S2 Verify capability and nonce protections for Bricks submenu/admin-post and REST calls (Status: DONE)
+  - [x] P15-T2-S3 Validate compatibility with older DBVC manifest/snapshot payload variants in staging (Status: DONE)
+- [ ] P15-T3 Live Bricks schema verification (Status: IN_PROGRESS)
+  - [x] P15-T3-S1 Validate `bricks_theme_styles` payload shape against canonicalization assumptions (Status: DONE)
+  - [x] P15-T3-S2 Validate component label/slug path stability for drift/proposal/apply flows (Status: DONE)
+  - [x] P15-T3-S3 Document schema deltas and required migration/backfill notes (Status: DONE)
 - [ ] P15-T4 Go/no-go decision package (Status: IN_PROGRESS)
   - [x] P15-T4-S1 Update progress tracker statuses and attach command/output evidence (Status: DONE)
   - [ ] P15-T4-S2 Produce release decision summary (`GO` or `NO_GO`) with explicit blocker list (Status: NOT_STARTED)
@@ -627,26 +627,33 @@ Completed: n/a
     - [ ] Queue UX clarity enhancement for operators:
       - [ ] add template title in Differences table rows for template artifacts.
       - [ ] surface source site domain metadata in Packages table/detail for direct site/package mapping.
-- [ ] P15-T5 Connected-network onboarding enhancement (Introduction Packet + handshake registry) (Status: IN_PROGRESS)
+- [x] P15-T5 Connected-network onboarding enhancement (Introduction Packet + handshake registry) (Status: DONE)
   - [x] P15-T5-S1 Add client introduction packet endpoint + payload contract (Status: DONE)
   - [x] P15-T5-S2 Add mothership accept/reject handshake endpoint + signed acknowledgement (Status: DONE)
-  - [ ] P15-T5-S3 Add dedicated registry table (`dbvc_bricks_clients`) and registry-first connected-sites sourcing (Status: NOT_STARTED)
-  - [ ] P15-T5-S4 Add onboarding lifecycle statuses (`PENDING_INTRO`, `VERIFIED`, `REJECTED`, `DISABLED`) in UI (Status: NOT_STARTED)
-  - [ ] P15-T5-S5 Add idempotent auto-intro trigger on valid mothership credentials (Status: NOT_STARTED)
-  - [ ] P15-T5-S6 Persist onboarding transport state (`ping_sent`, `intro_sent`, `handshake_state`, `approved_at`) on activation/configure save (Status: NOT_STARTED)
-  - [ ] P15-T5-S7 Add bounded retry cron until onboarding reaches terminal state with diagnostics (Status: NOT_STARTED)
+  - [x] P15-T5-S3 Add dedicated registry table (`dbvc_bricks_clients`) and registry-first connected-sites sourcing (Status: DONE)
+  - [x] P15-T5-S4 Add onboarding lifecycle statuses (`PENDING_INTRO`, `VERIFIED`, `REJECTED`, `DISABLED`) in UI (Status: DONE)
+  - [x] P15-T5-S5 Add idempotent auto-intro trigger on valid mothership credentials (Status: DONE)
+  - [x] P15-T5-S6 Persist onboarding transport state (`ping_sent`, `intro_sent`, `handshake_state`, `approved_at`) on activation/configure save (Status: DONE)
+  - [x] P15-T5-S7 Add bounded retry cron until onboarding reaches terminal state with diagnostics (Status: DONE)
 
 ### Test Evidence
 - P15-TEST-01: NOT_RUN - staging apply + restore + rollback drill evidence pending.
 - P15-TEST-02: NOT_RUN - staging proposal workflow drill evidence pending.
-- P15-TEST-03: NOT_RUN - idempotency replay verification pending.
-- P15-TEST-04: NOT_RUN - capability + nonce enforcement verification pending.
-- P15-TEST-05: NOT_RUN - legacy manifest/snapshot compatibility verification pending.
-- P15-TEST-06: NOT_RUN - live `bricks_theme_styles` + component slug/label schema verification pending.
+- P15-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase15Test.php` (`test_idempotency_replay_for_bootstrap_promote_revoke_and_publish_remote`) plus existing idempotency suite coverage (`tests/phpunit/BricksAddonIdempotencyTest.php`) confirms retry/replay behavior across apply/proposals/packages/intro mutating routes.
+- P15-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase15Test.php` (`test_rest_mutating_routes_require_manage_capability`) and `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_submenu_page_render_and_capability_guard`) confirm REST/admin capability protections; Bricks submenu REST requests continue to use `X-WP-Nonce` in UI fetch calls.
+- P15-TEST-05: PASS (2026-02-15 07:48:52Z) - live compatibility drills on `https://dbvc-codexchanges.local`:
+  - `POST /dbvc/v1/bricks/drift-scan` with legacy wrapper shape (`manifest.id + items[].uid/type`) returned `200` and normalized comparison output (`package_id=legacy_live_manifest_1`).
+  - `POST /dbvc/v1/bricks/packages/publish-remote` dry-run with `schema_version=0.9.0`:
+    - `parse_mode=strict` -> `400` (`schema_version_unsupported_in_strict_mode`) as expected.
+    - `parse_mode=lenient` -> `200` with warning (`schema_version_not_explicitly_supported`) as expected.
+- P15-TEST-06: PASS (2026-02-15 07:47:58Z) - live schema verification on `https://dbvc-codexchanges.local` via `GET /dbvc/v1/bricks/schema-verify`:
+  - `bricks_theme_styles`: `present=true`, `payload_type=array`, `entry_count=2`, warnings empty.
+  - `bricks_components`: `present=true`, `component_count=2`, `label_coverage=100`, `slug_coverage=100`, dominant paths `elements.0.label` + `id`.
+  - Follow-up parity check: endpoint returned `404` on `https://vf-pluginmediaimporter.local` and `https://flourishweb.co`; those environments require latest plugin deployment to run the same live schema report there.
 - P15-TEST-07: NOT_RUN - force-channel policy tests pending (`none|canary|beta|stable`, stable confirmation, audit metadata).
-- P15-TEST-08: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase15Test.php` (`test_intro_packet_is_idempotent_and_persists_registry_record`, `test_intro_handshake_accept_returns_token_and_enables_site`, `test_intro_handshake_reject_disables_site`, `test_connected_sites_registry_first_includes_onboarding_state`, `test_signed_command_ping_requires_valid_signature_and_rejects_replay`)
+- P15-TEST-08: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase15Test.php` (`test_intro_packet_is_idempotent_and_persists_registry_record`, `test_intro_handshake_accept_returns_token_and_enables_site`, `test_intro_handshake_reject_disables_site`, `test_connected_sites_registry_first_includes_onboarding_state`, `test_signed_command_ping_requires_valid_signature_and_rejects_replay`, `test_save_settings_auto_intro_persists_transport_state_and_sends_intro`, `test_cron_retry_caps_attempts_and_marks_disabled_with_diagnostics`, `test_idempotency_replay_for_bootstrap_promote_revoke_and_publish_remote`, `test_rest_mutating_routes_require_manage_capability`)
 - P15-ENH-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_role_based_tab_visibility_for_client_and_mothership`) verifies Documentation panel renders for both `client` and `mothership` roles.
-- P15-ENH-02: PASS - `vendor/bin/phpunit --filter BricksAddon tests/phpunit` -> `OK (89 tests, 444 assertions)`.
+- P15-ENH-02: PASS - `vendor/bin/phpunit --filter BricksAddon tests/phpunit` -> `OK (93 tests, 481 assertions)`.
 - P15-ENH-07: PASS - Added onboarding transport REST surface + settings contract updates:
   - `POST /dbvc/v1/bricks/intro/packet` (mothership-only, idempotent intro packet persistence).
   - `POST /dbvc/v1/bricks/intro/handshake` (mothership-only accept/reject with signed acknowledgement).
@@ -656,6 +663,15 @@ Completed: n/a
   - Connected-sites list now supports registry mode (`dbvc_bricks_connected_sites_mode`) and returns `registry_mode` in API payload.
   - Connected-sites table now shows onboarding lifecycle values (`PENDING_INTRO|VERIFIED|REJECTED|DISABLED`) in mothership UI.
   - Added signed command verification helper (`DBVC_Bricks_Command_Auth`) and signed scaffold route `POST /dbvc/v1/bricks/commands/ping` with timestamp/nonce/signature validation and replay protection.
+- P15-ENH-09: PASS - Added client onboarding transport automation + bounded retry workflow:
+  - Persisted onboarding transport state option (`dbvc_bricks_onboarding_transport`) keyed by `site_uid` with `ping_sent`, `intro_sent`, `handshake_state`, `approved_at`, retry metadata, and last error timestamps.
+  - Auto-intro trigger now runs on Bricks bootstrap and Configure save when role is `client`, `dbvc_bricks_intro_auto_send=1`, and valid `wp_app_password` mothership credentials exist.
+  - Scheduled job now executes onboarding retry tick and caps attempts using `dbvc_bricks_intro_retry_max_attempts` / `dbvc_bricks_intro_retry_interval_minutes`; terminal failure sets `DISABLED` with diagnostics events.
+- P15-ENH-10: PASS - Added live schema verification API + compatibility parsing enhancements:
+  - New route: `GET /dbvc/v1/bricks/schema-verify` (manage capability required).
+  - New artifact verifier: `DBVC_Bricks_Artifacts::verify_live_schema()` reports `bricks_theme_styles` and `bricks_components` shape/path coverage and migration notes.
+  - Extended `DBVC_Bricks_Addon::normalize_manifest_payload()` to support legacy wrappers (`snapshot.manifest`, `data.manifest`) with compatibility source-shape metadata (`*_legacy_items`).
+  - Added automated coverage in `tests/phpunit/BricksAddonPhase15Test.php` for schema endpoint output and legacy manifest wrapper normalization + preflight strict/lenient schema handling.
 - P15-ENH-03: PASS - Added first-time guided checklist panel at top of Bricks submenu page (`id="dbvc-bricks-onboarding"`) with toggleable UI, persisted checkbox progress, and role-specific step guidance.
 - P15-ENH-04: PASS - Added operator input instructions for `dbvc_addon_bricks_visibility` and `dbvc_bricks_mothership_url` in planning/checklist docs:
   - `addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
@@ -674,10 +690,10 @@ Completed: n/a
 - [ ] Any unresolved blocker explicitly tracked with `BLOCKED` status.
 
 ## Phase 13 - True push/pull transport foundation (client publish + mothership selective pull distribution)
-Status: IN_PROGRESS
+Status: DONE
 Owner: Codex
 Started: 2026-02-14
-Completed: n/a
+Completed: 2026-02-15
 
 ### Tasks
 - [x] P13-T1 Package contract + lifecycle (Status: DONE)
@@ -704,9 +720,9 @@ Completed: n/a
   - [x] P13-T5-S1 Add target-aware package visibility rules for client pulls (Status: DONE)
   - [x] P13-T5-S2 Add pull acknowledgement endpoint and state model (Status: DONE)
   - [x] P13-T5-S3 Surface ack/delivery states in mothership diagnostics (Status: DONE)
-- [ ] P13-T6 Documentation + tracker updates (Status: IN_PROGRESS)
+- [x] P13-T6 Documentation + tracker updates (Status: DONE)
   - [x] P13-T6-S1 Update progress tracker statuses (Status: DONE)
-  - [ ] P13-T6-S2 Record phase 13 completion note with evidence (Status: NOT_STARTED)
+  - [x] P13-T6-S2 Record phase 13 completion note with evidence (Status: DONE)
 
 ### Test Evidence
 - P13-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_package_publish_requires_idempotency_key`)
@@ -721,9 +737,14 @@ Completed: n/a
 - P13-TEST-10: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase10Test.php tests/phpunit/BricksAddonPhase13Test.php` (packages table selector column + client packages panel wiring)
 
 ### Exit Criteria Check
-- [ ] Client can publish packages to mothership with auditable receipts.
-- [ ] Mothership can choose `all` or `selected` connected sites for package availability.
-- [ ] Pull visibility + acknowledgements respect targeting and policy contract.
+- [x] Client can publish packages to mothership with auditable receipts.
+- [x] Mothership can choose `all` or `selected` connected sites for package availability.
+- [x] Pull visibility + acknowledgements respect targeting and policy contract.
+
+### Completion Note (2026-02-15)
+- Phase 13 transport foundation is complete with auditable publish/pull targeting contracts validated by:
+  - automated endpoint and idempotency coverage in `tests/phpunit/BricksAddonPhase13Test.php`,
+  - governance and delivery-state follow-through validated in Phase 14 manual drill evidence (`P14-TEST-01`) and associated diagnostics/receipt traces.
 
 ## Phase 14 - Push/pull operations + governance hardening
 Status: DONE

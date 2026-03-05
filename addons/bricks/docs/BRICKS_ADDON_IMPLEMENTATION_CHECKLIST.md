@@ -509,6 +509,11 @@ Progress update (2026-02-15):
 - `P15-T5-S2` implemented: handshake accept/reject endpoint with signed acknowledgement added (`POST /dbvc/v1/bricks/intro/handshake`).
 - connected-sites now supports registry-first sourcing mode from onboarding records (`dbvc_bricks_clients` option-backed) with onboarding lifecycle visibility in Packages -> Connected Sites.
 - signed command verification scaffolding added (`DBVC_Bricks_Command_Auth`, `POST /dbvc/v1/bricks/commands/ping`) with timestamp/nonce HMAC verification and replay protection.
+- `P15-T5-S5/S6/S7` implemented: client onboarding transport automation now persists per-site state (`dbvc_bricks_onboarding_transport`), triggers idempotent intro on bootstrap/configure save when credentials are valid, and runs bounded retry attempts from scheduled job with diagnostics events.
+- package/schema verification slice implemented:
+  - `GET /dbvc/v1/bricks/schema-verify` now reports live `bricks_theme_styles` payload shape and components label/slug path coverage.
+  - manifest compatibility normalization now supports wrapper variants (`snapshot.manifest`, `data.manifest`) with source-shape metadata for legacy payloads.
+  - package preflight compatibility behavior validated for strict vs lenient parse modes with legacy schema versions.
 
 ### Tasks / Sub-tasks
 - `P15-T1` Staging workflow drill execution
