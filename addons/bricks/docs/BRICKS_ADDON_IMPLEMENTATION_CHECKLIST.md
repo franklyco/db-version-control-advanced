@@ -1,704 +1,233 @@
-# Bricks Add-on Strict Implementation Checklist
+# Bricks Add-on Strict Implementation Checklist (Active)
 
-Date: 2026-02-14  
-Status: Execution checklist (implementation planning)
+Date: 2026-02-16  
+Status: Execution checklist (active phases only)
 
 ## 0) Operating Rules
 
 - No phase starts without all entry criteria complete.
 - No phase is marked complete without all exit criteria + required tests passing.
 - Any schema or behavior deviation discovered during implementation must be documented before proceeding.
-- Use "Entity" terminology for post/term objects.
-- Every completed task must update progress artifacts in section 2.1.
+- Use status values only: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `DONE`.
+- Update `BRICKS_ADDON_PROGRESS_TRACKER.md` immediately on any task/sub-task status change.
 
-## 0.1 Mandatory Progress Tracking Rules
+## 0.1 Active/Archive Layout
 
-- Use these status values only:
-  - `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `DONE`.
-- Track progress at three levels:
-  - phase,
-  - task,
-  - sub-task.
-- Update progress immediately when any sub-task changes status.
-- A task can be `DONE` only when all of its sub-tasks are `DONE`.
-- A phase can be `DONE` only when:
-  - all tasks are `DONE`,
-  - required tests passed,
-  - exit criteria met,
-  - phase completion note written.
-- If any required test fails:
-  - set affected task/phase to `BLOCKED`,
-  - log failure summary and next action.
+Active files:
+- `addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
+- `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
 
-## 0.2 Required Progress Artifacts
+Archive files (completed phases/history):
+- `addons/bricks/docs/archive/BRICKS_ADDON_PROGRESS_TRACKER_ARCHIVE_P1_P18.md`
+- `addons/bricks/docs/archive/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST_ARCHIVE_P1_P18.md`
+- `addons/bricks/docs/archive/BRICKS_ADDON_PROGRESS_TRACKER_SNAPSHOT_20260216T040755Z.md`
+- `addons/bricks/docs/archive/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST_SNAPSHOT_20260216T040755Z.md`
 
-- Primary tracker file (must be updated throughout implementation):
-  - `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
-- Phase completion notes:
-  - append to `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
-- Test evidence references:
-  - command/log summary links in phase notes (file paths or concise output summary).
-
-## 1) Architecture Lock
-
-### 1.1 Required activation model
-- Add-ons are controlled under core Configure tab:
-  - `Configure -> Add-ons` subtab.
-- Each add-on has an enable/activate toggle.
-- If Bricks add-on is disabled:
-  - Bricks-specific submenu is not registered in wp-admin.
-  - Bricks REST endpoints are not registered.
-  - Bricks background jobs are not scheduled.
-- If Bricks add-on is enabled:
-  - register Bricks submenu under DBVC top-level menu (`dbvc-export`) via `add_submenu_page`.
-  - load Bricks UI and actions from that submenu only.
-
-### 1.2 Current DBVC files to extend
-- Menu registration:  
-  `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-menu.php`
-- Configure tabs/save flow:  
-  `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php`
-- REST route pattern:  
-  `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-admin-app.php`
-
-## 2) Phase Checklist (Strict WBS)
-
-## 2.1 Progress Tracker Template (copy into tracker file)
-
-```md
-## Phase X - <name>
-Status: NOT_STARTED|IN_PROGRESS|BLOCKED|DONE
-Owner: <name>
-Started: <date>
-Completed: <date or n/a>
-
-### Tasks
-- [ ] P13-T1 <task name> (Status: ...)
-  - [ ] P13-T1-S1 <sub-task> (Status: ...)
-  - [ ] P13-T1-S2 <sub-task> (Status: ...)
-- [ ] P13-T2 <task name> (Status: ...)
-
-### Test Evidence
-- <test id>: PASS|FAIL - <summary>
-
-### Exit Criteria Check
-- [ ] Criterion 1
-- [ ] Criterion 2
-```
-
-## Phase 1: Add-ons framework and Bricks activation gate
+## 1) Phase 19A: Shared Rules Distribution Foundation
 
 ### Entry criteria
-- Field matrix approved:
-  `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
-- Activation model approved (section 1 above).
+- Phase 18 complete and verified in tracker archive.
+- Connected-site registry and onboarding/signed-command scaffolding available.
 
 ### Tasks / Sub-tasks
-- `P1-T1` Configure add-ons subtab scaffolding
-  - `P1-T1-S1` Add `Configure -> Add-ons` subtab registration in core configure tab map.
-  - `P1-T1-S2` Render add-ons panel with Bricks toggle control.
-  - `P1-T1-S3` Add nonce and section save routing for add-ons panel.
-- `P1-T2` Add-on activation state persistence
-  - `P1-T2-S1` Add option key `dbvc_addon_bricks_enabled`.
-  - `P1-T2-S2` Add allowlist-based sanitization for add-on settings.
-  - `P1-T2-S3` Add default bootstrap for missing add-on options.
-- `P1-T3` Conditional menu + bootstrap gating
-  - `P1-T3-S1` Register Bricks submenu under `dbvc-export` only when enabled.
-  - `P1-T3-S2` Gate Bricks route registration by enable flag.
-  - `P1-T3-S3` Gate Bricks scheduled jobs/hooks by enable flag.
-  - `P1-T3-S4` Verify disabled mode performs no Bricks writes or background actions.
-- `P1-T4` Documentation + tracker updates
-  - `P1-T4-S1` Update progress tracker statuses.
-  - `P1-T4-S2` Record phase 1 completion note with evidence.
+- `P19A-T0` Contract freeze + guardrails
+  - `P19A-T0-S1` Freeze shared rules profile schema: `profile_version`, `updated_at`, `updated_by`, five rule maps, optional notes.
+  - `P19A-T0-S2` Freeze distribution receipt schema: `request_id`, `site_uid`, `state`, `applied_profile_version`, `error_code`, `error_message`, `correlation_id`, timestamps.
+  - `P19A-T0-S3` Define explicit non-goals for 19A: no automatic artifact apply, no package mutation, no protected-variant behavior changes.
+- `P19A-T1` Mothership shared profile persistence + API
+  - `P19A-T1-S1` Add canonical storage model and version migration/default handling.
+  - `P19A-T1-S2` Add strict validation + normalization for all five rule maps.
+  - `P19A-T1-S3` Add mothership REST endpoints for profile read/write.
+- `P19A-T2` Distribution transport + client signed apply
+  - `P19A-T2-S1` Add mothership distribute endpoint (`all`/`selected`) with idempotency-key enforcement.
+  - `P19A-T2-S2` Add client receive/apply endpoint requiring signed command verification.
+  - `P19A-T2-S3` Add per-site diagnostics timeline (`queued|sent|applied|failed`) and correlation IDs.
+  - `P19A-T2-S4` Add retry/backoff + dead-letter behavior for per-site failures.
+- `P19A-T3` Validation + live evidence
+  - `P19A-T3-S1` Add automated tests for schema, idempotency replay, signed verification, and diagnostics timeline.
+  - `P19A-T3-S2` Run live drill on mothership + clientA/clientB for both target modes and capture receipts.
+
+### Current Status (2026-02-16)
+- `P19A-T3`: `BLOCKED`
+- `P19A-T3-S2`: `BLOCKED` (latest rerun `timestamp=20260217T091900Z` uses `transport_mode=client_pull_envelope`, but still no applied receipts: `test_site_a` remains `leased` with repeated `dbvc_bricks_client_envelope_timestamp_invalid`, `test_site_b` remains queued, and `applied=0`; see tracker `P19A-TEST-05`)
 
 ### Required tests
-- `P1-TEST-01` Toggle persistence: save on/off and verify reads.
-- `P1-TEST-02` Menu visibility: disabled absent, enabled present.
-- `P1-TEST-03` Endpoint gating: disabled unavailable, enabled available.
-- `P1-TEST-04` Hook/job gating: disabled path registers none.
+- `P19A-TEST-01` Shared profile schema/persistence validation tests.
+- `P19A-TEST-02` Distribution transport tests (`all` + `selected`) with idempotency replay.
+- `P19A-TEST-03` Client signed verification tests for receive/apply endpoint.
+- `P19A-TEST-04` Diagnostics timeline and dead-letter tests.
+- `P19A-TEST-05` Live staging drill evidence (`mothership -> clientA/clientB`).
 
 ### Exit criteria
-- All required tests pass.
-- No Bricks add-on code path runs while disabled.
+- One shared rules profile can be authored on mothership and distributed to all/selected clients.
+- Client apply requires valid signature and returns per-site receipts.
+- Failure handling is isolated per site with auditable diagnostics.
+- Required tests pass and are logged in tracker.
 
-## Phase 2: Configuration contract implementation
+## 2) Phase 19D: Signed Envelope Transport (Client Pull)
 
 ### Entry criteria
-- Phase 1 complete.
-- Full key list from field matrix locked.
+- Phase 19A implementation complete (`P19A-T0..T2 DONE`) and live drill currently blocked by mothership->client reachability constraints.
 
 ### Tasks / Sub-tasks
-- `P2-T1` Implement settings model by tab
-  - `P2-T1-S1` Connection fields.
-  - `P2-T1-S2` Golden Source fields.
-  - `P2-T1-S3` Policies fields.
-  - `P2-T1-S4` Operations fields.
-  - `P2-T1-S5` Proposals fields.
-  - `P2-T1-S6` Render field-level help text beneath each Bricks input in Configure -> Add-ons.
-- `P2-T2` Validation + sanitization
-  - `P2-T2-S1` Enum validators.
-  - `P2-T2-S2` Range validators.
-  - `P2-T2-S3` URL and secret validators.
-  - `P2-T2-S4` Conditional required-field validators.
-- `P2-T3` Defaults + migration
-  - `P2-T3-S1` Seed missing defaults on first load.
-  - `P2-T3-S2` Add migration logic for option-key versioning.
-- `P2-T4` Settings access abstraction
-  - `P2-T4-S1` Add read helper for all Bricks add-on options.
-  - `P2-T4-S2` Add typed getters for booleans/enums/ints.
-- `P2-T5` Documentation + tracker updates
-  - `P2-T5-S1` Update progress tracker statuses.
-  - `P2-T5-S2` Record phase 2 completion note.
+- `P19D-T1` Envelope contract + storage
+  - `P19D-T1-S1` Freeze envelope schema (`envelope_id`, `command_type`, `site_uid`, `payload_hash`, signature metadata, state/attempt fields, timestamps).
+  - `P19D-T1-S2` Add queue storage model with versioned defaults and migration handling.
+  - `P19D-T1-S3` Add status index helpers for filtering by `site_uid`, `distribution_id`, and `state`.
+- `P19D-T2` Mothership enqueue flow
+  - `P19D-T2-S1` Add `commands/enqueue` endpoint with idempotency and per-target envelope fan-out.
+  - `P19D-T2-S2` Wire shared-rules distribution to enqueue envelopes when transport mode is `client_pull_envelope`.
+  - `P19D-T2-S3` Preserve correlation/distribution IDs and audit context in envelope metadata.
+- `P19D-T3` Client pull + lease semantics
+  - `P19D-T3-S1` Add `commands/pull` endpoint scoped to authenticated client site UID.
+  - `P19D-T3-S2` Add lease grant/renew/expiry handling to prevent duplicate workers.
+  - `P19D-T3-S3` Enforce pull filters so clients only receive their own envelopes.
+- `P19D-T4` Client apply runner + ack
+  - `P19D-T4-S1` Add client command runner that verifies signed envelope and routes command type (`shared_rules_apply` initial).
+  - `P19D-T4-S2` Add `commands/ack` endpoint with idempotent `applied|failed` state transitions.
+  - `P19D-T4-S3` Persist receipt details (`applied_profile_version`, error fields, actor/site/timestamps).
+- `P19D-T5` Retry/backoff/dead-letter
+  - `P19D-T5-S1` Add exponential backoff + cap for failed envelopes.
+  - `P19D-T5-S2` Add dead-letter transition on max attempts or expiry.
+  - `P19D-T5-S3` Add remediation hints and replay-safe retry action.
+    - `P19D-T5-S3-S1` Add duplicate identity detection (`same normalized base_url`, different `site_uid`) and mark conflicts non-targetable.
+    - `P19D-T5-S3-S2` Add mothership Connected Sites action `Merge/Deactivate Duplicate Alias` (confirmation + canonical UID choice; no auto-merge by default).
+    - `P19D-T5-S3-S3` Add mothership Connected Sites action `Reset Linkage` (clear command secret/hash + set `PENDING_INTRO`; do not trigger remote execution).
+    - `P19D-T5-S3-S4` Add client action `Reset + Re-run Intro Handshake` (client-initiated secure retry only).
+    - `P19D-T5-S3-S5` Add targeting/queue guardrails to block conflicted/unhealthy identities with explicit diagnostics codes.
+  - `P19D-T5-S4` Add site identity continuity + alias bridge model (for UID drift and broken handshake recovery).
+    - `P19D-T5-S4-S1` Add identity evidence fields per site record: `local_instance_uuid`, `first_seen_at`, `site_sequence_id`, `site_title_host_snapshot`.
+    - `P19D-T5-S4-S2` Add deterministic alias resolver (`alias_site_uid -> canonical_site_uid`) used on intro/enqueue/pull/ack/status paths.
+    - `P19D-T5-S4-S3` Add Connected Sites row control for manual `known_alias` text input and confirmation flow (no implicit remap).
+    - `P19D-T5-S4-S4` Add duplicate reconciliation policy: default manual merge/deactivate; optional assisted auto-merge mode only for deterministic matches and explicit operator confirmation.
+    - `P19D-T5-S4-S5` Add migration/backfill + audit continuity rules so historical transport/package/apply records remain queryable under canonical identity.
+  - `P19D-T5-S5` Production self-heal for handshake/auth drift + deterministic preflight guards.
+    - `P19D-T5-S5-S1` Auto-downgrade site health to `PENDING_INTRO` when client ack reports `dbvc_bricks_client_envelope_secret_missing`; clear stored linkage secrets and record diagnostics.
+    - `P19D-T5-S5-S2` Add enqueue/distribute preflight classification (`ready`, `blocked_pending_intro`, `blocked_secret_missing`, `blocked_duplicate_conflict`, `blocked_allow_receive_disabled`) and expose remediation hints in API payloads.
+    - `P19D-T5-S5-S3` Add deterministic canonical reroute behavior for alias targets only when alias mapping exists and canonical is healthy; otherwise fail with explicit canonical remediation payload.
+    - `P19D-T5-S5-S4` Add enqueue/distribute diagnostics + operator-facing payload hints for idempotency/header omissions and blocked states.
+    - `P19D-T5-S5-S5` Move client `Reset + Re-run Intro Handshake` action from `First-Time Checklist` into `Configure > Basic settings` for faster operator recovery flow.
+- `P19D-T6` Operations + diagnostics
+  - `P19D-T6-S1` Add mothership diagnostics timeline for envelope lifecycle (`queued|leased|applied|failed|dead_letter`).
+  - `P19D-T6-S2` Add queue status endpoint and operator-facing summary fields.
+  - `P19D-T6-S3` Add transport mode setting (`direct_push|client_pull_envelope`) and migration safeguards.
+- `P19D-T7` Validation + gating
+  - `P19D-T7-S1` Add automated tests for enqueue/pull/ack/lease/retry/dead-letter and signature validation.
+  - `P19D-T7-S2` Run live drill using client-pull transport across mothership/clientA/clientB (`all` + `selected`).
+  - `P19D-T7-S3` Re-run `P19A-TEST-05` and close P19A gate if transport evidence passes.
+
+### Current Status (2026-02-16)
+- `P19D-T7`: `IN_PROGRESS`
+- `P19D-T7-S2`: `IN_PROGRESS` (latest rerun `timestamp=20260217T091900Z` still has no `applied`: `selected` queues both targets, then `test_site_a` progresses to `dead_letter` with `dbvc_bricks_client_envelope_timestamp_invalid` while `test_site_b` remains `queued`)
+- `P19D-T7-S3`: `BLOCKED` (`P19A-TEST-05` rerun at `timestamp=20260217T091900Z` used client-pull transport but still did not reach applied receipts; `test_site_a` remains `leased` with repeated client diagnostics `dbvc_bricks_client_envelope_timestamp_invalid`)
+- `P19D-T5-S3`: `DONE` (duplicate UID conflict detection + non-targetable guardrails, mothership merge/deactivate and reset-linkage actions, client-only `Reset + Re-run Intro Handshake`; automated coverage added in `BricksAddonPhase19DTest`)
+- `P19D-T5-S4`: `DONE` (identity continuity metadata + deterministic `known_alias` resolver wired across intro/queue/auth paths; Connected Sites manual alias input/action added; assisted merge policy controls enforce deterministic candidate token + explicit confirmation)
+- `P19D-T5-S5`: `IN_PROGRESS` (production self-heal/remediation guardrail hardening added after 2026-02-17 live failures; auto-downgrade to `PENDING_INTRO` on secret-missing ack is implemented, preflight + reroute work remains)
 
 ### Required tests
-- `P2-TEST-01` Field validation coverage (all constrained fields).
-- `P2-TEST-02` Defaults load coverage.
-- `P2-TEST-03` Invalid input rejection coverage.
-- `P2-TEST-04` Settings read helper type coverage.
+- `P19D-TEST-01` Envelope schema/queue persistence tests.
+- `P19D-TEST-02` Enqueue idempotency and fan-out targeting tests (`all` + `selected`).
+- `P19D-TEST-03` Pull endpoint auth/site-scope/lease behavior tests.
+- `P19D-TEST-04` Ack transitions + retry/backoff/dead-letter tests.
+- `P19D-TEST-05` Signature/nonce/timestamp validation tests.
+- `P19D-TEST-06` Live staging drill evidence with client-pull transport.
+- `P19D-TEST-07` Re-validation of `P19A-TEST-05` after enabling client-pull transport.
+- `P19D-TEST-08` Identity continuity tests for UID drift: alias resolution, canonical remap logging, and history continuity assertions.
+- `P19D-TEST-09` Connected Sites UI tests for manual `known_alias` input + merge confirmation and safety checks.
+- `P19D-TEST-10` Secret-missing recovery test: ack failure auto-marks site/linkage back to `PENDING_INTRO` and writes diagnostics.
 
 ### Exit criteria
-- Every field in matrix has:
-  - storage key,
-  - validator,
-  - default,
-  - UI control,
-  - help text/usage instruction.
+- Shared-rules distribution no longer depends on mothership direct network reachability to client hostnames.
+- Per-site command delivery is auditable, idempotent, and retry-safe.
+- Dead-letter handling and operator diagnostics are available.
+- `P19A-TEST-05` passes under client-pull transport and tracker is updated.
+- UID drift and handshake recovery preserve historical record continuity via canonical/alias mapping without destructive data loss.
 
-Phase 2 field help text requirements (must appear beneath inputs):
-- `Add-on Visibility Mode` (`dbvc_addon_bricks_visibility`):
-  - "`configure_and_submenu` (recommended): show Bricks settings in Configure and submenu when enabled."
-  - "`submenu_only`: hide Bricks settings from Configure and use submenu only."
-- `Mothership Base URL` (`dbvc_bricks_mothership_url`):
-  - "Enter the mothership base origin only (no trailing slash, no `/wp-json`)."
-  - "Example LocalWP URL: `https://dbvc-mothership.local`."
-  - "Required when role is `client`; leave empty when role is `mothership`."
-
-## Phase 3: Artifact registry + canonicalization + fingerprint
+## 3) Phase 19B: Client Protected Artifact Variants
 
 ### Entry criteria
-- Phase 2 complete.
-- Artifact scope for MVP approved.
+- Phase 19A complete.
+- Phase 19D complete.
 
 ### Tasks / Sub-tasks
-- `P3-T1` Artifact registry
-  - `P3-T1-S1` Register Entity artifact `bricks_template`.
-  - `P3-T1-S2` Register option artifacts from matrix.
-  - `P3-T1-S3` Add include/exclude policy mapping per artifact.
-- `P3-T2` Canonicalization
-  - `P3-T2-S1` Entity canonicalization rules.
-  - `P3-T2-S2` Option canonicalization rules.
-  - `P3-T2-S3` Volatile/noisy field stripping rules.
-  - `P3-T2-S4` Stable sort for nested objects/arrays.
-- `P3-T3` Fingerprint engine
-  - `P3-T3-S1` Implement `sha256:<hex>` formatter.
-  - `P3-T3-S2` Add hash mismatch diagnostics helper.
-- `P3-T4` Fixtures + schema validation
-  - `P3-T4-S1` Build fixtures for each artifact type.
-  - `P3-T4-S2` Validate fixtures against canonical schema assumptions.
-- `P3-T5` Documentation + tracker updates
-  - `P3-T5-S1` Update progress tracker statuses.
-  - `P3-T5-S2` Record phase 3 completion note.
+- `P19B-T1` Protected variant contract + storage
+  - `P19B-T1-S1` Define protected variant schema (`artifact_uid`, `artifact_type`, `label`, `reason`, `scope`, actor/timestamps).
+  - `P19B-T1-S2` Add dedupe/uniqueness rule (`artifact_uid` + `scope`) and migration defaults.
+  - `P19B-T1-S3` Add CRUD API with authorization/capability enforcement.
+- `P19B-T2` Client UI tab + workflow
+  - `P19B-T2-S1` Add `Protected Artifacts` tab for client role.
+  - `P19B-T2-S2` Add create/list/remove controls (reason required, confirm remove).
+  - `P19B-T2-S3` Add Differences panel integration to mark/unmark selected artifact.
+  - `P19B-T2-S4` Enforce read-only mode disables all mutating actions.
+- `P19B-T3` Audit + context annotations
+  - `P19B-T3-S1` Emit protected-variant audit events (`created|updated_reason|removed`).
+  - `P19B-T3-S2` Add read-only annotations in drift/apply/package payloads indicating protected state.
 
 ### Required tests
-- `P3-TEST-01` Determinism tests.
-- `P3-TEST-02` Volatile field stripping tests.
-- `P3-TEST-03` Fixture schema tests by artifact.
-- `P3-TEST-04` Hash format and collision smoke tests.
+- `P19B-TEST-01` Protected variant CRUD + auth tests.
+- `P19B-TEST-02` Protected Artifacts tab rendering/interaction tests.
+- `P19B-TEST-03` Differences mark/unmark integration tests.
+- `P19B-TEST-04` Read-only mode gating tests.
+- `P19B-TEST-05` Payload annotation and audit event tests.
 
 ### Exit criteria
-- Canonical + hash outputs stable and reproducible.
+- Client operators can manage protected variants in a dedicated Bricks tab.
+- Protected variants are auditable, deduplicated, and role/capability constrained.
+- Payload annotations are visible without altering apply semantics.
+- Required tests pass and are logged in tracker.
 
-## Phase 4: Drift scan (read-only)
+## 4) Phase 19C: Mothership Visibility + Cross-Site Drill
 
 ### Entry criteria
-- Phase 3 complete.
+- Phase 19B complete.
 
 ### Tasks / Sub-tasks
-- `P4-T1` Drift engine compare path
-  - `P4-T1-S1` Resolve target package manifest.
-  - `P4-T1-S2` Compute local canonical/hash set.
-  - `P4-T1-S3` Compare and classify status.
-- `P4-T2` Diff summary contract
-  - `P4-T2-S1` Build structured diff summaries.
-  - `P4-T2-S2` Add truncation metadata and raw-available flag.
-- `P4-T3` UI surface
-  - `P4-T3-S1` Add aggregate counters by status.
-  - `P4-T3-S2` Add per-artifact drill-down view.
-- `P4-T4` Read-only enforcement
-  - `P4-T4-S1` Verify no write code paths in scan endpoint.
-  - `P4-T4-S2` Add guard that rejects write attempts in scan mode.
-- `P4-T5` Documentation + tracker updates
-  - `P4-T5-S1` Update progress tracker statuses.
-  - `P4-T5-S2` Record phase 4 completion note.
+- `P19C-T1` Mothership protected-variant visibility
+  - `P19C-T1-S1` Add connected-client summary table with protected counts by artifact class.
+  - `P19C-T1-S2` Add drill-down list for each client’s protected variants.
+  - `P19C-T1-S3` Add deep-link and copy-link helper to client `DBVC -> Bricks -> Protected Artifacts`.
+  - `P19C-T1-S4` Add freshness indicators (`last_seen`, `last_sync`) per client.
+- `P19C-T2` Final validation and closure
+  - `P19C-T2-S1` Run full network drill (shared rules distribution + protected variant visibility) across mothership/clientA/clientB.
+  - `P19C-T2-S2` Capture commands, timestamps, receipts, diagnostics traces, and UI evidence.
+  - `P19C-T2-S3` Update tracker statuses to `DONE` and write Phase 19 completion note.
 
 ### Required tests
-- `P4-TEST-01` Status classification tests.
-- `P4-TEST-02` Truncation and raw fallback tests.
-- `P4-TEST-03` Read-only guarantee tests.
-- `P4-TEST-04` Large payload memory/use tests.
+- `P19C-TEST-01` Mothership aggregation visibility tests.
+- `P19C-TEST-02` Deep-link/copy-link rendering tests.
+- `P19C-TEST-03` Full live cross-site drill evidence test.
 
 ### Exit criteria
-- Drift scan accurate and non-mutating.
+- Mothership can identify and inspect clients with protected variants.
+- Operators can navigate (or copy-link navigate) to client protected tabs reliably.
+- Live cross-site evidence is complete and auditable.
+- Required tests pass and are logged in tracker.
 
-## Phase 5: Apply + restore safety
+## 4.1) Backlog Candidates (Next Implementation Phase)
 
-### Entry criteria
-- Phase 4 complete.
-- Restore point strategy approved.
+### `BL-PKG-TABLE-01` Packages table site identity columns
+- Add two table headers to the Packages tab package table (current header row: `Select | Package | Version | Channel | Audience`):
+  - `Site Domain`
+  - `Site UID`
+- Ensure values render per package row using connected-site metadata and remain sortable/filter-safe with existing table behavior.
 
-### Tasks / Sub-tasks
-- `P5-T1` Preflight + dry-run apply planner
-  - `P5-T1-S1` Preflight validation checklist.
-  - `P5-T1-S2` Dry-run execution and report shape.
-- `P5-T2` Restore points
-  - `P5-T2-S1` Create restore point before apply.
-  - `P5-T2-S2` Persist restore metadata and retention handling.
-- `P5-T3` Ordered apply pipeline
-  - `P5-T3-S1` Apply option artifacts first.
-  - `P5-T3-S2` Apply Entity artifacts second.
-  - `P5-T3-S3` Apply post-processing and relation consistency checks.
-- `P5-T4` Verification + rollback
-  - `P5-T4-S1` Post-apply hash verification pass.
-  - `P5-T4-S2` Trigger rollback on verification failure.
-  - `P5-T4-S3` Record rollback audit events.
-- `P5-T5` Policy and destructive gates
-  - `P5-T5-S1` Enforce policy resolver decisions.
-  - `P5-T5-S2` Require explicit approval for destructive operations.
-- `P5-T6` Documentation + tracker updates
-  - `P5-T6-S1` Update progress tracker statuses.
-  - `P5-T6-S2` Record phase 5 completion note.
+### `BL-SMARTMODE-01` Simple Smart Mode workflow
+- Add a new `Simple Smart Mode` toggle flow that is only shown/enabled after all prerequisites are true:
+  - mothership is configured,
+  - first client site is configured,
+  - intro/handshake is confirmed valid.
+- When enabled, Smart Mode should:
+  - automatically apply planned/default settings for the workflow,
+  - incrementally record Bricks Builder artifact changes from client sites,
+  - maintain a running fluid package of those changes,
+  - send that package to mothership periodically,
+  - flag incoming changes for mothership review and merge into Golden artifacts.
+- Note: detailed trigger/decision map is pending and will be charted in a dedicated flow-spec task.
 
-### Required tests
-- `P5-TEST-01` Apply success integration test.
-- `P5-TEST-02` Mid-apply failure rollback test.
-- `P5-TEST-03` Policy gate behavior tests.
-- `P5-TEST-04` Destructive-change gate tests.
+## 5) Go/No-Go Gate (Phase 19 Series)
 
-### Exit criteria
-- Apply flow proven recoverable and auditable.
-
-## Phase 6: Proposal pipeline
-
-### Entry criteria
-- Phase 5 complete.
-
-### Tasks / Sub-tasks
-- `P6-T1` Proposal data model + status machine
-  - `P6-T1-S1` Implement statuses and allowed transitions.
-  - `P6-T1-S2` Validate transition authorization and business rules.
-- `P6-T2` Proposal endpoints
-  - `P6-T2-S1` Submit endpoint.
-  - `P6-T2-S2` List endpoint.
-  - `P6-T2-S3` Status update endpoint.
-- `P6-T3` Queue controls
-  - `P6-T3-S1` De-duplication key enforcement.
-  - `P6-T3-S2` Pagination/filter semantics.
-- `P6-T4` Governance logging
-  - `P6-T4-S1` Reviewer attribution.
-  - `P6-T4-S2` Structured audit event emission.
-- `P6-T5` Documentation + tracker updates
-  - `P6-T5-S1` Update progress tracker statuses.
-  - `P6-T5-S2` Record phase 6 completion note.
-
-### Required tests
-- `P6-TEST-01` Status transition tests.
-- `P6-TEST-02` De-duplication tests.
-- `P6-TEST-03` End-to-end proposal flow test.
-- `P6-TEST-04` Audit attribution tests.
-
-### Exit criteria
-- Proposal governance works end-to-end with audit trail.
-
-## Phase 7: Hardening and release readiness
-
-### Entry criteria
-- Phase 6 complete.
-
-### Tasks / Sub-tasks
-- `P7-T1` Performance hardening
-  - `P7-T1-S1` Benchmark large payload compare/apply.
-  - `P7-T1-S2` Tune limits/chunking.
-- `P7-T2` Compatibility hardening
-  - `P7-T2-S1` Add regression fixtures for Bricks schema variants.
-  - `P7-T2-S2` Validate older DBVC snapshot/manifest compatibility.
-- `P7-T3` Operational readiness
-  - `P7-T3-S1` Write restore/rollback runbook.
-  - `P7-T3-S2` Write proposal operations runbook.
-- `P7-T4` Final QA gate
-  - `P7-T4-S1` Complete QA matrix.
-  - `P7-T4-S2` Sign-off checklist completion.
-- `P7-T5` Documentation + tracker updates
-  - `P7-T5-S1` Update progress tracker statuses.
-  - `P7-T5-S2` Record phase 7 completion note.
-
-### Required tests
-- `P7-TEST-01` Performance baseline tests.
-- `P7-TEST-02` Multisite option table behavior tests.
-- `P7-TEST-03` Full manual E2E drill.
-- `P7-TEST-04` Disabled-mode regression (no submenu/routes/jobs).
-
-### Exit criteria
-- Release checklist signed off.
-
-## Phase 8: Bricks submenu UI foundation + role gating
-
-### Entry criteria
-- Phase 7 complete.
-- Submenu slug and activation gate stable.
-
-### Tasks / Sub-tasks
-- `P8-T1` Submenu admin page shell
-  - `P8-T1-S1` Render Bricks admin page shell for `admin.php?page=addon-dbvc-bricks-addon`.
-  - `P8-T1-S2` Add notices/loading/error containers using existing DBVC admin patterns.
-  - `P8-T1-S3` Add tabbed IA shell (`Overview`, `Differences`, `Apply & Restore`, `Proposals`, `Packages`).
-- `P8-T2` Role-aware page composition
-  - `P8-T2-S1` Detect role mode from `dbvc_bricks_role` (`client|mothership`).
-  - `P8-T2-S2` Show/hide tabs and actions based on role mode.
-  - `P8-T2-S3` Add read-only banner/disable actions when `dbvc_bricks_read_only=1`.
-- `P8-T3` Data wiring baseline
-  - `P8-T3-S1` Wire `GET /dbvc/v1/bricks/status` into Overview.
-  - `P8-T3-S2` Add page-level refresh controls and last-updated state.
-  - `P8-T3-S3` Add route/state guards for disabled add-on mode.
-- `P8-T4` Documentation + tracker updates
-  - `P8-T4-S1` Update progress tracker statuses.
-  - `P8-T4-S2` Record phase 8 completion note.
-
-### Required tests
-- `P8-TEST-01` Submenu page render + capability guard test.
-- `P8-TEST-02` Role-based tab visibility test (`client` vs `mothership`).
-- `P8-TEST-03` Read-only state disables mutating controls.
-- `P8-TEST-04` Disabled add-on mode blocks submenu runtime UI actions.
-
-### Exit criteria
-- Bricks submenu page is operational and role-aware.
-
-## Phase 9: Differences UX + simple diff viewer (Entity + option artifacts)
-
-### Entry criteria
-- Phase 8 complete.
-- Drift endpoint contract stable (`/dbvc/v1/bricks/drift-scan`).
-
-### Tasks / Sub-tasks
-- `P9-T1` Differences panel controls
-  - `P9-T1-S1` Add drift scan trigger + package selector controls.
-  - `P9-T1-S2` Add filters (`artifact class`, `status`, `search`).
-  - `P9-T1-S3` Add counts summary cards (`CLEAN`, `DIVERGED`, `OVERRIDDEN`, `PENDING_REVIEW`).
-- `P9-T2` Simple diff list and detail
-  - `P9-T2-S1` Render artifact list with status chips and artifact metadata.
-  - `P9-T2-S2` Implement detail pane with `local` vs `golden` hash and changed paths.
-  - `P9-T2-S3` Add truncation/raw indicators based on diff summary metadata.
-- `P9-T3` Artifact-type UX distinctions
-  - `P9-T3-S1` Label Template artifacts as `Entity` artifacts.
-  - `P9-T3-S2` Label option artifacts by option key/group.
-  - `P9-T3-S3` Add empty/unsupported-state messaging for missing artifact payloads.
-- `P9-T4` Documentation + tracker updates
-  - `P9-T4-S1` Update progress tracker statuses.
-  - `P9-T4-S2` Record phase 9 completion note.
-
-### Required tests
-- `P9-TEST-01` Drift response-to-UI mapping test coverage.
-- `P9-TEST-02` Filters/search behavior test coverage.
-- `P9-TEST-03` Diff detail pane render + truncation metadata test.
-- `P9-TEST-04` Entity/option labeling and status chip consistency test.
-
-### Exit criteria
-- Users can review incoming differences for template Entity and option artifacts from submenu UI.
-
-## Phase 10: Role-specific action workflows (apply, proposals, packages)
-
-### Entry criteria
-- Phase 9 complete.
-
-### Tasks / Sub-tasks
-- `P10-T1` Client workflows
-  - `P10-T1-S1` Add dry-run/apply actions in submenu using `/dbvc/v1/bricks/apply`.
-  - `P10-T1-S2` Add restore-point creation + rollback controls.
-  - `P10-T1-S3` Add destructive-operation confirmation UX and policy-gate messaging.
-- `P10-T2` Proposal workflows
-  - `P10-T2-S1` Add proposal submit UI from selected diff artifacts.
-  - `P10-T2-S2` Add proposal list/review actions with status transition controls.
-  - `P10-T2-S3` Add actor-attribution and transition history display.
-- `P10-T3` Mothership package workflows
-  - `P10-T3-S1` Add package list UI with channel/version filters.
-  - `P10-T3-S2` Add package detail drill-down for artifact inspection.
-  - `P10-T3-S3` Add package-action guardrails for incompatible states.
-- `P10-T4` Documentation + tracker updates
-  - `P10-T4-S1` Update progress tracker statuses.
-  - `P10-T4-S2` Record phase 10 completion note.
-
-### Required tests
-- `P10-TEST-01` Client apply/restore UI integration tests.
-- `P10-TEST-02` Proposal submit/review UI integration tests.
-- `P10-TEST-03` Mothership package list/detail UI integration tests.
-- `P10-TEST-04` Permission and read-only guard regression tests for all UI-triggered mutations.
-
-### Exit criteria
-- Role-specific actions are executable from submenu UI with policy-safe guardrails.
-
-## Phase 11: UX hardening, observability, and operational readiness
-
-### Entry criteria
-- Phase 10 complete.
-
-### Tasks / Sub-tasks
-- `P11-T1` UX resilience
-  - `P11-T1-S1` Add robust loading/empty/error/retry states for every panel.
-  - `P11-T1-S2` Add consistent toasts/notices and progressive disclosure for destructive actions.
-  - `P11-T1-S3` Add keyboard focus management for tab and detail panes.
-- `P11-T2` Accessibility + internationalization
-  - `P11-T2-S1` Add ARIA semantics and labels for tablist/panels/table regions.
-  - `P11-T2-S2` Ensure text strings are translation-ready.
-  - `P11-T2-S3` Validate color/status indicators are not color-only signals.
-- `P11-T3` Observability + audit depth
-  - `P11-T3-S1` Add structured UI action telemetry hooks (scan/apply/proposal/package).
-  - `P11-T3-S2` Add correlation IDs in UI requests surfaced in audit/log messages.
-  - `P11-T3-S3` Add operator-facing diagnostics panel for recent failures.
-- `P11-T4` Documentation + tracker updates
-  - `P11-T4-S1` Update progress tracker statuses.
-  - `P11-T4-S2` Record phase 11 completion note.
-
-### Required tests
-- `P11-TEST-01` Accessibility smoke tests for keyboard and ARIA wiring.
-- `P11-TEST-02` Error/retry state tests across all tabs.
-- `P11-TEST-03` i18n string extraction/coverage checks.
-- `P11-TEST-04` Observability hook emission tests.
-
-### Exit criteria
-- Submenu UI is operationally supportable, accessible, and diagnosable.
-
-## Phase 12: Extensibility + forward compatibility roadmap implementation
-
-### Entry criteria
-- Phase 11 complete.
-
-### Tasks / Sub-tasks
-- `P12-T1` Plugin integration hooks
-  - `P12-T1-S1` Add filter/action extension points for diff row rendering.
-  - `P12-T1-S2` Add extension points for additional artifact-type panels.
-  - `P12-T1-S3` Add extension points for custom governance/policy overlays.
-- `P12-T2` Schema/version compatibility
-  - `P12-T2-S1` Add UI feature/version negotiation for future endpoint changes.
-  - `P12-T2-S2` Add backward-compatible parsing strategy for legacy payload variants.
-  - `P12-T2-S3` Add explicit deprecation notices/path for retired fields/actions.
-- `P12-T3` Future operations readiness
-  - `P12-T3-S1` Add optional bulk operation mode with chunked execution UX.
-  - `P12-T3-S2` Add offline/exportable review artifact format for approvals.
-  - `P12-T3-S3` Add multisite fleet-mode planning hooks (future disabled by default).
-- `P12-T4` Documentation + tracker updates
-  - `P12-T4-S1` Update progress tracker statuses.
-  - `P12-T4-S2` Record phase 12 completion note.
-
-### Required tests
-- `P12-TEST-01` Extension hook contract tests.
-- `P12-TEST-02` Backward/forward payload compatibility tests.
-- `P12-TEST-03` Bulk mode chunk safety/idempotency tests.
-- `P12-TEST-04` Deprecated path warning and fallback behavior tests.
-
-### Exit criteria
-- Bricks submenu implementation supports safe evolution without breaking current operators.
-
-## Phase 15: Staging validation + release go/no-go execution
-
-### Entry criteria
-- Phase 14 complete.
-- Staging environment prepared with Bricks add-on enabled and representative data.
-- Release candidate branch/build frozen for validation window.
-
-Progress update (2026-02-15):
-- `P15-T5-S1` implemented: intro packet endpoint contract added (`POST /dbvc/v1/bricks/intro/packet`).
-- `P15-T5-S2` implemented: handshake accept/reject endpoint with signed acknowledgement added (`POST /dbvc/v1/bricks/intro/handshake`).
-- connected-sites now supports registry-first sourcing mode from onboarding records (`dbvc_bricks_clients` option-backed) with onboarding lifecycle visibility in Packages -> Connected Sites.
-- signed command verification scaffolding added (`DBVC_Bricks_Command_Auth`, `POST /dbvc/v1/bricks/commands/ping`) with timestamp/nonce HMAC verification and replay protection.
-- `P15-T5-S5/S6/S7` implemented: client onboarding transport automation now persists per-site state (`dbvc_bricks_onboarding_transport`), triggers idempotent intro on bootstrap/configure save when credentials are valid, and runs bounded retry attempts from scheduled job with diagnostics events.
-- package/schema verification slice implemented:
-  - `GET /dbvc/v1/bricks/schema-verify` now reports live `bricks_theme_styles` payload shape and components label/slug path coverage.
-  - manifest compatibility normalization now supports wrapper variants (`snapshot.manifest`, `data.manifest`) with source-shape metadata for legacy payloads.
-  - package preflight compatibility behavior validated for strict vs lenient parse modes with legacy schema versions.
-
-### Tasks / Sub-tasks
-- `P15-T1` Staging workflow drill execution
-  - `P15-T1-S1` Lock validation dataset + package manifest fixtures used for staging drills.
-  - `P15-T1-S2` Execute apply/restore/rollback drill and capture timestamps + operator IDs.
-  - `P15-T1-S3` Execute proposal submit/review/transition drill and capture full audit trail.
-- `P15-T2` Security and contract validation closure
-  - `P15-T2-S1` Verify idempotency behavior for all mutating Bricks endpoints under retry/replay.
-  - `P15-T2-S2` Verify capability and nonce protections for Bricks submenu/admin-post and REST calls.
-  - `P15-T2-S3` Validate compatibility with older DBVC manifest/snapshot payload variants in staging.
-- `P15-T3` Live Bricks schema verification
-  - `P15-T3-S1` Validate `bricks_theme_styles` payload shape against canonicalization assumptions.
-  - `P15-T3-S2` Validate component label/slug path stability for drift/proposal/apply flows.
-  - `P15-T3-S3` Document any schema deltas and required migration/backfill notes.
-- `P15-T4` Go/no-go decision package
-  - `P15-T4-S1` Update progress tracker statuses and attach command/output evidence.
-  - `P15-T4-S2` Produce release decision summary (`GO` or `NO_GO`) with explicit blocker list.
-  - `P15-T4-S3` Open follow-on phases/tasks for non-blocking enhancements discovered in validation.
-- `P15-T5` Connected-network onboarding enhancement (Introduction Packet + handshake registry)
-  - `P15-T5-S1` Add client introduction packet endpoint and payload (`site_uid`, `site_label`, `base_url`, capabilities, environment marker).
-  - `P15-T5-S2` Add mothership accept/reject handshake endpoint with signed acknowledgement (`accepted`, `mothership_uid`, `registered_at`, `handshake_token`).
-  - `P15-T5-S3` Add dedicated DBVC registry table (`dbvc_bricks_clients`) and migrate connected-sites table source to registry-first.
-  - `P15-T5-S4` Add onboarding state machine (`PENDING_INTRO`, `VERIFIED`, `REJECTED`, `DISABLED`) and UI status badges.
-  - `P15-T5-S5` Add idempotent auto-intro trigger once valid mothership credentials are configured on client.
-  - `P15-T5-S6` Persist per-site onboarding transport state (`ping_sent`, `intro_sent`, `handshake_state`, `approved_at`) on activation/configure save.
-  - `P15-T5-S7` Add bounded retry cron until `ping + intro + handshake` reach terminal success/failure state (idempotent retries, capped attempts, diagnostics).
-
-### Required tests
-- `P15-TEST-01` Staging apply + restore + rollback drill evidence.
-- `P15-TEST-02` Staging proposal workflow drill evidence.
-- `P15-TEST-03` Idempotency replay tests for mutating endpoints.
-- `P15-TEST-04` Capability + nonce enforcement verification.
-- `P15-TEST-05` Legacy manifest/snapshot compatibility verification.
-- `P15-TEST-06` Live `bricks_theme_styles` + component slug/label schema verification.
-- `P15-TEST-07` Force-channel policy tests (default, override, stable confirmation, audit fields).
-- `P15-TEST-08` Introduction packet + handshake tests (client submit, mothership accept/reject, registry persistence, idempotency).
-
-### Exit criteria
-- All required tests pass with evidence captured in tracker.
-- Final go/no-go gate section is fully satisfied.
-- Any unresolved blocker is explicitly marked and phase status set to `BLOCKED` (no silent pass-through).
-
-## Phase 13: True push/pull transport foundation (client -> mothership publish, mothership -> client pull)
-
-### Entry criteria
-- Phase 12 complete.
-- Security baseline approved for remote writes (least privilege + TLS).
-- Package schema version contract approved.
-
-### Tasks / Sub-tasks
-- `P13-T1` Package contract + lifecycle
-  - `P13-T1-S1` Define immutable package schema (`package_id`, `version`, `channel`, `source_site`, `artifacts`, `digest`, `created_at`).
-  - `P13-T1-S2` Define package status machine (`DRAFT`, `PUBLISHED`, `SUPERSEDED`, `REVOKED`).
-  - `P13-T1-S3` Define compatibility strategy (`schema_version`, deprecation path, strict/lenient parse mode).
-- `P13-T2` Mothership write endpoints (new)
-  - `P13-T2-S1` Add `POST /dbvc/v1/bricks/packages` for client publish submission.
-  - `P13-T2-S2` Add `POST /dbvc/v1/bricks/packages/{package_id}/promote` for channel promotion.
-  - `P13-T2-S3` Add `POST /dbvc/v1/bricks/packages/{package_id}/revoke` for emergency stop.
-  - `P13-T2-S4` Add idempotency-key enforcement on all mutating package endpoints.
-- `P13-T3` Client publish pipeline
-  - `P13-T3-S1` Build local package from selected artifacts + canonical hashes.
-  - `P13-T3-S2` Add publish preflight (`dry-run`, policy checks, payload-size checks).
-  - `P13-T3-S3` Submit package to mothership with correlation ID and actor/site attribution.
-  - `P13-T3-S4` Persist publish receipt + remote package ID mapping locally.
-- `P13-T4` Connected sites registry + selectable rollout controls
-  - `P13-T4-S1` Add connected-site registry model (`site_uid`, `label`, `base_url`, `status`, `last_seen`, `auth_mode`).
-  - `P13-T4-S2` Add mothership UI table listing connected sites with search/filter/sort.
-  - `P13-T4-S3` Add selection controls:
-    - `all sites`,
-    - `selected sites` (row checkbox allowlist),
-    - `exclude list` (optional future flag).
-  - `P13-T4-S4` Persist publish targeting fields on package metadata (`target_mode`, `target_sites[]`).
-  - `P13-T4-S5` Enforce server-side target validation (no publish to unregistered/disabled site).
-- `P13-T5` Pull contract and delivery semantics
-  - `P13-T5-S1` Extend package list/get responses with site-target visibility rules.
-  - `P13-T5-S2` Add client pull filter by audience membership.
-  - `P13-T5-S3` Add pull acknowledgment endpoint (`POST /dbvc/v1/bricks/packages/{package_id}/ack`) with applied/skipped states.
-- `P13-T6` Documentation + tracker updates
-  - `P13-T6-S1` Update progress tracker statuses.
-  - `P13-T6-S2` Record phase 13 completion note with endpoint and UI evidence.
-
-### Required tests
-- `P13-TEST-01` Package publish endpoint contract + schema validation tests.
-- `P13-TEST-02` Idempotency replay tests for package publish/promote/revoke.
-- `P13-TEST-03` Connected sites table render + selection model tests (`all` vs `selected`).
-- `P13-TEST-04` Server-side target allowlist enforcement tests.
-- `P13-TEST-05` Pull visibility tests (targeted packages visible only to allowed client sites).
-- `P13-TEST-06` End-to-end client publish -> mothership receive -> package listed flow.
-
-### Exit criteria
-- Client can publish a package to mothership with auditable receipt.
-- Mothership can restrict package availability to all or selected connected sites.
-- Pull visibility and acknowledgements enforce targeting contract.
-
-## Phase 14: Push/pull operations + governance hardening
-
-Phase status: DONE (2026-02-15)
-Manual gate: `P14-TEST-01` PASS (clientA -> mothership -> clientA/clientB, `all` + `selected` targeting verified)
-
-### Entry criteria
-- Phase 13 complete.
-- Connected-site registry populated with at least one local/staging client.
-
-### Tasks / Sub-tasks
-- `P14-T1` Mothership publish operations UI
-  - `P14-T1-S1` Add incoming package review queue and package diff inspection.
-  - `P14-T1-S2` Add approve/promote/revoke actions with role/capability guards.
-  - `P14-T1-S3` Add channel workflow (`canary -> beta -> stable`) with explicit confirmations.
-- `P14-T2` Client pull/apply UX
-  - `P14-T2-S1` Show package audience metadata + targeting reason in client UI.
-  - `P14-T2-S2` Add one-click pull latest allowed package and apply dry-run.
-  - `P14-T2-S3` Add apply + restore point + rollback workflow tied to publish receipt IDs.
-- `P14-T3` Reliability + failure handling
-  - `P14-T3-S1` Add retry/backoff and dead-letter markers for failed push/pull operations.
-  - `P14-T3-S2` Add partial-failure diagnostics with operator remediation hints.
-  - `P14-T3-S3` Add delivery state timeline (`sent`, `received`, `eligible`, `pulled`, `applied`, `failed`).
-- `P14-T4` Security/governance hardening
-  - `P14-T4-S1` Enforce least-privilege integration accounts per connected site.
-  - `P14-T4-S2` Add key rotation workflow and expiration warnings.
-  - `P14-T4-S3` Enforce channel protection rules (stable promotion requires approval gate).
-  - `P14-T4-S4` Add client publish force-channel policy (`none|canary|beta|stable`) with audit metadata (`channel_forced`, `forced_from`, `forced_to`, `forced_by`).
-  - `P14-T4-S5` Require explicit confirmation when force-channel is `stable` and show warning banner in client packages UI.
-- `P14-T5` Documentation + tracker updates
-  - `P14-T5-S1` Update progress tracker statuses.
-  - `P14-T5-S2` Record phase 14 completion note with operator runbook links.
-
-### Required tests
-- `P14-TEST-01` End-to-end publish/pull/apply drill (`clientA -> mothership -> clientA/clientB`) with allowlist targeting.
-- `P14-TEST-02` Promote/revoke governance and approval gate tests.
-- `P14-TEST-03` Failure recovery tests (retry, dead-letter, resume) for push/pull transport.
-- `P14-TEST-04` Delivery timeline and audit attribution tests.
-- `P14-TEST-05` Key rotation and expired-credential behavior tests.
-
-### Exit criteria
-- True push/pull workflow is production-safe with selective site targeting.
-- Governance, reliability, and audit requirements are verifiably met.
-
-## 3) Missing Items / Sub-tasks Tracker
-
-- Live Bricks schema verification (required before Phase 3 close):
-  - owner: `P15-T3`
-  - `bricks_theme_styles` data shape validation.
-  - component label/slug path stability validation.
-- Security hardening:
-  - owner: `P14-T4`
-  - idempotency key enforcement on mutating endpoints.
-  - strict capability and nonce checks for add-on admin actions.
-- Compatibility:
-  - owner: `P13-T1`
-  - Backward compatibility with older DBVC manifests/snapshots.
-- Push/pull selective delivery:
-  - owner: `P13-T4` and `P13-T5`
-  - connected-sites registry availability and health tracking.
-  - mothership targeting mode (`all` vs `selected`) and server-side allowlist enforcement.
-- UX alignment:
-  - owner: `P15-T4-S3` (if non-blocking) or new blocking phase if release critical.
-  - Confirm whether Bricks artifact review uses existing Entity Drawer + option drawer variant.
-- Bricks submenu UX expansion:
-  - owner: completed in phases `P8-P10`; carry forward only if new gaps are discovered in `P15-T4-S3`.
-  - role-based page composition and role action controls.
-  - differences panel + simple diff viewer for Entity/option artifacts.
-  - apply/proposals/packages panel wiring inside submenu.
-- User documentation library rollout (`DBVC_USER_DOCUMENTATION_LIBRARY`):
-  - owner: `P15-T4-S3` follow-on enhancement (or new blocking phase if release-critical).
-  - seed file: `docs/DBVC_USER_DOCUMENTATION_LIBRARY.md`.
-  - scope: add a dedicated user-facing docs/library area in plugin UI and keep drift/package transport behavior documentation synchronized with shipped behavior.
-- Drift-noise masking and ignore rules:
-  - owner: `P15-T4-S3` follow-on enhancement (or new blocking phase if release-critical).
-  - add artifact/meta masking + ignore-rule support so known noisy values can be excluded from drift/proposal/apply comparisons.
-  - include option-level and nested option-object ignore paths (example: `bricks_color_palette` values that intentionally vary by site).
-- Differences + Packages metadata clarity:
-  - owner: `P15-T4-S3` follow-on enhancement.
-  - add template title column/metadata in Differences table rows for `bricks_template` artifacts.
-  - show site-domain/source-site metadata with package rows/detail so operators can quickly map package -> site and site -> package.
-
-Tracking rule:
-- Every open missing item must be linked to an owning phase/task/sub-task ID above.
-- Missing items unresolved at phase exit force `BLOCKED` status.
-
-## 4) Final Go/No-Go Gate
-
-Ship only if all are true:
-- All in-scope phase exit criteria for the target release milestone complete.
-- No open blocker in section 3.
-- Restore/rollback drill passes on staging.
-- Proposal workflow drill passes on staging.
-- Add-on disable switch fully deactivates Bricks routes/UI/jobs.
-- Progress tracker shows all in-scope phases and tasks as `DONE` with test evidence.
+Ship Phase 19 series only if all are true:
+- `P19A`, `P19D`, `P19B`, and `P19C` are `DONE` in tracker.
+- No open `BLOCKED` items.
+- Live drill evidence captured for mothership + at least two clients.
+- Add-on disable switch still fully deactivates Bricks routes/UI/jobs.

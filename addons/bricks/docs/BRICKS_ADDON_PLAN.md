@@ -365,12 +365,28 @@ Namespace: `dbvc/v1/bricks`
 
 3. `dbvc_bricks_clients` (planned)
 - `site_uid` (PK), `site_label`, `base_url`
+- `site_title_host_snapshot`
+- `local_instance_uuid`
+- `first_seen_at`
+- `site_sequence_id` (mothership-assigned monotonic integer)
 - `registry_state` (`PENDING_INTRO|VERIFIED|REJECTED|DISABLED`)
 - `handshake_token_hash`
 - `auth_method`, `key_id`
 - `last_intro_at`, `last_handshake_at`, `last_seen_at`
 - `ping_sent_at`, `intro_attempt_count`, `handshake_attempt_count`, `onboarding_last_error`
 - `created_at`, `updated_at`
+
+4. `dbvc_bricks_site_aliases` (planned)
+- `alias_site_uid` (unique)
+- `canonical_site_uid` (FK-ish to `dbvc_bricks_clients.site_uid`)
+- `reason`, `created_by`, `created_at`, `updated_at`
+- optional `auto_generated` flag (default false)
+
+Alias/merge policy:
+- `known_alias` is deterministic mapping only (`alias_site_uid -> canonical_site_uid`), never fuzzy auto-remap.
+- Fuzzy/similarity checks are advisory UX only (candidate suggestions by `base_url`, `local_instance_uuid`, `first_seen_at`, title/host snapshot).
+- Duplicate-site auto-merge remains off by default; assisted auto-merge may be enabled only for deterministic matches and explicit operator confirmation.
+- Preserve history continuity by storing `incoming_site_uid` and `resolved_site_uid` in transport/audit rows.
 
 Registry strategy:
 - Move connected-sites panel to registry-first records (`dbvc_bricks_clients`) and treat package-source backfill as fallback/auxiliary enrichment only.
@@ -437,3 +453,108 @@ Registry strategy:
   - schema drift tests across Bricks versions,
   - performance baseline for large option payloads,
   - regression fixture pack for known noisy fields.
+
+## 11) Phase 19 Active Breakdown (Next)
+
+Primary objectives:
+- Define shared mask/ignore rules once on mothership and distribute to connected sites (`all` or `selected`).
+- Add client-managed `Protected Artifact Variants` workflow with dedicated Bricks tab.
+- Add mothership visibility across client protected variants with direct navigation helpers.
+
+Execution split:
+- `Phase 19A`: shared rules profile contract, persistence, distribution transport, signed client apply.
+- `Phase 19D`: client-initiated signed command envelope transport (queue, pull, ack, retry/dead-letter) to remove mothership->client DNS dependency.
+- `Phase 19B`: client protected variant model + `Protected Artifacts` tab workflows.
+- `Phase 19C`: mothership protected-variant visibility + full cross-site drill and closure evidence.
+
+Planned architecture direction:
+- Reuse connected-sites registry and signed command scaffolding for distribution transport.
+- Keep distribution idempotent with per-site receipts and independent failure handling.
+- Store protected variants as explicit records with actor/timestamp attribution and artifact UID/type labels.
+
+UX expectations:
+- Client Bricks page adds `Protected Artifacts` tab for create/list/remove operations.
+- Mothership Bricks page adds protected-variant summary by client and artifact class with deep-link/copy-link actions to client tab path.
+
+Security and governance constraints:
+- Shared-rule apply operations require signed request validation and auditable correlation IDs.
+- Client protected-variant management remains capability-gated (`manage_options`) and nonce-protected in UI actions.
+
+### Phase 19D Specification: Signed Envelope Command Channel
+
+Problem statement:
+- Direct mothership->client HTTP delivery is blocked in environments where client URLs are not resolvable/reachable from mothership runtime (e.g., `.local` hosts).
+
+Design objective:
+- Shift transport to client-initiated command pull while preserving signed command verification, idempotency, auditability, and retry/dead-letter controls.
+
+Transport model:
+- Mothership enqueues one command envelope per target site.
+- Client polls mothership for pending envelopes over existing authenticated channel (`wp_app_password`).
+- Client verifies envelope signature + freshness + site binding, applies command, and posts receipt/ack.
+- Mothership updates envelope state (`queued|leased|applied|failed|dead_letter`) independently per site.
+
+Envelope contract (v1):
+- `envelope_id`
+- `command_type` (initially `shared_rules_apply`)
+- `site_uid`
+- `payload` + `payload_hash`
+- `signature` + signature metadata (`alg`, `signed_at`, `nonce`)
+- `correlation_id`, `distribution_id`, `request_id`
+- `state`, `attempt_count`, `max_attempts`
+- `next_attempt_at`, `lease_expires_at`, `expires_at`
+- `last_error_code`, `last_error_message`
+- `created_at`, `updated_at`
+
+Required APIs:
+- `POST /dbvc/v1/bricks/commands/enqueue` (mothership-only)
+- `POST /dbvc/v1/bricks/commands/pull` (client-authenticated; returns lease-granted envelopes for caller site UID only)
+- `POST /dbvc/v1/bricks/commands/ack` (client-authenticated; report `applied|failed` + receipt details)
+- `GET /dbvc/v1/bricks/commands/status` (mothership diagnostics/status view, filter by site/distribution/state)
+
+Retry/dead-letter policy:
+- Exponential backoff per envelope/site (`base`, `cap`, `max_attempts` configurable).
+- Lease timeout recovers stuck `leased` envelopes.
+- Move to `dead_letter` when attempts exhausted or envelope expired.
+- Preserve remediation hints and full error history in diagnostics payload.
+
+Security requirements:
+- Envelope signatures keyed by per-site command secret from onboarding handshake.
+- Pull/ack requests require authenticated site context and strict site UID matching.
+- Idempotency keys required for enqueue and ack writes.
+- Nonce replay protection + timestamp window validation for signed envelope metadata.
+
+Migration approach:
+- Keep existing direct push endpoints available behind fallback flag during migration.
+- Add transport mode setting: `direct_push` (legacy) vs `client_pull_envelope` (new default when ready).
+- Shared-rules distribution endpoint should enqueue envelopes when mode=`client_pull_envelope`.
+
+Validation gate:
+- Re-run `P19A-TEST-05` only after Phase 19D transport is implemented and enabled in staging.
+- Pass criteria: all/selected targeting succeeds without mothership direct DNS reachability to client hostnames.
+
+Tracking source of truth:
+
+## 12) Backlog Additions for Next Implementation Phase
+
+1. Packages tab table identity headers
+- Extend the package table under the Packages tab (currently `Select | Package | Version | Channel | Audience`) with:
+  - `Site Domain`
+  - `Site UID`
+- Use connected-site metadata binding so each package row carries source-site identity context.
+
+2. Simple Smart Mode workflow (planned)
+- Add a `Simple Smart Mode` toggle that becomes available only when:
+  - mothership is set,
+  - first client site is set,
+  - handshake is confirmed valid.
+- Smart Mode behavior target:
+  - auto-configure settings based on planned requirements,
+  - incrementally capture client Bricks Builder artifact changes,
+  - maintain a running fluid package of these changes,
+  - periodically send package updates to mothership,
+  - flag submissions for review and merge into Golden artifacts.
+- Detailed end-to-end flow mapping remains a follow-up design task with explicit state and timing rules.
+- Active phases and statuses: `addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
+- Active execution checklist: `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
+- Historical completed phases: `addons/bricks/docs/archive/BRICKS_ADDON_PROGRESS_TRACKER_ARCHIVE_P1_P18.md`

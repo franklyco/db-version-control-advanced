@@ -172,10 +172,27 @@ Connected sites table expected columns:
 - `site_uid`
 - `site_label`
 - `base_url`
+- `site_title_host_snapshot`
+- `local_instance_uuid`
+- `first_seen_at`
+- `site_sequence_id`
 - `status` (`online|offline|disabled`)
 - `last_seen_at`
 - `auth_mode`
 - `allow_receive_packages` (derived from selection or per-site lock state)
+- `known_aliases` (canonical-side alias list)
+- `canonical_site_uid` (for alias rows)
+- `conflict_state` (duplicate identity signaling)
+
+Connected sites identity continuity fields (registry-level, not direct Configure options):
+
+| Field Label | Option Key | Type | Allowed Values / Validation | Default | Required | Used By |
+|---|---|---|---|---|---|---|
+| Local Instance UUID | `dbvc_bricks_clients.local_instance_uuid` | uuid/string | stable UUIDv4-ish token, non-empty after first intro | empty | yes (post-intro) | deterministic identity evidence across UID drift |
+| First Seen At | `dbvc_bricks_clients.first_seen_at` | datetime | ISO-8601 UTC | set on first intro | yes | canonical selection + audit continuity |
+| Site Sequence ID | `dbvc_bricks_clients.site_sequence_id` | integer | monotonic positive integer, mothership-assigned | `0` | yes (mothership) | stable ordering / operator reference |
+| Title+Host Snapshot | `dbvc_bricks_clients.site_title_host_snapshot` | text | sanitized `title|host` snapshot | empty | no | operator reconciliation context |
+| Known Aliases | `dbvc_bricks_site_aliases` | map/list | `alias_site_uid -> canonical_site_uid` unique alias constraint | empty map | no | deterministic alias bridge resolution |
 
 ## 4) Canonicalization/Fingerprint Rules Matrix
 
@@ -260,6 +277,19 @@ All endpoints:
   - include template title for `bricks_template` rows in Differences UI.
 - Add Packages metadata enhancements:
   - include source site domain metadata in Packages table/detail for clear package-to-site mapping.
+
+### 6.7 Fleet rules distribution + protected variants (Phase 19)
+- Shared rules profile managed on mothership:
+  - one canonical profile containing artifact/meta ignore+mask maps.
+  - distribution target mode support (`all` and `selected` connected clients).
+- Signed distribution/apply transport:
+  - per-site idempotent delivery receipts and diagnostics timeline markers.
+- Protected Artifact Variants:
+  - client-managed registry for intentional local divergences (`bricks_template`, `bricks_global_classes`, etc.).
+  - dedicated client tab to create/list/remove protected variants with reason + actor attribution.
+- Mothership protected-variant visibility:
+  - connected client overview with protected variant counts and artifact class breakdown.
+  - deep-link/copy-link helper to client `DBVC -> Bricks -> Protected Artifacts` view.
 
 ## 7) Implementation Order (on-rails sequence)
 

@@ -156,6 +156,12 @@ final class DBVC_Bricks_Packages
             }, $items));
         }
         $limit = isset($filters['limit']) ? max(1, (int) $filters['limit']) : 50;
+        $items = array_values(array_map(static function ($item) {
+            if (! is_array($item)) {
+                return $item;
+            }
+            return self::augment_package_metadata($item);
+        }, $items));
         return array_slice($items, 0, $limit);
     }
 
@@ -553,6 +559,7 @@ final class DBVC_Bricks_Packages
         if (! $package) {
             return new \WP_Error('dbvc_bricks_package_not_found', 'Package not found.', ['status' => 404]);
         }
+        $package = self::augment_package_metadata($package);
 
         $response = [
             'manifest' => $package,
@@ -564,6 +571,25 @@ final class DBVC_Bricks_Packages
         }
 
         return rest_ensure_response($response);
+    }
+
+    /**
+     * @param array<string, mixed> $package
+     * @return array<string, mixed>
+     */
+    private static function augment_package_metadata(array $package)
+    {
+        $source_site = isset($package['source_site']) && is_array($package['source_site']) ? $package['source_site'] : [];
+        $base_url = esc_url_raw((string) ($source_site['base_url'] ?? ''));
+        $domain = '';
+        if ($base_url !== '') {
+            $host = wp_parse_url($base_url, PHP_URL_HOST);
+            if (is_string($host) && $host !== '') {
+                $domain = strtolower($host);
+            }
+        }
+        $package['source_site_domain'] = $domain;
+        return $package;
     }
 
     /**

@@ -11,12 +11,16 @@ final class DBVC_Bricks_Addon
     public const OPTION_SETTINGS_VERSION = 'dbvc_bricks_settings_version';
     public const OPTION_UI_DIAGNOSTICS = 'dbvc_bricks_ui_diagnostics';
     public const OPTION_FLEET_MODE_ENABLED = 'dbvc_bricks_fleet_mode_enabled';
+    public const OPTION_SHARED_RULES_PROFILE = 'dbvc_bricks_shared_rules_profile';
+    public const OPTION_SHARED_RULES_TRANSPORT = 'dbvc_bricks_shared_rules_transport';
     public const SETTINGS_VERSION = 1;
     public const UI_CONTRACT_VERSION = '1.0.0';
     public const UI_DIAGNOSTIC_MAX_ITEMS = 100;
     public const UI_DIAGNOSTIC_DEFAULT_LIMIT = 25;
     public const UI_DIAGNOSTIC_MAX_DEPTH = 3;
     public const UI_DIAGNOSTIC_MAX_KEYS = 50;
+    public const SHARED_RULES_DISTRIBUTION_MAX_ATTEMPTS = 3;
+    public const SHARED_RULES_DISTRIBUTION_RETRY_BASE_SECONDS = 60;
     public const CRON_HOOK = 'dbvc_bricks_addon_hourly';
     public const ADMIN_MENU_PRIORITY = 30;
     public const MENU_SLUG = 'addon-dbvc-bricks-addon';
@@ -35,6 +39,9 @@ final class DBVC_Bricks_Addon
         if (class_exists('DBVC_Bricks_Onboarding')) {
             DBVC_Bricks_Onboarding::persist_local_transport_state('bootstrap');
             DBVC_Bricks_Onboarding::run_client_onboarding_tick('bootstrap');
+        }
+        if (class_exists('DBVC_Bricks_Command_Queue')) {
+            DBVC_Bricks_Command_Queue::run_client_pull_tick('bootstrap');
         }
     }
 
@@ -175,6 +182,35 @@ final class DBVC_Bricks_Addon
                 'default' => 'registry_table',
                 'allowed' => ['packages_backfill', 'registry_table'],
             ],
+            'dbvc_bricks_command_transport_mode' => [
+                'type'    => 'enum',
+                'default' => 'direct_push',
+                'allowed' => ['direct_push', 'client_pull_envelope'],
+            ],
+            'dbvc_bricks_command_retry_max_attempts' => [
+                'type'    => 'int',
+                'default' => '3',
+                'min'     => 1,
+                'max'     => 20,
+            ],
+            'dbvc_bricks_command_retry_base_seconds' => [
+                'type'    => 'int',
+                'default' => '60',
+                'min'     => 15,
+                'max'     => 3600,
+            ],
+            'dbvc_bricks_command_lease_seconds' => [
+                'type'    => 'int',
+                'default' => '90',
+                'min'     => 15,
+                'max'     => 3600,
+            ],
+            'dbvc_bricks_command_envelope_ttl_hours' => [
+                'type'    => 'int',
+                'default' => '24',
+                'min'     => 1,
+                'max'     => 168,
+            ],
             'dbvc_bricks_pinned_version' => [
                 'type'    => 'text',
                 'default' => '',
@@ -224,6 +260,26 @@ final class DBVC_Bricks_Addon
                 'max'     => 5000,
             ],
             'dbvc_bricks_policy_overrides' => [
+                'type'    => 'json_map',
+                'default' => '{}',
+            ],
+            'dbvc_bricks_diff_path_rules' => [
+                'type'    => 'json_map',
+                'default' => '{}',
+            ],
+            'dbvc_bricks_artifact_ignore_rules' => [
+                'type'    => 'json_map',
+                'default' => '{}',
+            ],
+            'dbvc_bricks_artifact_mask_rules' => [
+                'type'    => 'json_map',
+                'default' => '{}',
+            ],
+            'dbvc_bricks_meta_ignore_rules' => [
+                'type'    => 'json_map',
+                'default' => '{}',
+            ],
+            'dbvc_bricks_meta_mask_rules' => [
                 'type'    => 'json_map',
                 'default' => '{}',
             ],
@@ -286,6 +342,14 @@ final class DBVC_Bricks_Addon
                 'min'     => 1,
                 'max'     => 720,
             ],
+            self::OPTION_SHARED_RULES_PROFILE => [
+                'type'    => 'json_map',
+                'default' => '{}',
+            ],
+            self::OPTION_SHARED_RULES_TRANSPORT => [
+                'type'    => 'json_map',
+                'default' => '{}',
+            ],
         ];
     }
 
@@ -331,6 +395,11 @@ final class DBVC_Bricks_Addon
                     'dbvc_bricks_intro_retry_interval_minutes',
                     'dbvc_bricks_connected_sites_source',
                     'dbvc_bricks_connected_sites_mode',
+                    'dbvc_bricks_command_transport_mode',
+                    'dbvc_bricks_command_retry_max_attempts',
+                    'dbvc_bricks_command_retry_base_seconds',
+                    'dbvc_bricks_command_lease_seconds',
+                    'dbvc_bricks_command_envelope_ttl_hours',
                     'dbvc_bricks_pinned_version',
                     'dbvc_bricks_verify_signature',
                     'dbvc_bricks_allow_fallback',
@@ -347,6 +416,11 @@ final class DBVC_Bricks_Addon
                     'dbvc_bricks_policy_block_delete',
                     'dbvc_bricks_policy_max_diff_kb',
                     'dbvc_bricks_policy_overrides',
+                    'dbvc_bricks_diff_path_rules',
+                    'dbvc_bricks_artifact_ignore_rules',
+                    'dbvc_bricks_artifact_mask_rules',
+                    'dbvc_bricks_meta_ignore_rules',
+                    'dbvc_bricks_meta_mask_rules',
                 ],
             ],
             'operations' => [
@@ -413,6 +487,11 @@ final class DBVC_Bricks_Addon
             'dbvc_bricks_intro_retry_interval_minutes' => ['label' => 'Intro Retry Interval Minutes', 'input' => 'number'],
             'dbvc_bricks_connected_sites_source' => ['label' => 'Connected Sites Registry Source', 'input' => 'select', 'options' => ['manual' => 'manual', 'heartbeat_auto' => 'heartbeat_auto']],
             'dbvc_bricks_connected_sites_mode' => ['label' => 'Connected Sites Registry Mode', 'input' => 'select', 'options' => ['registry_table' => 'registry_table', 'packages_backfill' => 'packages_backfill']],
+            'dbvc_bricks_command_transport_mode' => ['label' => 'Command Transport Mode', 'input' => 'select', 'options' => ['direct_push' => 'direct_push', 'client_pull_envelope' => 'client_pull_envelope']],
+            'dbvc_bricks_command_retry_max_attempts' => ['label' => 'Command Retry Max Attempts', 'input' => 'number'],
+            'dbvc_bricks_command_retry_base_seconds' => ['label' => 'Command Retry Base Seconds', 'input' => 'number'],
+            'dbvc_bricks_command_lease_seconds' => ['label' => 'Command Lease Seconds', 'input' => 'number'],
+            'dbvc_bricks_command_envelope_ttl_hours' => ['label' => 'Command Envelope TTL Hours', 'input' => 'number'],
             'dbvc_bricks_pinned_version' => ['label' => 'Pinned Package Version', 'input' => 'text'],
             'dbvc_bricks_verify_signature' => ['label' => 'Verify Package Signature', 'input' => 'checkbox'],
             'dbvc_bricks_allow_fallback' => ['label' => 'Allow Fallback to Last Applied', 'input' => 'checkbox'],
@@ -424,6 +503,11 @@ final class DBVC_Bricks_Addon
             'dbvc_bricks_policy_block_delete' => ['label' => 'Block Destructive Deletes', 'input' => 'checkbox'],
             'dbvc_bricks_policy_max_diff_kb' => ['label' => 'Max Diff Payload KB', 'input' => 'number'],
             'dbvc_bricks_policy_overrides' => ['label' => 'Per-artifact overrides (JSON map)', 'input' => 'textarea'],
+            'dbvc_bricks_diff_path_rules' => ['label' => 'Diff path rules (JSON: ignore/mask)', 'input' => 'textarea'],
+            'dbvc_bricks_artifact_ignore_rules' => ['label' => 'Artifact Ignore Rules (JSON map)', 'input' => 'textarea'],
+            'dbvc_bricks_artifact_mask_rules' => ['label' => 'Artifact Mask Rules (JSON map)', 'input' => 'textarea'],
+            'dbvc_bricks_meta_ignore_rules' => ['label' => 'Meta Ignore Rules (JSON map)', 'input' => 'textarea'],
+            'dbvc_bricks_meta_mask_rules' => ['label' => 'Meta Mask Rules (JSON map)', 'input' => 'textarea'],
             'dbvc_bricks_scan_mode' => ['label' => 'Drift Scan Mode', 'input' => 'select', 'options' => ['manual' => 'manual', 'scheduled' => 'scheduled']],
             'dbvc_bricks_scan_interval_minutes' => ['label' => 'Drift Scan Interval (minutes)', 'input' => 'number'],
             'dbvc_bricks_restore_before_apply' => ['label' => 'Auto-create Restore Point Before Apply', 'input' => 'checkbox'],
@@ -478,6 +562,11 @@ final class DBVC_Bricks_Addon
             'dbvc_bricks_intro_retry_interval_minutes' => 'Retry interval in minutes for intro/handshake transport.',
             'dbvc_bricks_connected_sites_source' => 'Controls how connected-site records are populated (`manual` or heartbeat-assisted automation).',
             'dbvc_bricks_connected_sites_mode' => 'Data source strategy for Packages -> Connected Sites table (`registry_table` preferred, `packages_backfill` fallback).',
+            'dbvc_bricks_command_transport_mode' => '`direct_push` sends commands from mothership directly to client URL. `client_pull_envelope` queues signed envelopes for clients to pull.',
+            'dbvc_bricks_command_retry_max_attempts' => 'Maximum envelope delivery attempts before dead-letter state.',
+            'dbvc_bricks_command_retry_base_seconds' => 'Base retry delay in seconds (exponential backoff).',
+            'dbvc_bricks_command_lease_seconds' => 'Lease duration for pulled envelopes to avoid duplicate workers.',
+            'dbvc_bricks_command_envelope_ttl_hours' => 'Envelope expiration window in hours before hard stop/dead-letter.',
             'dbvc_bricks_pinned_version' => 'Set explicit package version/id when source mode is pinned version.',
             'dbvc_bricks_verify_signature' => 'Verify package signature before apply when signatures are available.',
             'dbvc_bricks_allow_fallback' => 'Allow fallback to last applied package when source retrieval fails.',
@@ -489,6 +578,11 @@ final class DBVC_Bricks_Addon
             'dbvc_bricks_policy_block_delete' => 'Blocks destructive delete operations unless explicitly allowed.',
             'dbvc_bricks_policy_max_diff_kb' => 'Maximum diff payload size before truncation/guardrails apply.',
             'dbvc_bricks_policy_overrides' => 'Optional JSON map of `artifact_uid => policy` for specific overrides.',
+            'dbvc_bricks_diff_path_rules' => 'JSON map for comparison rules: `{\"ignore\":{\"*\": [\"path\"]}, \"mask\":{\"option:bricks_color_palette\": [\"colors.0.value\"]}}`.',
+            'dbvc_bricks_artifact_ignore_rules' => 'JSON map for artifact payload ignore rules by selector (`*`, artifact type, or artifact UID).',
+            'dbvc_bricks_artifact_mask_rules' => 'JSON map for artifact payload mask rules by selector (`*`, artifact type, or artifact UID).',
+            'dbvc_bricks_meta_ignore_rules' => 'JSON map for meta-only ignore rules; paths may be `runtime.last_seen` or `meta.runtime.last_seen`.',
+            'dbvc_bricks_meta_mask_rules' => 'JSON map for meta-only mask rules; paths may be `auth.token` or `meta.auth.token`.',
             'dbvc_bricks_scan_mode' => 'Choose manual scans only or scheduled drift scans.',
             'dbvc_bricks_scan_interval_minutes' => 'Scheduled scan interval in minutes when scan mode is scheduled.',
             'dbvc_bricks_restore_before_apply' => 'Automatically create a restore point before apply runs.',
@@ -547,6 +641,9 @@ final class DBVC_Bricks_Addon
         if (class_exists('DBVC_Bricks_Onboarding')) {
             DBVC_Bricks_Onboarding::persist_local_transport_state('configure_save');
             DBVC_Bricks_Onboarding::run_client_onboarding_tick('configure_save');
+        }
+        if (class_exists('DBVC_Bricks_Command_Queue')) {
+            DBVC_Bricks_Command_Queue::run_client_pull_tick('configure_save');
         }
         self::refresh_runtime_registration();
         return $result;
@@ -920,6 +1017,25 @@ final class DBVC_Bricks_Addon
             return;
         }
 
+        $submenu_feedback = [
+            'success' => [],
+            'error' => [],
+        ];
+        if (isset($_POST['dbvc_bricks_rules_save'])) {
+            check_admin_referer('dbvc_bricks_rules_save_action', 'dbvc_bricks_rules_nonce');
+            $save_result = self::save_rules_configuration($_POST);
+            if (! empty($save_result['errors'])) {
+                $submenu_feedback['error'][] = sprintf(
+                    /* translators: %s: comma-separated error list */
+                    esc_html__('Rules save completed with validation errors: %s', 'dbvc'),
+                    esc_html(implode('; ', (array) $save_result['errors']))
+                );
+            } else {
+                $submenu_feedback['success'][] = esc_html__('Rules configuration saved.', 'dbvc');
+            }
+            $_GET['tab'] = 'configure'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        }
+
         $role_mode = self::get_role_mode();
         $is_read_only = self::get_bool_setting('dbvc_bricks_read_only', false);
         $tabs = self::get_admin_tabs_for_role($role_mode);
@@ -938,6 +1054,12 @@ final class DBVC_Bricks_Addon
         echo '<p>' . esc_html__('Role-aware Bricks controls and status for this site.', 'dbvc') . '</p>';
         if ($is_read_only) {
             echo '<div class="notice notice-info" id="dbvc-bricks-read-only-notice"><p>' . esc_html__('Read-only mode is enabled. Mutating actions are disabled.', 'dbvc') . '</p></div>';
+        }
+        foreach ((array) $submenu_feedback['success'] as $message) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html((string) $message) . '</p></div>';
+        }
+        foreach ((array) $submenu_feedback['error'] as $message) {
+            echo '<div class="notice notice-error"><p>' . esc_html((string) $message) . '</p></div>';
         }
         $deprecations = self::get_deprecation_notices();
         if (! empty($deprecations)) {
@@ -969,6 +1091,9 @@ final class DBVC_Bricks_Addon
         echo '<p>';
         echo '<button type="button" class="button button-secondary" id="dbvc-bricks-onboarding-mark-all">' . esc_html__('Mark All Complete', 'dbvc') . '</button> ';
         echo '<button type="button" class="button" id="dbvc-bricks-onboarding-reset">' . esc_html__('Reset Checklist', 'dbvc') . '</button>';
+        if ($role_mode === 'client') {
+            echo ' <button type="button" class="button button-secondary" id="dbvc-bricks-onboarding-rerun-intro">' . esc_html__('Reset + Re-run Intro Handshake', 'dbvc') . '</button>';
+        }
         echo '</p>';
         echo '</details>';
 
@@ -991,6 +1116,13 @@ final class DBVC_Bricks_Addon
         echo '</h2>';
 
         echo '<div id="dbvc-bricks-admin-panels" data-role="' . esc_attr($role_mode) . '" data-read-only="' . ($is_read_only ? '1' : '0') . '">';
+        if (isset($tabs['configure'])) {
+            echo '<section id="dbvc-bricks-panel-configure" class="dbvc-bricks-panel" role="tabpanel" aria-labelledby="dbvc-bricks-tab-configure" tabindex="0"' . ($current_tab === 'configure' ? '' : ' hidden') . '>';
+            echo '<h2>' . esc_html__('Configure', 'dbvc') . '</h2>';
+            echo '<p>' . esc_html__('Manage expanded artifact/meta masking and ignore rules used by drift compare and raw payload views.', 'dbvc') . '</p>';
+            self::render_rules_configuration_form();
+            echo '</section>';
+        }
         if (isset($tabs['overview'])) {
             echo '<section id="dbvc-bricks-panel-overview" class="dbvc-bricks-panel" role="tabpanel" aria-labelledby="dbvc-bricks-tab-overview" tabindex="0"' . ($current_tab === 'overview' ? '' : ' hidden') . '>';
             echo '<h2>' . esc_html__('Overview', 'dbvc') . '</h2>';
@@ -1050,6 +1182,7 @@ final class DBVC_Bricks_Addon
             echo '</div>';
             echo '<div style="flex:1 1 50%;">';
             echo '<h3>' . esc_html__('Detail', 'dbvc') . '</h3>';
+            echo '<p><button type="button" class="button" id="dbvc-bricks-refresh-raw-compare">' . esc_html__('Refresh Raw Compare', 'dbvc') . '</button></p>';
             echo '<div id="dbvc-bricks-diff-detail" tabindex="0">' . esc_html__('Select an artifact to inspect details.', 'dbvc') . '</div>';
             echo '</div>';
             echo '</div>';
@@ -1183,6 +1316,7 @@ final class DBVC_Bricks_Addon
             echo '</section>';
         }
         if (isset($tabs['documentation'])) {
+            $doc_library = self::get_user_documentation_library_payload();
             echo '<section id="dbvc-bricks-panel-documentation" class="dbvc-bricks-panel" role="tabpanel" aria-labelledby="dbvc-bricks-tab-documentation" tabindex="0"' . ($current_tab === 'documentation' ? '' : ' hidden') . '>';
             echo '<h2>' . esc_html__('Documentation', 'dbvc') . '</h2>';
             echo '<p>' . esc_html__('Use this page to configure, review, and operate Bricks synchronization safely.', 'dbvc') . '</p>';
@@ -1215,6 +1349,31 @@ final class DBVC_Bricks_Addon
             echo '</ul>';
             echo '<h3>' . esc_html__('Safety Rules', 'dbvc') . '</h3>';
             echo '<p>' . esc_html__('Use dry-run first, create restore points before destructive changes, and verify drift status after apply.', 'dbvc') . '</p>';
+            echo '<h3>' . esc_html__('User Documentation Library', 'dbvc') . '</h3>';
+            echo '<div id="dbvc-bricks-user-doc-library">';
+            if (! empty($doc_library['available'])) {
+                if (! empty($doc_library['title'])) {
+                    echo '<p><strong>' . esc_html((string) $doc_library['title']) . '</strong></p>';
+                }
+                $sections = isset($doc_library['sections']) && is_array($doc_library['sections']) ? $doc_library['sections'] : [];
+                foreach ($sections as $section) {
+                    if (! is_array($section)) {
+                        continue;
+                    }
+                    $heading = isset($section['heading']) ? (string) $section['heading'] : '';
+                    $html = isset($section['html']) ? (string) $section['html'] : '';
+                    if ($heading === '' || $html === '') {
+                        continue;
+                    }
+                    echo '<details class="dbvc-bricks-doc-section" open>';
+                    echo '<summary><strong>' . esc_html($heading) . '</strong></summary>';
+                    echo '<div class="dbvc-bricks-doc-section-body">' . wp_kses($html, self::get_user_documentation_allowed_html()) . '</div>';
+                    echo '</details>';
+                }
+            } else {
+                echo '<p>' . esc_html__('Documentation library seed file is not available. Continue using this tab guidance and plugin docs folder references.', 'dbvc') . '</p>';
+            }
+            echo '</div>';
             echo '</section>';
         }
         $overlay_lines = apply_filters('dbvc_bricks_governance_overlay', [], [
@@ -1238,6 +1397,7 @@ final class DBVC_Bricks_Addon
         echo '</div>';
 
         $status_config = [
+            'roleMode' => $role_mode,
             'statusEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/status')),
             'packagesEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages')),
             'pullLatestEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages/pull-latest')),
@@ -1245,7 +1405,13 @@ final class DBVC_Bricks_Addon
             'publishRemoteEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages/publish-remote')),
             'testRemoteConnectionEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/packages/test-remote-connection')),
             'connectedSitesEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites')),
+            'connectedSiteMergeEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/merge-alias')),
+            'connectedSiteResetEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/reset-linkage')),
+            'connectedSiteAliasEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/known-alias')),
+            'connectedSiteAssistedMergeEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/assisted-merge')),
+            'onboardingResetRerunEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/onboarding/reset-rerun')),
             'driftScanEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/drift-scan')),
+            'driftCompareEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/drift-compare')),
             'applyEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/apply')),
             'restoreEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/restore-points')),
             'proposalsEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/proposals')),
@@ -1273,6 +1439,9 @@ final class DBVC_Bricks_Addon
                 'packageRevoked' => esc_html__('Package revoked.', 'dbvc'),
                 'connectedSitesLoaded' => esc_html__('Connected sites loaded.', 'dbvc'),
                 'connectedSitesSaved' => esc_html__('Connected sites allowlist saved.', 'dbvc'),
+                'connectedSiteReset' => esc_html__('Connected site linkage reset to pending intro.', 'dbvc'),
+                'connectedSiteMerged' => esc_html__('Duplicate alias deactivated and merged to canonical site.', 'dbvc'),
+                'introRerunRequested' => esc_html__('Intro handshake reset and rerun requested.', 'dbvc'),
             ],
         ];
         echo '<script>';
@@ -1303,6 +1472,7 @@ final class DBVC_Bricks_Addon
         echo 'const filterSearchEl = document.getElementById("dbvc-bricks-filter-search");';
         echo 'const tableBody = document.getElementById("dbvc-bricks-diff-table-body");';
         echo 'const detailEl = document.getElementById("dbvc-bricks-diff-detail");';
+        echo 'const refreshRawCompareBtn = document.getElementById("dbvc-bricks-refresh-raw-compare");';
         echo 'const countCleanEl = document.getElementById("dbvc-bricks-count-clean");';
         echo 'const countDivergedEl = document.getElementById("dbvc-bricks-count-diverged");';
         echo 'const countOverriddenEl = document.getElementById("dbvc-bricks-count-overridden");';
@@ -1355,22 +1525,24 @@ final class DBVC_Bricks_Addon
         echo 'const onboardingChecks = Array.prototype.slice.call(document.querySelectorAll(".dbvc-bricks-onboarding-check"));';
         echo 'const onboardingMarkAllBtn = document.getElementById("dbvc-bricks-onboarding-mark-all");';
         echo 'const onboardingResetBtn = document.getElementById("dbvc-bricks-onboarding-reset");';
+        echo 'const onboardingRerunIntroBtn = document.getElementById("dbvc-bricks-onboarding-rerun-intro");';
         echo 'const state = {packages: [], scan: null, selected: null, selectedProposalId: null, selectedPackageId: null, currentManifest: null, connectedSites: [], connectedSitesView: []};';
         echo 'const roleNode = document.getElementById("dbvc-bricks-admin-panels");';
         echo 'const onboardingRole = roleNode ? (roleNode.getAttribute("data-role") || "client") : "client";';
         echo 'const onboardingStorageKey = "dbvc_bricks_onboarding_v1_" + onboardingRole;';
         echo 'function artifactClass(item){ return (item && item.artifact_type === "bricks_template") ? "Entity" : "Option"; }';
-        echo 'function esc(v){ return String(v || "").replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c]; }); }';
+        echo 'function esc(v){ return String(v || "").replace(/[&<>"]/g, function(c){ if(c === "&"){ return "&amp;"; } if(c === "<"){ return "&lt;"; } if(c === ">"){ return "&gt;"; } return "&quot;"; }); }';
         echo 'function readOnboardingState(){ try { const raw = window.localStorage.getItem(onboardingStorageKey); const parsed = raw ? JSON.parse(raw) : {}; return parsed && typeof parsed === "object" ? parsed : {}; } catch (e) { return {}; } }';
         echo 'function writeOnboardingState(next){ try { window.localStorage.setItem(onboardingStorageKey, JSON.stringify(next || {})); } catch (e) { } }';
         echo 'function renderOnboarding(){ if(!onboardingChecks || onboardingChecks.length === 0){ return; } const saved = readOnboardingState(); let complete = 0; onboardingChecks.forEach(function(input){ const key = input.getAttribute("data-key") || ""; const checked = !!saved[key]; input.checked = checked; if(checked){ complete++; } }); if(onboardingProgress){ onboardingProgress.innerHTML = "<strong>" + complete + "/" + onboardingChecks.length + " complete</strong>"; } if(onboardingRoot){ onboardingRoot.open = complete < onboardingChecks.length; } }';
         echo 'function bindOnboarding(){ if(!onboardingChecks || onboardingChecks.length === 0){ return; } onboardingChecks.forEach(function(input){ input.addEventListener("change", function(){ const next = readOnboardingState(); const key = input.getAttribute("data-key") || ""; next[key] = !!input.checked; writeOnboardingState(next); renderOnboarding(); }); }); if(onboardingMarkAllBtn){ onboardingMarkAllBtn.addEventListener("click", function(){ const next = {}; onboardingChecks.forEach(function(input){ const key = input.getAttribute("data-key") || ""; next[key] = true; }); writeOnboardingState(next); renderOnboarding(); }); } if(onboardingResetBtn){ onboardingResetBtn.addEventListener("click", function(){ writeOnboardingState({}); renderOnboarding(); }); } renderOnboarding(); }';
+        echo 'function runOnboardingResetRerun(){ if(!cfg.onboardingResetRerunEndpoint){ return; } const ok = window.confirm("Reset local handshake token/state and re-run intro handshake now?"); if(!ok){ return; } setLoading(true); fetch(cfg.onboardingResetRerunEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({confirm_reset: true, run_now: true})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Reset + Re-run Intro failed."); } return data; }); }).then(function(data){ if(statusEl){ statusEl.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.introRerunRequested) || "Intro handshake reset and rerun requested.", "intro_rerun_requested"); loadStatus(); loadDiagnostics(); }).catch(function(err){ setError(err.message || "Reset + Re-run Intro failed.", runOnboardingResetRerun, "intro_rerun"); }).finally(function(){ setLoading(false); }); }';
         echo 'function setCounts(scan){ if(!scan || !scan.counts){ return; } if(countCleanEl){ countCleanEl.textContent = "CLEAN: " + (scan.counts.clean || 0); } if(countDivergedEl){ countDivergedEl.textContent = "DIVERGED: " + (scan.counts.diverged || 0); } if(countOverriddenEl){ countOverriddenEl.textContent = "OVERRIDDEN: " + (scan.counts.overridden || 0); } if(countPendingEl){ countPendingEl.textContent = "PENDING_REVIEW: " + (scan.counts.pending_review || 0); } }';
-        echo 'function renderDetail(item){ if(!detailEl){ return; } if(!item){ detailEl.textContent = "Select an artifact to inspect details."; return; } const summary = item.diff_summary || {changes:[],total:0,truncated:false,raw_available:false}; let html = ""; html += "<p><strong>Artifact UID:</strong> " + esc(item.artifact_uid) + "</p>"; html += "<p><strong>Class:</strong> " + esc(artifactClass(item)) + "</p>"; html += "<p><strong>Status:</strong> " + esc(item.status) + "</p>"; html += "<p><strong>Local Hash:</strong> <code>" + esc(item.local_hash) + "</code></p>"; html += "<p><strong>Golden Hash:</strong> <code>" + esc(item.golden_hash) + "</code></p>"; html += "<p><strong>Changes:</strong> " + Number(summary.total || 0) + "</p>"; html += "<ul>"; (summary.changes || []).forEach(function(change){ html += "<li><code>" + esc(change.path) + "</code> (" + esc(change.type) + ")</li>"; }); html += "</ul>"; if(summary.truncated){ html += "<p><em>Diff list truncated. raw_available=" + (summary.raw_available ? "true" : "false") + "</em></p>"; } detailEl.innerHTML = html; }';
+        echo 'function renderDetail(item){ if(!detailEl){ return; } if(!item){ detailEl.textContent = "Select an artifact to inspect details."; return; } const summary = item.diff_summary || {changes:[],total:0,truncated:false,raw_available:false}; const rawCompare = item.raw_compare || null; let html = ""; html += "<p><strong>Artifact:</strong> " + esc(item.artifact_label || item.artifact_uid) + "</p>"; html += "<p><strong>Artifact UID:</strong> " + esc(item.artifact_uid) + "</p>"; html += "<p><strong>Class:</strong> " + esc(artifactClass(item)) + "</p>"; html += "<p><strong>Status:</strong> " + esc(item.status) + "</p>"; html += "<p><strong>Local Hash:</strong> <code>" + esc(item.local_hash) + "</code></p>"; html += "<p><strong>Golden Hash:</strong> <code>" + esc(item.golden_hash) + "</code></p>"; html += "<p><strong>Changes:</strong> " + Number(summary.total || 0) + "</p>"; html += "<ul>"; (summary.changes || []).forEach(function(change){ html += "<li><code>" + esc(change.path) + "</code> (" + esc(change.type) + ")</li>"; }); html += "</ul>"; if(summary.truncated){ html += "<p><em>Diff list truncated. raw_available=" + (summary.raw_available ? "true" : "false") + "</em></p>"; } if(rawCompare){ const local = rawCompare.local || {}; const golden = rawCompare.golden || {}; const rules = rawCompare.rules_applied || {}; html += "<details open><summary><strong>Raw Compare (masked/ignored rules applied)</strong></summary>"; html += "<p><strong>Mask paths:</strong> <code>" + esc((rules.mask_paths || []).join(", ")) + "</code></p>"; html += "<p><strong>Ignore paths:</strong> <code>" + esc((rules.ignore_paths || []).join(", ")) + "</code></p>"; html += "<p><strong>Local payload</strong> (" + Number(local.bytes || 0) + " bytes" + ((local.truncated) ? ", truncated" : "") + ")</p>"; html += "<pre style=\\"max-height:220px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:8px;\\">" + esc(local.json || "") + "</pre>"; html += "<p><strong>Golden payload</strong> (" + Number(golden.bytes || 0) + " bytes" + ((golden.truncated) ? ", truncated" : "") + ")</p>"; html += "<pre style=\\"max-height:220px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:8px;\\">" + esc(golden.json || "") + "</pre>"; html += "</details>"; } detailEl.innerHTML = html; }';
         echo 'function selectedArtifact(){ if(!state.scan || !Array.isArray(state.scan.artifacts) || !state.selected){ return null; } return state.scan.artifacts.find(function(item){ return item.artifact_uid === state.selected; }) || null; }';
         echo 'function chunkArray(items, chunkSize){ const size = Math.max(1, Number(chunkSize || 1)); const out = []; for(let i=0;i<items.length;i+=size){ out.push(items.slice(i, i + size)); } return out; }';
-        echo 'function filteredArtifacts(){ if(!state.scan || !Array.isArray(state.scan.artifacts)){ return []; } const classVal = filterClassEl ? filterClassEl.value : "all"; const statusVal = filterStatusEl ? filterStatusEl.value : "all"; const query = filterSearchEl ? filterSearchEl.value.toLowerCase().trim() : ""; return state.scan.artifacts.filter(function(item){ if(classVal !== "all" && artifactClass(item) !== classVal){ return false; } if(statusVal !== "all" && String(item.status) !== statusVal){ return false; } if(query !== "" && String(item.artifact_uid || "").toLowerCase().indexOf(query) === -1){ return false; } return true; }); }';
-        echo 'function renderTable(){ if(!tableBody){ return; } const items = filteredArtifacts(); if(items.length === 0){ tableBody.innerHTML = "<tr><td colspan=\\"3\\">No artifacts match current filters.</td></tr>"; if(!state.selected){ renderDetail(null); } return; } tableBody.innerHTML = items.map(function(item){ const selectedClass = state.selected === item.artifact_uid ? " style=\\"background:#f0f6fc;\\"" : ""; return "<tr data-uid=\\"" + esc(item.artifact_uid) + "\\"" + selectedClass + "><td><code>" + esc(item.artifact_uid) + "</code></td><td>" + esc(artifactClass(item)) + "</td><td>" + esc(item.status) + "</td></tr>"; }).join(""); Array.prototype.forEach.call(tableBody.querySelectorAll("tr[data-uid]"), function(row){ row.addEventListener("click", function(){ state.selected = row.getAttribute("data-uid"); const found = items.find(function(entry){ return entry.artifact_uid === state.selected; }); renderDetail(found || null); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } renderTable(); }); }); if(!state.selected && items[0]){ state.selected = items[0].artifact_uid; renderDetail(items[0]); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } } }';
+        echo 'function filteredArtifacts(){ if(!state.scan || !Array.isArray(state.scan.artifacts)){ return []; } const classVal = filterClassEl ? filterClassEl.value : "all"; const statusVal = filterStatusEl ? filterStatusEl.value : "all"; const query = filterSearchEl ? filterSearchEl.value.toLowerCase().trim() : ""; return state.scan.artifacts.filter(function(item){ if(classVal !== "all" && artifactClass(item) !== classVal){ return false; } if(statusVal !== "all" && String(item.status) !== statusVal){ return false; } if(query !== ""){ const uid = String(item.artifact_uid || "").toLowerCase(); const label = String(item.artifact_label || "").toLowerCase(); if(uid.indexOf(query) === -1 && label.indexOf(query) === -1){ return false; } } return true; }); }';
+        echo 'function renderTable(){ if(!tableBody){ return; } const items = filteredArtifacts(); if(items.length === 0){ tableBody.innerHTML = "<tr><td colspan=\\"3\\">No artifacts match current filters.</td></tr>"; if(!state.selected){ renderDetail(null); } return; } tableBody.innerHTML = items.map(function(item){ const selectedClass = state.selected === item.artifact_uid ? " style=\\"background:#f0f6fc;\\"" : ""; const label = String(item.artifact_label || item.artifact_uid || ""); return "<tr data-uid=\\"" + esc(item.artifact_uid) + "\\"" + selectedClass + "><td><strong>" + esc(label) + "</strong><br><code>" + esc(item.artifact_uid) + "</code></td><td>" + esc(artifactClass(item)) + "</td><td>" + esc(item.status) + "</td></tr>"; }).join(""); Array.prototype.forEach.call(tableBody.querySelectorAll("tr[data-uid]"), function(row){ row.addEventListener("click", function(){ state.selected = row.getAttribute("data-uid"); const found = items.find(function(entry){ return entry.artifact_uid === state.selected; }); renderDetail(found || null); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } renderTable(); }); }); if(!state.selected && items[0]){ state.selected = items[0].artifact_uid; renderDetail(items[0]); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } } }';
         echo 'function loadStatus(){ if(!cfg.statusEndpoint || !statusEl){ return; } setLoading(true); setError(""); fetch(cfg.statusEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Status request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ statusEl.textContent = JSON.stringify(data, null, 2); stamp(); setSuccess((cfg.messages && cfg.messages.statusLoaded) || "Status loaded.", "status_loaded"); }).catch(function(err){ setError(err.message || "Failed to load status.", loadStatus, "status"); }).finally(function(){ setLoading(false); }); }';
         echo 'function loadDiagnostics(){ if(!cfg.diagnosticsEndpoint || !diagnosticsEl){ return; } setLoading(true); setError(""); fetch(cfg.diagnosticsEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Diagnostics request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ diagnosticsEl.textContent = JSON.stringify(data, null, 2); setSuccess((cfg.messages && cfg.messages.diagnosticsLoaded) || "Diagnostics loaded.", "diagnostics_loaded"); }).catch(function(err){ setError(err.message || "Failed to load diagnostics.", loadDiagnostics, "diagnostics"); }).finally(function(){ setLoading(false); }); }';
         echo 'function loadPackages(){ if(!cfg.packagesEndpoint || !packagesSelect){ return Promise.resolve(); } setLoading(true); setError(""); const role = roleNode ? String(roleNode.getAttribute("data-role") || "") : ""; const params = []; if(packagesChannelFilter && packagesChannelFilter.value){ params.push("channel=" + encodeURIComponent(packagesChannelFilter.value)); } const siteUid = cfg.siteUid ? String(cfg.siteUid) : ""; if(role === "client" && siteUid){ params.push("site_uid=" + encodeURIComponent(siteUid)); } const suffix = params.length ? ("?" + params.join("&")) : ""; return fetch(cfg.packagesEndpoint + suffix, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Packages request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.packages = Array.isArray(data.items) ? data.items : []; if(state.packages.length === 0){ state.selectedPackageId = null; packagesSelect.innerHTML = "<option value=\\"\\">No packages available</option>"; if(packagesTableBody){ packagesTableBody.innerHTML = "<tr><td colspan=\\"5\\">No packages available.</td></tr>"; } if(packageDetail){ packageDetail.textContent = ""; } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); return; } packagesSelect.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const label = (pkg.version || id || "package") + (pkg.channel ? " (" + pkg.channel + ")" : ""); return "<option value=\\"" + esc(id) + "\\">" + esc(label) + "</option>"; }).join(""); const packageIds = state.packages.map(function(pkg){ return String(pkg.package_id || pkg.id || ""); }); let selectedId = state.selectedPackageId && packageIds.indexOf(state.selectedPackageId) !== -1 ? state.selectedPackageId : null; if(!selectedId && packagesSelect.value && packageIds.indexOf(String(packagesSelect.value)) !== -1){ selectedId = String(packagesSelect.value); } if(!selectedId){ selectedId = packageIds[0] || ""; } state.selectedPackageId = selectedId || null; if(packagesSelect && selectedId){ packagesSelect.value = selectedId; } if(packagesTableBody){ packagesTableBody.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const version = pkg.version || ""; const channelName = pkg.channel || ""; const targeting = pkg.targeting && typeof pkg.targeting === "object" ? pkg.targeting : {mode:"all",site_uids:[]}; const audience = String(targeting.mode || "all") === "selected" ? ("selected (" + (Array.isArray(targeting.site_uids) ? targeting.site_uids.length : 0) + ")") : "all"; const visibility = pkg.visibility_reason ? (" / " + String(pkg.visibility_reason)) : ""; const audienceText = audience + visibility; const isSelected = selectedId && id === selectedId; const checked = isSelected ? " checked=\\"checked\\"" : ""; const rowStyle = isSelected ? " style=\\"background:#f0f6fc;\\"" : ""; return "<tr data-package-id=\\"" + esc(id) + "\\"" + rowStyle + "><td><input type=\\"radio\\" name=\\"dbvc-bricks-package-select-row\\" data-package-id=\\"" + esc(id) + "\\"" + checked + " /></td><td><code>" + esc(id) + "</code></td><td>" + esc(version) + "</td><td>" + esc(channelName) + "</td><td>" + esc(audienceText) + "</td></tr>"; }).join(""); const setPackageSelectionUI = function(id){ Array.prototype.forEach.call(packagesTableBody.querySelectorAll("tr[data-package-id]"), function(row){ const rowId = String(row.getAttribute("data-package-id") || ""); row.style.background = rowId === id ? "#f0f6fc" : ""; }); Array.prototype.forEach.call(packagesTableBody.querySelectorAll("input[name=\\"dbvc-bricks-package-select-row\\"]"), function(input){ const inputId = String(input.getAttribute("data-package-id") || ""); input.checked = inputId === id; }); }; const selectPackage = function(id){ if(!id){ return; } state.selectedPackageId = id; state.currentManifest = null; if(packagesSelect){ packagesSelect.value = id; } setPackageSelectionUI(id); loadPackageDetail(id); }; Array.prototype.forEach.call(packagesTableBody.querySelectorAll("tr[data-package-id]"), function(row){ row.addEventListener("click", function(){ const id = String(row.getAttribute("data-package-id") || ""); selectPackage(id); }); }); Array.prototype.forEach.call(packagesTableBody.querySelectorAll("input[name=\\"dbvc-bricks-package-select-row\\"]"), function(input){ input.addEventListener("change", function(ev){ if(ev && ev.stopPropagation){ ev.stopPropagation(); } const id = String(input.getAttribute("data-package-id") || ""); selectPackage(id); }); input.addEventListener("click", function(ev){ if(ev && ev.stopPropagation){ ev.stopPropagation(); } }); }); } if(selectedId){ return loadPackageDetail(selectedId); } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); }).then(function(){ setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); }).catch(function(err){ setError(err.message || "Failed to load packages.", loadPackages, "packages"); }).finally(function(){ setLoading(false); }); }';
@@ -1380,9 +1552,10 @@ final class DBVC_Bricks_Addon
         echo 'function selectedConnectedSiteUids(){ if(!connectedSitesBody){ return []; } const out = []; Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("input[data-site-uid]"), function(input){ if(input.checked){ out.push(String(input.getAttribute("data-site-uid") || "")); } }); return out.filter(function(v){ return !!v; }); }';
         echo 'function getConnectedSiteSortValue(site, key){ if(key === "last_seen"){ return String(site && site.last_seen_at || ""); } if(key === "site_label"){ return String(site && site.site_label || "").toLowerCase(); } return String(site && site.site_uid || "").toLowerCase(); }';
         echo 'function filterSortConnectedSites(items){ const query = connectedSitesSearch ? String(connectedSitesSearch.value || "").toLowerCase().trim() : ""; const status = connectedSitesStatusFilter ? String(connectedSitesStatusFilter.value || "") : ""; const sortVal = connectedSitesSort ? String(connectedSitesSort.value || "site_uid_asc") : "site_uid_asc"; const parts = sortVal.split("_"); const key = parts.length > 1 ? parts.slice(0, -1).join("_") : "site_uid"; const dir = parts.length > 1 ? parts[parts.length - 1] : "asc"; let out = Array.isArray(items) ? items.slice() : []; if(status){ out = out.filter(function(site){ return String(site && site.status || "") === status; }); } if(query){ out = out.filter(function(site){ const uid = String(site && site.site_uid || "").toLowerCase(); const label = String(site && site.site_label || "").toLowerCase(); const onboarding = String(site && site.onboarding_state || "").toLowerCase(); return uid.indexOf(query) !== -1 || label.indexOf(query) !== -1 || onboarding.indexOf(query) !== -1; }); } out.sort(function(a, b){ const aVal = getConnectedSiteSortValue(a, key); const bVal = getConnectedSiteSortValue(b, key); if(aVal === bVal){ return 0; } if(dir === "desc"){ return aVal < bVal ? 1 : -1; } return aVal > bVal ? 1 : -1; }); return out; }';
-        echo 'function renderConnectedSites(items){ if(!connectedSitesBody){ return; } const rows = filterSortConnectedSites(items); state.connectedSitesView = rows; if(!Array.isArray(rows) || rows.length === 0){ connectedSitesBody.innerHTML = "<tr><td colspan=\\"6\\">No connected sites match current filters.</td></tr>"; return; } connectedSitesBody.innerHTML = rows.map(function(site){ const uid = site.site_uid || ""; const label = site.site_label || uid; const status = site.status || ""; const onboarding = site.onboarding_state || ""; const onboardingBadge = onboarding ? ("<code>" + esc(onboarding) + "</code>") : ""; const lastSeen = site.last_seen_at || ""; const checked = site.allow_receive_packages ? " checked=\\"checked\\"" : ""; return "<tr><td><input type=\\"checkbox\\" data-site-uid=\\"" + esc(uid) + "\\"" + checked + " /></td><td><code>" + esc(uid) + "</code></td><td>" + esc(label) + "</td><td>" + esc(status) + "</td><td>" + onboardingBadge + "</td><td>" + esc(lastSeen) + "</td></tr>"; }).join(""); }';
+        echo 'function renderConnectedSites(items){ if(!connectedSitesBody){ return; } const rows = filterSortConnectedSites(items); state.connectedSitesView = rows; if(!Array.isArray(rows) || rows.length === 0){ connectedSitesBody.innerHTML = "<tr><td colspan=\\"6\\">No connected sites match current filters.</td></tr>"; return; } connectedSitesBody.innerHTML = rows.map(function(site){ const uid = site.site_uid || ""; const label = site.site_label || uid; const status = site.status || ""; const onboarding = String(site.onboarding_state || ""); const onboardingUpper = onboarding.toUpperCase(); const baseUrl = String(site.base_url || "").replace(/\\/$/, ""); const conflictState = String(site.conflict_state || ""); const conflictGroup = Array.isArray(site.conflict_group_uids) ? site.conflict_group_uids : []; const canonicalUid = String(site.canonical_site_uid || ""); const isCanonicalConflict = !!site.is_conflict_canonical; const knownAliases = Array.isArray(site.known_aliases) ? site.known_aliases : []; const onboardingBadge = onboarding ? ("<code>" + esc(onboarding) + "</code>") : ""; const checked = site.allow_receive_packages ? " checked=\\"checked\\"" : ""; const statusBadge = status ? ("<code>" + esc(status) + "</code>") : ""; const actionBits = []; if(onboardingUpper === "PENDING_INTRO" && baseUrl){ actionBits.push("<a class=\\"button button-small\\" href=\\"" + esc(baseUrl + "/wp-admin/admin.php?page=addon-dbvc-bricks-addon&tab=configure") + "\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\">Open Client Bricks Tab</a>"); } if(cfg.roleMode === "mothership" && cfg.connectedSiteResetEndpoint){ actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"reset-linkage\\" data-site-uid=\\"" + esc(uid) + "\\">Reset Linkage</button>"); } if(cfg.roleMode === "mothership" && cfg.connectedSiteMergeEndpoint && conflictState === "duplicate_base_url" && !isCanonicalConflict && canonicalUid){ actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"merge-alias\\" data-site-uid=\\"" + esc(uid) + "\\" data-canonical-site-uid=\\"" + esc(canonicalUid) + "\\" data-conflict-group=\\"" + esc(conflictGroup.join(",")) + "\\">Merge/Deactivate Alias</button>"); } const conflictHint = (conflictState === "duplicate_base_url" && canonicalUid && !isCanonicalConflict) ? ("<br><small>Conflict: duplicate URL. Canonical UID: <code>" + esc(canonicalUid) + "</code></small>") : ""; const aliasHint = knownAliases.length ? ("<br><small>Known aliases: <code>" + esc(knownAliases.join(", ")) + "</code></small>") : ""; const aliasControls = (cfg.roleMode === "mothership" && cfg.connectedSiteAliasEndpoint) ? ("<div style=\\"margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;\\"><input type=\\"text\\" class=\\"regular-text\\" data-known-alias-input=\\"" + esc(uid) + "\\" placeholder=\\"known alias UID\\" style=\\"max-width:180px;\\" /><button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"map-known-alias\\" data-site-uid=\\"" + esc(uid) + "\\">Map Known Alias</button></div>") : ""; const actionsHtml = actionBits.length ? ("<div style=\\"margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;\\">" + actionBits.join("") + "</div>") : ""; const lastSeen = site.last_seen_at || ""; return "<tr><td><input type=\\"checkbox\\" data-site-uid=\\"" + esc(uid) + "\\"" + checked + " /></td><td><code>" + esc(uid) + "</code></td><td>" + esc(label) + "</td><td>" + statusBadge + "</td><td>" + onboardingBadge + conflictHint + aliasHint + actionsHtml + aliasControls + "</td><td>" + esc(lastSeen) + "</td></tr>"; }).join(""); }';
         echo 'function loadConnectedSites(){ if(!cfg.connectedSitesEndpoint){ return Promise.resolve(); } setLoading(true); return fetch(cfg.connectedSitesEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Connected sites request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.connectedSites = Array.isArray(data.items) ? data.items : []; renderConnectedSites(state.connectedSites); setSuccess((cfg.messages && cfg.messages.connectedSitesLoaded) || "Connected sites loaded.", "connected_sites_loaded"); }).catch(function(err){ setError(err.message || "Failed to load connected sites.", loadConnectedSites, "connected_sites"); }).finally(function(){ setLoading(false); }); }';
         echo 'function saveConnectedSites(){ if(!cfg.connectedSitesEndpoint || !connectedSitesBody){ return; } const rows = Array.prototype.slice.call(connectedSitesBody.querySelectorAll("input[data-site-uid]")); if(rows.length === 0){ return; } setLoading(true); let chain = Promise.resolve(); rows.forEach(function(input){ chain = chain.then(function(){ const uid = String(input.getAttribute("data-site-uid") || ""); return fetch(cfg.connectedSitesEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({site_uid: uid, allow_receive_packages: !!input.checked})}).then(function(r){ if(!r.ok){ throw new Error("Connected site save failed (" + r.status + ")"); } return r.json(); }); }); }); chain.then(function(){ setSuccess((cfg.messages && cfg.messages.connectedSitesSaved) || "Connected sites allowlist saved.", "connected_sites_saved"); loadConnectedSites(); }).catch(function(err){ setError(err.message || "Failed to save connected sites.", saveConnectedSites, "connected_sites_save"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function handleConnectedSiteAction(action, siteUid, payload){ if(!action || !siteUid){ return; } const endpoint = action === "reset-linkage" ? cfg.connectedSiteResetEndpoint : (action === "map-known-alias" ? cfg.connectedSiteAliasEndpoint : (action === "assisted-merge" ? cfg.connectedSiteAssistedMergeEndpoint : cfg.connectedSiteMergeEndpoint)); if(!endpoint){ return; } const body = Object.assign({}, payload || {}); setLoading(true); fetch(endpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify(body)}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Connected site action failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } const msgKey = action === "reset-linkage" ? "connectedSiteReset" : "connectedSiteMerged"; setSuccess((cfg.messages && cfg.messages[msgKey]) || "Connected site action completed.", "connected_site_action", {action: action, site_uid: siteUid}); return loadConnectedSites(); }).catch(function(err){ setError(err.message || "Connected site action failed.", function(){ handleConnectedSiteAction(action, siteUid, payload); }, "connected_site_action"); }).finally(function(){ setLoading(false); }); }';
         echo 'function setVisibleSitesChecked(checked){ if(!connectedSitesBody){ return; } Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("input[data-site-uid]"), function(input){ input.checked = !!checked; }); }';
         echo 'function runPublishPreflight(){ if(!cfg.publishRemoteEndpoint || !cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? packagesSelect.value : ""); if(!packageId){ setError("Select a package first.", runPublishPreflight, "publish_preflight"); return; } const mode = targetModeSelect ? String(targetModeSelect.value || "all") : "all"; const siteUids = mode === "selected" ? selectedConnectedSiteUids() : []; if(mode === "selected" && siteUids.length === 0){ setError("Select at least one connected site for selected mode.", runPublishPreflight, "publish_preflight"); return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : null; if(!manifest){ throw new Error("Selected package manifest missing."); } return fetch(cfg.publishRemoteEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-preflight-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({package: manifest, targeting: {mode: mode, site_uids: siteUids}, dry_run: true})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Preflight failed."; const details = data && data.data ? data.data : null; const err = new Error(msg); err.details = details; throw err; } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess("Publish preflight passed.", "package_publish_preflight"); }).catch(function(err){ if(packageDetail){ packageDetail.textContent = JSON.stringify({ok:false, error: err && err.message ? err.message : "Publish preflight failed.", details: err && err.details ? err.details : null}, null, 2); } setError(err.message || "Publish preflight failed.", runPublishPreflight, "publish_preflight"); }).finally(function(){ setLoading(false); }); }';
         echo 'function runRemoteConnectionTest(){ if(!cfg.testRemoteConnectionEndpoint){ return; } setLoading(true); fetch(cfg.testRemoteConnectionEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Connection test failed."; const details = data && data.data ? data.data : null; const err = new Error(msg); err.details = details; throw err; } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.connectionTestPassed) || "Mothership connection succeeded.", "connection_test_passed"); }).catch(function(err){ if(packageDetail){ packageDetail.textContent = JSON.stringify({ok:false, error: err && err.message ? err.message : "Mothership connection failed.", details: err && err.details ? err.details : null}, null, 2); } setError(err.message || "Mothership connection failed.", runRemoteConnectionTest, "connection_test"); }).finally(function(){ setLoading(false); }); }';
@@ -1391,7 +1564,8 @@ final class DBVC_Bricks_Addon
         echo 'function pullLatestAllowedDryRun(){ if(!cfg.pullLatestEndpoint){ return; } const selectedChannel = packagesChannelFilter && packagesChannelFilter.value ? String(packagesChannelFilter.value) : ""; setLoading(true); fetch(cfg.pullLatestEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({channel: selectedChannel})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Pull latest dry-run failed."; throw new Error(msg); } return data; }); }).then(function(data){ if(data && data.package_id){ state.selectedPackageId = String(data.package_id); if(packagesSelect){ packagesSelect.value = String(data.package_id); } } if(data && data.manifest){ state.currentManifest = data.manifest; } if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } if(applyOutput && data && data.dry_run_apply){ applyOutput.textContent = JSON.stringify(data.dry_run_apply, null, 2); } setSuccess("Pulled latest allowed package and completed dry-run apply.", "package_pull_dry_run"); return loadPackages(); }).catch(function(err){ setError(err.message || "Failed to pull latest allowed package.", pullLatestAllowedDryRun, "package_pull_dry_run"); }).finally(function(){ setLoading(false); }); }';
         echo 'function promoteSelectedPackage(){ if(!cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? String(packagesSelect.value || "") : ""); if(!packageId){ setError("Select a package first.", promoteSelectedPackage, "package_promote"); return; } const record = selectedPackageRecord(); const currentChannel = record && record.channel ? String(record.channel) : ""; const targetChannel = promoteChannelSelect ? String(promoteChannelSelect.value || "beta") : "beta"; const order = {canary:1,beta:2,stable:3}; if(order[currentChannel] && order[targetChannel] && order[targetChannel] <= order[currentChannel]){ setError("Promotion must move forward (canary -> beta -> stable).", promoteSelectedPackage, "package_promote"); return; } if(targetChannel === "stable"){ const ok = window.confirm("Confirm promotion to stable channel."); if(!ok){ return; } } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId) + "/promote", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-promote-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({channel: targetChannel, confirm_stable_promotion: targetChannel === "stable"})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Promote failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.packagePromoted) || "Package promoted.", "package_promoted"); return loadPackages(); }).catch(function(err){ setError(err.message || "Package promotion failed.", promoteSelectedPackage, "package_promote"); }).finally(function(){ setLoading(false); }); }';
         echo 'function revokeSelectedPackage(){ if(!cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? String(packagesSelect.value || "") : ""); if(!packageId){ setError("Select a package first.", revokeSelectedPackage, "package_revoke"); return; } const ok = window.confirm("Revoke selected package? This stops rollout immediately."); if(!ok){ return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId) + "/revoke", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-revoke-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({confirm_revoke: true})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Revoke failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.packageRevoked) || "Package revoked.", "package_revoked"); return loadPackages(); }).catch(function(err){ setError(err.message || "Package revoke failed.", revokeSelectedPackage, "package_revoke"); }).finally(function(){ setLoading(false); }); }';
-        echo 'function runDriftScan(){ if(!cfg.packagesEndpoint || !cfg.driftScanEndpoint || !packagesSelect){ return; } const packageId = packagesSelect.value; if(!packageId){ setError("Select a package first.", runDriftScan, "drift_scan"); return; } setLoading(true); setError(""); state.scan = null; state.selected = null; fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : {}; state.currentManifest = manifest; return fetch(cfg.driftScanEndpoint, {method: "POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type": "application/json"}, body: JSON.stringify({manifest: manifest, options: {max_changes: 50}})}); }).then(function(r){ if(!r.ok){ throw new Error("Drift scan failed (" + r.status + ")"); } return r.json(); }).then(function(scan){ state.scan = scan; setCounts(scan); renderTable(); setSuccess((cfg.messages && cfg.messages.scanComplete) || "Drift scan complete.", "drift_scan_complete"); }).catch(function(err){ setError(err.message || "Failed to run drift scan.", runDriftScan, "drift_scan"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function runDriftScan(){ if(!cfg.packagesEndpoint || !cfg.driftScanEndpoint || !packagesSelect){ return; } const packageId = packagesSelect.value; if(!packageId){ setError("Select a package first.", runDriftScan, "drift_scan"); return; } setLoading(true); setError(""); state.scan = null; state.selected = null; fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : {}; state.currentManifest = manifest; return fetch(cfg.driftScanEndpoint, {method: "POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type": "application/json"}, body: JSON.stringify({manifest: manifest, options: {max_changes: 50, include_raw_compare: true, max_raw_compare_bytes: 32768}})}); }).then(function(r){ if(!r.ok){ throw new Error("Drift scan failed (" + r.status + ")"); } return r.json(); }).then(function(scan){ state.scan = scan; setCounts(scan); renderTable(); setSuccess((cfg.messages && cfg.messages.scanComplete) || "Drift scan complete.", "drift_scan_complete"); }).catch(function(err){ setError(err.message || "Failed to run drift scan.", runDriftScan, "drift_scan"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function refreshRawCompareSelected(){ if(!cfg.driftCompareEndpoint || !state.currentManifest){ setError("Run a drift scan first.", refreshRawCompareSelected, "raw_compare"); return; } const artifact = selectedArtifact(); if(!artifact){ setError("Select an artifact first.", refreshRawCompareSelected, "raw_compare"); return; } setLoading(true); fetch(cfg.driftCompareEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({manifest: state.currentManifest, artifact_uid: artifact.artifact_uid})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Raw compare request failed."); } return data; }); }).then(function(compare){ if(!state.scan || !Array.isArray(state.scan.artifacts)){ return; } const idx = state.scan.artifacts.findIndex(function(it){ return it.artifact_uid === artifact.artifact_uid; }); if(idx >= 0){ state.scan.artifacts[idx].raw_compare = compare.raw_compare || null; state.scan.artifacts[idx].diff_summary = compare.diff_summary || state.scan.artifacts[idx].diff_summary || {}; renderDetail(state.scan.artifacts[idx]); } setSuccess("Raw compare refreshed.", "raw_compare_refreshed", {artifact_uid: artifact.artifact_uid}); }).catch(function(err){ setError(err.message || "Raw compare request failed.", refreshRawCompareSelected, "raw_compare"); }).finally(function(){ setLoading(false); }); }';
         echo 'function writeApplyOutput(data){ if(applyOutput){ applyOutput.textContent = JSON.stringify(data, null, 2); } }';
         echo 'function exportReview(){ if(!state.scan){ setError("Run a drift scan before exporting review JSON.", exportReview, "export_review"); return; } const payload = {exported_at: new Date().toISOString(), role: document.getElementById("dbvc-bricks-admin-panels") ? document.getElementById("dbvc-bricks-admin-panels").getAttribute("data-role") : "", scan: state.scan, selected_artifact_uid: state.selected, selected_proposal_id: state.selectedProposalId}; const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "dbvc-bricks-review-" + Date.now() + ".json"; a.click(); URL.revokeObjectURL(url); setSuccess("Review export generated.", "review_export"); }';
         echo 'function ensureManifest(){ if(state.currentManifest){ return Promise.resolve(state.currentManifest); } const packageId = packagesSelect ? packagesSelect.value : ""; if(!packageId){ return Promise.reject(new Error("Select a package first.")); } return fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ state.currentManifest = detail && detail.manifest ? detail.manifest : {}; return state.currentManifest; }); }';
@@ -1406,6 +1580,7 @@ final class DBVC_Bricks_Addon
         echo 'if(refreshDiagnosticsBtn){ refreshDiagnosticsBtn.addEventListener("click", loadDiagnostics); }';
         echo 'if(refreshPackagesBtn){ refreshPackagesBtn.addEventListener("click", loadPackages); }';
         echo 'if(runScanBtn){ runScanBtn.addEventListener("click", runDriftScan); }';
+        echo 'if(refreshRawCompareBtn){ refreshRawCompareBtn.addEventListener("click", refreshRawCompareSelected); }';
         echo 'if(exportReviewBtn){ exportReviewBtn.addEventListener("click", exportReview); }';
         echo 'if(dryRunApplyBtn){ dryRunApplyBtn.addEventListener("click", function(){ runApply(true); }); }';
         echo 'if(applySelectedBtn){ applySelectedBtn.addEventListener("click", function(){ const forceDry = applyDryRunToggle ? applyDryRunToggle.checked : false; runApply(forceDry ? true : false); }); }';
@@ -1420,6 +1595,7 @@ final class DBVC_Bricks_Addon
         echo 'if(bootstrapPackageBtn){ bootstrapPackageBtn.addEventListener("click", createBootstrapPackage); }';
         echo 'if(refreshConnectedSitesBtn){ refreshConnectedSitesBtn.addEventListener("click", loadConnectedSites); }';
         echo 'if(saveConnectedSitesBtn){ saveConnectedSitesBtn.addEventListener("click", saveConnectedSites); }';
+        echo 'if(connectedSitesBody){ connectedSitesBody.addEventListener("click", function(ev){ const node = ev && ev.target ? ev.target.closest("[data-connected-action]") : null; if(!node){ return; } const action = String(node.getAttribute("data-connected-action") || ""); const siteUid = String(node.getAttribute("data-site-uid") || ""); if(action === "reset-linkage"){ const ok = window.confirm("Reset linkage for " + siteUid + " and set onboarding state to PENDING_INTRO?"); if(!ok){ return; } handleConnectedSiteAction(action, siteUid, {site_uid: siteUid, confirm_reset: true}); return; } if(action === "merge-alias"){ const canonicalUid = String(node.getAttribute("data-canonical-site-uid") || ""); const row = Array.isArray(state.connectedSites) ? state.connectedSites.find(function(s){ return String(s && s.site_uid || "") === siteUid; }) : null; const assistedEligible = !!(row && row.assisted_merge_eligible && row.assisted_merge_match_token); const ok = window.confirm("Deactivate alias " + siteUid + " and keep canonical UID " + canonicalUid + "?"); if(!ok){ return; } if(assistedEligible){ handleConnectedSiteAction("assisted-merge", siteUid, {canonical_site_uid: canonicalUid, alias_site_uid: siteUid, match_token: String(row.assisted_merge_match_token || ""), confirm_assisted_merge: true}); return; } handleConnectedSiteAction(action, siteUid, {canonical_site_uid: canonicalUid, alias_site_uid: siteUid, confirm_merge: true}); return; } if(action === "map-known-alias"){ let input = null; Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("[data-known-alias-input]"), function(el){ if(input){ return; } if(String(el.getAttribute("data-known-alias-input") || "") === siteUid){ input = el; } }); const aliasUid = input ? String(input.value || "").trim() : ""; if(!aliasUid){ setError("Enter a known alias UID before mapping.", null, "known_alias_map"); return; } const ok = window.confirm("Map alias " + aliasUid + " to canonical UID " + siteUid + "?"); if(!ok){ return; } handleConnectedSiteAction(action, siteUid, {canonical_site_uid: siteUid, alias_site_uid: aliasUid, reason: "manual_known_alias", confirm_alias: true}); } }); }';
         echo 'if(connectedSitesSearch){ connectedSitesSearch.addEventListener("input", function(){ renderConnectedSites(state.connectedSites); }); }';
         echo 'if(connectedSitesStatusFilter){ connectedSitesStatusFilter.addEventListener("change", function(){ renderConnectedSites(state.connectedSites); }); }';
         echo 'if(connectedSitesSort){ connectedSitesSort.addEventListener("change", function(){ renderConnectedSites(state.connectedSites); }); }';
@@ -1435,6 +1611,7 @@ final class DBVC_Bricks_Addon
         echo 'if(publishRemoteBtn){ publishRemoteBtn.addEventListener("click", publishRemotePackage); }';
         echo 'if(packagesChannelFilter){ packagesChannelFilter.addEventListener("change", loadPackages); }';
         echo 'if(packagesSelect){ packagesSelect.addEventListener("change", function(){ const id = String(packagesSelect.value || ""); state.selectedPackageId = id || null; state.currentManifest = null; if(id){ loadPackageDetail(id); } }); }';
+        echo 'if(onboardingRerunIntroBtn){ onboardingRerunIntroBtn.addEventListener("click", runOnboardingResetRerun); }';
         echo 'if(filterClassEl){ filterClassEl.addEventListener("change", renderTable); }';
         echo 'if(filterStatusEl){ filterStatusEl.addEventListener("change", renderTable); }';
         echo 'if(filterSearchEl){ filterSearchEl.addEventListener("input", renderTable); }';
@@ -1468,6 +1645,7 @@ final class DBVC_Bricks_Addon
     public static function get_admin_tabs_for_role($role_mode)
     {
         $tabs = [
+            'configure' => 'Configure',
             'overview' => 'Overview',
             'differences' => 'Differences',
             'proposals' => 'Proposals',
@@ -1476,6 +1654,7 @@ final class DBVC_Bricks_Addon
 
         if ($role_mode === 'client') {
             $tabs = [
+                'configure' => 'Configure',
                 'overview' => 'Overview',
                 'differences' => 'Differences',
                 'packages' => 'Packages',
@@ -1522,6 +1701,1159 @@ final class DBVC_Bricks_Addon
         }
 
         return (string) array_key_first($tabs);
+    }
+
+    /**
+     * Render Bricks submenu configure form for expanded diff rules.
+     *
+     * @return void
+     */
+    private static function render_rules_configuration_form()
+    {
+        $config_tabs = self::get_configure_tabs();
+        echo '<h3 class="nav-tab-wrapper" id="dbvc-bricks-configure-tabs" role="tablist" aria-label="' . esc_attr__('Bricks configure sections', 'dbvc') . '">';
+        foreach ($config_tabs as $tab_key => $tab_label) {
+            $is_active = $tab_key === 'basic';
+            echo '<button type="button" class="nav-tab' . ($is_active ? ' nav-tab-active' : '') . '" id="dbvc-bricks-config-tab-' . esc_attr($tab_key) . '" role="tab" aria-selected="' . ($is_active ? 'true' : 'false') . '" aria-controls="dbvc-bricks-config-panel-' . esc_attr($tab_key) . '" data-config-tab="' . esc_attr($tab_key) . '">' . esc_html($tab_label) . '</button>';
+        }
+        echo '</h3>';
+
+        echo '<section id="dbvc-bricks-config-panel-basic" class="dbvc-bricks-config-panel" role="tabpanel" aria-labelledby="dbvc-bricks-config-tab-basic">';
+        echo '<p><strong>' . esc_html__('Basic Settings', 'dbvc') . '</strong></p>';
+        echo '<p>' . esc_html__('This section is reserved for core role/auth/connectivity settings migration (client/mothership role, credentials, transport limits, payload size, timeout, and related baseline controls).', 'dbvc') . '</p>';
+        echo '<p>' . esc_html__('No fields have been moved here yet in this slice.', 'dbvc') . '</p>';
+        echo '</section>';
+
+        echo '<section id="dbvc-bricks-config-panel-advanced" class="dbvc-bricks-config-panel" role="tabpanel" aria-labelledby="dbvc-bricks-config-tab-advanced" hidden>';
+        echo '<p><strong>' . esc_html__('Advanced Settings', 'dbvc') . '</strong></p>';
+        echo '<p>' . esc_html__('This section is reserved for fine-tuning controls after baseline settings migration (policy and operational tuning, fallback strategy, verification depth, and extended governance controls).', 'dbvc') . '</p>';
+        echo '<p>' . esc_html__('No fields have been moved here yet in this slice.', 'dbvc') . '</p>';
+        echo '</section>';
+
+        echo '<section id="dbvc-bricks-config-panel-artifacts_rules" class="dbvc-bricks-config-panel" role="tabpanel" aria-labelledby="dbvc-bricks-config-tab-artifacts_rules" hidden>';
+        $fields = self::get_rules_configuration_field_definitions();
+        echo '<form method="post" action="' . esc_url(self::get_admin_page_url()) . '">';
+        wp_nonce_field('dbvc_bricks_rules_save_action', 'dbvc_bricks_rules_nonce');
+        echo '<input type="hidden" name="page" value="' . esc_attr(self::MENU_SLUG) . '" />';
+        echo '<input type="hidden" name="tab" value="configure" />';
+
+        foreach ($fields as $field_key => $field) {
+            $label = isset($field['label']) ? (string) $field['label'] : $field_key;
+            $description = isset($field['description']) ? (string) $field['description'] : '';
+            $example = isset($field['example']) ? (string) $field['example'] : '';
+            $raw_value = self::get_setting($field_key, '{}');
+            echo '<p><label for="' . esc_attr($field_key) . '"><strong>' . esc_html($label) . '</strong></label></p>';
+            if ($description !== '') {
+                echo '<p style="margin-top:0;">' . esc_html($description) . '</p>';
+            }
+            if ($example !== '') {
+                echo '<p style="margin-top:0;"><code>' . esc_html($example) . '</code></p>';
+            }
+            echo '<textarea id="' . esc_attr($field_key) . '" name="' . esc_attr($field_key) . '" rows="6" style="width:100%;font-family:monospace;">' . esc_textarea((string) $raw_value) . '</textarea>';
+            echo '<hr style="margin:16px 0;" />';
+        }
+
+        submit_button(esc_html__('Save Rules Configuration', 'dbvc'), 'primary', 'dbvc_bricks_rules_save', false);
+        echo '</form>';
+        echo '</section>';
+
+        echo '<script>';
+        echo '(function(){';
+        echo 'const root=document.getElementById("dbvc-bricks-configure-tabs");';
+        echo 'if(!root){return;}';
+        echo 'const tabs=Array.prototype.slice.call(root.querySelectorAll("[data-config-tab]"));';
+        echo 'function activate(key){';
+        echo 'tabs.forEach(function(tab){';
+        echo 'const active=tab.getAttribute("data-config-tab")===key;';
+        echo 'tab.classList.toggle("nav-tab-active",active);';
+        echo 'tab.setAttribute("aria-selected",active?"true":"false");';
+        echo 'const panel=document.getElementById("dbvc-bricks-config-panel-"+tab.getAttribute("data-config-tab"));';
+        echo 'if(panel){panel.hidden=!active;}';
+        echo '});';
+        echo '}';
+        echo 'tabs.forEach(function(tab){tab.addEventListener("click",function(){activate(tab.getAttribute("data-config-tab")||"basic");});});';
+        echo 'activate("basic");';
+        echo '})();';
+        echo '</script>';
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function get_configure_tabs()
+    {
+        return [
+            'basic' => 'Basic Settings',
+            'advanced' => 'Advanced Settings',
+            'artifacts_rules' => 'Artifacts/Mask + Ignore Rules',
+        ];
+    }
+
+    /**
+     * Save Bricks submenu rules configuration.
+     *
+     * @param array<string, mixed> $request_data
+     * @return array<string, mixed>
+     */
+    public static function save_rules_configuration(array $request_data)
+    {
+        $fields = self::get_rules_configuration_field_definitions();
+        $errors = [];
+        $saved = [];
+        foreach ($fields as $field_key => $field_meta) {
+            $raw = isset($request_data[$field_key]) ? wp_unslash($request_data[$field_key]) : '';
+            $current = self::get_setting($field_key, '{}');
+            $sanitized = self::sanitize_json_map_setting($field_key, $raw, $current, $errors);
+            update_option($field_key, $sanitized);
+            $saved[$field_key] = $sanitized;
+        }
+
+        return [
+            'values' => $saved,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * @param string $field_key
+     * @param mixed $raw_value
+     * @param string $current_value
+     * @param array<int, string> $errors
+     * @return string
+     */
+    private static function sanitize_json_map_setting($field_key, $raw_value, $current_value, array &$errors)
+    {
+        $candidate = trim(is_string($raw_value) ? $raw_value : '');
+        if ($candidate === '') {
+            return '{}';
+        }
+        $decoded = json_decode($candidate, true);
+        if (! is_array($decoded)) {
+            $errors[] = sprintf('%s must be valid JSON object/map.', $field_key);
+            return $current_value;
+        }
+        return (string) wp_json_encode($decoded);
+    }
+
+    /**
+     * @return array<string, array<string, string>>
+     */
+    private static function get_rules_configuration_field_definitions()
+    {
+        return [
+            'dbvc_bricks_diff_path_rules' => [
+                'label' => 'Diff Path Rules',
+                'description' => 'Base compare rules merged first. Keys are selectors (`*`, artifact type, or artifact UID).',
+                'example' => '{"ignore":{"*":["meta.runtime.last_seen"]},"mask":{"option:bricks_color_palette":["colors.0.value"]}}',
+            ],
+            'dbvc_bricks_artifact_ignore_rules' => [
+                'label' => 'Artifact Ignore Rules',
+                'description' => 'Additional ignore paths merged into effective rules by selector.',
+                'example' => '{"bricks_template":["meta._edit_lock"],"*":["meta.runtime.last_seen"]}',
+            ],
+            'dbvc_bricks_artifact_mask_rules' => [
+                'label' => 'Artifact Mask Rules',
+                'description' => 'Additional mask paths merged into effective rules by selector.',
+                'example' => '{"*":["meta.auth.token"],"option:bricks_theme_styles":["secrets.api_key"]}',
+            ],
+            'dbvc_bricks_meta_ignore_rules' => [
+                'label' => 'Meta Ignore Rules',
+                'description' => 'Meta-focused ignore shortcuts; paths auto-normalize to start with `meta.`.',
+                'example' => '{"*":["runtime.last_seen"],"bricks_template":["_edit_last"]}',
+            ],
+            'dbvc_bricks_meta_mask_rules' => [
+                'label' => 'Meta Mask Rules',
+                'description' => 'Meta-focused mask shortcuts; paths auto-normalize to start with `meta.`.',
+                'example' => '{"*":["auth.token"],"option:bricks_global_settings":["license.key"]}',
+            ],
+        ];
+    }
+
+    /**
+     * REST callback for rules configuration payload.
+     *
+     * @return \WP_REST_Response
+     */
+    public static function get_rules_configuration()
+    {
+        return rest_ensure_response([
+            'fields' => self::get_rules_configuration_field_definitions(),
+            'values' => self::get_rules_configuration_values(),
+        ]);
+    }
+
+    /**
+     * REST callback for rules configuration save.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public static function post_rules_configuration(\WP_REST_Request $request)
+    {
+        $params = $request->get_json_params();
+        if (! is_array($params)) {
+            $params = [];
+        }
+
+        $request_data = self::build_rules_configuration_save_payload($params);
+        $result = self::save_rules_configuration($request_data);
+        $ok = empty($result['errors']);
+        $status = $ok ? 200 : 400;
+
+        return new \WP_REST_Response([
+            'ok' => $ok,
+            'errors' => array_values((array) ($result['errors'] ?? [])),
+            'values' => self::get_rules_configuration_values(),
+        ], $status);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function get_rules_configuration_values()
+    {
+        $values = [];
+        foreach (array_keys(self::get_rules_configuration_field_definitions()) as $field_key) {
+            $values[$field_key] = (string) self::get_setting($field_key, '{}');
+        }
+        return $values;
+    }
+
+    /**
+     * Build save payload for rules settings while preserving unspecified fields.
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    private static function build_rules_configuration_save_payload(array $params)
+    {
+        $request_data = self::get_rules_configuration_values();
+        foreach (array_keys(self::get_rules_configuration_field_definitions()) as $field_key) {
+            if (! array_key_exists($field_key, $params)) {
+                continue;
+            }
+            $raw_value = $params[$field_key];
+            if (is_array($raw_value)) {
+                $request_data[$field_key] = (string) wp_json_encode($raw_value);
+                continue;
+            }
+            if (is_string($raw_value)) {
+                $request_data[$field_key] = $raw_value;
+                continue;
+            }
+            if ($raw_value === null) {
+                $request_data[$field_key] = '{}';
+                continue;
+            }
+            $request_data[$field_key] = (string) $raw_value;
+        }
+        return $request_data;
+    }
+
+    /**
+     * REST callback for mothership shared rules profile payload.
+     *
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function get_shared_rules_profile()
+    {
+        $role_check = self::ensure_mothership_role_for_shared_profile();
+        if (is_wp_error($role_check)) {
+            return $role_check;
+        }
+
+        return rest_ensure_response([
+            'profile' => self::load_shared_rules_profile(),
+            'fields' => self::get_rules_configuration_field_definitions(),
+            'non_goals' => self::get_shared_rules_profile_non_goals(),
+        ]);
+    }
+
+    /**
+     * REST callback for mothership shared rules profile save.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function post_shared_rules_profile(\WP_REST_Request $request)
+    {
+        $role_check = self::ensure_mothership_role_for_shared_profile();
+        if (is_wp_error($role_check)) {
+            return $role_check;
+        }
+
+        $idempotency_key = class_exists('DBVC_Bricks_Idempotency')
+            ? DBVC_Bricks_Idempotency::extract_key($request)
+            : '';
+        if ($idempotency_key === '') {
+            return new \WP_Error('dbvc_bricks_idempotency_required', 'Idempotency-Key is required.', ['status' => 400]);
+        }
+        if (class_exists('DBVC_Bricks_Idempotency')) {
+            $existing = DBVC_Bricks_Idempotency::get('shared_rules_profile_save', $idempotency_key);
+            if (is_array($existing) && isset($existing['response']) && is_array($existing['response'])) {
+                return rest_ensure_response($existing['response']);
+            }
+        }
+
+        $params = $request->get_json_params();
+        if (! is_array($params)) {
+            $params = [];
+        }
+
+        $current = self::load_shared_rules_profile();
+        $errors = [];
+        $normalized_rules = self::normalize_shared_rules_profile_rules($params, $errors);
+        if (! empty($errors)) {
+            return new \WP_REST_Response([
+                'ok' => false,
+                'errors' => array_values($errors),
+                'profile' => $current,
+            ], 400);
+        }
+
+        $notes = isset($params['notes']) ? sanitize_text_field((string) $params['notes']) : (string) ($current['notes'] ?? '');
+        $user = wp_get_current_user();
+        $actor = ($user instanceof \WP_User && ! empty($user->user_login))
+            ? (string) $user->user_login
+            : 'system';
+        $has_prior_profile = isset($current['updated_at']) && (string) $current['updated_at'] !== '';
+        $previous_version = $has_prior_profile && isset($current['profile_version'])
+            ? max(0, (int) $current['profile_version'])
+            : 0;
+        $profile = [
+            'profile_version' => $previous_version + 1,
+            'updated_at' => gmdate('c'),
+            'updated_by' => $actor,
+            'notes' => $notes,
+            'rules' => $normalized_rules,
+            'non_goals' => self::get_shared_rules_profile_non_goals(),
+        ];
+
+        update_option(self::OPTION_SHARED_RULES_PROFILE, wp_json_encode($profile));
+
+        $response = [
+            'ok' => true,
+            'profile' => $profile,
+        ];
+        if (class_exists('DBVC_Bricks_Idempotency')) {
+            DBVC_Bricks_Idempotency::put('shared_rules_profile_save', $idempotency_key, $response);
+        }
+
+        return rest_ensure_response($response);
+    }
+
+    /**
+     * REST callback to distribute shared rules profile from mothership to connected clients.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function post_shared_rules_profile_distribute(\WP_REST_Request $request)
+    {
+        $role_check = self::ensure_mothership_role_for_shared_profile();
+        if (is_wp_error($role_check)) {
+            return $role_check;
+        }
+
+        $idempotency_key = class_exists('DBVC_Bricks_Idempotency')
+            ? DBVC_Bricks_Idempotency::extract_key($request)
+            : '';
+        if ($idempotency_key === '') {
+            return new \WP_Error('dbvc_bricks_idempotency_required', 'Idempotency-Key is required.', ['status' => 400]);
+        }
+        if (class_exists('DBVC_Bricks_Idempotency')) {
+            $existing = DBVC_Bricks_Idempotency::get('shared_rules_profile_distribute', $idempotency_key);
+            if (is_array($existing) && isset($existing['response']) && is_array($existing['response'])) {
+                return rest_ensure_response($existing['response']);
+            }
+        }
+
+        $params = $request->get_json_params();
+        if (! is_array($params)) {
+            $params = [];
+        }
+        $target_mode = sanitize_key((string) ($params['target_mode'] ?? 'all'));
+        if (! in_array($target_mode, ['all', 'selected'], true)) {
+            return new \WP_Error('dbvc_bricks_shared_rules_target_mode_invalid', 'target_mode must be all or selected.', ['status' => 400]);
+        }
+        $selected = isset($params['site_uids']) && is_array($params['site_uids']) ? $params['site_uids'] : [];
+        $selected = array_values(array_unique(array_filter(array_map(static function ($uid) {
+            return sanitize_key((string) $uid);
+        }, $selected))));
+        if ($target_mode === 'selected' && empty($selected)) {
+            return new \WP_Error('dbvc_bricks_shared_rules_target_sites_required', 'selected mode requires at least one site_uid.', ['status' => 400]);
+        }
+
+        $profile = self::load_shared_rules_profile();
+        $distribution_id = sanitize_key((string) ($params['distribution_id'] ?? ''));
+        if ($distribution_id === '') {
+            $distribution_id = 'dist_' . substr(hash('sha256', $idempotency_key . '|' . gmdate('c')), 0, 16);
+        }
+        $targets = self::resolve_shared_rules_distribution_targets($target_mode, $selected);
+        $results = [];
+        $summary = ['queued' => 0, 'applied' => 0, 'failed' => 0, 'dead_letter' => 0];
+        $correlation_id = sanitize_text_field((string) $request->get_header('X-DBVC-Correlation-ID'));
+        if ($correlation_id === '') {
+            $correlation_id = 'shared-rules-' . substr(hash('sha256', microtime(true) . wp_rand()), 0, 8);
+        }
+        $transport_mode = self::get_enum_setting('dbvc_bricks_command_transport_mode', ['direct_push', 'client_pull_envelope'], 'direct_push');
+
+        if ($transport_mode === 'client_pull_envelope' && class_exists('DBVC_Bricks_Command_Queue')) {
+            foreach ($targets as $site) {
+                if (! is_array($site)) {
+                    continue;
+                }
+                $site_uid = sanitize_key((string) ($site['site_uid'] ?? ''));
+                if ($site_uid === '') {
+                    continue;
+                }
+                self::append_internal_diagnostic('shared_rules_distribution_queued', [
+                    'distribution_id' => $distribution_id,
+                    'site_uid' => $site_uid,
+                    'target_mode' => $target_mode,
+                    'correlation_id' => $correlation_id,
+                    'transport_mode' => $transport_mode,
+                ]);
+
+                $queued = DBVC_Bricks_Command_Queue::enqueue_shared_rules_for_site($site, $profile, $distribution_id, $correlation_id);
+                $results[] = $queued;
+                if (($queued['status'] ?? '') === 'queued') {
+                    $summary['queued']++;
+                    continue;
+                }
+                $summary['failed']++;
+                self::append_internal_diagnostic('shared_rules_distribution_failed', [
+                    'distribution_id' => $distribution_id,
+                    'site_uid' => $site_uid,
+                    'error_code' => (string) ($queued['error_code'] ?? 'queue_enqueue_failed'),
+                    'transport_mode' => $transport_mode,
+                ]);
+            }
+        } else {
+            foreach ($targets as $site) {
+                if (! is_array($site)) {
+                    continue;
+                }
+                $site_uid = sanitize_key((string) ($site['site_uid'] ?? ''));
+                if ($site_uid === '') {
+                    continue;
+                }
+                self::append_internal_diagnostic('shared_rules_distribution_queued', [
+                    'distribution_id' => $distribution_id,
+                    'site_uid' => $site_uid,
+                    'target_mode' => $target_mode,
+                    'correlation_id' => $correlation_id,
+                    'transport_mode' => $transport_mode,
+                ]);
+
+                $delivery = self::deliver_shared_rules_profile_to_site($site, $profile, $distribution_id, $correlation_id);
+                $results[] = $delivery;
+                $status = (string) ($delivery['status'] ?? 'failed');
+                if ($status === 'applied') {
+                    $summary['applied']++;
+                } else {
+                    $summary['failed']++;
+                    if (! empty($delivery['dead_letter'])) {
+                        $summary['dead_letter']++;
+                    }
+                }
+            }
+        }
+
+        $response = [
+            'ok' => $summary['failed'] === 0,
+            'distribution_id' => $distribution_id,
+            'transport_mode' => $transport_mode,
+            'target_mode' => $target_mode,
+            'site_uids' => array_values(array_map(static function ($item) {
+                return (string) ($item['site_uid'] ?? '');
+            }, $results)),
+            'profile_version' => (int) ($profile['profile_version'] ?? 1),
+            'summary' => $summary,
+            'results' => $results,
+        ];
+        if (class_exists('DBVC_Bricks_Idempotency')) {
+            DBVC_Bricks_Idempotency::put('shared_rules_profile_distribute', $idempotency_key, $response);
+        }
+        return rest_ensure_response($response);
+    }
+
+    /**
+     * Client-side signed apply endpoint for shared rules profile.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function post_shared_rules_profile_apply(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Bricks_Command_Auth')) {
+            return new \WP_Error('dbvc_bricks_command_runtime_missing', 'Command auth runtime unavailable.', ['status' => 500]);
+        }
+        $verify = DBVC_Bricks_Command_Auth::verify_signed_request($request, (string) $request->get_body());
+        if (is_wp_error($verify)) {
+            return $verify;
+        }
+
+        $params = $request->get_json_params();
+        if (! is_array($params)) {
+            $params = [];
+        }
+        $distribution_id = sanitize_key((string) ($params['distribution_id'] ?? ''));
+        if ($distribution_id === '') {
+            return new \WP_Error('dbvc_bricks_shared_rules_distribution_required', 'distribution_id is required.', ['status' => 400]);
+        }
+
+        $profile = isset($params['profile']) && is_array($params['profile']) ? $params['profile'] : [];
+        $errors = [];
+        $normalized_rules = self::normalize_shared_rules_profile_rules(['rules' => (array) ($profile['rules'] ?? [])], $errors);
+        if (! empty($errors)) {
+            return new \WP_REST_Response([
+                'ok' => false,
+                'errors' => array_values($errors),
+            ], 400);
+        }
+
+        foreach (self::get_shared_rules_profile_keys() as $rule_key) {
+            $value = isset($normalized_rules[$rule_key]) ? $normalized_rules[$rule_key] : [];
+            update_option($rule_key, wp_json_encode($value));
+        }
+
+        $applied_profile = [
+            'profile_version' => max(1, (int) ($profile['profile_version'] ?? 1)),
+            'updated_at' => isset($profile['updated_at']) ? sanitize_text_field((string) $profile['updated_at']) : gmdate('c'),
+            'updated_by' => isset($profile['updated_by']) ? sanitize_text_field((string) $profile['updated_by']) : 'mothership',
+            'notes' => isset($profile['notes']) ? sanitize_text_field((string) $profile['notes']) : '',
+            'rules' => $normalized_rules,
+            'non_goals' => self::get_shared_rules_profile_non_goals(),
+            'last_applied_distribution_id' => $distribution_id,
+            'last_applied_at' => gmdate('c'),
+        ];
+        update_option(self::OPTION_SHARED_RULES_PROFILE, wp_json_encode($applied_profile));
+
+        $site_uid = sanitize_key((string) self::get_setting('dbvc_bricks_site_uid', ''));
+        if ($site_uid === '') {
+            $site_uid = 'site_' . get_current_blog_id();
+        }
+        self::append_internal_diagnostic('shared_rules_distribution_applied', [
+            'distribution_id' => $distribution_id,
+            'site_uid' => $site_uid,
+            'profile_version' => (int) $applied_profile['profile_version'],
+        ]);
+
+        return rest_ensure_response([
+            'ok' => true,
+            'site_uid' => $site_uid,
+            'distribution_id' => $distribution_id,
+            'applied_profile_version' => (int) $applied_profile['profile_version'],
+            'applied_at' => (string) $applied_profile['last_applied_at'],
+        ]);
+    }
+
+    /**
+     * @return true|\WP_Error
+     */
+    private static function ensure_mothership_role_for_shared_profile()
+    {
+        if (self::get_role_mode() !== 'mothership') {
+            return new \WP_Error('dbvc_bricks_shared_rules_role_invalid', 'Shared rules profile is mothership-only.', ['status' => 400]);
+        }
+        return true;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function get_shared_rules_profile_non_goals()
+    {
+        return [
+            'no_automatic_artifact_apply',
+            'no_package_mutation',
+            'no_protected_variant_behavior_change',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function get_shared_rules_profile_keys()
+    {
+        return [
+            'dbvc_bricks_diff_path_rules',
+            'dbvc_bricks_artifact_ignore_rules',
+            'dbvc_bricks_artifact_mask_rules',
+            'dbvc_bricks_meta_ignore_rules',
+            'dbvc_bricks_meta_mask_rules',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function load_shared_rules_profile()
+    {
+        $stored = get_option(self::OPTION_SHARED_RULES_PROFILE, '{}');
+        $decoded = [];
+        if (is_string($stored) && trim($stored) !== '') {
+            $parsed = json_decode($stored, true);
+            if (is_array($parsed)) {
+                $decoded = $parsed;
+            }
+        } elseif (is_array($stored)) {
+            $decoded = $stored;
+        }
+
+        $rules = [];
+        $source_rules = isset($decoded['rules']) && is_array($decoded['rules']) ? $decoded['rules'] : [];
+        foreach (self::get_shared_rules_profile_keys() as $key) {
+            $option_raw = get_option($key, '{}');
+            $option_map = [];
+            if (is_string($option_raw) && trim($option_raw) !== '') {
+                $option_decoded = json_decode($option_raw, true);
+                if (is_array($option_decoded)) {
+                    $option_map = $option_decoded;
+                }
+            } elseif (is_array($option_raw)) {
+                $option_map = $option_raw;
+            }
+            $rules[$key] = isset($source_rules[$key]) && is_array($source_rules[$key]) ? $source_rules[$key] : $option_map;
+        }
+
+        return [
+            'profile_version' => isset($decoded['profile_version']) ? max(1, (int) $decoded['profile_version']) : 1,
+            'updated_at' => isset($decoded['updated_at']) ? sanitize_text_field((string) $decoded['updated_at']) : '',
+            'updated_by' => isset($decoded['updated_by']) ? sanitize_text_field((string) $decoded['updated_by']) : '',
+            'notes' => isset($decoded['notes']) ? sanitize_text_field((string) $decoded['notes']) : '',
+            'rules' => $rules,
+            'non_goals' => self::get_shared_rules_profile_non_goals(),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     * @param array<int, string> $errors
+     * @return array<string, array<string, mixed>>
+     */
+    private static function normalize_shared_rules_profile_rules(array $params, array &$errors)
+    {
+        $current = self::load_shared_rules_profile();
+        $current_rules = isset($current['rules']) && is_array($current['rules']) ? $current['rules'] : [];
+        $rules_input = isset($params['rules']) && is_array($params['rules']) ? $params['rules'] : $params;
+        $normalized = [];
+
+        foreach (self::get_shared_rules_profile_keys() as $key) {
+            $raw_value = array_key_exists($key, $rules_input) ? $rules_input[$key] : ($current_rules[$key] ?? []);
+            if ($key === 'dbvc_bricks_diff_path_rules') {
+                $normalized[$key] = self::normalize_shared_diff_rules_map($raw_value, $errors);
+            } else {
+                $normalized[$key] = self::normalize_shared_selector_paths_map($raw_value, $key, $errors);
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $raw_value
+     * @param array<int, string> $errors
+     * @return array<string, mixed>
+     */
+    private static function normalize_shared_diff_rules_map($raw_value, array &$errors)
+    {
+        if (! is_array($raw_value)) {
+            $errors[] = 'dbvc_bricks_diff_path_rules must be a JSON object.';
+            return [];
+        }
+
+        $normalized = [];
+        $allowed_groups = ['ignore', 'mask'];
+        foreach ($allowed_groups as $group_key) {
+            $group = $raw_value[$group_key] ?? [];
+            $normalized[$group_key] = self::normalize_shared_selector_paths_map($group, 'dbvc_bricks_diff_path_rules.' . $group_key, $errors);
+        }
+
+        foreach (array_keys($raw_value) as $group_key) {
+            if (! in_array((string) $group_key, $allowed_groups, true)) {
+                $errors[] = 'dbvc_bricks_diff_path_rules allows only `ignore` and `mask` keys.';
+                break;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $raw_value
+     * @param string $field_key
+     * @param array<int, string> $errors
+     * @return array<string, array<int, string>>
+     */
+    private static function normalize_shared_selector_paths_map($raw_value, $field_key, array &$errors)
+    {
+        if (! is_array($raw_value)) {
+            $errors[] = $field_key . ' must be a JSON object.';
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($raw_value as $selector => $paths) {
+            $selector_key = sanitize_text_field((string) $selector);
+            if ($selector_key === '') {
+                $errors[] = $field_key . ' selector key cannot be empty.';
+                continue;
+            }
+            if (! is_array($paths)) {
+                $errors[] = $field_key . ' selector `' . $selector_key . '` must map to an array of string paths.';
+                continue;
+            }
+            $list = [];
+            foreach ($paths as $path) {
+                $clean = sanitize_text_field((string) $path);
+                if ($clean === '') {
+                    continue;
+                }
+                $list[$clean] = true;
+            }
+            $normalized[$selector_key] = array_values(array_keys($list));
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param string $target_mode
+     * @param array<int, string> $selected
+     * @return array<int, array<string, mixed>>
+     */
+    private static function resolve_shared_rules_distribution_targets($target_mode, array $selected)
+    {
+        if (! class_exists('DBVC_Bricks_Connected_Sites')) {
+            return [];
+        }
+        $sites = DBVC_Bricks_Connected_Sites::get_sites();
+        if (! is_array($sites)) {
+            return [];
+        }
+        $allowed = [];
+        foreach ($sites as $site) {
+            if (! is_array($site)) {
+                continue;
+            }
+            $site_uid = sanitize_key((string) ($site['site_uid'] ?? ''));
+            if ($site_uid === '') {
+                continue;
+            }
+            if (($site['status'] ?? 'online') === 'disabled') {
+                continue;
+            }
+            if (empty($site['allow_receive_packages'])) {
+                continue;
+            }
+            if ($target_mode === 'selected' && ! in_array($site_uid, $selected, true)) {
+                continue;
+            }
+            $allowed[] = $site;
+        }
+        return array_values($allowed);
+    }
+
+    /**
+     * @param array<string, mixed> $site
+     * @param array<string, mixed> $profile
+     * @param string $distribution_id
+     * @param string $correlation_id
+     * @return array<string, mixed>
+     */
+    private static function deliver_shared_rules_profile_to_site(array $site, array $profile, $distribution_id, $correlation_id)
+    {
+        $site_uid = sanitize_key((string) ($site['site_uid'] ?? ''));
+        $base_url = untrailingslashit((string) ($site['base_url'] ?? ''));
+        if ($site_uid === '' || $base_url === '') {
+            $transport = self::update_shared_rules_transport_state($distribution_id, $site_uid, false, 'site_config_invalid');
+            self::append_internal_diagnostic('shared_rules_distribution_failed', [
+                'distribution_id' => $distribution_id,
+                'site_uid' => $site_uid,
+                'error_code' => 'site_config_invalid',
+            ]);
+            return [
+                'site_uid' => $site_uid,
+                'status' => 'failed',
+                'error_code' => 'site_config_invalid',
+                'transport' => $transport,
+                'dead_letter' => ! empty($transport['dead_letter']),
+            ];
+        }
+
+        $secret = self::get_command_secret_for_site($site_uid);
+        if ($secret === '') {
+            $transport = self::update_shared_rules_transport_state($distribution_id, $site_uid, false, 'command_secret_missing');
+            self::append_internal_diagnostic('shared_rules_distribution_failed', [
+                'distribution_id' => $distribution_id,
+                'site_uid' => $site_uid,
+                'error_code' => 'command_secret_missing',
+            ]);
+            return [
+                'site_uid' => $site_uid,
+                'status' => 'failed',
+                'error_code' => 'command_secret_missing',
+                'transport' => $transport,
+                'dead_letter' => ! empty($transport['dead_letter']),
+            ];
+        }
+
+        $payload = [
+            'distribution_id' => sanitize_key((string) $distribution_id),
+            'profile' => $profile,
+        ];
+        $raw_body = wp_json_encode($payload);
+        if (! is_string($raw_body)) {
+            $raw_body = '{}';
+        }
+        $timestamp = time();
+        $nonce = 'sr_' . substr(hash('sha256', $distribution_id . '|' . $site_uid . '|' . microtime(true)), 0, 16);
+        $signature = class_exists('DBVC_Bricks_Command_Auth')
+            ? DBVC_Bricks_Command_Auth::build_signature($secret, $timestamp, $nonce, $site_uid, $raw_body)
+            : '';
+        $url = $base_url . '/wp-json/dbvc/v1/bricks/configure/shared-rules-profile/apply';
+        $timeout = max(5, self::get_int_setting('dbvc_bricks_http_timeout', 30));
+        $sslverify = self::get_bool_setting('dbvc_bricks_tls_verify', true);
+
+        $response = wp_remote_post($url, [
+            'timeout' => $timeout,
+            'sslverify' => $sslverify,
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-DBVC-Correlation-ID' => $correlation_id,
+                'X-DBVC-Timestamp' => (string) $timestamp,
+                'X-DBVC-Nonce' => $nonce,
+                'X-DBVC-Site-UID' => $site_uid,
+                'X-DBVC-Signature' => $signature,
+            ],
+            'body' => $raw_body,
+        ]);
+
+        if (is_wp_error($response)) {
+            $transport = self::update_shared_rules_transport_state($distribution_id, $site_uid, false, 'remote_http_error');
+            self::append_internal_diagnostic('shared_rules_distribution_failed', [
+                'distribution_id' => $distribution_id,
+                'site_uid' => $site_uid,
+                'error_code' => 'remote_http_error',
+                'message' => $response->get_error_message(),
+            ]);
+            return [
+                'site_uid' => $site_uid,
+                'status' => 'failed',
+                'error_code' => 'remote_http_error',
+                'transport' => $transport,
+                'dead_letter' => ! empty($transport['dead_letter']),
+            ];
+        }
+
+        $status = (int) wp_remote_retrieve_response_code($response);
+        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        if (! is_array($body)) {
+            $body = [];
+        }
+        if ($status < 200 || $status >= 300 || empty($body['ok'])) {
+            $transport = self::update_shared_rules_transport_state($distribution_id, $site_uid, false, 'remote_apply_failed');
+            self::append_internal_diagnostic('shared_rules_distribution_failed', [
+                'distribution_id' => $distribution_id,
+                'site_uid' => $site_uid,
+                'error_code' => 'remote_apply_failed',
+                'response_status' => $status,
+            ]);
+            return [
+                'site_uid' => $site_uid,
+                'status' => 'failed',
+                'error_code' => 'remote_apply_failed',
+                'response_status' => $status,
+                'transport' => $transport,
+                'dead_letter' => ! empty($transport['dead_letter']),
+            ];
+        }
+
+        $transport = self::update_shared_rules_transport_state($distribution_id, $site_uid, true, '');
+        self::append_internal_diagnostic('shared_rules_distribution_applied', [
+            'distribution_id' => $distribution_id,
+            'site_uid' => $site_uid,
+            'applied_profile_version' => (int) ($body['applied_profile_version'] ?? 0),
+        ]);
+        return [
+            'site_uid' => $site_uid,
+            'status' => 'applied',
+            'applied_profile_version' => (int) ($body['applied_profile_version'] ?? 0),
+            'transport' => $transport,
+            'dead_letter' => ! empty($transport['dead_letter']),
+        ];
+    }
+
+    /**
+     * @param string $site_uid
+     * @return string
+     */
+    public static function get_command_secret_for_site($site_uid)
+    {
+        $site_uid = sanitize_key((string) $site_uid);
+        if (class_exists('DBVC_Bricks_Connected_Sites') && method_exists('DBVC_Bricks_Connected_Sites', 'resolve_site_identity')) {
+            $resolution = DBVC_Bricks_Connected_Sites::resolve_site_identity($site_uid);
+            $resolved = sanitize_key((string) ($resolution['resolved_site_uid'] ?? ''));
+            if ($resolved !== '') {
+                $site_uid = $resolved;
+            }
+        }
+        if (! class_exists('DBVC_Bricks_Onboarding')) {
+            return '';
+        }
+        $client = DBVC_Bricks_Onboarding::get_client($site_uid);
+        if (! is_array($client)) {
+            return '';
+        }
+        $secret = '';
+        if (isset($client['command_secret']) && is_string($client['command_secret'])) {
+            $secret = sanitize_text_field($client['command_secret']);
+        } elseif (isset($client['handshake_token']) && is_string($client['handshake_token'])) {
+            $secret = sanitize_text_field($client['handshake_token']);
+        }
+        return $secret;
+    }
+
+    /**
+     * @param string $distribution_id
+     * @param string $site_uid
+     * @param bool $ok
+     * @param string $error_code
+     * @return array<string, mixed>
+     */
+    private static function update_shared_rules_transport_state($distribution_id, $site_uid, $ok, $error_code = '')
+    {
+        $distribution_id = sanitize_key((string) $distribution_id);
+        $site_uid = sanitize_key((string) $site_uid);
+        if ($distribution_id === '' || $site_uid === '') {
+            return [];
+        }
+
+        $store = get_option(self::OPTION_SHARED_RULES_TRANSPORT, []);
+        if (! is_array($store)) {
+            $store = [];
+        }
+        $row_key = $distribution_id . '|' . $site_uid;
+        $record = isset($store[$row_key]) && is_array($store[$row_key]) ? $store[$row_key] : [];
+        $attempt = max(0, (int) ($record['attempt_count'] ?? 0)) + 1;
+
+        $record['distribution_id'] = $distribution_id;
+        $record['site_uid'] = $site_uid;
+        $record['attempt_count'] = $attempt;
+        $record['last_attempt_at'] = gmdate('c');
+        $record['last_status'] = $ok ? 'applied' : 'failed';
+        $record['error_code'] = $ok ? '' : sanitize_key((string) $error_code);
+        $record['retry_backoff_seconds'] = 0;
+        $record['next_retry_at'] = '';
+        $record['dead_letter'] = false;
+        if (! $ok) {
+            $backoff = min(self::SHARED_RULES_DISTRIBUTION_RETRY_BASE_SECONDS * (int) pow(2, max(0, $attempt - 1)), HOUR_IN_SECONDS);
+            $record['retry_backoff_seconds'] = $backoff;
+            $record['next_retry_at'] = gmdate('c', time() + $backoff);
+            $record['dead_letter'] = $attempt >= self::SHARED_RULES_DISTRIBUTION_MAX_ATTEMPTS;
+            if ($record['dead_letter']) {
+                $record['next_retry_at'] = '';
+            }
+        }
+        $store[$row_key] = $record;
+        if (count($store) > 500) {
+            $store = array_slice($store, -500, null, true);
+        }
+        update_option(self::OPTION_SHARED_RULES_TRANSPORT, $store);
+        return $record;
+    }
+
+    /**
+     * @param string $event_type
+     * @param array<string, mixed> $payload
+     * @return void
+     */
+    private static function append_internal_diagnostic($event_type, array $payload)
+    {
+        $rows = get_option(self::OPTION_UI_DIAGNOSTICS, []);
+        if (! is_array($rows)) {
+            $rows = [];
+        }
+        $rows[] = [
+            'event_type' => sanitize_key((string) $event_type),
+            'payload' => self::sanitize_diagnostics_payload($payload),
+            'correlation_id' => 'shared-' . substr(hash('sha256', microtime(true) . wp_rand()), 0, 8),
+            'actor_id' => (int) get_current_user_id(),
+            'at' => gmdate('c'),
+        ];
+        if (count($rows) > self::UI_DIAGNOSTIC_MAX_ITEMS) {
+            $rows = array_slice($rows, -self::UI_DIAGNOSTIC_MAX_ITEMS);
+        }
+        update_option(self::OPTION_UI_DIAGNOSTICS, array_values($rows));
+    }
+
+    /**
+     * Return user documentation library payload from seed markdown.
+     *
+     * @return array<string, mixed>
+     */
+    public static function get_user_documentation_library_payload()
+    {
+        $path = self::get_user_documentation_library_path();
+        if (! is_readable($path)) {
+            return [
+                'available' => false,
+                'title' => '',
+                'sections' => [],
+            ];
+        }
+
+        $raw = file_get_contents($path);
+        if (! is_string($raw) || trim($raw) === '') {
+            return [
+                'available' => false,
+                'title' => '',
+                'sections' => [],
+            ];
+        }
+
+        $title = '';
+        if (preg_match('/^#\s+(.+)$/m', $raw, $matches)) {
+            $title = sanitize_text_field((string) $matches[1]);
+        }
+
+        $sections = [];
+        if (preg_match_all('/^###\s+(.+)$(.*?)(?=^###\s+|\z)/ms', $raw, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $heading = sanitize_text_field((string) ($match[1] ?? ''));
+                $content = isset($match[2]) ? (string) $match[2] : '';
+                $html = self::render_user_documentation_markdown_fragment($content);
+                if ($heading === '' || $html === '') {
+                    continue;
+                }
+                $sections[] = [
+                    'heading' => $heading,
+                    'html' => $html,
+                ];
+            }
+        }
+
+        return [
+            'available' => true,
+            'title' => $title,
+            'sections' => $sections,
+        ];
+    }
+
+    /**
+     * Render a small markdown subset used by the user docs seed file.
+     *
+     * Supported:
+     * - bullet lines prefixed with "- "
+     * - paragraphs
+     * - inline code marked by backticks
+     *
+     * @param string $markdown
+     * @return string
+     */
+    public static function render_user_documentation_markdown_fragment($markdown)
+    {
+        $lines = preg_split('/\r\n|\r|\n/', (string) $markdown);
+        if (! is_array($lines)) {
+            return '';
+        }
+
+        $html = '';
+        $list_items = [];
+        $paragraph_lines = [];
+
+        $flush_paragraph = static function () use (&$html, &$paragraph_lines): void {
+            if (empty($paragraph_lines)) {
+                return;
+            }
+            $text = trim(implode(' ', $paragraph_lines));
+            if ($text !== '') {
+                $html .= '<p>' . DBVC_Bricks_Addon::format_user_documentation_inline_text($text) . '</p>';
+            }
+            $paragraph_lines = [];
+        };
+        $flush_list = static function () use (&$html, &$list_items): void {
+            if (empty($list_items)) {
+                return;
+            }
+            $html .= '<ul>';
+            foreach ($list_items as $item) {
+                $html .= '<li>' . DBVC_Bricks_Addon::format_user_documentation_inline_text($item) . '</li>';
+            }
+            $html .= '</ul>';
+            $list_items = [];
+        };
+
+        foreach ($lines as $line) {
+            $trimmed = trim((string) $line);
+            if ($trimmed === '') {
+                $flush_paragraph();
+                $flush_list();
+                continue;
+            }
+
+            if (str_starts_with($trimmed, '- ')) {
+                $flush_paragraph();
+                $list_items[] = trim(substr($trimmed, 2));
+                continue;
+            }
+
+            $flush_list();
+            $paragraph_lines[] = $trimmed;
+        }
+
+        $flush_paragraph();
+        $flush_list();
+
+        return $html;
+    }
+
+    /**
+     * @param string $text
+     * @return string
+     */
+    public static function format_user_documentation_inline_text($text)
+    {
+        $parts = preg_split('/`([^`]+)`/', (string) $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if (! is_array($parts)) {
+            return esc_html((string) $text);
+        }
+
+        $out = '';
+        foreach ($parts as $index => $part) {
+            if (($index % 2) === 1) {
+                $out .= '<code>' . esc_html((string) $part) . '</code>';
+            } else {
+                $out .= esc_html((string) $part);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return string
+     */
+    public static function get_user_documentation_library_path()
+    {
+        return trailingslashit((string) DBVC_PLUGIN_PATH) . 'docs/DBVC_USER_DOCUMENTATION_LIBRARY.md';
+    }
+
+    /**
+     * @return array<string, array<string, bool>>
+     */
+    public static function get_user_documentation_allowed_html()
+    {
+        return [
+            'p' => [],
+            'ul' => [],
+            'li' => [],
+            'code' => [],
+            'strong' => [],
+            'em' => [],
+        ];
     }
 
     /**
@@ -1781,6 +3113,70 @@ final class DBVC_Bricks_Addon
 
         register_rest_route(
             'dbvc/v1/bricks',
+            '/drift-compare',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Drift::class, 'rest_compare'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/configure/rules',
+            [
+                [
+                    'methods'             => \WP_REST_Server::READABLE,
+                    'callback'            => [self::class, 'get_rules_configuration'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
+                [
+                    'methods'             => \WP_REST_Server::CREATABLE,
+                    'callback'            => [self::class, 'post_rules_configuration'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/configure/shared-rules-profile',
+            [
+                [
+                    'methods'             => \WP_REST_Server::READABLE,
+                    'callback'            => [self::class, 'get_shared_rules_profile'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
+                [
+                    'methods'             => \WP_REST_Server::CREATABLE,
+                    'callback'            => [self::class, 'post_shared_rules_profile'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/configure/shared-rules-profile/distribute',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'post_shared_rules_profile_distribute'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/configure/shared-rules-profile/apply',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'post_shared_rules_profile_apply'],
+                'permission_callback' => '__return_true',
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
             '/apply',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -1952,6 +3348,56 @@ final class DBVC_Bricks_Addon
 
         register_rest_route(
             'dbvc/v1/bricks',
+            '/connected-sites/reset-linkage',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_reset_linkage'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/connected-sites/merge-alias',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_merge_alias'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/connected-sites/known-alias',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_set_known_alias'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/connected-sites/assisted-merge-candidates',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_assisted_merge_candidates'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/connected-sites/assisted-merge',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_assisted_merge'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
             '/intro/packet',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -1966,6 +3412,56 @@ final class DBVC_Bricks_Addon
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
                 'callback'            => [DBVC_Bricks_Onboarding::class, 'rest_intro_handshake'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/onboarding/reset-rerun',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Onboarding::class, 'rest_client_reset_rerun'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/commands/enqueue',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Command_Queue::class, 'rest_enqueue'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/commands/pull',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Command_Queue::class, 'rest_pull'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/commands/ack',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Command_Queue::class, 'rest_ack'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/commands/status',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [DBVC_Bricks_Command_Queue::class, 'rest_status'],
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
@@ -2111,6 +3607,7 @@ final class DBVC_Bricks_Addon
             'proposal_transition',
             'diagnostics_loaded',
             'review_export',
+            'raw_compare_refreshed',
             'ui_error',
             'package_published',
             'package_published_remote',
@@ -2216,6 +3713,9 @@ final class DBVC_Bricks_Addon
         do_action('dbvc_bricks_addon_job_run');
         if (class_exists('DBVC_Bricks_Onboarding')) {
             DBVC_Bricks_Onboarding::run_client_onboarding_tick('cron');
+        }
+        if (class_exists('DBVC_Bricks_Command_Queue')) {
+            DBVC_Bricks_Command_Queue::run_client_pull_tick('cron');
         }
         if (
             self::get_bool_setting(self::OPTION_FLEET_MODE_ENABLED, false)

@@ -81,6 +81,7 @@ require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-idempotency.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-connected-sites.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-onboarding.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-auth.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-queue.php';
 DBVC_Admin_App::init();
 DBVC_Entity_Editor_App::init();
 DBVC_Bricks_Addon::bootstrap();

@@ -58,6 +58,57 @@ final class DBVC_Bricks_Onboarding
 
     /**
      * @param string $site_uid
+     * @return array<string, mixed>|null
+     */
+    public static function reset_client_linkage($site_uid)
+    {
+        $site_uid = sanitize_key((string) $site_uid);
+        if ($site_uid === '') {
+            return null;
+        }
+        $existing = self::get_client($site_uid);
+        if (! is_array($existing)) {
+            return null;
+        }
+        return self::upsert_client($site_uid, [
+            'onboarding_state' => 'pending_intro',
+            'approved_at' => '',
+            'rejected_at' => '',
+            'last_handshake_at' => '',
+            'handshake_token_hash' => '',
+            'command_secret' => '',
+            'notes' => 'linkage_reset_' . gmdate('c'),
+            'last_seen_at' => gmdate('c'),
+        ]);
+    }
+
+    /**
+     * @param string $alias_site_uid
+     * @param string $canonical_site_uid
+     * @return array<string, mixed>|null
+     */
+    public static function disable_alias_client_record($alias_site_uid, $canonical_site_uid = '')
+    {
+        $alias_site_uid = sanitize_key((string) $alias_site_uid);
+        if ($alias_site_uid === '') {
+            return null;
+        }
+        $existing = self::get_client($alias_site_uid);
+        if (! is_array($existing)) {
+            return null;
+        }
+        return self::upsert_client($alias_site_uid, [
+            'onboarding_state' => 'disabled',
+            'approved_at' => '',
+            'handshake_token_hash' => '',
+            'command_secret' => '',
+            'notes' => 'alias_deactivated:' . sanitize_key((string) $canonical_site_uid),
+            'last_seen_at' => gmdate('c'),
+        ]);
+    }
+
+    /**
+     * @param string $site_uid
      * @param array<string, mixed> $changes
      * @return array<string, mixed>
      */
@@ -95,9 +146,18 @@ final class DBVC_Bricks_Onboarding
         $record['updated_at'] = gmdate('c');
         $record['notes'] = sanitize_text_field((string) ($changes['notes'] ?? ($record['notes'] ?? '')));
         $record['handshake_token_hash'] = sanitize_text_field((string) ($changes['handshake_token_hash'] ?? ($record['handshake_token_hash'] ?? '')));
+        $record['command_secret'] = sanitize_text_field((string) ($changes['command_secret'] ?? ($record['command_secret'] ?? '')));
+        $record['local_instance_uuid'] = sanitize_text_field((string) ($changes['local_instance_uuid'] ?? ($record['local_instance_uuid'] ?? '')));
+        $record['first_seen_at'] = sanitize_text_field((string) ($changes['first_seen_at'] ?? ($record['first_seen_at'] ?? '')));
+        $record['site_sequence_id'] = max(0, (int) ($changes['site_sequence_id'] ?? ($record['site_sequence_id'] ?? 0)));
+        $record['site_title_host_snapshot'] = sanitize_text_field((string) ($changes['site_title_host_snapshot'] ?? ($record['site_title_host_snapshot'] ?? '')));
+        $record['last_incoming_site_uid'] = sanitize_key((string) ($changes['last_incoming_site_uid'] ?? ($record['last_incoming_site_uid'] ?? '')));
 
         if (! isset($record['created_at']) || ! is_string($record['created_at'])) {
             $record['created_at'] = gmdate('c');
+        }
+        if ($record['first_seen_at'] === '') {
+            $record['first_seen_at'] = (string) $record['created_at'];
         }
 
         $clients = self::get_clients();
@@ -327,6 +387,39 @@ final class DBVC_Bricks_Onboarding
     }
 
     /**
+     * @return string
+     */
+    private static function get_local_instance_uuid()
+    {
+        $existing = sanitize_text_field((string) get_option('dbvc_bricks_local_instance_uuid', ''));
+        if ($existing !== '') {
+            return $existing;
+        }
+        $uuid = 'inst_' . substr(hash('sha256', home_url('/') . '|' . microtime(true) . '|' . wp_rand()), 0, 24);
+        update_option('dbvc_bricks_local_instance_uuid', $uuid);
+        return $uuid;
+    }
+
+    /**
+     * @return string
+     */
+    private static function get_local_title_host_snapshot()
+    {
+        $title = sanitize_text_field((string) get_bloginfo('name'));
+        $host = sanitize_text_field((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+        if ($title === '' && $host === '') {
+            return '';
+        }
+        if ($host === '') {
+            return $title;
+        }
+        if ($title === '') {
+            return $host;
+        }
+        return $title . ' | ' . $host;
+    }
+
+    /**
      * @param string $state
      * @return string
      */
@@ -408,6 +501,8 @@ final class DBVC_Bricks_Onboarding
                 'site_label' => get_bloginfo('name'),
                 'base_url' => untrailingslashit(home_url('/')),
                 'environment' => wp_get_environment_type(),
+                'local_instance_uuid' => self::get_local_instance_uuid(),
+                'site_title_host_snapshot' => self::get_local_title_host_snapshot(),
                 'capabilities' => ['publish_remote', 'pull_latest', 'ack'],
                 'auth_profile' => [
                     'method' => 'wp_app_password',
@@ -480,6 +575,16 @@ final class DBVC_Bricks_Onboarding
     }
 
     /**
+     * @param string $site_uid
+     * @param string $registered_at
+     * @return string
+     */
+    private static function issue_handshake_token($site_uid, $registered_at)
+    {
+        return 'hs_' . substr(wp_hash((string) $site_uid . '|' . (string) $registered_at . '|' . wp_rand()), 0, 24);
+    }
+
+    /**
      * @return \WP_Error|null
      */
     private static function validate_mothership_role()
@@ -518,10 +623,26 @@ final class DBVC_Bricks_Onboarding
             $params = [];
         }
 
-        $site_uid = sanitize_key((string) ($params['site_uid'] ?? ''));
+        $site_uid_incoming = sanitize_key((string) ($params['site_uid'] ?? ''));
         $base_url = esc_url_raw((string) ($params['base_url'] ?? ''));
-        if ($site_uid === '' || $base_url === '') {
+        if ($site_uid_incoming === '' || $base_url === '') {
             return new \WP_Error('dbvc_bricks_intro_required_fields', 'site_uid and base_url are required.', ['status' => 400]);
+        }
+        $site_uid = $site_uid_incoming;
+        if (class_exists('DBVC_Bricks_Connected_Sites') && method_exists('DBVC_Bricks_Connected_Sites', 'resolve_site_identity')) {
+            $resolution = DBVC_Bricks_Connected_Sites::resolve_site_identity($site_uid_incoming);
+            $resolved = sanitize_key((string) ($resolution['resolved_site_uid'] ?? ''));
+            if ($resolved !== '') {
+                $site_uid = $resolved;
+            }
+        }
+
+        $existing_record = self::get_client($site_uid);
+        $existing_state = is_array($existing_record)
+            ? sanitize_key((string) ($existing_record['onboarding_state'] ?? 'pending_intro'))
+            : 'pending_intro';
+        if (! in_array($existing_state, ['pending_intro', 'verified', 'rejected', 'disabled'], true)) {
+            $existing_state = 'pending_intro';
         }
 
         $raw_capabilities = isset($params['capabilities']) && is_array($params['capabilities']) ? $params['capabilities'] : [];
@@ -541,34 +662,76 @@ final class DBVC_Bricks_Onboarding
             'key_id' => sanitize_text_field((string) ($auth_profile['key_id'] ?? '')),
         ];
 
+        $command_secret = is_array($existing_record)
+            ? sanitize_text_field((string) ($existing_record['command_secret'] ?? ''))
+            : '';
+        $approved_at = is_array($existing_record)
+            ? sanitize_text_field((string) ($existing_record['approved_at'] ?? ''))
+            : '';
+        $handshake_token_hash = is_array($existing_record)
+            ? sanitize_text_field((string) ($existing_record['handshake_token_hash'] ?? ''))
+            : '';
+        if ($existing_state === 'verified' && $command_secret === '') {
+            $approved_at = $approved_at !== '' ? $approved_at : gmdate('c');
+            $command_secret = self::issue_handshake_token($site_uid, $approved_at);
+            $handshake_token_hash = hash('sha256', $command_secret);
+        }
+
         $record = self::upsert_client($site_uid, [
             'site_label' => sanitize_text_field((string) ($params['site_label'] ?? $site_uid)),
             'base_url' => $base_url,
             'environment' => sanitize_key((string) ($params['environment'] ?? 'local')),
             'capabilities' => $capabilities,
             'auth_profile' => $auth_profile,
-            'onboarding_state' => 'pending_intro',
+            'onboarding_state' => $existing_state,
             'last_intro_at' => gmdate('c'),
             'last_seen_at' => gmdate('c'),
+            'approved_at' => $existing_state === 'verified' ? $approved_at : '',
+            'handshake_token_hash' => $handshake_token_hash,
+            'command_secret' => $existing_state === 'verified' ? $command_secret : '',
+            'local_instance_uuid' => sanitize_text_field((string) ($params['local_instance_uuid'] ?? ($existing_record['local_instance_uuid'] ?? ''))),
+            'first_seen_at' => sanitize_text_field((string) ($existing_record['first_seen_at'] ?? gmdate('c'))),
+            'site_title_host_snapshot' => sanitize_text_field((string) ($params['site_title_host_snapshot'] ?? ($existing_record['site_title_host_snapshot'] ?? ''))),
+            'last_incoming_site_uid' => $site_uid_incoming,
         ]);
 
         if (class_exists('DBVC_Bricks_Connected_Sites')) {
+            $allow_receive_packages = 0;
+            if ($existing_state === 'verified') {
+                $allow_receive_packages = 1;
+            } elseif (is_array($existing_record) && ! empty($existing_record['allow_receive_packages'])) {
+                $allow_receive_packages = 1;
+            }
             DBVC_Bricks_Connected_Sites::upsert_site([
                 'site_uid' => $site_uid,
                 'site_label' => (string) ($record['site_label'] ?? $site_uid),
                 'base_url' => $base_url,
-                'status' => 'online',
+                'status' => in_array($existing_state, ['rejected', 'disabled'], true) ? 'disabled' : 'online',
                 'auth_mode' => (string) ($auth_profile['method'] ?? 'wp_app_password'),
-                'allow_receive_packages' => 0,
+                'allow_receive_packages' => $allow_receive_packages,
+                'onboarding_state' => strtoupper((string) ($record['onboarding_state'] ?? 'PENDING_INTRO')),
+                'onboarding_updated_at' => (string) ($record['last_handshake_at'] ?? $record['updated_at'] ?? gmdate('c')),
                 'last_seen_at' => gmdate('c'),
+                'local_instance_uuid' => (string) ($record['local_instance_uuid'] ?? ''),
+                'first_seen_at' => (string) ($record['first_seen_at'] ?? ''),
+                'site_title_host_snapshot' => (string) ($record['site_title_host_snapshot'] ?? ''),
             ]);
+            if ($site_uid !== $site_uid_incoming && method_exists('DBVC_Bricks_Connected_Sites', 'set_known_alias')) {
+                DBVC_Bricks_Connected_Sites::set_known_alias($site_uid_incoming, $site_uid, 'intro_packet_resolved_alias', true);
+            }
         }
 
+        $response_state = strtoupper((string) ($record['onboarding_state'] ?? 'pending_intro'));
+        if (! in_array($response_state, ['PENDING_INTRO', 'VERIFIED', 'REJECTED', 'DISABLED'], true)) {
+            $response_state = 'PENDING_INTRO';
+        }
         $response = [
             'ok' => true,
             'site_uid' => $site_uid,
-            'onboarding_state' => 'PENDING_INTRO',
+            'onboarding_state' => $response_state,
             'registered_at' => (string) ($record['updated_at'] ?? gmdate('c')),
+            'approved_at' => $response_state === 'VERIFIED' ? (string) ($record['approved_at'] ?? '') : '',
+            'handshake_token' => $response_state === 'VERIFIED' ? (string) ($record['command_secret'] ?? '') : '',
         ];
         DBVC_Bricks_Idempotency::put('intro_packet', $idempotency_key, $response);
         return rest_ensure_response($response);
@@ -599,11 +762,19 @@ final class DBVC_Bricks_Onboarding
             $params = [];
         }
 
-        $site_uid = sanitize_key((string) ($params['site_uid'] ?? ''));
+        $site_uid_incoming = sanitize_key((string) ($params['site_uid'] ?? ''));
         $decision = sanitize_key((string) ($params['decision'] ?? ''));
         $notes = sanitize_text_field((string) ($params['notes'] ?? ''));
-        if ($site_uid === '' || ! in_array($decision, ['accept', 'reject'], true)) {
+        if ($site_uid_incoming === '' || ! in_array($decision, ['accept', 'reject'], true)) {
             return new \WP_Error('dbvc_bricks_intro_handshake_invalid', 'site_uid and valid decision (accept|reject) are required.', ['status' => 400]);
+        }
+        $site_uid = $site_uid_incoming;
+        if (class_exists('DBVC_Bricks_Connected_Sites') && method_exists('DBVC_Bricks_Connected_Sites', 'resolve_site_identity')) {
+            $resolution = DBVC_Bricks_Connected_Sites::resolve_site_identity($site_uid_incoming);
+            $resolved = sanitize_key((string) ($resolution['resolved_site_uid'] ?? ''));
+            if ($resolved !== '') {
+                $site_uid = $resolved;
+            }
         }
 
         $existing_record = self::get_client($site_uid);
@@ -616,7 +787,7 @@ final class DBVC_Bricks_Onboarding
         $token = '';
         $token_hash = '';
         if ($accepted) {
-            $token = 'hs_' . substr(wp_hash($site_uid . '|' . $registered_at . '|' . wp_rand()), 0, 24);
+            $token = self::issue_handshake_token($site_uid, $registered_at);
             $token_hash = hash('sha256', $token);
         }
 
@@ -627,6 +798,7 @@ final class DBVC_Bricks_Onboarding
             'rejected_at' => $accepted ? '' : $registered_at,
             'notes' => $notes,
             'handshake_token_hash' => $token_hash,
+            'command_secret' => $accepted ? $token : '',
             'last_seen_at' => $registered_at,
         ]);
 
@@ -667,4 +839,61 @@ final class DBVC_Bricks_Onboarding
         DBVC_Bricks_Idempotency::put('intro_handshake', $idempotency_key, $response);
         return rest_ensure_response($response);
     }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function rest_client_reset_rerun(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Bricks_Addon')) {
+            return new \WP_Error('dbvc_bricks_intro_runtime_missing', 'Bricks addon runtime is unavailable.', ['status' => 500]);
+        }
+        if (DBVC_Bricks_Addon::get_role_mode() !== 'client') {
+            return new \WP_Error('dbvc_bricks_intro_retry_role_invalid', 'Reset + Re-run Intro Handshake is client-only.', ['status' => 400]);
+        }
+
+        $confirm = ! empty($request->get_param('confirm_reset'));
+        if (! $confirm) {
+            return new \WP_Error('dbvc_bricks_intro_retry_confirm_required', 'confirm_reset=true is required.', ['status' => 400]);
+        }
+
+        $site_uid = self::get_local_site_uid();
+        if ($site_uid === '') {
+            return new \WP_Error('dbvc_bricks_intro_retry_site_uid_missing', 'Local site UID is not configured.', ['status' => 400]);
+        }
+
+        update_option('dbvc_bricks_intro_handshake_token', '');
+        update_option('dbvc_bricks_client_registry_state', 'PENDING_INTRO');
+        self::upsert_transport_state($site_uid, [
+            'ping_sent' => 0,
+            'intro_sent' => 0,
+            'attempts' => 0,
+            'handshake_state' => 'PENDING_INTRO',
+            'approved_at' => '',
+            'last_attempt_at' => '',
+            'last_intro_at' => '',
+            'last_error' => '',
+            'next_retry_at' => '',
+        ]);
+
+        self::append_diagnostics('intro_manual_reset_requested', [
+            'site_uid' => $site_uid,
+            'context' => 'client_ui',
+        ]);
+
+        $run_now = ! isset($request['run_now']) || ! empty($request->get_param('run_now'));
+        $tick = ['ok' => true, 'reason' => 'reset_only'];
+        if ($run_now) {
+            $tick = self::run_client_onboarding_tick('manual_reset_rerun');
+        }
+
+        return rest_ensure_response([
+            'ok' => ! is_wp_error($tick),
+            'site_uid' => $site_uid,
+            'run_now' => $run_now,
+            'result' => $tick,
+        ]);
+    }
+
 }
