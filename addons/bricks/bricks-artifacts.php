@@ -230,6 +230,31 @@ final class DBVC_Bricks_Artifacts
     }
 
     /**
+     * Inspect live option payload schema assumptions for critical Bricks artifacts.
+     *
+     * @return array<string, mixed>
+     */
+    public static function verify_live_schema()
+    {
+        $report = [
+            'generated_at' => gmdate('c'),
+            'theme_styles' => self::inspect_theme_styles_payload(),
+            'components' => self::inspect_components_payload(),
+            'migration_notes' => [],
+        ];
+
+        $notes = [];
+        if (! empty($report['theme_styles']['warnings'])) {
+            $notes[] = 'theme_styles shape requires review before strict rollout.';
+        }
+        if (! empty($report['components']['warnings'])) {
+            $notes[] = 'components label/slug extraction paths are not fully stable.';
+        }
+        $report['migration_notes'] = $notes;
+        return $report;
+    }
+
+    /**
      * @param string $option_key
      * @param string $default_policy
      * @return array<string, string>
@@ -328,5 +353,191 @@ final class DBVC_Bricks_Artifacts
         $lines = explode("\n", $value);
         $lines = array_map('rtrim', $lines);
         return implode("\n", $lines);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function inspect_theme_styles_payload()
+    {
+        $payload = get_option('bricks_theme_styles', null);
+        $warnings = [];
+        $payload_type = gettype($payload);
+        $top_level_keys = [];
+        $entry_count = 0;
+
+        if (is_array($payload)) {
+            $entry_count = count($payload);
+            if (self::is_assoc_array($payload)) {
+                $top_level_keys = array_slice(array_map('strval', array_keys($payload)), 0, 20);
+            }
+        } elseif ($payload !== null) {
+            $warnings[] = 'unexpected_payload_type';
+        }
+
+        return [
+            'present' => $payload !== null,
+            'payload_type' => $payload_type,
+            'entry_count' => $entry_count,
+            'top_level_keys' => $top_level_keys,
+            'warnings' => $warnings,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function inspect_components_payload()
+    {
+        $payload = get_option('bricks_components', null);
+        $warnings = [];
+        if ($payload === null) {
+            return [
+                'present' => false,
+                'payload_type' => 'NULL',
+                'component_count' => 0,
+                'label_coverage' => 0,
+                'slug_coverage' => 0,
+                'dominant_label_path' => '',
+                'dominant_slug_path' => '',
+                'warnings' => ['components_option_missing'],
+            ];
+        }
+
+        $items = [];
+        if (is_array($payload)) {
+            $items = self::is_assoc_array($payload) ? array_values($payload) : $payload;
+        } else {
+            return [
+                'present' => true,
+                'payload_type' => gettype($payload),
+                'component_count' => 0,
+                'label_coverage' => 0,
+                'slug_coverage' => 0,
+                'dominant_label_path' => '',
+                'dominant_slug_path' => '',
+                'warnings' => ['components_payload_not_array'],
+            ];
+        }
+
+        $label_path_counts = [];
+        $slug_path_counts = [];
+        $label_hits = 0;
+        $slug_hits = 0;
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $label_path = self::detect_first_path($item, [
+                'label',
+                'name',
+                'title',
+                'elements.0.label',
+                'elements.0.name',
+                'settings.label',
+            ]);
+            if ($label_path !== '') {
+                $label_hits++;
+                $label_path_counts[$label_path] = ($label_path_counts[$label_path] ?? 0) + 1;
+            }
+
+            $slug_path = self::detect_first_path($item, [
+                'slug',
+                'id',
+                'uid',
+                'uuid',
+                'name',
+            ]);
+            if ($slug_path !== '') {
+                $slug_hits++;
+                $slug_path_counts[$slug_path] = ($slug_path_counts[$slug_path] ?? 0) + 1;
+            }
+        }
+
+        $count = count($items);
+        if ($count > 0 && $label_hits < $count) {
+            $warnings[] = 'label_path_partial_coverage';
+        }
+        if ($count > 0 && $slug_hits < $count) {
+            $warnings[] = 'slug_path_partial_coverage';
+        }
+
+        return [
+            'present' => true,
+            'payload_type' => gettype($payload),
+            'component_count' => $count,
+            'label_coverage' => $count > 0 ? round(($label_hits / $count) * 100, 2) : 0,
+            'slug_coverage' => $count > 0 ? round(($slug_hits / $count) * 100, 2) : 0,
+            'dominant_label_path' => self::select_dominant_path($label_path_counts),
+            'dominant_slug_path' => self::select_dominant_path($slug_path_counts),
+            'warnings' => $warnings,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @param array<int, string> $paths
+     * @return string
+     */
+    private static function detect_first_path(array $item, array $paths)
+    {
+        foreach ($paths as $path) {
+            $value = self::read_path($item, $path);
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                return $path;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * @param array<string, int> $path_counts
+     * @return string
+     */
+    private static function select_dominant_path(array $path_counts)
+    {
+        if (empty($path_counts)) {
+            return '';
+        }
+        arsort($path_counts);
+        return (string) array_key_first($path_counts);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param string $path
+     * @return mixed
+     */
+    private static function read_path(array $payload, $path)
+    {
+        $parts = explode('.', (string) $path);
+        $value = $payload;
+        foreach ($parts as $part) {
+            if (! is_array($value)) {
+                return null;
+            }
+            if (ctype_digit($part)) {
+                $idx = (int) $part;
+                if (! array_key_exists($idx, $value)) {
+                    return null;
+                }
+                $value = $value[$idx];
+                continue;
+            }
+            if (! array_key_exists($part, $value)) {
+                return null;
+            }
+            $value = $value[$part];
+        }
+        return $value;
+    }
+
+    /**
+     * @param array<mixed> $value
+     * @return bool
+     */
+    private static function is_assoc_array(array $value)
+    {
+        return array_keys($value) !== range(0, count($value) - 1);
     }
 }

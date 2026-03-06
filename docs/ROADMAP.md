@@ -21,6 +21,10 @@
    - Support preview/dry-run summaries for options changes before apply.
    - Add per-option-group toggles in UI + CLI parity for scripted imports/exports.
    - Preserve safe defaults for sensitive/core options while allowing explicit overrides.
+4. User documentation library integration (`DBVC_USER_DOCUMENTATION_LIBRARY`)
+   - Adopt `docs/DBVC_USER_DOCUMENTATION_LIBRARY.md` as the seed source for user-facing operational docs.
+   - Add an in-plugin documentation/library surface that can render and organize user guides.
+   - Wire doc update workflow into release/backlog cadence so behavior notes stay current with implementation.
 
 ## In Progress
 - Triage and stabilize import/export edge cases across posts, terms, and media.

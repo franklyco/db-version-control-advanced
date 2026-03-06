@@ -18,6 +18,7 @@ final class DBVC_Bricks_Apply
      */
     public static function apply_package(array $manifest, array $selection = [], array $options = [])
     {
+        $receipt_id = sanitize_text_field((string) ($options['receipt_id'] ?? ($manifest['receipt_id'] ?? '')));
         if (DBVC_Bricks_Addon::get_bool_setting('dbvc_bricks_read_only')) {
             return new \WP_Error('dbvc_bricks_read_only_mode', 'Bricks apply is disabled while read-only mode is active.', ['status' => 400]);
         }
@@ -30,6 +31,7 @@ final class DBVC_Bricks_Apply
         if (! empty($options['dry_run'])) {
             return [
                 'dry_run' => true,
+                'receipt_id' => $receipt_id,
                 'plan' => $plan,
             ];
         }
@@ -93,6 +95,7 @@ final class DBVC_Bricks_Apply
 
         return [
             'dry_run' => false,
+            'receipt_id' => $receipt_id,
             'restore_id' => $restore_id,
             'applied' => $applied,
             'verification' => $verification,
@@ -296,11 +299,17 @@ final class DBVC_Bricks_Apply
         $manifest = isset($params['manifest']) && is_array($params['manifest']) ? $params['manifest'] : [];
         $selection = isset($params['selection']) && is_array($params['selection']) ? $params['selection'] : [];
         $options = isset($params['options']) && is_array($params['options']) ? $params['options'] : [];
+        $options['receipt_id'] = sanitize_text_field((string) ($params['receipt_id'] ?? ($manifest['receipt_id'] ?? '')));
 
         $result = self::apply_package($manifest, $selection, $options);
         if (is_wp_error($result)) {
             return $result;
         }
+        self::log_audit('apply', [
+            'receipt_id' => (string) ($result['receipt_id'] ?? ''),
+            'dry_run' => ! empty($result['dry_run']) ? 1 : 0,
+            'restore_id' => (string) ($result['restore_id'] ?? ''),
+        ]);
         if ($idempotency_key !== '' && class_exists('DBVC_Bricks_Idempotency')) {
             DBVC_Bricks_Idempotency::put('apply', $idempotency_key, $result);
         }
@@ -320,10 +329,16 @@ final class DBVC_Bricks_Apply
             $params = [];
         }
         $plan = isset($params['plan']) && is_array($params['plan']) ? $params['plan'] : ['option_artifacts' => [], 'entity_artifacts' => []];
+        $receipt_id = sanitize_text_field((string) ($params['receipt_id'] ?? ''));
         $result = self::create_restore_point($plan);
         if (is_wp_error($result)) {
             return $result;
         }
+        $result['receipt_id'] = $receipt_id;
+        self::log_audit('restore_create', [
+            'receipt_id' => $receipt_id,
+            'restore_id' => (string) ($result['restore_id'] ?? ''),
+        ]);
         return rest_ensure_response($result);
     }
 
@@ -336,10 +351,16 @@ final class DBVC_Bricks_Apply
     public static function rest_rollback(\WP_REST_Request $request)
     {
         $restore_id = (string) $request->get_param('restore_id');
+        $params = $request->get_json_params();
+        if (! is_array($params)) {
+            $params = [];
+        }
+        $receipt_id = sanitize_text_field((string) ($params['receipt_id'] ?? ''));
         $result = self::rollback_restore_point($restore_id);
         if (is_wp_error($result)) {
             return $result;
         }
+        $result['receipt_id'] = $receipt_id;
         return rest_ensure_response($result);
     }
 

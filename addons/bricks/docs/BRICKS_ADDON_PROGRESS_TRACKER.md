@@ -1,6 +1,6 @@
-# Bricks Add-on Progress Tracker
+# Bricks Add-on Progress Tracker (Active)
 
-Date created: 2026-02-14  
+Date created: 2026-02-16  
 Status model: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `DONE`
 
 ## Global Rules
@@ -9,727 +9,219 @@ Status model: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `DONE`
 - Include test evidence summaries before marking any task/phase `DONE`.
 - If a required test fails, set impacted task/phase to `BLOCKED` with cause and next action.
 
-## Phase 1 - Add-ons framework and Bricks activation gate
-Status: DONE  
-Owner: Codex  
-Started: 2026-02-14  
-Completed: 2026-02-14
+## Backlog Candidates (Future Phase / Not Yet Scheduled)
 
-### Tasks
-- [x] P1-T1 Configure add-ons subtab scaffolding (Status: DONE)
-  - [x] P1-T1-S1 (Status: DONE)
-  - [x] P1-T1-S2 (Status: DONE)
-  - [x] P1-T1-S3 (Status: DONE)
-- [x] P1-T2 Add-on activation state persistence (Status: DONE)
-  - [x] P1-T2-S1 (Status: DONE)
-  - [x] P1-T2-S2 (Status: DONE)
-  - [x] P1-T2-S3 (Status: DONE)
-- [x] P1-T3 Conditional menu + bootstrap gating (Status: DONE)
-  - [x] P1-T3-S1 (Status: DONE)
-  - [x] P1-T3-S2 (Status: DONE)
-  - [x] P1-T3-S3 (Status: DONE)
-  - [x] P1-T3-S4 (Status: DONE)
-- [x] P1-T4 Documentation + tracker updates (Status: DONE)
-  - [x] P1-T4-S1 (Status: DONE)
-  - [x] P1-T4-S2 (Status: DONE)
+- `BL-PKG-TABLE-01` Packages tab table enhancement:
+  - Add `Site Domain` and `Site UID` headers/columns under the package table currently using `Select | Package | Version | Channel | Audience`.
+- `BL-SMARTMODE-01` Simple Smart Mode workflow:
+  - Add conditional toggle visible only after mothership configured + first client configured + valid handshake confirmed.
+  - On enable, auto-apply planned settings, track client Bricks artifact changes incrementally, build a running fluid package, periodically send to mothership, and mark submissions for review/merge into Golden artifacts.
 
-### Test Evidence
-- P1-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase1Test.php` (`test_toggle_persistence_via_configure_addons_save`)
-- P1-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase1Test.php` (`test_bricks_submenu_visibility_is_gated_by_enable_flag`)
-- P1-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase1Test.php` (`test_bricks_endpoint_registration_is_gated_by_enable_flag`)
-- P1-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase1Test.php` (`test_bricks_hook_and_job_registration_is_gated_by_enable_flag`)
-- P1-TEST-05: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase1Test.php` (`test_bricks_admin_page_url_is_canonical_under_admin_php_page_param`)
+## Archive References
 
-### Exit Criteria Check
-- [x] All required tests pass.
-- [x] No Bricks add-on code path runs while disabled.
+Completed phases and historical notes were moved to archive files to reduce active-context size:
+- `addons/bricks/docs/archive/BRICKS_ADDON_PROGRESS_TRACKER_ARCHIVE_P1_P18.md`
+- `addons/bricks/docs/archive/BRICKS_ADDON_PROGRESS_TRACKER_SNAPSHOT_20260216T040755Z.md`
+- `addons/bricks/docs/archive/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST_ARCHIVE_P1_P18.md`
+- `addons/bricks/docs/archive/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST_SNAPSHOT_20260216T040755Z.md`
 
-### Phase 1 Completion Note (2026-02-14)
-- Implemented Configure -> Add-ons subtab with Bricks toggle and visibility mode controls in core configure flow.
-- Added option persistence with allowlist sanitization and default bootstrap for `dbvc_addon_bricks_enabled` and `dbvc_addon_bricks_visibility`.
-- Implemented Bricks add-on activation gate in `addons/bricks/bricks-addon.php`:
-  - submenu registration only when enabled,
-  - canonical Bricks admin URL under `admin.php?page=addon-dbvc-bricks-addon`,
-  - legacy direct `/wp-admin/dbvc-bricks-addon` and `/wp-admin/addon-dbvc-bricks-addon` requests redirect to canonical submenu URL,
-  - REST endpoint registration only when enabled,
-  - scheduled hook registration only when enabled,
-  - disabled state clears scheduled hook and avoids Bricks runtime hook registration.
-- Test execution evidence:
-  - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase1Test.php`
-  - Result: `OK (5 tests, 15 assertions)`.
+Archived completion scope summary:
+- `P1` through `P18`: `DONE` (including Phase 14 manual gate and Phase 18 live evidence closure).
 
-## Phase 2 - Configuration contract implementation
-Status: DONE
-
-### Tasks
-- [x] P2-T1 Implement settings model by tab (Status: DONE)
-  - [x] P2-T1-S1 Connection fields (Status: DONE)
-  - [x] P2-T1-S2 Golden Source fields (Status: DONE)
-  - [x] P2-T1-S3 Policies fields (Status: DONE)
-  - [x] P2-T1-S4 Operations fields (Status: DONE)
-  - [x] P2-T1-S5 Proposals fields (Status: DONE)
-- [x] P2-T2 Validation + sanitization (Status: DONE)
-  - [x] P2-T2-S1 Enum validators (Status: DONE)
-  - [x] P2-T2-S2 Range validators (Status: DONE)
-  - [x] P2-T2-S3 URL and secret validators (Status: DONE)
-  - [x] P2-T2-S4 Conditional required-field validators (Status: DONE)
-- [x] P2-T3 Defaults + migration (Status: DONE)
-  - [x] P2-T3-S1 Seed missing defaults on first load (Status: DONE)
-  - [x] P2-T3-S2 Add migration logic for option-key versioning (Status: DONE)
-- [x] P2-T4 Settings access abstraction (Status: DONE)
-  - [x] P2-T4-S1 Add read helper for all Bricks add-on options (Status: DONE)
-  - [x] P2-T4-S2 Add typed getters for booleans/enums/ints (Status: DONE)
-- [x] P2-T5 Documentation + tracker updates (Status: DONE)
-  - [x] P2-T5-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P2-T5-S2 Record phase 2 completion note (Status: DONE)
-
-### Test Evidence
-- P2-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase2Test.php` (`test_field_validation_covers_enums_ranges_url_and_json_rules`)
-- P2-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase2Test.php` (`test_defaults_are_seeded_for_all_bricks_settings`)
-- P2-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase2Test.php` (`test_invalid_conditional_input_is_rejected_and_keeps_previous_values`)
-- P2-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase2Test.php` (`test_typed_settings_getters_return_expected_types`)
-
-### Exit Criteria Check
-- [x] Every field in matrix has storage key.
-- [x] Every field in matrix has validator.
-- [x] Every field in matrix has default.
-- [x] Every field in matrix has UI control.
-
-### Phase 2 Completion Note (2026-02-14)
-- Added Bricks add-on settings schema in `addons/bricks/bricks-addon.php` covering Connection, Golden Source, Policies, Operations, and Proposals fields from the matrix.
-- Implemented centralized allowlist sanitization, enum/range validators, URL/key/secret handling, JSON-map validation, and conditional required-field validation.
-- Added default seeding and settings version migration option (`dbvc_bricks_settings_version`) for missing options.
-- Added settings access abstraction:
-  - `get_all_settings`
-  - `get_setting`
-  - `get_bool_setting`
-  - `get_int_setting`
-  - `get_enum_setting`
-- Updated `Configure -> Add-ons` in `admin/admin-page.php` to render grouped Bricks settings controls and persist through `DBVC_Bricks_Addon::save_settings`.
-- Test execution evidence:
-  - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase2Test.php`
-  - Result: `OK (4 tests, 54 assertions)`.
-
-## Phase 3 - Artifact registry + canonicalization + fingerprint
-Status: DONE
-
-### Tasks
-- [x] P3-T1 Artifact registry (Status: DONE)
-  - [x] P3-T1-S1 Register Entity artifact `bricks_template` (Status: DONE)
-  - [x] P3-T1-S2 Register option artifacts from matrix (Status: DONE)
-  - [x] P3-T1-S3 Add include/exclude policy mapping per artifact (Status: DONE)
-- [x] P3-T2 Canonicalization (Status: DONE)
-  - [x] P3-T2-S1 Entity canonicalization rules (Status: DONE)
-  - [x] P3-T2-S2 Option canonicalization rules (Status: DONE)
-  - [x] P3-T2-S3 Volatile/noisy field stripping rules (Status: DONE)
-  - [x] P3-T2-S4 Stable sort for nested objects/arrays (Status: DONE)
-- [x] P3-T3 Fingerprint engine (Status: DONE)
-  - [x] P3-T3-S1 Implement `sha256:<hex>` formatter (Status: DONE)
-  - [x] P3-T3-S2 Add hash mismatch diagnostics helper (Status: DONE)
-- [x] P3-T4 Fixtures + schema validation (Status: DONE)
-  - [x] P3-T4-S1 Build fixtures for each artifact type (Status: DONE)
-  - [x] P3-T4-S2 Validate fixtures against canonical schema assumptions (Status: DONE)
-- [x] P3-T5 Documentation + tracker updates (Status: DONE)
-  - [x] P3-T5-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P3-T5-S2 Record phase 3 completion note (Status: DONE)
-
-### Test Evidence
-- P3-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase3Test.php` (`test_canonicalization_is_deterministic_for_entity_and_option_payloads`)
-- P3-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase3Test.php` (`test_volatile_fields_are_stripped_from_entity_and_option_payloads`)
-- P3-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase3Test.php` (`test_fixture_schema_validation_passes_for_each_artifact_type`)
-- P3-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase3Test.php` (`test_fingerprint_format_and_collision_smoke`)
-
-### Exit Criteria Check
-- [x] Canonical + hash outputs stable and reproducible.
-
-### Phase 3 Completion Note (2026-02-14)
-- Added Bricks artifact registry and include/exclude mapping in `addons/bricks/bricks-artifacts.php`:
-  - Entity artifact: `bricks_template`,
-  - Option artifacts from matrix,
-  - excluded keys list (`bricks_license_key`, `bricks_license_status`, `bricks_remote_templates`).
-- Implemented canonicalization rules:
-  - Entity volatile stripping (`post_date`, `post_date_gmt`, `post_modified`, `post_modified_gmt`, editor lock meta),
-  - Option volatile stripping (`time`, `timestamp`, `updated_at`, `modified_at`, `generated_at`),
-  - stable recursive sorting for nested objects/arrays,
-  - script/css newline + trailing whitespace normalization.
-- Implemented fingerprint and diagnostics:
-  - `sha256:<hex>` formatter via `fingerprint(...)`,
-  - `hash_diagnostics(...)` mismatch helper.
-- Added fixtures and validation:
-  - fixture source file: `addons/bricks/fixtures/bricks-artifact-fixtures.php`,
-  - per-artifact fixture builder + schema validation helper.
-- Added Phase 3 automated tests in `tests/phpunit/BricksAddonPhase3Test.php`.
-
-## Phase 4 - Drift scan (read-only)
-Status: DONE
-
-### Tasks
-- [x] P4-T1 Drift engine compare path (Status: DONE)
-  - [x] P4-T1-S1 Resolve target package manifest (Status: DONE)
-  - [x] P4-T1-S2 Compute local canonical/hash set (Status: DONE)
-  - [x] P4-T1-S3 Compare and classify status (Status: DONE)
-- [x] P4-T2 Diff summary contract (Status: DONE)
-  - [x] P4-T2-S1 Build structured diff summaries (Status: DONE)
-  - [x] P4-T2-S2 Add truncation metadata and raw-available flag (Status: DONE)
-- [x] P4-T3 UI surface (Status: DONE)
-  - [x] P4-T3-S1 Add aggregate counters by status (Status: DONE)
-  - [x] P4-T3-S2 Add per-artifact drill-down view (Status: DONE)
-- [x] P4-T4 Read-only enforcement (Status: DONE)
-  - [x] P4-T4-S1 Verify no write code paths in scan endpoint (Status: DONE)
-  - [x] P4-T4-S2 Add guard that rejects write attempts in scan mode (Status: DONE)
-- [x] P4-T5 Documentation + tracker updates (Status: DONE)
-  - [x] P4-T5-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P4-T5-S2 Record phase 4 completion note (Status: DONE)
-
-### Test Evidence
-- P4-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase4Test.php` (`test_status_classification_and_compare_path`)
-- P4-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase4Test.php` (`test_diff_summary_truncation_and_raw_flag`)
-- P4-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase4Test.php` (`test_read_only_guard_rejects_write_attempts`)
-- P4-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase4Test.php` (`test_large_payload_scan_completes_and_returns_counts`)
-
-### Exit Criteria Check
-- [x] Drift scan accurate and non-mutating.
-
-### Phase 4 Completion Note (2026-02-14)
-- Added read-only drift scan engine in `addons/bricks/bricks-drift.php`:
-  - target manifest resolution path,
-  - local canonical/hash compare path,
-  - status classification (`CLEAN|DIVERGED|OVERRIDDEN|PENDING_REVIEW`),
-  - aggregate status counters and per-artifact drill-down list.
-- Added structured diff summary contract with truncation metadata:
-  - `total`, `changes`, `truncated`, `raw_available`.
-- Enforced read-only behavior by rejecting write/mutate/apply flags with `400` `dbvc_bricks_read_only`.
-- Registered Bricks endpoint `POST /dbvc/v1/bricks/drift-scan` (activation-gated).
-- Added Phase 4 tests in `tests/phpunit/BricksAddonPhase4Test.php`.
-
-## Phase 5 - Apply + restore safety
-Status: DONE
-
-### Tasks
-- [x] P5-T1 Preflight + dry-run apply planner (Status: DONE)
-  - [x] P5-T1-S1 Preflight validation checklist (Status: DONE)
-  - [x] P5-T1-S2 Dry-run execution and report shape (Status: DONE)
-- [x] P5-T2 Restore points (Status: DONE)
-  - [x] P5-T2-S1 Create restore point before apply (Status: DONE)
-  - [x] P5-T2-S2 Persist restore metadata and retention handling (Status: DONE)
-- [x] P5-T3 Ordered apply pipeline (Status: DONE)
-  - [x] P5-T3-S1 Apply option artifacts first (Status: DONE)
-  - [x] P5-T3-S2 Apply Entity artifacts second (Status: DONE)
-  - [x] P5-T3-S3 Apply post-processing and relation consistency checks (Status: DONE)
-- [x] P5-T4 Verification + rollback (Status: DONE)
-  - [x] P5-T4-S1 Post-apply hash verification pass (Status: DONE)
-  - [x] P5-T4-S2 Trigger rollback on verification failure (Status: DONE)
-  - [x] P5-T4-S3 Record rollback audit events (Status: DONE)
-- [x] P5-T5 Policy and destructive gates (Status: DONE)
-  - [x] P5-T5-S1 Enforce policy resolver decisions (Status: DONE)
-  - [x] P5-T5-S2 Require explicit approval for destructive operations (Status: DONE)
-- [x] P5-T6 Documentation + tracker updates (Status: DONE)
-  - [x] P5-T6-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P5-T6-S2 Record phase 5 completion note (Status: DONE)
-
-### Test Evidence
-- P5-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase5Test.php` (`test_dry_run_plan_reports_ordered_apply_without_writes`)
-- P5-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase5Test.php` (`test_restore_point_create_and_rollback_restores_option_state`)
-- P5-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase5Test.php` (`test_policy_gate_ignore_skips_artifact_apply`)
-- P5-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase5Test.php` (`test_destructive_gate_blocks_without_explicit_approval`)
-
-### Exit Criteria Check
-- [x] Apply supports dry-run, restore point creation, verification, and rollback path.
-- [x] Policy and destructive safety gates enforced before writes.
-
-### Phase 5 Completion Note (2026-02-14)
-- Added apply/restore safety engine in `addons/bricks/bricks-apply.php`:
-  - preflight + dry-run planner (`build_apply_plan`, `apply_package` with `dry_run`),
-  - restore point create + retention (`create_restore_point`),
-  - ordered apply pipeline (option artifacts first, Entity artifacts second),
-  - post-apply verification via canonical hash checks,
-  - rollback trigger on verification failure,
-  - audit logging hook (`dbvc_bricks_audit_event`) + DB log integration.
-- Added policy/destructive gates:
-  - policy resolver using default + per-artifact overrides,
-  - destructive block unless explicit approval.
-- Registered Bricks endpoints:
-  - `POST /dbvc/v1/bricks/apply`
-  - `POST /dbvc/v1/bricks/restore-points`
-  - `POST /dbvc/v1/bricks/restore-points/{restore_id}/rollback`
-- Added Phase 5 tests in `tests/phpunit/BricksAddonPhase5Test.php`.
-
-## Phase 6 - Proposal pipeline
-Status: DONE
-
-### Tasks
-- [x] P6-T1 Proposal state machine (Status: DONE)
-  - [x] P6-T1-S1 Implement statuses and allowed transitions (Status: DONE)
-  - [x] P6-T1-S2 Transition validator and error paths (Status: DONE)
-- [x] P6-T2 Queue + de-duplication (Status: DONE)
-  - [x] P6-T2-S1 Persist proposal queue entries (Status: DONE)
-  - [x] P6-T2-S2 De-duplicate by `(artifact_uid, base_hash, proposed_hash)` (Status: DONE)
-- [x] P6-T3 REST proposal endpoints (Status: DONE)
-  - [x] P6-T3-S1 Submit proposal endpoint (Status: DONE)
-  - [x] P6-T3-S2 List proposal queue endpoint (Status: DONE)
-  - [x] P6-T3-S3 Review decision endpoint (Status: DONE)
-- [x] P6-T4 Audit + attribution (Status: DONE)
-  - [x] P6-T4-S1 Record actor on every transition (Status: DONE)
-  - [x] P6-T4-S2 Emit audit events on state changes (Status: DONE)
-- [x] P6-T5 Documentation + tracker updates (Status: DONE)
-  - [x] P6-T5-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P6-T5-S2 Record phase 6 completion note (Status: DONE)
-
-### Test Evidence
-- P6-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase6Test.php` (`test_status_transition_rules_allow_only_valid_paths`)
-- P6-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase6Test.php` (`test_deduplication_by_artifact_uid_base_hash_and_proposed_hash`)
-- P6-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase6Test.php` (`test_submission_list_and_review_endpoints_flow`)
-- P6-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase6Test.php` (`test_audit_attribution_records_actor_on_transitions`)
-
-### Exit Criteria Check
-- [x] Proposal state transitions, queue de-duplication, review endpoints, and audit attribution implemented.
-
-### Phase 6 Completion Note (2026-02-14)
-- Added proposal pipeline service `addons/bricks/bricks-proposals.php`:
-  - status machine (`DRAFT -> SUBMITTED -> RECEIVED -> APPROVED|REJECTED|NEEDS_CHANGES` + resubmission),
-  - queue persistence in `dbvc_bricks_proposals_queue`,
-  - de-duplication by `(artifact_uid, base_hash, proposed_hash)`,
-  - actor-attributed transition history.
-- Registered Bricks proposal routes:
-  - `POST /dbvc/v1/bricks/proposals`
-  - `GET /dbvc/v1/bricks/proposals`
-  - `PATCH /dbvc/v1/bricks/proposals/{proposal_id}`
-- Added transition audit event hook: `dbvc_bricks_proposal_transition`.
-- Added Phase 6 tests in `tests/phpunit/BricksAddonPhase6Test.php`.
-
-## Phase 7 - Hardening and release readiness
-Status: DONE
-
-### Tasks
-- [x] P7-T1 Performance baseline checks (Status: DONE)
-  - [x] P7-T1-S1 Baseline drift scan runtime on large payload set (Status: DONE)
-  - [x] P7-T1-S2 Record baseline evidence (Status: DONE)
-- [x] P7-T2 Multisite behavior validation (Status: DONE)
-  - [x] P7-T2-S1 Validate option-key behavior against blog context (Status: DONE)
-  - [x] P7-T2-S2 Confirm no hard-coded single-site table assumptions (Status: DONE)
-- [x] P7-T3 Security + permissions hardening (Status: DONE)
-  - [x] P7-T3-S1 Verify REST permission callbacks for Bricks endpoints (Status: DONE)
-  - [x] P7-T3-S2 Validate restricted access for non-admin users (Status: DONE)
-- [x] P7-T4 Disabled-mode regression hardening (Status: DONE)
-  - [x] P7-T4-S1 Verify disabled mode suppresses submenu/routes/jobs (Status: DONE)
-  - [x] P7-T4-S2 Add regression tests for disabled mode guarantees (Status: DONE)
-- [x] P7-T5 Documentation + release notes updates (Status: DONE)
-  - [x] P7-T5-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P7-T5-S2 Record phase 7 completion note (Status: DONE)
-
-### Test Evidence
-- P7-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase7Test.php` (`test_performance_baseline_for_large_drift_scan_payloads`)
-- P7-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase7Test.php` (`test_multisite_option_behavior_uses_standard_option_api`)
-- P7-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase7Test.php` (`test_security_permissions_block_non_admin_access_to_bricks_endpoints`)
-- P7-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase7Test.php` (`test_disabled_mode_regression_suppresses_submenu_routes_and_jobs`)
-
-### Exit Criteria Check
-- [x] Hardening suite verifies performance baseline, permissions, and disabled-mode guarantees.
-
-### Phase 7 Completion Note (2026-02-14)
-- Added hardening/regression suite in `tests/phpunit/BricksAddonPhase7Test.php` covering:
-  - large payload drift performance baseline,
-  - multisite/single-site option behavior assumptions,
-  - endpoint permission enforcement for non-admin users,
-  - disabled-mode regression checks (submenu/routes/jobs not active).
-- Maintained activation gate behavior while adding full Bricks REST surface and engines.
-- Added missing package retrieval service + endpoints:
-  - `GET /dbvc/v1/bricks/packages`
-  - `GET /dbvc/v1/bricks/packages/{package_id}`
-  implemented in `addons/bricks/bricks-packages.php` with tests in `tests/phpunit/BricksAddonPackagesTest.php`.
-- Added idempotency-key support for mutating calls:
-  - `POST /dbvc/v1/bricks/apply`
-  - `POST /dbvc/v1/bricks/proposals`
-  via `addons/bricks/bricks-idempotency.php`, with replay tests in `tests/phpunit/BricksAddonIdempotencyTest.php`.
-- Hardened policy overrides validation:
-  - `dbvc_bricks_policy_overrides` now enforces `artifact_uid => valid_policy_enum` map values.
-  - Covered by `tests/phpunit/BricksAddonPhase2Test.php::test_policy_overrides_map_rejects_invalid_policy_values`.
-- Bricks regression sweep: `vendor/bin/phpunit --filter BricksAddon tests/phpunit` -> `OK (56 tests, 266 assertions)`.
-
-## Phase 8 - Bricks submenu UI foundation + role gating
-Status: DONE
+## Phase 19A - Shared Rules Distribution Foundation
+Status: BLOCKED
 Owner: Codex
-Started: 2026-02-14
-Completed: 2026-02-14
-
-### Tasks
-- [x] P8-T1 Submenu admin page shell (Status: DONE)
-  - [x] P8-T1-S1 Render Bricks admin page shell for `admin.php?page=addon-dbvc-bricks-addon` (Status: DONE)
-  - [x] P8-T1-S2 Add notices/loading/error containers using existing DBVC admin patterns (Status: DONE)
-  - [x] P8-T1-S3 Add tabbed IA shell (`Overview`, `Differences`, `Apply & Restore`, `Proposals`, `Packages`) (Status: DONE)
-- [x] P8-T2 Role-aware page composition (Status: DONE)
-  - [x] P8-T2-S1 Detect role mode from `dbvc_bricks_role` (`client|mothership`) (Status: DONE)
-  - [x] P8-T2-S2 Show/hide tabs and actions based on role mode (Status: DONE)
-  - [x] P8-T2-S3 Add read-only banner/disable actions when `dbvc_bricks_read_only=1` (Status: DONE)
-- [x] P8-T3 Data wiring baseline (Status: DONE)
-  - [x] P8-T3-S1 Wire `GET /dbvc/v1/bricks/status` into Overview (Status: DONE)
-  - [x] P8-T3-S2 Add page-level refresh controls and last-updated state (Status: DONE)
-  - [x] P8-T3-S3 Add route/state guards for disabled add-on mode (Status: DONE)
-- [x] P8-T4 Documentation + tracker updates (Status: DONE)
-  - [x] P8-T4-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P8-T4-S2 Record phase 8 completion note (Status: DONE)
-
-### Test Evidence
-- P8-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_submenu_page_render_and_capability_guard`)
-- P8-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_role_based_tab_visibility_for_client_and_mothership`)
-- P8-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_read_only_state_disables_mutating_controls`)
-- P8-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_disabled_mode_blocks_submenu_runtime_actions`)
-
-### Exit Criteria Check
-- [x] Bricks submenu page is operational and role-aware.
-
-### Phase 8 Completion Note (2026-02-14)
-- Implemented Bricks submenu UI foundation in `addons/bricks/bricks-addon.php` with:
-  - role-aware tab shell (`client` shows `Apply & Restore`, `mothership` shows `Packages`),
-  - loading/success/error notice containers following DBVC admin notice patterns,
-  - disabled-mode guard in `render_admin_page` that blocks submenu runtime actions when add-on is off,
-  - read-only banner and disabled mutating controls when `dbvc_bricks_read_only=1`.
-- Wired Overview status panel to `GET /dbvc/v1/bricks/status` via inline fetch with refresh button and last-updated timestamp.
-- Expanded status endpoint payload (`role`, `read_only`, `visibility`, `timestamp_gmt`) to support submenu Overview diagnostics.
-- Added Phase 8 tests in `tests/phpunit/BricksAddonPhase8Test.php`.
-- Test execution evidence:
-  - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php`
-  - `vendor/bin/phpunit --filter BricksAddon tests/phpunit`
-  - Result: `OK (40 tests, 191 assertions)`.
-
-## Phase 9 - Differences UX + simple diff viewer (Entity + option artifacts)
-Status: DONE
-Owner: Codex
-Started: 2026-02-14
-Completed: 2026-02-14
-
-### Tasks
-- [x] P9-T1 Differences panel controls (Status: DONE)
-  - [x] P9-T1-S1 Add drift scan trigger + package selector controls (Status: DONE)
-  - [x] P9-T1-S2 Add filters (`artifact class`, `status`, `search`) (Status: DONE)
-  - [x] P9-T1-S3 Add counts summary cards (`CLEAN`, `DIVERGED`, `OVERRIDDEN`, `PENDING_REVIEW`) (Status: DONE)
-- [x] P9-T2 Simple diff list and detail (Status: DONE)
-  - [x] P9-T2-S1 Render artifact list with status chips and artifact metadata (Status: DONE)
-  - [x] P9-T2-S2 Implement detail pane with `local` vs `golden` hash and changed paths (Status: DONE)
-  - [x] P9-T2-S3 Add truncation/raw indicators based on diff summary metadata (Status: DONE)
-- [x] P9-T3 Artifact-type UX distinctions (Status: DONE)
-  - [x] P9-T3-S1 Label Template artifacts as `Entity` artifacts (Status: DONE)
-  - [x] P9-T3-S2 Label option artifacts by option key/group (Status: DONE)
-  - [x] P9-T3-S3 Add empty/unsupported-state messaging for missing artifact payloads (Status: DONE)
-- [x] P9-T4 Documentation + tracker updates (Status: DONE)
-  - [x] P9-T4-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P9-T4-S2 Record phase 9 completion note (Status: DONE)
-
-### Test Evidence
-- P9-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase9Test.php` (`test_drift_response_to_ui_mapping_contains_required_containers`)
-- P9-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase9Test.php` (`test_filters_search_and_summary_controls_render`)
-- P9-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase9Test.php` (`test_diff_detail_truncation_metadata_present_in_scan_response`)
-- P9-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase9Test.php` (`test_entity_and_option_artifact_labels_are_distinguishable`)
-
-### Exit Criteria Check
-- [x] Users can review incoming differences for template Entity and option artifacts from submenu UI.
-
-### Phase 9 Completion Note (2026-02-14)
-- Implemented Differences panel UI in `addons/bricks/bricks-addon.php` with:
-  - package selector + refresh + drift-scan trigger controls,
-  - filter controls for artifact class, status, and search query,
-  - summary counters for `CLEAN`, `DIVERGED`, `OVERRIDDEN`, and `PENDING_REVIEW`,
-  - artifact list table and detail pane with hash/diff path rendering.
-- Added detail rendering for truncation metadata (`truncated`, `raw_available`) from drift summary payload.
-- Added artifact class labeling helper (`Entity` for `bricks_template`, otherwise `Option`) and wired it to UI rows/detail.
-- Added automatic local artifact resolution during drift scan when `local_artifacts` is omitted:
-  - options resolve via `get_option`,
-  - template Entity payload resolves from `get_post` + `_bricks_page_content_2` meta.
-- Added Phase 9 tests in `tests/phpunit/BricksAddonPhase9Test.php`.
-- Test execution evidence:
-  - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase9Test.php`
-  - `vendor/bin/phpunit --filter BricksAddon tests/phpunit`
-  - Result: `OK (44 tests, 208 assertions)`.
-
-## Phase 10 - Role-specific action workflows (apply, proposals, packages)
-Status: DONE
-Owner: Codex
-Started: 2026-02-14
-Completed: 2026-02-14
-
-### Tasks
-- [x] P10-T1 Client workflows (Status: DONE)
-  - [x] P10-T1-S1 Add dry-run/apply actions in submenu using `/dbvc/v1/bricks/apply` (Status: DONE)
-  - [x] P10-T1-S2 Add restore-point creation + rollback controls (Status: DONE)
-  - [x] P10-T1-S3 Add destructive-operation confirmation UX and policy-gate messaging (Status: DONE)
-- [x] P10-T2 Proposal workflows (Status: DONE)
-  - [x] P10-T2-S1 Add proposal submit UI from selected diff artifacts (Status: DONE)
-  - [x] P10-T2-S2 Add proposal list/review actions with status transition controls (Status: DONE)
-  - [x] P10-T2-S3 Add actor-attribution and transition history display (Status: DONE)
-- [x] P10-T3 Mothership package workflows (Status: DONE)
-  - [x] P10-T3-S1 Add package list UI with channel/version filters (Status: DONE)
-  - [x] P10-T3-S2 Add package detail drill-down for artifact inspection (Status: DONE)
-  - [x] P10-T3-S3 Add package-action guardrails for incompatible states (Status: DONE)
-- [x] P10-T4 Documentation + tracker updates (Status: DONE)
-  - [x] P10-T4-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P10-T4-S2 Record phase 10 completion note (Status: DONE)
-
-### Test Evidence
-- P10-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase10Test.php` (`test_client_apply_and_restore_controls_and_endpoint_flow`)
-- P10-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase10Test.php` (`test_proposal_submit_review_controls_and_flow`)
-- P10-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase10Test.php` (`test_mothership_package_list_detail_controls_and_flow`)
-- P10-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase10Test.php` (`test_permission_and_read_only_guards_for_mutating_actions`)
-
-### Exit Criteria Check
-- [x] Role-specific actions are executable from submenu UI with policy-safe guardrails.
-
-### Phase 10 Completion Note (2026-02-14)
-- Implemented role-specific submenu action workflows in `addons/bricks/bricks-addon.php`:
-  - client apply controls (`dry_run`, `allow_destructive`, selected artifact apply),
-  - restore operations (create restore point from dry-run plan, rollback by restore ID),
-  - proposal workflow (submit from selected diff artifact, list/filter proposals, approve/reject/needs_changes transitions),
-  - mothership package workflow (channel filtering, package list, detail drill-down panel).
-- Added operator guardrails:
-  - destructive apply explicit confirmation prompt,
-  - read-only disabled controls retained and endpoint guard behavior verified.
-- Added Phase 10 tests in `tests/phpunit/BricksAddonPhase10Test.php`.
-- Test execution evidence:
-  - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase10Test.php`
-  - `vendor/bin/phpunit --filter BricksAddon tests/phpunit`
-  - Result: `OK (48 tests, 233 assertions)`.
-
-## Phase 11 - UX hardening, observability, and operational readiness
-Status: DONE
-Owner: Codex
-Started: 2026-02-14
-Completed: 2026-02-14
-
-### Tasks
-- [x] P11-T1 UX resilience (Status: DONE)
-  - [x] P11-T1-S1 Add robust loading/empty/error/retry states for every panel (Status: DONE)
-  - [x] P11-T1-S2 Add consistent toasts/notices and progressive disclosure for destructive actions (Status: DONE)
-  - [x] P11-T1-S3 Add keyboard focus management for tab and detail panes (Status: DONE)
-- [x] P11-T2 Accessibility + internationalization (Status: DONE)
-  - [x] P11-T2-S1 Add ARIA semantics and labels for tablist/panels/table regions (Status: DONE)
-  - [x] P11-T2-S2 Ensure text strings are translation-ready (Status: DONE)
-  - [x] P11-T2-S3 Validate color/status indicators are not color-only signals (Status: DONE)
-- [x] P11-T3 Observability + audit depth (Status: DONE)
-  - [x] P11-T3-S1 Add structured UI action telemetry hooks (scan/apply/proposal/package) (Status: DONE)
-  - [x] P11-T3-S2 Add correlation IDs in UI requests surfaced in audit/log messages (Status: DONE)
-  - [x] P11-T3-S3 Add operator-facing diagnostics panel for recent failures (Status: DONE)
-- [x] P11-T4 Documentation + tracker updates (Status: DONE)
-  - [x] P11-T4-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P11-T4-S2 Record phase 11 completion note (Status: DONE)
-
-### Test Evidence
-- P11-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase11Test.php` (`test_accessibility_smoke_for_tab_and_detail_markup`)
-- P11-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase11Test.php` (`test_error_and_retry_controls_render_across_ui`)
-- P11-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase11Test.php` (`test_i18n_strings_are_rendered_for_phase11_additions`)
-- P11-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase11Test.php` (`test_observability_ui_event_endpoint_persists_and_emits_hook`)
-
-### Exit Criteria Check
-- [x] Submenu UI is operationally supportable, accessible, and diagnosable.
-
-### Phase 11 Completion Note (2026-02-14)
-- Hardened submenu UX states in `addons/bricks/bricks-addon.php`:
-  - added retry affordance (`Retry Last Action`) in error notices,
-  - added success notices for status/scan/apply/restore/proposal workflows,
-  - added focus management when selecting diff/proposal/package detail rows.
-- Added accessibility and semantics:
-  - tablist/tab/tabpanel ARIA wiring for admin tabs,
-  - table ARIA labels and keyboard-focusable detail panes (`tabindex="0"`),
-  - non-color-only status presentation retained with explicit text labels.
-- Added observability and diagnostics:
-  - correlation ID headers on UI REST requests (`X-DBVC-Correlation-ID`),
-  - UI event ingestion endpoint `POST /dbvc/v1/bricks/ui-event`,
-  - diagnostics endpoint `GET /dbvc/v1/bricks/diagnostics`,
-  - recent diagnostics panel in Overview and `dbvc_bricks_ui_event` hook emission.
-- Added Phase 11 tests in `tests/phpunit/BricksAddonPhase11Test.php`.
-- Test execution evidence:
-  - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase11Test.php`
-  - `vendor/bin/phpunit --filter BricksAddon tests/phpunit`
-  - Result: `OK (52 tests, 252 assertions)`.
-
-## Phase 12 - Extensibility + forward compatibility roadmap implementation
-Status: DONE
-Owner: Codex
-Started: 2026-02-14
-Completed: 2026-02-14
-
-### Tasks
-- [x] P12-T1 Plugin integration hooks (Status: DONE)
-  - [x] P12-T1-S1 Add filter/action extension points for diff row rendering (Status: DONE)
-  - [x] P12-T1-S2 Add extension points for additional artifact-type panels (Status: DONE)
-  - [x] P12-T1-S3 Add extension points for custom governance/policy overlays (Status: DONE)
-- [x] P12-T2 Schema/version compatibility (Status: DONE)
-  - [x] P12-T2-S1 Add UI feature/version negotiation for future endpoint changes (Status: DONE)
-  - [x] P12-T2-S2 Add backward-compatible parsing strategy for legacy payload variants (Status: DONE)
-  - [x] P12-T2-S3 Add explicit deprecation notices/path for retired fields/actions (Status: DONE)
-- [x] P12-T3 Future operations readiness (Status: DONE)
-  - [x] P12-T3-S1 Add optional bulk operation mode with chunked execution UX (Status: DONE)
-  - [x] P12-T3-S2 Add offline/exportable review artifact format for approvals (Status: DONE)
-  - [x] P12-T3-S3 Add multisite fleet-mode planning hooks (future disabled by default) (Status: DONE)
-- [x] P12-T4 Documentation + tracker updates (Status: DONE)
-  - [x] P12-T4-S1 Update progress tracker statuses (Status: DONE)
-  - [x] P12-T4-S2 Record phase 12 completion note (Status: DONE)
-
-### Test Evidence
-- P12-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase12Test.php` (`test_extension_hook_contracts_for_diff_tabs_and_panels`)
-- P12-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase12Test.php` (`test_manifest_compatibility_normalization_for_legacy_payloads`)
-- P12-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase12Test.php` (`test_bulk_chunk_builder_is_deterministic_and_deduplicated`)
-- P12-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase12Test.php` (`test_deprecation_warning_and_contract_endpoint_available`)
-- P12-TEST-05: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase12Test.php` (`test_diagnostics_limit_is_bounded_and_returns_latest_items`)
-- P12-TEST-06: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase12Test.php` (`test_ui_event_sanitizes_payload_and_normalizes_unknown_event_type`)
-
-### Exit Criteria Check
-- [x] Bricks submenu implementation supports safe evolution without breaking current operators.
-
-### Phase 12 Completion Note (2026-02-14)
-- Implemented extension contracts and forward-compatible hooks:
-  - `dbvc_bricks_diff_row_data` filter in drift rows,
-  - `dbvc_bricks_admin_tabs` filter for custom tab panels,
-  - `dbvc_bricks_render_extra_panels` action hook,
-  - `dbvc_bricks_governance_overlay` filter for policy overlays.
-- Implemented compatibility/deprecation contract:
-  - manifest normalization helper `normalize_manifest_payload` supporting legacy wrappers/items,
-  - UI contract endpoint `GET /dbvc/v1/bricks/ui-contract`,
-  - deprecation notices surfaced in status payload and admin page notice area.
-- Implemented future operations scaffolding:
-  - optional bulk chunked apply mode in submenu UI,
-  - offline review export (`Export Review JSON`) from current scan context,
-  - multisite fleet planning hook gate in scheduled job using `dbvc_bricks_fleet_mode_enabled`.
-- Added diagnostics/eventing enhancements:
-  - `POST /dbvc/v1/bricks/ui-event`,
-  - `GET /dbvc/v1/bricks/diagnostics`.
-- Added Phase 12 tests in `tests/phpunit/BricksAddonPhase12Test.php`.
-- Test execution evidence:
-  - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase12Test.php`
-  - `vendor/bin/phpunit --filter BricksAddon tests/phpunit`
-  - Result: `OK (58 tests, 282 assertions)`.
-
-## Phase 15 - Staging validation + release go/no-go execution
-Status: IN_PROGRESS
-Owner: Codex
-Started: 2026-02-14
+Started: 2026-02-16
 Completed: n/a
 
 ### Tasks
-- [ ] P15-T1 Staging workflow drill execution (Status: NOT_STARTED)
-  - [ ] P15-T1-S1 Lock validation dataset + package manifest fixtures used for staging drills (Status: NOT_STARTED)
-  - [ ] P15-T1-S2 Execute apply/restore/rollback drill and capture timestamps + operator IDs (Status: NOT_STARTED)
-  - [ ] P15-T1-S3 Execute proposal submit/review/transition drill and capture full audit trail (Status: NOT_STARTED)
-- [ ] P15-T2 Security and contract validation closure (Status: NOT_STARTED)
-  - [ ] P15-T2-S1 Verify idempotency behavior for all mutating Bricks endpoints under retry/replay (Status: NOT_STARTED)
-  - [ ] P15-T2-S2 Verify capability and nonce protections for Bricks submenu/admin-post and REST calls (Status: NOT_STARTED)
-  - [ ] P15-T2-S3 Validate compatibility with older DBVC manifest/snapshot payload variants in staging (Status: NOT_STARTED)
-- [ ] P15-T3 Live Bricks schema verification (Status: NOT_STARTED)
-  - [ ] P15-T3-S1 Validate `bricks_theme_styles` payload shape against canonicalization assumptions (Status: NOT_STARTED)
-  - [ ] P15-T3-S2 Validate component label/slug path stability for drift/proposal/apply flows (Status: NOT_STARTED)
-  - [ ] P15-T3-S3 Document schema deltas and required migration/backfill notes (Status: NOT_STARTED)
-- [ ] P15-T4 Go/no-go decision package (Status: IN_PROGRESS)
-  - [ ] P15-T4-S1 Update progress tracker statuses and attach command/output evidence (Status: NOT_STARTED)
-  - [ ] P15-T4-S2 Produce release decision summary (`GO` or `NO_GO`) with explicit blocker list (Status: NOT_STARTED)
-  - [ ] P15-T4-S3 Open follow-on phases/tasks for non-blocking enhancements discovered in validation (Status: IN_PROGRESS)
+- [x] P19A-T0 Contract freeze + guardrails (Status: DONE)
+  - [x] P19A-T0-S1 Freeze shared rules profile schema + explicit non-goals for 19A (Status: DONE)
+  - [x] P19A-T0-S2 Define idempotency, error-code, and per-site receipt contracts (Status: DONE)
+  - [x] P19A-T0-S3 Add backward-compatible defaults for missing/new rule fields (Status: DONE)
+- [x] P19A-T1 Mothership shared profile persistence (Status: DONE)
+  - [x] P19A-T1-S1 Add canonical shared rules storage + version metadata (Status: DONE)
+  - [x] P19A-T1-S2 Add strict validation + normalized serialization for all five rule maps (Status: DONE)
+  - [x] P19A-T1-S3 Add mothership read/write REST endpoints for shared profile (Status: DONE)
+- [x] P19A-T2 Distribution transport and signed apply (Status: DONE)
+  - [x] P19A-T2-S1 Add mothership distribute endpoint (`all` and `selected`) with idempotency (Status: DONE)
+  - [x] P19A-T2-S2 Add client receive/apply endpoint with signed-command verification (Status: DONE)
+  - [x] P19A-T2-S3 Add distribution diagnostics timeline (`queued|sent|applied|failed`) with correlation IDs (Status: DONE)
+  - [x] P19A-T2-S4 Add retry/backoff + dead-letter behavior for site-level failures (Status: DONE)
+- [ ] P19A-T3 Validation + staging proof (Status: BLOCKED)
+  - [x] P19A-T3-S1 Add automated tests for schema validation, idempotency replay, and signed-apply checks (Status: DONE)
+  - [ ] P19A-T3-S2 Execute live drill: mothership -> clientA/clientB (`all` + `selected`) and capture receipts (Status: BLOCKED - rerun attempted 2026-02-17 `timestamp=20260217T091900Z` in `client_pull_envelope`; `test_site_a` remains `leased` with `dbvc_bricks_client_envelope_timestamp_invalid`, `test_site_b` remains `queued` (no lease/apply), and `applied=0`)
 
 ### Test Evidence
-- P15-TEST-01: NOT_RUN - staging apply + restore + rollback drill evidence pending.
-- P15-TEST-02: NOT_RUN - staging proposal workflow drill evidence pending.
-- P15-TEST-03: NOT_RUN - idempotency replay verification pending.
-- P15-TEST-04: NOT_RUN - capability + nonce enforcement verification pending.
-- P15-TEST-05: NOT_RUN - legacy manifest/snapshot compatibility verification pending.
-- P15-TEST-06: NOT_RUN - live `bricks_theme_styles` + component slug/label schema verification pending.
-- P15-ENH-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (`test_role_based_tab_visibility_for_client_and_mothership`) verifies Documentation panel renders for both `client` and `mothership` roles.
-- P15-ENH-02: PASS - `vendor/bin/phpunit --filter BricksAddon tests/phpunit` -> `OK (58 tests, 282 assertions)`.
-- P15-ENH-03: PASS - Added first-time guided checklist panel at top of Bricks submenu page (`id="dbvc-bricks-onboarding"`) with toggleable UI, persisted checkbox progress, and role-specific step guidance.
-- P15-ENH-04: PASS - Added operator input instructions for `dbvc_addon_bricks_visibility` and `dbvc_bricks_mothership_url` in planning/checklist docs:
-  - `addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
-  - `addons/bricks/docs/BRICKS_ADDON_PLAN.md`
-  - `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
-- P15-ENH-05: PASS - Added help descriptions for all Bricks Configure settings via `DBVC_Bricks_Addon::get_field_help_texts()` and rendered beneath each input in Configure -> Add-ons (includes explicit `wp_app_password` instructions for `Auth Method`, `API Key ID`, and `API Secret`).
-- P15-ENH-06: PASS - Drafted detailed true push/pull roadmap with connected-sites selective targeting in:
-  - `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md` (Phase 13 + Phase 14)
-  - `addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md` (Phase 13 + Phase 14 status scaffolding)
-  - `addons/bricks/docs/BRICKS_ADDON_PLAN.md` (push/pull endpoints + connected-sites table contract)
-  - `addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md` (target-mode and connected-sites field contract)
+- P19A-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19ATest.php` (`test_shared_rules_profile_get_returns_contract_fields`, `test_shared_rules_profile_post_rejects_invalid_diff_rules_shape`).
+- P19A-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19ATest.php` (`test_shared_rules_profile_post_requires_idempotency_key`, `test_shared_rules_profile_post_is_idempotent_and_persists_normalized_profile`).
+- P19A-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19ATest.php` (`test_shared_rules_profile_endpoints_require_mothership_role`, `test_shared_rules_profile_apply_endpoint_requires_valid_signature_and_applies_rules`).
+- P19A-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19ATest.php` (`test_shared_rules_profile_distribution_selected_target_succeeds_and_tracks_transport`, `test_shared_rules_profile_distribution_failures_mark_dead_letter_after_threshold`).
+- P19A-TEST-05: FAIL - live drill rerun executed 2026-02-16 (`timestamp=20260216T051034Z`) reached shared-rules endpoints successfully but distribution failed with `command_secret_missing` for `test_site_a`, `test_site_b`, and `pluginmediaimporter`. Evidence: `/tmp/p19a/20260216T051034Z_dist_all.json`, `/tmp/p19a/20260216T051034Z_dist_selected.json`, diagnostics `/tmp/p19a/20260216T051034Z_m_diagnostics_after.json`.
+- P19A-TEST-05: FAIL - post-handshake retry (`timestamp=20260216T052644Z`) accepted `test_site_a` handshake token, but distribution still failed: `remote_http_error` -> `cURL error 6: Could not resolve host: dbvc-codexchanges.local`; `test_site_b` handshake returned `dbvc_bricks_intro_client_not_found` (no onboarding record to accept). Evidence: `/tmp/p19a/20260216T052644Z_handshake_test_site_a.json`, `/tmp/p19a/20260216T052644Z_handshake_test_site_b.json`, `/tmp/p19a/20260216T052644Z_dist_selected_retry.json`.
+- P19A-TEST-05: FAIL - full rerun after latest-code confirmation (`timestamp=20260216T055552Z`): `dist_all` failed with `remote_http_error` for `test_site_a` (`Could not resolve host: dbvc-codexchanges.local`) and `command_secret_missing` for `test_site_b`/`pluginmediaimporter`; `dist_selected` to `test_site_a` failed with same DNS error. Evidence: `/tmp/p19a/20260216T055552Z_dist_all.json`, `/tmp/p19a/20260216T055552Z_dist_selected.json`, `/tmp/p19a/20260216T055552Z_handshake_test_site_a.json`, `/tmp/p19a/20260216T055552Z_handshake_test_site_b.json`, diagnostics `/tmp/p19a/20260216T055552Z_m_diag_after.json`.
+- P19A-TEST-05: FAIL - final rerun after confirmed latest deploy (`timestamp=20260216T055953Z`): intro+handshake succeeded for `test_site_a` and `test_site_b`, but transport still failed with `remote_http_error` DNS from mothership to client local domains (`dbvc-codexchanges.local`, `vf-pluginmediaimporter.local`). `pluginmediaimporter` remained `command_secret_missing` (separate pending intro record). Evidence: `/tmp/p19a/20260216T055953Z_manual_intro_test_site_b.json`, `/tmp/p19a/20260216T055953Z_handshake_test_site_a.json`, `/tmp/p19a/20260216T055953Z_handshake_test_site_b.json`, `/tmp/p19a/20260216T055953Z_dist_all.json`, `/tmp/p19a/20260216T055953Z_dist_selected.json`, diagnostics `/tmp/p19a/20260216T055953Z_m_diag_after.json`.
+- P19A-TEST-05: FAIL - deferred rerun executed 2026-02-16 (`timestamp=20260216T073130Z`) but mothership distribution still ran in `transport_mode=direct_push`; `all` failed with `remote_http_error` for `test_site_a`/`test_site_b` and `command_secret_missing` for `pluginmediaimporter`; `selected` failed with `remote_http_error` for `test_site_a`/`test_site_b`. Evidence: command bodies `/tmp/p19a/20260216T073130Z_dist_all_body.json`, `/tmp/p19a/20260216T073130Z_dist_selected_body.json`; responses `/tmp/p19a/20260216T073130Z_dist_all.json`, `/tmp/p19a/20260216T073130Z_dist_selected.json`; diagnostics `/tmp/p19a/20260216T073130Z_m_diag_after.json`, `/tmp/p19a/20260216T073130Z_clientA_diag_after.json`, `/tmp/p19a/20260216T073130Z_clientB_diag_after.json`.
+- P19A-TEST-05: FAIL - rerun after mothership transport switch (`timestamp=20260216T074241Z`) now executes with `transport_mode=client_pull_envelope` for both `all` and `selected`; enqueue succeeds for target clients but `applied=0` (envelopes remain queued) and `pluginmediaimporter` still fails with `command_secret_missing` under `all`. Evidence: `/tmp/p19a/20260216T074241Z_dist_all_body.json`, `/tmp/p19a/20260216T074241Z_dist_selected_body.json`, `/tmp/p19a/20260216T074241Z_dist_all.json`, `/tmp/p19a/20260216T074241Z_dist_selected.json`, diagnostics `/tmp/p19a/20260216T074241Z_m_diag_after.json`, `/tmp/p19a/20260216T074241Z_clientA_diag_after.json`, `/tmp/p19a/20260216T074241Z_clientB_diag_after.json`.
+- P19A-TEST-05: FAIL - deferred rerun executed 2026-02-17 (`timestamp=20260217T051541Z`) in `transport_mode=client_pull_envelope`: `selected` queued 2 (`env_14900761c523cffb`,`env_49aab8b94c59ecdf`) and `all` queued 2 (`env_bacd9d6c00fa0f58`,`env_519923eb41c23233`) + `pluginmediaimporter` `command_secret_missing`; after six client-trigger polls, `test_site_a` envelopes moved to `failed` with `dbvc_bricks_client_envelope_secret_missing`, `test_site_b` envelopes remained `queued`, and `applied=0`. Evidence: `/tmp/p19a/20260217T051541Z_dist_selected_body.json`, `/tmp/p19a/20260217T051541Z_dist_all_body.json`, `/tmp/p19a/20260217T051541Z_dist_selected.json`, `/tmp/p19a/20260217T051541Z_dist_all.json`, `/tmp/p19a/20260217T051541Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T051541Z_status_all_poll_6.json`, `/tmp/p19a/20260217T051541Z_m_diag_after.json`, `/tmp/p19a/20260217T051541Z_clientA_diag_after.json`, `/tmp/p19a/20260217T051541Z_clientB_diag_after.json`.
+- P19A-TEST-05: FAIL - deferred rerun executed 2026-02-17 (`timestamp=20260217T065829Z`) in `transport_mode=client_pull_envelope`: `selected` queued 2 and `all` queued 2 + `pluginmediaimporter` `command_secret_missing`; after six polls, `test_site_a` envelopes transitioned `queued -> leased -> failed` with `dbvc_bricks_client_envelope_secret_missing`, `test_site_b` envelopes remained `queued` (no lease/apply), and `applied=0`. Evidence: `/tmp/p19a/20260217T065829Z_dist_selected_body.json`, `/tmp/p19a/20260217T065829Z_dist_all_body.json`, `/tmp/p19a/20260217T065829Z_dist_selected.json`, `/tmp/p19a/20260217T065829Z_dist_all.json`, `/tmp/p19a/20260217T065829Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T065829Z_status_all_poll_6.json`, `/tmp/p19a/20260217T065829Z_m_diag_after.json`, `/tmp/p19a/20260217T065829Z_clientA_diag_after.json`, `/tmp/p19a/20260217T065829Z_clientB_diag_after.json`.
+- P19A-TEST-05: FAIL - deferred rerun executed 2026-02-17 (`timestamp=20260217T071905Z`) in `transport_mode=client_pull_envelope`: `selected` queued 2 and `all` queued 2 + `pluginmediaimporter` `command_secret_missing`; after six polls, `test_site_a` envelopes transitioned `queued -> leased -> failed` with `dbvc_bricks_client_envelope_secret_missing`, `test_site_b` envelopes remained `queued` (no lease/apply), and `applied=0`. Evidence: `/tmp/p19a/20260217T071905Z_dist_selected_body.json`, `/tmp/p19a/20260217T071905Z_dist_all_body.json`, `/tmp/p19a/20260217T071905Z_dist_selected.json`, `/tmp/p19a/20260217T071905Z_dist_all.json`, `/tmp/p19a/20260217T071905Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T071905Z_status_all_poll_6.json`, `/tmp/p19a/20260217T071905Z_m_diag_after.json`, `/tmp/p19a/20260217T071905Z_clientA_diag_after.json`, `/tmp/p19a/20260217T071905Z_clientB_diag_after.json`.
+- P19A-TEST-05: FAIL - deferred rerun executed 2026-02-17 (`timestamp=20260217T081531Z`) in `transport_mode=client_pull_envelope`: `selected` and `all` each queued 2 target sites (`test_site_a`,`test_site_b`) with no immediate enqueue failures; after six polls and post-wait snapshot, `test_site_a` envelopes remained `leased` (attempt_count incrementing) and `test_site_b` remained `queued` (`applied=0`). ClientA diagnostics repeatedly logged `dbvc_bricks_client_envelope_timestamp_invalid` during this run. Evidence: `/tmp/p19a/20260217T081531Z_dist_selected_body.json`, `/tmp/p19a/20260217T081531Z_dist_all_body.json`, `/tmp/p19a/20260217T081531Z_dist_selected.json`, `/tmp/p19a/20260217T081531Z_dist_all.json`, `/tmp/p19a/20260217T081531Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T081531Z_status_all_poll_6.json`, `/tmp/p19a/20260217T081531Z_status_selected_after_wait.json`, `/tmp/p19a/20260217T081531Z_status_all_after_wait.json`, `/tmp/p19a/20260217T081531Z_m_diag_after.json`, `/tmp/p19a/20260217T081531Z_clientA_diag_after.json`, `/tmp/p19a/20260217T081531Z_clientB_diag_after.json`.
+- P19A-TEST-05: FAIL - deferred rerun executed 2026-02-17 (`timestamp=20260217T091900Z`) in `transport_mode=client_pull_envelope`: `selected` and `all` each queued 2 target sites (`test_site_a`,`test_site_b`) with no immediate enqueue failures; after six polls and post-wait snapshot, `test_site_a` remained `leased` with `last_error_code=dbvc_bricks_client_envelope_timestamp_invalid` (`attempt_count=6`) while `test_site_b` remained `queued` (`attempt_count=0`), and `applied=0`. Evidence: `/tmp/p19a/20260217T091900Z_dist_selected_body.json`, `/tmp/p19a/20260217T091900Z_dist_all_body.json`, `/tmp/p19a/20260217T091900Z_dist_selected.json`, `/tmp/p19a/20260217T091900Z_dist_all.json`, `/tmp/p19a/20260217T091900Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T091900Z_status_all_poll_6.json`, `/tmp/p19a/20260217T091900Z_status_selected_after_wait.json`, `/tmp/p19a/20260217T091900Z_status_all_after_wait.json`, `/tmp/p19a/20260217T091900Z_m_diag_after.json`, `/tmp/p19a/20260217T091900Z_clientA_diag_after.json`, `/tmp/p19a/20260217T091900Z_clientB_diag_after.json`.
+- P19A-REG-01: PASS - `php -l addons/bricks/bricks-addon.php`, `php -l addons/bricks/bricks-onboarding.php`, `php -l tests/phpunit/BricksAddonPhase19ATest.php`, `vendor/bin/phpunit tests/phpunit/BricksAddonPhase15Test.php`, `vendor/bin/phpunit tests/phpunit/BricksAddonPhase16Test.php`, `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php`.
+- P19A-REG-02: PASS - onboarding recovery patch validation: `php -l addons/bricks/bricks-onboarding.php`, `php -l tests/phpunit/BricksAddonPhase15Test.php`, `vendor/bin/phpunit tests/phpunit/BricksAddonPhase15Test.php`, `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19ATest.php`.
 
 ### Exit Criteria Check
-- [ ] All required tests pass with evidence captured in tracker.
-- [ ] Final go/no-go gate conditions satisfied.
-- [ ] Any unresolved blocker explicitly tracked with `BLOCKED` status.
+- [x] One shared rules profile can be managed on mothership with strict validation.
+- [x] Mothership can distribute shared rules to all or selected connected clients.
+- [x] Client apply requires valid signed command and produces auditable receipts.
+- [ ] Required tests pass with tracker evidence.
 
-## Phase 13 - True push/pull transport foundation (client publish + mothership selective pull distribution)
+## Phase 19D - Signed Envelope Transport (Client Pull)
 Status: IN_PROGRESS
 Owner: Codex
-Started: 2026-02-14
+Started: 2026-02-16
 Completed: n/a
 
 ### Tasks
-- [x] P13-T1 Package contract + lifecycle (Status: DONE)
-  - [x] P13-T1-S1 Define immutable package schema and versioning fields (Status: DONE)
-  - [x] P13-T1-S2 Define package status machine (`DRAFT|PUBLISHED|SUPERSEDED|REVOKED`) (Status: DONE)
-  - [x] P13-T1-S3 Define compatibility strategy (`schema_version`, deprecation path) (Status: DONE)
-- [x] P13-T2 Mothership write endpoints (Status: DONE)
-  - [x] P13-T2-S1 Add `POST /dbvc/v1/bricks/packages` publish endpoint (Status: DONE)
-  - [x] P13-T2-S2 Add promote endpoint for channel advancement (Status: DONE)
-  - [x] P13-T2-S3 Add revoke endpoint for emergency stop (Status: DONE)
-  - [x] P13-T2-S4 Enforce idempotency keys on all mutating package endpoints (Status: DONE)
-- [x] P13-T3 Client publish pipeline (Status: DONE)
-  - [x] P13-T3-S1 Build local package payload from selected artifacts (Status: DONE)
-  - [x] P13-T3-S2 Add publish preflight validation + dry-run (Status: DONE)
-  - [x] P13-T3-S3 Submit package with correlation/actor/site attribution (Status: DONE)
-  - [x] P13-T3-S4 Persist publish receipt and remote package mapping (Status: DONE)
-- [x] P13-T4 Connected sites registry + selectable rollout controls (Status: DONE)
-  - [x] P13-T4-S1 Add connected-site registry model and storage (Status: DONE)
-  - [x] P13-T4-S2 Add mothership connected-sites table UI (filter/search/sort) (Status: DONE)
-  - [x] P13-T4-S3 Add target mode controls (`all` vs `selected`) + row selection (Status: DONE)
-  - [x] P13-T4-S4 Persist package target metadata (`target_mode`, `target_sites[]`) (Status: DONE)
-  - [x] P13-T4-S5 Enforce server-side allowlist targeting rules (Status: DONE)
-- [x] P13-T5 Pull contract + acknowledgements (Status: DONE)
-  - [x] P13-T5-S1 Add target-aware package visibility rules for client pulls (Status: DONE)
-  - [x] P13-T5-S2 Add pull acknowledgement endpoint and state model (Status: DONE)
-  - [x] P13-T5-S3 Surface ack/delivery states in mothership diagnostics (Status: DONE)
-- [ ] P13-T6 Documentation + tracker updates (Status: IN_PROGRESS)
-  - [x] P13-T6-S1 Update progress tracker statuses (Status: DONE)
-  - [ ] P13-T6-S2 Record phase 13 completion note with evidence (Status: NOT_STARTED)
+- [x] P19D-T1 Envelope contract + storage (Status: DONE)
+  - [x] P19D-T1-S1 Freeze envelope schema (id, type, site, payload/signature metadata, state/attempt/timestamp fields) (Status: DONE)
+  - [x] P19D-T1-S2 Add queue persistence model with migration/default handling (Status: DONE)
+  - [x] P19D-T1-S3 Add query helpers for site/distribution/state filtering (Status: DONE)
+- [x] P19D-T2 Mothership enqueue flow (Status: DONE)
+  - [x] P19D-T2-S1 Add enqueue endpoint with idempotency + fan-out by targeting mode (Status: DONE)
+  - [x] P19D-T2-S2 Wire shared-rules distribution to enqueue envelopes in client-pull mode (Status: DONE)
+  - [x] P19D-T2-S3 Preserve correlation/distribution audit context in envelope metadata (Status: DONE)
+- [x] P19D-T3 Client pull + lease semantics (Status: DONE)
+  - [x] P19D-T3-S1 Add pull endpoint scoped to authenticated site UID (Status: DONE)
+  - [x] P19D-T3-S2 Add lease grant/timeout recovery to prevent duplicate workers (Status: DONE)
+  - [x] P19D-T3-S3 Enforce strict site-bound envelope visibility (Status: DONE)
+- [x] P19D-T4 Client apply runner + ack (Status: DONE)
+  - [x] P19D-T4-S1 Verify signed envelope and route command type handler (`shared_rules_apply` initial) (Status: DONE)
+  - [x] P19D-T4-S2 Add ack endpoint with idempotent `applied|failed` transitions (Status: DONE)
+  - [x] P19D-T4-S3 Persist receipt metadata and error details (Status: DONE)
+- [ ] P19D-T5 Retry/backoff/dead-letter (Status: IN_PROGRESS)
+  - [x] P19D-T5-S1 Add exponential backoff with cap for failed envelopes (Status: DONE)
+  - [x] P19D-T5-S2 Add dead-letter on max attempts/expiry (Status: DONE)
+  - [x] P19D-T5-S3 Add remediation hints and replay-safe retry controls (Status: DONE - implementation complete; pending live validation in `P19D-TEST-06/07`)
+    - [x] P19D-T5-S3-S1 Add duplicate identity detector for connected sites (`base_url` conflict with different `site_uid`) and mark conflicts non-targetable (Status: DONE)
+    - [x] P19D-T5-S3-S2 Add mothership Connected Sites row action: `Merge/Deactivate Duplicate Alias` with confirmation and canonical UID selection (Status: DONE)
+    - [x] P19D-T5-S3-S3 Add mothership Connected Sites row action: `Reset Linkage` (clear stored command secret/hash + mark `PENDING_INTRO`; no remote execution) (Status: DONE)
+    - [x] P19D-T5-S3-S4 Add client-side action: `Reset + Re-run Intro Handshake` to clear local handshake token/state and initiate fresh intro flow (Status: DONE)
+    - [x] P19D-T5-S3-S5 Add enqueue/targeting guardrails to skip unhealthy/conflicted sites with explicit diagnostics/error codes (Status: DONE)
+  - [x] P19D-T5-S4 Add identity continuity and alias bridge handling for UID drift (Status: DONE - deterministic alias bridge + assisted merge controls implemented; pending live validation)
+    - [x] P19D-T5-S4-S1 Add identity evidence fields (`local_instance_uuid`, `first_seen_at`, `site_sequence_id`, `site_title_host_snapshot`) on mothership/client records (Status: DONE)
+    - [x] P19D-T5-S4-S2 Add deterministic `known_alias` mapping (`alias_site_uid -> canonical_site_uid`) in request resolution paths (Status: DONE)
+    - [x] P19D-T5-S4-S3 Add Connected Sites row input/action for manual `known_alias` mapping with confirmation (Status: DONE)
+    - [x] P19D-T5-S4-S4 Add duplicate reconciliation mode: manual merge default + assisted auto-merge only for deterministic matches and explicit operator confirmation (Status: DONE)
+    - [x] P19D-T5-S4-S5 Preserve historical continuity by recording `incoming_site_uid` + `resolved_site_uid` on transport/audit rows (Status: DONE)
+  - [ ] P19D-T5-S5 Add production self-heal + deterministic preflight guards for handshake/auth drift (Status: IN_PROGRESS)
+    - [x] P19D-T5-S5-S1 Auto-downgrade site health to `PENDING_INTRO` when client ack reports `dbvc_bricks_client_envelope_secret_missing`; clear linkage secrets and persist diagnostics (Status: DONE)
+    - [x] P19D-T5-S5-S2 Add enqueue/distribute preflight classification (`ready`, `blocked_pending_intro`, `blocked_secret_missing`, `blocked_duplicate_conflict`, `blocked_allow_receive_disabled`) with remediation hints (Status: DONE - `commands/enqueue` now returns classification counts + per-site remediation hints and blocked diagnostics payloads)
+    - [x] P19D-T5-S5-S3 Add deterministic canonical reroute for alias targets only when canonical is healthy; otherwise return canonical remediation payload (Status: DONE - duplicate conflict targets now auto-reroute only when recent canonical pull activity + deterministic identity evidence match)
+    - [ ] P19D-T5-S5-S4 Add idempotency/header-missing diagnostics and operator payload hints for blocked queue states (Status: IN_PROGRESS - enqueue idempotency-missing + blocked-state diagnostics now emit classification/remediation; remaining coverage needed for non-enqueue command endpoints)
+    - [ ] P19D-T5-S5-S5 Move client `Reset + Re-run Intro Handshake` action from `First-Time Checklist` to `Configure > Basic settings` for faster recovery UX (Status: NOT_STARTED)
+- [x] P19D-T6 Operations + diagnostics (Status: DONE)
+  - [x] P19D-T6-S1 Add envelope lifecycle diagnostics (`queued|leased|applied|failed|dead_letter`) (Status: DONE)
+  - [x] P19D-T6-S2 Add queue status endpoint + operator summary (Status: DONE)
+  - [x] P19D-T6-S3 Add transport mode setting (`direct_push|client_pull_envelope`) with migration safeguards (Status: DONE)
+- [ ] P19D-T7 Validation + gate closure (Status: IN_PROGRESS)
+  - [x] P19D-T7-S1 Add automated tests for enqueue/pull/ack/lease/retry/signature paths (Status: DONE)
+  - [ ] P19D-T7-S2 Run live client-pull drill on mothership/clientA/clientB (`all` + `selected`) (Status: IN_PROGRESS - latest rerun `timestamp=20260217T091900Z` still shows no `applied` receipts; `selected` queues both targets, then `test_site_a` transitions to `dead_letter` with `dbvc_bricks_client_envelope_timestamp_invalid` while `test_site_b` remains `queued`)
+  - [ ] P19D-T7-S3 Re-run `P19A-TEST-05` and close Phase 19A live gate (Status: BLOCKED - latest rerun `timestamp=20260217T091900Z` in `client_pull_envelope` still ends with `applied=0` and `test_site_a` remains `leased`)
 
 ### Test Evidence
-- P13-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_package_publish_requires_idempotency_key`)
-- P13-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_package_publish_idempotency_and_site_filtered_visibility`)
-- P13-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_connected_site_upsert_and_list_routes`)
-- P13-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_selected_targeting_requires_allowed_connected_sites`)
-- P13-TEST-05: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_diagnostics_surface_package_delivery_ack_summary`, `test_package_publish_idempotency_and_site_filtered_visibility`)
-- P13-TEST-06: PASS (SIMULATED) - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_remote_publish_uses_basic_auth_and_returns_remote_response`, `test_remote_publish_preflight_dry_run_returns_without_http_call`)
-- P13-TEST-07: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase13Test.php` (`test_remote_connection_test_endpoint_uses_basic_auth_probe`, `test_mothership_packages_panel_renders_connected_sites_controls`)
+- P19D-TEST-01: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php` (`test_commands_enqueue_creates_site_bound_envelope`).
+- P19D-TEST-02: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php` (`test_shared_rules_distribution_client_pull_mode_enqueues_instead_of_direct_push`).
+- P19D-TEST-03: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php` (`test_commands_pull_leases_envelopes_for_site`).
+- P19D-TEST-04: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php` (`test_commands_ack_failed_moves_to_dead_letter_at_max_attempts`).
+- P19D-TEST-05: PASS - `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php` (2026-02-16) including `test_client_pull_tick_rejects_stale_signature_timestamp_and_acks_failed` and `test_client_pull_tick_rejects_nonce_replay_for_different_envelope_ids`.
+- P19D-TEST-05: PASS - remediation/guardrail regression suite rerun on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_enqueue_blocks_duplicate_base_url_alias`, `test_connected_sites_reset_linkage_and_merge_alias_actions`, and `test_client_reset_rerun_intro_endpoint_clears_local_state`.
+- P19D-TEST-08: PASS - alias continuity regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_known_alias_mapping_resolves_enqueue_to_canonical_site_uid`.
+- P19D-TEST-06: FAIL - live drill executed `timestamp=20260216T065548Z`. `commands/enqueue` succeeded for `selected` (`test_site_a`,`test_site_b`) and queued 2 envelopes; `all` queued 2 envelopes and failed `pluginmediaimporter` with `command_secret_missing`. After triggering both clients, mothership `commands/status` remained `queued` for all four envelopes (no `leased/applied` transitions). Evidence: `/tmp/p19d/20260216T065548Z_enqueue_selected_response.json`, `/tmp/p19d/20260216T065548Z_enqueue_all_response.json`, `/tmp/p19d/20260216T065548Z_status_selected_after_pull.json`, `/tmp/p19d/20260216T065548Z_status_all_after_pull.json`, `/tmp/p19d/20260216T065548Z_clientA_diagnostics.json`, `/tmp/p19d/20260216T065548Z_clientB_diagnostics.json`.
+- P19D-TEST-06: FAIL - rerun executed `timestamp=20260216T072320Z`. `commands/enqueue` succeeded for `selected` (queued 2) and partial-failed for `all` (queued 2 + `pluginmediaimporter` `command_secret_missing`), but all four queued envelopes remained `state=queued` across 5 status polls (no `leased/applied` transitions). Evidence: `/tmp/p19d/20260216T072320Z_enqueue_selected_body.json`, `/tmp/p19d/20260216T072320Z_enqueue_selected_response.json`, `/tmp/p19d/20260216T072320Z_enqueue_all_body.json`, `/tmp/p19d/20260216T072320Z_enqueue_all_response.json`, `/tmp/p19d/20260216T072320Z_status_selected_poll_1.json`, `/tmp/p19d/20260216T072320Z_status_selected_poll_5.json`, `/tmp/p19d/20260216T072320Z_status_all_poll_1.json`, `/tmp/p19d/20260216T072320Z_status_all_poll_5.json`, `/tmp/p19d/20260216T072320Z_clientA_diagnostics_after.json`, `/tmp/p19d/20260216T072320Z_clientB_diagnostics_after.json`.
+- P19D-TEST-06: FAIL - rerun after mothership transport switch executed `timestamp=20260216T074123Z`. `commands/enqueue` still queued only (`selected`: 2 queued, `all`: 2 queued + `pluginmediaimporter` `command_secret_missing`), with no `leased/applied` transitions across 6 status polls; mothership diagnostics show `command_envelope_queued` events only and client diagnostics still show no `command_*` pull/apply events. Evidence: `/tmp/p19d/20260216T074123Z_enqueue_selected_body.json`, `/tmp/p19d/20260216T074123Z_enqueue_selected_response.json`, `/tmp/p19d/20260216T074123Z_enqueue_all_body.json`, `/tmp/p19d/20260216T074123Z_enqueue_all_response.json`, `/tmp/p19d/20260216T074123Z_status_selected_poll_6.json`, `/tmp/p19d/20260216T074123Z_status_all_poll_6.json`, `/tmp/p19d/20260216T074123Z_m_diagnostics_after.json`, `/tmp/p19d/20260216T074123Z_clientA_diagnostics_after.json`, `/tmp/p19d/20260216T074123Z_clientB_diagnostics_after.json`.
+- P19D-TEST-06: FAIL - rerun executed 2026-02-17 (`timestamp=20260217T050955Z`): `selected` queued 2 (`env_bc49e3cc68722bb0`,`env_e2ebe0d3d9c8e4d2`), `all` queued 2 (`env_7befb88991d1e940`,`env_325864f949cc0cea`) + `pluginmediaimporter` `command_secret_missing`; after six polls, `test_site_a` envelopes transitioned `queued -> leased -> failed` with `dbvc_bricks_client_envelope_secret_missing`, while `test_site_b` envelopes stayed `queued` (no lease/apply). Evidence: `/tmp/p19d/20260217T050955Z_enqueue_selected_body.json`, `/tmp/p19d/20260217T050955Z_enqueue_all_body.json`, `/tmp/p19d/20260217T050955Z_enqueue_selected_response.json`, `/tmp/p19d/20260217T050955Z_enqueue_all_response.json`, `/tmp/p19d/20260217T050955Z_status_selected_poll_1.json`, `/tmp/p19d/20260217T050955Z_status_selected_poll_6.json`, `/tmp/p19d/20260217T050955Z_status_all_poll_6.json`, `/tmp/p19d/20260217T050955Z_m_diagnostics_after.json`, `/tmp/p19d/20260217T050955Z_clientA_diagnostics_after.json`, `/tmp/p19d/20260217T050955Z_clientB_diagnostics_after.json`.
+- P19D-TEST-06: FAIL - rerun executed 2026-02-17 (`timestamp=20260217T065829Z`): `selected` queued 2 and `all` queued 2 + `pluginmediaimporter` `command_secret_missing`; after six polls, `test_site_a` envelopes transitioned `queued -> leased -> failed` with `dbvc_bricks_client_envelope_secret_missing` while `test_site_b` envelopes remained `queued` (no lease/apply), and no envelopes reached `applied`. Evidence: `/tmp/p19d/20260217T065829Z_enqueue_selected_body.json`, `/tmp/p19d/20260217T065829Z_enqueue_all_body.json`, `/tmp/p19d/20260217T065829Z_enqueue_selected_response.json`, `/tmp/p19d/20260217T065829Z_enqueue_all_response.json`, `/tmp/p19d/20260217T065829Z_status_selected_poll_1.json`, `/tmp/p19d/20260217T065829Z_status_selected_poll_6.json`, `/tmp/p19d/20260217T065829Z_status_all_poll_6.json`, `/tmp/p19d/20260217T065829Z_m_diagnostics_after.json`, `/tmp/p19d/20260217T065829Z_clientA_diagnostics_after.json`, `/tmp/p19d/20260217T065829Z_clientB_diagnostics_after.json`.
+- P19D-TEST-06: FAIL - rerun executed 2026-02-17 (`timestamp=20260217T074815Z`): `selected` summary `queued=1 failed=1` (`test_site_a` queued envelope `env_6f724873d3bd8571`; `test_site_b` blocked with `site_uid_conflict_duplicate_base_url` -> canonical `pluginmediaimporter`), and `all` summary `queued=1 failed=4` (`test_site_a` queued envelope `env_ff5a2768cf765b0c`; failures: `test_site_b` duplicate-base-url conflict, `pluginmediaimporter` `site_onboarding_pending_intro`, `1`/`flo_local` `site_allow_receive_disabled`). After six polls, only `test_site_a` envelopes existed and both transitioned to `failed` with `dbvc_bricks_client_envelope_secret_missing`; no `applied` receipts. Evidence: `/tmp/p19d/20260217T074815Z_enqueue_selected_body.json`, `/tmp/p19d/20260217T074815Z_enqueue_all_body.json`, `/tmp/p19d/20260217T074815Z_enqueue_selected_response.json`, `/tmp/p19d/20260217T074815Z_enqueue_all_response.json`, `/tmp/p19d/20260217T074815Z_status_selected_poll_6.json`, `/tmp/p19d/20260217T074815Z_status_all_poll_6.json`, `/tmp/p19d/20260217T074815Z_m_diagnostics_after.json`, `/tmp/p19d/20260217T074815Z_clientA_diagnostics_after.json`, `/tmp/p19d/20260217T074815Z_clientB_diagnostics_after.json`.
+- P19D-TEST-06: FAIL - rerun executed 2026-02-17 (`timestamp=20260217T081531Z`): `selected` queued both targets (`test_site_a`,`test_site_b`), and `all` queued both targets while non-target rows failed `site_allow_receive_disabled`. After six polls, `test_site_a` envelopes transitioned to `failed` with `dbvc_bricks_shared_rules_distribution_required` (missing distribution payload context for command apply path), while `test_site_b` envelopes remained `queued` (no lease/apply). Evidence: `/tmp/p19d/20260217T081531Z_enqueue_selected_body.json`, `/tmp/p19d/20260217T081531Z_enqueue_all_body.json`, `/tmp/p19d/20260217T081531Z_enqueue_selected_response.json`, `/tmp/p19d/20260217T081531Z_enqueue_all_response.json`, `/tmp/p19d/20260217T081531Z_status_selected_poll_6.json`, `/tmp/p19d/20260217T081531Z_status_all_poll_6.json`, `/tmp/p19d/20260217T081531Z_m_diagnostics_after.json`, `/tmp/p19d/20260217T081531Z_clientA_diagnostics_after.json`, `/tmp/p19d/20260217T081531Z_clientB_diagnostics_after.json`.
+- P19D-TEST-06: FAIL - rerun executed 2026-02-17 (`timestamp=20260217T091900Z`): `selected` queued both targets and `all` queued both targets while non-target rows failed `site_allow_receive_disabled`; by poll-6, `test_site_a` was `leased` and `test_site_b` remained `queued`, then post-wait snapshots showed `test_site_a` reached `dead_letter` (`attempt_count=3`) with `dbvc_bricks_client_envelope_timestamp_invalid` while `test_site_b` remained `queued` (`attempt_count=0`). Evidence: `/tmp/p19d/20260217T091900Z_enqueue_selected_body.json`, `/tmp/p19d/20260217T091900Z_enqueue_all_body.json`, `/tmp/p19d/20260217T091900Z_enqueue_selected_response.json`, `/tmp/p19d/20260217T091900Z_enqueue_all_response.json`, `/tmp/p19d/20260217T091900Z_status_selected_poll_6.json`, `/tmp/p19d/20260217T091900Z_status_all_poll_6.json`, `/tmp/p19d/20260217T091900Z_status_selected_after_wait.json`, `/tmp/p19d/20260217T091900Z_status_all_after_wait.json`, `/tmp/p19d/20260217T091900Z_m_diagnostics_after.json`, `/tmp/p19d/20260217T091900Z_clientA_diagnostics_after.json`, `/tmp/p19d/20260217T091900Z_clientB_diagnostics_after.json`.
+- P19D-TEST-06: RERUN_REQUIRED - unblock by addressing client signature timestamp skew/replay handling for `test_site_a` and enabling lease/apply progression for `test_site_b`.
+- P19D-TEST-07: FAIL - deferred `P19A-TEST-05` rerun under corrected transport (`timestamp=20260216T074241Z`) still does not pass: responses are queued-only (`applied=0`) and `pluginmediaimporter` fails `command_secret_missing` under `all`. Evidence: `/tmp/p19a/20260216T074241Z_dist_all.json`, `/tmp/p19a/20260216T074241Z_dist_selected.json`, `/tmp/p19a/20260216T074241Z_m_diag_after.json`.
+- P19D-TEST-07: FAIL - deferred `P19A-TEST-05` rerun on 2026-02-17 (`timestamp=20260217T051541Z`) still does not pass: `selected`/`all` run in `client_pull_envelope`, `pluginmediaimporter` fails `command_secret_missing`, `test_site_a` envelopes transition to `failed` with `dbvc_bricks_client_envelope_secret_missing`, `test_site_b` envelopes remain `queued`, and `applied=0`. Evidence: `/tmp/p19a/20260217T051541Z_dist_selected.json`, `/tmp/p19a/20260217T051541Z_dist_all.json`, `/tmp/p19a/20260217T051541Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T051541Z_status_all_poll_6.json`, `/tmp/p19a/20260217T051541Z_m_diag_after.json`, `/tmp/p19a/20260217T051541Z_clientA_diag_after.json`, `/tmp/p19a/20260217T051541Z_clientB_diag_after.json`.
+- P19D-TEST-07: FAIL - deferred `P19A-TEST-05` rerun on 2026-02-17 (`timestamp=20260217T065829Z`) still does not pass: `selected`/`all` run in `client_pull_envelope`, `pluginmediaimporter` fails `command_secret_missing`, `test_site_a` envelopes transition to `failed` with `dbvc_bricks_client_envelope_secret_missing`, `test_site_b` envelopes remain `queued`, and `applied=0`. Evidence: `/tmp/p19a/20260217T065829Z_dist_selected.json`, `/tmp/p19a/20260217T065829Z_dist_all.json`, `/tmp/p19a/20260217T065829Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T065829Z_status_all_poll_6.json`, `/tmp/p19a/20260217T065829Z_m_diag_after.json`, `/tmp/p19a/20260217T065829Z_clientA_diag_after.json`, `/tmp/p19a/20260217T065829Z_clientB_diag_after.json`.
+- P19D-TEST-07: FAIL - deferred `P19A-TEST-05` rerun on 2026-02-17 (`timestamp=20260217T071905Z`) still does not pass: `selected`/`all` run in `client_pull_envelope`, `pluginmediaimporter` fails `command_secret_missing`, `test_site_a` envelopes transition to `failed` with `dbvc_bricks_client_envelope_secret_missing`, `test_site_b` envelopes remain `queued`, and `applied=0`. Evidence: `/tmp/p19a/20260217T071905Z_dist_selected.json`, `/tmp/p19a/20260217T071905Z_dist_all.json`, `/tmp/p19a/20260217T071905Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T071905Z_status_all_poll_6.json`, `/tmp/p19a/20260217T071905Z_m_diag_after.json`, `/tmp/p19a/20260217T071905Z_clientA_diag_after.json`, `/tmp/p19a/20260217T071905Z_clientB_diag_after.json`.
+- P19D-TEST-07: FAIL - deferred `P19A-TEST-05` rerun on 2026-02-17 (`timestamp=20260217T081531Z`) still does not pass: `selected`/`all` run in `client_pull_envelope` and queue both targets, but `applied=0`; post-wait status keeps `test_site_a` in `leased` (attempt_count incrementing) and `test_site_b` in `queued`, while client diagnostics repeatedly show `dbvc_bricks_client_envelope_timestamp_invalid` for `test_site_a`. Evidence: `/tmp/p19a/20260217T081531Z_dist_selected.json`, `/tmp/p19a/20260217T081531Z_dist_all.json`, `/tmp/p19a/20260217T081531Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T081531Z_status_all_poll_6.json`, `/tmp/p19a/20260217T081531Z_status_selected_after_wait.json`, `/tmp/p19a/20260217T081531Z_status_all_after_wait.json`, `/tmp/p19a/20260217T081531Z_m_diag_after.json`, `/tmp/p19a/20260217T081531Z_clientA_diag_after.json`, `/tmp/p19a/20260217T081531Z_clientB_diag_after.json`.
+- P19D-TEST-07: FAIL - deferred `P19A-TEST-05` rerun on 2026-02-17 (`timestamp=20260217T091900Z`) still does not pass: `selected`/`all` run in `client_pull_envelope` and queue both targets, but `applied=0`; post-wait status keeps `test_site_a` in `leased` with `last_error_code=dbvc_bricks_client_envelope_timestamp_invalid` (`attempt_count=6`) and `test_site_b` in `queued` (`attempt_count=0`). Evidence: `/tmp/p19a/20260217T091900Z_dist_selected.json`, `/tmp/p19a/20260217T091900Z_dist_all.json`, `/tmp/p19a/20260217T091900Z_status_selected_poll_6.json`, `/tmp/p19a/20260217T091900Z_status_all_poll_6.json`, `/tmp/p19a/20260217T091900Z_status_selected_after_wait.json`, `/tmp/p19a/20260217T091900Z_status_all_after_wait.json`, `/tmp/p19a/20260217T091900Z_m_diag_after.json`, `/tmp/p19a/20260217T091900Z_clientA_diag_after.json`, `/tmp/p19a/20260217T091900Z_clientB_diag_after.json`.
+- P19D-TEST-09: PASS - assisted merge deterministic safety regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_assisted_merge_uses_deterministic_candidate_token`.
+- P19D-TEST-10: PASS - secret-missing recovery regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_ack_secret_missing_marks_site_pending_intro_for_recovery`.
+- P19D-TEST-11: PASS - enqueue payload normalization regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_enqueue_refresh_shared_rules_builds_distribution_payload`.
+- P19D-TEST-12: PASS - lease signature refresh + pull activity regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_pull_refreshes_signature_for_lease_and_tracks_pull_activity`.
+- P19D-TEST-13: PASS - deterministic duplicate conflict reroute + preflight classification regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_enqueue_auto_reroutes_duplicate_conflict_to_recent_pull_canonical` and updated `test_commands_enqueue_blocks_duplicate_base_url_alias`.
 
 ### Exit Criteria Check
-- [ ] Client can publish packages to mothership with auditable receipts.
-- [ ] Mothership can choose `all` or `selected` connected sites for package availability.
-- [ ] Pull visibility + acknowledgements respect targeting and policy contract.
+- [ ] Shared-rules transport succeeds without mothership direct DNS reachability to client hosts.
+- [ ] Envelope delivery lifecycle is auditable and retry-safe.
+- [ ] Dead-letter handling and operator diagnostics are available.
+- [ ] `P19A-TEST-05` passes after transport switch.
+- [ ] UID drift recovery preserves package/apply/transport history continuity via canonical + alias mapping.
 
-## Phase 14 - Push/pull operations + governance hardening
+## Phase 19B - Client Protected Artifact Variants
 Status: NOT_STARTED
 Owner: Codex
 Started: n/a
 Completed: n/a
 
 ### Tasks
-- [ ] P14-T1 Mothership publish operations UI (Status: NOT_STARTED)
-  - [ ] P14-T1-S1 Add incoming package review queue + diff inspection (Status: NOT_STARTED)
-  - [ ] P14-T1-S2 Add approve/promote/revoke action controls with guardrails (Status: NOT_STARTED)
-  - [ ] P14-T1-S3 Add channel progression workflow (`canary -> beta -> stable`) (Status: NOT_STARTED)
-- [ ] P14-T2 Client pull/apply UX (Status: NOT_STARTED)
-  - [ ] P14-T2-S1 Show target audience metadata in client package view (Status: NOT_STARTED)
-  - [ ] P14-T2-S2 Add pull latest allowed package + dry-run apply action (Status: NOT_STARTED)
-  - [ ] P14-T2-S3 Link apply/restore/rollback events to publish receipt IDs (Status: NOT_STARTED)
-- [ ] P14-T3 Reliability + failure handling (Status: NOT_STARTED)
-  - [ ] P14-T3-S1 Add retry/backoff/dead-letter markers for push/pull failures (Status: NOT_STARTED)
-  - [ ] P14-T3-S2 Add operator diagnostics and remediation hints (Status: NOT_STARTED)
-  - [ ] P14-T3-S3 Add delivery timeline states (`sent|received|eligible|pulled|applied|failed`) (Status: NOT_STARTED)
-- [ ] P14-T4 Security/governance hardening (Status: NOT_STARTED)
-  - [ ] P14-T4-S1 Enforce least-privilege integration accounts per connected site (Status: NOT_STARTED)
-  - [ ] P14-T4-S2 Add credential rotation and expiration warnings (Status: NOT_STARTED)
-  - [ ] P14-T4-S3 Enforce stable-channel promotion approval gate (Status: NOT_STARTED)
-- [ ] P14-T5 Documentation + tracker updates (Status: NOT_STARTED)
-  - [ ] P14-T5-S1 Update progress tracker statuses (Status: NOT_STARTED)
-  - [ ] P14-T5-S2 Record phase 14 completion note with evidence (Status: NOT_STARTED)
+- [ ] P19B-T1 Protected variant data model + API (Status: NOT_STARTED)
+  - [ ] P19B-T1-S1 Define protected variant schema (`artifact_uid`, `artifact_type`, `label`, `reason`, actor, timestamps, scope) (Status: NOT_STARTED)
+  - [ ] P19B-T1-S2 Add client CRUD endpoints with capability checks + nonce-safe UI actions (Status: NOT_STARTED)
+  - [ ] P19B-T1-S3 Add uniqueness/dedupe rule (`artifact_uid` + `scope`) and audit events (`created|updated_reason|removed`) (Status: NOT_STARTED)
+- [ ] P19B-T2 Client Protected Artifacts tab (Status: NOT_STARTED)
+  - [ ] P19B-T2-S1 Add new `Protected Artifacts` tab for `client` role only (Status: NOT_STARTED)
+  - [ ] P19B-T2-S2 Add list/create/remove UI with required reason and confirmation controls (Status: NOT_STARTED)
+  - [ ] P19B-T2-S3 Add Differences integration to mark/unmark selected artifact as protected (Status: NOT_STARTED)
+  - [ ] P19B-T2-S4 Ensure read-only mode blocks mutating protected-variant actions (Status: NOT_STARTED)
+- [ ] P19B-T3 Payload visibility annotations (Status: NOT_STARTED)
+  - [ ] P19B-T3-S1 Add read-only protected-variant indicators in drift/apply/package payloads (Status: NOT_STARTED)
+  - [ ] P19B-T3-S2 Add tests confirming annotation presence without apply-behavior changes (Status: NOT_STARTED)
 
 ### Test Evidence
-- P14-TEST-01: NOT_RUN - end-to-end publish/pull/apply drill across multiple connected sites pending.
-- P14-TEST-02: NOT_RUN - channel promote/revoke governance gate tests pending.
-- P14-TEST-03: NOT_RUN - push/pull retry/dead-letter recovery tests pending.
-- P14-TEST-04: NOT_RUN - delivery timeline and audit attribution tests pending.
-- P14-TEST-05: NOT_RUN - key rotation and expired credential behavior tests pending.
+- P19B-TEST-01: NOT_RUN - protected variant CRUD + authorization tests.
+- P19B-TEST-02: NOT_RUN - Protected Artifacts tab rendering and interaction tests.
+- P19B-TEST-03: NOT_RUN - Differences integration mark/unmark tests.
+- P19B-TEST-04: NOT_RUN - payload annotation tests.
 
 ### Exit Criteria Check
-- [ ] End-to-end push/pull workflow is operational with selective site targeting.
-- [ ] Governance, security, and reliability controls meet release requirements.
+- [ ] Client can create/list/remove protected variants from a dedicated tab.
+- [ ] Protected variant records are auditable and deduplicated.
+- [ ] Drift/apply/package contexts show protected annotations without changing apply semantics.
+- [ ] Required tests pass with tracker evidence.
+
+## Phase 19C - Mothership Visibility + Cross-Site Operations Drill
+Status: NOT_STARTED
+Owner: Codex
+Started: n/a
+Completed: n/a
+
+### Tasks
+- [ ] P19C-T1 Mothership visibility for protected variants (Status: NOT_STARTED)
+  - [ ] P19C-T1-S1 Add connected-client summary with protected counts by artifact class (Status: NOT_STARTED)
+  - [ ] P19C-T1-S2 Add client drill-down list of protected variants (`bricks_template`, `global_classes`, etc) (Status: NOT_STARTED)
+  - [ ] P19C-T1-S3 Add deep-link + copy-link helpers to client `DBVC -> Bricks -> Protected Artifacts` tab (Status: NOT_STARTED)
+  - [ ] P19C-T1-S4 Add data-freshness indicator (last synced/seen timestamp) per client (Status: NOT_STARTED)
+- [ ] P19C-T2 End-to-end governance and evidence closure (Status: NOT_STARTED)
+  - [ ] P19C-T2-S1 Run full drill: shared rules distribution + protected variant visibility across mothership/clientA/clientB (Status: NOT_STARTED)
+  - [ ] P19C-T2-S2 Capture timestamps, command logs, receipts, diagnostics traces, and UI evidence (Status: NOT_STARTED)
+  - [ ] P19C-T2-S3 Write completion note and close all Phase 19* statuses (Status: NOT_STARTED)
+
+### Test Evidence
+- P19C-TEST-01: NOT_RUN - mothership aggregation visibility tests.
+- P19C-TEST-02: NOT_RUN - deep-link/copy-link rendering tests.
+- P19C-TEST-03: NOT_RUN - full live cross-site drill evidence.
+
+### Exit Criteria Check
+- [ ] Mothership can identify clients with protected variants and inspect details.
+- [ ] Operators have usable deep-link/copy-link navigation to client protected tab paths.
+- [ ] Cross-site drill evidence is complete and auditable.
+- [ ] Required tests pass with tracker evidence.
