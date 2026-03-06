@@ -117,9 +117,9 @@ Completed: n/a
     - [x] P19D-T5-S4-S5 Preserve historical continuity by recording `incoming_site_uid` + `resolved_site_uid` on transport/audit rows (Status: DONE)
   - [ ] P19D-T5-S5 Add production self-heal + deterministic preflight guards for handshake/auth drift (Status: IN_PROGRESS)
     - [x] P19D-T5-S5-S1 Auto-downgrade site health to `PENDING_INTRO` when client ack reports `dbvc_bricks_client_envelope_secret_missing`; clear linkage secrets and persist diagnostics (Status: DONE)
-    - [ ] P19D-T5-S5-S2 Add enqueue/distribute preflight classification (`ready`, `blocked_pending_intro`, `blocked_secret_missing`, `blocked_duplicate_conflict`, `blocked_allow_receive_disabled`) with remediation hints (Status: IN_PROGRESS - `commands/enqueue` now normalizes `refresh_shared_rules` into a valid `shared_rules_apply` payload with `distribution_id` + profile snapshot to avoid client apply contract failure)
-    - [ ] P19D-T5-S5-S3 Add deterministic canonical reroute for alias targets only when canonical is healthy; otherwise return canonical remediation payload (Status: NOT_STARTED)
-    - [ ] P19D-T5-S5-S4 Add idempotency/header-missing diagnostics and operator payload hints for blocked queue states (Status: NOT_STARTED)
+    - [x] P19D-T5-S5-S2 Add enqueue/distribute preflight classification (`ready`, `blocked_pending_intro`, `blocked_secret_missing`, `blocked_duplicate_conflict`, `blocked_allow_receive_disabled`) with remediation hints (Status: DONE - `commands/enqueue` now returns classification counts + per-site remediation hints and blocked diagnostics payloads)
+    - [x] P19D-T5-S5-S3 Add deterministic canonical reroute for alias targets only when canonical is healthy; otherwise return canonical remediation payload (Status: DONE - duplicate conflict targets now auto-reroute only when recent canonical pull activity + deterministic identity evidence match)
+    - [ ] P19D-T5-S5-S4 Add idempotency/header-missing diagnostics and operator payload hints for blocked queue states (Status: IN_PROGRESS - enqueue idempotency-missing + blocked-state diagnostics now emit classification/remediation; remaining coverage needed for non-enqueue command endpoints)
     - [ ] P19D-T5-S5-S5 Move client `Reset + Re-run Intro Handshake` action from `First-Time Checklist` to `Configure > Basic settings` for faster recovery UX (Status: NOT_STARTED)
 - [x] P19D-T6 Operations + diagnostics (Status: DONE)
   - [x] P19D-T6-S1 Add envelope lifecycle diagnostics (`queued|leased|applied|failed|dead_letter`) (Status: DONE)
@@ -156,6 +156,8 @@ Completed: n/a
 - P19D-TEST-09: PASS - assisted merge deterministic safety regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_assisted_merge_uses_deterministic_candidate_token`.
 - P19D-TEST-10: PASS - secret-missing recovery regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_ack_secret_missing_marks_site_pending_intro_for_recovery`.
 - P19D-TEST-11: PASS - enqueue payload normalization regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_enqueue_refresh_shared_rules_builds_distribution_payload`.
+- P19D-TEST-12: PASS - lease signature refresh + pull activity regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_pull_refreshes_signature_for_lease_and_tracks_pull_activity`.
+- P19D-TEST-13: PASS - deterministic duplicate conflict reroute + preflight classification regression on 2026-02-17 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19DTest.php`) including `test_commands_enqueue_auto_reroutes_duplicate_conflict_to_recent_pull_canonical` and updated `test_commands_enqueue_blocks_duplicate_base_url_alias`.
 
 ### Exit Criteria Check
 - [ ] Shared-rules transport succeeds without mothership direct DNS reachability to client hosts.

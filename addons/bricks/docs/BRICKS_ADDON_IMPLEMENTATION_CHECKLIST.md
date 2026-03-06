@@ -47,7 +47,7 @@ Archive files (completed phases/history):
   - `P19A-T3-S1` Add automated tests for schema, idempotency replay, signed verification, and diagnostics timeline.
   - `P19A-T3-S2` Run live drill on mothership + clientA/clientB for both target modes and capture receipts.
 
-### Current Status (2026-02-16)
+### Current Status (2026-02-17)
 - `P19A-T3`: `BLOCKED`
 - `P19A-T3-S2`: `BLOCKED` (latest rerun `timestamp=20260217T091900Z` uses `transport_mode=client_pull_envelope`, but still no applied receipts: `test_site_a` remains `leased` with repeated `dbvc_bricks_client_envelope_timestamp_invalid`, `test_site_b` remains queued, and `applied=0`; see tracker `P19A-TEST-05`)
 
@@ -104,7 +104,7 @@ Archive files (completed phases/history):
   - `P19D-T5-S5` Production self-heal for handshake/auth drift + deterministic preflight guards.
     - `P19D-T5-S5-S1` Auto-downgrade site health to `PENDING_INTRO` when client ack reports `dbvc_bricks_client_envelope_secret_missing`; clear stored linkage secrets and record diagnostics.
     - `P19D-T5-S5-S2` Add enqueue/distribute preflight classification (`ready`, `blocked_pending_intro`, `blocked_secret_missing`, `blocked_duplicate_conflict`, `blocked_allow_receive_disabled`) and expose remediation hints in API payloads.
-    - `P19D-T5-S5-S3` Add deterministic canonical reroute behavior for alias targets only when alias mapping exists and canonical is healthy; otherwise fail with explicit canonical remediation payload.
+    - `P19D-T5-S5-S3` Add deterministic canonical reroute behavior for alias targets only when canonical is healthy and deterministic identity evidence confirms continuity; otherwise fail with explicit canonical remediation payload.
     - `P19D-T5-S5-S4` Add enqueue/distribute diagnostics + operator-facing payload hints for idempotency/header omissions and blocked states.
     - `P19D-T5-S5-S5` Move client `Reset + Re-run Intro Handshake` action from `First-Time Checklist` into `Configure > Basic settings` for faster operator recovery flow.
 - `P19D-T6` Operations + diagnostics
@@ -116,13 +116,13 @@ Archive files (completed phases/history):
   - `P19D-T7-S2` Run live drill using client-pull transport across mothership/clientA/clientB (`all` + `selected`).
   - `P19D-T7-S3` Re-run `P19A-TEST-05` and close P19A gate if transport evidence passes.
 
-### Current Status (2026-02-16)
+### Current Status (2026-02-17)
 - `P19D-T7`: `IN_PROGRESS`
 - `P19D-T7-S2`: `IN_PROGRESS` (latest rerun `timestamp=20260217T091900Z` still has no `applied`: `selected` queues both targets, then `test_site_a` progresses to `dead_letter` with `dbvc_bricks_client_envelope_timestamp_invalid` while `test_site_b` remains `queued`)
 - `P19D-T7-S3`: `BLOCKED` (`P19A-TEST-05` rerun at `timestamp=20260217T091900Z` used client-pull transport but still did not reach applied receipts; `test_site_a` remains `leased` with repeated client diagnostics `dbvc_bricks_client_envelope_timestamp_invalid`)
 - `P19D-T5-S3`: `DONE` (duplicate UID conflict detection + non-targetable guardrails, mothership merge/deactivate and reset-linkage actions, client-only `Reset + Re-run Intro Handshake`; automated coverage added in `BricksAddonPhase19DTest`)
 - `P19D-T5-S4`: `DONE` (identity continuity metadata + deterministic `known_alias` resolver wired across intro/queue/auth paths; Connected Sites manual alias input/action added; assisted merge policy controls enforce deterministic candidate token + explicit confirmation)
-- `P19D-T5-S5`: `IN_PROGRESS` (production self-heal/remediation guardrail hardening added after 2026-02-17 live failures; auto-downgrade to `PENDING_INTRO` on secret-missing ack is implemented, preflight + reroute work remains)
+- `P19D-T5-S5`: `IN_PROGRESS` (self-heal now includes lease-time signature refresh, enqueue preflight classification/remediation payloads, deterministic duplicate reroute using recent pull identity evidence, and mothership routing notice fields; remaining work is endpoint-wide idempotency/header diagnostics + moving client reset action into Configure tab)
 
 ### Required tests
 - `P19D-TEST-01` Envelope schema/queue persistence tests.
@@ -135,6 +135,9 @@ Archive files (completed phases/history):
 - `P19D-TEST-08` Identity continuity tests for UID drift: alias resolution, canonical remap logging, and history continuity assertions.
 - `P19D-TEST-09` Connected Sites UI tests for manual `known_alias` input + merge confirmation and safety checks.
 - `P19D-TEST-10` Secret-missing recovery test: ack failure auto-marks site/linkage back to `PENDING_INTRO` and writes diagnostics.
+- `P19D-TEST-11` Enqueue payload normalization test for `refresh_shared_rules` alias + distribution/profile injection.
+- `P19D-TEST-12` Pull lease-signature refresh + recent pull activity tracking test.
+- `P19D-TEST-13` Deterministic duplicate conflict reroute and preflight classification output test.
 
 ### Exit criteria
 - Shared-rules distribution no longer depends on mothership direct network reachability to client hostnames.

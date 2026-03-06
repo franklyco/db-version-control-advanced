@@ -18,6 +18,7 @@ final class DBVC_Bricks_Command_Queue
     public const DEFAULT_LEASE_SECONDS = 90;
     public const DEFAULT_RETRY_BASE_SECONDS = 60;
     public const MAX_CLIENT_NONCES = 1000;
+    public const RECENT_PULL_WINDOW_SECONDS = 900;
 
     /**
      * @return array<string, array<string, mixed>>
@@ -242,9 +243,6 @@ final class DBVC_Bricks_Command_Queue
         if (! is_string($raw_payload)) {
             $raw_payload = '{}';
         }
-        $timestamp = time();
-        $nonce = 'env_' . substr(hash('sha256', $site_uid . '|' . microtime(true) . '|' . self::random_seed()), 0, 16);
-        $signature = DBVC_Bricks_Command_Auth::build_signature($secret, $timestamp, $nonce, $site_uid, $raw_payload);
         $envelope_id = 'env_' . substr(hash('sha256', $site_uid . '|' . gmdate('c') . '|' . self::random_seed()), 0, 16);
         $created_at = gmdate('c');
         $max_attempts = max(1, DBVC_Bricks_Addon::get_int_setting('dbvc_bricks_command_retry_max_attempts', 3));
@@ -256,13 +254,8 @@ final class DBVC_Bricks_Command_Queue
             'site_uid' => $site_uid,
             'payload' => $payload,
             'payload_hash' => 'sha256:' . hash('sha256', $raw_payload),
-            'signature' => $signature,
-            'signature_meta' => [
-                'alg' => 'hmac-sha256',
-                'timestamp' => $timestamp,
-                'nonce' => $nonce,
-                'site_uid' => $site_uid,
-            ],
+            'signature' => '',
+            'signature_meta' => [],
             'state' => self::STATE_QUEUED,
             'attempt_count' => 0,
             'max_attempts' => $max_attempts,
@@ -276,6 +269,11 @@ final class DBVC_Bricks_Command_Queue
             'created_at' => $created_at,
             'updated_at' => $created_at,
         ];
+        $signed = self::refresh_envelope_signature($envelope, $secret);
+        if (is_wp_error($signed)) {
+            return $signed;
+        }
+        $envelope = $signed;
 
         $queue = self::get_queue();
         $queue[$envelope_id] = $envelope;
@@ -287,6 +285,36 @@ final class DBVC_Bricks_Command_Queue
             'distribution_id' => (string) ($envelope['context']['distribution_id'] ?? ''),
         ]);
 
+        return $envelope;
+    }
+
+    /**
+     * @param array<string, mixed> $envelope
+     * @param string $secret
+     * @return array<string, mixed>|\WP_Error
+     */
+    private static function refresh_envelope_signature(array $envelope, $secret)
+    {
+        $site_uid = sanitize_key((string) ($envelope['site_uid'] ?? ''));
+        $secret = sanitize_text_field((string) $secret);
+        if ($site_uid === '' || $secret === '') {
+            return new \WP_Error('dbvc_bricks_command_signature_refresh_invalid', 'Envelope signature refresh requires site UID and secret.', ['status' => 400]);
+        }
+        $payload = isset($envelope['payload']) && is_array($envelope['payload']) ? $envelope['payload'] : [];
+        $raw_payload = wp_json_encode($payload);
+        if (! is_string($raw_payload)) {
+            $raw_payload = '{}';
+        }
+        $timestamp = time();
+        $nonce = 'env_' . substr(hash('sha256', $site_uid . '|' . microtime(true) . '|' . self::random_seed()), 0, 16);
+        $envelope['payload_hash'] = 'sha256:' . hash('sha256', $raw_payload);
+        $envelope['signature'] = DBVC_Bricks_Command_Auth::build_signature($secret, $timestamp, $nonce, $site_uid, $raw_payload);
+        $envelope['signature_meta'] = [
+            'alg' => 'hmac-sha256',
+            'timestamp' => $timestamp,
+            'nonce' => $nonce,
+            'site_uid' => $site_uid,
+        ];
         return $envelope;
     }
 
@@ -333,6 +361,7 @@ final class DBVC_Bricks_Command_Queue
         $now_iso = gmdate('c', $now);
         $lease_seconds = max(15, DBVC_Bricks_Addon::get_int_setting('dbvc_bricks_command_lease_seconds', self::DEFAULT_LEASE_SECONDS));
         $leased = [];
+        $site_secret = DBVC_Bricks_Addon::get_command_secret_for_site($site_uid);
 
         foreach ($queue as $envelope_id => $envelope) {
             if (! is_array($envelope)) {
@@ -361,6 +390,24 @@ final class DBVC_Bricks_Command_Queue
             $envelope['attempt_count'] = max(0, (int) ($envelope['attempt_count'] ?? 0)) + 1;
             $envelope['lease_expires_at'] = gmdate('c', $now + $lease_seconds);
             $envelope['updated_at'] = $now_iso;
+            if ($site_secret !== '') {
+                $signed = self::refresh_envelope_signature($envelope, $site_secret);
+                if (is_wp_error($signed)) {
+                    self::append_diagnostic('command_envelope_signature_refresh_failed', [
+                        'envelope_id' => sanitize_key((string) ($envelope['envelope_id'] ?? '')),
+                        'site_uid' => $site_uid,
+                        'error_code' => (string) $signed->get_error_code(),
+                    ]);
+                } else {
+                    $envelope = $signed;
+                }
+            } else {
+                self::append_diagnostic('command_envelope_signature_refresh_skipped', [
+                    'envelope_id' => sanitize_key((string) ($envelope['envelope_id'] ?? '')),
+                    'site_uid' => $site_uid,
+                    'reason' => 'command_secret_missing',
+                ]);
+            }
             $queue[$envelope_id] = $envelope;
             $leased[] = $envelope;
             self::append_diagnostic('command_envelope_leased', [
@@ -555,6 +602,10 @@ final class DBVC_Bricks_Command_Queue
 
         $idempotency_key = class_exists('DBVC_Bricks_Idempotency') ? DBVC_Bricks_Idempotency::extract_key($request) : '';
         if ($idempotency_key === '') {
+            self::append_diagnostic('command_enqueue_rejected', [
+                'error_code' => 'dbvc_bricks_idempotency_required',
+                'reason' => 'missing_idempotency_key',
+            ]);
             return new \WP_Error('dbvc_bricks_idempotency_required', 'Idempotency-Key is required.', ['status' => 400]);
         }
         if (class_exists('DBVC_Bricks_Idempotency')) {
@@ -587,6 +638,10 @@ final class DBVC_Bricks_Command_Queue
             return sanitize_key((string) $uid);
         }, $selected))));
         if ($target_mode === 'selected' && empty($selected)) {
+            self::append_diagnostic('command_enqueue_rejected', [
+                'error_code' => 'dbvc_bricks_command_target_sites_required',
+                'target_mode' => 'selected',
+            ]);
             return new \WP_Error('dbvc_bricks_command_target_sites_required', 'selected mode requires at least one site_uid.', ['status' => 400]);
         }
 
@@ -607,6 +662,7 @@ final class DBVC_Bricks_Command_Queue
         }
         $results = [];
         $summary = ['queued' => 0, 'failed' => 0];
+        $preflight_counts = [];
         $site_lookup = [];
         foreach ($sites as $site) {
             if (! is_array($site)) {
@@ -644,7 +700,9 @@ final class DBVC_Bricks_Command_Queue
                     }
                     continue;
                 }
-                $results[] = ['site_uid' => $incoming_uid, 'status' => 'failed', 'error_code' => 'site_uid_not_found'];
+                $blocked_result = self::build_blocked_enqueue_result($incoming_uid, $resolved_uid, 'site_uid_not_found');
+                $results[] = $blocked_result;
+                self::increment_classification_count($preflight_counts, (string) ($blocked_result['classification'] ?? 'blocked_unknown'));
                 $summary['failed']++;
             }
         } else {
@@ -683,42 +741,67 @@ final class DBVC_Bricks_Command_Queue
                     }
                 }
             }
-            if (class_exists('DBVC_Bricks_Connected_Sites') && method_exists('DBVC_Bricks_Connected_Sites', 'get_enqueue_guard_status')) {
-                $guard = DBVC_Bricks_Connected_Sites::get_enqueue_guard_status($site_uid);
-                if (is_array($guard) && empty($guard['ok'])) {
-                    $blocked_error = sanitize_key((string) ($guard['error_code'] ?? 'site_not_targetable'));
-                    $result_row = ['site_uid' => $incoming_site_uid, 'status' => 'failed', 'error_code' => $blocked_error];
-                    if (! empty($guard['canonical_site_uid'])) {
-                        $result_row['canonical_site_uid'] = sanitize_key((string) $guard['canonical_site_uid']);
-                    }
-                    if (! empty($guard['normalized_base_url'])) {
-                        $result_row['normalized_base_url'] = sanitize_text_field((string) $guard['normalized_base_url']);
-                    }
-                    $results[] = $result_row;
-                    self::append_diagnostic('command_enqueue_site_blocked', [
-                        'site_uid' => $site_uid,
-                        'error_code' => $blocked_error,
-                        'target_mode' => $target_mode,
-                        'distribution_id' => $distribution_id,
-                    ]);
-                    $summary['failed']++;
-                    continue;
-                }
+            $classification = self::classify_enqueue_target($incoming_site_uid, $site_uid, $site_lookup);
+            if (empty($classification['ok'])) {
+                $blocked_result = self::build_blocked_enqueue_result(
+                    $incoming_site_uid,
+                    sanitize_key((string) ($classification['resolved_site_uid'] ?? $site_uid)),
+                    sanitize_key((string) ($classification['error_code'] ?? 'site_not_targetable')),
+                    $classification
+                );
+                $results[] = $blocked_result;
+                self::append_diagnostic('command_enqueue_site_blocked', [
+                    'site_uid' => $incoming_site_uid,
+                    'resolved_site_uid' => sanitize_key((string) ($classification['resolved_site_uid'] ?? $site_uid)),
+                    'error_code' => sanitize_key((string) ($classification['error_code'] ?? 'site_not_targetable')),
+                    'classification' => sanitize_key((string) ($classification['classification'] ?? 'blocked_unknown')),
+                    'target_mode' => $target_mode,
+                    'distribution_id' => $distribution_id,
+                ]);
+                self::increment_classification_count($preflight_counts, sanitize_key((string) ($blocked_result['classification'] ?? 'blocked_unknown')));
+                $summary['failed']++;
+                continue;
             }
-            $secret = DBVC_Bricks_Addon::get_command_secret_for_site($site_uid);
+            $effective_site_uid = sanitize_key((string) ($classification['effective_site_uid'] ?? $site_uid));
+            if ($effective_site_uid === '') {
+                $effective_site_uid = $site_uid;
+            }
+            $secret = DBVC_Bricks_Addon::get_command_secret_for_site($effective_site_uid);
             if ($secret === '') {
-                $results[] = ['site_uid' => $site_uid, 'status' => 'failed', 'error_code' => 'command_secret_missing'];
+                $blocked_result = self::build_blocked_enqueue_result(
+                    $incoming_site_uid,
+                    $effective_site_uid,
+                    'command_secret_missing',
+                    [
+                        'classification' => 'blocked_secret_missing',
+                        'remediation_hint' => 'Reset linkage on mothership and run client "Reset + Re-run Intro Handshake".',
+                        'canonical_site_uid' => sanitize_key((string) ($classification['canonical_site_uid'] ?? '')),
+                    ]
+                );
+                $results[] = $blocked_result;
+                self::append_diagnostic('command_enqueue_site_blocked', [
+                    'site_uid' => $incoming_site_uid,
+                    'resolved_site_uid' => $effective_site_uid,
+                    'error_code' => 'command_secret_missing',
+                    'classification' => 'blocked_secret_missing',
+                    'target_mode' => $target_mode,
+                    'distribution_id' => $distribution_id,
+                ]);
+                self::increment_classification_count($preflight_counts, 'blocked_secret_missing');
                 $summary['failed']++;
                 continue;
             }
             $envelope = self::create_envelope(
                 $command_type,
-                $site_uid,
+                $effective_site_uid,
                 $payload,
                 $secret,
                 [
                     'distribution_id' => $distribution_id,
                     'correlation_id' => $correlation_id,
+                    'incoming_site_uid' => $incoming_site_uid,
+                    'resolved_site_uid' => sanitize_key((string) ($classification['resolved_site_uid'] ?? $site_uid)),
+                    'effective_site_uid' => $effective_site_uid,
                 ]
             );
             if (is_wp_error($envelope)) {
@@ -726,11 +809,18 @@ final class DBVC_Bricks_Command_Queue
                 $summary['failed']++;
                 continue;
             }
+            $classification_key = sanitize_key((string) ($classification['classification'] ?? ($incoming_site_uid === $effective_site_uid ? 'ready' : 'ready_alias_reroute')));
+            if ($classification_key === '') {
+                $classification_key = $incoming_site_uid === $effective_site_uid ? 'ready' : 'ready_alias_reroute';
+            }
+            self::increment_classification_count($preflight_counts, $classification_key);
             $results[] = [
                 'site_uid' => $incoming_site_uid,
                 'status' => 'queued',
                 'envelope_id' => (string) ($envelope['envelope_id'] ?? ''),
-                'resolved_site_uid' => $site_uid,
+                'resolved_site_uid' => $effective_site_uid,
+                'classification' => $classification_key,
+                'remediation_hint' => sanitize_text_field((string) ($classification['remediation_hint'] ?? '')),
             ];
             $summary['queued']++;
         }
@@ -742,6 +832,11 @@ final class DBVC_Bricks_Command_Queue
             'distribution_id' => $distribution_id,
             'summary' => $summary,
             'results' => $results,
+            'preflight' => [
+                'ready' => (int) $summary['queued'],
+                'blocked' => (int) $summary['failed'],
+                'classification_counts' => $preflight_counts,
+            ],
         ];
         if (class_exists('DBVC_Bricks_Idempotency')) {
             DBVC_Bricks_Idempotency::put('command_enqueue', $idempotency_key, $response);
@@ -779,6 +874,9 @@ final class DBVC_Bricks_Command_Queue
         $auth_context = self::assert_site_auth_context($site_uid);
         if (is_wp_error($auth_context)) {
             return $auth_context;
+        }
+        if (class_exists('DBVC_Bricks_Connected_Sites') && method_exists('DBVC_Bricks_Connected_Sites', 'record_pull_activity')) {
+            DBVC_Bricks_Connected_Sites::record_pull_activity($incoming_site_uid, $site_uid);
         }
         $limit = max(1, min(100, (int) ($params['limit'] ?? 10)));
         $items = self::lease_envelopes_for_site($site_uid, $limit);
@@ -1292,6 +1390,224 @@ final class DBVC_Bricks_Command_Queue
         update_option(self::OPTION_CLIENT_NONCES, $store);
 
         return true;
+    }
+
+    /**
+     * @param array<string, int> $counts
+     * @param string $classification
+     * @return void
+     */
+    private static function increment_classification_count(array &$counts, $classification)
+    {
+        $classification = sanitize_key((string) $classification);
+        if ($classification === '') {
+            return;
+        }
+        $counts[$classification] = max(0, (int) ($counts[$classification] ?? 0)) + 1;
+    }
+
+    /**
+     * @param string $incoming_site_uid
+     * @param string $resolved_site_uid
+     * @param string $error_code
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private static function build_blocked_enqueue_result($incoming_site_uid, $resolved_site_uid, $error_code, array $context = [])
+    {
+        $incoming_site_uid = sanitize_key((string) $incoming_site_uid);
+        $resolved_site_uid = sanitize_key((string) $resolved_site_uid);
+        $error_code = sanitize_key((string) $error_code);
+        $result = [
+            'site_uid' => $incoming_site_uid,
+            'status' => 'failed',
+            'error_code' => $error_code,
+            'resolved_site_uid' => $resolved_site_uid,
+            'classification' => sanitize_key((string) ($context['classification'] ?? self::classification_from_error_code($error_code))),
+            'remediation_hint' => sanitize_text_field((string) ($context['remediation_hint'] ?? self::remediation_hint_for_error_code($error_code))),
+        ];
+        $canonical_site_uid = sanitize_key((string) ($context['canonical_site_uid'] ?? ''));
+        if ($canonical_site_uid !== '') {
+            $result['canonical_site_uid'] = $canonical_site_uid;
+        }
+        $normalized_base_url = sanitize_text_field((string) ($context['normalized_base_url'] ?? ''));
+        if ($normalized_base_url !== '') {
+            $result['normalized_base_url'] = $normalized_base_url;
+        }
+        return $result;
+    }
+
+    /**
+     * @param string $error_code
+     * @return string
+     */
+    private static function classification_from_error_code($error_code)
+    {
+        $error_code = sanitize_key((string) $error_code);
+        $map = [
+            'site_onboarding_pending_intro' => 'blocked_pending_intro',
+            'command_secret_missing' => 'blocked_secret_missing',
+            'site_uid_conflict_duplicate_base_url' => 'blocked_duplicate_conflict',
+            'site_allow_receive_disabled' => 'blocked_allow_receive_disabled',
+            'site_disabled' => 'blocked_site_disabled',
+            'site_onboarding_disabled' => 'blocked_site_disabled',
+            'site_onboarding_rejected' => 'blocked_site_disabled',
+            'site_uid_not_found' => 'blocked_site_not_found',
+            'site_uid_required' => 'blocked_site_uid_required',
+        ];
+        return isset($map[$error_code]) ? $map[$error_code] : 'blocked_unknown';
+    }
+
+    /**
+     * @param string $error_code
+     * @return string
+     */
+    private static function remediation_hint_for_error_code($error_code)
+    {
+        $error_code = sanitize_key((string) $error_code);
+        if ($error_code === 'site_onboarding_pending_intro' || $error_code === 'command_secret_missing') {
+            return 'Run client "Reset + Re-run Intro Handshake" and then re-enable the site on mothership.';
+        }
+        if ($error_code === 'site_uid_conflict_duplicate_base_url') {
+            return 'Resolve duplicate URL identities by merge/deactivate alias or map known alias to canonical UID.';
+        }
+        if ($error_code === 'site_allow_receive_disabled') {
+            return 'Enable "Allow receive packages" for this site in Connected Sites.';
+        }
+        if ($error_code === 'site_disabled' || $error_code === 'site_onboarding_disabled' || $error_code === 'site_onboarding_rejected') {
+            return 'Re-enable site onboarding/linkage before enqueue.';
+        }
+        if ($error_code === 'site_uid_not_found') {
+            return 'Refresh Connected Sites and verify the target site UID exists.';
+        }
+        return '';
+    }
+
+    /**
+     * @param string $incoming_site_uid
+     * @param string $resolved_site_uid
+     * @param array<string, array<string, mixed>> $site_lookup
+     * @return array<string, mixed>
+     */
+    private static function classify_enqueue_target($incoming_site_uid, $resolved_site_uid, array $site_lookup)
+    {
+        $incoming_site_uid = sanitize_key((string) $incoming_site_uid);
+        $resolved_site_uid = sanitize_key((string) $resolved_site_uid);
+        $base = [
+            'ok' => false,
+            'incoming_site_uid' => $incoming_site_uid,
+            'resolved_site_uid' => $resolved_site_uid,
+            'effective_site_uid' => $resolved_site_uid,
+            'classification' => 'blocked_unknown',
+            'error_code' => 'site_not_targetable',
+            'remediation_hint' => '',
+            'canonical_site_uid' => '',
+            'normalized_base_url' => '',
+        ];
+        if ($resolved_site_uid === '' || ! isset($site_lookup[$resolved_site_uid]) || ! is_array($site_lookup[$resolved_site_uid])) {
+            $base['classification'] = 'blocked_site_not_found';
+            $base['error_code'] = 'site_uid_not_found';
+            $base['remediation_hint'] = self::remediation_hint_for_error_code('site_uid_not_found');
+            return $base;
+        }
+        if (! class_exists('DBVC_Bricks_Connected_Sites') || ! method_exists('DBVC_Bricks_Connected_Sites', 'get_enqueue_guard_status')) {
+            $base['ok'] = true;
+            $base['classification'] = $incoming_site_uid === $resolved_site_uid ? 'ready' : 'ready_alias_reroute';
+            $base['error_code'] = '';
+            return $base;
+        }
+        $guard = DBVC_Bricks_Connected_Sites::get_enqueue_guard_status($resolved_site_uid);
+        if (is_array($guard) && ! empty($guard['ok'])) {
+            $base['ok'] = true;
+            $base['classification'] = $incoming_site_uid === $resolved_site_uid ? 'ready' : 'ready_alias_reroute';
+            $base['error_code'] = '';
+            return $base;
+        }
+
+        $error_code = sanitize_key((string) ($guard['error_code'] ?? 'site_not_targetable'));
+        $base['classification'] = self::classification_from_error_code($error_code);
+        $base['error_code'] = $error_code;
+        $base['canonical_site_uid'] = sanitize_key((string) ($guard['canonical_site_uid'] ?? ''));
+        $base['normalized_base_url'] = sanitize_text_field((string) ($guard['normalized_base_url'] ?? ''));
+        $base['remediation_hint'] = self::remediation_hint_for_error_code($error_code);
+
+        if ($error_code === 'site_uid_conflict_duplicate_base_url') {
+            $canonical_site_uid = $base['canonical_site_uid'];
+            if ($canonical_site_uid !== '' && self::can_auto_reroute_conflict_site($resolved_site_uid, $canonical_site_uid, $site_lookup)) {
+                $canonical_guard = DBVC_Bricks_Connected_Sites::get_enqueue_guard_status($canonical_site_uid);
+                if (is_array($canonical_guard) && ! empty($canonical_guard['ok'])) {
+                    $base['ok'] = true;
+                    $base['classification'] = 'ready_alias_reroute';
+                    $base['effective_site_uid'] = $canonical_site_uid;
+                    $base['error_code'] = '';
+                    $base['remediation_hint'] = 'Auto-routed to canonical UID with deterministic identity evidence.';
+                }
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * @param string $alias_site_uid
+     * @param string $canonical_site_uid
+     * @param array<string, array<string, mixed>> $site_lookup
+     * @return bool
+     */
+    private static function can_auto_reroute_conflict_site($alias_site_uid, $canonical_site_uid, array $site_lookup)
+    {
+        $alias_site_uid = sanitize_key((string) $alias_site_uid);
+        $canonical_site_uid = sanitize_key((string) $canonical_site_uid);
+        if ($alias_site_uid === '' || $canonical_site_uid === '' || $alias_site_uid === $canonical_site_uid) {
+            return false;
+        }
+        if (! isset($site_lookup[$alias_site_uid]) || ! is_array($site_lookup[$alias_site_uid])) {
+            return false;
+        }
+        if (! isset($site_lookup[$canonical_site_uid]) || ! is_array($site_lookup[$canonical_site_uid])) {
+            return false;
+        }
+        if (! class_exists('DBVC_Bricks_Connected_Sites') || ! method_exists('DBVC_Bricks_Connected_Sites', 'normalize_base_url')) {
+            return false;
+        }
+        $alias_site = $site_lookup[$alias_site_uid];
+        $canonical_site = $site_lookup[$canonical_site_uid];
+        $alias_url = DBVC_Bricks_Connected_Sites::normalize_base_url((string) ($alias_site['base_url'] ?? ''));
+        $canonical_url = DBVC_Bricks_Connected_Sites::normalize_base_url((string) ($canonical_site['base_url'] ?? ''));
+        if ($alias_url === '' || $canonical_url === '' || ! hash_equals($alias_url, $canonical_url)) {
+            return false;
+        }
+        if (! self::site_has_recent_pull($canonical_site) || self::site_has_recent_pull($alias_site)) {
+            return false;
+        }
+        $alias_instance = sanitize_text_field((string) ($alias_site['local_instance_uuid'] ?? ''));
+        $canonical_instance = sanitize_text_field((string) ($canonical_site['local_instance_uuid'] ?? ''));
+        if ($alias_instance !== '' && $canonical_instance !== '' && hash_equals($alias_instance, $canonical_instance)) {
+            return true;
+        }
+        $alias_snapshot = sanitize_text_field((string) ($alias_site['site_title_host_snapshot'] ?? ''));
+        $canonical_snapshot = sanitize_text_field((string) ($canonical_site['site_title_host_snapshot'] ?? ''));
+        if ($alias_snapshot !== '' && $canonical_snapshot !== '' && hash_equals($alias_snapshot, $canonical_snapshot)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $site
+     * @return bool
+     */
+    private static function site_has_recent_pull(array $site)
+    {
+        $last_pull_at = sanitize_text_field((string) ($site['last_pull_at'] ?? ''));
+        if ($last_pull_at === '') {
+            return false;
+        }
+        $pull_ts = strtotime($last_pull_at);
+        if ($pull_ts === false) {
+            return false;
+        }
+        return $pull_ts >= (time() - self::RECENT_PULL_WINDOW_SECONDS);
     }
 
     /**

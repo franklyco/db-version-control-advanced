@@ -10,6 +10,7 @@ final class DBVC_Bricks_Connected_Sites
     public const OPTION_SITE_ALIASES = 'dbvc_bricks_site_aliases';
     public const OPTION_SITE_SEQUENCE = 'dbvc_bricks_site_sequence';
     public const CONFLICT_DUPLICATE_BASE_URL = 'duplicate_base_url';
+    public const RECENT_PULL_WINDOW_SECONDS = 900;
 
     /**
      * @return array<string, array<string, mixed>>
@@ -384,6 +385,54 @@ final class DBVC_Bricks_Connected_Sites
     }
 
     /**
+     * @param array<string, array<string, mixed>> $sites
+     * @param array<string, array<int, string>> $groups
+     * @return array<string, array<string, mixed>>
+     */
+    private static function build_active_pull_map(array $sites, array $groups)
+    {
+        $out = [];
+        $now = time();
+        foreach ($groups as $uids) {
+            $active_uid = '';
+            $active_ts = 0;
+            foreach ($uids as $uid) {
+                if (! isset($sites[$uid]) || ! is_array($sites[$uid])) {
+                    continue;
+                }
+                $last_pull_at = sanitize_text_field((string) ($sites[$uid]['last_pull_at'] ?? ''));
+                if ($last_pull_at === '') {
+                    continue;
+                }
+                $pull_ts = strtotime($last_pull_at);
+                if ($pull_ts === false || $pull_ts < ($now - self::RECENT_PULL_WINDOW_SECONDS)) {
+                    continue;
+                }
+                if ($active_uid === '' || $pull_ts > $active_ts) {
+                    $active_uid = sanitize_key((string) $uid);
+                    $active_ts = (int) $pull_ts;
+                }
+            }
+            if ($active_uid === '') {
+                continue;
+            }
+            $active_at = gmdate('c', $active_ts);
+            foreach ($uids as $uid) {
+                $uid = sanitize_key((string) $uid);
+                if ($uid === '') {
+                    continue;
+                }
+                $out[$uid] = [
+                    'active_pull_site_uid' => $active_uid,
+                    'active_pull_at' => $active_at,
+                    'active_pull_mismatch' => $uid !== $active_uid ? 1 : 0,
+                ];
+            }
+        }
+        return $out;
+    }
+
+    /**
      * @param string $site_uid
      * @return array<string, mixed>
      */
@@ -443,7 +492,7 @@ final class DBVC_Bricks_Connected_Sites
      * @param array<string, array<string, mixed>> $conflicts
      * @return array<string, mixed>
      */
-    private static function decorate_site_with_conflicts(array $site, array $conflicts, array $assisted_by_alias = [])
+    private static function decorate_site_with_conflicts(array $site, array $conflicts, array $assisted_by_alias = [], array $active_pull_by_site = [])
     {
         $site_uid = sanitize_key((string) ($site['site_uid'] ?? ''));
         $site['normalized_base_url'] = self::normalize_base_url((string) ($site['base_url'] ?? ''));
@@ -459,6 +508,10 @@ final class DBVC_Bricks_Connected_Sites
         $site['assisted_merge_eligible'] = 0;
         $site['assisted_merge_match_reasons'] = [];
         $site['assisted_merge_match_token'] = '';
+        $site['active_pull_site_uid'] = '';
+        $site['active_pull_at'] = '';
+        $site['active_pull_mismatch'] = 0;
+        $site['routing_notice'] = '';
 
         if ($site_uid !== '' && isset($conflicts[$site_uid]) && is_array($conflicts[$site_uid])) {
             $conflict = $conflicts[$site_uid];
@@ -480,6 +533,17 @@ final class DBVC_Bricks_Connected_Sites
             $site['assisted_merge_match_token'] = sanitize_text_field((string) ($candidate['match_token'] ?? ''));
             $site['canonical_site_uid'] = sanitize_key((string) ($candidate['canonical_site_uid'] ?? $site['canonical_site_uid']));
         }
+        if ($site_uid !== '' && isset($active_pull_by_site[$site_uid]) && is_array($active_pull_by_site[$site_uid])) {
+            $pull = $active_pull_by_site[$site_uid];
+            $active_uid = sanitize_key((string) ($pull['active_pull_site_uid'] ?? ''));
+            $active_at = sanitize_text_field((string) ($pull['active_pull_at'] ?? ''));
+            $site['active_pull_site_uid'] = $active_uid;
+            $site['active_pull_at'] = $active_at;
+            $site['active_pull_mismatch'] = (! empty($pull['active_pull_mismatch'])) ? 1 : 0;
+            if (! empty($pull['active_pull_mismatch']) && $active_uid !== '' && $active_uid !== $site_uid) {
+                $site['routing_notice'] = 'Recent pull activity is coming from UID "' . $active_uid . '". Merge/deactivate alias or map known alias before targeting this row.';
+            }
+        }
         return $site;
     }
 
@@ -495,6 +559,46 @@ final class DBVC_Bricks_Connected_Sites
             return null;
         }
         return $sites[$site_uid];
+    }
+
+    /**
+     * @param string $incoming_site_uid
+     * @param string $resolved_site_uid
+     * @return void
+     */
+    public static function record_pull_activity($incoming_site_uid, $resolved_site_uid = '')
+    {
+        $incoming_site_uid = sanitize_key((string) $incoming_site_uid);
+        $resolved_site_uid = sanitize_key((string) $resolved_site_uid);
+        if ($incoming_site_uid === '' && $resolved_site_uid === '') {
+            return;
+        }
+        if ($resolved_site_uid === '') {
+            $resolved_site_uid = $incoming_site_uid;
+        }
+        $now = gmdate('c');
+        if ($resolved_site_uid !== '') {
+            $resolved_site = self::get_site($resolved_site_uid);
+            if (is_array($resolved_site)) {
+                self::upsert_site([
+                    'site_uid' => $resolved_site_uid,
+                    'last_pull_at' => $now,
+                    'last_pull_incoming_uid' => $incoming_site_uid,
+                    'last_seen_at' => $now,
+                ]);
+            }
+        }
+        if ($incoming_site_uid !== '' && $incoming_site_uid !== $resolved_site_uid) {
+            $incoming_site = self::get_site($incoming_site_uid);
+            if (is_array($incoming_site)) {
+                self::upsert_site([
+                    'site_uid' => $incoming_site_uid,
+                    'last_pull_at' => $now,
+                    'last_pull_incoming_uid' => $incoming_site_uid,
+                    'last_seen_at' => $now,
+                ]);
+            }
+        }
     }
 
     /**
@@ -521,6 +625,8 @@ final class DBVC_Bricks_Connected_Sites
             'allow_receive_packages' => $allow_receive_packages,
             'onboarding_state' => strtoupper(sanitize_text_field((string) ($payload['onboarding_state'] ?? ($existing['onboarding_state'] ?? '')))),
             'onboarding_updated_at' => sanitize_text_field((string) ($payload['onboarding_updated_at'] ?? ($existing['onboarding_updated_at'] ?? ''))),
+            'last_pull_at' => sanitize_text_field((string) ($payload['last_pull_at'] ?? ($existing['last_pull_at'] ?? ''))),
+            'last_pull_incoming_uid' => sanitize_key((string) ($payload['last_pull_incoming_uid'] ?? ($existing['last_pull_incoming_uid'] ?? ''))),
             'last_seen_at' => sanitize_text_field((string) ($payload['last_seen_at'] ?? gmdate('c'))),
             'updated_at' => gmdate('c'),
         ];
@@ -600,8 +706,10 @@ final class DBVC_Bricks_Connected_Sites
         self::sync_from_registry($mode);
         $status_filter = sanitize_key((string) $request->get_param('status'));
         $sites = self::get_sites();
+        $duplicate_groups = self::get_duplicate_base_url_groups($sites);
         $conflicts = self::build_conflict_map($sites);
         $assisted_candidates = self::get_assisted_merge_candidates($sites);
+        $active_pull_by_site = self::build_active_pull_map($sites, $duplicate_groups);
         $assisted_by_alias = [];
         foreach ($assisted_candidates as $candidate) {
             if (! is_array($candidate)) {
@@ -613,11 +721,11 @@ final class DBVC_Bricks_Connected_Sites
             }
             $assisted_by_alias[$alias_uid] = $candidate;
         }
-        $items = array_values(array_map(static function ($site) use ($conflicts, $assisted_by_alias) {
+        $items = array_values(array_map(static function ($site) use ($conflicts, $assisted_by_alias, $active_pull_by_site) {
             if (! is_array($site)) {
                 return [];
             }
-            return self::decorate_site_with_conflicts($site, $conflicts, $assisted_by_alias);
+            return self::decorate_site_with_conflicts($site, $conflicts, $assisted_by_alias, $active_pull_by_site);
         }, $sites));
         if ($status_filter !== '') {
             $items = array_values(array_filter($items, static function ($site) use ($status_filter) {
@@ -628,8 +736,10 @@ final class DBVC_Bricks_Connected_Sites
             'items' => $items,
             'registry_mode' => $mode,
             'conflicts' => $conflicts,
+            'duplicate_groups' => $duplicate_groups,
             'aliases' => self::get_aliases(),
             'assisted_merge_candidates' => $assisted_candidates,
+            'active_pull_by_site' => $active_pull_by_site,
         ]);
     }
 
