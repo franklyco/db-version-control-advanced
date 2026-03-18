@@ -1,0 +1,16 @@
+{
+  "artifact_type": "target-field-catalog.v1",
+  "domain": "phase37-regression.test",
+  "artifact_schema_version": "2.0.0",
+  "catalog_fingerprint_present": true,
+  "has_cpt_page": true,
+  "has_taxonomy_category": true,
+  "has_term_catalog_category": true,
+  "meta_checks": {
+    "hero_subheading": true,
+    "faq_question": true,
+    "faq_answer": true,
+    "cta_button_url": true
+  },
+  "has_media_field_catalog": true
+}

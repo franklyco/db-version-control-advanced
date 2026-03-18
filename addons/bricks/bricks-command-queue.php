@@ -69,6 +69,95 @@ final class DBVC_Bricks_Command_Queue
     }
 
     /**
+     * @param string $error_code
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private static function build_operator_error_payload($error_code, array $context = [])
+    {
+        $error_code = sanitize_key((string) $error_code);
+        $payload = [
+            'error_code' => $error_code,
+            'classification' => sanitize_key((string) ($context['classification'] ?? self::classification_from_error_code($error_code))),
+            'remediation_hint' => sanitize_text_field((string) ($context['remediation_hint'] ?? self::remediation_hint_for_error_code($error_code))),
+        ];
+        $reason = sanitize_key((string) ($context['reason'] ?? ''));
+        if ($reason !== '') {
+            $payload['reason'] = $reason;
+        }
+        $endpoint = sanitize_text_field((string) ($context['endpoint'] ?? ''));
+        if ($endpoint !== '') {
+            $payload['endpoint'] = $endpoint;
+        }
+        $site_uid = sanitize_key((string) ($context['site_uid'] ?? ''));
+        if ($site_uid !== '') {
+            $payload['site_uid'] = $site_uid;
+        }
+        $incoming_site_uid = sanitize_key((string) ($context['incoming_site_uid'] ?? ''));
+        if ($incoming_site_uid !== '') {
+            $payload['incoming_site_uid'] = $incoming_site_uid;
+        }
+        $envelope_id = sanitize_key((string) ($context['envelope_id'] ?? ''));
+        if ($envelope_id !== '') {
+            $payload['envelope_id'] = $envelope_id;
+        }
+        return $payload;
+    }
+
+    /**
+     * @param string $error_code
+     * @param int $status
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private static function build_operator_error_data($error_code, $status = 400, array $context = [])
+    {
+        $status = max(100, min(599, (int) $status));
+        $payload = self::build_operator_error_payload($error_code, $context);
+        $payload['status'] = $status;
+        return $payload;
+    }
+
+    /**
+     * @param string $error_code
+     * @param string $message
+     * @param int $status
+     * @param array<string, mixed> $context
+     * @return \WP_Error
+     */
+    private static function build_operator_error($error_code, $message, $status = 400, array $context = [])
+    {
+        return new \WP_Error(
+            sanitize_key((string) $error_code),
+            (string) $message,
+            self::build_operator_error_data((string) $error_code, $status, $context)
+        );
+    }
+
+    /**
+     * @param \WP_Error $error
+     * @param array<string, mixed> $context
+     * @return \WP_Error
+     */
+    private static function with_operator_error_data(\WP_Error $error, array $context = [])
+    {
+        $error_code = sanitize_key((string) $error->get_error_code());
+        $message = (string) $error->get_error_message();
+        $existing = $error->get_error_data();
+        $status = is_array($existing) ? (int) ($existing['status'] ?? 400) : 400;
+        $data = self::build_operator_error_data($error_code, $status, $context);
+        if (is_array($existing)) {
+            foreach ($existing as $key => $value) {
+                if (in_array((string) $key, ['status', 'classification', 'remediation_hint', 'error_code', 'reason', 'endpoint', 'site_uid', 'incoming_site_uid', 'envelope_id'], true)) {
+                    continue;
+                }
+                $data[$key] = $value;
+            }
+        }
+        return new \WP_Error($error_code, $message, $data);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private static function load_shared_rules_profile_snapshot()
@@ -861,7 +950,22 @@ final class DBVC_Bricks_Command_Queue
         }
         $incoming_site_uid = sanitize_key((string) ($params['site_uid'] ?? ''));
         if ($incoming_site_uid === '') {
-            return new \WP_Error('dbvc_bricks_command_pull_site_uid_required', 'site_uid is required.', ['status' => 400]);
+            self::append_diagnostic('command_pull_rejected', self::build_operator_error_payload(
+                'dbvc_bricks_command_pull_site_uid_required',
+                [
+                    'endpoint' => 'commands/pull',
+                    'reason' => 'missing_site_uid',
+                ]
+            ));
+            return self::build_operator_error(
+                'dbvc_bricks_command_pull_site_uid_required',
+                'site_uid is required.',
+                400,
+                [
+                    'endpoint' => 'commands/pull',
+                    'reason' => 'missing_site_uid',
+                ]
+            );
         }
         $site_uid = $incoming_site_uid;
         if (class_exists('DBVC_Bricks_Connected_Sites') && method_exists('DBVC_Bricks_Connected_Sites', 'resolve_site_identity')) {
@@ -873,7 +977,25 @@ final class DBVC_Bricks_Command_Queue
         }
         $auth_context = self::assert_site_auth_context($site_uid);
         if (is_wp_error($auth_context)) {
-            return $auth_context;
+            $error_code = sanitize_key((string) $auth_context->get_error_code());
+            self::append_diagnostic('command_pull_rejected', self::build_operator_error_payload(
+                $error_code,
+                [
+                    'endpoint' => 'commands/pull',
+                    'reason' => 'auth_context_invalid',
+                    'site_uid' => $site_uid,
+                    'incoming_site_uid' => $incoming_site_uid,
+                ]
+            ));
+            return self::with_operator_error_data(
+                $auth_context,
+                [
+                    'endpoint' => 'commands/pull',
+                    'reason' => 'auth_context_invalid',
+                    'site_uid' => $site_uid,
+                    'incoming_site_uid' => $incoming_site_uid,
+                ]
+            );
         }
         if (class_exists('DBVC_Bricks_Connected_Sites') && method_exists('DBVC_Bricks_Connected_Sites', 'record_pull_activity')) {
             DBVC_Bricks_Connected_Sites::record_pull_activity($incoming_site_uid, $site_uid);
@@ -903,7 +1025,22 @@ final class DBVC_Bricks_Command_Queue
 
         $idempotency_key = class_exists('DBVC_Bricks_Idempotency') ? DBVC_Bricks_Idempotency::extract_key($request) : '';
         if ($idempotency_key === '') {
-            return new \WP_Error('dbvc_bricks_idempotency_required', 'Idempotency-Key is required.', ['status' => 400]);
+            self::append_diagnostic('command_ack_rejected', self::build_operator_error_payload(
+                'dbvc_bricks_idempotency_required',
+                [
+                    'endpoint' => 'commands/ack',
+                    'reason' => 'missing_idempotency_key',
+                ]
+            ));
+            return self::build_operator_error(
+                'dbvc_bricks_idempotency_required',
+                'Idempotency-Key is required.',
+                400,
+                [
+                    'endpoint' => 'commands/ack',
+                    'reason' => 'missing_idempotency_key',
+                ]
+            );
         }
         if (class_exists('DBVC_Bricks_Idempotency')) {
             $existing = DBVC_Bricks_Idempotency::get('command_ack', $idempotency_key);
@@ -930,7 +1067,25 @@ final class DBVC_Bricks_Command_Queue
         $result = isset($params['result']) && is_array($params['result']) ? $params['result'] : [];
         $auth_context = self::assert_site_auth_context($site_uid);
         if (is_wp_error($auth_context)) {
-            return $auth_context;
+            $error_code = sanitize_key((string) $auth_context->get_error_code());
+            self::append_diagnostic('command_ack_rejected', self::build_operator_error_payload(
+                $error_code,
+                [
+                    'endpoint' => 'commands/ack',
+                    'reason' => 'auth_context_invalid',
+                    'site_uid' => $site_uid,
+                    'incoming_site_uid' => $incoming_site_uid,
+                ]
+            ));
+            return self::with_operator_error_data(
+                $auth_context,
+                [
+                    'endpoint' => 'commands/ack',
+                    'reason' => 'auth_context_invalid',
+                    'site_uid' => $site_uid,
+                    'incoming_site_uid' => $incoming_site_uid,
+                ]
+            );
         }
         if (is_array($result)) {
             $result['incoming_site_uid'] = $incoming_site_uid;
@@ -938,7 +1093,27 @@ final class DBVC_Bricks_Command_Queue
         }
         $acked = self::ack_envelope($envelope_id, $site_uid, $state, $result);
         if (is_wp_error($acked)) {
-            return $acked;
+            $error_code = sanitize_key((string) $acked->get_error_code());
+            self::append_diagnostic('command_ack_rejected', self::build_operator_error_payload(
+                $error_code,
+                [
+                    'endpoint' => 'commands/ack',
+                    'reason' => 'ack_validation_failed',
+                    'site_uid' => $site_uid,
+                    'incoming_site_uid' => $incoming_site_uid,
+                    'envelope_id' => $envelope_id,
+                ]
+            ));
+            return self::with_operator_error_data(
+                $acked,
+                [
+                    'endpoint' => 'commands/ack',
+                    'reason' => 'ack_validation_failed',
+                    'site_uid' => $site_uid,
+                    'incoming_site_uid' => $incoming_site_uid,
+                    'envelope_id' => $envelope_id,
+                ]
+            );
         }
         $response = [
             'ok' => true,
@@ -1454,6 +1629,13 @@ final class DBVC_Bricks_Command_Queue
             'site_onboarding_rejected' => 'blocked_site_disabled',
             'site_uid_not_found' => 'blocked_site_not_found',
             'site_uid_required' => 'blocked_site_uid_required',
+            'dbvc_bricks_idempotency_required' => 'blocked_idempotency_missing',
+            'dbvc_bricks_command_pull_site_uid_required' => 'blocked_site_uid_required',
+            'dbvc_bricks_command_site_uid_required' => 'blocked_site_uid_required',
+            'dbvc_bricks_command_auth_context_invalid' => 'blocked_auth_context_invalid',
+            'dbvc_bricks_command_ack_invalid' => 'blocked_ack_invalid',
+            'dbvc_bricks_command_envelope_not_found' => 'blocked_envelope_not_found',
+            'dbvc_bricks_command_ack_site_mismatch' => 'blocked_ack_site_mismatch',
         ];
         return isset($map[$error_code]) ? $map[$error_code] : 'blocked_unknown';
     }
@@ -1479,6 +1661,24 @@ final class DBVC_Bricks_Command_Queue
         }
         if ($error_code === 'site_uid_not_found') {
             return 'Refresh Connected Sites and verify the target site UID exists.';
+        }
+        if ($error_code === 'dbvc_bricks_idempotency_required') {
+            return 'Include the Idempotency-Key header and retry the request.';
+        }
+        if ($error_code === 'dbvc_bricks_command_pull_site_uid_required' || $error_code === 'dbvc_bricks_command_site_uid_required') {
+            return 'Include site_uid in the request body using the canonical connected-site UID.';
+        }
+        if ($error_code === 'dbvc_bricks_command_auth_context_invalid') {
+            return 'Use the integration user associated with this site UID, or reset linkage and re-run intro handshake.';
+        }
+        if ($error_code === 'dbvc_bricks_command_ack_invalid') {
+            return 'Send envelope_id, site_uid, and state (applied|failed) in the ack payload.';
+        }
+        if ($error_code === 'dbvc_bricks_command_envelope_not_found') {
+            return 'Refresh command status and pull again to obtain a valid leased envelope ID before ack.';
+        }
+        if ($error_code === 'dbvc_bricks_command_ack_site_mismatch') {
+            return 'Ack using the resolved/canonical site_uid returned by commands/pull for the leased envelope.';
         }
         return '';
     }

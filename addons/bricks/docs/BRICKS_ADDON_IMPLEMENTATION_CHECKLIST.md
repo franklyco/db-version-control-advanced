@@ -47,9 +47,9 @@ Archive files (completed phases/history):
   - `P19A-T3-S1` Add automated tests for schema, idempotency replay, signed verification, and diagnostics timeline.
   - `P19A-T3-S2` Run live drill on mothership + clientA/clientB for both target modes and capture receipts.
 
-### Current Status (2026-02-17)
-- `P19A-T3`: `BLOCKED`
-- `P19A-T3-S2`: `BLOCKED` (latest rerun `timestamp=20260217T091900Z` uses `transport_mode=client_pull_envelope`, but still no applied receipts: `test_site_a` remains `leased` with repeated `dbvc_bricks_client_envelope_timestamp_invalid`, `test_site_b` remains queued, and `applied=0`; see tracker `P19A-TEST-05`)
+### Current Status (2026-03-08)
+- `P19A-T3`: `DONE`
+- `P19A-T3-S2`: `DONE` (deferred rerun `timestamp=20260308T022902Z` in `transport_mode=client_pull_envelope` queued `selected` + `all` for `test_site_a`/`test_site_b`; post-wait status snapshots show all envelopes `state=applied`; see tracker `P19A-TEST-05`)
 
 ### Required tests
 - `P19A-TEST-01` Shared profile schema/persistence validation tests.
@@ -95,6 +95,8 @@ Archive files (completed phases/history):
     - `P19D-T5-S3-S3` Add mothership Connected Sites action `Reset Linkage` (clear command secret/hash + set `PENDING_INTRO`; do not trigger remote execution).
     - `P19D-T5-S3-S4` Add client action `Reset + Re-run Intro Handshake` (client-initiated secure retry only).
     - `P19D-T5-S3-S5` Add targeting/queue guardrails to block conflicted/unhealthy identities with explicit diagnostics codes.
+    - `P19D-T5-S3-S6` Add mothership Connected Sites action `Forget Linkage` (soft reset + hide from default table; preserve history; require typed UID confirmation; auto-unhide on fresh intro packet re-introduction, then remain `PENDING_INTRO` until verified handshake recovery).
+    - `P19D-T5-S3-S7` Add mothership Connected Sites action `Confirm Handshake` for `PENDING_INTRO` rows (calls intro handshake `accept` with idempotency key; transitions onboarding to `VERIFIED` when accepted).
   - `P19D-T5-S4` Add site identity continuity + alias bridge model (for UID drift and broken handshake recovery).
     - `P19D-T5-S4-S1` Add identity evidence fields per site record: `local_instance_uuid`, `first_seen_at`, `site_sequence_id`, `site_title_host_snapshot`.
     - `P19D-T5-S4-S2` Add deterministic alias resolver (`alias_site_uid -> canonical_site_uid`) used on intro/enqueue/pull/ack/status paths.
@@ -104,9 +106,9 @@ Archive files (completed phases/history):
   - `P19D-T5-S5` Production self-heal for handshake/auth drift + deterministic preflight guards.
     - `P19D-T5-S5-S1` Auto-downgrade site health to `PENDING_INTRO` when client ack reports `dbvc_bricks_client_envelope_secret_missing`; clear stored linkage secrets and record diagnostics.
     - `P19D-T5-S5-S2` Add enqueue/distribute preflight classification (`ready`, `blocked_pending_intro`, `blocked_secret_missing`, `blocked_duplicate_conflict`, `blocked_allow_receive_disabled`) and expose remediation hints in API payloads.
-    - `P19D-T5-S5-S3` Add deterministic canonical reroute behavior for alias targets only when canonical is healthy and deterministic identity evidence confirms continuity; otherwise fail with explicit canonical remediation payload.
+    - `P19D-T5-S5-S3` Add deterministic canonical reroute behavior for alias targets only when canonical is healthy and deterministic identity evidence confirms continuity; otherwise fail with explicit canonical remediation payload. Also prefer verified + linkage-ready canonical selection for duplicate URL groups over stale/pending intro records.
     - `P19D-T5-S5-S4` Add enqueue/distribute diagnostics + operator-facing payload hints for idempotency/header omissions and blocked states.
-    - `P19D-T5-S5-S5` Move client `Reset + Re-run Intro Handshake` action from `First-Time Checklist` into `Configure > Basic settings` for faster operator recovery flow.
+    - `P19D-T5-S5-S5` Streamline onboarding recovery UX by moving client `Reset + Re-run Intro Handshake` from `First-Time Checklist` into `Configure > Basic settings` (and keeping checklist copy as guidance-only).
 - `P19D-T6` Operations + diagnostics
   - `P19D-T6-S1` Add mothership diagnostics timeline for envelope lifecycle (`queued|leased|applied|failed|dead_letter`).
   - `P19D-T6-S2` Add queue status endpoint and operator-facing summary fields.
@@ -116,13 +118,13 @@ Archive files (completed phases/history):
   - `P19D-T7-S2` Run live drill using client-pull transport across mothership/clientA/clientB (`all` + `selected`).
   - `P19D-T7-S3` Re-run `P19A-TEST-05` and close P19A gate if transport evidence passes.
 
-### Current Status (2026-02-17)
-- `P19D-T7`: `IN_PROGRESS`
-- `P19D-T7-S2`: `IN_PROGRESS` (latest rerun `timestamp=20260217T091900Z` still has no `applied`: `selected` queues both targets, then `test_site_a` progresses to `dead_letter` with `dbvc_bricks_client_envelope_timestamp_invalid` while `test_site_b` remains `queued`)
-- `P19D-T7-S3`: `BLOCKED` (`P19A-TEST-05` rerun at `timestamp=20260217T091900Z` used client-pull transport but still did not reach applied receipts; `test_site_a` remains `leased` with repeated client diagnostics `dbvc_bricks_client_envelope_timestamp_invalid`)
-- `P19D-T5-S3`: `DONE` (duplicate UID conflict detection + non-targetable guardrails, mothership merge/deactivate and reset-linkage actions, client-only `Reset + Re-run Intro Handshake`; automated coverage added in `BricksAddonPhase19DTest`)
+### Current Status (2026-03-08)
+- `P19D-T7`: `DONE`
+- `P19D-T7-S2`: `DONE` (rerun `timestamp=20260308T021952Z` queued target envelopes in both `selected` + `all`, then post-wait status snapshots show `test_site_a` + `test_site_b` envelopes `state=applied`; non-target forgotten rows remained blocked `site_linkage_forgotten`)
+- `P19D-T7-S3`: `DONE` (deferred `P19A-TEST-05` rerun `timestamp=20260308T022902Z` passed in `client_pull_envelope` mode with both target sites `applied`)
+- `P19D-T5-S3`: `DONE` (duplicate UID conflict detection + non-targetable guardrails, mothership merge/deactivate/reset-linkage/forget-linkage/confirm-handshake actions, client-only `Reset + Re-run Intro Handshake`; automated coverage added in `BricksAddonPhase19DTest`)
 - `P19D-T5-S4`: `DONE` (identity continuity metadata + deterministic `known_alias` resolver wired across intro/queue/auth paths; Connected Sites manual alias input/action added; assisted merge policy controls enforce deterministic candidate token + explicit confirmation)
-- `P19D-T5-S5`: `IN_PROGRESS` (self-heal now includes lease-time signature refresh, enqueue preflight classification/remediation payloads, deterministic duplicate reroute using recent pull identity evidence, and mothership routing notice fields; remaining work is endpoint-wide idempotency/header diagnostics + moving client reset action into Configure tab)
+- `P19D-T5-S5`: `DONE` (self-heal now includes lease-time signature refresh, bootstrap-safe random seed fallback for pre-pluggable contexts, enqueue preflight classification/remediation payloads, deterministic duplicate reroute using recent pull identity evidence, canonical selection preference for verified/linkage-ready duplicates, and endpoint-wide idempotency/header diagnostics for non-enqueue command endpoints; live mothership smoke evidence captured at `timestamp=20260308T030946Z`)
 
 ### Required tests
 - `P19D-TEST-01` Envelope schema/queue persistence tests.
@@ -138,6 +140,9 @@ Archive files (completed phases/history):
 - `P19D-TEST-11` Enqueue payload normalization test for `refresh_shared_rules` alias + distribution/profile injection.
 - `P19D-TEST-12` Pull lease-signature refresh + recent pull activity tracking test.
 - `P19D-TEST-13` Deterministic duplicate conflict reroute and preflight classification output test.
+- `P19D-TEST-14` Duplicate canonical preference regression test for verified/linkage-ready UID selection over pending-intro duplicates.
+- `P19D-TEST-15` Forget-linkage regression test: mothership soft reset + default-hidden row behavior + visibility recovery on fresh intro packet (pending-intro) and verified handshake completion.
+- `P19D-TEST-16` Non-enqueue operator diagnostics regression test (`commands/pull` and `commands/ack` missing header/idempotency + invalid ack payload hints/diagnostics).
 
 ### Exit criteria
 - Shared-rules distribution no longer depends on mothership direct network reachability to client hostnames.
@@ -166,12 +171,33 @@ Archive files (completed phases/history):
   - `P19B-T3-S1` Emit protected-variant audit events (`created|updated_reason|removed`).
   - `P19B-T3-S2` Add read-only annotations in drift/apply/package payloads indicating protected state.
 
+### Current Status (2026-03-08)
+- `P19B-T1`: `DONE` (added protected-variant registry module + storage normalization + deterministic dedupe keying on `artifact_uid+scope`).
+- `P19B-T1-S1`: `DONE` (schema now persists `variant_id`, `artifact_uid`, `artifact_type`, `label`, `reason`, `scope`, `created_at`, `created_by`, `updated_at`, `updated_by`).
+- `P19B-T1-S2`: `DONE` (migration/default guard added via `ensure_defaults()` with runtime normalization/backfill of legacy rows and bounded store retention).
+- `P19B-T1-S3`: `DONE` (client-only CRUD REST surface: `GET/POST /protected-variants`, `PATCH/DELETE /protected-variants/{variant_id}` with `manage_options` permission callback, read-only mutation block, and idempotency enforcement on mutating actions).
+- `P19B-T2`: `DONE`
+- `P19B-T2-S1`: `DONE` (client-only `Protected Artifacts` admin tab/panel wired in Bricks UI, with API-backed list rendering and role-gated visibility).
+- `P19B-T2-S2`: `DONE` (added client create/list/remove controls with required reason validation on save, row-level and selected-item remove actions, and confirmation gating prior to delete request dispatch).
+- `P19B-T2-S3`: `DONE` (Differences panel now supports mark/unmark for selected artifact via protected-variant create/delete flows, with client-only controls and live protected-state indicator wiring).
+- `P19B-T2-S4`: `DONE` (read-only mode now disables all protected-variant mutating controls in Protected Artifacts and Differences panels, including row-level remove actions; JS mutation helpers now short-circuit with read-only guard errors).
+- `P19B-T3`: `DONE` (drift/apply/package payloads now include read-only protected-variant annotations while preserving existing apply execution semantics).
+- `P19B-T3-S1`: `DONE` (protected-variant audit hooks remain emitted on create/update/remove via `dbvc_bricks_audit_event` and dedicated hook variants).
+- `P19B-T3-S2`: `DONE` (drift scan/compare rows, apply plan/results, and package list/get/pull-latest payloads now carry `protected_variant` entries and top-level summary metadata).
+
 ### Required tests
 - `P19B-TEST-01` Protected variant CRUD + auth tests.
 - `P19B-TEST-02` Protected Artifacts tab rendering/interaction tests.
 - `P19B-TEST-03` Differences mark/unmark integration tests.
 - `P19B-TEST-04` Read-only mode gating tests.
 - `P19B-TEST-05` Payload annotation and audit event tests.
+
+### Test Log (2026-03-08)
+- `P19B-TEST-01`: `PASS` via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19BTest.php` (CRUD, dedupe, role/auth checks, read-only guard, idempotent replay, delete confirmation, audit hook emission).
+- `P19B-TEST-02`: `PASS` via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19BTest.php` and `vendor/bin/phpunit tests/phpunit/BricksAddonPhase8Test.php` (client-only tab rendering/role-gating plus create/remove control + handler wiring assertions in `test_protected_artifacts_tab_renders_for_client_role_only`).
+- `P19B-TEST-03`: `PASS` via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19BTest.php` (Differences panel mark/unmark protected control rendering and handler wiring assertions in `test_differences_panel_protected_mark_unmark_controls_render_for_client_only`).
+- `P19B-TEST-04`: `PASS` via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19BTest.php` (read-only gating assertions for disabled mutating controls in both Protected Artifacts and Differences panels, plus read-only mutation-guard messaging via `test_read_only_mode_disables_protected_variant_mutating_controls`).
+- `P19B-TEST-05`: `PASS` via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19BTest.php` (payload annotation coverage across drift scan/compare, apply plan/live apply response metadata, and packages list/get/pull-latest responses in `test_drift_apply_and_package_payloads_include_protected_variant_annotations_without_behavior_change`).
 
 ### Exit criteria
 - Client operators can manage protected variants in a dedicated Bricks tab.

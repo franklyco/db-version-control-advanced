@@ -1,0 +1,35 @@
+{
+  "artifact_type": "media-decisions.v1",
+  "decision_status": "approved",
+  "approved": [
+    {
+      "media_id": "dbvc_cc_med_manual_hero",
+      "target_ref": "core:featured_image"
+    },
+    {
+      "media_id": "dbvc_cc_med_manual_pdf",
+      "target_ref": "meta:post:page:download_asset"
+    }
+  ],
+  "overrides": [
+    {
+      "media_id": "dbvc_cc_med_manual_pdf",
+      "target_ref": "meta:post:page:download_asset",
+      "override_target_ref": "core:post_content"
+    }
+  ],
+  "ignored": [
+    {
+      "media_id": "dbvc_cc_med_manual_logo",
+      "reason": "ignored_by_reviewer"
+    }
+  ],
+  "updated_by_positive": true,
+  "updated_at_present": true,
+  "provenance": {
+    "source_url_present": true,
+    "decision_actor_matches_updated_by": true,
+    "decision_timestamp_present": true,
+    "decision_policy_mode": "manual_review_required"
+  }
+}

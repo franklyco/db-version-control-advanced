@@ -51,4 +51,9 @@ Record deviations (e.g., skipped manual step) in PR notes.
 - [ ] Update `docs/REFRACTOR.md` checkboxes + notes.
 - [ ] Mention feature flag requirements or telemetry additions in PR descriptions.
 
+## Implementation Round Closeout
+- At the end of each implementation round, always include a **Next implementation items/tasks** section.
+- Keep that section concrete and sequenced for the immediate next phase of work.
+- Call out blockers/risks in that section when they affect execution order.
+
 Following this guide keeps the refactor “on the rails” and gives future agents the context they need to modify or enhance the admin app safely.

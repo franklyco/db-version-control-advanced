@@ -395,7 +395,7 @@ final class DBVC_Bricks_Onboarding
         if ($existing !== '') {
             return $existing;
         }
-        $uuid = 'inst_' . substr(hash('sha256', home_url('/') . '|' . microtime(true) . '|' . wp_rand()), 0, 24);
+        $uuid = 'inst_' . substr(hash('sha256', home_url('/') . '|' . microtime(true) . '|' . self::random_seed()), 0, 24);
         update_option('dbvc_bricks_local_instance_uuid', $uuid);
         return $uuid;
     }
@@ -581,7 +581,22 @@ final class DBVC_Bricks_Onboarding
      */
     private static function issue_handshake_token($site_uid, $registered_at)
     {
-        return 'hs_' . substr(wp_hash((string) $site_uid . '|' . (string) $registered_at . '|' . wp_rand()), 0, 24);
+        $seed = (string) $site_uid . '|' . (string) $registered_at . '|' . self::random_seed();
+        if (function_exists('wp_hash')) {
+            return 'hs_' . substr((string) wp_hash($seed), 0, 24);
+        }
+        return 'hs_' . substr(hash('sha256', $seed), 0, 24);
+    }
+
+    /**
+     * @return string
+     */
+    private static function random_seed()
+    {
+        if (function_exists('wp_rand')) {
+            return (string) wp_rand();
+        }
+        return (string) mt_rand();
     }
 
     /**
@@ -702,7 +717,7 @@ final class DBVC_Bricks_Onboarding
             } elseif (is_array($existing_record) && ! empty($existing_record['allow_receive_packages'])) {
                 $allow_receive_packages = 1;
             }
-            DBVC_Bricks_Connected_Sites::upsert_site([
+            $connected_payload = [
                 'site_uid' => $site_uid,
                 'site_label' => (string) ($record['site_label'] ?? $site_uid),
                 'base_url' => $base_url,
@@ -715,7 +730,38 @@ final class DBVC_Bricks_Onboarding
                 'local_instance_uuid' => (string) ($record['local_instance_uuid'] ?? ''),
                 'first_seen_at' => (string) ($record['first_seen_at'] ?? ''),
                 'site_title_host_snapshot' => (string) ($record['site_title_host_snapshot'] ?? ''),
-            ]);
+            ];
+
+            $recover_hidden_visibility = false;
+            if (
+                method_exists('DBVC_Bricks_Connected_Sites', 'get_site')
+                && method_exists('DBVC_Bricks_Connected_Sites', 'normalize_base_url')
+            ) {
+                $existing_site = DBVC_Bricks_Connected_Sites::get_site($site_uid);
+                if (is_array($existing_site) && ! empty($existing_site['is_hidden'])) {
+                    $hidden_reason = sanitize_key((string) ($existing_site['hidden_reason'] ?? ''));
+                    $incoming_base = DBVC_Bricks_Connected_Sites::normalize_base_url($base_url);
+                    $existing_base = DBVC_Bricks_Connected_Sites::normalize_base_url((string) ($existing_site['base_url'] ?? ''));
+                    if (
+                        $hidden_reason === DBVC_Bricks_Connected_Sites::HIDDEN_REASON_MANUAL_FORGET
+                        && $incoming_base !== ''
+                        && ($existing_base === '' || $existing_base === $incoming_base)
+                    ) {
+                        $recover_hidden_visibility = true;
+                    }
+                }
+            }
+            if ($recover_hidden_visibility) {
+                $connected_payload['is_hidden'] = 0;
+                $connected_payload['hidden_reason'] = '';
+                $connected_payload['linkage_recovered_at'] = gmdate('c');
+                self::append_diagnostics('intro_packet_hidden_visibility_restored', [
+                    'site_uid' => $site_uid,
+                    'incoming_site_uid' => $site_uid_incoming,
+                ]);
+            }
+
+            DBVC_Bricks_Connected_Sites::upsert_site($connected_payload);
             if ($site_uid !== $site_uid_incoming && method_exists('DBVC_Bricks_Connected_Sites', 'set_known_alias')) {
                 DBVC_Bricks_Connected_Sites::set_known_alias($site_uid_incoming, $site_uid, 'intro_packet_resolved_alias', true);
             }

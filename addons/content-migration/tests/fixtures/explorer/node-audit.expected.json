@@ -1,0 +1,29 @@
+{
+  "domain": "phase36-example.test",
+  "path": "home",
+  "pipeline_id": "",
+  "summary": {
+    "total": 3,
+    "stage_counts": {
+      "extract": 1,
+      "ingestion_package": 1,
+      "segment": 1
+    },
+    "status_counts": {
+      "partial": 1,
+      "success": 2
+    },
+    "pipeline_counts": {
+      "dbvc_cc_p36_fixture_one": 2,
+      "dbvc_cc_p36_fixture_two": 1
+    }
+  },
+  "events": [
+    {
+      "stage": "ingestion_package",
+      "status": "success",
+      "path": "home",
+      "pipeline_id": "dbvc_cc_p36_fixture_two"
+    }
+  ]
+}

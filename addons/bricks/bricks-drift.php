@@ -43,6 +43,7 @@ final class DBVC_Bricks_Drift
             'pending_review' => 0,
         ];
         $artifacts = [];
+        $protected_annotations = self::build_protected_variant_annotations_from_entries($entries);
 
         foreach ($entries as $entry) {
             if (! is_array($entry)) {
@@ -116,6 +117,8 @@ final class DBVC_Bricks_Drift
             if (! is_array($row)) {
                 continue;
             }
+            $row_artifact_uid = isset($row['artifact_uid']) ? sanitize_text_field((string) $row['artifact_uid']) : $artifact_uid;
+            $row['protected_variant'] = self::resolve_protected_variant_annotation($row_artifact_uid, $protected_annotations);
             $artifacts[] = $row;
         }
 
@@ -123,6 +126,7 @@ final class DBVC_Bricks_Drift
             'package_id' => isset($manifest['package_id']) ? (string) $manifest['package_id'] : '',
             'counts' => $counts,
             'artifacts' => $artifacts,
+            'protected_variant_summary' => self::build_protected_variant_summary($protected_annotations),
         ];
     }
 
@@ -201,13 +205,107 @@ final class DBVC_Bricks_Drift
         $local_compare_payload = self::apply_payload_path_rules($local_payload, $rules);
         $target_compare_payload = self::apply_payload_path_rules($target_payload, $rules);
         $summary = self::build_diff_summary($local_compare_payload, $target_compare_payload, 200);
+        $protected_annotations = self::build_protected_variant_annotations([$artifact_uid]);
 
         return rest_ensure_response([
             'artifact_uid' => $artifact_uid,
             'artifact_type' => $artifact_type,
             'diff_summary' => $summary,
             'raw_compare' => self::build_raw_compare_payload($local_compare_payload, $target_compare_payload, $rules, 65536),
+            'protected_variant' => self::resolve_protected_variant_annotation($artifact_uid, $protected_annotations),
+            'protected_variant_summary' => self::build_protected_variant_summary($protected_annotations),
         ]);
+    }
+
+    /**
+     * @param array<int, mixed> $entries
+     * @return array<string, mixed>
+     */
+    private static function build_protected_variant_annotations_from_entries(array $entries)
+    {
+        $artifact_uids = [];
+        foreach ($entries as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $artifact_uid = sanitize_text_field((string) ($entry['artifact_uid'] ?? ''));
+            if ($artifact_uid === '') {
+                continue;
+            }
+            $artifact_uids[] = $artifact_uid;
+        }
+        return self::build_protected_variant_annotations($artifact_uids);
+    }
+
+    /**
+     * @param array<int, string> $artifact_uids
+     * @return array<string, mixed>
+     */
+    private static function build_protected_variant_annotations(array $artifact_uids)
+    {
+        if (! class_exists('DBVC_Bricks_Protected_Variants') || ! method_exists('DBVC_Bricks_Protected_Variants', 'build_payload_annotations')) {
+            return [];
+        }
+        $annotations = DBVC_Bricks_Protected_Variants::build_payload_annotations($artifact_uids);
+        return is_array($annotations) ? $annotations : [];
+    }
+
+    /**
+     * @param string $artifact_uid
+     * @param array<string, mixed> $annotations
+     * @return array<string, mixed>
+     */
+    private static function resolve_protected_variant_annotation($artifact_uid, array $annotations)
+    {
+        if (class_exists('DBVC_Bricks_Protected_Variants') && method_exists('DBVC_Bricks_Protected_Variants', 'get_artifact_annotation')) {
+            $annotation = DBVC_Bricks_Protected_Variants::get_artifact_annotation($artifact_uid, $annotations);
+            if (is_array($annotation)) {
+                return $annotation;
+            }
+        }
+        $artifact_uid = sanitize_text_field((string) $artifact_uid);
+        return [
+            'is_protected' => false,
+            'artifact_uid' => $artifact_uid,
+            'variant_count' => 0,
+            'variant_ids' => [],
+            'scopes' => [],
+            'latest_updated_at' => '',
+            'latest_reason' => '',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $annotations
+     * @return array<string, mixed>
+     */
+    private static function build_protected_variant_summary(array $annotations)
+    {
+        $by_artifact_type = [];
+        foreach ((array) ($annotations['by_artifact_type'] ?? []) as $artifact_type => $count) {
+            $artifact_type = sanitize_key((string) $artifact_type);
+            if ($artifact_type === '') {
+                continue;
+            }
+            $by_artifact_type[$artifact_type] = max(0, (int) $count);
+        }
+        $by_scope = [];
+        foreach ((array) ($annotations['by_scope'] ?? []) as $scope => $count) {
+            $scope = sanitize_key((string) $scope);
+            if ($scope === '') {
+                continue;
+            }
+            $by_scope[$scope] = max(0, (int) $count);
+        }
+        ksort($by_artifact_type, SORT_STRING);
+        ksort($by_scope, SORT_STRING);
+
+        return [
+            'variant_records' => max(0, (int) ($annotations['variant_records'] ?? 0)),
+            'unique_artifact_uids' => max(0, (int) ($annotations['unique_artifact_uids'] ?? 0)),
+            'by_artifact_type' => $by_artifact_type,
+            'by_scope' => $by_scope,
+        ];
     }
 
     /**

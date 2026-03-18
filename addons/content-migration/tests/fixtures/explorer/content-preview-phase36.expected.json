@@ -1,0 +1,58 @@
+{
+  "domain": "phase36-example.test",
+  "path": "home",
+  "mode": "raw",
+  "content": {
+    "title": "Home",
+    "source_url": "https://phase36-example.test/",
+    "section_count": 1
+  },
+  "phase36": {
+    "available": {
+      "elements": true,
+      "scrub_report": true,
+      "sections": true,
+      "section_typing": true,
+      "context_bundle": true,
+      "ingestion_package": true
+    },
+    "modes": {
+      "capture_mode": "deep",
+      "section_typing_mode": "fallback",
+      "scrub_profile": "deterministic-default"
+    },
+    "elements": {
+      "element_count": 2,
+      "truncated": false,
+      "processing": {
+        "is_partial": false,
+        "partial_reason": ""
+      }
+    },
+    "sections": {
+      "section_count": 1,
+      "processing": {
+        "is_partial": false,
+        "partial_reason": ""
+      }
+    },
+    "section_typing": {
+      "mode": "fallback",
+      "count": 1,
+      "type_counts": {
+        "hero": 1
+      }
+    },
+    "context_bundle": {
+      "outline_count": 1,
+      "section_count": 1
+    },
+    "ingestion_package": {
+      "section_count": 1,
+      "element_count": 2
+    },
+    "scrub_report": {
+      "profile": "deterministic-default"
+    }
+  }
+}

@@ -160,7 +160,8 @@ final class DBVC_Bricks_Packages
             if (! is_array($item)) {
                 return $item;
             }
-            return self::augment_package_metadata($item);
+            $item = self::augment_package_metadata($item);
+            return self::annotate_package_with_protected_variants($item, false);
         }, $items));
         return array_slice($items, 0, $limit);
     }
@@ -560,6 +561,7 @@ final class DBVC_Bricks_Packages
             return new \WP_Error('dbvc_bricks_package_not_found', 'Package not found.', ['status' => 404]);
         }
         $package = self::augment_package_metadata($package);
+        $package = self::annotate_package_with_protected_variants($package, true);
 
         $response = [
             'manifest' => $package,
@@ -920,6 +922,7 @@ final class DBVC_Bricks_Packages
         if ($package_id === '') {
             return new \WP_Error('dbvc_bricks_pull_latest_invalid_package', 'Eligible package is missing package_id.', ['status' => 500]);
         }
+        $latest = self::annotate_package_with_protected_variants($latest, true);
 
         $apply = DBVC_Bricks_Apply::apply_package($latest, [], ['dry_run' => true, 'allow_destructive' => false]);
         $packages = self::get_packages();
@@ -1451,5 +1454,116 @@ final class DBVC_Bricks_Packages
     {
         $configured = (int) apply_filters('dbvc_bricks_remote_package_max_bytes', self::REMOTE_PACKAGE_MAX_BYTES);
         return max(262144, $configured);
+    }
+
+    /**
+     * @param array<string, mixed> $package
+     * @param bool $include_lookup
+     * @return array<string, mixed>
+     */
+    private static function annotate_package_with_protected_variants(array $package, $include_lookup)
+    {
+        $artifact_uids = [];
+        $artifacts = isset($package['artifacts']) && is_array($package['artifacts']) ? $package['artifacts'] : [];
+        foreach ($artifacts as $artifact) {
+            if (! is_array($artifact)) {
+                continue;
+            }
+            $artifact_uid = sanitize_text_field((string) ($artifact['artifact_uid'] ?? ''));
+            if ($artifact_uid === '') {
+                continue;
+            }
+            $artifact_uids[] = $artifact_uid;
+        }
+        $annotations = self::build_protected_variant_annotations($artifact_uids);
+        $annotated_artifacts = [];
+        foreach ($artifacts as $artifact) {
+            if (! is_array($artifact)) {
+                $annotated_artifacts[] = $artifact;
+                continue;
+            }
+            $artifact_uid = sanitize_text_field((string) ($artifact['artifact_uid'] ?? ''));
+            $artifact['protected_variant'] = self::resolve_protected_variant_annotation($artifact_uid, $annotations);
+            $annotated_artifacts[] = $artifact;
+        }
+        $package['artifacts'] = $annotated_artifacts;
+        $package['protected_variant_summary'] = self::build_protected_variant_summary($annotations);
+        if ($include_lookup) {
+            $lookup = isset($annotations['lookup']) && is_array($annotations['lookup']) ? $annotations['lookup'] : [];
+            ksort($lookup, SORT_STRING);
+            $package['protected_variant_lookup'] = $lookup;
+        }
+        return $package;
+    }
+
+    /**
+     * @param array<int, string> $artifact_uids
+     * @return array<string, mixed>
+     */
+    private static function build_protected_variant_annotations(array $artifact_uids)
+    {
+        if (! class_exists('DBVC_Bricks_Protected_Variants') || ! method_exists('DBVC_Bricks_Protected_Variants', 'build_payload_annotations')) {
+            return [];
+        }
+        $annotations = DBVC_Bricks_Protected_Variants::build_payload_annotations($artifact_uids);
+        return is_array($annotations) ? $annotations : [];
+    }
+
+    /**
+     * @param string $artifact_uid
+     * @param array<string, mixed> $annotations
+     * @return array<string, mixed>
+     */
+    private static function resolve_protected_variant_annotation($artifact_uid, array $annotations)
+    {
+        if (class_exists('DBVC_Bricks_Protected_Variants') && method_exists('DBVC_Bricks_Protected_Variants', 'get_artifact_annotation')) {
+            $annotation = DBVC_Bricks_Protected_Variants::get_artifact_annotation($artifact_uid, $annotations);
+            if (is_array($annotation)) {
+                return $annotation;
+            }
+        }
+        $artifact_uid = sanitize_text_field((string) $artifact_uid);
+        return [
+            'is_protected' => false,
+            'artifact_uid' => $artifact_uid,
+            'variant_count' => 0,
+            'variant_ids' => [],
+            'scopes' => [],
+            'latest_updated_at' => '',
+            'latest_reason' => '',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $annotations
+     * @return array<string, mixed>
+     */
+    private static function build_protected_variant_summary(array $annotations)
+    {
+        $by_artifact_type = [];
+        foreach ((array) ($annotations['by_artifact_type'] ?? []) as $artifact_type => $count) {
+            $artifact_type = sanitize_key((string) $artifact_type);
+            if ($artifact_type === '') {
+                continue;
+            }
+            $by_artifact_type[$artifact_type] = max(0, (int) $count);
+        }
+        $by_scope = [];
+        foreach ((array) ($annotations['by_scope'] ?? []) as $scope => $count) {
+            $scope = sanitize_key((string) $scope);
+            if ($scope === '') {
+                continue;
+            }
+            $by_scope[$scope] = max(0, (int) $count);
+        }
+        ksort($by_artifact_type, SORT_STRING);
+        ksort($by_scope, SORT_STRING);
+
+        return [
+            'variant_records' => max(0, (int) ($annotations['variant_records'] ?? 0)),
+            'unique_artifact_uids' => max(0, (int) ($annotations['unique_artifact_uids'] ?? 0)),
+            'by_artifact_type' => $by_artifact_type,
+            'by_scope' => $by_scope,
+        ];
     }
 }

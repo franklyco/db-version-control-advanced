@@ -25,6 +25,14 @@
    - Adopt `docs/DBVC_USER_DOCUMENTATION_LIBRARY.md` as the seed source for user-facing operational docs.
    - Add an in-plugin documentation/library surface that can render and organize user guides.
    - Wire doc update workflow into release/backlog cadence so behavior notes stay current with implementation.
+5. Evaluate and test a dedicated Firecrawl/Firebase agent skill
+   - Confirm product naming/scope before implementation; the provided bootstrap command targets `firecrawl-cli`, not Firebase-native tooling.
+   - Queue install/init for a later pass using `npx -y firecrawl-cli@latest init --all --browser`.
+   - Verify the generated skill/tooling can scrape a page to clean Markdown.
+   - Verify search plus scrape of top results.
+   - Verify full-site crawl support.
+   - Verify full-domain map support.
+   - Document setup prerequisites, generated files, auth/config needs, and whether it should become a first-class Codex skill in this repo.
 
 ## In Progress
 - Triage and stabilize import/export edge cases across posts, terms, and media.

@@ -1,0 +1,71 @@
+{
+  "artifact_type": "media-candidates.v1",
+  "source_url": "https://phase37-regression.test/",
+  "catalog_fingerprint_present": true,
+  "policy": {
+    "download_policy": "remote_only",
+    "discovery_mode": "metadata-first",
+    "preview_enabled": 1,
+    "block_private_hosts": 1
+  },
+  "stats": {
+    "total_candidates": 6,
+    "with_preview_refs": 3,
+    "blocked_url_count": 1,
+    "suppressed_preview_count": 3,
+    "mime_blocked_count": 2,
+    "blocked_url_reasons": [
+      "private_ip"
+    ]
+  },
+  "items": [
+    {
+      "normalized_url": "https://cdn.phase37.example/logo.svg",
+      "media_kind": "image",
+      "preview_status": "blocked_mime",
+      "has_preview_ref": false,
+      "domain_policy": "open",
+      "mime_allowed": false
+    },
+    {
+      "normalized_url": "https://phase37-regression.test/files/brochure.pdf",
+      "media_kind": "file",
+      "preview_status": "not_image",
+      "has_preview_ref": false,
+      "domain_policy": "same_origin",
+      "mime_allowed": true
+    },
+    {
+      "normalized_url": "https://phase37-regression.test/wp-content/uploads/2026/03/gallery-1.jpg",
+      "media_kind": "image",
+      "preview_status": "remote_allowed",
+      "has_preview_ref": true,
+      "domain_policy": "same_origin",
+      "mime_allowed": true
+    },
+    {
+      "normalized_url": "https://phase37-regression.test/wp-content/uploads/2026/03/gallery-2.jpg",
+      "media_kind": "image",
+      "preview_status": "remote_allowed",
+      "has_preview_ref": true,
+      "domain_policy": "same_origin",
+      "mime_allowed": true
+    },
+    {
+      "normalized_url": "https://phase37-regression.test/wp-content/uploads/2026/03/hero.jpg",
+      "media_kind": "image",
+      "preview_status": "remote_allowed",
+      "has_preview_ref": true,
+      "domain_policy": "same_origin",
+      "mime_allowed": true
+    },
+    {
+      "normalized_url": "https://www.youtube.com/watch?v=abc123xyz",
+      "media_kind": "embed",
+      "preview_status": "not_image",
+      "has_preview_ref": false,
+      "domain_policy": "open",
+      "mime_allowed": false
+    }
+  ]
+}
