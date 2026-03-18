@@ -11,6 +11,7 @@ final class DBVC_Bricks_Connected_Sites
     public const OPTION_SITE_SEQUENCE = 'dbvc_bricks_site_sequence';
     public const CONFLICT_DUPLICATE_BASE_URL = 'duplicate_base_url';
     public const RECENT_PULL_WINDOW_SECONDS = 900;
+    public const HIDDEN_REASON_MANUAL_FORGET = 'manual_forget_linkage';
 
     /**
      * @return array<string, array<string, mixed>>
@@ -19,6 +20,48 @@ final class DBVC_Bricks_Connected_Sites
     {
         $sites = get_option(self::OPTION_CONNECTED_SITES, []);
         return is_array($sites) ? $sites : [];
+    }
+
+    /**
+     * @param array<string, mixed> $site
+     * @return bool
+     */
+    private static function is_hidden_site(array $site)
+    {
+        return ! empty($site['is_hidden']);
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $sites
+     * @param bool $include_hidden
+     * @return array<string, array<string, mixed>>
+     */
+    private static function filter_hidden_sites(array $sites, $include_hidden = false)
+    {
+        if ($include_hidden) {
+            return $sites;
+        }
+        foreach ($sites as $site_uid => $site) {
+            if (! is_array($site) || self::is_hidden_site($site)) {
+                unset($sites[$site_uid]);
+            }
+        }
+        return $sites;
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $sites
+     * @return int
+     */
+    private static function count_hidden_sites(array $sites)
+    {
+        $count = 0;
+        foreach ($sites as $site) {
+            if (is_array($site) && self::is_hidden_site($site)) {
+                $count++;
+            }
+        }
+        return $count;
     }
 
     /**
@@ -150,6 +193,7 @@ final class DBVC_Bricks_Connected_Sites
         }
 
         $aliases = self::get_aliases();
+        $aliases = self::prune_reverse_alias_cycles($aliases, $alias_site_uid, $canonical_site_uid);
         foreach ($aliases as $existing_alias_uid => $row) {
             if (! is_array($row)) {
                 continue;
@@ -185,6 +229,49 @@ final class DBVC_Bricks_Connected_Sites
         ];
         self::set_aliases($aliases);
         return $aliases[$alias_site_uid];
+    }
+
+    /**
+     * Remove stale reverse alias edges that would cause an immediate cycle.
+     *
+     * Example self-heal: canonical->alias exists, and caller is setting alias->canonical.
+     *
+     * @param array<string, array<string, mixed>> $aliases
+     * @param string $alias_site_uid
+     * @param string $canonical_site_uid
+     * @return array<string, array<string, mixed>>
+     */
+    private static function prune_reverse_alias_cycles(array $aliases, $alias_site_uid, $canonical_site_uid)
+    {
+        $alias_site_uid = sanitize_key((string) $alias_site_uid);
+        $canonical_site_uid = sanitize_key((string) $canonical_site_uid);
+        if ($alias_site_uid === '' || $canonical_site_uid === '' || $alias_site_uid === $canonical_site_uid) {
+            return $aliases;
+        }
+
+        $probe = $canonical_site_uid;
+        $seen = [];
+        $max_hops = 10;
+        for ($i = 0; $i < $max_hops; $i++) {
+            if (isset($seen[$probe])) {
+                break;
+            }
+            $seen[$probe] = 1;
+            if (! isset($aliases[$probe]) || ! is_array($aliases[$probe])) {
+                break;
+            }
+            $next = sanitize_key((string) ($aliases[$probe]['canonical_site_uid'] ?? ''));
+            if ($next === '') {
+                break;
+            }
+            if ($next === $alias_site_uid) {
+                unset($aliases[$probe]);
+                break;
+            }
+            $probe = $next;
+        }
+
+        return $aliases;
     }
 
     /**
@@ -244,6 +331,7 @@ final class DBVC_Bricks_Connected_Sites
         if (! is_array($sites)) {
             $sites = self::get_sites();
         }
+        $sites = self::filter_hidden_sites($sites);
         $groups = [];
         foreach ($sites as $site) {
             if (! is_array($site)) {
@@ -276,26 +364,143 @@ final class DBVC_Bricks_Connected_Sites
     }
 
     /**
-     * @param array<int, string> $group_uids
-     * @param array<string, array<string, mixed>> $sites
-     * @return string
+     * @return array<string, array<string, mixed>>
      */
-    private static function pick_canonical_uid(array $group_uids, array $sites)
+    private static function get_client_linkage_index()
     {
-        $canonical = '';
-        $canonical_ts = 0;
-        foreach ($group_uids as $uid) {
-            $site = isset($sites[$uid]) && is_array($sites[$uid]) ? $sites[$uid] : [];
-            $status = sanitize_key((string) ($site['status'] ?? 'online'));
-            $allow = ! empty($site['allow_receive_packages']);
-            $disabled = $status === 'disabled' || ! $allow;
-            if ($disabled) {
+        $clients = [];
+        if (class_exists('DBVC_Bricks_Onboarding') && method_exists('DBVC_Bricks_Onboarding', 'get_clients')) {
+            $clients = DBVC_Bricks_Onboarding::get_clients();
+        } elseif (class_exists('DBVC_Bricks_Onboarding') && defined('DBVC_Bricks_Onboarding::OPTION_CLIENTS')) {
+            $clients = get_option(DBVC_Bricks_Onboarding::OPTION_CLIENTS, []);
+        }
+        if (! is_array($clients)) {
+            return [];
+        }
+        $index = [];
+        foreach ($clients as $row) {
+            if (! is_array($row)) {
                 continue;
             }
-            $updated_at = (string) ($site['updated_at'] ?? $site['last_seen_at'] ?? '');
-            $ts = $updated_at !== '' ? (int) strtotime($updated_at) : 0;
-            if ($canonical === '' || $ts > $canonical_ts || ($ts === $canonical_ts && strcmp((string) $uid, (string) $canonical) < 0)) {
+            $site_uid = sanitize_key((string) ($row['site_uid'] ?? ''));
+            if ($site_uid === '') {
+                continue;
+            }
+            $index[$site_uid] = [
+                'onboarding_state' => strtoupper(sanitize_text_field((string) ($row['onboarding_state'] ?? ''))),
+                'has_command_secret' => ! empty($row['command_secret']) ? 1 : 0,
+                'has_handshake_token_hash' => ! empty($row['handshake_token_hash']) ? 1 : 0,
+            ];
+        }
+        return $index;
+    }
+
+    /**
+     * @param array<string, mixed> $site
+     * @param array<string, mixed> $linkage
+     * @return int
+     */
+    private static function canonical_candidate_score(array $site, array $linkage = [])
+    {
+        $status = sanitize_key((string) ($site['status'] ?? 'online'));
+        $allow_receive = ! empty($site['allow_receive_packages']);
+        $onboarding_state = strtoupper(sanitize_text_field((string) ($site['onboarding_state'] ?? ($linkage['onboarding_state'] ?? ''))));
+        $has_command_secret = ! empty($linkage['has_command_secret']);
+        $has_handshake_hash = ! empty($linkage['has_handshake_token_hash']);
+
+        $score = 0;
+        if ($status !== 'disabled') {
+            $score += 40;
+        } else {
+            $score -= 200;
+        }
+        if ($allow_receive) {
+            $score += 120;
+        }
+
+        if ($onboarding_state === 'VERIFIED') {
+            $score += 200;
+        } elseif ($onboarding_state === 'PENDING_INTRO') {
+            $score -= 120;
+        } elseif ($onboarding_state === 'REJECTED' || $onboarding_state === 'DISABLED') {
+            $score -= 180;
+        }
+
+        if ($has_command_secret) {
+            $score += 120;
+        }
+        if ($has_handshake_hash) {
+            $score += 60;
+        }
+        if (self::has_recent_pull_activity($site)) {
+            $score += 80;
+        }
+
+        return $score;
+    }
+
+    /**
+     * @param array<string, mixed> $site
+     * @return int
+     */
+    private static function canonical_candidate_timestamp(array $site)
+    {
+        $ts = 0;
+        $fields = ['last_pull_at', 'updated_at', 'last_seen_at', 'onboarding_updated_at'];
+        foreach ($fields as $field) {
+            $raw = sanitize_text_field((string) ($site[$field] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            $parsed = strtotime($raw);
+            if ($parsed !== false && $parsed > $ts) {
+                $ts = (int) $parsed;
+            }
+        }
+        return $ts;
+    }
+
+    /**
+     * @param array<string, mixed> $site
+     * @return bool
+     */
+    private static function has_recent_pull_activity(array $site)
+    {
+        $last_pull_at = sanitize_text_field((string) ($site['last_pull_at'] ?? ''));
+        if ($last_pull_at === '') {
+            return false;
+        }
+        $pull_ts = strtotime($last_pull_at);
+        if ($pull_ts === false) {
+            return false;
+        }
+        return $pull_ts >= (time() - self::RECENT_PULL_WINDOW_SECONDS);
+    }
+
+    /**
+     * @param array<int, string> $group_uids
+     * @param array<string, array<string, mixed>> $sites
+     * @param array<string, array<string, mixed>> $linkage_index
+     * @return string
+     */
+    private static function pick_canonical_uid(array $group_uids, array $sites, array $linkage_index = [])
+    {
+        $canonical = '';
+        $canonical_score = PHP_INT_MIN;
+        $canonical_ts = PHP_INT_MIN;
+        foreach ($group_uids as $uid) {
+            $site = isset($sites[$uid]) && is_array($sites[$uid]) ? $sites[$uid] : [];
+            $linkage = isset($linkage_index[$uid]) && is_array($linkage_index[$uid]) ? $linkage_index[$uid] : [];
+            $score = self::canonical_candidate_score($site, $linkage);
+            $ts = self::canonical_candidate_timestamp($site);
+            if (
+                $canonical === ''
+                || $score > $canonical_score
+                || ($score === $canonical_score && $ts > $canonical_ts)
+                || ($score === $canonical_score && $ts === $canonical_ts && strcmp((string) $uid, (string) $canonical) < 0)
+            ) {
                 $canonical = (string) $uid;
+                $canonical_score = $score;
                 $canonical_ts = $ts;
             }
         }
@@ -315,10 +520,12 @@ final class DBVC_Bricks_Connected_Sites
         if (! is_array($sites)) {
             $sites = self::get_sites();
         }
+        $sites = self::filter_hidden_sites($sites);
+        $linkage_index = self::get_client_linkage_index();
         $conflicts = [];
         $groups = self::get_duplicate_base_url_groups($sites);
         foreach ($groups as $normalized_base_url => $uids) {
-            $canonical_uid = self::pick_canonical_uid($uids, $sites);
+            $canonical_uid = self::pick_canonical_uid($uids, $sites, $linkage_index);
             foreach ($uids as $uid) {
                 $is_canonical = $uid === $canonical_uid;
                 $conflicts[$uid] = [
@@ -344,10 +551,12 @@ final class DBVC_Bricks_Connected_Sites
         if (! is_array($sites)) {
             $sites = self::get_sites();
         }
+        $sites = self::filter_hidden_sites($sites);
+        $linkage_index = self::get_client_linkage_index();
         $out = [];
         $groups = self::get_duplicate_base_url_groups($sites);
         foreach ($groups as $normalized_base_url => $uids) {
-            $canonical_uid = self::pick_canonical_uid($uids, $sites);
+            $canonical_uid = self::pick_canonical_uid($uids, $sites, $linkage_index);
             if ($canonical_uid === '' || ! isset($sites[$canonical_uid]) || ! is_array($sites[$canonical_uid])) {
                 continue;
             }
@@ -447,6 +656,9 @@ final class DBVC_Bricks_Connected_Sites
         $site = self::get_site($resolved_site_uid);
         if (! is_array($site)) {
             return ['ok' => false, 'error_code' => 'site_uid_not_found'];
+        }
+        if (self::is_hidden_site($site)) {
+            return ['ok' => false, 'error_code' => 'site_linkage_forgotten'];
         }
         $status = sanitize_key((string) ($site['status'] ?? 'online'));
         if ($status === 'disabled') {
@@ -613,6 +825,7 @@ final class DBVC_Bricks_Connected_Sites
         }
 
         $existing = self::get_site($site_uid);
+        $existing_hidden = is_array($existing) && ! empty($existing['is_hidden']) ? 1 : 0;
         $allow_receive_packages = array_key_exists('allow_receive_packages', $payload)
             ? (! empty($payload['allow_receive_packages']) ? 1 : 0)
             : (! empty($existing['allow_receive_packages']) ? 1 : 0);
@@ -669,6 +882,34 @@ final class DBVC_Bricks_Connected_Sites
             $host = wp_parse_url((string) ($site['base_url'] ?? ''), PHP_URL_HOST);
             $site['site_title_host_snapshot'] = sanitize_text_field($site['site_label'] . ($host ? (' | ' . $host) : ''));
         }
+        $site['is_hidden'] = array_key_exists('is_hidden', $payload)
+            ? (! empty($payload['is_hidden']) ? 1 : 0)
+            : $existing_hidden;
+        $site['hidden_at'] = sanitize_text_field((string) ($payload['hidden_at'] ?? ($existing['hidden_at'] ?? '')));
+        $site['hidden_reason'] = sanitize_text_field((string) ($payload['hidden_reason'] ?? ($existing['hidden_reason'] ?? '')));
+        $site['linkage_recovered_at'] = sanitize_text_field((string) ($payload['linkage_recovered_at'] ?? ($existing['linkage_recovered_at'] ?? '')));
+
+        // Auto-recover visibility once a forgotten site is handshake-verified and targetable again.
+        if (
+            ! array_key_exists('is_hidden', $payload)
+            && $site['is_hidden']
+            && $site['onboarding_state'] === 'VERIFIED'
+            && $allow_receive_packages === 1
+        ) {
+            $site['is_hidden'] = 0;
+        }
+        if ($site['is_hidden']) {
+            if ($site['hidden_at'] === '') {
+                $site['hidden_at'] = gmdate('c');
+            }
+            if ($site['hidden_reason'] === '') {
+                $site['hidden_reason'] = self::HIDDEN_REASON_MANUAL_FORGET;
+            }
+        } elseif ($existing_hidden) {
+            if ($site['linkage_recovered_at'] === '') {
+                $site['linkage_recovered_at'] = gmdate('c');
+            }
+        }
 
         $sites = self::get_sites();
         $sites[$site_uid] = $site;
@@ -685,6 +926,9 @@ final class DBVC_Bricks_Connected_Sites
     {
         $site = self::get_site($site_uid);
         if (! is_array($site)) {
+            return false;
+        }
+        if (self::is_hidden_site($site)) {
             return false;
         }
         if (($site['status'] ?? 'online') === 'disabled') {
@@ -705,7 +949,9 @@ final class DBVC_Bricks_Connected_Sites
         }
         self::sync_from_registry($mode);
         $status_filter = sanitize_key((string) $request->get_param('status'));
-        $sites = self::get_sites();
+        $include_hidden = ! empty($request->get_param('include_hidden'));
+        $sites_all = self::get_sites();
+        $sites = self::filter_hidden_sites($sites_all, $include_hidden);
         $duplicate_groups = self::get_duplicate_base_url_groups($sites);
         $conflicts = self::build_conflict_map($sites);
         $assisted_candidates = self::get_assisted_merge_candidates($sites);
@@ -735,6 +981,8 @@ final class DBVC_Bricks_Connected_Sites
         return rest_ensure_response([
             'items' => $items,
             'registry_mode' => $mode,
+            'include_hidden' => $include_hidden ? 1 : 0,
+            'hidden_count' => self::count_hidden_sites($sites_all),
             'conflicts' => $conflicts,
             'duplicate_groups' => $duplicate_groups,
             'aliases' => self::get_aliases(),
@@ -876,6 +1124,35 @@ final class DBVC_Bricks_Connected_Sites
     }
 
     /**
+     * @param string $site_uid
+     * @return void
+     */
+    private static function reset_onboarding_linkage_for_site($site_uid)
+    {
+        $site_uid = sanitize_key((string) $site_uid);
+        if ($site_uid === '') {
+            return;
+        }
+        if (class_exists('DBVC_Bricks_Onboarding') && method_exists('DBVC_Bricks_Onboarding', 'reset_client_linkage')) {
+            DBVC_Bricks_Onboarding::reset_client_linkage($site_uid);
+            return;
+        }
+        if (class_exists('DBVC_Bricks_Onboarding')) {
+            $clients = get_option(DBVC_Bricks_Onboarding::OPTION_CLIENTS, []);
+            if (is_array($clients) && isset($clients[$site_uid]) && is_array($clients[$site_uid])) {
+                $clients[$site_uid]['onboarding_state'] = 'pending_intro';
+                $clients[$site_uid]['approved_at'] = '';
+                $clients[$site_uid]['rejected_at'] = '';
+                $clients[$site_uid]['last_handshake_at'] = '';
+                $clients[$site_uid]['handshake_token_hash'] = '';
+                $clients[$site_uid]['command_secret'] = '';
+                $clients[$site_uid]['updated_at'] = gmdate('c');
+                update_option(DBVC_Bricks_Onboarding::OPTION_CLIENTS, $clients);
+            }
+        }
+    }
+
+    /**
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
@@ -895,21 +1172,7 @@ final class DBVC_Bricks_Connected_Sites
             return new \WP_Error('dbvc_bricks_reset_linkage_not_found', 'Connected site not found.', ['status' => 404]);
         }
 
-        if (class_exists('DBVC_Bricks_Onboarding') && method_exists('DBVC_Bricks_Onboarding', 'reset_client_linkage')) {
-            DBVC_Bricks_Onboarding::reset_client_linkage($site_uid);
-        } elseif (class_exists('DBVC_Bricks_Onboarding')) {
-            $clients = get_option(DBVC_Bricks_Onboarding::OPTION_CLIENTS, []);
-            if (is_array($clients) && isset($clients[$site_uid]) && is_array($clients[$site_uid])) {
-                $clients[$site_uid]['onboarding_state'] = 'pending_intro';
-                $clients[$site_uid]['approved_at'] = '';
-                $clients[$site_uid]['rejected_at'] = '';
-                $clients[$site_uid]['last_handshake_at'] = '';
-                $clients[$site_uid]['handshake_token_hash'] = '';
-                $clients[$site_uid]['command_secret'] = '';
-                $clients[$site_uid]['updated_at'] = gmdate('c');
-                update_option(DBVC_Bricks_Onboarding::OPTION_CLIENTS, $clients);
-            }
-        }
+        self::reset_onboarding_linkage_for_site($site_uid);
 
         $updated_site = self::upsert_site([
             'site_uid' => $site_uid,
@@ -917,6 +1180,7 @@ final class DBVC_Bricks_Connected_Sites
             'allow_receive_packages' => 0,
             'onboarding_state' => 'PENDING_INTRO',
             'onboarding_updated_at' => gmdate('c'),
+            'is_hidden' => 0,
         ]);
 
         return rest_ensure_response([
@@ -924,6 +1188,52 @@ final class DBVC_Bricks_Connected_Sites
             'site_uid' => $site_uid,
             'site' => $updated_site,
             'action' => 'reset_linkage',
+        ]);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function rest_forget_linkage(\WP_REST_Request $request)
+    {
+        if (class_exists('DBVC_Bricks_Addon') && DBVC_Bricks_Addon::get_role_mode() !== 'mothership') {
+            return new \WP_Error('dbvc_bricks_forget_linkage_role_invalid', 'Forget linkage is mothership-only.', ['status' => 400]);
+        }
+        $site_uid = sanitize_key((string) $request->get_param('site_uid'));
+        $confirm = ! empty($request->get_param('confirm_forget'));
+        $confirm_site_uid = sanitize_key((string) $request->get_param('confirm_site_uid'));
+        if ($site_uid === '' || ! $confirm) {
+            return new \WP_Error('dbvc_bricks_forget_linkage_invalid', 'site_uid and confirm_forget=true are required.', ['status' => 400]);
+        }
+        if (! hash_equals($site_uid, $confirm_site_uid)) {
+            return new \WP_Error('dbvc_bricks_forget_linkage_confirm_uid_mismatch', 'confirm_site_uid must match site_uid.', ['status' => 400]);
+        }
+
+        $site = self::get_site($site_uid);
+        if (! is_array($site)) {
+            return new \WP_Error('dbvc_bricks_forget_linkage_not_found', 'Connected site not found.', ['status' => 404]);
+        }
+
+        self::reset_onboarding_linkage_for_site($site_uid);
+
+        $updated_site = self::upsert_site([
+            'site_uid' => $site_uid,
+            'status' => 'disabled',
+            'allow_receive_packages' => 0,
+            'onboarding_state' => 'PENDING_INTRO',
+            'onboarding_updated_at' => gmdate('c'),
+            'is_hidden' => 1,
+            'hidden_at' => gmdate('c'),
+            'hidden_reason' => self::HIDDEN_REASON_MANUAL_FORGET,
+        ]);
+
+        return rest_ensure_response([
+            'ok' => true,
+            'site_uid' => $site_uid,
+            'site' => $updated_site,
+            'action' => 'forget_linkage',
+            'hidden' => 1,
         ]);
     }
 
@@ -1087,6 +1397,26 @@ final class DBVC_Bricks_Connected_Sites
         $confirm = ! empty($request->get_param('confirm_alias'));
         if ($canonical_uid === '' || $alias_uid === '' || ! $confirm) {
             return new \WP_Error('dbvc_bricks_known_alias_invalid', 'canonical_site_uid, alias_site_uid, and confirm_alias=true are required.', ['status' => 400]);
+        }
+        $conflicts = self::build_conflict_map();
+        $canonical_conflict = isset($conflicts[$canonical_uid]) && is_array($conflicts[$canonical_uid]) ? $conflicts[$canonical_uid] : [];
+        if (
+            ! empty($canonical_conflict)
+            && sanitize_key((string) ($canonical_conflict['conflict_state'] ?? '')) === self::CONFLICT_DUPLICATE_BASE_URL
+            && empty($canonical_conflict['is_targetable'])
+        ) {
+            $preferred_canonical_uid = sanitize_key((string) ($canonical_conflict['canonical_site_uid'] ?? ''));
+            return new \WP_Error(
+                'dbvc_bricks_known_alias_canonical_not_targetable',
+                $preferred_canonical_uid !== ''
+                    ? 'Selected canonical UID is a duplicate alias row. Use canonical UID "' . $preferred_canonical_uid . '" instead.'
+                    : 'Selected canonical UID is a duplicate alias row. Use the duplicate group canonical row instead.',
+                [
+                    'status' => 409,
+                    'canonical_site_uid' => $preferred_canonical_uid,
+                    'error_code' => 'site_uid_conflict_duplicate_base_url',
+                ]
+            );
         }
         $mapped = self::set_known_alias($alias_uid, $canonical_uid, $reason, false);
         if (is_wp_error($mapped)) {

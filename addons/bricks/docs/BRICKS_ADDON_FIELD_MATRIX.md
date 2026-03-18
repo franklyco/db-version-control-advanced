@@ -152,6 +152,7 @@ Input instructions (render as help text beneath input):
 |---|---|---|---|---|---|---|
 | Connected Sites Registry Source | `dbvc_bricks_connected_sites_source` | select | `manual`, `heartbeat_auto` | `manual` | yes | site registry population mode |
 | Connected Sites Table Filter | n/a | UI control | `all`, `online`, `offline`, `disabled` | `all` | n/a | mothership targeting table |
+| Connected Sites Include Hidden | `GET /dbvc/v1/bricks/connected-sites?include_hidden=1` | query flag | `0/1` | `0` | no | operator/debug view for forgotten linkage rows |
 | Select All Connected Sites | n/a | action | table bulk action | n/a | n/a | publish target assignment |
 | Selected Site Rows | n/a | action | row checkbox list by `site_uid` | n/a | if target mode=selected_sites | package targeting |
 | Registry Mode | `dbvc_bricks_connected_sites_mode` | select | `packages_backfill`, `registry_table` | `packages_backfill` | yes | connected-sites data source strategy |
@@ -183,6 +184,10 @@ Connected sites table expected columns:
 - `known_aliases` (canonical-side alias list)
 - `canonical_site_uid` (for alias rows)
 - `conflict_state` (duplicate identity signaling)
+- `is_hidden` (soft-forgotten linkage row; excluded from default list)
+- `hidden_at` (UTC timestamp when linkage was forgotten)
+- `hidden_reason` (operator/system reason code, e.g. `manual_forget_linkage`)
+- `linkage_recovered_at` (UTC timestamp when verified handshake auto-unhid row)
 
 Connected sites identity continuity fields (registry-level, not direct Configure options):
 
@@ -215,6 +220,10 @@ Namespace: `dbvc/v1/bricks`
 - `POST /proposals`
 - `GET /proposals`
 - `PATCH /proposals/{proposal_id}`
+- `GET /protected-variants` (client-role)
+- `POST /protected-variants` (client-role, idempotency key required)
+- `PATCH /protected-variants/{variant_id}` (client-role, idempotency key required)
+- `DELETE /protected-variants/{variant_id}` (client-role, idempotency key required + `confirm_remove=true`)
 - `POST /drift-scan`
 - `POST /apply`
 - `POST /restore-points`

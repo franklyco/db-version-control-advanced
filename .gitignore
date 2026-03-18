@@ -11,3 +11,9 @@ node_modules
 .phpunit.result.cache
 tmp/wordpress/wp-content/uploads/
 /tmp/
+uploads/contentcollector*
+uploads/contentcollector-exports/*
+temp/work-cc_export_*/
+temp/cc_export_*.zip
+tmp/work-cc_export_*/
+tmp/cc_export_*.zip

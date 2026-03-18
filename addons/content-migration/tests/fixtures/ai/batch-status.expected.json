@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "batch_id": "dbvc_cc_aib_123abc456def",
+  "status": "processing",
+  "domain": "example.com",
+  "path": "services",
+  "requested_at": "2026-03-01T12:00:00+00:00",
+  "total_jobs": 8,
+  "processed_jobs": 5,
+  "progress_percent": 63,
+  "counts": {
+    "queued": 2,
+    "processing": 1,
+    "completed_ai": 3,
+    "completed_fallback": 1,
+    "failed": 1,
+    "not_started": 0,
+    "unknown": 0
+  }
+}

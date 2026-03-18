@@ -1,0 +1,29 @@
+{
+  "artifact_type": "mapping-decisions.v1",
+  "decision_status": "approved",
+  "approved_mappings": [
+    {
+      "section_id": "dbvc_cc_sec_faq",
+      "target_ref": "meta:post:page:faq_question"
+    },
+    {
+      "section_id": "dbvc_cc_sec_hero",
+      "target_ref": "core:post_title"
+    }
+  ],
+  "overrides": [
+    {
+      "section_id": "dbvc_cc_sec_faq",
+      "target_ref": "meta:post:page:faq_question",
+      "override_target_ref": "meta:post:page:faq_answer"
+    }
+  ],
+  "updated_by_positive": true,
+  "updated_at_present": true,
+  "provenance": {
+    "source_url_present": true,
+    "decision_actor_matches_updated_by": true,
+    "decision_timestamp_present": true,
+    "decision_policy_mode": "manual_review_required"
+  }
+}

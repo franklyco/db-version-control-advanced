@@ -18,6 +18,9 @@ require $_tests_dir . '/includes/functions.php';
 
 function _dbvc_tests_load_plugin()
 {
+    if (! defined('DBVC_PHPUNIT')) {
+        define('DBVC_PHPUNIT', true);
+    }
     require dirname(dirname(__DIR__)) . '/db-version-control.php';
 }
 tests_add_filter('muplugins_loaded', '_dbvc_tests_load_plugin');

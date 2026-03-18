@@ -1,0 +1,58 @@
+{
+  "handoff_schema_version": "1.1.0",
+  "status": "needs_review",
+  "domain": "phase37-handoff.test",
+  "path": "home",
+  "handoff_generated_at_present": true,
+  "source_url": "https://phase37-handoff.test/",
+  "blocking_warning_count": 0,
+  "warning_codes": [],
+  "review": {
+    "needs_review": true,
+    "reason_count": 3,
+    "reason_codes": [
+      "mapping_decision_pending:1",
+      "media_decision_pending:1",
+      "no_approved_mappings:1"
+    ]
+  },
+  "trace": {
+    "source_pipeline_id": "",
+    "artifact_ref_keys": [
+      "catalog",
+      "mapping_decision",
+      "media_candidates",
+      "media_decision",
+      "section_candidates"
+    ],
+    "artifact_ref_values_present": {
+      "catalog": true,
+      "section_candidates": true,
+      "mapping_decision": true,
+      "media_candidates": true,
+      "media_decision": true
+    }
+  },
+  "mapping_summary": {
+    "decision_status": "pending",
+    "approved_count": 0,
+    "unresolved_field_count": 0
+  },
+  "media_summary": {
+    "decision_status": "pending",
+    "approved_count": 0,
+    "conflict_count": 0
+  },
+  "phase4_counts": {
+    "approved_mappings": 0,
+    "approved_media_mappings": 0,
+    "unresolved_fields": 0,
+    "media_conflicts": 0
+  },
+  "phase4_object_hints": {
+    "default_entity_key": "post:page",
+    "default_entity_reason": "deterministic_fallback",
+    "override_post_type": "",
+    "suggested_post_type": ""
+  }
+}

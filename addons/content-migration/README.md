@@ -1,0 +1,333 @@
+# DBVC Content Migration Addon
+
+This addon absorbs Content Collector behavior into DBVC under modular boundaries.
+
+## V2 Planning Direction
+- V2 is planned as a run-based operational workspace rather than a set of disconnected technical pages.
+- The intended operator flow is: `start run -> monitor progress -> review exceptions -> inspect readiness -> approve dry-run/import`.
+- Complex V2 operational surfaces are expected to use a modular React workspace architecture, while Add-ons configuration remains server-rendered.
+- Start with:
+  - `docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
+- Primary V2 planning references:
+  - `docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
+  - `docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`
+  - `docs/MIGRATION_MAPPER_V2_UI_ARCHITECTURE.md`
+  - `docs/MIGRATION_MAPPER_V2_CONTRACTS.md`
+  - `docs/MIGRATION_MAPPER_V2_DOMAIN_JOURNEY.md`
+  - `docs/MIGRATION_MAPPER_V2_PACKAGE_SPEC.md`
+  - `docs/MIGRATION_MAPPER_V2_FILE_PLAN.md`
+
+## Scope
+- Single-site only.
+- No Gutenberg/block template suggestion features.
+- Source reference folder (`_source/content-collector`) is non-runtime and guarded.
+
+## Phase 0 Layout
+- `bootstrap/`: addon runtime wiring and guards.
+- `shared/`: contracts, module interface, service container.
+- `settings/`, `schema-snapshot/`, `collector/`, `explorer/`, `ai-mapping/`, `mapping-workbench/`, `import-plan/`, `import-executor/`, `exports/`, `observability/`: module boundaries.
+- `docs/`: migration map and contract references.
+- `tests/fixtures/`: contract fixture placeholders.
+
+## Phase 1 Foundation
+- `settings/dbvc-cc-settings-service.php`: validated settings registration and legacy option migration into prefixed DBVC storage.
+- `collector/dbvc-cc-artifact-manager.php`: deterministic storage, index/redirect updates, event log writing, and directory hardening.
+- `schema-snapshot/dbvc-cc-schema-snapshot-service.php`: schema snapshot runner with persisted artifact under uploads storage.
+
+## Phase 2 Collector + Explorer
+- `collector/dbvc-cc-crawler-service.php`: sitemap parsing + per-page crawl processing.
+- `collector/dbvc-cc-ajax-controller.php`: authenticated AJAX endpoints for sitemap URL ingestion and single-page processing.
+- `collector/dbvc-cc-admin-controller.php`: DBVC submenu pages and asset bootstrapping.
+- `explorer/dbvc-cc-explorer-service.php`: tree/node/content/audit payload service with cache and node limits.
+- `explorer/dbvc-cc-rest-controller.php`: REST routes under `dbvc_cc/v1` for explorer workflows.
+
+## Phase 3 AI Mapping + Workbench
+- `ai-mapping/dbvc-cc-ai-service.php`: AI queueing, branch reruns, status lifecycle, deterministic fallback, and mapping suggestion artifacts.
+- `ai-mapping/dbvc-cc-rest-controller.php`: `POST /ai/rerun`, `POST /ai/rerun-branch`, `GET /ai/status`.
+- `mapping-workbench/dbvc-cc-workbench-service.php`: low-confidence/conflict review queue and reviewer decision persistence.
+- `mapping-workbench/dbvc-cc-workbench-rest-controller.php`: `GET /workbench/domains`, `GET /workbench/review-queue`, `GET /workbench/suggestions`, `POST /workbench/decision`.
+
+## Phase 3.5 Completed: Tabbed Admin Consolidation
+- Addon UX consolidated under parent tabs: `Collect`, `Explore`, `Configure`.
+- `Configure` stores default crawl presets.
+- `Collect` pre-fills from configured defaults and supports per-crawl runtime overrides.
+- Reference artifacts:
+  - `docs/TEMP_UI_TAB_MAPPING.md`
+  - `docs/PHASE3_5_TABBED_ADMIN_CONSOLIDATION.md`
+
+## Phase 3.6 Completed: Deep Capture + Context + AI Section Typing
+- Introduces element-level deep capture artifacts and deterministic section/context packaging.
+- Adds an advanced AI layer to narrow section types with mandatory deterministic fallback.
+- Adds advanced collection controls under `Configure` via a dedicated `Advanced Collection Controls` subtab.
+- Adds configurable attribute scrub policy controls (deterministic baseline + optional AI-assisted suggestions).
+- Produces ingestion-ready context packages for Phase 4 dry-run/import planning.
+- Planning artifact:
+  - `docs/PHASE3_6_DEEP_CAPTURE_CONTEXT_AI.md`
+- Current slice implemented:
+  - `W0`: contracts/settings defaults + feature flags for deep capture and scrub controls.
+  - `W1`: element extraction sidecar artifact (`*.elements.v2.json`) writing during deep capture.
+  - `W1A`: deterministic attribute scrub policy + scrub report sidecar (`*.attribute-scrub-report.v2.json`).
+  - `W2`: deterministic section segmentation sidecar (`*.sections.v2.json`).
+  - `W3`: context bundle sidecar (`*.context-bundle.v2.json`) generation (feature-flag gated).
+  - `W4`: deterministic section typing sidecar (`*.section-typing.v2.json`) with fallback classifier.
+  - `W5`: ingestion package sidecar (`*.ingestion-package.v2.json`) from sections + typing + context traceability.
+  - `W6`: explorer/admin UX surfacing for Phase 3.6 artifacts (mode badges + sidecar summaries + context inspector in Explore; advanced per-crawl overrides in Collect).
+  - `W7`: REST sidecar transport + scrub suggestion workflow endpoints:
+    - `GET dbvc_cc/v1/explorer/content-context`
+    - `GET dbvc_cc/v1/explorer/scrub-policy-preview`
+    - `GET dbvc_cc/v1/explorer/scrub-policy-approval-status`
+    - `POST dbvc_cc/v1/explorer/scrub-policy-approve`
+  - `W8/W9` hardening:
+    - phase3.6 stage-level structured events (`extract`, `attribute_scrub`, `segment`, `context_bundle`, `section_typing`, `ingestion_package`) with `pipeline_id`.
+    - exception-safe stage execution for section segmentation/typing/context/ingestion pipeline (partial artifacts preserved).
+    - extraction/segmentation resource budgeting with chunked iteration, timeout caps, and artifact `processing` partial/resume markers.
+    - observability redaction safeguards for stage-event payload values; scrub telemetry now includes policy hash.
+    - explorer audit summary/event transport includes `pipeline_id` rollups.
+    - context bundle now includes explicit PII hint tags and privacy redaction metadata.
+  - Contract/fixture coverage added:
+    - PHPUnit: `tests/phpunit/ContentMigrationExplorerContextTest.php`
+    - PHPUnit: `tests/phpunit/ContentMigrationPhase36HardeningTest.php`
+    - PHPUnit: `tests/phpunit/ContentMigrationPhase36DeterminismTest.php`
+    - PHPUnit: `tests/phpunit/ContentMigrationPhase36LeakGuardTest.php`
+    - Fixtures: `addons/content-migration/tests/fixtures/explorer/*.expected.json` (including partial/resume context and pipeline-filtered audit snapshots)
+  - `W10` closure:
+    - LocalWP crawl smoke verified (`CRAWL_RESULT:ok`) for phase3.6 sidecar generation path.
+    - Fixture-backed coverage added for partial/resume marker transport and pipeline-filtered node audit responses.
+  - Configure tab subtabs: `General` and `Advanced Collection Controls`.
+
+## Phase 3.7 In Progress: Mapping Catalog + Import Bridge
+- Adds a target field catalog auto-build step when users start `Map Collection for Imports`.
+- Catalog shape mirrors DBVC entity/export structures but captures only field schemas/metadata (no content values).
+- Catalog includes CPT + taxonomy + term structures and available meta/ACF fields.
+- Extends sectioning to include explicit section archetypes used by deterministic mapping candidates.
+- Adds first-class media candidate artifacts and media mapping decisions (image/video/file) with deterministic role hints.
+- Requires preview-capable mapping UX so images can be reviewed in-place during auto-mapping and manual overrides.
+- Bridges `Explore`/`Workbench` to Phase 4 by introducing catalog, candidates, media candidates, and mapping-decision contracts.
+- Current slice implemented:
+  - `W0` contracts/settings foundations:
+    - new feature flags: `dbvc_cc_flag_mapping_catalog_bridge`, `dbvc_cc_flag_media_mapping_bridge`
+    - new artifact suffix/file constants for catalog/candidates/mapping/media decision contracts
+    - new mapping/media policy defaults + sanitizers under `dbvc_cc_settings`
+    - PHPUnit coverage: `tests/phpunit/ContentMigrationPhase37W0SettingsTest.php`
+  - `W1` target catalog foundations:
+    - domain-level catalog service: `mapping-catalog/dbvc-cc-target-field-catalog-service.php`
+    - catalog REST transport:
+      - `POST dbvc_cc/v1/mapping/catalog/build`
+      - `POST dbvc_cc/v1/mapping/catalog/refresh`
+      - `GET dbvc_cc/v1/mapping/catalog`
+  - `W4` metadata-first media candidate foundations:
+    - page-level media candidate service: `mapping-media/dbvc-cc-media-candidate-service.php`
+    - media candidate REST transport:
+      - `GET dbvc_cc/v1/mapping/media/candidates`
+      - `POST dbvc_cc/v1/mapping/media/candidates/build`
+    - host safety and allow/deny policy handling integrated with `dbvc_cc_settings`.
+    - PHPUnit coverage: `tests/phpunit/ContentMigrationPhase37CatalogMediaTest.php`
+  - `W3/W5/W6` mapping candidate and decision transport:
+    - section-field candidate service: `mapping-workbench/dbvc-cc-section-field-candidate-service.php`
+    - mapping decision service: `mapping-workbench/dbvc-cc-mapping-decision-service.php`
+    - media decision service: `mapping-media/dbvc-cc-media-decision-service.php`
+    - mapping candidate and decision REST transport:
+      - `GET dbvc_cc/v1/mapping/candidates`
+      - `POST dbvc_cc/v1/mapping/candidates/build`
+      - `GET dbvc_cc/v1/mapping/decision`
+      - `POST dbvc_cc/v1/mapping/decision`
+      - `GET dbvc_cc/v1/mapping/media/decision`
+      - `POST dbvc_cc/v1/mapping/media/decision`
+    - PHPUnit coverage: `tests/phpunit/ContentMigrationPhase37MappingDecisionTest.php`
+  - `W7` baseline Workbench/Explore UI bridge (non-React incremental):
+    - Explorer node action now includes `Map Collection for Imports` deep-linking into Workbench with `domain/path` prefill.
+    - Workbench now includes a `Map Collection for Imports` section with:
+      - catalog build/refresh controls
+      - section candidate mapping controls (`suggested`, `override`, `ignore`)
+      - media candidate mapping controls with preview cards (`suggested`, `override`, `ignore`)
+      - decision load/save controls for text + media decision artifacts
+      - debug payload panels for catalog/candidates/decisions
+    - Implemented in:
+      - `explorer/views/dbvc-cc-explorer-content.php`
+      - `explorer/assets/dbvc-cc-explorer.js`
+      - `mapping-workbench/views/dbvc-cc-workbench-page.php`
+      - `mapping-workbench/assets/dbvc-cc-workbench.js`
+      - `mapping-workbench/assets/dbvc-cc-workbench.css`
+  - `W8` deterministic QA + fixture lock:
+    - deterministic rerun tests for catalog/section/media candidate payload stability.
+    - fixture-locked contract snapshots for catalog, section candidates, media candidates, and both decision artifacts.
+    - implemented in:
+      - `tests/phpunit/ContentMigrationPhase37RegressionGateTest.php`
+      - `addons/content-migration/tests/fixtures/mapping/*.expected.json`
+  - `W9` security/provenance hardening:
+    - media candidate payloads now surface explicit policy/provenance and preview safety metadata.
+    - blocked-host traces and reason codes surfaced in media stats for operator review.
+    - mapping/media decision upserts now include provenance actor/timestamp policy stamps and preserve stable creation timestamps.
+    - implemented in:
+      - `mapping-media/dbvc-cc-media-candidate-service.php`
+      - `mapping-workbench/dbvc-cc-mapping-decision-service.php`
+      - `mapping-media/dbvc-cc-media-decision-service.php`
+  - `W10` Phase 4 handoff bridge (read-only):
+    - adds deterministic handoff payload service for dry-run planner integration:
+      - `import-plan/dbvc-cc-import-plan-handoff-service.php`
+    - adds REST transport:
+      - `GET dbvc_cc/v1/mapping/handoff`
+    - adds Workbench handoff preview controls + payload inspector:
+      - `mapping-workbench/views/dbvc-cc-workbench-page.php`
+      - `mapping-workbench/assets/dbvc-cc-workbench.js`
+    - adds runbook + tests:
+      - `docs/PHASE3_7_TO_PHASE4_HANDOFF_RUNBOOK.md`
+      - `tests/phpunit/ContentMigrationPhase37HandoffBridgeTest.php`
+  - `W10.1` pre-Phase4 handoff contract freeze:
+    - `handoff_schema_version` + `handoff_generated_at` emitted by `/mapping/handoff`.
+    - handoff payload now emits a structured `review` block with deterministic reason codes whenever status is `needs_review`.
+    - deterministic sorting enforced for decision/warning lists in `phase4_input`.
+    - warning contract fixed to `code`, `message`, `blocking`.
+    - trace metadata emitted with source pipeline hint + artifact references.
+    - fixture-locked handoff snapshots added:
+      - `addons/content-migration/tests/fixtures/mapping/handoff-needs-review.expected.json`
+      - `addons/content-migration/tests/fixtures/mapping/handoff-ready.expected.json`
+    - no custom DB tables introduced; file-first persistence retained pre-Phase4.
+  - `W10.2` Workbench domain selector hardening:
+    - adds Workbench-native domain transport:
+      - `GET dbvc_cc/v1/workbench/domains`
+    - Workbench domain selectors now use Workbench endpoint first with Explorer fallback.
+  - `W10.3/W10.4` async hardening and operator UX updates:
+    - mapping domain rebuild now runs as async batches with status polling:
+      - `POST dbvc_cc/v1/mapping/domain/rebuild`
+      - `GET dbvc_cc/v1/mapping/domain/rebuild/status`
+    - Workbench includes dry-run planner payload transport:
+      - `GET dbvc_cc/v1/import-plan/dry-run`
+    - Workbench AI warning refresh now supports chunked batch queueing (`50` default), timeout retry, and auto queue refresh.
+  - `W11` Phase 4 kickoff (dry-run executor slice):
+    - dry-run executor service:
+      - `import-executor/dbvc-cc-import-executor-service.php`
+    - dry-run executor REST transport:
+      - `GET dbvc_cc/v1/import-executor/dry-run`
+    - implementation plan:
+      - `docs/PHASE4_IMPORT_EXECUTION_PLAN.md`
+  - `W11.1` Phase 4 operation-graph + workbench executor controls:
+    - executor payload upgraded to include deterministic operation graph buckets:
+      - `entity_operations`, `field_operations`, `media_operations`
+    - dependency hints included for field/media operations:
+      - `depends_on[]`, `dependency_hints[]`, `execution_order`
+    - plan trace propagated into executor response (`source_pipeline_id`, `artifact_refs`).
+    - Workbench adds operator action + payload surface for executor dry-run:
+      - `Run Executor Dry-Run` button
+      - `Phase 4 Executor Dry-Run` summary/debug payload blocks
+  - `W11.2` Phase 4 guarded execute path:
+    - adds guarded write transport:
+      - `POST dbvc_cc/v1/import-executor/execute`
+    - guard checks enforced before eligible write path:
+      - import execute feature flag
+      - dry-run + idempotent upsert policies
+      - explicit execute confirmation
+      - completed dry-run status
+    - Workbench adds `Run Execute` control + payload summary/debug panel.
+  - `W11.3` Phase 4 smoke automation:
+    - adds local WP-CLI smoke script for handoff -> plan -> executor checks:
+      - `addons/content-migration/tools/dbvc-cc-phase4-smoke.php`
+    - smoke script is now safe by default:
+      - default run validates handoff, dry-run plan, executor dry-run, and preflight approval without executing writes
+      - opt into a write verification pass only with `--execute=1`
+      - pair with `--rollback-after-execute=1` for local QA when you want write verification without leaving mutations behind
+  - `W11.4` Phase 4 object hint propagation:
+    - handoff now emits deterministic object hints in `phase4_input`:
+      - `default_entity_key`
+      - `object_hints` (mapped subtype set + AI suggestion confidence)
+    - executor uses `default_entity_key` for core/acf mapping operation routing.
+  - `W11.5` Manual object-type override bridge:
+    - Workbench mapping controls now include `Default Post Type Override` with public post type options.
+    - mapping decision artifacts persist `object_hints.override_post_type`.
+    - handoff default entity resolution now prioritizes manual override when set.
+  - `W11.6` Handoff context propagation in Phase 4 outputs:
+    - dry-run planner now emits `handoff_schema_version` and `handoff_generated_at`.
+    - executor dry-run and execute responses now include `phase4_context` and trace-level handoff metadata.
+    - phase4 smoke script surfaces handoff context and default-entity reasoning in output summary.
+    - execute-path observability events now stamp phase4 context fields for troubleshooting.
+  - `W11.7` Phase 4 contract hardening:
+    - shared relative-path validation now rejects traversal-like inputs with consistent `400` responses.
+    - handoff, import-plan, and import-executor services/transports now fail early on invalid page paths.
+    - Workbench summary now surfaces a dedicated `Phase 4 Context` line for handoff version/reason/override visibility.
+  - `W11.8` Entity resolution scaffolding:
+    - executor `1.3.0` now resolves `post` targets as `update existing`, `create new`, or `blocked needs review`.
+    - deterministic match order is:
+      - reserved source URL meta (`_dbvc_cc_source_url`)
+      - reserved source path meta (`_dbvc_cc_source_path`)
+      - reserved source hash meta (`_dbvc_cc_source_hash`)
+      - hierarchical page path
+      - post slug
+    - ambiguous/unsupported entity resolutions now block executor completion and surface issue codes for operator review.
+    - Workbench executor summary now shows entity update/create/blocked counts.
+  - `W11.9` Guarded write-preparation plan:
+    - execute no longer stops at a generic placeholder when guardrails pass.
+    - `POST dbvc_cc/v1/import-executor/execute` returns deterministic `write_preparation` payloads for:
+      - `entity_writes[]`
+      - `field_writes[]`
+      - `media_writes[]`
+      - `write_barriers[]`
+    - prepared entity writes stage reserved idempotency meta stamps for future convergent reruns.
+    - prepared field/media writes now carry source payload bundles from stored crawl artifacts so later execution has concrete values instead of only `section:` / `media:` refs.
+    - approved media resolution now falls back from candidate `media_id` to `source_url` when old decision artifacts drift from regenerated candidate IDs.
+    - hierarchical page creates now stage synthetic parent entity writes when ancestor paths are missing.
+    - Workbench execute summary now shows guard counts, barrier counts, executed entity/field/media writes, and deferred media write counts when policy still blocks specific media work.
+  - `W11.10` Entity + field guarded execution:
+    - executor `1.4.0` now performs guarded post/CPT entity upserts and mapped field writes when guardrails pass.
+    - create paths recheck reserved idempotency meta before insert so reruns converge on update instead of duplicate create.
+    - successful entity writes stamp:
+      - `_dbvc_cc_source_url`
+      - `_dbvc_cc_source_path`
+      - `_dbvc_cc_source_hash`
+    - hierarchical parent-chain writes now execute in dependency order so nested page paths can create missing ancestors first.
+    - field/meta/ACF writes now execute against resolved entity IDs in guarded mode.
+    - repeatable meta values replace prior value sets instead of appending duplicates on rerun.
+    - first-slice media writes now execute with journaling and rollback coverage.
+  - `W11.11` Mandatory preflight approval gate:
+    - adds approval transport:
+      - `POST dbvc_cc/v1/import-executor/preflight-approve`
+      - `GET dbvc_cc/v1/import-executor/preflight-status`
+    - execute now requires a fresh approval token in addition to explicit browser confirmation.
+    - approval is bound to the current dry-run/plan fingerprint and expires after a short TTL.
+    - approvals become stale when the dry-run fingerprint changes after mapping/content resolution changes.
+    - Workbench now enforces the operator flow:
+      - `Run Executor Dry-Run` -> `Approve Import` -> `Run Execute`
+  - `W11.12` Rollback journal + recovery controls:
+    - adds durable run/action journal tables for import execution provenance and rollback:
+      - `{$wpdb->prefix}dbvc_cc_import_runs`
+      - `{$wpdb->prefix}dbvc_cc_import_run_actions`
+    - captures pre-write and post-write state for entity and field mutations.
+    - execute responses now surface:
+      - `run_id`
+      - `run_uuid`
+      - `rollback_available`
+      - `rollback_status`
+    - adds recovery transport:
+      - `POST dbvc_cc/v1/import-executor/rollback`
+      - `GET dbvc_cc/v1/import-executor/runs`
+      - `GET dbvc_cc/v1/import-executor/run`
+    - Workbench now surfaces latest-run recovery state, a recent run history panel, selected-run action journals, a `Rollback Last Run` control, and a `Rollback Selected Run` control.
+  - `W11.13` Automatic rollback policy for journaled writes:
+    - execute now auto-rolls back journaled entity/field/media mutations when a later entity/field/media write fails after writes have started.
+    - execute responses now surface:
+      - `auto_rollback`
+      - `operation_counts.auto_rollback_attempted`
+      - `operation_counts.auto_rollback_restored_actions`
+      - `operation_counts.auto_rollback_failed_actions`
+    - Workbench summary now surfaces automatic rollback outcomes alongside manual rollback availability.
+  - `W11.14` First-slice media execution:
+    - execute now ingests or reuses mapped media attachments for supported targets.
+    - supported active targets in this slice:
+      - `core:featured_image`
+      - attachment-ID style `meta:*`
+      - attachment-ID style `acf:*`
+      - attachment-ID list / gallery-style `meta:*`
+      - gallery-style `acf:*`
+      - remote URL / embed `meta:*`
+      - remote URL / embed `acf:*`
+    - media writes are journaled and included in rollback + auto-rollback behavior.
+    - media policy checks now gate execute for:
+      - skip policy
+      - denied/non-allowlisted hosts
+      - blocked private hosts
+      - disallowed MIME guesses
+    - unsupported nested repeater/flexible media targets are deferred without blocking entity/field execution.
+    - Workbench now surfaces selected-run before/after diffs and a downloadable JSON recovery report for the current run.
+    - broader non-post media target families and richer cross-run recovery compare UX remain in progress.
+- Planning artifact:
+  - `docs/PHASE3_7_MAPPING_CATALOG_IMPORT_BRIDGE.md`
+  - `docs/PHASE4_IMPORT_EXECUTION_PLAN.md`

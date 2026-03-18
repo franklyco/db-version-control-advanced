@@ -1,0 +1,77 @@
+{
+  "domain": "phase36-example.test",
+  "path": "home",
+  "artifact": "all",
+  "limit": 40,
+  "phase36": {
+    "available": {
+      "elements": true,
+      "scrub_report": true,
+      "sections": true,
+      "section_typing": true,
+      "context_bundle": true,
+      "ingestion_package": true
+    },
+    "modes": {
+      "capture_mode": "deep",
+      "section_typing_mode": "fallback",
+      "scrub_profile": "deterministic-default"
+    },
+    "badges": [
+      {
+        "key": "capture_mode",
+        "label": "deep"
+      },
+      {
+        "key": "section_typing_mode",
+        "label": "fallback"
+      },
+      {
+        "key": "scrub_profile",
+        "label": "deterministic-default"
+      }
+    ]
+  },
+  "payload": {
+    "elements": {
+      "artifact_type": "elements.v2",
+      "elements_total": 2,
+      "preview_truncated": false
+    },
+    "sections": {
+      "artifact_type": "sections.v2",
+      "sections_total": 1,
+      "preview_truncated": false
+    },
+    "section_typing": {
+      "artifact_type": "section-typing.v2",
+      "section_typings_total": 1,
+      "preview_truncated": false
+    },
+    "context_bundle": {
+      "artifact_type": "context-bundle.v2",
+      "sections_total": 1,
+      "outline_total": 1,
+      "privacy": {
+        "redaction_rules": {
+          "emails": true,
+          "phones": true,
+          "forms": true
+        },
+        "requires_legal_review": false
+      },
+      "preview_truncated": false
+    },
+    "ingestion_package": {
+      "artifact_type": "ingestion-package.v2",
+      "sections_total": 1,
+      "preview_truncated": false
+    },
+    "scrub_report": {
+      "artifact_type": "attribute-scrub-report.v2",
+      "by_attribute_total": 3,
+      "warnings_total": 0,
+      "preview_truncated": false
+    }
+  }
+}

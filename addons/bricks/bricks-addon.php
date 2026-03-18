@@ -55,6 +55,9 @@ final class DBVC_Bricks_Addon
         foreach (self::get_default_values() as $key => $default_value) {
             add_option($key, $default_value);
         }
+        if (class_exists('DBVC_Bricks_Protected_Variants') && method_exists('DBVC_Bricks_Protected_Variants', 'ensure_defaults')) {
+            DBVC_Bricks_Protected_Variants::ensure_defaults();
+        }
     }
 
     /**
@@ -901,6 +904,7 @@ final class DBVC_Bricks_Addon
         remove_action('admin_menu', [self::class, 'register_admin_submenu'], self::ADMIN_MENU_PRIORITY);
         remove_action('admin_init', [self::class, 'maybe_redirect_admin_path']);
         remove_action('rest_api_init', [self::class, 'register_rest_routes']);
+        remove_filter('rest_post_dispatch', [self::class, 'prevent_rest_caching'], 10);
         remove_action('init', [self::class, 'maybe_register_scheduled_jobs']);
         remove_action(self::CRON_HOOK, [self::class, 'run_scheduled_job']);
 
@@ -914,8 +918,38 @@ final class DBVC_Bricks_Addon
         add_action('admin_menu', [self::class, 'register_admin_submenu'], self::ADMIN_MENU_PRIORITY);
         add_action('admin_init', [self::class, 'maybe_redirect_admin_path']);
         add_action('rest_api_init', [self::class, 'register_rest_routes']);
+        add_filter('rest_post_dispatch', [self::class, 'prevent_rest_caching'], 10, 3);
         add_action('init', [self::class, 'maybe_register_scheduled_jobs']);
         add_action(self::CRON_HOOK, [self::class, 'run_scheduled_job']);
+    }
+
+    /**
+     * Prevent intermediary cache layers from serving stale Bricks REST payloads.
+     *
+     * @param mixed $result
+     * @param \WP_REST_Server $server
+     * @param \WP_REST_Request $request
+     * @return mixed
+     */
+    public static function prevent_rest_caching($result, $server, $request)
+    {
+        if (! ($request instanceof \WP_REST_Request)) {
+            return $result;
+        }
+
+        $route = (string) $request->get_route();
+        if (strpos($route, '/dbvc/v1/bricks') !== 0) {
+            return $result;
+        }
+
+        if ($result instanceof \WP_REST_Response) {
+            $result->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            $result->header('Pragma', 'no-cache');
+            $result->header('Expires', 'Wed, 11 Jan 1984 05:00:00 GMT');
+            $result->header('Vary', 'Authorization, Cookie');
+        }
+
+        return $result;
     }
 
     /**
@@ -1071,6 +1105,20 @@ final class DBVC_Bricks_Addon
                 echo '<div class="notice notice-warning dbvc-bricks-deprecation-notice"><p>' . esc_html($message) . '</p></div>';
             }
         }
+        $health_warnings = self::get_runtime_health_warnings();
+        if (! empty($health_warnings)) {
+            foreach ($health_warnings as $warning) {
+                if (! is_array($warning)) {
+                    continue;
+                }
+                $message = sanitize_text_field((string) ($warning['message'] ?? ''));
+                if ($message === '') {
+                    continue;
+                }
+                $title = sanitize_text_field((string) ($warning['title'] ?? 'Runtime health warning'));
+                echo '<div class="notice notice-warning dbvc-bricks-runtime-health-warning"><p><strong>' . esc_html($title) . '</strong> ' . esc_html($message) . '</p></div>';
+            }
+        }
 
         echo '<details id="dbvc-bricks-onboarding" class="dbvc-bricks-onboarding" open>';
         echo '<summary><strong>' . esc_html__('First-Time Checklist', 'dbvc') . '</strong> - ' . esc_html__('Guided setup for new operators', 'dbvc') . '</summary>';
@@ -1091,9 +1139,6 @@ final class DBVC_Bricks_Addon
         echo '<p>';
         echo '<button type="button" class="button button-secondary" id="dbvc-bricks-onboarding-mark-all">' . esc_html__('Mark All Complete', 'dbvc') . '</button> ';
         echo '<button type="button" class="button" id="dbvc-bricks-onboarding-reset">' . esc_html__('Reset Checklist', 'dbvc') . '</button>';
-        if ($role_mode === 'client') {
-            echo ' <button type="button" class="button button-secondary" id="dbvc-bricks-onboarding-rerun-intro">' . esc_html__('Reset + Re-run Intro Handshake', 'dbvc') . '</button>';
-        }
         echo '</p>';
         echo '</details>';
 
@@ -1149,6 +1194,16 @@ final class DBVC_Bricks_Addon
                 echo '<button type="button" class="button" id="dbvc-bricks-publish-remote">' . esc_html__('Publish Package to Mothership', 'dbvc') . '</button>';
             }
             echo '</p>';
+            if ($role_mode === 'client') {
+                $diff_protected_disabled_attr = $is_read_only ? ' disabled="disabled"' : '';
+                echo '<p>';
+                echo '<label for="dbvc-bricks-diff-protected-reason">' . esc_html__('Protected Reason', 'dbvc') . '</label> ';
+                echo '<input type="text" id="dbvc-bricks-diff-protected-reason" placeholder="' . esc_attr__('Required to mark selected artifact as protected', 'dbvc') . '" style="min-width:320px;"' . $diff_protected_disabled_attr . ' /> ';
+                echo '<button type="button" class="button" id="dbvc-bricks-diff-mark-protected"' . $diff_protected_disabled_attr . '>' . esc_html__('Mark Selected Protected', 'dbvc') . '</button> ';
+                echo '<button type="button" class="button button-secondary" id="dbvc-bricks-diff-unmark-protected"' . $diff_protected_disabled_attr . '>' . esc_html__('Unmark Selected Protected', 'dbvc') . '</button> ';
+                echo '<span id="dbvc-bricks-diff-protected-state" style="margin-left:8px;"></span>';
+                echo '</p>';
+            }
             echo '<p>';
             echo '<label for="dbvc-bricks-filter-class">' . esc_html__('Artifact Class', 'dbvc') . '</label> ';
             echo '<select id="dbvc-bricks-filter-class">';
@@ -1186,6 +1241,41 @@ final class DBVC_Bricks_Addon
             echo '<div id="dbvc-bricks-diff-detail" tabindex="0">' . esc_html__('Select an artifact to inspect details.', 'dbvc') . '</div>';
             echo '</div>';
             echo '</div>';
+            echo '</section>';
+        }
+        if (isset($tabs['protected_artifacts'])) {
+            $protected_disabled_attr = $is_read_only ? ' disabled="disabled"' : '';
+            echo '<section id="dbvc-bricks-panel-protected_artifacts" class="dbvc-bricks-panel" role="tabpanel" aria-labelledby="dbvc-bricks-tab-protected_artifacts" tabindex="0"' . ($current_tab === 'protected_artifacts' ? '' : ' hidden') . '>';
+            echo '<h2>' . esc_html__('Protected Artifacts', 'dbvc') . '</h2>';
+            echo '<p>' . esc_html__('Client-managed protected variant records for intentional local divergences.', 'dbvc') . '</p>';
+            echo '<p><button type="button" class="button" id="dbvc-bricks-refresh-protected-variants">' . esc_html__('Refresh Protected Artifacts', 'dbvc') . '</button> ';
+            echo '<button type="button" class="button button-secondary" id="dbvc-bricks-remove-protected-variant"' . $protected_disabled_attr . '>' . esc_html__('Remove Selected', 'dbvc') . '</button></p>';
+            echo '<fieldset style="border:1px solid #ccd0d4;padding:12px;margin-bottom:12px;">';
+            echo '<legend><strong>' . esc_html__('Add Protected Artifact', 'dbvc') . '</strong></legend>';
+            echo '<p><label for="dbvc-bricks-protected-artifact-uid"><strong>' . esc_html__('Artifact UID', 'dbvc') . '</strong></label><br />';
+            echo '<input type="text" id="dbvc-bricks-protected-artifact-uid" placeholder="' . esc_attr__('option:bricks_theme_styles', 'dbvc') . '" style="min-width:360px;"' . $protected_disabled_attr . ' /></p>';
+            echo '<p><label for="dbvc-bricks-protected-artifact-label">' . esc_html__('Label', 'dbvc') . '</label><br />';
+            echo '<input type="text" id="dbvc-bricks-protected-artifact-label" placeholder="' . esc_attr__('Optional display label', 'dbvc') . '" style="min-width:360px;"' . $protected_disabled_attr . ' /></p>';
+            echo '<p><label for="dbvc-bricks-protected-artifact-type">' . esc_html__('Artifact Type', 'dbvc') . '</label> ';
+            echo '<select id="dbvc-bricks-protected-artifact-type"' . $protected_disabled_attr . '>';
+            echo '<option value="unknown">' . esc_html__('unknown', 'dbvc') . '</option>';
+            echo '<option value="option">' . esc_html__('option', 'dbvc') . '</option>';
+            echo '<option value="bricks_template">' . esc_html__('bricks_template', 'dbvc') . '</option>';
+            echo '</select> ';
+            echo '<label for="dbvc-bricks-protected-artifact-scope">' . esc_html__('Scope', 'dbvc') . '</label> ';
+            echo '<select id="dbvc-bricks-protected-artifact-scope"' . $protected_disabled_attr . '>';
+            echo '<option value="site_local">' . esc_html__('site_local', 'dbvc') . '</option>';
+            echo '</select></p>';
+            echo '<p><label for="dbvc-bricks-protected-artifact-reason"><strong>' . esc_html__('Reason (required)', 'dbvc') . '</strong></label><br />';
+            echo '<textarea id="dbvc-bricks-protected-artifact-reason" rows="3" style="min-width:420px;"' . $protected_disabled_attr . '></textarea></p>';
+            echo '<p><button type="button" class="button button-primary" id="dbvc-bricks-add-protected-variant"' . $protected_disabled_attr . '>' . esc_html__('Save Protected Artifact', 'dbvc') . '</button></p>';
+            echo '</fieldset>';
+            echo '<p id="dbvc-bricks-protected-variants-summary"></p>';
+            echo '<table class="widefat striped" id="dbvc-bricks-protected-variants-table" aria-label="' . esc_attr__('Bricks protected artifacts', 'dbvc') . '">';
+            echo '<thead><tr><th>' . esc_html__('Artifact UID', 'dbvc') . '</th><th>' . esc_html__('Type', 'dbvc') . '</th><th>' . esc_html__('Scope', 'dbvc') . '</th><th>' . esc_html__('Label', 'dbvc') . '</th><th>' . esc_html__('Reason', 'dbvc') . '</th><th>' . esc_html__('Updated', 'dbvc') . '</th><th>' . esc_html__('Actions', 'dbvc') . '</th></tr></thead>';
+            echo '<tbody id="dbvc-bricks-protected-variants-body"><tr><td colspan="7">' . esc_html__('No protected artifacts loaded.', 'dbvc') . '</td></tr></tbody>';
+            echo '</table>';
+            echo '<pre id="dbvc-bricks-protected-variants-detail" style="max-height:220px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:12px;margin-top:12px;" tabindex="0"></pre>';
             echo '</section>';
         }
         if (isset($tabs['apply_restore'])) {
@@ -1407,14 +1497,17 @@ final class DBVC_Bricks_Addon
             'connectedSitesEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites')),
             'connectedSiteMergeEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/merge-alias')),
             'connectedSiteResetEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/reset-linkage')),
+            'connectedSiteForgetEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/forget-linkage')),
             'connectedSiteAliasEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/known-alias')),
             'connectedSiteAssistedMergeEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/connected-sites/assisted-merge')),
+            'introHandshakeEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/intro/handshake')),
             'onboardingResetRerunEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/onboarding/reset-rerun')),
             'driftScanEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/drift-scan')),
             'driftCompareEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/drift-compare')),
             'applyEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/apply')),
             'restoreEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/restore-points')),
             'proposalsEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/proposals')),
+            'protectedVariantsEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/protected-variants')),
             'diagnosticsEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/diagnostics')),
             'uiEventEndpoint' => esc_url_raw(rest_url('dbvc/v1/bricks/ui-event')),
             'nonce' => wp_create_nonce('wp_rest'),
@@ -1432,6 +1525,9 @@ final class DBVC_Bricks_Addon
                 'proposalsLoaded' => esc_html__('Proposals loaded.', 'dbvc'),
                 'proposalSubmitted' => esc_html__('Proposal submitted.', 'dbvc'),
                 'proposalTransitioned' => esc_html__('Proposal status updated.', 'dbvc'),
+                'protectedVariantsLoaded' => esc_html__('Protected artifacts loaded.', 'dbvc'),
+                'protectedVariantSaved' => esc_html__('Protected artifact saved.', 'dbvc'),
+                'protectedVariantRemoved' => esc_html__('Protected artifact removed.', 'dbvc'),
                 'diagnosticsLoaded' => esc_html__('Diagnostics loaded.', 'dbvc'),
                 'packagePublished' => esc_html__('Package published.', 'dbvc'),
                 'connectionTestPassed' => esc_html__('Mothership connection succeeded.', 'dbvc'),
@@ -1440,7 +1536,9 @@ final class DBVC_Bricks_Addon
                 'connectedSitesLoaded' => esc_html__('Connected sites loaded.', 'dbvc'),
                 'connectedSitesSaved' => esc_html__('Connected sites allowlist saved.', 'dbvc'),
                 'connectedSiteReset' => esc_html__('Connected site linkage reset to pending intro.', 'dbvc'),
+                'connectedSiteForgotten' => esc_html__('Connected site linkage forgotten and hidden from default targeting table.', 'dbvc'),
                 'connectedSiteMerged' => esc_html__('Duplicate alias deactivated and merged to canonical site.', 'dbvc'),
+                'connectedSiteHandshakeAccepted' => esc_html__('Connected site handshake accepted and onboarding verified.', 'dbvc'),
                 'introRerunRequested' => esc_html__('Intro handshake reset and rerun requested.', 'dbvc'),
             ],
         ];
@@ -1459,6 +1557,7 @@ final class DBVC_Bricks_Addon
         echo 'const diagnosticsEl = document.getElementById("dbvc-bricks-diagnostics-json");';
         echo 'function setLoading(active){ if(!loadingNotice){ return; } loadingNotice.style.display = active ? "block" : "none"; }';
         echo 'function genCorrelationId(){ return "dbvc-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10); }';
+        echo 'function withCacheBust(url){ if(!url){ return url; } const stamp = String(Date.now()); try { const u = new URL(url, window.location.origin); u.searchParams.set("_dbvc_cb", stamp); return u.toString(); } catch(e){ const sep = url.indexOf("?") === -1 ? "?" : "&"; return url + sep + "_dbvc_cb=" + encodeURIComponent(stamp); } }';
         echo 'function emitUiEvent(eventType, payload){ if(!cfg.uiEventEndpoint){ return Promise.resolve(); } const body = {event_type: eventType, payload: payload || {}}; return fetch(cfg.uiEventEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "Content-Type":"application/json"}, body: JSON.stringify(body)}).catch(function(){ return null; }); }';
         echo 'function setSuccess(message, eventType, payload){ if(!successNotice){ return; } const p = successNotice.querySelector("p"); if(p){ p.textContent = message || ""; } successNotice.style.display = message ? "block" : "none"; if(message && eventType){ emitUiEvent(eventType, Object.assign({message: message}, (payload && typeof payload === "object") ? payload : {})); } }';
         echo 'function setError(message, retryAction, context){ if(!errorNotice){ return; } const p = errorNotice.querySelector("p"); if(p){ p.textContent = message || ""; } errorNotice.style.display = message ? "block" : "none"; if(retryLastActionBtn){ retryLastActionBtn.style.display = (message && typeof retryAction === "function") ? "inline-block" : "none"; retryLastActionBtn.onclick = typeof retryAction === "function" ? function(){ retryAction(); } : null; } if(message){ emitUiEvent("ui_error", {message: message, context: context || ""}); } }';
@@ -1472,6 +1571,10 @@ final class DBVC_Bricks_Addon
         echo 'const filterSearchEl = document.getElementById("dbvc-bricks-filter-search");';
         echo 'const tableBody = document.getElementById("dbvc-bricks-diff-table-body");';
         echo 'const detailEl = document.getElementById("dbvc-bricks-diff-detail");';
+        echo 'const diffProtectedReasonInput = document.getElementById("dbvc-bricks-diff-protected-reason");';
+        echo 'const diffMarkProtectedBtn = document.getElementById("dbvc-bricks-diff-mark-protected");';
+        echo 'const diffUnmarkProtectedBtn = document.getElementById("dbvc-bricks-diff-unmark-protected");';
+        echo 'const diffProtectedStateEl = document.getElementById("dbvc-bricks-diff-protected-state");';
         echo 'const refreshRawCompareBtn = document.getElementById("dbvc-bricks-refresh-raw-compare");';
         echo 'const countCleanEl = document.getElementById("dbvc-bricks-count-clean");';
         echo 'const countDivergedEl = document.getElementById("dbvc-bricks-count-diverged");';
@@ -1496,6 +1599,17 @@ final class DBVC_Bricks_Addon
         echo 'const proposalReviewNotes = document.getElementById("dbvc-bricks-proposal-review-notes");';
         echo 'const proposalsTableBody = document.getElementById("dbvc-bricks-proposals-table-body");';
         echo 'const proposalDetail = document.getElementById("dbvc-bricks-proposal-detail");';
+        echo 'const refreshProtectedVariantsBtn = document.getElementById("dbvc-bricks-refresh-protected-variants");';
+        echo 'const protectedVariantsBody = document.getElementById("dbvc-bricks-protected-variants-body");';
+        echo 'const protectedVariantsDetail = document.getElementById("dbvc-bricks-protected-variants-detail");';
+        echo 'const protectedVariantsSummary = document.getElementById("dbvc-bricks-protected-variants-summary");';
+        echo 'const protectedVariantUidInput = document.getElementById("dbvc-bricks-protected-artifact-uid");';
+        echo 'const protectedVariantLabelInput = document.getElementById("dbvc-bricks-protected-artifact-label");';
+        echo 'const protectedVariantTypeSelect = document.getElementById("dbvc-bricks-protected-artifact-type");';
+        echo 'const protectedVariantScopeSelect = document.getElementById("dbvc-bricks-protected-artifact-scope");';
+        echo 'const protectedVariantReasonInput = document.getElementById("dbvc-bricks-protected-artifact-reason");';
+        echo 'const addProtectedVariantBtn = document.getElementById("dbvc-bricks-add-protected-variant");';
+        echo 'const removeProtectedVariantBtn = document.getElementById("dbvc-bricks-remove-protected-variant");';
         echo 'const refreshPackagesPanelBtn = document.getElementById("dbvc-bricks-refresh-packages");';
         echo 'const bootstrapPackageBtn = document.getElementById("dbvc-bricks-bootstrap-package");';
         echo 'const packagesChannelFilter = document.getElementById("dbvc-bricks-packages-channel-filter");';
@@ -1525,9 +1639,10 @@ final class DBVC_Bricks_Addon
         echo 'const onboardingChecks = Array.prototype.slice.call(document.querySelectorAll(".dbvc-bricks-onboarding-check"));';
         echo 'const onboardingMarkAllBtn = document.getElementById("dbvc-bricks-onboarding-mark-all");';
         echo 'const onboardingResetBtn = document.getElementById("dbvc-bricks-onboarding-reset");';
-        echo 'const onboardingRerunIntroBtn = document.getElementById("dbvc-bricks-onboarding-rerun-intro");';
-        echo 'const state = {packages: [], scan: null, selected: null, selectedProposalId: null, selectedPackageId: null, currentManifest: null, connectedSites: [], connectedSitesView: []};';
+        echo 'const onboardingRerunIntroBtn = document.getElementById("dbvc-bricks-config-rerun-intro") || document.getElementById("dbvc-bricks-onboarding-rerun-intro");';
+        echo 'const state = {packages: [], scan: null, selected: null, selectedProposalId: null, selectedPackageId: null, currentManifest: null, connectedSites: [], connectedSitesView: [], protectedVariants: [], protectedVariantsSummary: null, selectedProtectedVariantId: null};';
         echo 'const roleNode = document.getElementById("dbvc-bricks-admin-panels");';
+        echo 'const isReadOnlyMode = roleNode ? String(roleNode.getAttribute("data-read-only") || "0") === "1" : false;';
         echo 'const onboardingRole = roleNode ? (roleNode.getAttribute("data-role") || "client") : "client";';
         echo 'const onboardingStorageKey = "dbvc_bricks_onboarding_v1_" + onboardingRole;';
         echo 'function artifactClass(item){ return (item && item.artifact_type === "bricks_template") ? "Entity" : "Option"; }';
@@ -1538,13 +1653,13 @@ final class DBVC_Bricks_Addon
         echo 'function bindOnboarding(){ if(!onboardingChecks || onboardingChecks.length === 0){ return; } onboardingChecks.forEach(function(input){ input.addEventListener("change", function(){ const next = readOnboardingState(); const key = input.getAttribute("data-key") || ""; next[key] = !!input.checked; writeOnboardingState(next); renderOnboarding(); }); }); if(onboardingMarkAllBtn){ onboardingMarkAllBtn.addEventListener("click", function(){ const next = {}; onboardingChecks.forEach(function(input){ const key = input.getAttribute("data-key") || ""; next[key] = true; }); writeOnboardingState(next); renderOnboarding(); }); } if(onboardingResetBtn){ onboardingResetBtn.addEventListener("click", function(){ writeOnboardingState({}); renderOnboarding(); }); } renderOnboarding(); }';
         echo 'function runOnboardingResetRerun(){ if(!cfg.onboardingResetRerunEndpoint){ return; } const ok = window.confirm("Reset local handshake token/state and re-run intro handshake now?"); if(!ok){ return; } setLoading(true); fetch(cfg.onboardingResetRerunEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({confirm_reset: true, run_now: true})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Reset + Re-run Intro failed."); } return data; }); }).then(function(data){ if(statusEl){ statusEl.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.introRerunRequested) || "Intro handshake reset and rerun requested.", "intro_rerun_requested"); loadStatus(); loadDiagnostics(); }).catch(function(err){ setError(err.message || "Reset + Re-run Intro failed.", runOnboardingResetRerun, "intro_rerun"); }).finally(function(){ setLoading(false); }); }';
         echo 'function setCounts(scan){ if(!scan || !scan.counts){ return; } if(countCleanEl){ countCleanEl.textContent = "CLEAN: " + (scan.counts.clean || 0); } if(countDivergedEl){ countDivergedEl.textContent = "DIVERGED: " + (scan.counts.diverged || 0); } if(countOverriddenEl){ countOverriddenEl.textContent = "OVERRIDDEN: " + (scan.counts.overridden || 0); } if(countPendingEl){ countPendingEl.textContent = "PENDING_REVIEW: " + (scan.counts.pending_review || 0); } }';
-        echo 'function renderDetail(item){ if(!detailEl){ return; } if(!item){ detailEl.textContent = "Select an artifact to inspect details."; return; } const summary = item.diff_summary || {changes:[],total:0,truncated:false,raw_available:false}; const rawCompare = item.raw_compare || null; let html = ""; html += "<p><strong>Artifact:</strong> " + esc(item.artifact_label || item.artifact_uid) + "</p>"; html += "<p><strong>Artifact UID:</strong> " + esc(item.artifact_uid) + "</p>"; html += "<p><strong>Class:</strong> " + esc(artifactClass(item)) + "</p>"; html += "<p><strong>Status:</strong> " + esc(item.status) + "</p>"; html += "<p><strong>Local Hash:</strong> <code>" + esc(item.local_hash) + "</code></p>"; html += "<p><strong>Golden Hash:</strong> <code>" + esc(item.golden_hash) + "</code></p>"; html += "<p><strong>Changes:</strong> " + Number(summary.total || 0) + "</p>"; html += "<ul>"; (summary.changes || []).forEach(function(change){ html += "<li><code>" + esc(change.path) + "</code> (" + esc(change.type) + ")</li>"; }); html += "</ul>"; if(summary.truncated){ html += "<p><em>Diff list truncated. raw_available=" + (summary.raw_available ? "true" : "false") + "</em></p>"; } if(rawCompare){ const local = rawCompare.local || {}; const golden = rawCompare.golden || {}; const rules = rawCompare.rules_applied || {}; html += "<details open><summary><strong>Raw Compare (masked/ignored rules applied)</strong></summary>"; html += "<p><strong>Mask paths:</strong> <code>" + esc((rules.mask_paths || []).join(", ")) + "</code></p>"; html += "<p><strong>Ignore paths:</strong> <code>" + esc((rules.ignore_paths || []).join(", ")) + "</code></p>"; html += "<p><strong>Local payload</strong> (" + Number(local.bytes || 0) + " bytes" + ((local.truncated) ? ", truncated" : "") + ")</p>"; html += "<pre style=\\"max-height:220px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:8px;\\">" + esc(local.json || "") + "</pre>"; html += "<p><strong>Golden payload</strong> (" + Number(golden.bytes || 0) + " bytes" + ((golden.truncated) ? ", truncated" : "") + ")</p>"; html += "<pre style=\\"max-height:220px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:8px;\\">" + esc(golden.json || "") + "</pre>"; html += "</details>"; } detailEl.innerHTML = html; }';
+        echo 'function renderDetail(item){ if(!detailEl){ return; } if(!item){ detailEl.textContent = "Select an artifact to inspect details."; if(typeof syncDiffProtectedControls === "function"){ syncDiffProtectedControls(); } return; } const summary = item.diff_summary || {changes:[],total:0,truncated:false,raw_available:false}; const rawCompare = item.raw_compare || null; let html = ""; html += "<p><strong>Artifact:</strong> " + esc(item.artifact_label || item.artifact_uid) + "</p>"; html += "<p><strong>Artifact UID:</strong> " + esc(item.artifact_uid) + "</p>"; html += "<p><strong>Class:</strong> " + esc(artifactClass(item)) + "</p>"; html += "<p><strong>Status:</strong> " + esc(item.status) + "</p>"; html += "<p><strong>Local Hash:</strong> <code>" + esc(item.local_hash) + "</code></p>"; html += "<p><strong>Golden Hash:</strong> <code>" + esc(item.golden_hash) + "</code></p>"; html += "<p><strong>Changes:</strong> " + Number(summary.total || 0) + "</p>"; html += "<ul>"; (summary.changes || []).forEach(function(change){ html += "<li><code>" + esc(change.path) + "</code> (" + esc(change.type) + ")</li>"; }); html += "</ul>"; if(summary.truncated){ html += "<p><em>Diff list truncated. raw_available=" + (summary.raw_available ? "true" : "false") + "</em></p>"; } if(rawCompare){ const local = rawCompare.local || {}; const golden = rawCompare.golden || {}; const rules = rawCompare.rules_applied || {}; html += "<details open><summary><strong>Raw Compare (masked/ignored rules applied)</strong></summary>"; html += "<p><strong>Mask paths:</strong> <code>" + esc((rules.mask_paths || []).join(", ")) + "</code></p>"; html += "<p><strong>Ignore paths:</strong> <code>" + esc((rules.ignore_paths || []).join(", ")) + "</code></p>"; html += "<p><strong>Local payload</strong> (" + Number(local.bytes || 0) + " bytes" + ((local.truncated) ? ", truncated" : "") + ")</p>"; html += "<pre style=\\"max-height:220px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:8px;\\">" + esc(local.json || "") + "</pre>"; html += "<p><strong>Golden payload</strong> (" + Number(golden.bytes || 0) + " bytes" + ((golden.truncated) ? ", truncated" : "") + ")</p>"; html += "<pre style=\\"max-height:220px;overflow:auto;background:#fff;border:1px solid #ccd0d4;padding:8px;\\">" + esc(golden.json || "") + "</pre>"; html += "</details>"; } detailEl.innerHTML = html; if(typeof syncDiffProtectedControls === "function"){ syncDiffProtectedControls(); } }';
         echo 'function selectedArtifact(){ if(!state.scan || !Array.isArray(state.scan.artifacts) || !state.selected){ return null; } return state.scan.artifacts.find(function(item){ return item.artifact_uid === state.selected; }) || null; }';
         echo 'function chunkArray(items, chunkSize){ const size = Math.max(1, Number(chunkSize || 1)); const out = []; for(let i=0;i<items.length;i+=size){ out.push(items.slice(i, i + size)); } return out; }';
         echo 'function filteredArtifacts(){ if(!state.scan || !Array.isArray(state.scan.artifacts)){ return []; } const classVal = filterClassEl ? filterClassEl.value : "all"; const statusVal = filterStatusEl ? filterStatusEl.value : "all"; const query = filterSearchEl ? filterSearchEl.value.toLowerCase().trim() : ""; return state.scan.artifacts.filter(function(item){ if(classVal !== "all" && artifactClass(item) !== classVal){ return false; } if(statusVal !== "all" && String(item.status) !== statusVal){ return false; } if(query !== ""){ const uid = String(item.artifact_uid || "").toLowerCase(); const label = String(item.artifact_label || "").toLowerCase(); if(uid.indexOf(query) === -1 && label.indexOf(query) === -1){ return false; } } return true; }); }';
         echo 'function renderTable(){ if(!tableBody){ return; } const items = filteredArtifacts(); if(items.length === 0){ tableBody.innerHTML = "<tr><td colspan=\\"3\\">No artifacts match current filters.</td></tr>"; if(!state.selected){ renderDetail(null); } return; } tableBody.innerHTML = items.map(function(item){ const selectedClass = state.selected === item.artifact_uid ? " style=\\"background:#f0f6fc;\\"" : ""; const label = String(item.artifact_label || item.artifact_uid || ""); return "<tr data-uid=\\"" + esc(item.artifact_uid) + "\\"" + selectedClass + "><td><strong>" + esc(label) + "</strong><br><code>" + esc(item.artifact_uid) + "</code></td><td>" + esc(artifactClass(item)) + "</td><td>" + esc(item.status) + "</td></tr>"; }).join(""); Array.prototype.forEach.call(tableBody.querySelectorAll("tr[data-uid]"), function(row){ row.addEventListener("click", function(){ state.selected = row.getAttribute("data-uid"); const found = items.find(function(entry){ return entry.artifact_uid === state.selected; }); renderDetail(found || null); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } renderTable(); }); }); if(!state.selected && items[0]){ state.selected = items[0].artifact_uid; renderDetail(items[0]); if(detailEl && typeof detailEl.focus === "function"){ detailEl.focus(); } } }';
-        echo 'function loadStatus(){ if(!cfg.statusEndpoint || !statusEl){ return; } setLoading(true); setError(""); fetch(cfg.statusEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Status request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ statusEl.textContent = JSON.stringify(data, null, 2); stamp(); setSuccess((cfg.messages && cfg.messages.statusLoaded) || "Status loaded.", "status_loaded"); }).catch(function(err){ setError(err.message || "Failed to load status.", loadStatus, "status"); }).finally(function(){ setLoading(false); }); }';
-        echo 'function loadDiagnostics(){ if(!cfg.diagnosticsEndpoint || !diagnosticsEl){ return; } setLoading(true); setError(""); fetch(cfg.diagnosticsEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Diagnostics request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ diagnosticsEl.textContent = JSON.stringify(data, null, 2); setSuccess((cfg.messages && cfg.messages.diagnosticsLoaded) || "Diagnostics loaded.", "diagnostics_loaded"); }).catch(function(err){ setError(err.message || "Failed to load diagnostics.", loadDiagnostics, "diagnostics"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function loadStatus(){ if(!cfg.statusEndpoint || !statusEl){ return; } setLoading(true); setError(""); fetch(withCacheBust(cfg.statusEndpoint), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Cache-Control": "no-cache", "Pragma": "no-cache"}}).then(function(r){ if(!r.ok){ throw new Error("Status request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ statusEl.textContent = JSON.stringify(data, null, 2); stamp(); setSuccess((cfg.messages && cfg.messages.statusLoaded) || "Status loaded.", "status_loaded"); }).catch(function(err){ setError(err.message || "Failed to load status.", loadStatus, "status"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function loadDiagnostics(){ if(!cfg.diagnosticsEndpoint || !diagnosticsEl){ return; } setLoading(true); setError(""); fetch(withCacheBust(cfg.diagnosticsEndpoint), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Cache-Control": "no-cache", "Pragma": "no-cache"}}).then(function(r){ if(!r.ok){ throw new Error("Diagnostics request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ diagnosticsEl.textContent = JSON.stringify(data, null, 2); setSuccess((cfg.messages && cfg.messages.diagnosticsLoaded) || "Diagnostics loaded.", "diagnostics_loaded"); }).catch(function(err){ setError(err.message || "Failed to load diagnostics.", loadDiagnostics, "diagnostics"); }).finally(function(){ setLoading(false); }); }';
         echo 'function loadPackages(){ if(!cfg.packagesEndpoint || !packagesSelect){ return Promise.resolve(); } setLoading(true); setError(""); const role = roleNode ? String(roleNode.getAttribute("data-role") || "") : ""; const params = []; if(packagesChannelFilter && packagesChannelFilter.value){ params.push("channel=" + encodeURIComponent(packagesChannelFilter.value)); } const siteUid = cfg.siteUid ? String(cfg.siteUid) : ""; if(role === "client" && siteUid){ params.push("site_uid=" + encodeURIComponent(siteUid)); } const suffix = params.length ? ("?" + params.join("&")) : ""; return fetch(cfg.packagesEndpoint + suffix, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Packages request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.packages = Array.isArray(data.items) ? data.items : []; if(state.packages.length === 0){ state.selectedPackageId = null; packagesSelect.innerHTML = "<option value=\\"\\">No packages available</option>"; if(packagesTableBody){ packagesTableBody.innerHTML = "<tr><td colspan=\\"5\\">No packages available.</td></tr>"; } if(packageDetail){ packageDetail.textContent = ""; } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); return; } packagesSelect.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const label = (pkg.version || id || "package") + (pkg.channel ? " (" + pkg.channel + ")" : ""); return "<option value=\\"" + esc(id) + "\\">" + esc(label) + "</option>"; }).join(""); const packageIds = state.packages.map(function(pkg){ return String(pkg.package_id || pkg.id || ""); }); let selectedId = state.selectedPackageId && packageIds.indexOf(state.selectedPackageId) !== -1 ? state.selectedPackageId : null; if(!selectedId && packagesSelect.value && packageIds.indexOf(String(packagesSelect.value)) !== -1){ selectedId = String(packagesSelect.value); } if(!selectedId){ selectedId = packageIds[0] || ""; } state.selectedPackageId = selectedId || null; if(packagesSelect && selectedId){ packagesSelect.value = selectedId; } if(packagesTableBody){ packagesTableBody.innerHTML = state.packages.map(function(pkg){ const id = pkg.package_id || pkg.id || ""; const version = pkg.version || ""; const channelName = pkg.channel || ""; const targeting = pkg.targeting && typeof pkg.targeting === "object" ? pkg.targeting : {mode:"all",site_uids:[]}; const audience = String(targeting.mode || "all") === "selected" ? ("selected (" + (Array.isArray(targeting.site_uids) ? targeting.site_uids.length : 0) + ")") : "all"; const visibility = pkg.visibility_reason ? (" / " + String(pkg.visibility_reason)) : ""; const audienceText = audience + visibility; const isSelected = selectedId && id === selectedId; const checked = isSelected ? " checked=\\"checked\\"" : ""; const rowStyle = isSelected ? " style=\\"background:#f0f6fc;\\"" : ""; return "<tr data-package-id=\\"" + esc(id) + "\\"" + rowStyle + "><td><input type=\\"radio\\" name=\\"dbvc-bricks-package-select-row\\" data-package-id=\\"" + esc(id) + "\\"" + checked + " /></td><td><code>" + esc(id) + "</code></td><td>" + esc(version) + "</td><td>" + esc(channelName) + "</td><td>" + esc(audienceText) + "</td></tr>"; }).join(""); const setPackageSelectionUI = function(id){ Array.prototype.forEach.call(packagesTableBody.querySelectorAll("tr[data-package-id]"), function(row){ const rowId = String(row.getAttribute("data-package-id") || ""); row.style.background = rowId === id ? "#f0f6fc" : ""; }); Array.prototype.forEach.call(packagesTableBody.querySelectorAll("input[name=\\"dbvc-bricks-package-select-row\\"]"), function(input){ const inputId = String(input.getAttribute("data-package-id") || ""); input.checked = inputId === id; }); }; const selectPackage = function(id){ if(!id){ return; } state.selectedPackageId = id; state.currentManifest = null; if(packagesSelect){ packagesSelect.value = id; } setPackageSelectionUI(id); loadPackageDetail(id); }; Array.prototype.forEach.call(packagesTableBody.querySelectorAll("tr[data-package-id]"), function(row){ row.addEventListener("click", function(){ const id = String(row.getAttribute("data-package-id") || ""); selectPackage(id); }); }); Array.prototype.forEach.call(packagesTableBody.querySelectorAll("input[name=\\"dbvc-bricks-package-select-row\\"]"), function(input){ input.addEventListener("change", function(ev){ if(ev && ev.stopPropagation){ ev.stopPropagation(); } const id = String(input.getAttribute("data-package-id") || ""); selectPackage(id); }); input.addEventListener("click", function(ev){ if(ev && ev.stopPropagation){ ev.stopPropagation(); } }); }); } if(selectedId){ return loadPackageDetail(selectedId); } setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); }).then(function(){ setSuccess((cfg.messages && cfg.messages.packagesLoaded) || "Packages loaded.", "packages_loaded"); }).catch(function(err){ setError(err.message || "Failed to load packages.", loadPackages, "packages"); }).finally(function(){ setLoading(false); }); }';
         echo 'function loadPackageDetail(packageId){ if(!cfg.packagesEndpoint || !packageId){ return Promise.resolve(); } setLoading(true); return fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ state.currentManifest = detail && detail.manifest ? detail.manifest : null; if(packageDetail){ packageDetail.textContent = JSON.stringify(detail, null, 2); if(typeof packageDetail.focus === "function"){ packageDetail.focus(); } } }).catch(function(err){ setError(err.message || "Failed to load package detail.", function(){ loadPackageDetail(packageId); }, "package_detail"); }).finally(function(){ setLoading(false); }); }';
         echo 'function selectedPackageRecord(){ if(!state.selectedPackageId || !Array.isArray(state.packages)){ return null; } return state.packages.find(function(pkg){ const id = String(pkg && (pkg.package_id || pkg.id) || ""); return id === String(state.selectedPackageId); }) || null; }';
@@ -1552,10 +1667,10 @@ final class DBVC_Bricks_Addon
         echo 'function selectedConnectedSiteUids(){ if(!connectedSitesBody){ return []; } const out = []; Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("input[data-site-uid]"), function(input){ if(input.checked){ out.push(String(input.getAttribute("data-site-uid") || "")); } }); return out.filter(function(v){ return !!v; }); }';
         echo 'function getConnectedSiteSortValue(site, key){ if(key === "last_seen"){ return String(site && site.last_seen_at || ""); } if(key === "site_label"){ return String(site && site.site_label || "").toLowerCase(); } return String(site && site.site_uid || "").toLowerCase(); }';
         echo 'function filterSortConnectedSites(items){ const query = connectedSitesSearch ? String(connectedSitesSearch.value || "").toLowerCase().trim() : ""; const status = connectedSitesStatusFilter ? String(connectedSitesStatusFilter.value || "") : ""; const sortVal = connectedSitesSort ? String(connectedSitesSort.value || "site_uid_asc") : "site_uid_asc"; const parts = sortVal.split("_"); const key = parts.length > 1 ? parts.slice(0, -1).join("_") : "site_uid"; const dir = parts.length > 1 ? parts[parts.length - 1] : "asc"; let out = Array.isArray(items) ? items.slice() : []; if(status){ out = out.filter(function(site){ return String(site && site.status || "") === status; }); } if(query){ out = out.filter(function(site){ const uid = String(site && site.site_uid || "").toLowerCase(); const label = String(site && site.site_label || "").toLowerCase(); const onboarding = String(site && site.onboarding_state || "").toLowerCase(); return uid.indexOf(query) !== -1 || label.indexOf(query) !== -1 || onboarding.indexOf(query) !== -1; }); } out.sort(function(a, b){ const aVal = getConnectedSiteSortValue(a, key); const bVal = getConnectedSiteSortValue(b, key); if(aVal === bVal){ return 0; } if(dir === "desc"){ return aVal < bVal ? 1 : -1; } return aVal > bVal ? 1 : -1; }); return out; }';
-        echo 'function renderConnectedSites(items){ if(!connectedSitesBody){ return; } const rows = filterSortConnectedSites(items); state.connectedSitesView = rows; if(!Array.isArray(rows) || rows.length === 0){ connectedSitesBody.innerHTML = "<tr><td colspan=\\"6\\">No connected sites match current filters.</td></tr>"; return; } connectedSitesBody.innerHTML = rows.map(function(site){ const uid = site.site_uid || ""; const label = site.site_label || uid; const status = site.status || ""; const onboarding = String(site.onboarding_state || ""); const onboardingUpper = onboarding.toUpperCase(); const baseUrl = String(site.base_url || "").replace(/\\/$/, ""); const conflictState = String(site.conflict_state || ""); const conflictGroup = Array.isArray(site.conflict_group_uids) ? site.conflict_group_uids : []; const canonicalUid = String(site.canonical_site_uid || ""); const isCanonicalConflict = !!site.is_conflict_canonical; const knownAliases = Array.isArray(site.known_aliases) ? site.known_aliases : []; const routingNotice = String(site.routing_notice || ""); const onboardingBadge = onboarding ? ("<code>" + esc(onboarding) + "</code>") : ""; const checked = site.allow_receive_packages ? " checked=\\"checked\\"" : ""; const statusBadge = status ? ("<code>" + esc(status) + "</code>") : ""; const actionBits = []; if(onboardingUpper === "PENDING_INTRO" && baseUrl){ actionBits.push("<a class=\\"button button-small\\" href=\\"" + esc(baseUrl + "/wp-admin/admin.php?page=addon-dbvc-bricks-addon&tab=configure") + "\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\">Open Client Bricks Tab</a>"); } if(cfg.roleMode === "mothership" && cfg.connectedSiteResetEndpoint){ actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"reset-linkage\\" data-site-uid=\\"" + esc(uid) + "\\">Reset Linkage</button>"); } if(cfg.roleMode === "mothership" && cfg.connectedSiteMergeEndpoint && conflictState === "duplicate_base_url" && !isCanonicalConflict && canonicalUid){ actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"merge-alias\\" data-site-uid=\\"" + esc(uid) + "\\" data-canonical-site-uid=\\"" + esc(canonicalUid) + "\\" data-conflict-group=\\"" + esc(conflictGroup.join(",")) + "\\">Merge/Deactivate Alias</button>"); } const conflictHint = (conflictState === "duplicate_base_url" && canonicalUid && !isCanonicalConflict) ? ("<br><small>Conflict: duplicate URL. Canonical UID: <code>" + esc(canonicalUid) + "</code></small>") : ""; const aliasHint = knownAliases.length ? ("<br><small>Known aliases: <code>" + esc(knownAliases.join(", ")) + "</code></small>") : ""; const routingHint = routingNotice ? ("<br><small style=\\"color:#8a6d3b;\\">" + esc(routingNotice) + "</small>") : ""; const aliasControls = (cfg.roleMode === "mothership" && cfg.connectedSiteAliasEndpoint) ? ("<div style=\\"margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;\\"><input type=\\"text\\" class=\\"regular-text\\" data-known-alias-input=\\"" + esc(uid) + "\\" placeholder=\\"known alias UID\\" style=\\"max-width:180px;\\" /><button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"map-known-alias\\" data-site-uid=\\"" + esc(uid) + "\\">Map Known Alias</button></div>") : ""; const actionsHtml = actionBits.length ? ("<div style=\\"margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;\\">" + actionBits.join("") + "</div>") : ""; const lastSeen = site.last_seen_at || ""; return "<tr><td><input type=\\"checkbox\\" data-site-uid=\\"" + esc(uid) + "\\"" + checked + " /></td><td><code>" + esc(uid) + "</code></td><td>" + esc(label) + "</td><td>" + statusBadge + "</td><td>" + onboardingBadge + conflictHint + aliasHint + routingHint + actionsHtml + aliasControls + "</td><td>" + esc(lastSeen) + "</td></tr>"; }).join(""); }';
-        echo 'function loadConnectedSites(){ if(!cfg.connectedSitesEndpoint){ return Promise.resolve(); } setLoading(true); return fetch(cfg.connectedSitesEndpoint, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Connected sites request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.connectedSites = Array.isArray(data.items) ? data.items : []; renderConnectedSites(state.connectedSites); setSuccess((cfg.messages && cfg.messages.connectedSitesLoaded) || "Connected sites loaded.", "connected_sites_loaded"); }).catch(function(err){ setError(err.message || "Failed to load connected sites.", loadConnectedSites, "connected_sites"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function renderConnectedSites(items){ if(!connectedSitesBody){ return; } const rows = filterSortConnectedSites(items); state.connectedSitesView = rows; if(!Array.isArray(rows) || rows.length === 0){ connectedSitesBody.innerHTML = "<tr><td colspan=\\"6\\">No connected sites match current filters.</td></tr>"; return; } connectedSitesBody.innerHTML = rows.map(function(site){ const uid = site.site_uid || ""; const label = site.site_label || uid; const status = site.status || ""; const onboarding = String(site.onboarding_state || ""); const onboardingUpper = onboarding.toUpperCase(); const baseUrl = String(site.base_url || "").replace(/\\/$/, ""); const conflictState = String(site.conflict_state || ""); const conflictGroup = Array.isArray(site.conflict_group_uids) ? site.conflict_group_uids : []; const canonicalUid = String(site.canonical_site_uid || ""); const isCanonicalConflict = !!site.is_conflict_canonical; const knownAliases = Array.isArray(site.known_aliases) ? site.known_aliases : []; const routingNotice = String(site.routing_notice || ""); const assistedMergeEligible = !!site.assisted_merge_eligible && !!site.assisted_merge_match_token; const onboardingBadge = onboarding ? ("<code>" + esc(onboarding) + "</code>") : ""; const checked = site.allow_receive_packages ? " checked=\\"checked\\"" : ""; const statusBadge = status ? ("<code>" + esc(status) + "</code>") : ""; const actionBits = []; if(onboardingUpper === "PENDING_INTRO" && baseUrl){ actionBits.push("<a class=\\"button button-small\\" href=\\"" + esc(baseUrl + "/wp-admin/admin.php?page=addon-dbvc-bricks-addon&tab=configure") + "\\" target=\\"_blank\\" rel=\\"noopener noreferrer\\">Open Client Bricks Tab</a>"); } if(cfg.roleMode === "mothership" && cfg.introHandshakeEndpoint && onboardingUpper === "PENDING_INTRO"){ actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"approve-handshake\\" data-site-uid=\\"" + esc(uid) + "\\">Confirm Handshake</button>"); } if(cfg.roleMode === "mothership" && cfg.connectedSiteResetEndpoint){ actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"reset-linkage\\" data-site-uid=\\"" + esc(uid) + "\\">Reset Linkage</button>"); } if(cfg.roleMode === "mothership" && cfg.connectedSiteForgetEndpoint){ actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"forget-linkage\\" data-site-uid=\\"" + esc(uid) + "\\">Forget Linkage</button>"); } if(cfg.roleMode === "mothership" && cfg.connectedSiteMergeEndpoint && conflictState === "duplicate_base_url" && !isCanonicalConflict && canonicalUid){ const mergeLabel = assistedMergeEligible ? "Auto-Merge Alias" : "Merge/Deactivate Alias"; actionBits.push("<button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"merge-alias\\" data-site-uid=\\"" + esc(uid) + "\\" data-canonical-site-uid=\\"" + esc(canonicalUid) + "\\" data-conflict-group=\\"" + esc(conflictGroup.join(",")) + "\\">" + esc(mergeLabel) + "</button>"); } const conflictHint = (conflictState === "duplicate_base_url" && canonicalUid && !isCanonicalConflict) ? ("<br><small>Conflict: duplicate URL. Canonical UID: <code>" + esc(canonicalUid) + "</code></small>") : ""; const aliasHint = knownAliases.length ? ("<br><small>Known aliases: <code>" + esc(knownAliases.join(", ")) + "</code></small>") : ""; const routingHint = routingNotice ? ("<br><small style=\\"color:#8a6d3b;\\">" + esc(routingNotice) + "</small>") : ""; const aliasControlsEnabled = cfg.roleMode === "mothership" && cfg.connectedSiteAliasEndpoint && !(conflictState === "duplicate_base_url" && !isCanonicalConflict && canonicalUid); const aliasControlsHint = (!aliasControlsEnabled && cfg.roleMode === "mothership" && conflictState === "duplicate_base_url" && canonicalUid && !isCanonicalConflict) ? ("<br><small>Map known aliases on canonical UID <code>" + esc(canonicalUid) + "</code>.</small>") : ""; const aliasControls = aliasControlsEnabled ? ("<div style=\\"margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;\\"><input type=\\"text\\" class=\\"regular-text\\" data-known-alias-input=\\"" + esc(uid) + "\\" placeholder=\\"known alias UID\\" style=\\"max-width:180px;\\" /><button type=\\"button\\" class=\\"button button-small\\" data-connected-action=\\"map-known-alias\\" data-site-uid=\\"" + esc(uid) + "\\">Map Known Alias</button></div>") : ""; const actionsHtml = actionBits.length ? ("<div style=\\"margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;\\">" + actionBits.join("") + "</div>") : ""; const lastSeen = site.last_seen_at || ""; return "<tr><td><input type=\\"checkbox\\" data-site-uid=\\"" + esc(uid) + "\\"" + checked + " /></td><td><code>" + esc(uid) + "</code></td><td>" + esc(label) + "</td><td>" + statusBadge + "</td><td>" + onboardingBadge + conflictHint + aliasHint + routingHint + actionsHtml + aliasControlsHint + aliasControls + "</td><td>" + esc(lastSeen) + "</td></tr>"; }).join(""); }';
+        echo 'function loadConnectedSites(){ if(!cfg.connectedSitesEndpoint){ return Promise.resolve(); } setLoading(true); return fetch(withCacheBust(cfg.connectedSitesEndpoint), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Cache-Control": "no-cache", "Pragma": "no-cache"}}).then(function(r){ if(!r.ok){ throw new Error("Connected sites request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ state.connectedSites = Array.isArray(data.items) ? data.items : []; renderConnectedSites(state.connectedSites); setSuccess((cfg.messages && cfg.messages.connectedSitesLoaded) || "Connected sites loaded.", "connected_sites_loaded"); }).catch(function(err){ setError(err.message || "Failed to load connected sites.", loadConnectedSites, "connected_sites"); }).finally(function(){ setLoading(false); }); }';
         echo 'function saveConnectedSites(){ if(!cfg.connectedSitesEndpoint || !connectedSitesBody){ return; } const rows = Array.prototype.slice.call(connectedSitesBody.querySelectorAll("input[data-site-uid]")); if(rows.length === 0){ return; } setLoading(true); let chain = Promise.resolve(); rows.forEach(function(input){ chain = chain.then(function(){ const uid = String(input.getAttribute("data-site-uid") || ""); return fetch(cfg.connectedSitesEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({site_uid: uid, allow_receive_packages: !!input.checked})}).then(function(r){ if(!r.ok){ throw new Error("Connected site save failed (" + r.status + ")"); } return r.json(); }); }); }); chain.then(function(){ setSuccess((cfg.messages && cfg.messages.connectedSitesSaved) || "Connected sites allowlist saved.", "connected_sites_saved"); loadConnectedSites(); }).catch(function(err){ setError(err.message || "Failed to save connected sites.", saveConnectedSites, "connected_sites_save"); }).finally(function(){ setLoading(false); }); }';
-        echo 'function handleConnectedSiteAction(action, siteUid, payload){ if(!action || !siteUid){ return; } const endpoint = action === "reset-linkage" ? cfg.connectedSiteResetEndpoint : (action === "map-known-alias" ? cfg.connectedSiteAliasEndpoint : (action === "assisted-merge" ? cfg.connectedSiteAssistedMergeEndpoint : cfg.connectedSiteMergeEndpoint)); if(!endpoint){ return; } const body = Object.assign({}, payload || {}); setLoading(true); fetch(endpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify(body)}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Connected site action failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } const msgKey = action === "reset-linkage" ? "connectedSiteReset" : "connectedSiteMerged"; setSuccess((cfg.messages && cfg.messages[msgKey]) || "Connected site action completed.", "connected_site_action", {action: action, site_uid: siteUid}); return loadConnectedSites(); }).catch(function(err){ setError(err.message || "Connected site action failed.", function(){ handleConnectedSiteAction(action, siteUid, payload); }, "connected_site_action"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function handleConnectedSiteAction(action, siteUid, payload){ if(!action || !siteUid){ return; } const endpoint = action === "reset-linkage" ? cfg.connectedSiteResetEndpoint : (action === "forget-linkage" ? cfg.connectedSiteForgetEndpoint : (action === "map-known-alias" ? cfg.connectedSiteAliasEndpoint : (action === "assisted-merge" ? cfg.connectedSiteAssistedMergeEndpoint : (action === "approve-handshake" ? cfg.introHandshakeEndpoint : cfg.connectedSiteMergeEndpoint)))); if(!endpoint){ return; } const body = Object.assign({}, payload || {}); const headers = {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}; if(action === "approve-handshake"){ headers["Idempotency-Key"] = "intro-handshake-ui-" + String(siteUid || "site") + "-" + String(Date.now()); } setLoading(true); fetch(endpoint, {method:"POST", headers: headers, body: JSON.stringify(body)}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Connected site action failed."); } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } const msgKey = action === "reset-linkage" ? "connectedSiteReset" : (action === "forget-linkage" ? "connectedSiteForgotten" : (action === "approve-handshake" ? "connectedSiteHandshakeAccepted" : "connectedSiteMerged")); setSuccess((cfg.messages && cfg.messages[msgKey]) || "Connected site action completed.", "connected_site_action", {action: action, site_uid: siteUid}); return loadConnectedSites().then(function(){ if(action === "approve-handshake"){ loadStatus(); loadDiagnostics(); } }); }).catch(function(err){ setError(err.message || "Connected site action failed.", function(){ handleConnectedSiteAction(action, siteUid, payload); }, "connected_site_action"); }).finally(function(){ setLoading(false); }); }';
         echo 'function setVisibleSitesChecked(checked){ if(!connectedSitesBody){ return; } Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("input[data-site-uid]"), function(input){ input.checked = !!checked; }); }';
         echo 'function runPublishPreflight(){ if(!cfg.publishRemoteEndpoint || !cfg.packagesEndpoint){ return; } const packageId = state.selectedPackageId || (packagesSelect ? packagesSelect.value : ""); if(!packageId){ setError("Select a package first.", runPublishPreflight, "publish_preflight"); return; } const mode = targetModeSelect ? String(targetModeSelect.value || "all") : "all"; const siteUids = mode === "selected" ? selectedConnectedSiteUids() : []; if(mode === "selected" && siteUids.length === 0){ setError("Select at least one connected site for selected mode.", runPublishPreflight, "publish_preflight"); return; } setLoading(true); fetch(cfg.packagesEndpoint + "/" + encodeURIComponent(packageId), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Package detail failed (" + r.status + ")"); } return r.json(); }).then(function(detail){ const manifest = detail && detail.manifest ? detail.manifest : null; if(!manifest){ throw new Error("Selected package manifest missing."); } return fetch(cfg.publishRemoteEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "pkg-preflight-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({package: manifest, targeting: {mode: mode, site_uids: siteUids}, dry_run: true})}); }).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Preflight failed."; const details = data && data.data ? data.data : null; const err = new Error(msg); err.details = details; throw err; } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess("Publish preflight passed.", "package_publish_preflight"); }).catch(function(err){ if(packageDetail){ packageDetail.textContent = JSON.stringify({ok:false, error: err && err.message ? err.message : "Publish preflight failed.", details: err && err.details ? err.details : null}, null, 2); } setError(err.message || "Publish preflight failed.", runPublishPreflight, "publish_preflight"); }).finally(function(){ setLoading(false); }); }';
         echo 'function runRemoteConnectionTest(){ if(!cfg.testRemoteConnectionEndpoint){ return; } setLoading(true); fetch(cfg.testRemoteConnectionEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ const msg = data && data.message ? data.message : "Connection test failed."; const details = data && data.data ? data.data : null; const err = new Error(msg); err.details = details; throw err; } return data; }); }).then(function(data){ if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.connectionTestPassed) || "Mothership connection succeeded.", "connection_test_passed"); }).catch(function(err){ if(packageDetail){ packageDetail.textContent = JSON.stringify({ok:false, error: err && err.message ? err.message : "Mothership connection failed.", details: err && err.details ? err.details : null}, null, 2); } setError(err.message || "Mothership connection failed.", runRemoteConnectionTest, "connection_test"); }).finally(function(){ setLoading(false); }); }';
@@ -1574,6 +1689,18 @@ final class DBVC_Bricks_Addon
         echo 'function runRollback(){ if(!cfg.restoreEndpoint || !rollbackIdInput){ return; } const restoreId = String(rollbackIdInput.value || "").trim(); if(!restoreId){ setError("Enter a restore ID.", runRollback, "rollback"); return; } const receiptId = state.currentManifest && state.currentManifest.receipt_id ? String(state.currentManifest.receipt_id) : ""; setLoading(true); fetch(cfg.restoreEndpoint + "/" + encodeURIComponent(restoreId) + "/rollback", {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({receipt_id: receiptId})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Rollback failed."); } return data; }); }).then(function(data){ writeApplyOutput(data); setSuccess((cfg.messages && cfg.messages.rollbackComplete) || "Rollback completed.", "rollback_complete", {receipt_id: data && data.receipt_id ? data.receipt_id : receiptId}); }).catch(function(err){ setError(err.message || "Rollback failed.", runRollback, "rollback"); }).finally(function(){ setLoading(false); }); }';
         echo 'function renderProposals(items){ if(!proposalsTableBody){ return; } if(!Array.isArray(items) || items.length === 0){ proposalsTableBody.innerHTML = "<tr><td colspan=\\"3\\">No proposals found.</td></tr>"; if(proposalDetail){ proposalDetail.textContent = ""; } return; } proposalsTableBody.innerHTML = items.map(function(item){ const id = item.proposal_id || ""; return "<tr data-proposal-id=\\"" + esc(id) + "\\"><td><code>" + esc(id) + "</code></td><td><code>" + esc(item.artifact_uid || "") + "</code></td><td>" + esc(item.status || "") + "</td></tr>"; }).join(""); Array.prototype.forEach.call(proposalsTableBody.querySelectorAll("tr[data-proposal-id]"), function(row){ row.addEventListener("click", function(){ state.selectedProposalId = row.getAttribute("data-proposal-id"); const found = items.find(function(it){ return it.proposal_id === state.selectedProposalId; }); if(proposalDetail){ proposalDetail.textContent = JSON.stringify(found || {}, null, 2); if(typeof proposalDetail.focus === "function"){ proposalDetail.focus(); } } }); }); if(!state.selectedProposalId && items[0]){ state.selectedProposalId = items[0].proposal_id || null; if(proposalDetail){ proposalDetail.textContent = JSON.stringify(items[0], null, 2); if(typeof proposalDetail.focus === "function"){ proposalDetail.focus(); } } } }';
         echo 'function loadProposals(){ if(!cfg.proposalsEndpoint){ return; } setLoading(true); const status = proposalStatusFilter && proposalStatusFilter.value ? ("?status=" + encodeURIComponent(proposalStatusFilter.value)) : ""; fetch(cfg.proposalsEndpoint + status, {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId()}}).then(function(r){ if(!r.ok){ throw new Error("Proposals request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ renderProposals(data.items || []); setSuccess((cfg.messages && cfg.messages.proposalsLoaded) || "Proposals loaded.", "proposals_loaded"); }).catch(function(err){ setError(err.message || "Failed to load proposals.", loadProposals, "proposals"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function protectedVariantById(variantId){ if(!variantId || !Array.isArray(state.protectedVariants)){ return null; } return state.protectedVariants.find(function(item){ return String(item && item.variant_id || "") === String(variantId); }) || null; }';
+        echo 'function protectedVariantByArtifactUid(artifactUid){ if(!artifactUid || !Array.isArray(state.protectedVariants)){ return null; } return state.protectedVariants.find(function(item){ return String(item && item.artifact_uid || "") === String(artifactUid); }) || null; }';
+        echo 'function syncDiffProtectedControls(){ if(!diffProtectedStateEl && !diffMarkProtectedBtn && !diffUnmarkProtectedBtn){ return; } const artifact = selectedArtifact(); if(!artifact || !artifact.artifact_uid){ if(diffProtectedStateEl){ diffProtectedStateEl.textContent = "Select an artifact to manage protected state."; } if(diffMarkProtectedBtn){ diffMarkProtectedBtn.disabled = true; } if(diffUnmarkProtectedBtn){ diffUnmarkProtectedBtn.disabled = true; } return; } const variant = protectedVariantByArtifactUid(String(artifact.artifact_uid || "")); if(diffMarkProtectedBtn){ diffMarkProtectedBtn.disabled = isReadOnlyMode; } if(diffUnmarkProtectedBtn){ diffUnmarkProtectedBtn.disabled = isReadOnlyMode || !variant; } if(diffProtectedStateEl){ diffProtectedStateEl.textContent = variant ? ("Protected (" + String(variant.scope || "site_local") + ")") : "Not protected"; } if(variant && diffProtectedReasonInput && !String(diffProtectedReasonInput.value || "").trim()){ diffProtectedReasonInput.value = String(variant.reason || ""); } }';
+        echo 'function markSelectedDiffProtected(){ if(!cfg.protectedVariantsEndpoint){ return; } if(isReadOnlyMode){ setError("Read-only mode blocks protected variant mutations.", null, "diff_mark_protected"); return; } const artifact = selectedArtifact(); if(!artifact || !artifact.artifact_uid){ setError("Select a diff artifact before marking it protected.", markSelectedDiffProtected, "diff_mark_protected"); return; } const reason = diffProtectedReasonInput ? String(diffProtectedReasonInput.value || "").trim() : ""; if(!reason){ setError("Enter a protected reason before marking selected artifact.", markSelectedDiffProtected, "diff_mark_protected"); if(diffProtectedReasonInput && typeof diffProtectedReasonInput.focus === "function"){ diffProtectedReasonInput.focus(); } return; } const payload = {artifact_uid: String(artifact.artifact_uid || ""), artifact_type: String(artifact.artifact_type || "unknown"), label: String(artifact.artifact_label || artifact.artifact_uid || ""), scope: "site_local", reason: reason}; setLoading(true); fetch(cfg.protectedVariantsEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "diff-protected-mark-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify(payload)}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Mark protected failed."); } return data; }); }).then(function(data){ const variant = data && typeof data.variant === "object" ? data.variant : null; if(variant){ state.selectedProtectedVariantId = String(variant.variant_id || ""); } if(packageDetail){ packageDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.protectedVariantSaved) || "Protected artifact saved.", "protected_variant_saved", {artifact_uid: payload.artifact_uid}); return loadProtectedVariants().then(function(){ syncDiffProtectedControls(); }); }).catch(function(err){ setError(err.message || "Mark protected failed.", markSelectedDiffProtected, "diff_mark_protected"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function unmarkSelectedDiffProtected(){ if(isReadOnlyMode){ setError("Read-only mode blocks protected variant mutations.", null, "diff_unmark_protected"); return; } const artifact = selectedArtifact(); if(!artifact || !artifact.artifact_uid){ setError("Select a diff artifact before unmarking protected state.", unmarkSelectedDiffProtected, "diff_unmark_protected"); return; } const variant = protectedVariantByArtifactUid(String(artifact.artifact_uid || "")); if(!variant || !variant.variant_id){ setError("Selected artifact is not currently protected.", unmarkSelectedDiffProtected, "diff_unmark_protected"); return; } removeProtectedVariantById(String(variant.variant_id || "")); }';
+        echo 'function selectProtectedVariant(variant, focusDetail){ if(!variant || typeof variant !== "object"){ state.selectedProtectedVariantId = null; if(protectedVariantsDetail){ protectedVariantsDetail.textContent = ""; } return; } state.selectedProtectedVariantId = String(variant.variant_id || ""); if(protectedVariantsDetail){ protectedVariantsDetail.textContent = JSON.stringify(variant, null, 2); if(focusDetail && typeof protectedVariantsDetail.focus === "function"){ protectedVariantsDetail.focus(); } } if(protectedVariantUidInput){ protectedVariantUidInput.value = String(variant.artifact_uid || ""); } if(protectedVariantLabelInput){ protectedVariantLabelInput.value = String(variant.label || ""); } if(protectedVariantTypeSelect){ protectedVariantTypeSelect.value = String(variant.artifact_type || "unknown") || "unknown"; } if(protectedVariantScopeSelect){ protectedVariantScopeSelect.value = String(variant.scope || "site_local") || "site_local"; } if(protectedVariantReasonInput){ protectedVariantReasonInput.value = String(variant.reason || ""); } }';
+        echo 'function renderProtectedVariantsSummary(summary, total){ if(!protectedVariantsSummary){ return; } const normalized = summary && typeof summary === "object" ? summary : {}; const byType = normalized.by_artifact_type && typeof normalized.by_artifact_type === "object" ? normalized.by_artifact_type : {}; const byScope = normalized.by_scope && typeof normalized.by_scope === "object" ? normalized.by_scope : {}; const typeBits = Object.keys(byType).map(function(key){ return key + ":" + String(byType[key] || 0); }); const scopeBits = Object.keys(byScope).map(function(key){ return key + ":" + String(byScope[key] || 0); }); let text = "Total: " + Number(total || 0); if(typeBits.length > 0){ text += " | Types: " + typeBits.join(", "); } if(scopeBits.length > 0){ text += " | Scope: " + scopeBits.join(", "); } protectedVariantsSummary.textContent = text; }';
+        echo 'function renderProtectedVariants(items){ if(!protectedVariantsBody){ return; } const rows = Array.isArray(items) ? items : []; let selectedId = String(state.selectedProtectedVariantId || ""); if(rows.length === 0){ state.selectedProtectedVariantId = null; protectedVariantsBody.innerHTML = "<tr><td colspan=\\"7\\">No protected artifacts found.</td></tr>"; if(protectedVariantsDetail){ protectedVariantsDetail.textContent = ""; } return; } if(selectedId === ""){ selectedId = String(rows[0] && rows[0].variant_id || ""); } const selectedExists = rows.some(function(item){ return String(item && item.variant_id || "") === selectedId; }); if(!selectedExists){ selectedId = String(rows[0] && rows[0].variant_id || ""); } state.selectedProtectedVariantId = selectedId; protectedVariantsBody.innerHTML = rows.map(function(item){ const variantId = String(item.variant_id || ""); const artifactUid = String(item.artifact_uid || ""); const artifactType = String(item.artifact_type || ""); const scope = String(item.scope || ""); const label = String(item.label || artifactUid); const reason = String(item.reason || ""); const updatedAt = String(item.updated_at || ""); const selectedStyle = variantId === selectedId ? " style=\\"background:#f0f6fc;\\"" : ""; const actionHtml = isReadOnlyMode ? "<em>Read-only</em>" : ("<button type=\\"button\\" class=\\"button-link-delete\\" data-protected-action=\\"remove\\" data-variant-id=\\"" + esc(variantId) + "\\">Remove</button>"); return "<tr data-variant-id=\\"" + esc(variantId) + "\\"" + selectedStyle + "><td><code>" + esc(artifactUid) + "</code></td><td><code>" + esc(artifactType) + "</code></td><td><code>" + esc(scope) + "</code></td><td>" + esc(label) + "</td><td>" + esc(reason) + "</td><td>" + esc(updatedAt) + "</td><td>" + actionHtml + "</td></tr>"; }).join(""); Array.prototype.forEach.call(protectedVariantsBody.querySelectorAll("tr[data-variant-id]"), function(row){ row.addEventListener("click", function(ev){ const trigger = ev && ev.target ? ev.target.closest("[data-protected-action]") : null; if(trigger){ return; } const variantId = String(row.getAttribute("data-variant-id") || ""); const found = protectedVariantById(variantId); if(found){ selectProtectedVariant(found, true); renderProtectedVariants(state.protectedVariants); } }); }); Array.prototype.forEach.call(protectedVariantsBody.querySelectorAll("[data-protected-action=\\"remove\\"]"), function(button){ button.addEventListener("click", function(ev){ if(ev && ev.preventDefault){ ev.preventDefault(); } if(ev && ev.stopPropagation){ ev.stopPropagation(); } const variantId = String(button.getAttribute("data-variant-id") || ""); removeProtectedVariantById(variantId); }); }); const selectedVariant = protectedVariantById(selectedId); if(selectedVariant){ selectProtectedVariant(selectedVariant, false); } }';
+        echo 'function loadProtectedVariants(){ if(!cfg.protectedVariantsEndpoint || !protectedVariantsBody){ return Promise.resolve(); } setLoading(true); return fetch(withCacheBust(cfg.protectedVariantsEndpoint), {headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Cache-Control": "no-cache", "Pragma": "no-cache"}}).then(function(r){ if(!r.ok){ throw new Error("Protected artifacts request failed (" + r.status + ")"); } return r.json(); }).then(function(data){ const items = Array.isArray(data && data.items) ? data.items : []; state.protectedVariants = items; state.protectedVariantsSummary = data && typeof data.summary === "object" ? data.summary : null; renderProtectedVariantsSummary(state.protectedVariantsSummary, items.length); renderProtectedVariants(items); syncDiffProtectedControls(); setSuccess((cfg.messages && cfg.messages.protectedVariantsLoaded) || "Protected artifacts loaded.", "protected_variants_loaded"); }).catch(function(err){ setError(err.message || "Failed to load protected artifacts.", loadProtectedVariants, "protected_variants"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function createProtectedVariant(){ if(!cfg.protectedVariantsEndpoint){ return; } if(isReadOnlyMode){ setError("Read-only mode blocks protected variant mutations.", null, "protected_variants_create"); return; } const artifactUid = protectedVariantUidInput ? String(protectedVariantUidInput.value || "").trim() : ""; const label = protectedVariantLabelInput ? String(protectedVariantLabelInput.value || "").trim() : ""; const artifactType = protectedVariantTypeSelect ? String(protectedVariantTypeSelect.value || "").trim() : "unknown"; const scope = protectedVariantScopeSelect ? String(protectedVariantScopeSelect.value || "").trim() : "site_local"; const reason = protectedVariantReasonInput ? String(protectedVariantReasonInput.value || "").trim() : ""; if(!artifactUid){ setError("Artifact UID is required.", createProtectedVariant, "protected_variants_create"); if(protectedVariantUidInput && typeof protectedVariantUidInput.focus === "function"){ protectedVariantUidInput.focus(); } return; } if(!reason){ setError("Reason is required.", createProtectedVariant, "protected_variants_create"); if(protectedVariantReasonInput && typeof protectedVariantReasonInput.focus === "function"){ protectedVariantReasonInput.focus(); } return; } const payload = {artifact_uid: artifactUid, artifact_type: artifactType || "unknown", scope: scope || "site_local", reason: reason}; if(label){ payload.label = label; } setLoading(true); fetch(cfg.protectedVariantsEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "protected-variant-create-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify(payload)}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Protected artifact save failed."); } return data; }); }).then(function(data){ if(protectedVariantsDetail){ protectedVariantsDetail.textContent = JSON.stringify(data, null, 2); } const variant = data && typeof data.variant === "object" ? data.variant : null; if(variant){ state.selectedProtectedVariantId = String(variant.variant_id || ""); } if(protectedVariantReasonInput){ protectedVariantReasonInput.value = ""; } setSuccess((cfg.messages && cfg.messages.protectedVariantSaved) || "Protected artifact saved.", "protected_variant_saved", {variant_id: variant ? String(variant.variant_id || "") : ""}); return loadProtectedVariants(); }).catch(function(err){ setError(err.message || "Protected artifact save failed.", createProtectedVariant, "protected_variants_create"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function removeProtectedVariantById(variantId){ if(!cfg.protectedVariantsEndpoint || !variantId){ return; } if(isReadOnlyMode){ setError("Read-only mode blocks protected variant mutations.", null, "protected_variants_remove"); return; } const variant = protectedVariantById(variantId); const targetLabel = variant ? String(variant.artifact_uid || variant.variant_id || variantId) : String(variantId); const ok = window.confirm("Remove protected artifact " + targetLabel + "?"); if(!ok){ return; } setLoading(true); fetch(cfg.protectedVariantsEndpoint + "/" + encodeURIComponent(variantId), {method:"DELETE", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Idempotency-Key": "protected-variant-delete-" + Date.now(), "Content-Type":"application/json"}, body: JSON.stringify({confirm_remove: true})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Protected artifact remove failed."); } return data; }); }).then(function(data){ if(state.selectedProtectedVariantId === String(variantId)){ state.selectedProtectedVariantId = null; if(protectedVariantsDetail){ protectedVariantsDetail.textContent = ""; } } if(protectedVariantsDetail){ protectedVariantsDetail.textContent = JSON.stringify(data, null, 2); } setSuccess((cfg.messages && cfg.messages.protectedVariantRemoved) || "Protected artifact removed.", "protected_variant_removed", {variant_id: String(variantId)}); return loadProtectedVariants(); }).catch(function(err){ setError(err.message || "Protected artifact remove failed.", function(){ removeProtectedVariantById(variantId); }, "protected_variants_remove"); }).finally(function(){ setLoading(false); }); }';
+        echo 'function removeSelectedProtectedVariant(){ const variantId = String(state.selectedProtectedVariantId || ""); if(!variantId){ setError("Select a protected artifact to remove.", removeSelectedProtectedVariant, "protected_variants_remove"); return; } removeProtectedVariantById(variantId); }';
         echo 'function submitProposal(){ if(!cfg.proposalsEndpoint){ return; } const artifact = selectedArtifact(); if(!artifact){ setError("Select a diff artifact before submitting a proposal.", submitProposal, "proposal_submit"); return; } const notes = proposalReviewNotes ? proposalReviewNotes.value : ""; const payload = {artifact_uid: artifact.artifact_uid, artifact_type: artifact.artifact_type || "", base_hash: artifact.local_hash || "", proposed_hash: artifact.golden_hash || "", notes: notes}; setLoading(true); fetch(cfg.proposalsEndpoint, {method:"POST", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify(payload)}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Submit proposal failed."); } return data; }); }).then(function(){ setSuccess((cfg.messages && cfg.messages.proposalSubmitted) || "Proposal submitted.", "proposal_submitted"); loadProposals(); }).catch(function(err){ setError(err.message || "Submit proposal failed.", submitProposal, "proposal_submit"); }).finally(function(){ setLoading(false); }); }';
         echo 'function transitionProposal(nextStatus){ if(!cfg.proposalsEndpoint || !state.selectedProposalId){ setError("Select a proposal first.", function(){ transitionProposal(nextStatus); }, "proposal_transition"); return; } const notes = proposalReviewNotes ? proposalReviewNotes.value : ""; setLoading(true); fetch(cfg.proposalsEndpoint + "/" + encodeURIComponent(state.selectedProposalId), {method:"PATCH", headers: {"X-WP-Nonce": cfg.nonce, "X-DBVC-Correlation-ID": genCorrelationId(), "Content-Type":"application/json"}, body: JSON.stringify({status: nextStatus, review_notes: notes})}).then(function(r){ return r.json().then(function(data){ if(!r.ok){ throw new Error(data && data.message ? data.message : "Proposal transition failed."); } return data; }); }).then(function(){ setSuccess((cfg.messages && cfg.messages.proposalTransitioned) || "Proposal status updated.", "proposal_transition"); loadProposals(); }).catch(function(err){ setError(err.message || "Proposal transition failed.", function(){ transitionProposal(nextStatus); }, "proposal_transition"); }).finally(function(){ setLoading(false); }); }';
         echo 'if(refreshBtn){ refreshBtn.addEventListener("click", loadStatus); }';
@@ -1581,6 +1708,8 @@ final class DBVC_Bricks_Addon
         echo 'if(refreshPackagesBtn){ refreshPackagesBtn.addEventListener("click", loadPackages); }';
         echo 'if(runScanBtn){ runScanBtn.addEventListener("click", runDriftScan); }';
         echo 'if(refreshRawCompareBtn){ refreshRawCompareBtn.addEventListener("click", refreshRawCompareSelected); }';
+        echo 'if(diffMarkProtectedBtn){ diffMarkProtectedBtn.addEventListener("click", markSelectedDiffProtected); }';
+        echo 'if(diffUnmarkProtectedBtn){ diffUnmarkProtectedBtn.addEventListener("click", unmarkSelectedDiffProtected); }';
         echo 'if(exportReviewBtn){ exportReviewBtn.addEventListener("click", exportReview); }';
         echo 'if(dryRunApplyBtn){ dryRunApplyBtn.addEventListener("click", function(){ runApply(true); }); }';
         echo 'if(applySelectedBtn){ applySelectedBtn.addEventListener("click", function(){ const forceDry = applyDryRunToggle ? applyDryRunToggle.checked : false; runApply(forceDry ? true : false); }); }';
@@ -1591,11 +1720,14 @@ final class DBVC_Bricks_Addon
         echo 'if(proposalApproveBtn){ proposalApproveBtn.addEventListener("click", function(){ transitionProposal("APPROVED"); }); }';
         echo 'if(proposalRejectBtn){ proposalRejectBtn.addEventListener("click", function(){ transitionProposal("REJECTED"); }); }';
         echo 'if(proposalNeedsChangesBtn){ proposalNeedsChangesBtn.addEventListener("click", function(){ transitionProposal("NEEDS_CHANGES"); }); }';
+        echo 'if(refreshProtectedVariantsBtn){ refreshProtectedVariantsBtn.addEventListener("click", loadProtectedVariants); }';
+        echo 'if(addProtectedVariantBtn){ addProtectedVariantBtn.addEventListener("click", createProtectedVariant); }';
+        echo 'if(removeProtectedVariantBtn){ removeProtectedVariantBtn.addEventListener("click", removeSelectedProtectedVariant); }';
         echo 'if(refreshPackagesPanelBtn){ refreshPackagesPanelBtn.addEventListener("click", loadPackages); }';
         echo 'if(bootstrapPackageBtn){ bootstrapPackageBtn.addEventListener("click", createBootstrapPackage); }';
         echo 'if(refreshConnectedSitesBtn){ refreshConnectedSitesBtn.addEventListener("click", loadConnectedSites); }';
         echo 'if(saveConnectedSitesBtn){ saveConnectedSitesBtn.addEventListener("click", saveConnectedSites); }';
-        echo 'if(connectedSitesBody){ connectedSitesBody.addEventListener("click", function(ev){ const node = ev && ev.target ? ev.target.closest("[data-connected-action]") : null; if(!node){ return; } const action = String(node.getAttribute("data-connected-action") || ""); const siteUid = String(node.getAttribute("data-site-uid") || ""); if(action === "reset-linkage"){ const ok = window.confirm("Reset linkage for " + siteUid + " and set onboarding state to PENDING_INTRO?"); if(!ok){ return; } handleConnectedSiteAction(action, siteUid, {site_uid: siteUid, confirm_reset: true}); return; } if(action === "merge-alias"){ const canonicalUid = String(node.getAttribute("data-canonical-site-uid") || ""); const row = Array.isArray(state.connectedSites) ? state.connectedSites.find(function(s){ return String(s && s.site_uid || "") === siteUid; }) : null; const assistedEligible = !!(row && row.assisted_merge_eligible && row.assisted_merge_match_token); const ok = window.confirm("Deactivate alias " + siteUid + " and keep canonical UID " + canonicalUid + "?"); if(!ok){ return; } if(assistedEligible){ handleConnectedSiteAction("assisted-merge", siteUid, {canonical_site_uid: canonicalUid, alias_site_uid: siteUid, match_token: String(row.assisted_merge_match_token || ""), confirm_assisted_merge: true}); return; } handleConnectedSiteAction(action, siteUid, {canonical_site_uid: canonicalUid, alias_site_uid: siteUid, confirm_merge: true}); return; } if(action === "map-known-alias"){ let input = null; Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("[data-known-alias-input]"), function(el){ if(input){ return; } if(String(el.getAttribute("data-known-alias-input") || "") === siteUid){ input = el; } }); const aliasUid = input ? String(input.value || "").trim() : ""; if(!aliasUid){ setError("Enter a known alias UID before mapping.", null, "known_alias_map"); return; } const ok = window.confirm("Map alias " + aliasUid + " to canonical UID " + siteUid + "?"); if(!ok){ return; } handleConnectedSiteAction(action, siteUid, {canonical_site_uid: siteUid, alias_site_uid: aliasUid, reason: "manual_known_alias", confirm_alias: true}); } }); }';
+        echo 'if(connectedSitesBody){ connectedSitesBody.addEventListener("click", function(ev){ const node = ev && ev.target ? ev.target.closest("[data-connected-action]") : null; if(!node){ return; } const action = String(node.getAttribute("data-connected-action") || ""); const siteUid = String(node.getAttribute("data-site-uid") || ""); if(action === "approve-handshake"){ const ok = window.confirm("Accept intro handshake for " + siteUid + " and mark onboarding VERIFIED?"); if(!ok){ return; } handleConnectedSiteAction(action, siteUid, {site_uid: siteUid, decision: "accept", notes: "Accepted from Connected Sites table."}); return; } if(action === "reset-linkage"){ const ok = window.confirm("Reset linkage for " + siteUid + " and set onboarding state to PENDING_INTRO?"); if(!ok){ return; } handleConnectedSiteAction(action, siteUid, {site_uid: siteUid, confirm_reset: true}); return; } if(action === "forget-linkage"){ const ok = window.confirm("Forget linkage for " + siteUid + "? This will hide the row from default Connected Sites view until a fresh intro handshake is verified."); if(!ok){ return; } const confirmUid = String(window.prompt("Type the site UID to confirm:", siteUid) || "").trim(); if(confirmUid !== siteUid){ setError("Confirmation UID mismatch. Forget Linkage cancelled.", null, "forget_linkage_confirm"); return; } handleConnectedSiteAction(action, siteUid, {site_uid: siteUid, confirm_forget: true, confirm_site_uid: confirmUid}); return; } if(action === "merge-alias"){ const canonicalUid = String(node.getAttribute("data-canonical-site-uid") || ""); const row = Array.isArray(state.connectedSites) ? state.connectedSites.find(function(s){ return String(s && s.site_uid || "") === siteUid; }) : null; const assistedEligible = !!(row && row.assisted_merge_eligible && row.assisted_merge_match_token); const confirmMessage = assistedEligible ? ("Auto-merge alias " + siteUid + " to canonical UID " + canonicalUid + " using deterministic identity evidence?") : ("Deactivate alias " + siteUid + " and keep canonical UID " + canonicalUid + "?"); const ok = window.confirm(confirmMessage); if(!ok){ return; } if(assistedEligible){ handleConnectedSiteAction("assisted-merge", siteUid, {canonical_site_uid: canonicalUid, alias_site_uid: siteUid, match_token: String(row.assisted_merge_match_token || ""), confirm_assisted_merge: true}); return; } handleConnectedSiteAction(action, siteUid, {canonical_site_uid: canonicalUid, alias_site_uid: siteUid, confirm_merge: true}); return; } if(action === "map-known-alias"){ const row = Array.isArray(state.connectedSites) ? state.connectedSites.find(function(s){ return String(s && s.site_uid || "") === siteUid; }) : null; if(row && String(row.conflict_state || "") === "duplicate_base_url" && !row.is_conflict_canonical && String(row.canonical_site_uid || "")){ setError("Map known aliases on canonical UID " + String(row.canonical_site_uid || "") + ".", null, "known_alias_map"); return; } let input = null; Array.prototype.forEach.call(connectedSitesBody.querySelectorAll("[data-known-alias-input]"), function(el){ if(input){ return; } if(String(el.getAttribute("data-known-alias-input") || "") === siteUid){ input = el; } }); const aliasUid = input ? String(input.value || "").trim() : ""; if(!aliasUid){ setError("Enter a known alias UID before mapping.", null, "known_alias_map"); return; } const ok = window.confirm("Map alias " + aliasUid + " to canonical UID " + siteUid + "?"); if(!ok){ return; } handleConnectedSiteAction(action, siteUid, {canonical_site_uid: siteUid, alias_site_uid: aliasUid, reason: "manual_known_alias", confirm_alias: true}); } }); }';
         echo 'if(connectedSitesSearch){ connectedSitesSearch.addEventListener("input", function(){ renderConnectedSites(state.connectedSites); }); }';
         echo 'if(connectedSitesStatusFilter){ connectedSitesStatusFilter.addEventListener("change", function(){ renderConnectedSites(state.connectedSites); }); }';
         echo 'if(connectedSitesSort){ connectedSitesSort.addEventListener("change", function(){ renderConnectedSites(state.connectedSites); }); }';
@@ -1621,6 +1753,7 @@ final class DBVC_Bricks_Addon
         echo 'loadPackages();';
         echo 'loadConnectedSites();';
         echo 'loadProposals();';
+        echo 'loadProtectedVariants();';
         echo '})();';
         echo '</script>';
         echo '</div>';
@@ -1657,6 +1790,7 @@ final class DBVC_Bricks_Addon
                 'configure' => 'Configure',
                 'overview' => 'Overview',
                 'differences' => 'Differences',
+                'protected_artifacts' => 'Protected Artifacts',
                 'packages' => 'Packages',
                 'apply_restore' => 'Apply & Restore',
                 'proposals' => 'Proposals',
@@ -1721,7 +1855,19 @@ final class DBVC_Bricks_Addon
         echo '<section id="dbvc-bricks-config-panel-basic" class="dbvc-bricks-config-panel" role="tabpanel" aria-labelledby="dbvc-bricks-config-tab-basic">';
         echo '<p><strong>' . esc_html__('Basic Settings', 'dbvc') . '</strong></p>';
         echo '<p>' . esc_html__('This section is reserved for core role/auth/connectivity settings migration (client/mothership role, credentials, transport limits, payload size, timeout, and related baseline controls).', 'dbvc') . '</p>';
-        echo '<p>' . esc_html__('No fields have been moved here yet in this slice.', 'dbvc') . '</p>';
+        if (self::get_role_mode() === 'client') {
+            $read_only_attr = self::get_bool_setting('dbvc_bricks_read_only', false) ? ' disabled="disabled"' : '';
+            echo '<div class="dbvc-bricks-config-action-row" style="margin:12px 0;padding:12px;border:1px solid #dcdcde;background:#fff;">';
+            echo '<p style="margin:0 0 8px 0;"><strong>' . esc_html__('Linkage Recovery', 'dbvc') . '</strong></p>';
+            echo '<p style="margin:0 0 10px 0;">' . esc_html__('If mothership linkage drifts or onboarding is stuck, reset local intro/handshake state and immediately request a fresh intro handshake from this client site.', 'dbvc') . '</p>';
+            echo '<p style="margin:0;"><button type="button" class="button button-primary" id="dbvc-bricks-config-rerun-intro"' . $read_only_attr . '>' . esc_html__('Reset + Re-run Intro Handshake', 'dbvc') . '</button></p>';
+            if ($read_only_attr !== '') {
+                echo '<p style="margin:8px 0 0 0;"><small>' . esc_html__('Read-only mode is enabled, so this action is disabled.', 'dbvc') . '</small></p>';
+            }
+            echo '</div>';
+        } else {
+            echo '<p>' . esc_html__('No fields have been moved here yet in this slice.', 'dbvc') . '</p>';
+        }
         echo '</section>';
 
         echo '<section id="dbvc-bricks-config-panel-advanced" class="dbvc-bricks-config-panel" role="tabpanel" aria-labelledby="dbvc-bricks-config-tab-advanced" hidden>';
@@ -2094,7 +2240,7 @@ final class DBVC_Bricks_Addon
         $summary = ['queued' => 0, 'applied' => 0, 'failed' => 0, 'dead_letter' => 0];
         $correlation_id = sanitize_text_field((string) $request->get_header('X-DBVC-Correlation-ID'));
         if ($correlation_id === '') {
-            $correlation_id = 'shared-rules-' . substr(hash('sha256', microtime(true) . wp_rand()), 0, 8);
+            $correlation_id = 'shared-rules-' . substr(hash('sha256', microtime(true) . self::random_seed()), 0, 8);
         }
         $transport_mode = self::get_enum_setting('dbvc_bricks_command_transport_mode', ['direct_push', 'client_pull_envelope'], 'direct_push');
 
@@ -2679,7 +2825,7 @@ final class DBVC_Bricks_Addon
         $rows[] = [
             'event_type' => sanitize_key((string) $event_type),
             'payload' => self::sanitize_diagnostics_payload($payload),
-            'correlation_id' => 'shared-' . substr(hash('sha256', microtime(true) . wp_rand()), 0, 8),
+            'correlation_id' => 'shared-' . substr(hash('sha256', microtime(true) . self::random_seed()), 0, 8),
             'actor_id' => (int) get_current_user_id(),
             'at' => gmdate('c'),
         ];
@@ -2687,6 +2833,17 @@ final class DBVC_Bricks_Addon
             $rows = array_slice($rows, -self::UI_DIAGNOSTIC_MAX_ITEMS);
         }
         update_option(self::OPTION_UI_DIAGNOSTICS, array_values($rows));
+    }
+
+    /**
+     * @return string
+     */
+    private static function random_seed()
+    {
+        if (function_exists('wp_rand')) {
+            return (string) wp_rand();
+        }
+        return (string) mt_rand();
     }
 
     /**
@@ -3048,6 +3205,139 @@ final class DBVC_Bricks_Addon
     }
 
     /**
+     * Return runtime health warnings for known cross-site bootstrap hazards.
+     *
+     * @return array<int, array<string, string>>
+     */
+    public static function get_runtime_health_warnings()
+    {
+        $warnings = [];
+        $warnings = array_merge($warnings, self::get_external_dropin_warnings());
+        return array_values($warnings);
+    }
+
+    /**
+     * Detect wp-content drop-ins resolving outside the current site root.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private static function get_external_dropin_warnings()
+    {
+        if (! defined('WP_CONTENT_DIR') || ! defined('ABSPATH')) {
+            return [];
+        }
+
+        $warnings = [];
+        $dropins = [
+            'db.php' => 'dbvc_bricks_runtime_external_dropin_db_php',
+        ];
+
+        $site_root = wp_normalize_path((string) ABSPATH);
+        foreach ($dropins as $dropin_file => $warning_code) {
+            $dropin_path = wp_normalize_path((string) WP_CONTENT_DIR . '/' . $dropin_file);
+            if (! file_exists($dropin_path) && ! is_link($dropin_path)) {
+                continue;
+            }
+
+            $resolved_path = self::resolve_runtime_path($dropin_path);
+            if ($resolved_path === '') {
+                continue;
+            }
+            if (self::is_path_within_root($resolved_path, $site_root)) {
+                continue;
+            }
+
+            $warnings[] = [
+                'id' => sanitize_key('external_dropin_' . str_replace('.', '_', $dropin_file)),
+                'code' => sanitize_key($warning_code),
+                'severity' => 'warning',
+                'title' => sprintf('Runtime path conflict (%s)', $dropin_file),
+                'message' => sprintf(
+                    '%s resolves outside ABSPATH. Drop-in: %s; resolved: %s; site root: %s. This can cause cross-site bootstrap conflicts.',
+                    $dropin_file,
+                    $dropin_path,
+                    $resolved_path,
+                    $site_root
+                ),
+                'dropin' => sanitize_text_field($dropin_file),
+                'dropin_path' => $dropin_path,
+                'resolved_path' => $resolved_path,
+                'site_root' => $site_root,
+            ];
+        }
+
+        return $warnings;
+    }
+
+    /**
+     * Resolve a filesystem path for diagnostics, including symlink targets.
+     *
+     * @param string $path
+     * @return string
+     */
+    private static function resolve_runtime_path($path)
+    {
+        $resolved = realpath($path);
+        if (is_string($resolved) && $resolved !== '') {
+            return wp_normalize_path($resolved);
+        }
+
+        if (! is_link($path) || ! function_exists('readlink')) {
+            return '';
+        }
+
+        $target = readlink($path);
+        if (! is_string($target) || $target === '') {
+            return '';
+        }
+
+        if (self::is_absolute_path($target)) {
+            return wp_normalize_path($target);
+        }
+
+        return wp_normalize_path(dirname($path) . '/' . $target);
+    }
+
+    /**
+     * Determine whether a path is absolute on Unix or Windows.
+     *
+     * @param string $path
+     * @return bool
+     */
+    private static function is_absolute_path($path)
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        if (strpos($path, '/') === 0 || strpos($path, '\\\\') === 0) {
+            return true;
+        }
+
+        return (bool) preg_match('/^[A-Za-z]:[\\\\\\/]/', $path);
+    }
+
+    /**
+     * Determine whether candidate path is within the provided root directory.
+     *
+     * @param string $candidate_path
+     * @param string $root_path
+     * @return bool
+     */
+    private static function is_path_within_root($candidate_path, $root_path)
+    {
+        $candidate_path = wp_normalize_path($candidate_path);
+        $root_path = wp_normalize_path($root_path);
+        if ($candidate_path === '' || $root_path === '') {
+            return false;
+        }
+
+        $root_path = trailingslashit($root_path);
+        $candidate_with_trailing = trailingslashit($candidate_path);
+        return strpos($candidate_with_trailing, $root_path) === 0;
+    }
+
+    /**
      * Return UI contract/feature capability payload.
      *
      * @return \WP_REST_Response
@@ -3358,6 +3648,16 @@ final class DBVC_Bricks_Addon
 
         register_rest_route(
             'dbvc/v1/bricks',
+            '/connected-sites/forget-linkage',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_forget_linkage'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
             '/connected-sites/merge-alias',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -3393,6 +3693,40 @@ final class DBVC_Bricks_Addon
                 'methods'             => \WP_REST_Server::CREATABLE,
                 'callback'            => [DBVC_Bricks_Connected_Sites::class, 'rest_assisted_merge'],
                 'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/protected-variants',
+            [
+                [
+                    'methods'             => \WP_REST_Server::READABLE,
+                    'callback'            => [DBVC_Bricks_Protected_Variants::class, 'rest_list'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
+                [
+                    'methods'             => \WP_REST_Server::CREATABLE,
+                    'callback'            => [DBVC_Bricks_Protected_Variants::class, 'rest_create'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/protected-variants/(?P<variant_id>[A-Za-z0-9_-]+)',
+            [
+                [
+                    'methods'             => \WP_REST_Server::EDITABLE,
+                    'callback'            => [DBVC_Bricks_Protected_Variants::class, 'rest_update'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
+                [
+                    'methods'             => \WP_REST_Server::DELETABLE,
+                    'callback'            => [DBVC_Bricks_Protected_Variants::class, 'rest_delete'],
+                    'permission_callback' => [self::class, 'can_manage'],
+                ],
             ]
         );
 
@@ -3543,6 +3877,7 @@ final class DBVC_Bricks_Addon
             'visibility' => self::get_enum_setting(self::OPTION_VISIBILITY, ['submenu_only', 'configure_and_submenu'], 'configure_and_submenu'),
             'ui_contract_version' => self::UI_CONTRACT_VERSION,
             'deprecations' => self::get_deprecation_notices(),
+            'health_warnings' => self::get_runtime_health_warnings(),
             'timestamp_gmt' => gmdate('c'),
         ]);
     }
@@ -3572,6 +3907,7 @@ final class DBVC_Bricks_Addon
         return rest_ensure_response([
             'items' => array_values($rows),
             'package_delivery' => $package_delivery,
+            'health_warnings' => self::get_runtime_health_warnings(),
             'limit' => $limit,
         ]);
     }
@@ -3605,6 +3941,9 @@ final class DBVC_Bricks_Addon
             'proposals_loaded',
             'proposal_submitted',
             'proposal_transition',
+            'protected_variants_loaded',
+            'protected_variant_saved',
+            'protected_variant_removed',
             'diagnostics_loaded',
             'review_export',
             'raw_compare_refreshed',

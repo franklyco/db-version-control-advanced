@@ -5,6 +5,9 @@
          backupStaticAttributes="false"
          beStrictAboutTestsThatDoNotTestAnything="false">
     <testsuites>
+        <testsuite name="default">
+            <directory suffix="Test.php">tests/phpunit</directory>
+        </testsuite>
         <testsuite name="DBVC Plugin">
             <directory suffix="Test.php">tests/phpunit</directory>
         </testsuite>
