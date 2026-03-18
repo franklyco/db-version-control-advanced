@@ -8,6 +8,12 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-contrac
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-helpers.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-module-interface.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-service-container.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-contracts.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-configure-addon-settings.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-app-loader.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-admin-menu-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/bootstrap/dbvc-cc-v2-runtime-registrar.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/bootstrap/dbvc-cc-v2-addon.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/settings/dbvc-cc-settings-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/settings/dbvc-cc-settings-module.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/collector/dbvc-cc-artifact-manager.php';
@@ -63,11 +69,17 @@ final class DBVC_CC_Addon_Bootstrap
     private static $container = null;
 
     /**
+     * @var string
+     */
+    private static $active_runtime = '';
+
+    /**
      * @return void
      */
     public static function bootstrap()
     {
         DBVC_CC_Contracts::ensure_phase_zero_defaults();
+        DBVC_CC_V2_Contracts::ensure_defaults();
         dbvc_cc_guard_no_source_runtime_imports('dbvc_cc_bootstrap_start');
 
         if (is_multisite()) {
@@ -78,17 +90,11 @@ final class DBVC_CC_Addon_Bootstrap
         }
 
         if (get_option(DBVC_CC_Contracts::OPTION_GLOBAL_KILL_SWITCH, '0') === '1') {
+            self::deactivate_v1_runtime();
             return;
         }
 
-        if (get_option(DBVC_CC_Contracts::OPTION_ADDON_ENABLED, '1') !== '1') {
-            return;
-        }
-
-        $container = new DBVC_CC_Service_Container();
-        self::register_module_definitions($container);
-        self::register_module_hooks($container);
-        self::$container = $container;
+        DBVC_CC_V2_Addon::bootstrap();
 
         dbvc_cc_guard_no_source_runtime_imports('dbvc_cc_bootstrap_complete');
     }
@@ -99,6 +105,101 @@ final class DBVC_CC_Addon_Bootstrap
     public static function get_container()
     {
         return self::$container;
+    }
+
+    /**
+     * @return string
+     */
+    public static function get_active_runtime()
+    {
+        return self::$active_runtime;
+    }
+
+    /**
+     * @return void
+     */
+    public static function bootstrap_v1_runtime()
+    {
+        if (self::$container instanceof DBVC_CC_Service_Container) {
+            self::$active_runtime = DBVC_CC_V2_Contracts::RUNTIME_V1;
+            return;
+        }
+
+        $container = new DBVC_CC_Service_Container();
+        self::register_module_definitions($container);
+        self::register_module_hooks($container);
+        self::$container = $container;
+        self::$active_runtime = DBVC_CC_V2_Contracts::RUNTIME_V1;
+    }
+
+    /**
+     * @return void
+     */
+    public static function deactivate_v1_runtime()
+    {
+        if (self::$active_runtime !== DBVC_CC_V2_Contracts::RUNTIME_V1) {
+            self::clear_scheduled_hooks();
+            self::$container = null;
+            return;
+        }
+
+        remove_action('admin_init', [DBVC_CC_Settings_Service::class, 'register_settings']);
+        remove_action('admin_init', [DBVC_CC_Schema_Snapshot_Service::class, 'maybe_generate_initial_snapshot'], 20);
+        remove_action(DBVC_CC_Contracts::ACTION_RUN_SCHEMA_SNAPSHOT, [DBVC_CC_Schema_Snapshot_Service::class, 'generate_snapshot']);
+        remove_action('init', [DBVC_CC_Artifact_Manager::class, 'ensure_storage_roots'], 15);
+
+        $admin_controller = DBVC_CC_Admin_Controller::get_instance();
+        remove_action('admin_menu', [$admin_controller, 'add_admin_menu'], 90);
+        remove_action('admin_enqueue_scripts', [$admin_controller, 'enqueue_scripts']);
+
+        $ajax_controller = DBVC_CC_Ajax_Controller::get_instance();
+        remove_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_GET_URLS_FROM_SITEMAP, [$ajax_controller, 'get_urls_from_sitemap']);
+        remove_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_PROCESS_SINGLE_URL, [$ajax_controller, 'process_single_url']);
+        remove_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_DBVC_CC_TRIGGER_DOMAIN_AI_REFRESH, [$ajax_controller, 'dbvc_cc_trigger_domain_ai_refresh']);
+
+        $explorer_rest = DBVC_CC_Explorer_REST_Controller::get_instance();
+        remove_action('rest_api_init', [$explorer_rest, 'register_routes']);
+
+        $ai_service = DBVC_CC_AI_Service::get_instance();
+        remove_action(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB, [$ai_service, 'process_job'], 10);
+
+        $ai_rest = DBVC_CC_AI_REST_Controller::get_instance();
+        remove_action('rest_api_init', [$ai_rest, 'register_routes']);
+
+        $workbench_rest = DBVC_CC_Workbench_REST_Controller::get_instance();
+        remove_action('rest_api_init', [$workbench_rest, 'register_routes']);
+
+        $catalog_rest = DBVC_CC_Target_Field_Catalog_REST_Controller::get_instance();
+        remove_action('rest_api_init', [$catalog_rest, 'register_routes']);
+
+        $media_rest = DBVC_CC_Media_REST_Controller::get_instance();
+        remove_action('rest_api_init', [$media_rest, 'register_routes']);
+
+        $import_plan_rest = DBVC_CC_Import_Plan_REST_Controller::get_instance();
+        remove_action('rest_api_init', [$import_plan_rest, 'register_routes']);
+
+        $import_executor_rest = DBVC_CC_Import_Executor_REST_Controller::get_instance();
+        remove_action('rest_api_init', [$import_executor_rest, 'register_routes']);
+
+        $mapping_rebuild = DBVC_CC_Mapping_Rebuild_Service::get_instance();
+        remove_action(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH, [$mapping_rebuild, 'dbvc_cc_process_rebuild_batch_event'], 10);
+
+        self::clear_scheduled_hooks();
+        self::$container = null;
+        self::$active_runtime = '';
+    }
+
+    /**
+     * @return void
+     */
+    public static function clear_scheduled_hooks()
+    {
+        if (! function_exists('wp_clear_scheduled_hook')) {
+            return;
+        }
+
+        wp_clear_scheduled_hook(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB);
+        wp_clear_scheduled_hook(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH);
     }
 
     /**
