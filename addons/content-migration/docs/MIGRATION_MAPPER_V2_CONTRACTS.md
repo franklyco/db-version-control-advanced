@@ -4,6 +4,10 @@
 
 This document defines the proposed contract surface for `Migration Mapper V2`.
 
+For a short current-runtime index of the active V2 routes and artifact families, also use:
+
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+
 Its purpose is to freeze the high-level V2 data model before implementation work starts so that:
 
 - pipeline stages are explicit
@@ -94,13 +98,16 @@ Recommended resource families:
 - `/runs/{run_id}/urls/{page_id}/decision`
 - `/runs/{run_id}/urls/{page_id}/rerun`
 - `/runs/{run_id}/dry-run`
-- `/runs/{run_id}/import`
+- `/runs/{run_id}/preflight-approve`
+- `/runs/{run_id}/execute`
 
 Recommended behavior:
 
 - list and summary routes should be optimized for default workspace views
 - deep evidence routes should support drawers and inspector panels
 - mutation routes should be scoped to the affected run and URL where possible
+- package dry-run, preflight approval, and execute routes should consume the selected package as their preferred upstream input
+- the package surface should expose selected-package workflow state and recent import execution history once package observability is available
 - internal pipeline step names should not force the default UI to think in raw phase endpoints
 
 Identifier rule:
@@ -621,6 +628,11 @@ Required top-level fields:
 - `warnings[]`
 - `quality_score`
 
+Recommended `readiness_status` values:
+- `ready_for_import`
+- `needs_review`
+- `blocked`
+
 ## AI Stage Operating Contract
 
 Each AI stage should have a stable operating contract.
@@ -693,6 +705,7 @@ Required fields:
 
 Per-record fields:
 - `page_id`
+- `path`
 - `source_url`
 - `target_entity_key`
 - `target_action`
@@ -708,6 +721,16 @@ Required fields:
 - `package_id`
 - `media_items[]`
 
+Per-media-item fields:
+- `page_id`
+- `path`
+- `media_id`
+- `source_url`
+- `target_ref`
+- `media_kind`
+- `recommendation_id`
+- `trace`
+
 ### `package-qa-report.v1.json`
 
 Required fields:
@@ -719,6 +742,11 @@ Required fields:
 - `blocking_issues[]`
 - `warnings[]`
 - `quality_score`
+
+Recommended `readiness_status` values:
+- `ready_for_import`
+- `needs_review`
+- `blocked`
 
 ### `package-summary.v1.json`
 

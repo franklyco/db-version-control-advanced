@@ -466,12 +466,16 @@ Owns:
 
 - package history selection
 - package detail panel state
+- package workflow-state visibility
+- package import-history visibility
 
 Consumes:
 
 - package summary
 - manifest summary
 - QA summary
+- persisted workflow state for build, dry-run, preflight, and execute
+- recent package-linked import execution history
 - downstream dry-run or import state
 
 ## Build and Bundle Guidance

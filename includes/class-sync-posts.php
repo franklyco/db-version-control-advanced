@@ -2521,6 +2521,192 @@ $acf_relationship_fields = [
     }
 
     /**
+     * Import only the selected post JSON files instead of scanning the whole sync folder.
+     *
+     * @param array $filepaths
+     * @param bool  $smart_import
+     * @param array $options
+     * @return array
+     */
+    public static function import_selected_post_files(array $filepaths, $smart_import = false, array $options = [])
+    {
+        $smart_import = (bool) $smart_import;
+        $options = wp_parse_args($options, [
+            'source' => 'selected_files',
+        ]);
+
+        $result = [
+            'requested'    => count($filepaths),
+            'eligible'     => 0,
+            'processed'    => 0,
+            'applied'      => 0,
+            'skipped'      => 0,
+            'errors'       => 0,
+            'details'      => [],
+            'smart_import' => $smart_import,
+            'source'       => (string) $options['source'],
+        ];
+
+        $safe_paths = [];
+        $seen_paths = [];
+
+        foreach ($filepaths as $filepath) {
+            $filepath = is_string($filepath) ? trim($filepath) : '';
+            if ($filepath === '') {
+                continue;
+            }
+
+            if (! file_exists($filepath)) {
+                $result['errors']++;
+                $result['details'][] = [
+                    'file'    => basename($filepath),
+                    'path'    => $filepath,
+                    'status'  => 'error',
+                    'message' => __('Import source missing.', 'dbvc'),
+                ];
+                continue;
+            }
+
+            $real_path = realpath($filepath);
+            if ($real_path === false) {
+                $result['errors']++;
+                $result['details'][] = [
+                    'file'    => basename($filepath),
+                    'path'    => $filepath,
+                    'status'  => 'error',
+                    'message' => __('Unable to resolve import source path.', 'dbvc'),
+                ];
+                continue;
+            }
+
+            if (isset($seen_paths[$real_path])) {
+                continue;
+            }
+            $seen_paths[$real_path] = true;
+
+            if (! self::is_safe_file_path($real_path)) {
+                $result['errors']++;
+                $result['details'][] = [
+                    'file'    => basename($real_path),
+                    'path'    => $real_path,
+                    'status'  => 'error',
+                    'message' => __('Import source is outside the sync folder.', 'dbvc'),
+                ];
+                continue;
+            }
+
+            $safe_paths[] = $real_path;
+        }
+
+        $result['eligible'] = count($safe_paths);
+
+        if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+            DBVC_Sync_Logger::log_import('Targeted import started', [
+                'source'       => $result['source'],
+                'requested'    => $result['requested'],
+                'eligible'     => $result['eligible'],
+                'smart_import' => $smart_import,
+                'files'        => array_map('basename', $safe_paths),
+            ]);
+        }
+
+        self::$suppress_export_on_import = true;
+        try {
+            foreach ($safe_paths as $filepath) {
+                $result['processed']++;
+                $import_result = self::import_post_from_json($filepath, $smart_import, null, null, null, null, false, []);
+
+                $detail = [
+                    'file'    => basename($filepath),
+                    'path'    => $filepath,
+                    'status'  => 'error',
+                    'message' => '',
+                ];
+
+                if ($import_result === self::IMPORT_RESULT_APPLIED) {
+                    $result['applied']++;
+                    $detail['status'] = self::IMPORT_RESULT_APPLIED;
+                    $detail['message'] = __('Imported.', 'dbvc');
+                } elseif ($import_result === self::IMPORT_RESULT_SKIPPED) {
+                    $result['skipped']++;
+                    $detail['status'] = self::IMPORT_RESULT_SKIPPED;
+                    $detail['message'] = __('Skipped.', 'dbvc');
+                } elseif (is_wp_error($import_result)) {
+                    $result['errors']++;
+                    $detail['message'] = $import_result->get_error_message();
+                } else {
+                    $result['errors']++;
+                    $detail['message'] = is_string($import_result) && $import_result !== ''
+                        ? $import_result
+                        : __('Unknown import result.', 'dbvc');
+                }
+
+                $result['details'][] = $detail;
+
+                if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                    DBVC_Sync_Logger::log_import('Targeted import file result', [
+                        'source'  => $result['source'],
+                        'file'    => $detail['file'],
+                        'path'    => $detail['path'],
+                        'status'  => $detail['status'],
+                        'message' => $detail['message'],
+                    ]);
+                }
+            }
+        } finally {
+            self::$suppress_export_on_import = false;
+        }
+
+        if (self::$needs_rewrite_flush) {
+            flush_rewrite_rules(false);
+            self::$needs_rewrite_flush = false;
+        }
+
+        if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+            DBVC_Sync_Logger::log_import('Targeted import completed', [
+                'source'       => $result['source'],
+                'requested'    => $result['requested'],
+                'eligible'     => $result['eligible'],
+                'processed'    => $result['processed'],
+                'applied'      => $result['applied'],
+                'skipped'      => $result['skipped'],
+                'errors'       => $result['errors'],
+                'smart_import' => $smart_import,
+            ]);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Collect routed post JSON paths from an upload router report.
+     *
+     * @param array $route_stats
+     * @return array
+     */
+    private static function collect_routed_post_file_paths(array $route_stats): array
+    {
+        $paths = [];
+        if (empty($route_stats['details']) || ! is_array($route_stats['details'])) {
+            return $paths;
+        }
+
+        foreach ($route_stats['details'] as $detail) {
+            $scenario = isset($detail['scenario']) ? (string) $detail['scenario'] : '';
+            $status   = isset($detail['status']) ? (string) $detail['status'] : '';
+            $path     = isset($detail['path']) ? (string) $detail['path'] : '';
+
+            if ($scenario !== 'post' || $status !== 'routed' || $path === '') {
+                continue;
+            }
+
+            $paths[] = $path;
+        }
+
+        return array_values(array_unique($paths));
+    }
+
+    /**
      * Build import posts from Json
      * Added: 08-12-2025
      */
@@ -4192,7 +4378,10 @@ $acf_relationship_fields = [
         $success = false;
         $failure_reason = '';
         $dry_run = ! empty($_POST['dbvc_sync_dry_run']);
+        $immediate_import_requested = ! empty($_POST['dbvc_upload_import_immediately']);
+        $immediate_smart_import = $immediate_import_requested && ! empty($_POST['dbvc_upload_smart_import']);
         $route_report = null;
+        $should_normalize_term_json_files = false;
         $has_multiple = count($uploads) > 1;
         $has_zip = false;
         foreach ($uploads as $upload) {
@@ -4202,10 +4391,22 @@ $acf_relationship_fields = [
                 break;
             }
         }
+        $can_run_immediate_import = $immediate_import_requested
+            && ! $dry_run
+            && ! $has_zip
+            && $extension === 'json'
+            && class_exists('DBVC_Import_Router');
+
+        $log_context['immediate_import_requested'] = (bool) $immediate_import_requested;
+        $log_context['immediate_import_enabled'] = (bool) $can_run_immediate_import;
+        $log_context['smart_import'] = (bool) $immediate_smart_import;
 
         if (! $dry_run) {
             $should_clear = true;
             if ($has_multiple && $extension === 'json') {
+                $should_clear = false;
+            }
+            if ($can_run_immediate_import && $extension === 'json') {
                 $should_clear = false;
             }
             // Always clear existing sync folder first.
@@ -4217,8 +4418,9 @@ $acf_relationship_fields = [
                     ]);
                 }
             } elseif (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
-                DBVC_Sync_Logger::log_upload('Sync folder retained for multi-file JSON upload', [
+                DBVC_Sync_Logger::log_upload('Sync folder retained prior to upload', [
                     'sync_dir' => $sync_dir,
+                    'reason'   => ($can_run_immediate_import && $extension === 'json') ? 'immediate_import' : 'multi_file_json',
                 ]);
             }
         }
@@ -4248,6 +4450,7 @@ $acf_relationship_fields = [
                     @rmdir(dirname($tmp_dir));
 
                     $success = true;
+                    $should_normalize_term_json_files = true;
                 } else {
                     $zip->close();
                     $failure_reason = 'zip_extract_failed';
@@ -4264,9 +4467,82 @@ $acf_relationship_fields = [
                 'dry_run'           => $dry_run,
             ]);
             $route_report = $route_stats;
-            $success = ($route_stats['errors'] ?? 0) === 0;
+            $route_errors = (int) ($route_stats['errors'] ?? 0);
+            $should_normalize_term_json_files = $route_errors === 0;
+
+            if ($immediate_import_requested) {
+                $immediate_import_report = [
+                    'requested'    => true,
+                    'enabled'      => (bool) $can_run_immediate_import,
+                    'smart_import' => (bool) $immediate_smart_import,
+                    'eligible'     => 0,
+                    'processed'    => 0,
+                    'applied'      => 0,
+                    'skipped'      => 0,
+                    'errors'       => 0,
+                    'details'      => [],
+                    'message'      => '',
+                ];
+
+                if (! $can_run_immediate_import) {
+                    if ($dry_run) {
+                        $immediate_import_report['message'] = __('Immediate import skipped during dry run.', 'dbvc');
+                    } elseif ($has_zip) {
+                        $immediate_import_report['message'] = __('Immediate import only applies to JSON uploads.', 'dbvc');
+                    } else {
+                        $immediate_import_report['message'] = __('Immediate import is unavailable for this upload.', 'dbvc');
+                    }
+                } else {
+                    $candidate_paths = self::collect_routed_post_file_paths($route_stats);
+                    $immediate_import_report['eligible'] = count($candidate_paths);
+
+                    if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+                        DBVC_Sync_Logger::log_upload('Immediate import candidates prepared', [
+                            'eligible'     => $immediate_import_report['eligible'],
+                            'smart_import' => (bool) $immediate_smart_import,
+                            'files'        => array_map('basename', $candidate_paths),
+                        ]);
+                    }
+
+                    if (! empty($candidate_paths)) {
+                        $import_result = self::import_selected_post_files($candidate_paths, $immediate_smart_import, [
+                            'source' => 'upload_immediate',
+                        ]);
+
+                        $immediate_import_report['processed'] = (int) ($import_result['processed'] ?? 0);
+                        $immediate_import_report['applied'] = (int) ($import_result['applied'] ?? 0);
+                        $immediate_import_report['skipped'] = (int) ($import_result['skipped'] ?? 0);
+                        $immediate_import_report['errors'] = (int) ($import_result['errors'] ?? 0);
+                        $immediate_import_report['details'] = isset($import_result['details']) && is_array($import_result['details'])
+                            ? $import_result['details']
+                            : [];
+                        $immediate_import_report['message'] = sprintf(
+                            /* translators: 1: processed 2: applied 3: skipped */
+                            __('Processed %1$d uploaded post file(s): %2$d applied, %3$d skipped.', 'dbvc'),
+                            $immediate_import_report['processed'],
+                            $immediate_import_report['applied'],
+                            $immediate_import_report['skipped']
+                        );
+                    } else {
+                        $immediate_import_report['message'] = __('No routed post JSON files were eligible for immediate import.', 'dbvc');
+                    }
+                }
+
+                $route_report['immediate_import'] = $immediate_import_report;
+            }
+
+            $immediate_import_errors = isset($route_report['immediate_import']['errors'])
+                ? (int) $route_report['immediate_import']['errors']
+                : 0;
+            $success = ($route_errors === 0) && ($immediate_import_errors === 0);
             if (! $success) {
-                $failure_reason = ($route_stats['errors'] ?? 0) > 0 ? 'json_route_failed' : 'json_route_skipped';
+                if ($route_errors > 0) {
+                    $failure_reason = 'json_route_failed';
+                } elseif ($immediate_import_errors > 0) {
+                    $failure_reason = 'json_immediate_import_failed';
+                } else {
+                    $failure_reason = 'json_route_skipped';
+                }
             }
         } elseif ('json' === $extension) {
             require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -4299,7 +4575,7 @@ $acf_relationship_fields = [
             update_option('dbvc_sync_upload_report', $route_report, false);
         }
 
-        if ($success && class_exists('DBVC_Sync_Taxonomies') && method_exists('DBVC_Sync_Taxonomies', 'normalize_term_json_files')) {
+        if ($should_normalize_term_json_files && class_exists('DBVC_Sync_Taxonomies') && method_exists('DBVC_Sync_Taxonomies', 'normalize_term_json_files')) {
             DBVC_Sync_Taxonomies::normalize_term_json_files();
         }
 

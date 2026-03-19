@@ -130,6 +130,17 @@ npm run build
 
 This regenerates `build/admin-app.js`/`build/admin-app.css`, which the plugin enqueues inside WP Admin. Without this step you will not see updates like the masking tools drawer or status badges in the browser.
 
+## Content Collector V2 Context Pack
+
+The Content Collector addon keeps its V2 implementation context pack under:
+
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+
+Use those docs as the shortest resume path before reopening the larger V2 planning set.
+
 ## UI → CLI Tutorial Notes
 
 - **Review queue:** Everything you can do in the DBVC Export React screen (list proposals, inspect counts, recapture snapshots, dedupe manifests) now has a CLI counterpart through `wp dbvc proposals list` flags.

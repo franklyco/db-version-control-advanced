@@ -105,7 +105,7 @@ final class DBVC_CC_V2_App_Loader
             'adminUrl' => esc_url_raw(admin_url('admin.php?page=' . DBVC_CC_V2_Contracts::ADMIN_MENU_SLUG)),
             'apiRoot' => esc_url_raw(rest_url(DBVC_CC_V2_Contracts::REST_NAMESPACE . '/')),
             'nonce' => wp_create_nonce('wp_rest'),
-            'defaultRunId' => DBVC_CC_V2_Contracts::DEFAULT_RUN_ID,
+            'defaultRunId' => self::get_default_run_id(),
             'runtimeVersion' => DBVC_CC_V2_Contracts::get_runtime_version(),
             'automation' => DBVC_CC_V2_Contracts::get_automation_settings(),
             'route' => self::get_route_bootstrap(),
@@ -122,6 +122,19 @@ final class DBVC_CC_V2_App_Loader
                 'drawerRoot' => 'dbvc-cc-v2-inspector-drawer',
             ],
         ];
+    }
+
+    /**
+     * @return string
+     */
+    private static function get_default_run_id()
+    {
+        $runs = DBVC_CC_V2_Domain_Journey_Service::get_instance()->list_latest_states();
+        if (! empty($runs[0]['journey_id'])) {
+            return (string) $runs[0]['journey_id'];
+        }
+
+        return DBVC_CC_V2_Contracts::DEFAULT_RUN_ID;
     }
 
     /**

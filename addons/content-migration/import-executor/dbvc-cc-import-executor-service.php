@@ -44,6 +44,17 @@ final class DBVC_CC_Import_Executor_Service
             return $dry_run_plan;
         }
 
+        return $this->execute_dry_run_plan($dry_run_plan);
+    }
+
+    /**
+     * Executes a dry-run simulation from a prepared dry-run plan payload.
+     *
+     * @param array<string, mixed> $dry_run_plan
+     * @return array<string, mixed>|WP_Error
+     */
+    public function execute_dry_run_plan(array $dry_run_plan)
+    {
         $plan_status = isset($dry_run_plan['status']) ? sanitize_key((string) $dry_run_plan['status']) : 'blocked';
         $domain = isset($dry_run_plan['domain']) ? sanitize_text_field((string) $dry_run_plan['domain']) : '';
         $path = isset($dry_run_plan['path']) ? sanitize_text_field((string) $dry_run_plan['path']) : '';
@@ -209,107 +220,17 @@ final class DBVC_CC_Import_Executor_Service
             return $dry_run_execution;
         }
 
-        $plan_id = isset($dry_run_execution['plan_id']) ? sanitize_key((string) $dry_run_execution['plan_id']) : '';
-        $domain = isset($dry_run_execution['domain']) ? sanitize_text_field((string) $dry_run_execution['domain']) : '';
-        $path = isset($dry_run_execution['path']) ? sanitize_text_field((string) $dry_run_execution['path']) : '';
-        $source_url = isset($dry_run_execution['source_url']) ? esc_url_raw((string) $dry_run_execution['source_url']) : '';
-        $dry_run_status = isset($dry_run_execution['status']) ? sanitize_key((string) $dry_run_execution['status']) : 'blocked';
+        return $this->dbvc_cc_approve_preflight_from_dry_run_execution($dry_run_execution, $confirm_approval);
+    }
 
-        $guard_failures = [];
-        if (! rest_sanitize_boolean($confirm_approval)) {
-            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
-                'approval_confirmation_required',
-                __('Explicit preflight approval confirmation is required before execute can be armed.', 'dbvc'),
-                false
-            );
-        }
-
-        if ($dry_run_status !== 'completed') {
-            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
-                'dry_run_not_completed',
-                __('Dry-run execution must be completed before import approval is eligible.', 'dbvc'),
-                true
-            );
-        }
-
-        $dbvc_cc_dry_run_plan = isset($dry_run_execution['dry_run_plan']) && is_array($dry_run_execution['dry_run_plan'])
-            ? $dry_run_execution['dry_run_plan']
-            : [];
-        $dbvc_cc_phase4_context = $this->dbvc_cc_build_phase4_context($dbvc_cc_dry_run_plan);
-        $write_preparation = $this->dbvc_cc_get_empty_write_preparation();
-        if ($dry_run_status === 'completed') {
-            $write_preparation = $this->dbvc_cc_build_write_preparation($dry_run_execution);
-        }
-
-        $write_barriers = isset($write_preparation['write_barriers']) && is_array($write_preparation['write_barriers'])
-            ? array_values($write_preparation['write_barriers'])
-            : [];
-        $write_barrier_count = 0;
-        foreach ($write_barriers as $dbvc_cc_barrier) {
-            if (is_array($dbvc_cc_barrier) && ! empty($dbvc_cc_barrier['blocking'])) {
-                $write_barrier_count++;
-            }
-        }
-        $deferred_media_count = isset($write_preparation['operation_counts']['deferred_media_writes'])
-            ? absint($write_preparation['operation_counts']['deferred_media_writes'])
-            : 0;
-        $deferred_media_reasons = isset($write_preparation['deferred_media_reasons']) && is_array($write_preparation['deferred_media_reasons'])
-            ? array_values($write_preparation['deferred_media_reasons'])
-            : [];
-
-        $approval_context = $this->dbvc_cc_build_preflight_approval_context($dry_run_execution, $write_preparation);
-        $approval_summary = $this->dbvc_cc_build_preflight_approval_summary($dry_run_execution, $write_preparation);
-        $approval_eligible = ($dry_run_status === 'completed' && $write_barrier_count === 0);
-        $approval_valid = false;
-        $approval = $this->dbvc_cc_get_empty_preflight_approval();
-
-        if ($approval_eligible && empty($guard_failures)) {
-            $approval = $this->dbvc_cc_create_preflight_approval($approval_context, $approval_summary);
-            $approval_valid = ! empty($approval['approval_token']);
-        }
-
-        return [
-            'approval_schema_version' => self::DBVC_CC_PREFLIGHT_APPROVAL_SCHEMA_VERSION,
-            'generated_at' => current_time('c'),
-            'status' => $approval_valid ? 'approved' : 'blocked',
-            'approval_required' => true,
-            'approval_eligible' => $approval_eligible,
-            'approval_valid' => $approval_valid,
-            'execute_ready' => $approval_valid,
-            'domain' => $domain,
-            'path' => $path,
-            'source_url' => $source_url,
-            'plan_id' => $plan_id,
-            'dry_run_execution_id' => isset($dry_run_execution['execution_id']) ? sanitize_key((string) $dry_run_execution['execution_id']) : '',
-            'phase4_context' => $dbvc_cc_phase4_context,
-            'summary' => $approval_summary,
-            'approval' => $approval,
-            'guard_failures' => $guard_failures,
-            'write_barriers' => $write_barriers,
-            'operation_counts' => [
-                'blocking_issue_count' => isset($dry_run_execution['blocking_issue_count'])
-                    ? absint($dry_run_execution['blocking_issue_count'])
-                    : 0,
-                'write_barrier_count' => $write_barrier_count,
-                'prepared_entity_writes' => isset($write_preparation['operation_counts']['entity_writes'])
-                    ? absint($write_preparation['operation_counts']['entity_writes'])
-                    : 0,
-                'prepared_field_writes' => isset($write_preparation['operation_counts']['field_writes'])
-                    ? absint($write_preparation['operation_counts']['field_writes'])
-                    : 0,
-                'prepared_media_writes' => isset($write_preparation['operation_counts']['media_writes'])
-                    ? absint($write_preparation['operation_counts']['media_writes'])
-                    : 0,
-                'deferred_media_count' => $deferred_media_count,
-            ],
-            'deferred_media_count' => $deferred_media_count,
-            'deferred_media_reasons' => $deferred_media_reasons,
-            'message' => $approval_valid
-                ? __('Preflight approval granted. Execute is armed for the current dry-run fingerprint until the approval expires or becomes stale.', 'dbvc')
-                : (! empty($guard_failures)
-                    ? __('Preflight approval is blocked until required confirmations are completed.', 'dbvc')
-                    : __('Preflight approval is blocked by write-plan barriers or dry-run issues.', 'dbvc')),
-        ];
+    /**
+     * @param array<string, mixed> $dry_run_execution
+     * @param bool                 $confirm_approval
+     * @return array<string, mixed>|WP_Error
+     */
+    public function approve_preflight_from_execution(array $dry_run_execution, $confirm_approval = false)
+    {
+        return $this->dbvc_cc_approve_preflight_from_dry_run_execution($dry_run_execution, $confirm_approval);
     }
 
     /**
@@ -328,30 +249,52 @@ final class DBVC_CC_Import_Executor_Service
             return $dry_run_execution;
         }
 
-        $plan_id = isset($dry_run_execution['plan_id']) ? sanitize_key((string) $dry_run_execution['plan_id']) : '';
+        return $this->dbvc_cc_get_preflight_status_from_dry_run_execution($dry_run_execution, $approval_token);
+    }
+
+    /**
+     * @param array<string, mixed> $dry_run_execution
+     * @param string               $approval_token
+     * @return array<string, mixed>|WP_Error
+     */
+    public function get_preflight_status_from_execution(array $dry_run_execution, $approval_token = '')
+    {
+        return $this->dbvc_cc_get_preflight_status_from_dry_run_execution($dry_run_execution, $approval_token);
+    }
+
+    /**
+     * @param array<string, mixed> $dry_run_execution
+     * @param bool                 $confirm_execute
+     * @param string               $approval_token
+     * @return array<string, mixed>|WP_Error
+     */
+    public function execute_write_skeleton_from_execution(array $dry_run_execution, $confirm_execute = false, $approval_token = '')
+    {
+        return $this->dbvc_cc_execute_write_skeleton_from_dry_run_execution(
+            $dry_run_execution,
+            $confirm_execute,
+            $approval_token
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $dry_run_execution
+     * @param bool                 $confirm_approval
+     * @return array<string, mixed>|WP_Error
+     */
+    private function dbvc_cc_approve_preflight_from_dry_run_execution(array $dry_run_execution, $confirm_approval = false)
+    {
         $domain = isset($dry_run_execution['domain']) ? sanitize_text_field((string) $dry_run_execution['domain']) : '';
         $path = isset($dry_run_execution['path']) ? sanitize_text_field((string) $dry_run_execution['path']) : '';
         $source_url = isset($dry_run_execution['source_url']) ? esc_url_raw((string) $dry_run_execution['source_url']) : '';
         $dry_run_status = isset($dry_run_execution['status']) ? sanitize_key((string) $dry_run_execution['status']) : 'blocked';
-
-        $dbvc_cc_dry_run_plan = isset($dry_run_execution['dry_run_plan']) && is_array($dry_run_execution['dry_run_plan'])
-            ? $dry_run_execution['dry_run_plan']
-            : [];
-        $dbvc_cc_phase4_context = $this->dbvc_cc_build_phase4_context($dbvc_cc_dry_run_plan);
-        $write_preparation = $this->dbvc_cc_get_empty_write_preparation();
-        if ($dry_run_status === 'completed') {
-            $write_preparation = $this->dbvc_cc_build_write_preparation($dry_run_execution);
-        }
-
+        $write_preparation = $this->dbvc_cc_build_write_preparation($dry_run_execution);
         $write_barriers = isset($write_preparation['write_barriers']) && is_array($write_preparation['write_barriers'])
             ? array_values($write_preparation['write_barriers'])
             : [];
-        $write_barrier_count = 0;
-        foreach ($write_barriers as $dbvc_cc_barrier) {
-            if (is_array($dbvc_cc_barrier) && ! empty($dbvc_cc_barrier['blocking'])) {
-                $write_barrier_count++;
-            }
-        }
+        $write_barrier_count = count(array_filter($write_barriers, static function ($barrier) {
+            return is_array($barrier) && ! empty($barrier['blocking']);
+        }));
         $deferred_media_count = isset($write_preparation['operation_counts']['deferred_media_writes'])
             ? absint($write_preparation['operation_counts']['deferred_media_writes'])
             : 0;
@@ -359,61 +302,158 @@ final class DBVC_CC_Import_Executor_Service
             ? array_values($write_preparation['deferred_media_reasons'])
             : [];
 
-        $approval_context = $this->dbvc_cc_build_preflight_approval_context($dry_run_execution, $write_preparation);
-        $approval_summary = $this->dbvc_cc_build_preflight_approval_summary($dry_run_execution, $write_preparation);
-        $approval_eligible = ($dry_run_status === 'completed' && $write_barrier_count === 0);
-        $approval_status = $this->dbvc_cc_validate_preflight_approval_token($approval_token, $approval_context);
-
-        $status = isset($approval_status['status']) ? (string) $approval_status['status'] : 'missing';
-        if (! $approval_eligible) {
-            $status = 'blocked';
+        $guard_failures = [];
+        if ($dry_run_status !== 'completed') {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'dry_run_not_completed',
+                __('Dry-run execution must be completed before preflight approval is eligible.', 'dbvc'),
+                true
+            );
+        }
+        if (! rest_sanitize_boolean($confirm_approval)) {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'approval_confirmation_required',
+                __('Explicit approval confirmation is required before issuing a preflight token.', 'dbvc'),
+                false
+            );
         }
 
+        $approval_required = true;
+        $approval_eligible = $dry_run_status === 'completed' && $write_barrier_count === 0;
+        $approval = $this->dbvc_cc_get_empty_preflight_approval();
+        $approval_valid = false;
+        $status = 'blocked';
+        if ($approval_eligible && empty($guard_failures)) {
+            $approval_context = $this->dbvc_cc_build_preflight_approval_context($dry_run_execution, $write_preparation);
+            $approval_summary = $this->dbvc_cc_build_preflight_approval_summary($dry_run_execution, $write_preparation);
+            $approval = $this->dbvc_cc_create_preflight_approval($approval_context, $approval_summary);
+            $approval_valid = ! empty($approval['approval_token']);
+            $status = $approval_valid ? 'approved' : 'blocked';
+        } elseif ($approval_eligible) {
+            $status = 'confirmation_required';
+        }
+
+        $summary = $this->dbvc_cc_build_preflight_approval_summary($dry_run_execution, $write_preparation);
+
         return [
-            'approval_schema_version' => self::DBVC_CC_PREFLIGHT_APPROVAL_SCHEMA_VERSION,
+            'executor_schema_version' => self::DBVC_CC_EXECUTOR_SCHEMA_VERSION,
             'generated_at' => current_time('c'),
             'status' => $status,
-            'approval_required' => true,
-            'approval_eligible' => $approval_eligible,
-            'approval_valid' => ! empty($approval_status['approval_valid']) && $approval_eligible,
-            'execute_ready' => ! empty($approval_status['approval_valid']) && $approval_eligible,
             'domain' => $domain,
             'path' => $path,
             'source_url' => $source_url,
-            'plan_id' => $plan_id,
+            'plan_id' => isset($dry_run_execution['plan_id']) ? sanitize_key((string) $dry_run_execution['plan_id']) : '',
             'dry_run_execution_id' => isset($dry_run_execution['execution_id']) ? sanitize_key((string) $dry_run_execution['execution_id']) : '',
-            'phase4_context' => $dbvc_cc_phase4_context,
-            'summary' => $approval_summary,
-            'approval' => isset($approval_status['approval']) && is_array($approval_status['approval'])
-                ? $approval_status['approval']
-                : $this->dbvc_cc_get_empty_preflight_approval(),
-            'guard_failures' => isset($approval_status['guard_failure']) && is_array($approval_status['guard_failure'])
-                ? [ $approval_status['guard_failure'] ]
-                : [],
+            'approval_required' => $approval_required,
+            'approval_eligible' => $approval_eligible,
+            'approval_valid' => $approval_valid,
+            'execute_ready' => $approval_eligible && $approval_valid,
+            'approval' => $approval,
+            'summary' => $summary,
+            'guard_failures' => $guard_failures,
             'write_barriers' => $write_barriers,
-            'operation_counts' => [
-                'blocking_issue_count' => isset($dry_run_execution['blocking_issue_count'])
-                    ? absint($dry_run_execution['blocking_issue_count'])
-                    : 0,
-                'write_barrier_count' => $write_barrier_count,
-                'prepared_entity_writes' => isset($write_preparation['operation_counts']['entity_writes'])
-                    ? absint($write_preparation['operation_counts']['entity_writes'])
-                    : 0,
-                'prepared_field_writes' => isset($write_preparation['operation_counts']['field_writes'])
-                    ? absint($write_preparation['operation_counts']['field_writes'])
-                    : 0,
-                'prepared_media_writes' => isset($write_preparation['operation_counts']['media_writes'])
-                    ? absint($write_preparation['operation_counts']['media_writes'])
-                    : 0,
-                'deferred_media_count' => $deferred_media_count,
-            ],
             'deferred_media_count' => $deferred_media_count,
             'deferred_media_reasons' => $deferred_media_reasons,
-            'message' => ! $approval_eligible
-                ? __('Current dry-run is not eligible for approval yet.', 'dbvc')
-                : (! empty($approval_status['approval_valid'])
-                    ? __('A valid preflight approval exists for the current dry-run fingerprint.', 'dbvc')
-                    : __('Execute still requires an approval token for the current dry-run fingerprint.', 'dbvc')),
+            'operation_counts' => [
+                'guard_failure_count' => count($guard_failures),
+                'write_barrier_count' => $write_barrier_count,
+                'deferred_media_count' => $deferred_media_count,
+            ],
+            'message' => $approval_valid
+                ? __('Preflight approval granted.', 'dbvc')
+                : ($approval_eligible
+                    ? __('Preflight approval is ready once explicit confirmation is provided.', 'dbvc')
+                    : __('Preflight approval is blocked until the dry-run is completed without write barriers.', 'dbvc')),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $dry_run_execution
+     * @param string               $approval_token
+     * @return array<string, mixed>|WP_Error
+     */
+    private function dbvc_cc_get_preflight_status_from_dry_run_execution(array $dry_run_execution, $approval_token = '')
+    {
+        $domain = isset($dry_run_execution['domain']) ? sanitize_text_field((string) $dry_run_execution['domain']) : '';
+        $path = isset($dry_run_execution['path']) ? sanitize_text_field((string) $dry_run_execution['path']) : '';
+        $source_url = isset($dry_run_execution['source_url']) ? esc_url_raw((string) $dry_run_execution['source_url']) : '';
+        $dry_run_status = isset($dry_run_execution['status']) ? sanitize_key((string) $dry_run_execution['status']) : 'blocked';
+        $write_preparation = $this->dbvc_cc_build_write_preparation($dry_run_execution);
+        $write_barriers = isset($write_preparation['write_barriers']) && is_array($write_preparation['write_barriers'])
+            ? array_values($write_preparation['write_barriers'])
+            : [];
+        $write_barrier_count = count(array_filter($write_barriers, static function ($barrier) {
+            return is_array($barrier) && ! empty($barrier['blocking']);
+        }));
+        $deferred_media_count = isset($write_preparation['operation_counts']['deferred_media_writes'])
+            ? absint($write_preparation['operation_counts']['deferred_media_writes'])
+            : 0;
+        $deferred_media_reasons = isset($write_preparation['deferred_media_reasons']) && is_array($write_preparation['deferred_media_reasons'])
+            ? array_values($write_preparation['deferred_media_reasons'])
+            : [];
+
+        $approval_required = true;
+        $approval_eligible = $dry_run_status === 'completed' && $write_barrier_count === 0;
+        $approval_state = [
+            'status' => 'missing',
+            'approval_valid' => false,
+            'approval' => $this->dbvc_cc_get_empty_preflight_approval(),
+            'guard_failure' => null,
+        ];
+        $guard_failures = [];
+        $status = 'blocked';
+
+        if ($approval_eligible) {
+            $approval_state = $this->dbvc_cc_validate_preflight_approval_token(
+                $approval_token,
+                $this->dbvc_cc_build_preflight_approval_context($dry_run_execution, $write_preparation)
+            );
+            if (isset($approval_state['guard_failure']) && is_array($approval_state['guard_failure'])) {
+                $guard_failures[] = $approval_state['guard_failure'];
+            }
+            $status = isset($approval_state['status']) ? sanitize_key((string) $approval_state['status']) : 'missing';
+        } elseif ($dry_run_status !== 'completed') {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'dry_run_not_completed',
+                __('Dry-run execution must be completed before preflight approval is eligible.', 'dbvc'),
+                true
+            );
+        }
+
+        $approval_valid = $approval_eligible && ! empty($approval_state['approval_valid']);
+        $summary = $this->dbvc_cc_build_preflight_approval_summary($dry_run_execution, $write_preparation);
+
+        return [
+            'executor_schema_version' => self::DBVC_CC_EXECUTOR_SCHEMA_VERSION,
+            'generated_at' => current_time('c'),
+            'status' => $status,
+            'domain' => $domain,
+            'path' => $path,
+            'source_url' => $source_url,
+            'plan_id' => isset($dry_run_execution['plan_id']) ? sanitize_key((string) $dry_run_execution['plan_id']) : '',
+            'dry_run_execution_id' => isset($dry_run_execution['execution_id']) ? sanitize_key((string) $dry_run_execution['execution_id']) : '',
+            'approval_required' => $approval_required,
+            'approval_eligible' => $approval_eligible,
+            'approval_valid' => $approval_valid,
+            'execute_ready' => $approval_eligible && $approval_valid,
+            'approval' => isset($approval_state['approval']) && is_array($approval_state['approval'])
+                ? $approval_state['approval']
+                : $this->dbvc_cc_get_empty_preflight_approval(),
+            'summary' => $summary,
+            'guard_failures' => $guard_failures,
+            'write_barriers' => $write_barriers,
+            'deferred_media_count' => $deferred_media_count,
+            'deferred_media_reasons' => $deferred_media_reasons,
+            'operation_counts' => [
+                'guard_failure_count' => count($guard_failures),
+                'write_barrier_count' => $write_barrier_count,
+                'deferred_media_count' => $deferred_media_count,
+            ],
+            'message' => $approval_valid
+                ? __('Preflight approval remains valid for the current dry-run fingerprint.', 'dbvc')
+                : ($approval_eligible
+                    ? __('Preflight approval is missing, stale, or expired for the current dry-run fingerprint.', 'dbvc')
+                    : __('Preflight approval is blocked until the dry-run is completed without write barriers.', 'dbvc')),
         ];
     }
 
@@ -585,6 +625,401 @@ final class DBVC_CC_Import_Executor_Service
             return $dry_run_execution;
         }
 
+        $plan_id = isset($dry_run_execution['plan_id']) ? sanitize_key((string) $dry_run_execution['plan_id']) : '';
+        $domain = isset($dry_run_execution['domain']) ? sanitize_text_field((string) $dry_run_execution['domain']) : '';
+        $path = isset($dry_run_execution['path']) ? sanitize_text_field((string) $dry_run_execution['path']) : '';
+        $source_url = isset($dry_run_execution['source_url']) ? esc_url_raw((string) $dry_run_execution['source_url']) : '';
+        $dry_run_status = isset($dry_run_execution['status']) ? sanitize_key((string) $dry_run_execution['status']) : 'blocked';
+
+        $guard_failures = [];
+
+        if (! DBVC_CC_Contracts::is_feature_enabled(DBVC_CC_Contracts::OPTION_FLAG_IMPORT_EXECUTE)) {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'write_feature_disabled',
+                __('Import execute feature flag is disabled.', 'dbvc'),
+                true
+            );
+        }
+
+        if (get_option(DBVC_CC_Contracts::IMPORT_POLICY_DRY_RUN_REQUIRED, '1') !== '1') {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'dry_run_policy_disabled',
+                __('Dry-run policy must remain enabled before write execution.', 'dbvc'),
+                true
+            );
+        }
+
+        if (get_option(DBVC_CC_Contracts::IMPORT_POLICY_IDEMPOTENT_UPSERT, '1') !== '1') {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'idempotent_upsert_policy_disabled',
+                __('Idempotent upsert policy must remain enabled before write execution.', 'dbvc'),
+                true
+            );
+        }
+
+        if (! rest_sanitize_boolean($confirm_execute)) {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'execute_confirmation_required',
+                __('Explicit execute confirmation is required for write path activation.', 'dbvc'),
+                false
+            );
+        }
+
+        if ($dry_run_status !== 'completed') {
+            $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                'dry_run_not_completed',
+                __('Dry-run execution must be completed before write execution is eligible.', 'dbvc'),
+                true
+            );
+        }
+
+        $dbvc_cc_dry_run_plan = isset($dry_run_execution['dry_run_plan']) && is_array($dry_run_execution['dry_run_plan'])
+            ? $dry_run_execution['dry_run_plan']
+            : [];
+        $dbvc_cc_phase4_context = $this->dbvc_cc_build_phase4_context($dbvc_cc_dry_run_plan);
+        $write_preparation = $this->dbvc_cc_get_empty_write_preparation();
+        if (empty($guard_failures)) {
+            $write_preparation = $this->dbvc_cc_build_write_preparation($dry_run_execution);
+        }
+
+        $write_barriers = isset($write_preparation['write_barriers']) && is_array($write_preparation['write_barriers'])
+            ? array_values($write_preparation['write_barriers'])
+            : [];
+        $write_barrier_count = 0;
+        foreach ($write_barriers as $dbvc_cc_barrier) {
+            if (is_array($dbvc_cc_barrier) && ! empty($dbvc_cc_barrier['blocking'])) {
+                $write_barrier_count++;
+            }
+        }
+        $deferred_media_count = isset($write_preparation['operation_counts']['deferred_media_writes'])
+            ? absint($write_preparation['operation_counts']['deferred_media_writes'])
+            : 0;
+        $deferred_media_reasons = isset($write_preparation['deferred_media_reasons']) && is_array($write_preparation['deferred_media_reasons'])
+            ? array_values($write_preparation['deferred_media_reasons'])
+            : [];
+
+        $entity_write_execution = $this->dbvc_cc_get_empty_entity_write_execution();
+        $field_write_execution = $this->dbvc_cc_get_empty_field_write_execution();
+        $preflight_approval = [
+            'status' => 'missing',
+            'approval_valid' => false,
+            'approval' => $this->dbvc_cc_get_empty_preflight_approval(),
+            'guard_failure' => null,
+        ];
+        $import_run = null;
+        $rollback_available = false;
+        $rollback_status = 'not_started';
+        $auto_rollback = $this->dbvc_cc_get_empty_auto_rollback_result();
+        $execution_failures = [];
+        $executed_stages = [];
+        $deferred_stages = [];
+        $media_write_execution = $this->dbvc_cc_get_empty_media_write_execution();
+
+        $write_performed = false;
+        if (empty($guard_failures) && $write_barrier_count === 0) {
+            $preflight_approval = $this->dbvc_cc_validate_preflight_approval_token(
+                $approval_token,
+                $this->dbvc_cc_build_preflight_approval_context($dry_run_execution, $write_preparation)
+            );
+            if (isset($preflight_approval['guard_failure']) && is_array($preflight_approval['guard_failure'])) {
+                $guard_failures[] = $preflight_approval['guard_failure'];
+            }
+        }
+
+        $dbvc_cc_execution_runtime = [
+            'run_id' => 0,
+            'run_uuid' => '',
+            'next_action_order' => 1,
+        ];
+        if (empty($guard_failures) && $write_barrier_count === 0) {
+            $import_run = $this->dbvc_cc_open_import_run(
+                $dry_run_execution,
+                $write_preparation,
+                $preflight_approval,
+                $approval_token
+            );
+            if (is_wp_error($import_run)) {
+                $guard_failures[] = $this->dbvc_cc_build_guard_failure(
+                    'rollback_journal_unavailable',
+                    $import_run->get_error_message(),
+                    true
+                );
+            } elseif (is_array($import_run)) {
+                $dbvc_cc_execution_runtime['run_id'] = isset($import_run['id']) ? absint($import_run['id']) : 0;
+                $dbvc_cc_execution_runtime['run_uuid'] = isset($import_run['run_uuid']) ? sanitize_text_field((string) $import_run['run_uuid']) : '';
+            }
+        }
+
+        if (empty($guard_failures) && $write_barrier_count === 0) {
+            $entity_write_execution = $this->dbvc_cc_execute_prepared_entity_writes(
+                isset($write_preparation['entity_writes']) && is_array($write_preparation['entity_writes'])
+                    ? array_values($write_preparation['entity_writes'])
+                    : [],
+                $dbvc_cc_execution_runtime
+            );
+            $execution_failures = isset($entity_write_execution['failures']) && is_array($entity_write_execution['failures'])
+                ? array_values($entity_write_execution['failures'])
+                : [];
+            $write_performed = isset($entity_write_execution['counts']['completed'])
+                ? absint($entity_write_execution['counts']['completed']) > 0
+                : false;
+            if ($write_performed) {
+                $executed_stages[] = 'entity';
+            }
+            if (empty($execution_failures)) {
+                $field_write_execution = $this->dbvc_cc_execute_prepared_field_writes(
+                    isset($write_preparation['field_writes']) && is_array($write_preparation['field_writes'])
+                        ? array_values($write_preparation['field_writes'])
+                        : [],
+                    $entity_write_execution,
+                    $dbvc_cc_execution_runtime
+                );
+                $field_execution_failures = isset($field_write_execution['failures']) && is_array($field_write_execution['failures'])
+                    ? array_values($field_write_execution['failures'])
+                    : [];
+                if (! empty($field_execution_failures)) {
+                    $execution_failures = array_values(array_merge($execution_failures, $field_execution_failures));
+                }
+                if (isset($field_write_execution['counts']['completed']) && absint($field_write_execution['counts']['completed']) > 0) {
+                    $executed_stages[] = 'field';
+                    $write_performed = true;
+                }
+            } elseif (isset($write_preparation['operation_counts']['field_writes']) && absint($write_preparation['operation_counts']['field_writes']) > 0) {
+                $deferred_stages[] = 'field';
+            }
+
+            if (empty($execution_failures)) {
+                $media_write_execution = $this->dbvc_cc_execute_prepared_media_writes(
+                    isset($write_preparation['media_writes']) && is_array($write_preparation['media_writes'])
+                        ? array_values($write_preparation['media_writes'])
+                        : [],
+                    $entity_write_execution,
+                    $dbvc_cc_execution_runtime
+                );
+                $media_execution_failures = isset($media_write_execution['failures']) && is_array($media_write_execution['failures'])
+                    ? array_values($media_write_execution['failures'])
+                    : [];
+                if (! empty($media_execution_failures)) {
+                    $execution_failures = array_values(array_merge($execution_failures, $media_execution_failures));
+                }
+                if (isset($media_write_execution['counts']['completed']) && absint($media_write_execution['counts']['completed']) > 0) {
+                    $executed_stages[] = 'media';
+                    $write_performed = true;
+                }
+                if (isset($media_write_execution['counts']['deferred']) && absint($media_write_execution['counts']['deferred']) > 0) {
+                    $deferred_stages[] = 'media';
+                }
+            }
+        } elseif (
+            isset($write_preparation['operation_counts']['field_writes']) && absint($write_preparation['operation_counts']['field_writes']) > 0
+            || isset($write_preparation['operation_counts']['media_writes']) && absint($write_preparation['operation_counts']['media_writes']) > 0
+        ) {
+            if (isset($write_preparation['operation_counts']['field_writes']) && absint($write_preparation['operation_counts']['field_writes']) > 0) {
+                $deferred_stages[] = 'field';
+            }
+            if ($deferred_media_count > 0) {
+                $deferred_stages[] = 'media';
+            }
+        } elseif (isset($write_preparation['operation_counts']['field_writes']) && absint($write_preparation['operation_counts']['field_writes']) > 0) {
+            $deferred_stages[] = 'field';
+        }
+
+        $deferred_stages = array_values(array_unique($deferred_stages));
+
+        if (! empty($guard_failures) || $write_barrier_count > 0) {
+            $status = 'blocked';
+        } elseif (! empty($execution_failures)) {
+            $status = 'completed_with_failures';
+        } elseif (! empty($deferred_stages)) {
+            $status = 'completed_partial';
+        } else {
+            $status = 'completed';
+        }
+
+        if (is_array($import_run) && ! empty($dbvc_cc_execution_runtime['run_id'])) {
+            $rollback_available = $this->dbvc_cc_finalize_import_run(
+                absint($dbvc_cc_execution_runtime['run_id']),
+                $status,
+                $entity_write_execution,
+                $field_write_execution,
+                $media_write_execution,
+                $execution_failures,
+                $dbvc_cc_execution_runtime
+            );
+            $import_run = DBVC_CC_Import_Run_Store::get_instance()->get_run(absint($dbvc_cc_execution_runtime['run_id']));
+            if (is_array($import_run) && ! empty($import_run['rollback_status'])) {
+                $rollback_status = sanitize_key((string) $import_run['rollback_status']);
+            }
+        }
+
+        if (
+            empty($guard_failures)
+            && $write_barrier_count === 0
+            && ! empty($execution_failures)
+            && $write_performed
+            && is_array($import_run)
+            && ! empty($dbvc_cc_execution_runtime['run_id'])
+            && $rollback_available
+        ) {
+            $auto_rollback = $this->dbvc_cc_attempt_automatic_rollback(absint($dbvc_cc_execution_runtime['run_id']));
+            if (! empty($auto_rollback['attempted']) && isset($auto_rollback['run']) && is_array($auto_rollback['run'])) {
+                $import_run = $auto_rollback['run'];
+                $rollback_status = isset($import_run['rollback_status'])
+                    ? sanitize_key((string) $import_run['rollback_status'])
+                    : $rollback_status;
+                $rollback_available = false;
+
+                if (isset($auto_rollback['status']) && (string) $auto_rollback['status'] === 'completed') {
+                    $status = 'rolled_back_after_failure';
+                } elseif (isset($auto_rollback['status']) && (string) $auto_rollback['status'] === 'failed') {
+                    $status = 'rollback_failed_after_failure';
+                }
+            }
+        }
+
+        $skeleton_id = 'dbvc_cc_execw_' . substr(hash('sha256', wp_json_encode([
+            'domain' => $domain,
+            'path' => $path,
+            'plan_id' => $plan_id,
+            'dry_run_execution_id' => isset($dry_run_execution['execution_id']) ? (string) $dry_run_execution['execution_id'] : '',
+            'confirm_execute' => rest_sanitize_boolean($confirm_execute) ? '1' : '0',
+            'write_plan_id' => isset($write_preparation['write_plan_id']) ? (string) $write_preparation['write_plan_id'] : '',
+        ])), 0, 16);
+
+        if ($status === 'blocked') {
+            $message = ! empty($guard_failures)
+                ? __('Write execution is blocked by guardrails.', 'dbvc')
+                : __('Write execution is blocked by write-plan barriers.', 'dbvc');
+        } elseif (! empty($auto_rollback['attempted']) && isset($auto_rollback['status']) && (string) $auto_rollback['status'] === 'completed') {
+            $message = __('Write execution encountered failures and was automatically rolled back.', 'dbvc');
+        } elseif (! empty($auto_rollback['attempted']) && isset($auto_rollback['status']) && (string) $auto_rollback['status'] === 'failed') {
+            $message = __('Write execution encountered failures and automatic rollback also failed. Manual review is required.', 'dbvc');
+        } elseif (! empty($execution_failures)) {
+            $message = __('Write execution completed with failures. Deferred stages remain disabled in this phase.', 'dbvc');
+        } elseif (! empty($deferred_stages)) {
+            $message = $deferred_media_count > 0
+                ? __('Entity and field execution completed. Some media writes were deferred due to policy, unsupported target shape, or missing source state.', 'dbvc')
+                : __('Entity and field execution completed. Some write stages remain deferred.', 'dbvc');
+        } else {
+            $message = __('Write execution completed.', 'dbvc');
+        }
+
+        $response = [
+            'executor_schema_version' => self::DBVC_CC_EXECUTOR_SCHEMA_VERSION,
+            'generated_at' => current_time('c'),
+            'execution_id' => $skeleton_id,
+            'status' => $status,
+            'dry_run' => false,
+            'write_performed' => $write_performed,
+            'domain' => $domain,
+            'path' => $path,
+            'source_url' => $source_url,
+            'plan_id' => $plan_id,
+            'policy' => isset($dry_run_execution['policy']) && is_array($dry_run_execution['policy']) ? $dry_run_execution['policy'] : [],
+            'dry_run_execution_id' => isset($dry_run_execution['execution_id']) ? sanitize_key((string) $dry_run_execution['execution_id']) : '',
+            'dry_run_status' => $dry_run_status,
+            'run_id' => is_array($import_run) && isset($import_run['id']) ? absint($import_run['id']) : 0,
+            'run_uuid' => is_array($import_run) && isset($import_run['run_uuid']) ? sanitize_text_field((string) $import_run['run_uuid']) : '',
+            'rollback_available' => $rollback_available,
+            'rollback_status' => $rollback_status,
+            'phase4_context' => $dbvc_cc_phase4_context,
+            'guard_failures' => $guard_failures,
+            'preflight_approval' => $preflight_approval,
+            'execution_failures' => $execution_failures,
+            'auto_rollback' => $auto_rollback,
+            'executed_stages' => $executed_stages,
+            'deferred_stages' => $deferred_stages,
+            'write_preparation' => $write_preparation,
+            'entity_write_execution' => $entity_write_execution,
+            'field_write_execution' => $field_write_execution,
+            'media_write_execution' => $media_write_execution,
+            'write_barriers' => $write_barriers,
+            'deferred_media_count' => $deferred_media_count,
+            'deferred_media_reasons' => $deferred_media_reasons,
+            'message' => $message,
+            'operation_counts' => [
+                'simulated_from_dry_run' => isset($dry_run_execution['operation_counts']['total_simulated'])
+                    ? absint($dry_run_execution['operation_counts']['total_simulated'])
+                    : 0,
+                'guard_failure_count' => count($guard_failures),
+                'preflight_approval_valid' => ! empty($preflight_approval['approval_valid']) ? 1 : 0,
+                'rollback_available' => $rollback_available ? 1 : 0,
+                'auto_rollback_attempted' => ! empty($auto_rollback['attempted']) ? 1 : 0,
+                'auto_rollback_restored_actions' => isset($auto_rollback['restored_count'])
+                    ? absint($auto_rollback['restored_count'])
+                    : 0,
+                'auto_rollback_failed_actions' => isset($auto_rollback['failed_count'])
+                    ? absint($auto_rollback['failed_count'])
+                    : 0,
+                'prepared_entity_writes' => isset($write_preparation['operation_counts']['entity_writes'])
+                    ? absint($write_preparation['operation_counts']['entity_writes'])
+                    : 0,
+                'prepared_field_writes' => isset($write_preparation['operation_counts']['field_writes'])
+                    ? absint($write_preparation['operation_counts']['field_writes'])
+                    : 0,
+                'prepared_media_writes' => isset($write_preparation['operation_counts']['media_writes'])
+                    ? absint($write_preparation['operation_counts']['media_writes'])
+                    : 0,
+                'write_barrier_count' => $write_barrier_count,
+                'deferred_media_count' => $deferred_media_count,
+                'executed_entity_writes' => isset($entity_write_execution['counts']['completed'])
+                    ? absint($entity_write_execution['counts']['completed'])
+                    : 0,
+                'executed_entity_creates' => isset($entity_write_execution['counts']['created'])
+                    ? absint($entity_write_execution['counts']['created'])
+                    : 0,
+                'executed_entity_updates' => isset($entity_write_execution['counts']['updated'])
+                    ? absint($entity_write_execution['counts']['updated'])
+                    : 0,
+                'failed_entity_writes' => isset($entity_write_execution['counts']['failed'])
+                    ? absint($entity_write_execution['counts']['failed'])
+                    : 0,
+                'executed_field_writes' => isset($field_write_execution['counts']['completed'])
+                    ? absint($field_write_execution['counts']['completed'])
+                    : 0,
+                'failed_field_writes' => isset($field_write_execution['counts']['failed'])
+                    ? absint($field_write_execution['counts']['failed'])
+                    : 0,
+                'executed_media_writes' => isset($media_write_execution['counts']['completed'])
+                    ? absint($media_write_execution['counts']['completed'])
+                    : 0,
+                'created_media_attachments' => isset($media_write_execution['counts']['created'])
+                    ? absint($media_write_execution['counts']['created'])
+                    : 0,
+                'reused_media_attachments' => isset($media_write_execution['counts']['reused'])
+                    ? absint($media_write_execution['counts']['reused'])
+                    : 0,
+                'failed_media_writes' => isset($media_write_execution['counts']['failed'])
+                    ? absint($media_write_execution['counts']['failed'])
+                    : 0,
+                'deferred_media_execution_writes' => isset($media_write_execution['counts']['deferred'])
+                    ? absint($media_write_execution['counts']['deferred'])
+                    : 0,
+                'deferred_field_writes' => isset($write_preparation['operation_counts']['field_writes'])
+                    ? max(
+                        0,
+                        absint($write_preparation['operation_counts']['field_writes'])
+                        - (isset($field_write_execution['counts']['completed']) ? absint($field_write_execution['counts']['completed']) : 0)
+                    )
+                    : 0,
+                'deferred_media_writes' => $deferred_media_count,
+            ],
+            'trace' => isset($dry_run_execution['trace']) && is_array($dry_run_execution['trace']) ? $dry_run_execution['trace'] : [],
+        ];
+
+        $this->dbvc_cc_log_write_skeleton_event($domain, $path, $source_url, $status, $guard_failures, $dbvc_cc_phase4_context, $write_barriers);
+
+        return $response;
+    }
+
+    /**
+     * @param array<string, mixed> $dry_run_execution
+     * @param bool                 $confirm_execute
+     * @param string               $approval_token
+     * @return array<string, mixed>|WP_Error
+     */
+    private function dbvc_cc_execute_write_skeleton_from_dry_run_execution(array $dry_run_execution, $confirm_execute = false, $approval_token = '')
+    {
         $plan_id = isset($dry_run_execution['plan_id']) ? sanitize_key((string) $dry_run_execution['plan_id']) : '';
         $domain = isset($dry_run_execution['domain']) ? sanitize_text_field((string) $dry_run_execution['domain']) : '';
         $path = isset($dry_run_execution['path']) ? sanitize_text_field((string) $dry_run_execution['path']) : '';
@@ -4266,18 +4701,30 @@ final class DBVC_CC_Import_Executor_Service
             $section_source = ($section_id !== '' && isset($section_source_index[$section_id]) && is_array($section_source_index[$section_id]))
                 ? $section_source_index[$section_id]
                 : [];
+            $field_source = $this->dbvc_cc_resolve_field_write_source(
+                $target_family,
+                $target_field_key,
+                $field_operation,
+                $section_source
+            );
             $write_operation_id = $this->dbvc_cc_build_operation_id('write_field', $domain, $normalized_path, isset($field_operation['section_id']) ? (string) $field_operation['section_id'] : '', $target_ref);
             $write_status = 'prepared';
             $result = 'prepared_field_write';
             $action = $this->dbvc_cc_resolve_field_write_action($target_family, $target_field_key);
             $barrier_code = '';
-            $resolved_value = $this->dbvc_cc_resolve_field_source_value($target_family, $target_field_key, $section_source);
+            $resolved_value = isset($field_source['resolved_value']) && is_array($field_source['resolved_value'])
+                ? $field_source['resolved_value']
+                : $this->dbvc_cc_resolve_field_source_value($target_family, $target_field_key, $section_source);
+            $section_source = isset($field_source['source_payload']) && is_array($field_source['source_payload'])
+                ? $field_source['source_payload']
+                : $section_source;
+            $has_supplied_value = ! empty($field_source['has_supplied_value']);
 
             if ($action === '') {
                 $write_status = 'blocked';
                 $result = 'blocked_unsupported_field_target';
                 $barrier_code = 'unsupported_field_target';
-            } elseif (empty($section_source)) {
+            } elseif (empty($section_source) && ! $has_supplied_value) {
                 $write_status = 'blocked';
                 $result = 'blocked_missing_section_source';
                 $barrier_code = 'missing_section_source';
@@ -4394,6 +4841,15 @@ final class DBVC_CC_Import_Executor_Service
                 : [];
             $normalized_value_strategy = isset($media_operation['normalized_value_strategy']) ? sanitize_key((string) $media_operation['normalized_value_strategy']) : 'replace_single_attachment';
             $media_source = $this->dbvc_cc_resolve_media_source_record($media_id, $source_url, $media_source_index);
+            $media_resolution = $this->dbvc_cc_resolve_media_write_source(
+                $media_operation,
+                $media_source,
+                $source_url
+            );
+            $media_source = isset($media_resolution['source_payload']) && is_array($media_resolution['source_payload'])
+                ? $media_resolution['source_payload']
+                : $media_source;
+            $source_url = isset($media_resolution['source_url']) ? esc_url_raw((string) $media_resolution['source_url']) : $source_url;
             $write_operation_id = $this->dbvc_cc_build_operation_id('write_media', $domain, $normalized_path, isset($media_operation['media_id']) ? (string) $media_operation['media_id'] : '', $target_ref);
             $write_status = 'prepared';
             $result = 'prepared_media_write';
@@ -4404,7 +4860,9 @@ final class DBVC_CC_Import_Executor_Service
             $deferred_reason_code = '';
             $deferred_reason_group = '';
             $existing_attachment_id_hint = 0;
-            $resolved_media = $this->dbvc_cc_resolve_media_source_value($media_source, $source_url);
+            $resolved_media = isset($media_resolution['resolved_media']) && is_array($media_resolution['resolved_media'])
+                ? $media_resolution['resolved_media']
+                : $this->dbvc_cc_resolve_media_source_value($media_source, $source_url);
             $media_kind = isset($media_operation['media_kind']) ? sanitize_key((string) $media_operation['media_kind']) : '';
 
             if ($source_url === '') {
@@ -4431,7 +4889,11 @@ final class DBVC_CC_Import_Executor_Service
                 $barrier_blocking = false;
                 $deferred_reason_code = $barrier_code;
                 $deferred_reason_group = 'unsupported_shape';
-            } elseif (empty($media_source) && $storage_shape !== 'remote_url') {
+            } elseif (
+                empty($media_source)
+                && empty($resolved_media)
+                && $storage_shape !== 'remote_url'
+            ) {
                 $write_status = 'deferred';
                 $result = 'deferred_missing_media_source';
                 $barrier_code = 'missing_media_source';
@@ -4887,6 +5349,95 @@ final class DBVC_CC_Import_Executor_Service
     }
 
     /**
+     * @param string               $target_family
+     * @param string               $target_field_key
+     * @param array<string, mixed> $field_operation
+     * @param array<string, mixed> $section_source
+     * @return array<string, mixed>
+     */
+    private function dbvc_cc_resolve_field_write_source($target_family, $target_field_key, array $field_operation = [], array $section_source = [])
+    {
+        $source_payload = isset($field_operation['source_payload']) && is_array($field_operation['source_payload'])
+            ? $field_operation['source_payload']
+            : [];
+        $resolved_value = $this->dbvc_cc_resolve_field_source_value($target_family, $target_field_key, $section_source);
+        $has_supplied_value = array_key_exists('resolved_value_candidate', $field_operation) || ! empty($source_payload);
+
+        if (! $has_supplied_value) {
+            return [
+                'source_payload' => $section_source,
+                'resolved_value' => $resolved_value,
+                'has_supplied_value' => false,
+            ];
+        }
+
+        $candidate = array_key_exists('resolved_value_candidate', $field_operation)
+            ? $field_operation['resolved_value_candidate']
+            : (array_key_exists('package_value', $source_payload) ? $source_payload['package_value'] : '');
+        $format = isset($field_operation['resolved_value_format']) ? sanitize_key((string) $field_operation['resolved_value_format']) : '';
+        if ($format === '' && isset($source_payload['package_value_format'])) {
+            $format = sanitize_key((string) $source_payload['package_value_format']);
+        }
+        if ($format === '') {
+            $format = is_array($candidate) ? 'array' : 'string';
+        }
+
+        $preview = isset($field_operation['resolved_value_preview']) ? sanitize_text_field((string) $field_operation['resolved_value_preview']) : '';
+        if ($preview === '') {
+            $preview = $this->dbvc_cc_build_value_preview($candidate);
+        }
+
+        $origin = isset($field_operation['resolved_value_origin']) ? sanitize_key((string) $field_operation['resolved_value_origin']) : '';
+        if ($origin === '') {
+            $origin = 'package_record';
+        }
+
+        return [
+            'source_payload' => ! empty($source_payload) ? $source_payload : $section_source,
+            'resolved_value' => [
+                'format' => $format,
+                'value' => $candidate,
+                'preview' => $preview,
+                'origin' => $origin,
+                'missing' => $this->dbvc_cc_is_empty_resolved_value($candidate),
+            ],
+            'has_supplied_value' => true,
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return bool
+     */
+    private function dbvc_cc_is_empty_resolved_value($value)
+    {
+        if (is_array($value)) {
+            return empty($value);
+        }
+
+        return $value === null || $value === '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function dbvc_cc_build_value_preview($value)
+    {
+        if (is_array($value)) {
+            $preview = wp_json_encode($value);
+        } elseif (is_bool($value)) {
+            $preview = $value ? 'true' : 'false';
+        } elseif ($value === null) {
+            $preview = 'null';
+        } else {
+            $preview = (string) $value;
+        }
+
+        return $this->dbvc_cc_truncate_preview($preview, 180);
+    }
+
+    /**
      * @param array<string, mixed> $media_source
      * @param string               $source_url
      * @return array<string, mixed>
@@ -4908,6 +5459,50 @@ final class DBVC_CC_Import_Executor_Service
                 ? array_values(array_map('sanitize_key', $media_source['role_candidates']))
                 : [],
             'preview_available' => $preview_ref !== '',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $media_operation
+     * @param array<string, mixed> $media_source
+     * @param string               $source_url
+     * @return array<string, mixed>
+     */
+    private function dbvc_cc_resolve_media_write_source(array $media_operation = [], array $media_source = [], $source_url = '')
+    {
+        $source_payload = isset($media_operation['source_payload']) && is_array($media_operation['source_payload'])
+            ? $media_operation['source_payload']
+            : [];
+        $resolved_media = isset($media_operation['resolved_media_candidate']) && is_array($media_operation['resolved_media_candidate'])
+            ? $media_operation['resolved_media_candidate']
+            : [];
+        $effective_source = ! empty($source_payload) ? array_merge($media_source, $source_payload) : $media_source;
+        $effective_source_url = isset($resolved_media['source_url']) ? esc_url_raw((string) $resolved_media['source_url']) : '';
+        if ($effective_source_url === '' && isset($effective_source['source_url'])) {
+            $effective_source_url = esc_url_raw((string) $effective_source['source_url']);
+        }
+        if ($effective_source_url === '') {
+            $effective_source_url = esc_url_raw((string) $source_url);
+        }
+
+        if (empty($resolved_media)) {
+            $resolved_media = $this->dbvc_cc_resolve_media_source_value($effective_source, $effective_source_url);
+        } else {
+            if (! isset($resolved_media['source_url']) || (string) $resolved_media['source_url'] === '') {
+                $resolved_media['source_url'] = $effective_source_url;
+            }
+            if (! isset($resolved_media['preview_ref']) && isset($effective_source['preview_ref'])) {
+                $resolved_media['preview_ref'] = esc_url_raw((string) $effective_source['preview_ref']);
+            }
+            if (! isset($resolved_media['media_kind']) && isset($effective_source['media_kind'])) {
+                $resolved_media['media_kind'] = sanitize_key((string) $effective_source['media_kind']);
+            }
+        }
+
+        return [
+            'source_payload' => $effective_source,
+            'resolved_media' => $resolved_media,
+            'source_url' => $effective_source_url,
         ];
     }
 
@@ -6258,7 +6853,7 @@ final class DBVC_CC_Import_Executor_Service
                 $depends_on[] = (string) $entity_operation_index[$entity_key];
             }
 
-            $operations[] = [
+            $field_operation = [
                 'operation_id' => $this->dbvc_cc_build_operation_id('field', $domain, $path, $section_id, $target_ref),
                 'operation_type' => 'upsert_field_mapping',
                 'section_id' => $section_id,
@@ -6271,6 +6866,22 @@ final class DBVC_CC_Import_Executor_Service
                 'result' => 'would_upsert',
                 'confidence' => isset($operation['confidence']) ? (float) $operation['confidence'] : null,
             ];
+            if (array_key_exists('resolved_value_candidate', $operation)) {
+                $field_operation['resolved_value_candidate'] = $operation['resolved_value_candidate'];
+            }
+            if (isset($operation['resolved_value_format'])) {
+                $field_operation['resolved_value_format'] = sanitize_key((string) $operation['resolved_value_format']);
+            }
+            if (isset($operation['resolved_value_preview'])) {
+                $field_operation['resolved_value_preview'] = sanitize_text_field((string) $operation['resolved_value_preview']);
+            }
+            if (isset($operation['resolved_value_origin'])) {
+                $field_operation['resolved_value_origin'] = sanitize_key((string) $operation['resolved_value_origin']);
+            }
+            if (isset($operation['source_payload']) && is_array($operation['source_payload']) && ! empty($operation['source_payload'])) {
+                $field_operation['source_payload'] = $operation['source_payload'];
+            }
+            $operations[] = $field_operation;
         }
 
         usort(
@@ -6314,7 +6925,7 @@ final class DBVC_CC_Import_Executor_Service
                 $depends_on[] = (string) $entity_operation_index[$entity_key];
             }
 
-            $operations[] = [
+            $media_operation_row = [
                 'operation_id' => $this->dbvc_cc_build_operation_id('media', $domain, $path, $media_id, $target_ref),
                 'operation_type' => 'upsert_media_mapping',
                 'media_id' => $media_id,
@@ -6335,6 +6946,13 @@ final class DBVC_CC_Import_Executor_Service
                 'normalized_value_strategy' => isset($operation['normalized_value_strategy']) ? sanitize_key((string) $operation['normalized_value_strategy']) : 'replace_single_attachment',
                 'result' => 'would_upsert',
             ];
+            if (isset($operation['source_payload']) && is_array($operation['source_payload']) && ! empty($operation['source_payload'])) {
+                $media_operation_row['source_payload'] = $operation['source_payload'];
+            }
+            if (isset($operation['resolved_media_candidate']) && is_array($operation['resolved_media_candidate']) && ! empty($operation['resolved_media_candidate'])) {
+                $media_operation_row['resolved_media_candidate'] = $operation['resolved_media_candidate'];
+            }
+            $operations[] = $media_operation_row;
         }
 
         usort(

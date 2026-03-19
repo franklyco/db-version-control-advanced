@@ -8,6 +8,10 @@ This addon absorbs Content Collector behavior into DBVC under modular boundaries
 - Complex V2 operational surfaces are expected to use a modular React workspace architecture, while Add-ons configuration remains server-rendered.
 - Start with:
   - `docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
+- Fast resume pack for active implementation:
+  - `docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
+  - `docs/MIGRATION_MAPPER_V2_DECISIONS.md`
+  - `docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 - Primary V2 planning references:
   - `docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
   - `docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`

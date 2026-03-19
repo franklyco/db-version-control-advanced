@@ -14,6 +14,12 @@ For the coordinated V2 planning set and recommended reading order, start with:
 
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
 
+For low-token resume context during active implementation, read next:
+
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+
 ## Product Goal
 
 V2 should let an operator:
@@ -424,13 +430,13 @@ Each implementation phase should keep:
 ### Phase 0: Contract and Planning Freeze
 
 Phase status:
-- `WIP`
+- `CLOSED`
 
 Checklist:
 - `[WIP]` Approve the V2 workflow as automation-first and package-first.
 - `[WIP]` Freeze the domain journey artifact family and event vocabulary.
 - `[WIP]` Freeze the canonical reviewer payload contracts.
-- `[WIP]` Freeze package artifact names and readiness vocabulary.
+- `[CLOSED]` Freeze package artifact names and readiness vocabulary.
 - `[OPEN]` Approve the V2 UI architecture and run-based workspace model.
 - `[OPEN]` Approve runtime gating behavior for `disabled`, `v1`, and `v2` states.
 - `[OPEN]` Approve the dedicated `addons/content-migration/v2/` path rule.
@@ -444,19 +450,19 @@ Acceptance criteria:
 ### Phase 1: Runtime Gating and V2 Scaffolding
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Add Content Collector controls to `DBVC -> Configure -> Add-ons`.
-- `[OPEN]` Reuse `dbvc_cc_addon_enabled` as the addon enable flag.
-- `[OPEN]` Add `dbvc_cc_runtime_version` with `v1` and `v2` values.
-- `[OPEN]` Introduce V2 bootstrap and runtime registration services.
-- `[OPEN]` Gate V1 and V2 page, route, cron, and asset registration by selected runtime version.
-- `[OPEN]` Create the initial `addons/content-migration/v2/` directory structure.
-- `[OPEN]` Scaffold the V2 React app shell and route or view coordinator.
-- `[OPEN]` Mount a dedicated V2 app root for operational surfaces.
-- `[OPEN]` Add the V2 build entrypoint files and asset-loading contract using the recommended `content-collector-v2-app` naming.
-- `[OPEN]` Install Playwright tooling in the repo and add the initial browser QA scaffold once the V2 app root loads.
+- `[CLOSED]` Add Content Collector controls to `DBVC -> Configure -> Add-ons`.
+- `[CLOSED]` Reuse `dbvc_cc_addon_enabled` as the addon enable flag.
+- `[CLOSED]` Add `dbvc_cc_runtime_version` with `v1` and `v2` values.
+- `[CLOSED]` Introduce V2 bootstrap and runtime registration services.
+- `[CLOSED]` Gate V1 and V2 page, route, cron, and asset registration by selected runtime version.
+- `[CLOSED]` Create the initial `addons/content-migration/v2/` directory structure.
+- `[CLOSED]` Scaffold the V2 React app shell and route or view coordinator.
+- `[CLOSED]` Mount a dedicated V2 app root for operational surfaces.
+- `[CLOSED]` Add the V2 build entrypoint files and asset-loading contract using the recommended `content-collector-v2-app` naming.
+- `[CLOSED]` Install Playwright tooling in the repo and add the initial browser QA scaffold once the V2 app root loads.
 
 Acceptance criteria:
 - The operator can enable or disable Content Collector from the Add-ons tab.
@@ -464,116 +470,184 @@ Acceptance criteria:
 - The chosen runtime actually controls which addon UI and routes load.
 - The V2 app bundle and asset manifest build under the agreed entrypoint names.
 
+Current tranche notes:
+- `2026-03-18`: Server-rendered Add-ons controls, runtime gating, V2 scaffolding, V2 shell, build wiring, PHPUnit gating coverage, and Playwright smoke scaffolding landed.
+- `2026-03-18`: LocalWP gating validation covered `disabled`, `v1`, and `v2`; the smoke harness was updated to support both wp-admin and custom front-end login flows, and further Playwright reruns were deferred to protect implementation velocity.
+
 ### Phase 2: Domain Journey and Target Schema Sync
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Implement append-only domain journey logging.
-- `[OPEN]` Add materialized latest-state and stage-summary files.
-- `[OPEN]` Build target object inventory from the current site.
-- `[OPEN]` Build target field schema catalog for narrowed targets.
-- `[OPEN]` Record schema fingerprints for freshness checks.
+- `[CLOSED]` Implement append-only domain journey logging.
+- `[CLOSED]` Add materialized latest-state and stage-summary files.
+- `[CLOSED]` Build target object inventory from the current site.
+- `[CLOSED]` Build target field schema catalog for narrowed targets.
+- `[CLOSED]` Record schema fingerprints for freshness checks.
 
 Acceptance criteria:
 - Each domain has a transparent journey log.
 - The current site's object and field schema can be queried by V2 services.
 
+Current tranche notes:
+- `2026-03-18`: A V2-only journey module now registers storage-root hooks, schema snapshot seeding, and run-based readiness routes only when the addon runtime is set to `v2`.
+- `2026-03-18`: Phase 2 artifacts now include append-only `domain-journey.ndjson`, materialized latest and stage summary projections, `dbvc_cc_target_object_inventory.v1.json`, and `dbvc_cc_target_field_catalog.v2.json`.
+- `2026-03-18`: PHPUnit validation covered schema-sync artifact generation, per-domain journey isolation, and V2-only REST route gating. Per-URL journey projections, discovery inventory, crawl, AI, mapping, media, QA, and package logic remain deferred to later phases.
+
 ### Phase 3: Discovery, Scope, Capture, and Extraction
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Implement domain URL discovery inventory.
-- `[OPEN]` Add URL normalization and dedupe.
-- `[OPEN]` Add URL eligibility and migration scope decisions.
-- `[OPEN]` Reuse or adapt page capture and artifact storage from V1.
-- `[OPEN]` Add source normalization before AI interpretation.
-- `[OPEN]` Reuse or adapt deterministic extraction and ingestion packaging from V1.
+- `[CLOSED]` Implement domain URL discovery inventory.
+- `[CLOSED]` Add URL normalization and dedupe.
+- `[CLOSED]` Add URL eligibility and migration scope decisions.
+- `[CLOSED]` Reuse or adapt page capture and artifact storage from V1.
+- `[CLOSED]` Add source normalization before AI interpretation.
+- `[CLOSED]` Reuse or adapt deterministic extraction and ingestion packaging from V1.
 
 Acceptance criteria:
 - V2 can crawl a domain into normalized, scoped, structured URL artifacts.
 - Out-of-scope URLs are excluded before heavy downstream work.
 
+Current tranche notes:
+- `2026-03-18`: Phase 3 introduced a V2 sitemap-driven URL inventory, normalization and dedupe, explicit eligibility and scope decisions, and run-based overview payloads under the existing `dbvc_cc/v2` route family.
+- `2026-03-18`: Eligible URLs now produce contract-shaped raw page artifacts, `*.source-normalization.v1.json`, `*.elements.v2.json`, `*.sections.v2.json`, and `*.ingestion-package.v2.json` while out-of-scope URLs stop before capture.
+- `2026-03-18`: PHPUnit validation covered sitemap discovery, dedupe, out-of-scope exclusion, per-page artifact generation, generated `runId` format, and V2-only `overview` route gating. AI context, classification, mapping, media, QA, and package assembly remain deferred.
+
 ### Phase 4: AI Context and Classification
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Implement context creation artifacts and prompts.
-- `[OPEN]` Implement initial classification artifacts and prompts.
-- `[OPEN]` Persist confidence, rationale, and traceability for both stages.
-- `[OPEN]` Add targeted per-URL rerun support for both stages.
+- `[CLOSED]` Implement context creation artifacts and prompts.
+- `[CLOSED]` Implement initial classification artifacts and prompts.
+- `[CLOSED]` Persist confidence, rationale, and traceability for both stages.
+- `[CLOSED]` Add targeted per-URL rerun support for both stages.
 
 Acceptance criteria:
 - Each eligible URL receives explainable context and object-type classification output.
 
+Current tranche notes:
+- `2026-03-18`: Phase 4 added deterministic `*.context-creation.v1.json` and `*.initial-classification.v1.json` artifacts with prompt-input traces, fallback metadata, confidence, rationale, alternate classifications, taxonomy hints, and review-state summaries.
+- `2026-03-18`: V2 run creation now advances eligible captured URLs through context creation and initial classification automatically, while `POST /dbvc_cc/v2/runs/{run_id}/urls/{page_id}/rerun` supports per-URL reruns for `context_creation` and `initial_classification`.
+- `2026-03-18`: PHPUnit validation covered contract-shaped Phase 4 artifact generation, needs-review materialization, auto-accept candidate classification, and V2-only rerun route gating. Mapping, media, QA, and package assembly remain deferred.
+
 ### Phase 5: Mapping, Media, Learning, and Transform
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Implement initial mapping and indexing against narrowed schema.
-- `[OPEN]` Reuse or adapt media candidate logic as a V2 media track.
-- `[OPEN]` Implement pattern reuse and learning across sibling URLs.
-- `[OPEN]` Implement target-value transformation into field-ready output shapes.
-- `[OPEN]` Implement target entity resolution preview.
-- `[OPEN]` Implement recommendation finalization into one canonical payload.
+- `[CLOSED]` Implement initial mapping and indexing against narrowed schema.
+- `[CLOSED]` Reuse or adapt media candidate logic as a V2 media track.
+- `[CLOSED]` Implement pattern reuse and learning across sibling URLs.
+- `[CLOSED]` Implement target-value transformation into field-ready output shapes.
+- `[CLOSED]` Implement target entity resolution preview.
+- `[CLOSED]` Implement recommendation finalization into one canonical payload.
 
 Acceptance criteria:
 - Each URL can produce one canonical recommendation payload with mapped content, media, target object intent, and transform previews.
 
+Current tranche notes:
+- `2026-03-18`: Phase 5 added deterministic `*.mapping-index.v1.json`, `*.media-candidates.v2.json`, `*.target-transform.v1.json`, and `*.mapping-recommendations.v2.json` outputs for each eligible V2 URL without introducing Phase 6 override or reviewer-decision logic.
+- `2026-03-18`: V2 runs now finalize one canonical recommendation payload per eligible URL, including narrowed-field candidates, media alignment, create-or-update resolution preview, and domain-scoped pattern memory in `_learning/domain-pattern-memory.v1.json`.
+- `2026-03-18`: PHPUnit validation covered Phase 1 through Phase 5, including contract-shaped mapping artifacts, update-existing preview behavior, and domain-isolated pattern reuse. QA/package assembly remains deferred to later phases.
+
 ### Phase 6: Exception Review, Overrides, and Reruns
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Build an exception-first review queue.
-- `[OPEN]` Allow target object type override per URL.
-- `[OPEN]` Allow field and media overrides per URL.
-- `[OPEN]` Persist decision artifacts and reviewer notes.
-- `[OPEN]` Add per-stage rerun controls for individual URLs.
-- `[OPEN]` Show create, update, or blocked target resolution preview in the review UI.
-- `[OPEN]` Deliver inspector drawers, evidence tabs, and progressive disclosure rules in the review workspace.
+- `[CLOSED]` Build an exception-first review queue.
+- `[CLOSED]` Allow target object type override per URL.
+- `[CLOSED]` Allow field and media overrides per URL.
+- `[CLOSED]` Persist decision artifacts and reviewer notes.
+- `[CLOSED]` Add per-stage rerun controls for individual URLs.
+- `[CLOSED]` Show create, update, or blocked target resolution preview in the review UI.
+- `[CLOSED]` Deliver inspector drawers, evidence tabs, and progressive disclosure rules in the review workspace.
 
 Acceptance criteria:
 - The operator can review exceptions instead of every URL.
 - Manual overrides are fully captured and traceable.
 
+Current tranche notes:
+- `2026-03-18`: Phase 6 added `/dbvc_cc/v2/runs/{run_id}/exceptions`, `/dbvc_cc/v2/runs/{run_id}/urls/{page_id}`, and `/dbvc_cc/v2/runs/{run_id}/urls/{page_id}/decision` so the V2 workspace can load exception-first queue rows, URL inspector detail payloads, and decision mutations from dedicated review services.
+- `2026-03-18`: V2 now persists `*.mapping-decisions.v2.json` and `*.media-decisions.v2.json` alongside the canonical recommendation artifact, including reviewer note capture, target object override state, field or taxonomy overrides, media overrides, recommendation fingerprints, and rerun metadata slots.
+- `2026-03-18`: The V2 React app now renders an exception queue with route-backed filters, a populated inspector drawer with summary or source or mapping or audit tabs, and per-stage rerun controls for `context_creation`, `initial_classification`, `mapping_index`, and `recommendation_finalization`.
+- `2026-03-18`: PHPUnit validation now covers Phase 1 through Phase 6, including exception queue payloads, inspector payload hydration, decision artifact writes, and single-URL mapping-stage reruns. QA and package assembly remain deferred to later phases.
+
 ### Phase 7: QA and Package Assembly
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Build URL-level QA reports.
-- `[OPEN]` Build package-level QA reports.
-- `[OPEN]` Assemble package manifest, records, media manifest, summary, and zip output.
-- `[OPEN]` Include override and rerun history in the package state.
-- `[OPEN]` Add package build history and readiness summaries.
-- `[OPEN]` Deliver readiness and preflight surfaces before import approval.
+- `[CLOSED]` Build URL-level QA reports.
+- `[CLOSED]` Build package-level QA reports.
+- `[CLOSED]` Assemble package manifest, records, media manifest, summary, and zip output.
+- `[CLOSED]` Include override and rerun history in the package state.
+- `[CLOSED]` Add package build history and readiness summaries.
+- `[CLOSED]` Deliver readiness and preflight surfaces before import approval.
 
 Acceptance criteria:
 - V2 can produce a target-adapted import-ready package as the main deliverable.
 - Package readiness is visible before dry-run or import.
 
+Current tranche notes:
+- `2026-03-18`: Phase 7 added a dedicated V2 package subsystem with `/dbvc_cc/v2/runs/{run_id}/package`, `_packages/package-builds.v1.json`, first-class package artifact families, and per-build zip output rooted under each domain-scoped `_packages/{package_id}/` directory.
+- `2026-03-18`: The V2 readiness route now materializes `*.qa-report.v1.json` artifacts per URL, derives `ready_for_import` or `needs_review` or `blocked` readiness states from canonical recommendation and decision artifacts, and exposes blocker and warning summaries for the new readiness workspace.
+- `2026-03-18`: The V2 React app now binds the `readiness` and `package` workspaces to live REST payloads, showing per-URL QA rows, aggregate blocker and warning groups, package build history, selected package detail, and a package build action with stable selectors.
+- `2026-03-18`: PHPUnit validation now covers Phase 1 through Phase 7, including readiness route payloads, per-URL QA artifact writes, package build history persistence, package artifact family output, and zip generation. Dry-run and import consumers remain deferred to Phase 8.
+
 ### Phase 8: Dry-Run and Import Consumers
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Make dry-run consume the package as the preferred upstream input.
-- `[OPEN]` Make executor planning consume package-aligned records and QA state.
-- `[OPEN]` Preserve existing guardrails, journaling, and rollback behavior where reusable.
+- `[CLOSED]` Make dry-run consume the package as the preferred upstream input.
+- `[CLOSED]` Make executor planning consume package-aligned records and QA state.
+- `[CLOSED]` Preserve existing guardrails, journaling, and rollback behavior where reusable.
 
 Acceptance criteria:
 - Downstream import systems can consume V2 packages without depending on legacy V1 review artifacts.
+
+Current tranche notes:
+- `2026-03-18`: Phase 8 introduced a V2 import bridge under `addons/content-migration/v2/import/` and added `GET /dbvc_cc/v2/runs/{run_id}/dry-run`, using selected package records and media manifests as the preferred upstream input for dry-run planning.
+- `2026-03-18`: The bridge now derives dry-run readiness from the selected package QA artifact instead of the broader run readiness surface, so package-first consumers stay scoped to the chosen package build.
+- `2026-03-18`: The V2 package workspace now exposes a dry-run preview action and stable selectors for the downstream import-consumer summary, including surfaced write-barrier counts from the reused executor guardrails.
+- `2026-03-18`: Phase 8 now adds `POST /dbvc_cc/v2/runs/{run_id}/preflight-approve` and `POST /dbvc_cc/v2/runs/{run_id}/execute`, reusing the shared import executor guardrails, journaling, approval tokens, and rollback behavior against package-backed dry-run executions.
+- `2026-03-18`: The V2 package workspace now exposes package preflight and execute actions with stable selectors and shared import-run summary output.
+- `2026-03-18`: PHPUnit validation now covers the missing-package guard, seeded package-record dry-run bridge flow, package preflight approval, package execute bridging, and rollback continuity in `ContentCollectorV2Phase8Test`. Phase 8 is closed.
+- `2026-03-18`: Post-close UI hardening now resets package dry-run state whenever the selected run or package changes, preventing stale or auto-carried previews across package switches, and aligns the shell copy with the live Phase 8 bridge status.
+
+### Phase 9: Operational Workflow Polish and Observability
+
+Phase status:
+- `WIP`
+
+Checklist:
+- `[CLOSED]` Surface import execution history in the V2 package workspace.
+- `[CLOSED]` Improve package workflow observability across build, dry-run, preflight, and execute stages.
+- `[OPEN]` Confirm current V2 alignment with reused Content Collector and crawl primitives before a dedicated crawl-start UI tranche.
+
+Acceptance criteria:
+- Operators can review recent import executions, downstream import run identifiers, approval state, and rollback outcomes without reading raw artifacts directly.
+- The selected package shows clear build, dry-run, preflight, and execute status, timing, and blocker context in one workspace flow.
+- The implementation guide records whether the reused Content Collector and crawl primitives still align with V2 runtime needs and identifies any gaps to address before a first-class V2 crawl-start surface is added.
+
+Current tranche notes:
+- `2026-03-18`: Phase 9 is intentionally defined as an operational polish tranche, not a new business-pipeline tranche.
+- `2026-03-18`: The immediate focus is import execution history, package workflow observability, and runtime-state clarity in the existing V2 workspace shell.
+- `2026-03-18`: A dedicated in-app crawl-start workflow remains a follow-on tranche after Phase 9, but Phase 9 should explicitly confirm whether the currently reused Content Collector and crawl primitives still align with V2.
+- `2026-03-18`: The V2 package surface now persists and reloads package-linked dry-run, preflight, and execute snapshots through package build history, exposing workflow state and import execution history without requiring direct artifact browsing.
+- `2026-03-18`: The V2 package workspace now renders a workflow panel and persisted import history panel, and refreshes package workflow state after dry-run, preflight, and execute mutations.
+- `2026-03-18`: PHPUnit validation now covers the persisted Phase 9 package workflow state and import history surface in `ContentCollectorV2Phase9Test`.
 
 ## Granular Implementation Checklist
 
@@ -589,12 +663,12 @@ Use these task IDs during implementation updates.
 - `[CLOSED]` `P0-T2-S1` Lock `update_existing`, `create_new`, `blocked_needs_review`, and `skip_out_of_scope` as the base resolution modes.
 - `[CLOSED]` `P0-T2-S2` Lock the domain isolation rule so learned behavior cannot spill across domains.
 - `[CLOSED]` `P0-T3` Expand the implementation guide into a granular task checklist before coding begins.
-- `[OPEN]` `P0-T4` Freeze run and package identifier conventions.
-- `[OPEN]` `P0-T4-S1` Define `runId` format and generation source.
-- `[OPEN]` `P0-T4-S2` Define `packageId` format and relationship to `runId`.
-- `[OPEN]` `P0-T5` Freeze AI operating budgets.
-- `[OPEN]` `P0-T5-S1` Define timeout budgets per AI stage.
-- `[OPEN]` `P0-T5-S2` Define retry counts and deterministic fallback policy.
+- `[CLOSED]` `P0-T4` Freeze run and package identifier conventions.
+- `[CLOSED]` `P0-T4-S1` Define `runId` format and generation source.
+- `[CLOSED]` `P0-T4-S2` Define `packageId` format and relationship to `runId`.
+- `[CLOSED]` `P0-T5` Freeze AI operating budgets.
+- `[CLOSED]` `P0-T5-S1` Define timeout budgets per AI stage.
+- `[CLOSED]` `P0-T5-S2` Define retry counts and deterministic fallback policy.
 
 ### Recommended Identifier Defaults
 
@@ -639,115 +713,130 @@ Recommended stage budget notes:
 
 ### Phase 1 Task Matrix
 
-- `[OPEN]` `P1-T1` Add runtime gating controls to the Add-ons screen.
-- `[OPEN]` `P1-T1-S1` Surface `Enable Content Collector`.
-- `[OPEN]` `P1-T1-S2` Surface `Runtime Version` with `v1` and `v2`.
-- `[OPEN]` `P1-T1-S3` Surface advanced V2 automation settings behind an advanced section.
-- `[OPEN]` `P1-T2` Scaffold the V2 runtime path.
-- `[OPEN]` `P1-T2-S1` Create `addons/content-migration/v2/` folders.
-- `[OPEN]` `P1-T2-S2` Add V2 bootstrap and runtime registrar services.
-- `[OPEN]` `P1-T2-S3` Add V2 admin app loader service.
-- `[OPEN]` `P1-T3` Wire the V2 admin build entry.
-- `[OPEN]` `P1-T3-S1` Add `content-collector-v2-app.js`.
-- `[OPEN]` `P1-T3-S2` Add `addons/content-migration/v2/admin-app/index.js`.
-- `[OPEN]` `P1-T3-S3` Add `addons/content-migration/v2/admin-app/style.css`.
-- `[OPEN]` `P1-T3-S4` Update `package.json` `start`, `build`, and `lint` scripts to include `content-collector-v2-app`.
-- `[OPEN]` `P1-T4` Mount the first V2 workspace shell.
-- `[OPEN]` `P1-T4-S1` Register the V2 admin page and app root.
-- `[OPEN]` `P1-T4-S2` Localize `DBVC_CC_V2_APP` bootstrap data.
-- `[OPEN]` `P1-T4-S3` Render a minimal run workspace shell.
-- `[OPEN]` `P1-T5` Establish browser QA tooling.
-- `[OPEN]` `P1-T5-S1` Install `@playwright/test`.
-- `[OPEN]` `P1-T5-S2` Run `npx playwright install`.
-- `[OPEN]` `P1-T5-S3` Add one V2 smoke test for app load and drawer behavior.
+- `[CLOSED]` `P1-T1` Add runtime gating controls to the Add-ons screen.
+- `[CLOSED]` `P1-T1-S1` Surface `Enable Content Collector`.
+- `[CLOSED]` `P1-T1-S2` Surface `Runtime Version` with `v1` and `v2`.
+- `[CLOSED]` `P1-T1-S3` Surface advanced V2 automation settings behind an advanced section.
+- `[CLOSED]` `P1-T2` Scaffold the V2 runtime path.
+- `[CLOSED]` `P1-T2-S1` Create `addons/content-migration/v2/` folders.
+- `[CLOSED]` `P1-T2-S2` Add V2 bootstrap and runtime registrar services.
+- `[CLOSED]` `P1-T2-S3` Add V2 admin app loader service.
+- `[CLOSED]` `P1-T3` Wire the V2 admin build entry.
+- `[CLOSED]` `P1-T3-S1` Add `content-collector-v2-app.js`.
+- `[CLOSED]` `P1-T3-S2` Add `addons/content-migration/v2/admin-app/index.js`.
+- `[CLOSED]` `P1-T3-S3` Add `addons/content-migration/v2/admin-app/style.css`.
+- `[CLOSED]` `P1-T3-S4` Update `package.json` `start`, `build`, and `lint` scripts to include `content-collector-v2-app`.
+- `[CLOSED]` `P1-T4` Mount the first V2 workspace shell.
+- `[CLOSED]` `P1-T4-S1` Register the V2 admin page and app root.
+- `[CLOSED]` `P1-T4-S2` Localize `DBVC_CC_V2_APP` bootstrap data.
+- `[CLOSED]` `P1-T4-S3` Render a minimal run workspace shell.
+- `[CLOSED]` `P1-T5` Establish browser QA tooling.
+- `[CLOSED]` `P1-T5-S1` Install `@playwright/test`.
+- `[CLOSED]` `P1-T5-S2` Run `npx playwright install`.
+- `[CLOSED]` `P1-T5-S3` Add one V2 smoke test for app load and drawer behavior.
 
 ### Phase 2 Task Matrix
 
-- `[OPEN]` `P2-T1` Build the domain journey subsystem.
-- `[OPEN]` `P2-T1-S1` Add append-only journey event writing.
-- `[OPEN]` `P2-T1-S2` Add latest-state materialization.
-- `[OPEN]` `P2-T1-S3` Add stage summary materialization.
-- `[OPEN]` `P2-T2` Build target schema sync primitives.
-- `[OPEN]` `P2-T2-S1` Build target object inventory.
-- `[OPEN]` `P2-T2-S2` Build target field catalog.
-- `[OPEN]` `P2-T2-S3` Record schema fingerprints for freshness.
+- `[CLOSED]` `P2-T1` Build the domain journey subsystem.
+- `[CLOSED]` `P2-T1-S1` Add append-only journey event writing.
+- `[CLOSED]` `P2-T1-S2` Add latest-state materialization.
+- `[CLOSED]` `P2-T1-S3` Add stage summary materialization.
+- `[CLOSED]` `P2-T2` Build target schema sync primitives.
+- `[CLOSED]` `P2-T2-S1` Build target object inventory.
+- `[CLOSED]` `P2-T2-S2` Build target field catalog.
+- `[CLOSED]` `P2-T2-S3` Record schema fingerprints for freshness.
 
 ### Phase 3 Task Matrix
 
-- `[OPEN]` `P3-T1` Build discovery and scope decisions.
-- `[OPEN]` `P3-T1-S1` Reuse sitemap discovery primitives.
-- `[OPEN]` `P3-T1-S2` Add normalization and dedupe.
-- `[OPEN]` `P3-T1-S3` Add eligibility and scope rules.
-- `[OPEN]` `P3-T2` Build capture and extraction flow.
-- `[OPEN]` `P3-T2-S1` Reuse or adapt raw page capture.
-- `[OPEN]` `P3-T2-S2` Add source-normalization output.
-- `[OPEN]` `P3-T2-S3` Reuse or adapt structured extraction and ingestion packaging.
+- `[CLOSED]` `P3-T1` Build discovery and scope decisions.
+- `[CLOSED]` `P3-T1-S1` Reuse sitemap discovery primitives.
+- `[CLOSED]` `P3-T1-S2` Add normalization and dedupe.
+- `[CLOSED]` `P3-T1-S3` Add eligibility and scope rules.
+- `[CLOSED]` `P3-T2` Build capture and extraction flow.
+- `[CLOSED]` `P3-T2-S1` Reuse or adapt raw page capture.
+- `[CLOSED]` `P3-T2-S2` Add source-normalization output.
+- `[CLOSED]` `P3-T2-S3` Reuse or adapt structured extraction and ingestion packaging.
 
 ### Phase 4 Task Matrix
 
-- `[OPEN]` `P4-T1` Build AI context creation.
-- `[OPEN]` `P4-T1-S1` Define prompt input contract.
-- `[OPEN]` `P4-T1-S2` Persist artifact output with traceability.
-- `[OPEN]` `P4-T1-S3` Support per-URL rerun.
-- `[OPEN]` `P4-T2` Build AI initial classification.
-- `[OPEN]` `P4-T2-S1` Use target object inventory as context.
-- `[OPEN]` `P4-T2-S2` Persist alternate classifications and taxonomy hints.
-- `[OPEN]` `P4-T2-S3` Persist confidence and rationale.
+- `[CLOSED]` `P4-T1` Build AI context creation.
+- `[CLOSED]` `P4-T1-S1` Define prompt input contract.
+- `[CLOSED]` `P4-T1-S2` Persist artifact output with traceability.
+- `[CLOSED]` `P4-T1-S3` Support per-URL rerun.
+- `[CLOSED]` `P4-T2` Build AI initial classification.
+- `[CLOSED]` `P4-T2-S1` Use target object inventory as context.
+- `[CLOSED]` `P4-T2-S2` Persist alternate classifications and taxonomy hints.
+- `[CLOSED]` `P4-T2-S3` Persist confidence and rationale.
 
 ### Phase 5 Task Matrix
 
-- `[OPEN]` `P5-T1` Build mapping index generation.
-- `[OPEN]` `P5-T1-S1` Compare structured content against narrowed field catalog.
-- `[OPEN]` `P5-T1-S2` Record unresolved items and confidence summaries.
-- `[OPEN]` `P5-T2` Build the media mapping track.
-- `[OPEN]` `P5-T2-S1` Reuse or adapt media candidate discovery.
-- `[OPEN]` `P5-T2-S2` Align media candidates to recommendation payloads.
-- `[OPEN]` `P5-T3` Build domain-scoped pattern reuse.
-- `[OPEN]` `P5-T3-S1` Persist domain pattern memory.
-- `[OPEN]` `P5-T3-S2` Reuse only sibling-domain patterns, never cross-domain patterns.
-- `[OPEN]` `P5-T4` Build target transforms and resolution preview.
-- `[OPEN]` `P5-T4-S1` Shape target-ready values for fields, taxonomies, and media.
-- `[OPEN]` `P5-T4-S2` Produce create or update or blocked resolution preview.
-- `[OPEN]` `P5-T5` Finalize canonical recommendations.
-- `[OPEN]` `P5-T5-S1` Build `mapping-recommendations.v2.json`.
-- `[OPEN]` `P5-T5-S2` Carry forward resolution metadata and review signals.
+- `[CLOSED]` `P5-T1` Build mapping index generation.
+- `[CLOSED]` `P5-T1-S1` Compare structured content against narrowed field catalog.
+- `[CLOSED]` `P5-T1-S2` Record unresolved items and confidence summaries.
+- `[CLOSED]` `P5-T2` Build the media mapping track.
+- `[CLOSED]` `P5-T2-S1` Reuse or adapt media candidate discovery.
+- `[CLOSED]` `P5-T2-S2` Align media candidates to recommendation payloads.
+- `[CLOSED]` `P5-T3` Build domain-scoped pattern reuse.
+- `[CLOSED]` `P5-T3-S1` Persist domain pattern memory.
+- `[CLOSED]` `P5-T3-S2` Reuse only sibling-domain patterns, never cross-domain patterns.
+- `[CLOSED]` `P5-T4` Build target transforms and resolution preview.
+- `[CLOSED]` `P5-T4-S1` Shape target-ready values for fields, taxonomies, and media.
+- `[CLOSED]` `P5-T4-S2` Produce create or update or blocked resolution preview.
+- `[CLOSED]` `P5-T5` Finalize canonical recommendations.
+- `[CLOSED]` `P5-T5-S1` Build `mapping-recommendations.v2.json`.
+- `[CLOSED]` `P5-T5-S2` Carry forward resolution metadata and review signals.
 
 ### Phase 6 Task Matrix
 
-- `[OPEN]` `P6-T1` Build the exception review workspace.
-- `[OPEN]` `P6-T1-S1` Build exception-first tables and filters.
-- `[OPEN]` `P6-T1-S2` Build URL inspector drawer surfaces.
-- `[OPEN]` `P6-T1-S3` Build evidence and mapping inspector tabs.
-- `[OPEN]` `P6-T2` Build override actions.
-- `[OPEN]` `P6-T2-S1` Add target object override.
-- `[OPEN]` `P6-T2-S2` Add field and taxonomy override.
-- `[OPEN]` `P6-T2-S3` Add media override.
-- `[OPEN]` `P6-T3` Build rerun actions and decision persistence.
-- `[OPEN]` `P6-T3-S1` Persist `mapping-decisions.v2.json`.
-- `[OPEN]` `P6-T3-S2` Persist `media-decisions.v2.json`.
-- `[OPEN]` `P6-T3-S3` Trigger per-stage reruns for a single URL.
+- `[CLOSED]` `P6-T1` Build the exception review workspace.
+- `[CLOSED]` `P6-T1-S1` Build exception-first tables and filters.
+- `[CLOSED]` `P6-T1-S2` Build URL inspector drawer surfaces.
+- `[CLOSED]` `P6-T1-S3` Build evidence and mapping inspector tabs.
+- `[CLOSED]` `P6-T2` Build override actions.
+- `[CLOSED]` `P6-T2-S1` Add target object override.
+- `[CLOSED]` `P6-T2-S2` Add field and taxonomy override.
+- `[CLOSED]` `P6-T2-S3` Add media override.
+- `[CLOSED]` `P6-T3` Build rerun actions and decision persistence.
+- `[CLOSED]` `P6-T3-S1` Persist `mapping-decisions.v2.json`.
+- `[CLOSED]` `P6-T3-S2` Persist `media-decisions.v2.json`.
+- `[CLOSED]` `P6-T3-S3` Trigger per-stage reruns for a single URL.
 
 ### Phase 7 Task Matrix
 
-- `[OPEN]` `P7-T1` Build readiness and QA reports.
-- `[OPEN]` `P7-T1-S1` Build per-URL QA reports.
-- `[OPEN]` `P7-T1-S2` Build package QA reports.
-- `[OPEN]` `P7-T2` Build package assembly.
-- `[OPEN]` `P7-T2-S1` Build manifest and summary outputs.
-- `[OPEN]` `P7-T2-S2` Build records and media manifests.
-- `[OPEN]` `P7-T2-S3` Build package zip output.
-- `[OPEN]` `P7-T3` Build readiness UI surfaces.
-- `[OPEN]` `P7-T3-S1` Show blockers and warnings.
-- `[OPEN]` `P7-T3-S2` Show package history and readiness status.
+- `[CLOSED]` `P7-T1` Build readiness and QA reports.
+- `[CLOSED]` `P7-T1-S1` Build per-URL QA reports.
+- `[CLOSED]` `P7-T1-S2` Build package QA reports.
+- `[CLOSED]` `P7-T2` Build package assembly.
+- `[CLOSED]` `P7-T2-S1` Build manifest and summary outputs.
+- `[CLOSED]` `P7-T2-S2` Build records and media manifests.
+- `[CLOSED]` `P7-T2-S3` Build package zip output.
+- `[CLOSED]` `P7-T3` Build readiness UI surfaces.
+- `[CLOSED]` `P7-T3-S1` Show blockers and warnings.
+- `[CLOSED]` `P7-T3-S2` Show package history and readiness status.
 
 ### Phase 8 Task Matrix
 
-- `[OPEN]` `P8-T1` Make dry-run package-first.
-- `[OPEN]` `P8-T1-S1` Consume V2 package records for dry-run planning.
-- `[OPEN]` `P8-T1-S2` Surface dry-run readiness against package QA state.
-- `[OPEN]` `P8-T2` Align executor planning to package outputs.
-- `[OPEN]` `P8-T2-S1` Consume package-aligned records and media manifests.
-- `[OPEN]` `P8-T2-S2` Preserve guardrails, journaling, and rollback behavior.
+- `[CLOSED]` `P8-T1` Make dry-run package-first.
+- `[CLOSED]` `P8-T1-S1` Consume V2 package records for dry-run planning.
+- `[CLOSED]` `P8-T1-S2` Surface dry-run readiness against package QA state.
+- `[CLOSED]` `P8-T2` Align executor planning to package outputs.
+- `[CLOSED]` `P8-T2-S1` Consume package-aligned records and media manifests.
+- `[CLOSED]` `P8-T2-S2` Preserve guardrails, journaling, and rollback behavior.
+
+### Phase 9 Task Matrix
+
+- `[CLOSED]` `P9-T1` Build import execution history observability.
+- `[CLOSED]` `P9-T1-S1` Surface package-linked import execution summaries in the V2 package workspace.
+- `[CLOSED]` `P9-T1-S2` Surface downstream import run identifiers, approval state, and rollback status for recent executions.
+- `[CLOSED]` `P9-T1-S3` Keep import execution detail inspectable without requiring direct artifact browsing.
+- `[CLOSED]` `P9-T2` Build package workflow observability.
+- `[CLOSED]` `P9-T2-S1` Show build, dry-run, preflight, and execute timestamps or latest-status markers for the selected package.
+- `[CLOSED]` `P9-T2-S2` Show stage-scoped blockers, warnings, and deferred counts in one package workflow surface.
+- `[CLOSED]` `P9-T2-S3` Keep package workflow surfaces synchronized after build, preflight, and execute mutations without manual refresh.
+- `[OPEN]` `P9-T3` Audit V2 reuse alignment before crawl-start UI work.
+- `[OPEN]` `P9-T3-S1` Confirm which existing Content Collector and crawl primitives are still actively reused by V2 run creation.
+- `[OPEN]` `P9-T3-S2` Record any misalignment, dormant dependency, or operator gap that would block a first-class V2 crawl-start flow.
+- `[OPEN]` `P9-T3-S3` Define the follow-on tranche boundary for a dedicated V2 crawl-start UI after Phase 9 closes.
 
 ## Reuse Strategy
 

@@ -51,6 +51,13 @@ Recommended path:
 Recommended package index:
 - `uploads/contentcollector/{domain}/_packages/package-builds.v1.json`
 
+Recommended package index extensions per build entry:
+
+- `workflow_state`
+  - latest build, dry-run, preflight, and execute snapshots for that package
+- `import_history[]`
+  - recent package-linked import execution summaries with downstream import run identifiers and rollback state
+
 ## Package Files
 
 Required files:
@@ -102,7 +109,7 @@ Per-record fields should include:
 
 - `page_id`
 - `source_url`
-- `normalized_path`
+- `path`
 - `target_object_family`
 - `target_object_key`
 - `target_object_source`
@@ -115,6 +122,12 @@ Per-record fields should include:
 - `seo_values`
 - `trace`
 - `review_state`
+
+`media_refs` should preserve downstream-consumer identifiers, including:
+
+- `media_id`
+- `media_kind`
+- `source_refs[]`
 
 `target_action` should clearly indicate:
 

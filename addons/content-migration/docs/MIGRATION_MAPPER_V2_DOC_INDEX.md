@@ -13,6 +13,21 @@ Use it to understand:
 
 ## Recommended Reading Order
 
+### 0. Fast resume pack
+
+Read these first when continuing active implementation work:
+
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+
+These are the shortest path to:
+
+- the current phase anchor
+- the locked decisions
+- the active route and artifact surface
+- the next implementation seam
+
 ### 1. Product and workflow
 
 Read first:
@@ -93,6 +108,7 @@ Use as support material:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V1_REUSE_AUDIT.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V1_SYSTEM_INDEX.md`
 - `addons/content-migration/README.md`
+- `tests/fixtures/content-collector-v2/README.md`
 
 These are useful for:
 
@@ -149,6 +165,9 @@ When one of these changes, update the others if needed:
 
 ## Current V2 Planning Set
 
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
 - `addons/content-migration/docs/CONTENT_COLLECTOR_PIPELINE_SWIMLANE.md`
@@ -161,6 +180,7 @@ When one of these changes, update the others if needed:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_PIPELINE_REVIEW.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V1_REUSE_AUDIT.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V1_SYSTEM_INDEX.md`
+- `tests/fixtures/content-collector-v2/README.md`
 
 ## Main Rule
 

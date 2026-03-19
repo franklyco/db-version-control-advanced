@@ -9,9 +9,50 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-helpers
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-module-interface.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-service-container.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-contracts.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-page-artifact-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-configure-addon-settings.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-app-loader.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-admin-menu-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-materializer-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/discovery/dbvc-cc-v2-url-scope-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/discovery/dbvc-cc-v2-url-inventory-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/capture/dbvc-cc-v2-page-capture-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/extraction/dbvc-cc-v2-source-normalization-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/extraction/dbvc-cc-v2-ingestion-package-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/extraction/dbvc-cc-v2-structured-extraction-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-v2-context-creation-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-v2-initial-classification-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/mapping/dbvc-cc-v2-mapping-index-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/media/dbvc-cc-v2-media-candidate-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/patterns/dbvc-cc-v2-pattern-learning-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/transform/dbvc-cc-v2-target-transform-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-v2-ai-pipeline-orchestrator-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/capture/dbvc-cc-v2-capture-orchestrator-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-object-inventory-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-schema-sync-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-rest-controller.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-journey-module.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/review/dbvc-cc-v2-exception-queue-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/review/dbvc-cc-v2-recommendation-review-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/review/dbvc-cc-v2-review-rest-controller.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/review/dbvc-cc-v2-review-module.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-selection-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-url-qa-report-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-qa-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-artifact-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-storage-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-observability-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-build-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-rest-controller.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-module.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/import/dbvc-cc-v2-import-collection-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/import/dbvc-cc-v2-import-execution-bridge-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/import/dbvc-cc-v2-import-plan-bridge-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/import/dbvc-cc-v2-import-rest-controller.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/import/dbvc-cc-v2-import-module.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/bootstrap/dbvc-cc-v2-runtime-registrar.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/bootstrap/dbvc-cc-v2-addon.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/settings/dbvc-cc-settings-service.php';
@@ -74,6 +115,11 @@ final class DBVC_CC_Addon_Bootstrap
     private static $active_runtime = '';
 
     /**
+     * @var bool
+     */
+    private static $v1_runtime_bootstrapped_once = false;
+
+    /**
      * @return void
      */
     public static function bootstrap()
@@ -128,8 +174,12 @@ final class DBVC_CC_Addon_Bootstrap
         $container = new DBVC_CC_Service_Container();
         self::register_module_definitions($container);
         self::register_module_hooks($container);
+        if (self::$v1_runtime_bootstrapped_once) {
+            self::restore_v1_runtime_hooks();
+        }
         self::$container = $container;
         self::$active_runtime = DBVC_CC_V2_Contracts::RUNTIME_V1;
+        self::$v1_runtime_bootstrapped_once = true;
     }
 
     /**
@@ -200,6 +250,55 @@ final class DBVC_CC_Addon_Bootstrap
 
         wp_clear_scheduled_hook(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB);
         wp_clear_scheduled_hook(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH);
+    }
+
+    /**
+     * Re-attach legacy singleton hooks when V1 is reactivated in the same request.
+     *
+     * @return void
+     */
+    private static function restore_v1_runtime_hooks()
+    {
+        add_action('admin_init', [DBVC_CC_Settings_Service::class, 'register_settings']);
+        add_action('admin_init', [DBVC_CC_Schema_Snapshot_Service::class, 'maybe_generate_initial_snapshot'], 20);
+        add_action(DBVC_CC_Contracts::ACTION_RUN_SCHEMA_SNAPSHOT, [DBVC_CC_Schema_Snapshot_Service::class, 'generate_snapshot']);
+        add_action('init', [DBVC_CC_Artifact_Manager::class, 'ensure_storage_roots'], 15);
+
+        $admin_controller = DBVC_CC_Admin_Controller::get_instance();
+        add_action('admin_menu', [$admin_controller, 'add_admin_menu'], 90);
+        add_action('admin_enqueue_scripts', [$admin_controller, 'enqueue_scripts']);
+
+        $ajax_controller = DBVC_CC_Ajax_Controller::get_instance();
+        add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_GET_URLS_FROM_SITEMAP, [$ajax_controller, 'get_urls_from_sitemap']);
+        add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_PROCESS_SINGLE_URL, [$ajax_controller, 'process_single_url']);
+        add_action('wp_ajax_' . DBVC_CC_Contracts::AJAX_ACTION_DBVC_CC_TRIGGER_DOMAIN_AI_REFRESH, [$ajax_controller, 'dbvc_cc_trigger_domain_ai_refresh']);
+
+        $explorer_rest = DBVC_CC_Explorer_REST_Controller::get_instance();
+        add_action('rest_api_init', [$explorer_rest, 'register_routes']);
+
+        $ai_service = DBVC_CC_AI_Service::get_instance();
+        add_action(DBVC_CC_Contracts::CRON_HOOK_AI_PROCESS_JOB, [$ai_service, 'process_job'], 10, 3);
+
+        $ai_rest = DBVC_CC_AI_REST_Controller::get_instance();
+        add_action('rest_api_init', [$ai_rest, 'register_routes']);
+
+        $workbench_rest = DBVC_CC_Workbench_REST_Controller::get_instance();
+        add_action('rest_api_init', [$workbench_rest, 'register_routes']);
+
+        $catalog_rest = DBVC_CC_Target_Field_Catalog_REST_Controller::get_instance();
+        add_action('rest_api_init', [$catalog_rest, 'register_routes']);
+
+        $media_rest = DBVC_CC_Media_REST_Controller::get_instance();
+        add_action('rest_api_init', [$media_rest, 'register_routes']);
+
+        $import_plan_rest = DBVC_CC_Import_Plan_REST_Controller::get_instance();
+        add_action('rest_api_init', [$import_plan_rest, 'register_routes']);
+
+        $import_executor_rest = DBVC_CC_Import_Executor_REST_Controller::get_instance();
+        add_action('rest_api_init', [$import_executor_rest, 'register_routes']);
+
+        $mapping_rebuild = DBVC_CC_Mapping_Rebuild_Service::get_instance();
+        add_action(DBVC_CC_Contracts::CRON_HOOK_MAPPING_REBUILD_BATCH, [$mapping_rebuild, 'dbvc_cc_process_rebuild_batch_event'], 10, 1);
     }
 
     /**

@@ -5,11 +5,12 @@
   "main": "build/admin-app.js",
   "source": "src/admin-app.js",
   "scripts": {
-    "start": "wp-scripts start admin-app admin-entity-editor",
-    "build": "wp-scripts build admin-app admin-entity-editor",
-    "lint": "wp-scripts lint-js admin-app.js admin-entity-editor.js src/admin-app/index.js src/admin-entity-editor/index.js"
+    "start": "wp-scripts start admin-app admin-entity-editor content-collector-v2-app",
+    "build": "wp-scripts build admin-app admin-entity-editor content-collector-v2-app",
+    "lint": "wp-scripts lint-js admin-app.js admin-entity-editor.js content-collector-v2-app.js src/admin-app/index.js src/admin-entity-editor/index.js addons/content-migration/v2/admin-app/index.js addons/content-migration/v2/admin-app/app addons/content-migration/v2/admin-app/components addons/content-migration/v2/admin-app/workspaces"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@babel/runtime": "^7.26.0",
     "@wordpress/scripts": "^28.2.0"
   }

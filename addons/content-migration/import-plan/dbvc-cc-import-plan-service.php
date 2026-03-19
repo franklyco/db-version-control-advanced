@@ -39,6 +39,39 @@ final class DBVC_CC_Import_Plan_Service
         }
 
         $phase4_input = isset($handoff['phase4_input']) && is_array($handoff['phase4_input']) ? $handoff['phase4_input'] : [];
+        return $this->build_dry_run_plan(
+            $phase4_input,
+            [
+                'handoff' => $handoff,
+            ]
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $phase4_input
+     * @param array<string, mixed> $args
+     * @return array<string, mixed>|WP_Error
+     */
+    public function build_dry_run_plan(array $phase4_input, array $args = [])
+    {
+        $handoff = isset($args['handoff']) && is_array($args['handoff'])
+            ? $args['handoff']
+            : [
+                'status' => isset($args['handoff_status']) ? sanitize_key((string) $args['handoff_status']) : 'ready',
+                'review' => isset($args['review']) && is_array($args['review']) ? $args['review'] : ['reasons' => []],
+                'warnings' => isset($args['warnings']) && is_array($args['warnings']) ? $args['warnings'] : [],
+                'trace' => isset($args['trace']) && is_array($args['trace']) ? $args['trace'] : [],
+                'handoff_schema_version' => isset($args['handoff_schema_version'])
+                    ? sanitize_text_field((string) $args['handoff_schema_version'])
+                    : '1.1.0',
+                'handoff_generated_at' => isset($args['handoff_generated_at'])
+                    ? sanitize_text_field((string) $args['handoff_generated_at'])
+                    : current_time('c'),
+                'blocking_warning_count' => isset($args['blocking_warning_count'])
+                    ? absint($args['blocking_warning_count'])
+                    : 0,
+            ];
+
         $approved_mappings = isset($phase4_input['approved_mappings']) && is_array($phase4_input['approved_mappings'])
             ? array_values($phase4_input['approved_mappings'])
             : [];
@@ -166,12 +199,29 @@ final class DBVC_CC_Import_Plan_Service
                 continue;
             }
 
-            $upsert_operations[] = [
+            $upsert_operation = [
                 'operation_type' => 'upsert_field_mapping',
                 'section_id' => $section_id,
                 'target_ref' => $target_ref,
                 'confidence' => isset($row['confidence']) ? (float) $row['confidence'] : null,
             ];
+            if (array_key_exists('resolved_value_candidate', $row)) {
+                $upsert_operation['resolved_value_candidate'] = $row['resolved_value_candidate'];
+            }
+            if (isset($row['resolved_value_format'])) {
+                $upsert_operation['resolved_value_format'] = sanitize_key((string) $row['resolved_value_format']);
+            }
+            if (isset($row['resolved_value_preview'])) {
+                $upsert_operation['resolved_value_preview'] = sanitize_text_field((string) $row['resolved_value_preview']);
+            }
+            if (isset($row['resolved_value_origin'])) {
+                $upsert_operation['resolved_value_origin'] = sanitize_key((string) $row['resolved_value_origin']);
+            }
+            if (isset($row['source_payload']) && is_array($row['source_payload']) && ! empty($row['source_payload'])) {
+                $upsert_operation['source_payload'] = $row['source_payload'];
+            }
+
+            $upsert_operations[] = $upsert_operation;
         }
 
         $media_operations = [];
@@ -185,7 +235,7 @@ final class DBVC_CC_Import_Plan_Service
                 continue;
             }
 
-            $media_operations[] = [
+            $media_operation = [
                 'operation_type' => 'upsert_media_mapping',
                 'media_id' => $media_id,
                 'target_ref' => $target_ref,
@@ -197,6 +247,14 @@ final class DBVC_CC_Import_Plan_Service
                 'accepted_media_kinds' => $this->dbvc_cc_resolve_media_accepted_kinds($target_ref, $row, $media_field_catalog),
                 'normalized_value_strategy' => $this->dbvc_cc_resolve_media_value_strategy($target_ref, $row, $media_field_catalog),
             ];
+            if (isset($row['source_payload']) && is_array($row['source_payload']) && ! empty($row['source_payload'])) {
+                $media_operation['source_payload'] = $row['source_payload'];
+            }
+            if (isset($row['resolved_media_candidate']) && is_array($row['resolved_media_candidate']) && ! empty($row['resolved_media_candidate'])) {
+                $media_operation['resolved_media_candidate'] = $row['resolved_media_candidate'];
+            }
+
+            $media_operations[] = $media_operation;
         }
 
         $blocking_issue_count = 0;
