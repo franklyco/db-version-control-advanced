@@ -1,0 +1,26 @@
+{
+  "status": "approved",
+  "message": "Scrub suggestions were applied to Configure defaults.",
+  "domain": "phase36-example.test",
+  "path": "home",
+  "sample_size": 20,
+  "profile_mode": "ai-suggested-approved",
+  "applied_actions": {
+    "class": "tokenize",
+    "id": "hash",
+    "data": "tokenize",
+    "style": "drop",
+    "aria": "keep"
+  },
+  "current_actions": {
+    "class": "tokenize",
+    "id": "hash",
+    "data": "tokenize",
+    "style": "drop",
+    "aria": "keep"
+  },
+  "approval_record": {
+    "approval_mode": "apply-suggested",
+    "updated_by_user_id": 1
+  }
+}

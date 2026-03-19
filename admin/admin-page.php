@@ -88,6 +88,16 @@ function dbvc_render_export_page()
     ? dbvc_get_maskable_post_fields()
     : [];
   $selected_post_field_masks = (array) get_option('dbvc_mask_post_fields', []);
+  $addon_content_collector_settings = [];
+  $addon_content_collector_groups = [];
+  $addon_content_collector_field_meta = [];
+  if (class_exists('DBVC_CC_V2_Configure_Addon_Settings')) {
+    $addon_content_collector_settings = DBVC_CC_V2_Configure_Addon_Settings::get_all_settings();
+    $addon_content_collector_groups = DBVC_CC_V2_Configure_Addon_Settings::get_settings_groups();
+    $addon_content_collector_field_meta = DBVC_CC_V2_Configure_Addon_Settings::get_field_meta();
+  }
+  $addon_content_collector_enabled = $addon_content_collector_settings[DBVC_CC_V2_Contracts::OPTION_ADDON_ENABLED] ?? get_option(DBVC_CC_Contracts::OPTION_ADDON_ENABLED, '1');
+  $addon_content_collector_runtime = $addon_content_collector_settings[DBVC_CC_V2_Contracts::OPTION_RUNTIME_VERSION] ?? get_option(DBVC_CC_V2_Contracts::OPTION_RUNTIME_VERSION, DBVC_CC_V2_Contracts::RUNTIME_V1);
   $addon_bricks_settings = [];
   $addon_bricks_groups   = [];
   $addon_bricks_field_meta = [];
@@ -596,6 +606,19 @@ function dbvc_render_export_page()
     }
 
     if (in_array('addons', $config_sections_submitted, true)) {
+      if (class_exists('DBVC_CC_V2_Configure_Addon_Settings')) {
+        $content_collector_save_result = DBVC_CC_V2_Configure_Addon_Settings::save_settings((array) $_POST);
+        foreach ((array) ($content_collector_save_result['errors'] ?? []) as $save_error) {
+          $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
+        }
+
+        $addon_content_collector_settings = DBVC_CC_V2_Configure_Addon_Settings::get_all_settings();
+        $addon_content_collector_enabled = $addon_content_collector_settings[DBVC_CC_V2_Contracts::OPTION_ADDON_ENABLED] ?? '1';
+        $addon_content_collector_runtime = $addon_content_collector_settings[DBVC_CC_V2_Contracts::OPTION_RUNTIME_VERSION] ?? DBVC_CC_V2_Contracts::RUNTIME_V1;
+      } else {
+        $config_feedback['addons']['error'][] = esc_html__('Content Collector add-on settings module unavailable.', 'dbvc');
+      }
+
       if (class_exists('DBVC_Bricks_Addon')) {
         $save_result = DBVC_Bricks_Addon::save_settings((array) $_POST);
         foreach ((array) ($save_result['errors'] ?? []) as $save_error) {
@@ -1819,9 +1842,28 @@ function dbvc_render_export_page()
                 <?php wp_nonce_field('dbvc_upload_sync', 'dbvc_upload_sync_nonce'); ?>
                 <input type="hidden" name="action" value="dbvc_upload_sync" />
                 <h2><?php esc_html_e('Upload to Sync Folder', 'dbvc'); ?></h2>
-                <p><?php esc_html_e('Upload one or more .json files (or a .zip) to overwrite your sync folder. JSON files will be auto-routed into the correct folders.', 'dbvc'); ?></p>
+                <p><?php esc_html_e('Upload one or more .json files (or a .zip). By default uploads overwrite your sync folder; JSON files are auto-routed into the correct folders.', 'dbvc'); ?></p>
                 <input type="file" name="dbvc_sync_upload[]" accept=".zip,.json" multiple required />
                 <p><label><input type="checkbox" name="dbvc_sync_dry_run" value="1" /> <?php esc_html_e('Dry run (analyze + report only, no files written)', 'dbvc'); ?></label></p>
+                <p>
+                  <label>
+                    <input type="checkbox" id="dbvc-upload-import-immediately" name="dbvc_upload_import_immediately" value="1" />
+                    <?php esc_html_e('Import uploaded post JSON immediately (keep current sync folder contents)', 'dbvc'); ?>
+                  </label><br>
+                  <small><?php esc_html_e('JSON uploads only. Routes the uploaded file(s) and imports only the routed post JSON files from this upload instead of scanning the whole sync folder.', 'dbvc'); ?></small>
+                </p>
+                <div id="dbvc-upload-immediate-options" style="margin:0 0 1rem 1.5rem;" hidden>
+                  <p style="margin:.5rem 0;">
+                    <label>
+                      <input type="checkbox" name="dbvc_upload_smart_import" value="1" />
+                      <?php esc_html_e('Only import new or modified posts', 'dbvc'); ?>
+                    </label><br>
+                    <small><?php esc_html_e('Uses the legacy smart-import hash when an uploaded JSON matches an existing post.', 'dbvc'); ?></small>
+                  </p>
+                  <p class="description" style="margin:.25rem 0 0;">
+                    <?php esc_html_e('Immediate import reuses the legacy post matching behavior, including entity UIDs when the uploaded JSON contains vf_object_uid.', 'dbvc'); ?>
+                  </p>
+                </div>
                 <?php submit_button(__('Upload', 'dbvc'), 'secondary'); ?>
               </form>
 
@@ -1830,9 +1872,17 @@ function dbvc_render_export_page()
                 delete_option('dbvc_sync_upload_report');
               }
               $upload_report = get_option('dbvc_sync_upload_report');
+              $immediate_import_report = null;
               if (is_array($upload_report)) :
+                $immediate_import_report = isset($upload_report['immediate_import']) && is_array($upload_report['immediate_import'])
+                  ? $upload_report['immediate_import']
+                  : null;
                 $report_timestamp = isset($upload_report['timestamp']) ? $upload_report['timestamp'] : '';
-                $report_title = ! empty($upload_report['dry_run']) ? __('Dry run report', 'dbvc') : __('Upload routing report', 'dbvc');
+                $report_title = ! empty($upload_report['dry_run'])
+                  ? __('Dry run report', 'dbvc')
+                  : (! empty($immediate_import_report['requested']) && ! empty($immediate_import_report['enabled'])
+                    ? __('Upload + immediate import report', 'dbvc')
+                    : __('Upload routing report', 'dbvc'));
                 $summary = sprintf(
                   /* translators: 1: processed 2: routed 3: skipped 4: errors */
                   __('Processed %1$d, routed %2$d, skipped %3$d, errors %4$d.', 'dbvc'),
@@ -1848,7 +1898,25 @@ function dbvc_render_export_page()
                     <p><small><?php echo esc_html($report_timestamp); ?></small></p>
                   <?php endif; ?>
                   <p><?php echo esc_html($summary); ?></p>
+                  <?php if ($immediate_import_report) :
+                    $import_summary = sprintf(
+                      /* translators: 1: eligible 2: processed 3: applied 4: skipped 5: errors */
+                      __('Immediate import: eligible %1$d, processed %2$d, applied %3$d, skipped %4$d, errors %5$d.', 'dbvc'),
+                      (int) ($immediate_import_report['eligible'] ?? 0),
+                      (int) ($immediate_import_report['processed'] ?? 0),
+                      (int) ($immediate_import_report['applied'] ?? 0),
+                      (int) ($immediate_import_report['skipped'] ?? 0),
+                      (int) ($immediate_import_report['errors'] ?? 0)
+                    );
+                    $import_message = isset($immediate_import_report['message']) ? (string) $immediate_import_report['message'] : '';
+                  ?>
+                    <p><?php echo esc_html($import_summary); ?></p>
+                    <?php if ($import_message !== '') : ?>
+                      <p><small><?php echo esc_html($import_message); ?></small></p>
+                    <?php endif; ?>
+                  <?php endif; ?>
                   <?php if (! empty($upload_report['details']) && is_array($upload_report['details'])) : ?>
+                    <p><strong><?php esc_html_e('Routing details', 'dbvc'); ?></strong></p>
                     <ul>
                       <?php foreach (array_slice($upload_report['details'], 0, 10) as $detail) :
                         $detail_file = $detail['file'] ?? '';
@@ -1871,6 +1939,30 @@ function dbvc_render_export_page()
                       <?php endforeach; ?>
                     </ul>
                   <?php endif; ?>
+                  <?php if (! empty($immediate_import_report['details']) && is_array($immediate_import_report['details'])) : ?>
+                    <p><strong><?php esc_html_e('Immediate import details', 'dbvc'); ?></strong></p>
+                    <ul>
+                      <?php foreach (array_slice($immediate_import_report['details'], 0, 10) as $detail) :
+                        $detail_file = $detail['file'] ?? '';
+                        $detail_status = $detail['status'] ?? '';
+                        $detail_message = $detail['message'] ?? '';
+                        $detail_path = $detail['path'] ?? '';
+                      ?>
+                        <li>
+                          <?php echo esc_html($detail_file); ?>
+                          <?php if ($detail_status !== '') : ?>
+                            <?php echo esc_html(' (' . $detail_status . ')'); ?>
+                          <?php endif; ?>
+                          <?php if ($detail_message !== '') : ?>
+                            <br><small><?php echo esc_html($detail_message); ?></small>
+                          <?php endif; ?>
+                          <?php if ($detail_path) : ?>
+                            <br><small><?php echo esc_html($detail_path); ?></small>
+                          <?php endif; ?>
+                        </li>
+                      <?php endforeach; ?>
+                    </ul>
+                  <?php endif; ?>
                   <p><a href="<?php echo esc_url(add_query_arg('dbvc_sync_report', 'dismiss', wp_get_referer())); ?>"><?php esc_html_e('Dismiss report', 'dbvc'); ?></a></p>
                 </div>
               <?php endif; ?>
@@ -1879,8 +1971,12 @@ function dbvc_render_export_page()
                 $state = sanitize_key($_GET['dbvc_upload']);
                 $class = ('success' === $state) ? 'updated' : 'error';
                 $msg   = ('success' === $state)
-                  ? __('Upload completed!', 'dbvc')
-                  : __('Upload failed – check file type & permissions.', 'dbvc');
+                  ? (! empty($immediate_import_report['requested']) && ! empty($immediate_import_report['enabled'])
+                    ? __('Upload and immediate import completed!', 'dbvc')
+                    : __('Upload completed!', 'dbvc'))
+                  : (! empty($immediate_import_report['requested'])
+                    ? __('Upload or immediate import failed – check the report for details.', 'dbvc')
+                    : __('Upload failed – check file type & permissions.', 'dbvc'));
               ?>
                 <div class="notice <?php echo esc_attr($class); ?>" style="margin-top:1em;">
                   <p><?php echo esc_html($msg); ?></p>
@@ -1911,6 +2007,21 @@ document.addEventListener('DOMContentLoaded', function () {
         heartbeat.blur();
       });
     });
+  }
+
+  const immediateImportToggle = document.getElementById('dbvc-upload-import-immediately');
+  const immediateImportOptions = document.getElementById('dbvc-upload-immediate-options');
+  if (immediateImportToggle && immediateImportOptions) {
+    const syncImmediateImportOptions = function () {
+      const enabled = !!immediateImportToggle.checked;
+      immediateImportOptions.hidden = !enabled;
+      immediateImportOptions.querySelectorAll('input, select, textarea').forEach(function (field) {
+        field.disabled = !enabled;
+      });
+    };
+
+    immediateImportToggle.addEventListener('change', syncImmediateImportOptions);
+    syncImmediateImportOptions();
   }
 });
 </script>
@@ -2705,7 +2816,106 @@ document.addEventListener('DOMContentLoaded', function () {
       <section id="dbvc-config-addons" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-addons' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-addons" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-addons" <?php echo $active_config_subtab === 'dbvc-config-addons' ? '' : 'hidden'; ?>>
         <?php $render_config_feedback($config_feedback['addons']); ?>
         <h2><?php esc_html_e('Add-ons', 'dbvc'); ?></h2>
-        <p class="description"><?php esc_html_e('Enable add-ons and configure Bricks settings by tab.', 'dbvc'); ?></p>
+        <p class="description"><?php esc_html_e('Enable add-ons, select runtime versions, and keep advanced addon policies server-rendered in one place.', 'dbvc'); ?></p>
+
+        <?php if (! empty($addon_content_collector_groups) && ! empty($addon_content_collector_field_meta)) : ?>
+          <h3><?php esc_html_e('Content Collector', 'dbvc'); ?></h3>
+          <?php
+          $content_activation_group = $addon_content_collector_groups['activation']['fields'] ?? [];
+          $content_automation_group = $addon_content_collector_groups['automation']['fields'] ?? [];
+          ?>
+
+          <?php foreach ((array) $content_activation_group as $field_key) : ?>
+            <?php
+            $field_key = (string) $field_key;
+            if (! isset($addon_content_collector_field_meta[$field_key])) {
+              continue;
+            }
+
+            $field_meta = $addon_content_collector_field_meta[$field_key];
+            $field_value = isset($addon_content_collector_settings[$field_key]) ? (string) $addon_content_collector_settings[$field_key] : '';
+            $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
+            $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
+            ?>
+
+            <?php if (($field_meta['input'] ?? 'text') === 'checkbox') : ?>
+              <p>
+                <label>
+                  <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
+                  <?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?>
+                </label>
+                <?php if ($field_help !== '') : ?>
+                  <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                <?php endif; ?>
+              </p>
+            <?php else : ?>
+              <p>
+                <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?></strong></label><br>
+                <select id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>">
+                  <?php foreach ((array) ($field_meta['options'] ?? []) as $option_value => $option_label) : ?>
+                    <option value="<?php echo esc_attr((string) $option_value); ?>" <?php selected($field_value, (string) $option_value); ?>>
+                      <?php echo esc_html((string) $option_label); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <?php if ($field_help !== '') : ?>
+                  <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                <?php endif; ?>
+              </p>
+            <?php endif; ?>
+          <?php endforeach; ?>
+
+          <details class="dbvc-addon-advanced-group" <?php echo $addon_content_collector_runtime === DBVC_CC_V2_Contracts::RUNTIME_V2 ? 'open' : ''; ?>>
+            <summary><strong><?php esc_html_e('Advanced V2 Automation Settings', 'dbvc'); ?></strong></summary>
+            <p class="description"><?php esc_html_e('These policy defaults are global, but learned patterns and decisions stay isolated per source domain.', 'dbvc'); ?></p>
+
+            <?php foreach ((array) $content_automation_group as $field_key) : ?>
+              <?php
+              $field_key = (string) $field_key;
+              if (! isset($addon_content_collector_field_meta[$field_key])) {
+                continue;
+              }
+
+              $field_meta = $addon_content_collector_field_meta[$field_key];
+              $field_value = isset($addon_content_collector_settings[$field_key]) ? (string) $addon_content_collector_settings[$field_key] : '';
+              $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
+              $field_input = isset($field_meta['input']) ? (string) $field_meta['input'] : 'text';
+              $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
+              ?>
+
+              <?php if ($field_input === 'checkbox') : ?>
+                <p>
+                  <label>
+                    <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
+                    <?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?>
+                  </label>
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php else : ?>
+                <p>
+                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?></strong></label><br>
+                  <input
+                    type="number"
+                    id="<?php echo esc_attr($field_id); ?>"
+                    name="<?php echo esc_attr($field_key); ?>"
+                    value="<?php echo esc_attr($field_value); ?>"
+                    min="<?php echo esc_attr((string) ($field_meta['min'] ?? '0')); ?>"
+                    max="<?php echo esc_attr((string) ($field_meta['max'] ?? '1')); ?>"
+                    step="<?php echo esc_attr((string) ($field_meta['step'] ?? '0.01')); ?>"
+                    class="small-text"
+                  />
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php endif; ?>
+            <?php endforeach; ?>
+          </details>
+        <?php else : ?>
+          <p><?php esc_html_e('Content Collector add-on settings metadata unavailable.', 'dbvc'); ?></p>
+        <?php endif; ?>
 
         <?php if (! empty($addon_bricks_groups) && ! empty($addon_bricks_field_meta)) : ?>
           <h3><?php esc_html_e('Bricks Add-on', 'dbvc'); ?></h3>

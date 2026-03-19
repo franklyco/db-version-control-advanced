@@ -1,0 +1,26 @@
+{
+  "artifact_type": "section-field-candidates.v1",
+  "source_url": "https://phase37-regression.test/",
+  "catalog_fingerprint_present": true,
+  "section_count": 2,
+  "sections": [
+    {
+      "section_id": "dbvc_cc_sec_faq",
+      "section_archetype": "faq",
+      "has_core_post_title": false,
+      "has_core_post_content": false,
+      "has_faq_question_meta": true,
+      "has_faq_answer_meta": true,
+      "unresolved_count": 0
+    },
+    {
+      "section_id": "dbvc_cc_sec_hero",
+      "section_archetype": "hero",
+      "has_core_post_title": true,
+      "has_core_post_content": true,
+      "has_faq_question_meta": false,
+      "has_faq_answer_meta": false,
+      "unresolved_count": 0
+    }
+  ]
+}

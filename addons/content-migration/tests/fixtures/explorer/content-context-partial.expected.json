@@ -1,0 +1,30 @@
+{
+  "domain": "phase36-example.test",
+  "path": "home-partial",
+  "artifact": "all",
+  "limit": 40,
+  "payload": {
+    "elements": {
+      "artifact_type": "elements.v2",
+      "truncated": true,
+      "processing": {
+        "is_partial": true,
+        "partial_reason": "max_elements",
+        "resume_marker": {
+          "context_node_index": 3,
+          "node_offset": 12
+        }
+      }
+    },
+    "sections": {
+      "artifact_type": "sections.v2",
+      "processing": {
+        "is_partial": true,
+        "partial_reason": "timeout",
+        "resume_marker": {
+          "element_offset": 42
+        }
+      }
+    }
+  }
+}

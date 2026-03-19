@@ -1,0 +1,72 @@
+{
+  "domain": "phase36-example.test",
+  "path": "home",
+  "source_url": "https://phase36-example.test/",
+  "sample_size": 20,
+  "evaluated_elements": 2,
+  "elements_with_attributes": 2,
+  "elements_with_attributes_ratio": 1,
+  "mode": "deterministic-preview",
+  "approval_required": true,
+  "ai_suggestion_enabled": false,
+  "profile_mode_current": "deterministic-default",
+  "current_actions": {
+    "class": "tokenize",
+    "id": "hash",
+    "data": "tokenize",
+    "style": "drop",
+    "aria": "keep"
+  },
+  "suggested_actions": {
+    "class": "tokenize",
+    "id": "hash",
+    "data": "tokenize",
+    "style": "drop",
+    "aria": "keep"
+  },
+  "attribute_family_counts": {
+    "class": 2,
+    "id": 1,
+    "data": 1,
+    "style": 0,
+    "aria": 0,
+    "event": 0,
+    "other": 0
+  },
+  "top_attributes": [
+    {
+      "name": "class",
+      "count": 2
+    },
+    {
+      "name": "id",
+      "count": 1
+    },
+    {
+      "name": "data-track",
+      "count": 1
+    }
+  ],
+  "sample_preview": [
+    {
+      "element_id": "dbvc_cc_el_0001",
+      "tag": "h1",
+      "attributes": [
+        "class",
+        "id"
+      ]
+    },
+    {
+      "element_id": "dbvc_cc_el_0002",
+      "tag": "p",
+      "attributes": [
+        "class",
+        "data-track"
+      ]
+    }
+  ],
+  "notes": [
+    "Suggestions are preview-only and must be manually approved before applying to Configure defaults.",
+    "No runtime writes are performed by this endpoint."
+  ]
+}

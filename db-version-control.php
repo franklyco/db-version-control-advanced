@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.5.2
+ * Version:     1.6.0
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -49,6 +49,24 @@ if (! defined('DBVC_NEW_ENTITY_DECISION_KEY')) {
 	define('DBVC_NEW_ENTITY_DECISION_KEY', '__dbvc_new_entity__');
 }
 
+$dbvc_cc_runtime_guard = DBVC_PLUGIN_PATH . 'addons/content-migration/bootstrap/dbvc-cc-runtime-guard.php';
+if (file_exists($dbvc_cc_runtime_guard)) {
+	require_once $dbvc_cc_runtime_guard;
+}
+if (! function_exists('dbvc_cc_guard_no_source_runtime_imports')) {
+	/**
+	 * No-op fallback when content-migration guard file is not present.
+	 *
+	 * @param string $stage
+	 * @return void
+	 */
+	function dbvc_cc_guard_no_source_runtime_imports($stage = 'unknown')
+	{
+		unset($stage);
+	}
+}
+dbvc_cc_guard_no_source_runtime_imports('bootstrap_preload');
+
 require_once DBVC_PLUGIN_PATH . 'includes/class-database.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-options-groups.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
@@ -79,12 +97,24 @@ require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-proposals.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-packages.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-idempotency.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-connected-sites.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-protected-variants.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-onboarding.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-auth.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-queue.php';
+$dbvc_cc_addon_bootstrap = DBVC_PLUGIN_PATH . 'addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php';
+if (file_exists($dbvc_cc_addon_bootstrap)) {
+	require_once $dbvc_cc_addon_bootstrap;
+}
 DBVC_Admin_App::init();
 DBVC_Entity_Editor_App::init();
 DBVC_Bricks_Addon::bootstrap();
+if (class_exists('DBVC_CC_Addon_Bootstrap')) {
+	DBVC_CC_Addon_Bootstrap::bootstrap();
+}
+dbvc_cc_guard_no_source_runtime_imports('bootstrap_loaded');
+add_action('plugins_loaded', static function () {
+	dbvc_cc_guard_no_source_runtime_imports('plugins_loaded');
+}, -1000);
 
 if (is_admin()) {
 	require_once DBVC_PLUGIN_PATH . 'admin/admin-menu.php';

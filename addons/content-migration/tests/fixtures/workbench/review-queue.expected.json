@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-03-01T12:00:00+00:00",
+  "domain": "example.com",
+  "include_decided": false,
+  "min_confidence": 0.75,
+  "total_items": 1,
+  "pending_items": 1,
+  "reviewed_items": 0,
+  "items": [
+    {
+      "domain": "example.com",
+      "path": "services/consulting",
+      "source_url": "https://example.com/services/consulting",
+      "status": "pending",
+      "review": {
+        "needs_review": true,
+        "reasons": [
+          "low_confidence_post_type"
+        ],
+        "confidence_threshold": 0.75
+      },
+      "conflicts": [
+        "fallback_mode"
+      ],
+      "suggestion_summary": {
+        "post_type": "page",
+        "post_type_confidence": 0.4,
+        "taxonomy_terms_count": 1,
+        "custom_field_count": 2,
+        "media_role_count": 1
+      },
+      "decision": {
+        "status": "pending",
+        "updated_at": null,
+        "reviewed_by": 0,
+        "notes": ""
+      }
+    }
+  ]
+}

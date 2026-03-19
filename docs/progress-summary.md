@@ -63,6 +63,10 @@
 18. **Admin App Resilience**
    - Added an error boundary around the React admin app so render-time errors no longer crash the entire UI.
    - Client-side crashes are logged via the new `/logs/client` REST endpoint to the DBVC file log and activity table for troubleshooting.
+19. **Targeted Upload Immediate Import**
+   - Legacy upload area now offers an immediate-import toggle for post JSON uploads that preserves the current sync folder contents and imports only the routed post file(s) from the current request.
+   - Added a targeted post-only import helper in `DBVC_Sync_Posts` so the upload flow no longer has to call `import_all()` and rescan the entire sync folder.
+   - Upload routing reports now include immediate-import counts and per-file outcomes, while the upload notice distinguishes plain uploads from upload-plus-import runs.
 ## Remaining / Next Steps
 1. **Term & Taxonomy Entity Polish**
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.

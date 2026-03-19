@@ -1,0 +1,55 @@
+/* Content Collector Admin Styles */
+
+#cc-app .postbox .inside {
+    margin: 0;
+    padding: 0 12px 12px;
+}
+
+#cc-progress-bar-container {
+    background-color: #eee;
+    border-radius: 4px;
+    overflow: hidden;
+    height: 28px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+}
+
+#cc-progress-bar {
+    width: 0%;
+    height: 100%;
+    background-color: #0073aa;
+    transition: width 0.3s ease-in-out;
+    text-align: center;
+    color: white;
+    line-height: 28px;
+    font-weight: bold;
+}
+
+#cc-status-log {
+    height: 300px;
+    overflow-y: scroll;
+    background-color: #fdfdfd;
+    border: 1px solid #ccc;
+    padding: 10px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    font-size: 12px;
+}
+
+#cc-status-log .log-entry {
+    padding: 2px 0;
+    border-bottom: 1px dotted #eee;
+}
+
+#cc-status-log .log-entry:last-child {
+    border-bottom: none;
+}
+
+.cc-log-controls {
+    margin-bottom: 10px;
+    text-align: right;
+}
+
+#cc-form .submit {
+    padding: 0;
+}
