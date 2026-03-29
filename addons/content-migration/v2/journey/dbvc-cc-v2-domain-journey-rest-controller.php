@@ -58,6 +58,12 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                             'required' => false,
                             'sanitize_callback' => 'absint',
                         ],
+                        'crawlOverrides' => [
+                            'required' => false,
+                            'validate_callback' => static function ($value) {
+                                return is_array($value) || null === $value;
+                            },
+                        ],
                     ],
                 ],
             ]
@@ -146,6 +152,7 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         $force_rebuild = ! empty($params['forceRebuild']);
         $sitemap_url = isset($params['sitemapUrl']) ? esc_url_raw((string) $params['sitemapUrl']) : '';
         $max_urls = isset($params['maxUrls']) ? absint($params['maxUrls']) : 0;
+        $crawl_overrides = $this->sanitize_crawl_overrides(isset($params['crawlOverrides']) ? $params['crawlOverrides'] : []);
 
         $schema_sync = DBVC_CC_V2_Schema_Sync_Service::get_instance()->sync_domain(
             $domain,
@@ -170,6 +177,7 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                     'actor' => 'admin',
                     'trigger' => 'rest',
                     'max_urls' => $max_urls,
+                    'crawl_overrides' => $crawl_overrides,
                 ]
             );
             if (is_wp_error($captured)) {
@@ -255,13 +263,24 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             return $run;
         }
 
+        $run_id = isset($run['latest']['journey_id']) ? (string) $run['latest']['journey_id'] : '';
+        $domain = isset($run['latest']['domain']) ? (string) $run['latest']['domain'] : '';
+        $recent_activity = DBVC_CC_V2_Run_Activity_Service::get_instance()->get_recent_activity(
+            $domain,
+            $run_id
+        );
+        if (is_wp_error($recent_activity)) {
+            $recent_activity = [];
+        }
+
         return rest_ensure_response(
             [
-                'runId' => isset($run['latest']['journey_id']) ? (string) $run['latest']['journey_id'] : '',
-                'domain' => isset($run['latest']['domain']) ? (string) $run['latest']['domain'] : '',
+                'runId' => $run_id,
+                'domain' => $domain,
                 'inventory' => isset($run['url_inventory']) && is_array($run['url_inventory']) ? $run['url_inventory'] : [],
                 'latest' => isset($run['latest']) && is_array($run['latest']) ? $run['latest'] : [],
                 'stageSummary' => isset($run['stage_summary']) && is_array($run['stage_summary']) ? $run['stage_summary'] : [],
+                'recentActivity' => is_array($recent_activity) ? $recent_activity : [],
             ]
         );
     }
@@ -385,6 +404,15 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         }
 
         return is_array($params) ? $params : [];
+    }
+
+    /**
+     * @param mixed $crawl_overrides
+     * @return array<string, mixed>
+     */
+    private function sanitize_crawl_overrides($crawl_overrides)
+    {
+        return DBVC_CC_Crawler_Service::sanitize_crawl_overrides($crawl_overrides);
     }
 
     /**

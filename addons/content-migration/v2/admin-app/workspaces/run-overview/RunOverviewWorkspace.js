@@ -1,4 +1,72 @@
-export default function RunOverviewWorkspace( { route, onOpenDrawer } ) {
+import OverviewNextActions from '../../components/run-overview/OverviewNextActions';
+import OverviewRecentActivity from '../../components/run-overview/OverviewRecentActivity';
+import OverviewStageCards from '../../components/run-overview/OverviewStageCards';
+import OverviewSummaryCards from '../../components/run-overview/OverviewSummaryCards';
+import useRunOverview from '../../hooks/useRunOverview';
+import { formatTimestamp, humanizeKey } from './overviewTransforms';
+
+const buildRefreshCopy = ( {
+	ageMs,
+	isActive,
+	isRefreshing,
+	isStale,
+	lastLoadedAt,
+} ) => {
+	if ( isRefreshing ) {
+		return 'Refreshing selected run state.';
+	}
+
+	if ( ! lastLoadedAt ) {
+		return 'Waiting for the first overview payload.';
+	}
+
+	if ( isStale ) {
+		return `Overview data is older than ${ Math.round(
+			ageMs / 1000
+		) }s and may be stale.`;
+	}
+
+	if ( isActive ) {
+		return `Auto-refresh every 10s. Last update ${ formatTimestamp(
+			lastLoadedAt
+		) }.`;
+	}
+
+	return `Last updated ${ formatTimestamp( lastLoadedAt ) }.`;
+};
+
+export default function RunOverviewWorkspace( {
+	onNavigateToView,
+	onOpenDrawer,
+	refreshToken,
+	route,
+} ) {
+	const {
+		ageMs,
+		error,
+		isActive,
+		isLoading,
+		isRefreshing,
+		isStale,
+		lastLoadedAt,
+		overview,
+		refresh,
+	} = useRunOverview( route.runId, refreshToken );
+	const latest =
+		overview && typeof overview.latest === 'object' ? overview.latest : {};
+	const inventory =
+		overview && typeof overview.inventory === 'object'
+			? overview.inventory
+			: {};
+	const stageSummary =
+		overview && typeof overview.stageSummary === 'object'
+			? overview.stageSummary
+			: {};
+	const recentActivity =
+		overview && Array.isArray( overview.recentActivity )
+			? overview.recentActivity
+			: [];
+
 	return (
 		<section
 			className="dbvc-cc-v2-workspace"
@@ -8,36 +76,105 @@ export default function RunOverviewWorkspace( { route, onOpenDrawer } ) {
 				<div>
 					<p className="dbvc-cc-v2-eyebrow">Run Overview</p>
 					<h2>{ route.runId || 'journey-demo' }</h2>
+					<p className="dbvc-cc-v2-overview__refresh-copy">
+						{ buildRefreshCopy( {
+							ageMs,
+							isActive,
+							isRefreshing,
+							isStale,
+							lastLoadedAt,
+						} ) }
+					</p>
 				</div>
-				<button
-					type="button"
-					className="button button-secondary"
-					onClick={ () => onOpenDrawer( 'overview-home', 'summary' ) }
-				>
-					Open inspector
-				</button>
+
+				<div className="dbvc-cc-v2-header__actions">
+					<span
+						className="dbvc-cc-v2-chip dbvc-cc-v2-chip--muted"
+						data-testid="dbvc-cc-v2-overview-run-status"
+					>
+						{ humanizeKey( latest.status || 'queued' ) }
+					</span>
+					<button
+						type="button"
+						className="button button-secondary"
+						data-testid="dbvc-cc-v2-overview-refresh"
+						disabled={ isLoading || isRefreshing }
+						onClick={ refresh }
+					>
+						{ isRefreshing ? 'Refreshing...' : 'Refresh overview' }
+					</button>
+					<button
+						type="button"
+						className="button button-secondary"
+						onClick={ () =>
+							onOpenDrawer( 'overview-home', 'summary' )
+						}
+					>
+						Open inspector
+					</button>
+				</div>
 			</div>
 
-			<div className="dbvc-cc-v2-grid">
-				<article className="dbvc-cc-v2-placeholder-card">
-					<h3>Current stage</h3>
-					<p>Canonical recommendation generation active</p>
-				</article>
-				<article className="dbvc-cc-v2-placeholder-card">
-					<h3>Pipeline progress</h3>
+			{ ! route.runId ? (
+				<div className="dbvc-cc-v2-placeholder-card">
+					<h3>Select a run</h3>
 					<p>
-						Schema sync, crawl, AI context, mapping, media
-						alignment, and transform previews are active.
+						The overview workspace needs a V2 run before it can show
+						pipeline state.
 					</p>
-				</article>
-				<article className="dbvc-cc-v2-placeholder-card">
-					<h3>Next actions</h3>
-					<p>
-						Phase 6 review surfaces will consume the finalized
-						recommendation payloads and exception states.
-					</p>
-				</article>
-			</div>
+				</div>
+			) : null }
+
+			{ route.runId && isLoading ? (
+				<div className="dbvc-cc-v2-placeholder-card">
+					<p>Loading the selected-run overview.</p>
+				</div>
+			) : null }
+
+			{ route.runId && error ? (
+				<div className="dbvc-cc-v2-placeholder-card">
+					<p>{ error }</p>
+				</div>
+			) : null }
+
+			{ route.runId && ! isLoading && ! error ? (
+				<>
+					<OverviewSummaryCards
+						inventory={ inventory }
+						latest={ latest }
+						stageSummary={ stageSummary }
+					/>
+
+					<div
+						className="dbvc-cc-v2-overview__meta"
+						data-testid="dbvc-cc-v2-overview-refresh-status"
+					>
+						<p>
+							<strong>Started:</strong>{ ' ' }
+							{ formatTimestamp( latest.started_at ) }
+						</p>
+						<p>
+							<strong>Last update:</strong>{ ' ' }
+							{ formatTimestamp( latest.updated_at ) }
+						</p>
+						<p>
+							<strong>Refresh mode:</strong>{ ' ' }
+							{ isActive
+								? 'Auto-refresh every 10s'
+								: 'Manual refresh only' }
+						</p>
+					</div>
+
+					<OverviewStageCards stageSummary={ stageSummary } />
+
+					<OverviewRecentActivity recentActivity={ recentActivity } />
+
+					<OverviewNextActions
+						latest={ latest }
+						onNavigate={ onNavigateToView }
+					/>
+				</>
+			) : null }
 		</section>
 	);
 }

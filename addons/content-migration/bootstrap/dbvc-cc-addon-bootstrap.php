@@ -15,6 +15,7 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-ap
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-admin-menu-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-materializer-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-run-activity-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/discovery/dbvc-cc-v2-url-scope-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/discovery/dbvc-cc-v2-url-inventory-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/capture/dbvc-cc-v2-page-capture-service.php';

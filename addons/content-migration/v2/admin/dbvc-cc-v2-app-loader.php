@@ -81,11 +81,12 @@ final class DBVC_CC_V2_App_Loader
 
         $asset = include $asset_file;
         $css = [];
-        if (file_exists($build_dir . 'style-content-collector-v2-app.css')) {
-            $css['dbvc-content-collector-v2-app'] = DBVC_PLUGIN_URL . 'build/style-content-collector-v2-app.css';
+        $style_file = 'style-content-collector-v2-app.css';
+        if (is_rtl() && file_exists($build_dir . 'style-content-collector-v2-app-rtl.css')) {
+            $style_file = 'style-content-collector-v2-app-rtl.css';
         }
-        if (file_exists($build_dir . 'style-content-collector-v2-app-rtl.css')) {
-            $css['dbvc-content-collector-v2-app-rtl'] = DBVC_PLUGIN_URL . 'build/style-content-collector-v2-app-rtl.css';
+        if (file_exists($build_dir . $style_file)) {
+            $css['dbvc-content-collector-v2-app'] = DBVC_PLUGIN_URL . 'build/' . $style_file;
         }
 
         return [
@@ -108,6 +109,7 @@ final class DBVC_CC_V2_App_Loader
             'defaultRunId' => self::get_default_run_id(),
             'runtimeVersion' => DBVC_CC_V2_Contracts::get_runtime_version(),
             'automation' => DBVC_CC_V2_Contracts::get_automation_settings(),
+            'runCreate' => self::get_run_create_bootstrap(),
             'route' => self::get_route_bootstrap(),
             'views' => [
                 'runs',
@@ -120,6 +122,97 @@ final class DBVC_CC_V2_App_Loader
                 'appRoot' => 'dbvc-cc-v2-root',
                 'drawerToggle' => 'dbvc-cc-v2-drawer-toggle',
                 'drawerRoot' => 'dbvc-cc-v2-inspector-drawer',
+                'runCreateForm' => 'dbvc-cc-v2-run-create-form',
+                'runCreateSubmit' => 'dbvc-cc-v2-run-create-submit',
+                'runCreateAdvancedToggle' => 'dbvc-cc-v2-run-create-advanced-toggle',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function get_run_create_bootstrap()
+    {
+        $settings = DBVC_CC_Settings_Service::get_options();
+        $fields = [
+            'request_delay',
+            'request_timeout',
+            'user_agent',
+            'exclude_selectors',
+            'focus_selectors',
+            'capture_mode',
+            'capture_include_attribute_context',
+            'capture_include_dom_path',
+            'capture_max_elements_per_page',
+            'capture_max_chars_per_element',
+            'context_enable_boilerplate_detection',
+            'context_enable_entity_hints',
+            'ai_enable_section_typing',
+            'ai_section_typing_confidence_threshold',
+            'scrub_policy_enabled',
+            'scrub_profile_mode',
+            'scrub_attr_action_class',
+            'scrub_attr_action_id',
+            'scrub_attr_action_data',
+            'scrub_attr_action_style',
+            'scrub_attr_action_aria',
+            'scrub_custom_allowlist',
+            'scrub_custom_denylist',
+            'scrub_ai_suggestion_enabled',
+            'scrub_preview_sample_size',
+        ];
+
+        $crawl_defaults = [];
+        foreach ($fields as $field) {
+            $crawl_defaults[$field] = isset($settings[$field]) ? $settings[$field] : '';
+        }
+
+        return [
+            'crawlDefaults' => $crawl_defaults,
+            'optionSets' => [
+                'captureModes' => [
+                    [
+                        'value' => DBVC_CC_Contracts::CAPTURE_MODE_STANDARD,
+                        'label' => __('Standard', 'dbvc'),
+                    ],
+                    [
+                        'value' => DBVC_CC_Contracts::CAPTURE_MODE_DEEP,
+                        'label' => __('Deep', 'dbvc'),
+                    ],
+                ],
+                'scrubProfiles' => [
+                    [
+                        'value' => DBVC_CC_Contracts::SCRUB_PROFILE_DETERMINISTIC_DEFAULT,
+                        'label' => __('Deterministic Default', 'dbvc'),
+                    ],
+                    [
+                        'value' => DBVC_CC_Contracts::SCRUB_PROFILE_CUSTOM,
+                        'label' => __('Custom', 'dbvc'),
+                    ],
+                    [
+                        'value' => DBVC_CC_Contracts::SCRUB_PROFILE_AI_SUGGESTED_APPROVED,
+                        'label' => __('AI Suggested (Approved)', 'dbvc'),
+                    ],
+                ],
+                'scrubActions' => [
+                    [
+                        'value' => DBVC_CC_Contracts::SCRUB_ACTION_KEEP,
+                        'label' => __('Keep', 'dbvc'),
+                    ],
+                    [
+                        'value' => DBVC_CC_Contracts::SCRUB_ACTION_DROP,
+                        'label' => __('Drop', 'dbvc'),
+                    ],
+                    [
+                        'value' => DBVC_CC_Contracts::SCRUB_ACTION_HASH,
+                        'label' => __('Hash', 'dbvc'),
+                    ],
+                    [
+                        'value' => DBVC_CC_Contracts::SCRUB_ACTION_TOKENIZE,
+                        'label' => __('Tokenize', 'dbvc'),
+                    ],
+                ],
             ],
         ];
     }

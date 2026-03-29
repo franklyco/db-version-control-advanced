@@ -1,11 +1,44 @@
+import { getBootstrap } from '../../api/client';
+import RunCreateForm from '../../components/runs/RunCreateForm';
+import RunCreateLifecyclePanel from '../../components/runs/RunCreateLifecyclePanel';
+import useRunCreation from '../../hooks/useRunCreation';
 import useRunList from '../../hooks/useRunList';
 
 export default function RunsWorkspace( {
+	onMutationComplete,
 	onOpenDrawer,
 	onSelectRun,
 	refreshToken,
+	selectedRunId,
 } ) {
 	const { items, isLoading, error } = useRunList( refreshToken );
+	const {
+		createRun,
+		clearError,
+		elapsedMs,
+		error: createError,
+		isSubmitting,
+		lastCreatedRun,
+		lastRequest,
+		requestFinishedAt,
+		requestStartedAt,
+		status,
+	} = useRunCreation();
+	const bootstrap = getBootstrap();
+
+	const handleRunCreate = async ( payload ) => {
+		const created = await createRun( payload );
+		if ( ! created || ! created.runId ) {
+			return;
+		}
+
+		if ( typeof onMutationComplete === 'function' ) {
+			onMutationComplete();
+		}
+
+		onSelectRun( created.runId, 'runs' );
+		return created;
+	};
 
 	return (
 		<section
@@ -15,7 +48,7 @@ export default function RunsWorkspace( {
 			<div className="dbvc-cc-v2-workspace__header">
 				<div>
 					<p className="dbvc-cc-v2-eyebrow">Runs Workspace</p>
-					<h2>Recent run shells</h2>
+					<h2>Start or reopen V2 runs</h2>
 				</div>
 				<button
 					type="button"
@@ -26,6 +59,25 @@ export default function RunsWorkspace( {
 					Inspect sample URL
 				</button>
 			</div>
+
+			<RunCreateForm
+				error={ createError }
+				isSubmitting={ isSubmitting }
+				onClearError={ clearError }
+				onSubmit={ handleRunCreate }
+				runCreateBootstrap={ bootstrap.runCreate }
+			/>
+
+			<RunCreateLifecyclePanel
+				elapsedMs={ elapsedMs }
+				error={ createError }
+				lastCreatedRun={ lastCreatedRun }
+				lastRequest={ lastRequest }
+				onOpenOverview={ ( runId ) => onSelectRun( runId, 'overview' ) }
+				requestFinishedAt={ requestFinishedAt }
+				requestStartedAt={ requestStartedAt }
+				status={ status }
+			/>
 
 			{ isLoading ? (
 				<div className="dbvc-cc-v2-placeholder-card">
@@ -45,11 +97,23 @@ export default function RunsWorkspace( {
 						items.map( ( run ) => (
 							<article
 								key={ run.runId }
-								className="dbvc-cc-v2-placeholder-card"
+								className={ `dbvc-cc-v2-placeholder-card${
+									selectedRunId === run.runId
+										? ' dbvc-cc-v2-placeholder-card--active'
+										: ''
+								}` }
+								data-testid={ `dbvc-cc-v2-run-card-${ run.runId }` }
 							>
-								<p className="dbvc-cc-v2-chip">
-									{ run.status }
-								</p>
+								<div className="dbvc-cc-v2-run-card__header">
+									<p className="dbvc-cc-v2-chip">
+										{ run.status }
+									</p>
+									{ selectedRunId === run.runId ? (
+										<p className="dbvc-cc-v2-chip dbvc-cc-v2-chip--muted">
+											Selected
+										</p>
+									) : null }
+								</div>
 								<h3>{ run.runId }</h3>
 								<p>Domain: { run.domain }</p>
 								<p>Updated: { run.updatedAt || 'unknown' }</p>
@@ -68,8 +132,8 @@ export default function RunsWorkspace( {
 					) : (
 						<div className="dbvc-cc-v2-placeholder-card">
 							<p>
-								No V2 runs exist yet. Start a run from the REST
-								API or current controls, then return here.
+								No V2 runs exist yet. Use the run-start surface
+								above to create the first crawl-backed V2 run.
 							</p>
 						</div>
 					) }

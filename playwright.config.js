@@ -6,6 +6,7 @@ module.exports = defineConfig( {
 	fullyParallel: false,
 	retries: 0,
 	use: {
+		ignoreHTTPSErrors: true,
 		trace: 'on-first-retry',
 		video: 'retain-on-failure',
 		screenshot: 'only-on-failure',

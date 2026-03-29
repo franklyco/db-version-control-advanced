@@ -20,12 +20,14 @@ Read these first when continuing active implementation work:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 
 These are the shortest path to:
 
 - the current phase anchor
 - the locked decisions
 - the active route and artifact surface
+- the current crawl reuse boundary
 - the next implementation seam
 
 ### 1. Product and workflow
@@ -104,6 +106,7 @@ This defines:
 
 Use as support material:
 
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_PIPELINE_REVIEW.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V1_REUSE_AUDIT.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V1_SYSTEM_INDEX.md`
@@ -126,6 +129,8 @@ These are useful for:
   - `MIGRATION_MAPPER_V2_UI_ARCHITECTURE.md`
 - Artifact, REST, and AI-stage contracts:
   - `MIGRATION_MAPPER_V2_CONTRACTS.md`
+- Current crawl reuse boundary and landed run-start model:
+  - `MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 - Journey logging model:
   - `MIGRATION_MAPPER_V2_DOMAIN_JOURNEY.md`
 - Package output contract:
@@ -149,6 +154,12 @@ When one of these changes, update the others if needed:
   - update `FILE_PLAN`
   - update `IMPLEMENTATION_GUIDE` if rules or phase scope changed
 
+- If crawl-start reuse boundaries or the `/runs` crawl-start contract change:
+  - update `CRAWL_REUSE_AUDIT`
+  - update `CONTRACTS`
+  - update `UI_ARCHITECTURE`
+  - update `IMPLEMENTATION_GUIDE`
+
 - If artifact names, journey events, or reviewer payloads change:
   - update `CONTRACTS`
   - update `DOMAIN_JOURNEY`
@@ -168,6 +179,7 @@ When one of these changes, update the others if needed:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
 - `addons/content-migration/docs/CONTENT_COLLECTOR_PIPELINE_SWIMLANE.md`

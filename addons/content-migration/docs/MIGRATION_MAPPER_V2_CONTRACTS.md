@@ -7,6 +7,7 @@ This document defines the proposed contract surface for `Migration Mapper V2`.
 For a short current-runtime index of the active V2 routes and artifact families, also use:
 
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 
 Its purpose is to freeze the high-level V2 data model before implementation work starts so that:
 
@@ -106,9 +107,13 @@ Recommended behavior:
 - list and summary routes should be optimized for default workspace views
 - deep evidence routes should support drawers and inspector panels
 - mutation routes should be scoped to the affected run and URL where possible
+- `POST /runs` should remain the canonical V2 crawl-start entry and should carry `domain`, `sitemapUrl`, `maxUrls`, `forceRebuild`, and `crawlOverrides`
+- `GET /runs/{run_id}/overview` should remain the selected-run monitoring source for `latest`, `inventory`, `stageSummary`, and bounded `recentActivity` before introducing richer activity-specific routes
 - package dry-run, preflight approval, and execute routes should consume the selected package as their preferred upstream input
 - the package surface should expose selected-package workflow state and recent import execution history once package observability is available
 - internal pipeline step names should not force the default UI to think in raw phase endpoints
+- the V2 crawl-start UI should keep wrapping this V2 route instead of reviving the V1 collect tab or `admin-ajax` transport
+- URL review payloads should be able to carry human-readable schema presentation metadata without replacing stable machine refs such as `target_ref`
 
 Identifier rule:
 

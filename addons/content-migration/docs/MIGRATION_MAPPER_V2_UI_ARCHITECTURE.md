@@ -105,9 +105,13 @@ Advanced detail should appear on demand through:
 
 Purpose:
 - entry point for recent and active runs
+- entry point for starting a new crawl-backed run
 - quick understanding of run status and next actions
 
 Should emphasize:
+- start-run controls
+- collapsed advanced override controls that open inside the same workspace
+- request lifecycle feedback after submit
 - run status
 - progress
 - exception counts
@@ -126,6 +130,9 @@ Should emphasize:
 - blockers
 - auto-resolved versus exception counts
 - readiness summary
+- last-updated and stale-state clarity
+- recent activity from the selected run
+- read-oriented next actions into `exceptions`, `readiness`, and `package`
 
 ### 3. Exceptions Workspace
 
@@ -134,9 +141,11 @@ Purpose:
 
 Should emphasize:
 - only flagged URLs by default
+- conflict-first and unresolved-first review paths
 - confidence and severity chips
-- target object preview
+- human-readable target object and field preview
 - quick next actions
+- queue filters aligned to conflicts, stale decisions, and manual overrides
 
 ### 4. Readiness Workspace
 
@@ -149,6 +158,7 @@ Should emphasize:
 - package completeness
 - schema freshness
 - dry-run readiness
+- direct shortcuts into the first relevant blocking review target
 
 ### 5. Package Workspace
 
@@ -160,6 +170,8 @@ Should emphasize:
 - where it will land
 - what still needs attention
 - package build history
+- action eligibility and disabled reasons
+- useful artifact actions instead of raw storage paths
 
 ### 6. URL Inspector Drawer
 
@@ -173,6 +185,9 @@ Should contain:
 - review actions
 - rerun actions
 - audit/debug reveals
+- human-readable schema labels with raw refs as secondary detail
+- save-and-next, previous, and next review navigation once conflict review is active
+- unsaved-change and stale-decision safeguards
 
 ## Layout Regions
 
@@ -362,6 +377,12 @@ Recommended primary route set:
 - `runs/:runId/readiness`
 - `runs/:runId/package`
 
+Recommended route ownership:
+
+- the `runs` workspace owns the future crawl-start form and run-create feedback flow
+- that surface should submit through `POST /dbvc_cc/v2/runs`
+- do not reintroduce the V1 collect tab or `admin-ajax` flow for V2 run creation
+
 Recommended drill-in state:
 
 - selected URL or record should open in a drawer or inspector without replacing the main workspace
@@ -410,38 +431,47 @@ Owns:
 - run list query
 - run filters
 - run sort
+- run-create form state
+- run-create lifecycle state
 - selected run action state
 
 Consumes:
 
 - run summaries
+- run-create response summary
 - readiness counts
 - exception counts
 
 ### Run Overview Workspace
 
 Owns:
-
+- overview refresh intent
 - overview-local filter and panel state
 
 Consumes:
-
-- run summary
-- stage progress
-- blocker summary
-- recent activity
+- `GET /runs/{run_id}/overview`
+- materialized `latest`, `inventory`, and `stageSummary` payloads
+- bounded recent activity from the selected run journey log
+- derived summary metrics and next-action recommendations
+- refresh metadata such as last-updated and stale-state copy
+- future recent-activity feed if a later tranche proves the current overview payload insufficient
 
 ### Exceptions Workspace
 
 Owns:
-
+- exception queue filters for conflicts, stale decisions, unresolved items, and manual overrides
+- queue-context navigation into the inspector
+- future bulk-selection state after single-item reviewability is stable
 - exception filters
 - row expansion state
 - selected URL drawer state
 - bulk review state
 
 Consumes:
-
+- exception counts and queue summaries
+- human-readable target label metadata
+- conflict and stale-state explanations
+- future save-and-next navigation context
 - exception queue
 - recommendation summaries
 - target resolution previews

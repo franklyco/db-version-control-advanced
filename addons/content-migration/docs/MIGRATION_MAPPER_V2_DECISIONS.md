@@ -81,3 +81,10 @@ Do not reopen these decisions unless a concrete implementation blocker appears.
 - V1 reuse is allowed through adapters and thin bridge services
 - V2 runtime code should stay under `addons/content-migration/v2/`
 - do not interleave new V2 runtime logic back into legacy V1 folders unless it is clearly shared infrastructure
+
+## Crawl-Start Boundary
+
+- the V2 crawl-start UI wraps `POST /dbvc_cc/v2/runs`
+- `POST /dbvc_cc/v2/runs` is the canonical V2 run-create and crawl-start contract
+- per-run crawl settings should flow through `crawlOverrides` on the V2 route
+- do not revive the V1 collect tab, legacy collect-page JavaScript, or `admin-ajax` crawl handlers for V2

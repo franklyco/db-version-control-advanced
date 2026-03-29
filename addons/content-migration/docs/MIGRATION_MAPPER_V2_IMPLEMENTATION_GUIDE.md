@@ -19,6 +19,7 @@ For low-token resume context during active implementation, read next:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 
 ## Product Goal
 
@@ -629,12 +630,12 @@ Current tranche notes:
 ### Phase 9: Operational Workflow Polish and Observability
 
 Phase status:
-- `WIP`
+- `CLOSED`
 
 Checklist:
 - `[CLOSED]` Surface import execution history in the V2 package workspace.
 - `[CLOSED]` Improve package workflow observability across build, dry-run, preflight, and execute stages.
-- `[OPEN]` Confirm current V2 alignment with reused Content Collector and crawl primitives before a dedicated crawl-start UI tranche.
+- `[CLOSED]` Confirm current V2 alignment with reused Content Collector and crawl primitives before a dedicated crawl-start UI tranche.
 
 Acceptance criteria:
 - Operators can review recent import executions, downstream import run identifiers, approval state, and rollback outcomes without reading raw artifacts directly.
@@ -648,6 +649,167 @@ Current tranche notes:
 - `2026-03-18`: The V2 package surface now persists and reloads package-linked dry-run, preflight, and execute snapshots through package build history, exposing workflow state and import execution history without requiring direct artifact browsing.
 - `2026-03-18`: The V2 package workspace now renders a workflow panel and persisted import history panel, and refreshes package workflow state after dry-run, preflight, and execute mutations.
 - `2026-03-18`: PHPUnit validation now covers the persisted Phase 9 package workflow state and import history surface in `ContentCollectorV2Phase9Test`.
+- `2026-03-18`: The Phase 9 crawl audit confirms that V2 already reuses the shared crawl override sanitizer, effective crawl option resolver, sitemap parser, artifact manager, selector helpers, extraction primitives, schema snapshot/catalog services, and import executor bridge.
+- `2026-03-18`: `POST /dbvc_cc/v2/runs` now accepts `crawlOverrides`, closing the transport gap between the reused crawl override model and the V2 run-creation route ahead of a first-class crawl-start UI.
+- `2026-03-18`: The audit also confirms that the V1 collect tab and `admin-ajax` crawl flow should stay dormant; the follow-on crawl-start tranche should build on the V2 `runs` workspace and `/runs` route instead.
+
+### Phase 10: V2 Crawl-Start UI
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add a first-class crawl-start flow to the V2 `runs` workspace.
+- `[CLOSED]` Surface supported per-run crawl overrides in V2 without reviving the V1 collect tab.
+- `[CLOSED]` Add operator-friendly run-creation progress, validation, and error states around the existing V2 `/runs` contract.
+
+Acceptance criteria:
+- Operators can start a crawl-backed V2 run from the `runs` workspace without leaving the V2 app or issuing manual REST requests.
+- The run-create surface uses the existing V2 `/runs` route with `domain`, `sitemapUrl`, `maxUrls`, `forceRebuild`, and `crawlOverrides`.
+- Advanced per-run crawl controls are prefilled from the shared Configure defaults and remain aligned with the shared crawl override sanitizer.
+- The new UI does not reactivate the V1 collect tab, legacy collect-page JavaScript, or `admin-ajax` crawl handlers.
+
+Current tranche notes:
+- `2026-03-18`: Phase 10 begins only after the Phase 9 audit closed the reuse boundary between healthy shared crawl primitives and dormant V1 operator transport.
+- `2026-03-18`: The next implementation focus is operator-facing V2 run creation, not new backend crawl pipeline stages.
+- `2026-03-18`: The V2 `runs` workspace now includes a first-class run-start form that submits `domain`, `sitemapUrl`, `maxUrls`, and `forceRebuild` through the existing `/runs` contract and selects the created run after success.
+- `2026-03-18`: The same form now exposes the supported per-run advanced crawl override surface, prefilled from the shared Configure defaults and submitted through `crawlOverrides`.
+- `2026-03-18`: Stable selectors for the run-start form, submit button, and advanced-toggle surface are now localized for future Playwright coverage.
+- `2026-03-18`: The `runs` workspace now renders a request lifecycle panel with elapsed timing, attempted input summary, success and failure alerts, and the latest stage snapshot returned by the run-create response.
+- `2026-03-18`: Targeted LocalWP browser QA is resumed and now covers direct V2 workspace load, drawer toggle behavior, and run-start lifecycle visibility without relying on the legacy admin-menu hover path.
+- `2026-03-18`: The LocalWP site's custom `/login` page can still render its front-end form for authenticated admins, so the Playwright harness now navigates directly to `admin.php?page=dbvc_cc&view=runs` and only submits credentials when the admin bar is absent.
+
+### Phase 11: Run Monitoring and Overview Observability
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Replace the placeholder selected-run overview with a real operational summary.
+- `[CLOSED]` Surface stage progress, counts, and next actions for a selected run without raw artifact browsing.
+- `[CLOSED]` Add refresh and stale-state clarity for active runs while keeping scope out of new pipeline logic.
+
+Acceptance criteria:
+- Operators can select a run and see current stage, pipeline progress, high-signal counts, and next actions from the existing V2 overview payload.
+- The overview surface uses the current V2 `/runs/{run_id}/overview` route before any new backend route is introduced.
+- Active runs show clear refresh state, last-updated context, and stale-state cues without requiring the operator to bounce between workspaces.
+- The tranche does not add new crawl, capture, AI, mapping, media, QA, or package business logic beyond what is needed to present existing run state clearly.
+
+Current tranche notes:
+- `2026-03-19`: Phase 11 is intentionally a post-run operator observability tranche, not a new crawl pipeline tranche.
+- `2026-03-19`: The selected-run `overview` workspace now consumes the existing `latest`, `inventory`, and `stageSummary` payload from `/runs/{run_id}/overview` instead of placeholder copy.
+- `2026-03-19`: Active runs now auto-refresh every `10s`, expose manual refresh at all times, and show explicit last-updated or stale-state copy without introducing new backend routes.
+- `2026-03-19`: The overview surface stays read-oriented in this tranche and limits next actions to deterministic navigation into `exceptions`, `readiness`, and `package`.
+- `2026-03-19`: The current implementation intentionally stops at the materialized overview payload and leaves richer event-timeline data for a later tranche if manual testing proves it necessary.
+- `2026-03-19`: Targeted LocalWP Playwright coverage now validates direct V2 workspace load, drawer toggle behavior, run-start lifecycle visibility, and selected-run overview hydration plus refresh state.
+
+### Phase 12: Recent Activity Timeline and Event Observability
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add a read-only recent-activity slice to the selected-run overview.
+- `[CLOSED]` Reuse the existing journey log and overview route instead of inventing a parallel event API prematurely.
+- `[CLOSED]` Extend validation so recent activity is visible in both PHP and browser QA.
+
+Acceptance criteria:
+- Operators can inspect recent run activity from the selected-run overview without leaving the V2 app or opening raw artifacts.
+- The recent-activity surface is sourced from the existing V2 journey log and exposed through the current `/runs/{run_id}/overview` payload.
+- The activity feed remains read-oriented and does not add new mutation controls or broaden pipeline logic.
+- Active runs continue using the existing overview refresh behavior so recent activity and summary cards stay in sync.
+
+Current tranche notes:
+- `2026-03-19`: Phase 12 should extend the existing overview route before adding a dedicated timeline endpoint.
+- `2026-03-19`: The safest backend reuse path is the append-only journey NDJSON already materialized for V2 runs.
+- `2026-03-19`: The UI should treat recent activity as operator evidence, not as a control-center mutation surface.
+- `2026-03-19`: `GET /runs/{run_id}/overview` now exposes a bounded `recentActivity` slice derived from the existing journey log for the selected run.
+- `2026-03-19`: The overview workspace now renders a dedicated recent-activity panel with stable selectors while keeping the surface read-oriented.
+- `2026-03-19`: Targeted validation now covers recent activity through PHPUnit route/service assertions and LocalWP Playwright overview assertions.
+
+### Phase 13: Reviewability Foundation and Schema Label Enrichment
+
+Phase status:
+- `OPEN`
+
+Checklist:
+- `[OPEN]` Replace raw target refs with human-readable schema labels across review surfaces.
+- `[OPEN]` Build explicit single-item recommendation decisions before expanding bulk or control-center actions.
+- `[OPEN]` Add stale and unsaved-decision safeguards so review work is trustworthy.
+
+Acceptance criteria:
+- Field, taxonomy, media, and ACF targets are displayed with human-readable labels plus machine refs as secondary detail.
+- Operators can explicitly `approve`, `reject`, `override`, or `leave unresolved` for individual recommendations without typing raw target refs first.
+- The V2 inspector warns on unsaved changes and clearly marks stale decisions caused by recommendation drift.
+- The tranche reuses the existing target field catalog and review payloads instead of inventing a second schema-label source.
+
+Current tranche notes:
+- `2026-03-19`: Raw `target_ref` strings are still too technical for operators, especially for ACF-heavy targets, so schema label enrichment is the first dependency for the next UX batch.
+- `2026-03-19`: Single-item review quality must be fixed before adding bulk review or control-center shortcuts.
+- `2026-03-19`: The next implementation round should enrich existing review payloads and inspector surfaces rather than adding parallel review pages.
+
+### Phase 14: Conflict-First Review Workflow
+
+Phase status:
+- `OPEN`
+
+Checklist:
+- `[OPEN]` Make conflicts and unresolved recommendations directly actionable from the queue.
+- `[OPEN]` Add fast review navigation so operators can move through flagged URLs without table hopping.
+- `[OPEN]` Add operator-facing explanations for why items are blocked, stale, conflicted, or review-required.
+
+Acceptance criteria:
+- Conflict counts in the exception queue lead to dedicated conflict-resolution surfaces, not just generic inspector entry.
+- Operators can move `previous`, `next`, or `save and next` through flagged URLs from the drawer workflow.
+- Exception filters reflect real review states such as conflicts, unresolved items, stale decisions, and manual overrides.
+- Conflict and decision surfaces clearly explain confidence, policy, resolution, and stale-state reasons.
+
+Current tranche notes:
+- `2026-03-19`: The current exception queue surfaces conflict counts but still lacks a conflict-specific resolution workflow.
+- `2026-03-19`: Save-and-next navigation belongs after explicit single-item decision controls exist, not before.
+- `2026-03-19`: Explanation copy should be grounded in existing recommendation, QA, and journey data rather than freeform UI prose.
+
+### Phase 15: Readiness and Package Actionability
+
+Phase status:
+- `OPEN`
+
+Checklist:
+- `[OPEN]` Make readiness blockers route directly into actionable review paths.
+- `[OPEN]` Harden package and import controls with clearer confirmations, disabled reasons, and follow-up visibility.
+- `[OPEN]` Turn package artifact references into usable operator actions.
+
+Acceptance criteria:
+- Blocking readiness items can open the first relevant review target or filtered queue directly from the readiness workspace.
+- Package preflight and execute controls explain why they are disabled and require intentional operator confirmation before mutation.
+- Operators can inspect or download relevant package artifacts without leaving the V2 workflow or reading raw storage paths.
+- The tranche preserves existing import guardrails, rollback, and journaling behavior.
+
+Current tranche notes:
+- `2026-03-19`: The readiness workspace currently shows blockers and page reports, but does not yet route operators directly into the blocking review work.
+- `2026-03-19`: The package workspace already exposes core actions, but still needs safer action framing and more useful artifact access.
+- `2026-03-19`: This tranche should stay workflow-glue focused and not broaden package-building logic.
+
+### Phase 16: Operator Efficiency and Control-Center Enhancements
+
+Phase status:
+- `OPEN`
+
+Checklist:
+- `[OPEN]` Add carefully guarded bulk review operations once single-item review is stable.
+- `[OPEN]` Add pragmatic run-level actions for rerun, duplication, and noise management.
+- `[OPEN]` Add cross-workspace navigation shortcuts that turn the overview into a usable control center later.
+
+Acceptance criteria:
+- Bulk review actions operate on explicit filtered selections and preserve auditability.
+- Run-level actions such as rerun failed stage groups, duplicate run settings, or archive noisy test runs are available without reviving V1 transport patterns.
+- Overview, readiness, and package surfaces can jump directly to the most relevant blocking review targets.
+- The tranche keeps automation and audit guardrails intact while improving operator speed.
+
+Current tranche notes:
+- `2026-03-19`: Bulk actions should be deferred until single-item reviewability and stale-state handling are trustworthy.
+- `2026-03-19`: Run-level convenience actions are useful, but they are lower priority than fixing conflict review and schema-label clarity.
+- `2026-03-19`: Control-center behavior should grow from the stabilized monitoring and review surfaces, not bypass them.
 
 ## Granular Implementation Checklist
 
@@ -833,10 +995,106 @@ Recommended stage budget notes:
 - `[CLOSED]` `P9-T2-S1` Show build, dry-run, preflight, and execute timestamps or latest-status markers for the selected package.
 - `[CLOSED]` `P9-T2-S2` Show stage-scoped blockers, warnings, and deferred counts in one package workflow surface.
 - `[CLOSED]` `P9-T2-S3` Keep package workflow surfaces synchronized after build, preflight, and execute mutations without manual refresh.
-- `[OPEN]` `P9-T3` Audit V2 reuse alignment before crawl-start UI work.
-- `[OPEN]` `P9-T3-S1` Confirm which existing Content Collector and crawl primitives are still actively reused by V2 run creation.
-- `[OPEN]` `P9-T3-S2` Record any misalignment, dormant dependency, or operator gap that would block a first-class V2 crawl-start flow.
-- `[OPEN]` `P9-T3-S3` Define the follow-on tranche boundary for a dedicated V2 crawl-start UI after Phase 9 closes.
+- `[CLOSED]` `P9-T3` Audit V2 reuse alignment before crawl-start UI work.
+- `[CLOSED]` `P9-T3-S1` Confirm which existing Content Collector and crawl primitives are still actively reused by V2 run creation.
+- `[CLOSED]` `P9-T3-S2` Record any misalignment, dormant dependency, or operator gap that would block a first-class V2 crawl-start flow.
+- `[CLOSED]` `P9-T3-S3` Define the follow-on tranche boundary for a dedicated V2 crawl-start UI after Phase 9 closes.
+
+### Phase 10 Task Matrix
+
+- `[CLOSED]` `P10-T1` Build the V2 run-create surface in the `runs` workspace.
+- `[CLOSED]` `P10-T1-S1` Add operator inputs for `domain`, `sitemapUrl`, `maxUrls`, and `forceRebuild`.
+- `[CLOSED]` `P10-T1-S2` Submit run creation through `POST /dbvc_cc/v2/runs` and hydrate the selected run after success.
+- `[CLOSED]` `P10-T1-S3` Keep stable selectors for future Playwright coverage around run creation.
+- `[CLOSED]` `P10-T2` Build advanced per-run crawl override controls in V2.
+- `[CLOSED]` `P10-T2-S1` Prefill supported override fields from the shared Configure defaults.
+- `[CLOSED]` `P10-T2-S2` Submit supported overrides through `crawlOverrides` on the V2 `/runs` contract.
+- `[CLOSED]` `P10-T2-S3` Keep Add-ons and Configure as the server-rendered source of default values.
+- `[CLOSED]` `P10-T3` Build run-create observability and operator feedback.
+- `[CLOSED]` `P10-T3-S1` Show request lifecycle and long-running state clearly in the `runs` workspace.
+- `[CLOSED]` `P10-T3-S2` Surface validation, transport, and pipeline-start failures without requiring artifact inspection.
+- `[CLOSED]` `P10-T3-S3` Add targeted browser QA once Playwright testing is resumed.
+
+### Phase 11 Task Matrix
+
+- `[CLOSED]` `P11-T1` Hydrate the selected-run overview from the existing V2 overview route.
+- `[CLOSED]` `P11-T1-S1` Add a dedicated overview data hook or client module for `GET /dbvc_cc/v2/runs/{run_id}/overview`.
+- `[CLOSED]` `P11-T1-S2` Replace placeholder overview cards with real run status, inventory, and stage-summary data.
+- `[CLOSED]` `P11-T1-S3` Keep stable selectors around the overview root, stage cards, summary metrics, and next-action surfaces.
+- `[CLOSED]` `P11-T2` Surface high-signal run monitoring state in the overview workspace.
+- `[CLOSED]` `P11-T2-S1` Show current stage, progress, blockers, and stage-status distribution from the materialized run state.
+- `[CLOSED]` `P11-T2-S2` Show key inventory and outcome counts such as discovered URLs, in-scope pages, exceptions, and readiness-adjacent signals where already available.
+- `[CLOSED]` `P11-T2-S3` Add deterministic next-action affordances that route operators to `exceptions`, `readiness`, or `package` without introducing new mutation flows.
+- `[CLOSED]` `P11-T3` Improve refresh and stale-state clarity for active runs.
+- `[CLOSED]` `P11-T3-S1` Add manual refresh to the selected-run overview and related run-selection state.
+- `[CLOSED]` `P11-T3-S2` Add a polling or auto-refresh strategy for active runs with explicit loading and stale-state indicators.
+- `[CLOSED]` `P11-T3-S3` Add targeted validation for overview hydration and refresh behavior before broadening the tranche.
+
+### Phase 12 Task Matrix
+
+- `[CLOSED]` `P12-T1` Add recent activity to the selected-run overview payload.
+- `[CLOSED]` `P12-T1-S1` Add a thin V2 service that derives recent run activity from the existing journey log without altering pipeline writes.
+- `[CLOSED]` `P12-T1-S2` Extend `GET /dbvc_cc/v2/runs/{run_id}/overview` with a bounded recent-activity slice for the selected run.
+- `[CLOSED]` `P12-T1-S3` Keep the activity payload read-oriented and deterministic so later timeline enhancements can layer on top cleanly.
+- `[CLOSED]` `P12-T2` Render a recent-activity timeline in the V2 overview workspace.
+- `[CLOSED]` `P12-T2-S1` Add a dedicated overview activity component with stable selectors and status treatment aligned to existing overview styling.
+- `[CLOSED]` `P12-T2-S2` Keep the current overview read-oriented while surfacing step, time, scope, and message context for recent events.
+- `[CLOSED]` `P12-T3` Add targeted validation for recent activity observability.
+- `[CLOSED]` `P12-T3-S1` Add PHPUnit coverage for the overview payload and run-level event filtering.
+- `[CLOSED]` `P12-T3-S2` Extend LocalWP Playwright coverage to assert the recent-activity surface appears in the overview workspace.
+
+### Phase 13 Task Matrix
+
+- `[OPEN]` `P13-T1` Enrich V2 review payloads with human-readable schema labels.
+- `[OPEN]` `P13-T1-S1` Add a thin schema presentation resolver that maps `target_ref` values to field labels, machine refs, field types, object labels, and ACF group context from the existing target field catalog.
+- `[OPEN]` `P13-T1-S2` Extend review, readiness-adjacent, and package-adjacent payloads with additive display metadata instead of replacing machine refs.
+- `[OPEN]` `P13-T1-S3` Render human-readable labels everywhere the operator currently sees raw field or ACF refs as the primary label.
+- `[OPEN]` `P13-T2` Replace the raw override-first inspector workflow with explicit single-item recommendation decisions.
+- `[OPEN]` `P13-T2-S1` Add per-recommendation controls for `approve`, `reject`, `override`, and `leave unresolved` across field and media recommendations.
+- `[OPEN]` `P13-T2-S2` Keep raw refs and low-level override targets visible as secondary evidence, not the primary call to action.
+- `[OPEN]` `P13-T2-S3` Rework the mapping tab into side-by-side source evidence, recommended target evidence, and final decision state.
+- `[OPEN]` `P13-T3` Add single-item decision safety rails.
+- `[OPEN]` `P13-T3-S1` Warn on unsaved inspector changes before close, tab change, or record navigation.
+- `[OPEN]` `P13-T3-S2` Surface stale recommendation drift clearly and provide a deterministic reset or re-review path.
+- `[OPEN]` `P13-T3-S3` Add targeted validation for enriched review payloads and single-item decision state handling.
+
+### Phase 14 Task Matrix
+
+- `[OPEN]` `P14-T1` Make the exception queue conflict-first and action-oriented.
+- `[OPEN]` `P14-T1-S1` Add dedicated queue filters and counts for conflicts, unresolved items, stale decisions, manual overrides, and ready-after-review items.
+- `[OPEN]` `P14-T1-S2` Add row-level quick actions that open the operator directly into the relevant conflict or unresolved resolver state.
+- `[OPEN]` `P14-T2` Build a conflict-resolution workflow inside the inspector.
+- `[OPEN]` `P14-T2-S1` Add a dedicated conflict-focused panel or tab that compares conflicting targets, source evidence, and current resolution reasoning.
+- `[OPEN]` `P14-T2-S2` Surface confidence, policy, resolution, and stale-state explanations in operator-readable language.
+- `[OPEN]` `P14-T3` Add fast flagged-record navigation.
+- `[OPEN]` `P14-T3-S1` Add `previous`, `next`, `save and next`, and `save and close` review actions inside the drawer.
+- `[OPEN]` `P14-T3-S2` Preserve queue context while moving across flagged URLs so operators do not lose filter state.
+- `[OPEN]` `P14-T3-S3` Add targeted validation for conflict filtering, resolver state, and save-and-next navigation.
+
+### Phase 15 Task Matrix
+
+- `[OPEN]` `P15-T1` Make readiness blockers actionable.
+- `[OPEN]` `P15-T1-S1` Add shortcuts from readiness blockers and per-page QA rows into the first relevant review target or filtered queue state.
+- `[OPEN]` `P15-T1-S2` Add readiness-focused filters for pages blocked by review, QA, or package prerequisites.
+- `[OPEN]` `P15-T2` Harden package preflight and execute controls.
+- `[OPEN]` `P15-T2-S1` Add intentional confirmation UX for preflight approval and execute operations.
+- `[OPEN]` `P15-T2-S2` Add clear disabled-reason messaging when package actions are not yet eligible.
+- `[OPEN]` `P15-T2-S3` Surface post-execute follow-up state such as rollback status and recent import outcome more clearly.
+- `[OPEN]` `P15-T3` Turn package artifact references into useful operator actions.
+- `[OPEN]` `P15-T3-S1` Add inspect, open, or download actions for selected package artifacts where safe.
+- `[OPEN]` `P15-T3-S2` Add clearer package manifest drill-ins so operators can see what will land where before execute.
+
+### Phase 16 Task Matrix
+
+- `[OPEN]` `P16-T1` Add bulk review actions on top of the stabilized review workflow.
+- `[OPEN]` `P16-T1-S1` Support explicit filtered selection and bulk apply for low-risk review actions with auditability preserved.
+- `[OPEN]` `P16-T1-S2` Add carefully scoped bulk target-family assignment or approval helpers where the review model supports it.
+- `[OPEN]` `P16-T2` Add pragmatic run-level actions.
+- `[OPEN]` `P16-T2-S1` Add rerun helpers for failed or blocked stage groups without reviving V1 transport paths.
+- `[OPEN]` `P16-T2-S2` Add duplicate-run and noisy-run archive or hide affordances for operator cleanup.
+- `[OPEN]` `P16-T3` Add cross-workspace control-center shortcuts.
+- `[OPEN]` `P16-T3-S1` Add direct jumps from overview, readiness, and package surfaces to the most relevant blocking review targets.
+- `[OPEN]` `P16-T3-S2` Keep route and query state stable so control-center additions do not eject the operator from queue context.
 
 ## Reuse Strategy
 

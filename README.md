@@ -138,6 +138,7 @@ The Content Collector addon keeps its V2 implementation context pack under:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 
 Use those docs as the shortest resume path before reopening the larger V2 planning set.
 
