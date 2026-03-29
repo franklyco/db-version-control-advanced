@@ -1,12 +1,22 @@
 import ReadinessIssuesList from '../../components/readiness/ReadinessIssuesList';
 import ReadinessPagesTable from '../../components/readiness/ReadinessPagesTable';
 import ReadinessSummaryCards from '../../components/readiness/ReadinessSummaryCards';
+import ReadinessToolbar from '../../components/readiness/ReadinessToolbar';
+import {
+	READINESS_FILTERS,
+	buildReadinessFilterCounts,
+	matchesReadinessFilter,
+	resolveReadinessIssueAction,
+	resolveReadinessPageAction,
+} from '../../components/readiness/readinessActions';
+import { buildOperatorActionRoute } from '../../app/operatorActionRoutes';
 import useRunReadiness from '../../hooks/useRunReadiness';
 
 export default function ReadinessWorkspace( {
 	refreshToken,
 	route,
 	onOpenDrawer,
+	onRouteChange,
 } ) {
 	const {
 		readinessStatus,
@@ -18,6 +28,48 @@ export default function ReadinessWorkspace( {
 		isLoading,
 		error,
 	} = useRunReadiness( route.runId, refreshToken );
+
+	const handleItemAction = ( item, action ) => {
+		if ( ! action ) {
+			return;
+		}
+
+		const nextRoute = buildOperatorActionRoute( route, item, action );
+		if ( typeof onRouteChange === 'function' && nextRoute ) {
+			onRouteChange( nextRoute );
+			return;
+		}
+
+		if (
+			action.target === 'readiness' &&
+			typeof onOpenDrawer === 'function' &&
+			item?.pageId
+		) {
+			onOpenDrawer( item.pageId, action.panelTab || 'audit' );
+		}
+	};
+
+	const blockingItems = blockingIssues.map( ( item ) => ( {
+		...item,
+		action: resolveReadinessIssueAction( item ),
+	} ) );
+	const warningItems = warnings.map( ( item ) => ( {
+		...item,
+		action: resolveReadinessIssueAction( item ),
+	} ) );
+	const pageItems = pageReports.map( ( item ) => ( {
+		...item,
+		primaryAction: resolveReadinessPageAction( item ),
+	} ) );
+	const pageCounts = buildReadinessFilterCounts( pageItems );
+	const activeFilter = READINESS_FILTERS.some(
+		( filter ) => filter.key === route.filter
+	)
+		? route.filter
+		: 'all';
+	const filteredPageItems = pageItems.filter( ( item ) =>
+		matchesReadinessFilter( item, activeFilter )
+	);
 
 	return (
 		<section
@@ -61,23 +113,32 @@ export default function ReadinessWorkspace( {
 						schemaFingerprint={ schemaFingerprint }
 					/>
 
+					<ReadinessToolbar
+						route={ route }
+						counts={ pageCounts }
+						onRouteChange={ onRouteChange }
+					/>
+
 					<div className="dbvc-cc-v2-grid dbvc-cc-v2-grid--readiness-lists">
 						<ReadinessIssuesList
 							title="Blocking issues"
-							items={ blockingIssues }
+							items={ blockingItems }
 							testId="dbvc-cc-v2-readiness-blockers"
+							onItemAction={ handleItemAction }
 						/>
 						<ReadinessIssuesList
 							title="Warnings"
-							items={ warnings }
+							items={ warningItems }
 							testId="dbvc-cc-v2-readiness-warnings"
+							onItemAction={ handleItemAction }
 						/>
 					</div>
 
 					<article className="dbvc-cc-v2-placeholder-card">
 						<h3>Per-URL QA reports</h3>
 						<ReadinessPagesTable
-							items={ pageReports }
+							items={ filteredPageItems }
+							onItemAction={ handleItemAction }
 							onOpenDrawer={ onOpenDrawer }
 						/>
 					</article>

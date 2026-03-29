@@ -1,8 +1,14 @@
+import { useEffect } from '@wordpress/element';
+
+import BulkReviewPanel from '../../components/exceptions/BulkReviewPanel';
 import ExceptionsTable from '../../components/exceptions/ExceptionsTable';
 import ExceptionsToolbar from '../../components/exceptions/ExceptionsToolbar';
+import useBulkReviewActions from '../../hooks/useBulkReviewActions';
 import useExceptionsQueue from '../../hooks/useExceptionsQueue';
 
 export default function ExceptionsWorkspace( {
+	onMutationComplete,
+	onQueueItemsChange,
 	refreshToken,
 	route,
 	onOpenDrawer,
@@ -13,6 +19,34 @@ export default function ExceptionsWorkspace( {
 		route,
 		refreshToken
 	);
+	const bulkReview = useBulkReviewActions(
+		route.runId,
+		items,
+		onMutationComplete
+	);
+
+	useEffect( () => {
+		if ( typeof onQueueItemsChange !== 'function' ) {
+			return undefined;
+		}
+
+		onQueueItemsChange( {
+			runId: route.runId || '',
+			items,
+			filter: route.filter || '',
+			status: route.status || '',
+			q: route.q || '',
+			sort: route.sort || '',
+		} );
+	}, [
+		items,
+		onQueueItemsChange,
+		route.filter,
+		route.q,
+		route.runId,
+		route.sort,
+		route.status,
+	] );
 
 	return (
 		<section
@@ -33,7 +67,12 @@ export default function ExceptionsWorkspace( {
 						counts={ counts }
 						onRouteChange={ onRouteChange }
 					/>
+					<BulkReviewPanel
+						bulkReview={ bulkReview }
+						onBulkAction={ bulkReview.applyBulkAction }
+					/>
 					<ExceptionsTable
+						bulkReview={ bulkReview }
 						items={ items }
 						isLoading={ isLoading }
 						error={ error }

@@ -37,7 +37,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         $artifact_paths = isset($page_context['artifact_paths']) && is_array($page_context['artifact_paths']) ? $page_context['artifact_paths'] : [];
         $artifact_relatives = isset($page_context['artifact_relatives']) && is_array($page_context['artifact_relatives']) ? $page_context['artifact_relatives'] : [];
         $selection_service = DBVC_CC_V2_Package_Selection_Service::get_instance();
-        $artifacts = $selection_service->load_page_artifacts($artifact_paths);
+        $artifacts = $selection_service->load_page_artifacts_for_run($run_id, $artifact_paths);
         $recommendations = isset($artifacts['recommendations']) ? $artifacts['recommendations'] : null;
         $mapping_decisions = isset($artifacts['mapping_decisions']) ? $artifacts['mapping_decisions'] : null;
         $media_decisions = isset($artifacts['media_decisions']) ? $artifacts['media_decisions'] : null;
@@ -58,9 +58,9 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             : 'pending';
         $manual_override_count = $selection_service->count_overrides($mapping_decisions, $media_decisions);
         $rerun_count = $selection_service->count_reruns($events, $mapping_decisions);
-        $selected_target_object = $selection_service->resolve_selected_target_object($recommended_target, $mapping_decisions);
-        $field_values = $selection_service->build_field_values($recommendations, $mapping_decisions);
-        $media_refs = $selection_service->build_media_refs($recommendations, $media_decisions);
+        $selected_target_object = $selection_service->resolve_selected_target_object($recommended_target, $mapping_decisions, $domain);
+        $field_values = $selection_service->build_field_values($recommendations, $mapping_decisions, $domain);
+        $media_refs = $selection_service->build_media_refs($recommendations, $media_decisions, $domain);
         $conflict_count = is_array($recommendations) && isset($recommendations['conflicts']) && is_array($recommendations['conflicts'])
             ? count($recommendations['conflicts'])
             : 0;

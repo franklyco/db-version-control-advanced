@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from '@wordpress/element';
 
 import { request } from '../../api/client';
+import { buildOperatorActionRoute } from '../../app/operatorActionRoutes';
 import PackageDetailPanel from '../../components/package/PackageDetailPanel';
 import PackageDryRunPanel from '../../components/package/PackageDryRunPanel';
 import PackageHistoryTable from '../../components/package/PackageHistoryTable';
 import PackageImportHistoryPanel from '../../components/package/PackageImportHistoryPanel';
+import PackageNextActionsPanel from '../../components/package/PackageNextActionsPanel';
 import useDryRunSurface from '../../hooks/useDryRunSurface';
 import PackageImportPanel from '../../components/package/PackageImportPanel';
 import useImportExecutionBridge from '../../hooks/useImportExecutionBridge';
@@ -112,6 +114,17 @@ export default function PackageWorkspace( {
 		}
 	};
 
+	const handlePackageAction = ( item ) => {
+		const nextRoute = buildOperatorActionRoute( route, item?.item || {}, {
+			...( item?.action || {} ),
+			runId: route.runId,
+		} );
+
+		if ( nextRoute && typeof onRouteChange === 'function' ) {
+			onRouteChange( nextRoute );
+		}
+	};
+
 	return (
 		<section
 			className="dbvc-cc-v2-workspace"
@@ -207,6 +220,11 @@ export default function PackageWorkspace( {
 
 					<PackageDetailPanel packageDetail={ selectedPackage } />
 
+					<PackageNextActionsPanel
+						packageDetail={ selectedPackage }
+						onAction={ handlePackageAction }
+					/>
+
 					<PackageWorkflowPanel
 						workflowState={ selectedPackage?.workflowState }
 					/>
@@ -222,6 +240,11 @@ export default function PackageWorkspace( {
 						onRequestPreflight={ handleRequestPreflight }
 						onExecuteImport={ handleExecuteImport }
 						hasPackage={ !! activePackageId }
+						workflowState={ selectedPackage?.workflowState }
+						latestImport={ selectedPackage?.importHistory?.[ 0 ] }
+						packageId={ activePackageId }
+						onResolvePrimaryBlocker={ handlePackageAction }
+						packageDetail={ selectedPackage }
 					/>
 
 					<PackageImportHistoryPanel

@@ -287,6 +287,11 @@ export const buildRunCreatePayload = ( formState ) => {
 	return payload;
 };
 
+export const buildRunCreatePayloadFromProfile = ( runProfile = {} ) =>
+	buildRunCreatePayload(
+		buildRunCreateStateFromProfile( runProfile, BASE_CRAWL_DEFAULTS )
+	);
+
 export const getInitialRunCreateState = ( crawlDefaults ) => ( {
 	domain: '',
 	sitemapUrl: '',
@@ -294,3 +299,27 @@ export const getInitialRunCreateState = ( crawlDefaults ) => ( {
 	forceRebuild: false,
 	...crawlDefaults,
 } );
+
+export const buildRunCreateStateFromProfile = (
+	runProfile = {},
+	crawlDefaults = {}
+) => {
+	const baseState = getInitialRunCreateState( crawlDefaults );
+	const crawlOverrides =
+		runProfile && typeof runProfile.crawlOverrides === 'object'
+			? runProfile.crawlOverrides
+			: {};
+
+	return {
+		...baseState,
+		...crawlOverrides,
+		domain: normalizeText( runProfile.domain ).trim(),
+		sitemapUrl: normalizeText( runProfile.sitemapUrl ).trim(),
+		maxUrls:
+			Number.isFinite( Number( runProfile.maxUrls ) ) &&
+			Number( runProfile.maxUrls ) > 0
+				? `${ Number( runProfile.maxUrls ) }`
+				: '',
+		forceRebuild: !! runProfile.forceRebuild,
+	};
+};

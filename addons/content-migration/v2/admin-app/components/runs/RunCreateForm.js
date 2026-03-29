@@ -1,7 +1,8 @@
-import { useMemo, useState } from '@wordpress/element';
+import { useEffect, useMemo, useState } from '@wordpress/element';
 
 import {
 	ADVANCED_FIELD_GROUPS,
+	buildRunCreateStateFromProfile,
 	buildRunCreatePayload,
 	deriveDomainFromSitemap,
 	getInitialRunCreateState,
@@ -36,6 +37,8 @@ export default function RunCreateForm( {
 	isSubmitting,
 	onClearError,
 	onSubmit,
+	prefillProfile,
+	prefillToken,
 	runCreateBootstrap,
 } ) {
 	const [ isAdvancedOpen, setIsAdvancedOpen ] = useState( false );
@@ -48,6 +51,24 @@ export default function RunCreateForm( {
 	const [ formState, setFormState ] = useState( () =>
 		getInitialRunCreateState( crawlDefaults )
 	);
+
+	useEffect( () => {
+		if ( ! prefillToken ) {
+			return;
+		}
+
+		setIsAdvancedOpen( true );
+		setFormState(
+			buildRunCreateStateFromProfile( prefillProfile, crawlDefaults )
+		);
+		setClientError( '' );
+		setStatusMessage(
+			'Loaded settings from the selected run. Review and submit to start a duplicate run.'
+		);
+		if ( typeof onClearError === 'function' ) {
+			onClearError();
+		}
+	}, [ crawlDefaults, onClearError, prefillProfile, prefillToken ] );
 
 	const visibleError = clientError || error;
 	const derivedDomain =
@@ -213,6 +234,8 @@ export default function RunCreateForm( {
 					<p>
 						This is the first V2-native run-start surface. It uses
 						the existing `/runs` contract and shared crawl defaults.
+						You can also duplicate the latest stored settings from a
+						run card below.
 					</p>
 				</div>
 

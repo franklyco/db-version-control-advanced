@@ -220,34 +220,106 @@ export const buildSummaryItems = (
 	];
 };
 
+const getFirstArrayItem = ( value ) =>
+	Array.isArray( value ) && value.length ? `${ value[ 0 ] }` : '';
+
+const getLatestStageByUrl = ( latest = {}, pageId = '' ) => {
+	const stages =
+		latest && typeof latest.latest_stage_by_url === 'object'
+			? latest.latest_stage_by_url
+			: {};
+
+	if ( ! pageId || ! stages?.[ pageId ] ) {
+		return {};
+	}
+
+	return stages[ pageId ];
+};
+
+const getPageScopeLabel = ( latest = {}, pageId = '' ) => {
+	const stage = getLatestStageByUrl( latest, pageId );
+
+	if ( stage?.path ) {
+		return stage.path;
+	}
+
+	if ( stage?.sourceUrl ) {
+		return stage.sourceUrl;
+	}
+
+	return pageId;
+};
+
+const getLatestPackageId = ( latest = {} ) => {
+	const packageIds = Array.isArray( latest.packages_built )
+		? latest.packages_built
+		: [];
+
+	return packageIds.length ? `${ packageIds[ packageIds.length - 1 ] }` : '';
+};
+
 export const buildNextActions = ( latest = {} ) => {
 	const reviewCount = getArrayCount( latest.urls_needing_review );
 	const blockedCount = getArrayCount( latest.urls_blocked );
 	const packageReadyCount = getArrayCount( latest.urls_package_ready );
 	const status = `${ latest.status || '' }`.trim();
+	const blockedPageId = getFirstArrayItem( latest.urls_blocked );
+	const reviewPageId = getFirstArrayItem( latest.urls_needing_review );
+	const readinessPageId = blockedPageId || reviewPageId;
+	const readinessScopeLabel = getPageScopeLabel( latest, readinessPageId );
+	const latestPackageId = getLatestPackageId( latest );
+	const exceptionScopeLabel = getPageScopeLabel(
+		latest,
+		blockedPageId || reviewPageId
+	);
+	const readinessTitle = readinessPageId
+		? `Inspect readiness for ${ readinessScopeLabel }`
+		: 'Inspect readiness signals';
+	let exceptionTitle = 'Inspect the exception queue';
+	let exceptionButtonLabel = 'Open queue';
+
+	if ( blockedPageId || reviewPageId ) {
+		exceptionTitle = `Open ${ exceptionScopeLabel }`;
+		exceptionButtonLabel = blockedPageId
+			? 'Resolve blocker'
+			: 'Review target';
+	}
+
+	let packageTitle = 'Inspect package readiness';
+	let packageDescription =
+		'Open the package workspace to see whether this run is approaching package-ready status.';
+
+	if ( latestPackageId ) {
+		packageTitle = `Open ${ latestPackageId }`;
+		packageDescription =
+			'Jump directly into the latest package build for this run and continue dry-run, preflight, or execute review.';
+	} else if ( packageReadyCount > 0 || status === 'ready_for_import' ) {
+		packageTitle = 'Open package workflow';
+		packageDescription =
+			'Review build, dry-run, preflight, and execute state for the current run package.';
+	}
 
 	return [
 		{
 			key: 'exceptions',
-			view: 'exceptions',
-			title:
-				reviewCount > 0 || blockedCount > 0
-					? 'Review flagged URLs'
-					: 'Inspect the exception queue',
+			title: exceptionTitle,
 			description:
 				reviewCount > 0 || blockedCount > 0
-					? `${ reviewCount } need review and ${ blockedCount } are blocked.`
+					? `${ reviewCount } need review and ${ blockedCount } are blocked. Jump directly into the current highest-priority review target.`
 					: 'Open the exception workspace to confirm whether anything still needs manual attention.',
 			priority:
 				reviewCount > 0 || blockedCount > 0 ? 'primary' : 'secondary',
+			buttonLabel: exceptionButtonLabel,
+			action: {
+				target: 'exceptions',
+				pageId: blockedPageId || reviewPageId,
+				panelTab: blockedPageId ? 'summary' : 'mapping',
+				filter: blockedPageId ? 'blocked' : 'all',
+			},
 		},
 		{
 			key: 'readiness',
-			view: 'readiness',
-			title:
-				status === 'blocked' || status === 'needs_review'
-					? 'Check readiness blockers'
-					: 'Inspect readiness signals',
+			title: readinessTitle,
 			description:
 				status === 'blocked' || status === 'needs_review'
 					? 'Review blockers, warnings, and per-URL QA before moving deeper into package work.'
@@ -256,22 +328,27 @@ export const buildNextActions = ( latest = {} ) => {
 				status === 'blocked' || status === 'needs_review'
 					? 'primary'
 					: 'secondary',
+			buttonLabel: readinessPageId ? 'Open blocker' : 'Open readiness',
+			action: {
+				target: 'readiness',
+				pageId: readinessPageId,
+				panelTab: 'audit',
+				filter: '',
+			},
 		},
 		{
 			key: 'package',
-			view: 'package',
-			title:
-				packageReadyCount > 0 || status === 'ready_for_import'
-					? 'Open package workflow'
-					: 'Inspect package readiness',
-			description:
-				packageReadyCount > 0 || status === 'ready_for_import'
-					? 'Review build, dry-run, preflight, and execute state for the current run package.'
-					: 'Open the package workspace to see whether this run is approaching package-ready status.',
+			title: packageTitle,
+			description: packageDescription,
 			priority:
 				packageReadyCount > 0 || status === 'ready_for_import'
 					? 'primary'
 					: 'secondary',
+			buttonLabel: latestPackageId ? 'Open package' : 'Open package',
+			action: {
+				target: 'package',
+				packageId: latestPackageId,
+			},
 		},
 	];
 };

@@ -64,6 +64,10 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                                 return is_array($value) || null === $value;
                             },
                         ],
+                        'qaReplaySourceRunId' => [
+                            'required' => false,
+                            'sanitize_callback' => 'sanitize_text_field',
+                        ],
                     ],
                 ],
             ]
@@ -76,6 +80,46 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                 'methods' => WP_REST_Server::READABLE,
                 'callback' => [$this, 'get_run'],
                 'permission_callback' => [$this, 'permissions_check'],
+            ]
+        );
+
+        register_rest_route(
+            DBVC_CC_V2_Contracts::REST_NAMESPACE,
+            '/runs/(?P<run_id>[\w-]+)/visibility',
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'set_run_visibility'],
+                'permission_callback' => [$this, 'permissions_check'],
+                'args' => [
+                    'hidden' => [
+                        'required' => true,
+                        'sanitize_callback' => 'rest_sanitize_boolean',
+                    ],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            DBVC_CC_V2_Contracts::REST_NAMESPACE,
+            '/runs/(?P<run_id>[\w-]+)/qa/recovery-fixture',
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'set_run_recovery_fixture'],
+                'permission_callback' => [$this, 'qa_fixture_permissions_check'],
+                'args' => [
+                    'enabled' => [
+                        'required' => false,
+                        'sanitize_callback' => 'rest_sanitize_boolean',
+                    ],
+                    'stage' => [
+                        'required' => false,
+                        'sanitize_callback' => 'sanitize_key',
+                    ],
+                    'pageId' => [
+                        'required' => false,
+                        'sanitize_callback' => 'sanitize_text_field',
+                    ],
+                ],
             ]
         );
 
@@ -119,24 +163,35 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
     /**
      * @return WP_REST_Response
      */
-    public function list_runs()
+    public function list_runs($request = null)
     {
+        $params = $request instanceof WP_REST_Request ? $this->extract_request_params($request) : [];
+        $include_hidden = ! empty($params['includeHidden']);
+        $visibility_service = DBVC_CC_V2_Run_Visibility_Service::get_instance();
+        $hidden_map = $visibility_service->get_hidden_run_map();
         $runs = DBVC_CC_V2_Domain_Journey_Service::get_instance()->list_latest_states();
-        $items = array_map(
-            static function ($run) {
-                return [
-                    'runId' => isset($run['journey_id']) ? (string) $run['journey_id'] : '',
-                    'domain' => isset($run['domain']) ? (string) $run['domain'] : '',
-                    'status' => isset($run['status']) ? (string) $run['status'] : '',
-                    'updatedAt' => isset($run['updated_at']) ? (string) $run['updated_at'] : '',
-                ];
-            },
-            $runs
-        );
+        $items = [];
+        foreach ($runs as $run) {
+            if (! is_array($run)) {
+                continue;
+            }
+
+            $item = $this->format_run_list_item($run);
+            if (! $include_hidden && ! empty($item['hidden'])) {
+                continue;
+            }
+
+            $items[] = $item;
+        }
 
         return rest_ensure_response(
             [
                 'items' => array_values($items),
+                'meta' => [
+                    'includeHidden' => $include_hidden,
+                    'hiddenCount' => count($hidden_map),
+                    'visibleCount' => count($items),
+                ],
             ]
         );
     }
@@ -153,10 +208,50 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         $sitemap_url = isset($params['sitemapUrl']) ? esc_url_raw((string) $params['sitemapUrl']) : '';
         $max_urls = isset($params['maxUrls']) ? absint($params['maxUrls']) : 0;
         $crawl_overrides = $this->sanitize_crawl_overrides(isset($params['crawlOverrides']) ? $params['crawlOverrides'] : []);
+        $qa_replay_source_run_id = isset($params['qaReplaySourceRunId'])
+            ? sanitize_text_field((string) $params['qaReplaySourceRunId'])
+            : '';
+        $journey_context = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_domain_context($domain);
+        if (is_wp_error($journey_context)) {
+            return $journey_context;
+        }
+
+        $resolved_domain = isset($journey_context['domain']) ? (string) $journey_context['domain'] : '';
+        $run_id = DBVC_CC_V2_Contracts::generate_run_id($resolved_domain);
+
+        $profile_result = DBVC_CC_V2_Run_Profile_Service::get_instance()->persist_latest_profile(
+            $resolved_domain,
+            [
+                'run_id' => $run_id,
+                'sitemap_url' => $sitemap_url,
+                'max_urls' => $max_urls,
+                'force_rebuild' => $force_rebuild,
+                'crawl_overrides' => $crawl_overrides,
+            ]
+        );
+        if (is_wp_error($profile_result)) {
+            return $profile_result;
+        }
+
+        if ($qa_replay_source_run_id !== '') {
+            $fixture_result = DBVC_CC_V2_Run_Replay_QA_Fixture_Service::get_instance()->create_replay_run(
+                $qa_replay_source_run_id,
+                $run_id,
+                [
+                    'domain' => $resolved_domain,
+                ]
+            );
+            if (is_wp_error($fixture_result)) {
+                return $fixture_result;
+            }
+
+            return rest_ensure_response($this->format_run_payload($fixture_result));
+        }
 
         $schema_sync = DBVC_CC_V2_Schema_Sync_Service::get_instance()->sync_domain(
-            $domain,
+            $resolved_domain,
             [
+                'journey_id' => $run_id,
                 'force_rebuild' => $force_rebuild,
                 'actor' => 'admin',
                 'trigger' => 'rest',
@@ -169,8 +264,8 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         $result = $schema_sync;
         if ($sitemap_url !== '') {
             $captured = DBVC_CC_V2_Capture_Orchestrator_Service::get_instance()->run_domain(
-                $domain,
-                isset($schema_sync['runId']) ? (string) $schema_sync['runId'] : '',
+                $resolved_domain,
+                $run_id,
                 $sitemap_url,
                 [
                     'schema_fingerprint' => isset($schema_sync['schema_fingerprint']) ? (string) $schema_sync['schema_fingerprint'] : '',
@@ -189,8 +284,8 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             $captured_page_ids = $this->extract_completed_page_ids(isset($captured['pages']) ? $captured['pages'] : []);
             if (! empty($captured_page_ids)) {
                 $ai_pipeline = DBVC_CC_V2_AI_Pipeline_Orchestrator_Service::get_instance()->run_domain(
-                    $domain,
-                    isset($schema_sync['runId']) ? (string) $schema_sync['runId'] : '',
+                    $resolved_domain,
+                    $run_id,
                     [
                         'page_ids' => $captured_page_ids,
                         'schema_fingerprint' => isset($schema_sync['schema_fingerprint']) ? (string) $schema_sync['schema_fingerprint'] : '',
@@ -220,15 +315,90 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             return $run;
         }
 
+        $run_id = isset($run['latest']['journey_id']) ? (string) $run['latest']['journey_id'] : '';
+        $visibility = DBVC_CC_V2_Run_Visibility_Service::get_instance()->get_visibility_payload($run_id);
+        $action_summary = DBVC_CC_V2_Run_Action_Summary_Service::get_instance()->build_summary(
+            isset($run['latest']) && is_array($run['latest']) ? $run['latest'] : []
+        );
+
         return rest_ensure_response(
             [
-                'runId' => isset($run['latest']['journey_id']) ? (string) $run['latest']['journey_id'] : '',
+                'runId' => $run_id,
                 'domain' => isset($run['latest']['domain']) ? (string) $run['latest']['domain'] : '',
                 'status' => isset($run['latest']['status']) ? (string) $run['latest']['status'] : '',
                 'updatedAt' => isset($run['latest']['updated_at']) ? (string) $run['latest']['updated_at'] : '',
                 'counts' => isset($run['latest']['counts']) ? $run['latest']['counts'] : [],
                 'latestSchemaFingerprint' => isset($run['latest']['latest_schema_fingerprint']) ? (string) $run['latest']['latest_schema_fingerprint'] : '',
+                'runProfile' => $this->format_run_profile(isset($run['run_profile']) ? $run['run_profile'] : []),
+                'hidden' => ! empty($visibility['hidden']),
+                'hiddenAt' => isset($visibility['hiddenAt']) ? (string) $visibility['hiddenAt'] : '',
+                'actionSummary' => $this->apply_recovery_qa_fixture_to_action_summary($run_id, $action_summary),
             ]
+        );
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
+    public function set_run_visibility($request)
+    {
+        $params = $this->extract_request_params($request);
+        $run_id = sanitize_text_field((string) $request['run_id']);
+        $domain = DBVC_CC_V2_Domain_Journey_Service::get_instance()->find_domain_by_journey_id($run_id);
+        if ($domain === '') {
+            return new WP_Error(
+                'dbvc_cc_v2_run_missing',
+                __('The requested V2 run could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $visibility = DBVC_CC_V2_Run_Visibility_Service::get_instance()->set_hidden($run_id, ! empty($params['hidden']));
+
+        return rest_ensure_response(
+            [
+                'runId' => $run_id,
+                'domain' => $domain,
+                'hidden' => ! empty($visibility['hidden']),
+                'hiddenAt' => isset($visibility['hiddenAt']) ? (string) $visibility['hiddenAt'] : '',
+            ]
+        );
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
+    public function set_run_recovery_fixture($request)
+    {
+        $params = $this->extract_request_params($request);
+        $run_id = sanitize_text_field((string) $request['run_id']);
+        $enabled = ! array_key_exists('enabled', $params) || ! empty($params['enabled']);
+        $service = DBVC_CC_V2_Run_Recovery_QA_Fixture_Service::get_instance();
+
+        if (! $enabled) {
+            return rest_ensure_response($service->clear_fixture($run_id));
+        }
+
+        $result = $service->seed_fixture(
+            $run_id,
+            [
+                'stage' => isset($params['stage']) ? $params['stage'] : '',
+                'pageId' => isset($params['pageId']) ? $params['pageId'] : '',
+            ]
+        );
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return rest_ensure_response(
+            array_merge(
+                [
+                    'enabled' => true,
+                ],
+                $result
+            )
         );
     }
 
@@ -304,7 +474,7 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             );
         }
 
-        $latest = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_latest_state($domain);
+        $latest = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_latest_state_for_run($run_id);
         if (is_wp_error($latest)) {
             return $latest;
         }
@@ -336,6 +506,26 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
     }
 
     /**
+     * @return bool|WP_Error
+     */
+    public function qa_fixture_permissions_check()
+    {
+        if (! $this->permissions_check()) {
+            return false;
+        }
+
+        if (! DBVC_CC_V2_Run_Recovery_QA_Fixture_Service::get_instance()->is_available()) {
+            return new WP_Error(
+                'dbvc_cc_v2_qa_fixture_unavailable',
+                __('The V2 recovery QA fixture helper is unavailable in this environment.', 'dbvc'),
+                ['status' => 403]
+            );
+        }
+
+        return true;
+    }
+
+    /**
      * @param WP_REST_Request $request
      * @return array<string, mixed>|WP_Error
      */
@@ -351,9 +541,10 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             );
         }
 
-        $latest = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_latest_state($domain);
-        $stage_summary = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_stage_summary($domain);
-        $url_inventory = DBVC_CC_V2_URL_Inventory_Service::get_instance()->get_inventory($domain);
+        $latest = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_latest_state_for_run($run_id);
+        $stage_summary = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_stage_summary_for_run($run_id);
+        $url_inventory = DBVC_CC_V2_URL_Inventory_Service::get_instance()->get_inventory_for_run($run_id);
+        $run_profile = DBVC_CC_V2_Run_Profile_Service::get_instance()->get_profile_for_run($run_id);
         if (is_wp_error($latest)) {
             return $latest;
         }
@@ -363,11 +554,15 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
         if (is_wp_error($url_inventory)) {
             $url_inventory = [];
         }
+        if (is_wp_error($run_profile)) {
+            $run_profile = [];
+        }
 
         return [
             'latest' => $latest,
             'stage_summary' => $stage_summary,
             'url_inventory' => $url_inventory,
+            'run_profile' => is_array($run_profile) ? $run_profile : [],
         ];
     }
 
@@ -377,8 +572,14 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
      */
     private function format_run_payload(array $run)
     {
+        $run_id = isset($run['runId']) ? (string) $run['runId'] : (isset($run['latest']['journey_id']) ? (string) $run['latest']['journey_id'] : '');
+        $visibility = DBVC_CC_V2_Run_Visibility_Service::get_instance()->get_visibility_payload($run_id);
+        $action_summary = DBVC_CC_V2_Run_Action_Summary_Service::get_instance()->build_summary(
+            isset($run['latest']) && is_array($run['latest']) ? $run['latest'] : []
+        );
+
         return [
-            'runId' => isset($run['runId']) ? (string) $run['runId'] : (isset($run['latest']['journey_id']) ? (string) $run['latest']['journey_id'] : ''),
+            'runId' => $run_id,
             'domain' => isset($run['domain']) ? (string) $run['domain'] : (isset($run['latest']['domain']) ? (string) $run['latest']['domain'] : ''),
             'latest' => isset($run['latest']) && is_array($run['latest']) ? $run['latest'] : [],
             'stageSummary' => isset($run['stage_summary']) && is_array($run['stage_summary']) ? $run['stage_summary'] : [],
@@ -388,6 +589,64 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
             'catalog' => isset($run['catalog']) && is_array($run['catalog']) ? $run['catalog'] : [],
             'pages' => isset($run['pages']) && is_array($run['pages']) ? $run['pages'] : [],
             'stats' => isset($run['stats']) && is_array($run['stats']) ? $run['stats'] : [],
+            'runProfile' => $this->format_run_profile(isset($run['run_profile']) ? $run['run_profile'] : []),
+            'hidden' => ! empty($visibility['hidden']),
+            'hiddenAt' => isset($visibility['hiddenAt']) ? (string) $visibility['hiddenAt'] : '',
+            'actionSummary' => $this->apply_recovery_qa_fixture_to_action_summary($run_id, $action_summary),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $run
+     * @return array<string, mixed>
+     */
+    private function format_run_list_item(array $run)
+    {
+        $run_id = isset($run['journey_id']) ? (string) $run['journey_id'] : '';
+        $domain = isset($run['domain']) ? (string) $run['domain'] : '';
+        $visibility = DBVC_CC_V2_Run_Visibility_Service::get_instance()->get_visibility_payload($run_id);
+        $run_profile = $domain !== ''
+            ? DBVC_CC_V2_Run_Profile_Service::get_instance()->get_latest_profile($domain)
+            : [];
+        if (is_wp_error($run_profile)) {
+            $run_profile = [];
+        }
+
+        return [
+            'runId' => $run_id,
+            'domain' => $domain,
+            'status' => isset($run['status']) ? (string) $run['status'] : '',
+            'updatedAt' => isset($run['updated_at']) ? (string) $run['updated_at'] : '',
+            'hidden' => ! empty($visibility['hidden']),
+            'hiddenAt' => isset($visibility['hiddenAt']) ? (string) $visibility['hiddenAt'] : '',
+            'runProfile' => $this->format_run_profile(is_array($run_profile) ? $run_profile : []),
+            'actionSummary' => $this->apply_recovery_qa_fixture_to_action_summary(
+                $run_id,
+                DBVC_CC_V2_Run_Action_Summary_Service::get_instance()->build_summary($run)
+            ),
+        ];
+    }
+
+    /**
+     * @param mixed $run_profile
+     * @return array<string, mixed>
+     */
+    private function format_run_profile($run_profile)
+    {
+        if (! is_array($run_profile)) {
+            return [];
+        }
+
+        $request = isset($run_profile['request']) && is_array($run_profile['request']) ? $run_profile['request'] : [];
+
+        return [
+            'runId' => isset($run_profile['run_id']) ? (string) $run_profile['run_id'] : '',
+            'domain' => isset($request['domain']) ? (string) $request['domain'] : '',
+            'storedAt' => isset($run_profile['stored_at']) ? (string) $run_profile['stored_at'] : '',
+            'sitemapUrl' => isset($request['sitemap_url']) ? (string) $request['sitemap_url'] : '',
+            'maxUrls' => isset($request['max_urls']) ? absint($request['max_urls']) : 0,
+            'forceRebuild' => ! empty($request['force_rebuild']),
+            'crawlOverrides' => isset($request['crawl_overrides']) && is_array($request['crawl_overrides']) ? $request['crawl_overrides'] : [],
         ];
     }
 
@@ -487,5 +746,15 @@ final class DBVC_CC_V2_Domain_Journey_REST_Controller
                 'url_inventory' => isset($captured['url_inventory']) && is_array($captured['url_inventory']) ? $captured['url_inventory'] : [],
             ]
         );
+    }
+
+    /**
+     * @param string               $run_id
+     * @param array<string, mixed> $summary
+     * @return array<string, mixed>
+     */
+    private function apply_recovery_qa_fixture_to_action_summary($run_id, array $summary)
+    {
+        return DBVC_CC_V2_Run_Recovery_QA_Fixture_Service::get_instance()->apply_to_action_summary($run_id, $summary);
     }
 }

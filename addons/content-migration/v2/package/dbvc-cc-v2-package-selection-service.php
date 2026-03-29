@@ -38,6 +38,21 @@ final class DBVC_CC_V2_Package_Selection_Service
     }
 
     /**
+     * @param string               $run_id
+     * @param array<string, mixed> $artifact_paths
+     * @return array<string, mixed>
+     */
+    public function load_page_artifacts_for_run($run_id, array $artifact_paths)
+    {
+        return [
+            'recommendations' => $this->read_json_file_for_run(isset($artifact_paths['mapping_recommendations']) ? $artifact_paths['mapping_recommendations'] : '', $run_id),
+            'mapping_decisions' => $this->read_json_file_for_run(isset($artifact_paths['mapping_decisions']) ? $artifact_paths['mapping_decisions'] : '', $run_id),
+            'media_decisions' => $this->read_json_file_for_run(isset($artifact_paths['media_decisions']) ? $artifact_paths['media_decisions'] : '', $run_id),
+            'target_transform' => $this->read_json_file_for_run(isset($artifact_paths['target_transform']) ? $artifact_paths['target_transform'] : '', $run_id),
+        ];
+    }
+
+    /**
      * @param array<string, mixed>|null $mapping_decisions
      * @param array<string, mixed>|null $recommendations
      * @return bool
@@ -60,23 +75,34 @@ final class DBVC_CC_V2_Package_Selection_Service
      * @param array<string, mixed>|null $mapping_decisions
      * @return array<string, string>
      */
-    public function resolve_selected_target_object(array $recommended_target, $mapping_decisions)
+    public function resolve_selected_target_object(array $recommended_target, $mapping_decisions, $domain = '')
     {
         $decision = is_array($mapping_decisions) && isset($mapping_decisions['target_object_decision']) && is_array($mapping_decisions['target_object_decision'])
             ? $mapping_decisions['target_object_decision']
             : [];
 
+        $target_family = ! empty($decision['selected_target_family'])
+            ? (string) $decision['selected_target_family']
+            : (isset($recommended_target['target_family']) ? (string) $recommended_target['target_family'] : '');
+        $target_object_key = ! empty($decision['selected_target_object_key'])
+            ? (string) $decision['selected_target_object_key']
+            : (isset($recommended_target['target_object_key']) ? (string) $recommended_target['target_object_key'] : '');
+        $presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_object(
+            $domain,
+            $target_object_key,
+            $target_family
+        );
+
         return [
-            'targetFamily' => ! empty($decision['selected_target_family'])
-                ? (string) $decision['selected_target_family']
-                : (isset($recommended_target['target_family']) ? (string) $recommended_target['target_family'] : ''),
-            'targetObjectKey' => ! empty($decision['selected_target_object_key'])
-                ? (string) $decision['selected_target_object_key']
-                : (isset($recommended_target['target_object_key']) ? (string) $recommended_target['target_object_key'] : ''),
-            'label' => isset($recommended_target['label']) ? (string) $recommended_target['label'] : '',
+            'targetFamily' => $target_family,
+            'targetObjectKey' => $target_object_key,
+            'label' => ! empty($recommended_target['label'])
+                ? (string) $recommended_target['label']
+                : (isset($presentation['label']) ? (string) $presentation['label'] : ''),
             'resolutionMode' => ! empty($decision['selected_resolution_mode'])
                 ? (string) $decision['selected_resolution_mode']
                 : (isset($recommended_target['resolution_mode']) ? (string) $recommended_target['resolution_mode'] : ''),
+            'presentation' => $presentation,
         ];
     }
 
@@ -85,7 +111,7 @@ final class DBVC_CC_V2_Package_Selection_Service
      * @param array<string, mixed>|null $mapping_decisions
      * @return array<int, array<string, mixed>>
      */
-    public function build_field_values($recommendations, $mapping_decisions)
+    public function build_field_values($recommendations, $mapping_decisions, $domain = '')
     {
         if (! is_array($recommendations)) {
             return [];
@@ -135,9 +161,10 @@ final class DBVC_CC_V2_Package_Selection_Service
 
             $override_items = isset($overrides[$recommendation_id]) ? $overrides[$recommendation_id] : [];
             if (empty($override_items)) {
+                $target_ref = isset($item['target_ref']) ? (string) $item['target_ref'] : '';
                 $field_values[] = [
                     'recommendation_id' => $recommendation_id,
-                    'target_ref' => isset($item['target_ref']) ? (string) $item['target_ref'] : '',
+                    'target_ref' => $target_ref,
                     'value' => isset($item['target_evidence']) && $item['target_evidence'] !== ''
                         ? $item['target_evidence']
                         : (isset($item['source_evidence']) ? $item['source_evidence'] : ''),
@@ -145,19 +172,22 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'confidence' => isset($item['confidence']) ? (float) $item['confidence'] : 0.0,
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => $default_auto_accept ? 'auto_accept' : 'reviewed',
+                    'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $target_ref),
                 ];
                 continue;
             }
 
             foreach ($override_items as $override_item) {
+                $override_target = isset($override_item['override_target']) ? (string) $override_item['override_target'] : '';
                 $field_values[] = [
                     'recommendation_id' => $recommendation_id,
-                    'target_ref' => isset($override_item['override_target']) ? (string) $override_item['override_target'] : '',
+                    'target_ref' => $override_target,
                     'value' => isset($item['source_evidence']) ? $item['source_evidence'] : '',
                     'value_type' => isset($item['recommended_value_type']) ? (string) $item['recommended_value_type'] : '',
                     'confidence' => isset($item['confidence']) ? (float) $item['confidence'] : 0.0,
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => 'override',
+                    'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $override_target),
                 ];
             }
         }
@@ -170,7 +200,7 @@ final class DBVC_CC_V2_Package_Selection_Service
      * @param array<string, mixed>|null $media_decisions
      * @return array<int, array<string, mixed>>
      */
-    public function build_media_refs($recommendations, $media_decisions)
+    public function build_media_refs($recommendations, $media_decisions, $domain = '')
     {
         if (! is_array($recommendations)) {
             return [];
@@ -220,29 +250,33 @@ final class DBVC_CC_V2_Package_Selection_Service
 
             $override_items = isset($overrides[$recommendation_id]) ? $overrides[$recommendation_id] : [];
             if (empty($override_items)) {
+                $target_ref = isset($item['target_ref']) ? (string) $item['target_ref'] : '';
                 $media_refs[] = [
                     'recommendation_id' => $recommendation_id,
                     'media_id' => isset($item['media_id']) ? (string) $item['media_id'] : '',
-                    'target_ref' => isset($item['target_ref']) ? (string) $item['target_ref'] : '',
+                    'target_ref' => $target_ref,
                     'source_url' => isset($item['source_evidence']) ? (string) $item['source_evidence'] : '',
                     'media_kind' => isset($item['media_kind']) ? (string) $item['media_kind'] : '',
                     'value_type' => 'attachment_reference',
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => $default_auto_accept ? 'auto_accept' : 'reviewed',
+                    'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $target_ref),
                 ];
                 continue;
             }
 
             foreach ($override_items as $override_item) {
+                $override_target = isset($override_item['override_target']) ? (string) $override_item['override_target'] : '';
                 $media_refs[] = [
                     'recommendation_id' => $recommendation_id,
                     'media_id' => isset($item['media_id']) ? (string) $item['media_id'] : '',
-                    'target_ref' => isset($override_item['override_target']) ? (string) $override_item['override_target'] : '',
+                    'target_ref' => $override_target,
                     'source_url' => isset($item['source_evidence']) ? (string) $item['source_evidence'] : '',
                     'media_kind' => isset($item['media_kind']) ? (string) $item['media_kind'] : '',
                     'value_type' => 'attachment_reference',
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => 'override',
+                    'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $override_target),
                 ];
             }
         }
@@ -372,5 +406,26 @@ final class DBVC_CC_V2_Package_Selection_Service
 
         $decoded = json_decode($raw, true);
         return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param string $path
+     * @param string $run_id
+     * @return array<string, mixed>|null
+     */
+    private function read_json_file_for_run($path, $run_id)
+    {
+        $decoded = $this->read_json_file($path);
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        $requested_run_id = sanitize_text_field((string) $run_id);
+        $artifact_run_id = isset($decoded['journey_id']) ? sanitize_text_field((string) $decoded['journey_id']) : '';
+        if ($requested_run_id !== '' && $artifact_run_id !== '' && $artifact_run_id !== $requested_run_id) {
+            return null;
+        }
+
+        return $decoded;
     }
 }

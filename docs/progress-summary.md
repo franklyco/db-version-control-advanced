@@ -68,23 +68,31 @@
    - Added a targeted post-only import helper in `DBVC_Sync_Posts` so the upload flow no longer has to call `import_all()` and rescan the entire sync folder.
    - Upload routing reports now include immediate-import counts and per-file outcomes, while the upload notice distinguishes plain uploads from upload-plus-import runs.
 ## Remaining / Next Steps
-1. **Term & Taxonomy Entity Polish**
+1. **PlanMapper Addon Planning**
+   - Define the addon bootstrap, menu placement, CPT/data model, board columns, and public frontend rendering contract for a true built-in Kanban board inside DBVC.
+   - Copy the commented feature ideas and enhancement notes from the Vertical theme `sandbox.php` into the DBVC repo as the initial PlanMapper seed backlog before implementation begins.
+   - Decide how PlanMapper items map to DBVC-managed entities/CPTs, status/state fields, visibility rules, and any public/private field split needed for frontend roadmap output.
+2. **AI Notes/File Converter Planning**
+   - Add a logged-in intake flow for pasted notes and uploaded files that can be interpreted by an AI layer into PlanMapper-ready objects/CPT posts plus structured schema/meta.
+   - Define supported source formats, preview/approval UX, validation/error handling, and fallback behavior when AI extraction is incomplete or ambiguous.
+   - Reuse DBVC permission, review, and audit patterns so generated planning items can be confirmed or corrected before being published to the board/frontend.
+3. **Term & Taxonomy Entity Polish**
    - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.
    - Refresh docs/help text so reviewers know the taxonomy filters, parent resolution behaviour, and “Accept all new terms” affordances that now ship with the feature.
    - Backfill existing proposals by rerunning `DBVC_Snapshot_Manager::capture_for_proposal()` (or `wp dbvc proposals list --recapture-snapshots`) so every reopen flow benefits from the new term snapshots.
    - 🗂️ `docs/term-entity-polish.md` now tracks the QA/backfill checklist so each environment can confirm parity before rollout.
-2. **Testing & Automation**
+4. **Testing & Automation**
    - Expand coverage (resolver bulk actions, CSV parsing, importer hooks, duplicate cleanup) now that the PHPUnit scaffold exists.
    - Integrate the suite with CI once infrastructure is available so regressions (like the new-entity gating bug) are caught automatically.
-3. **Performance / UX Polish**
+5. **Performance / UX Polish**
    - Extend virtualization/search patterns to resolver attachments + global rule drawers as telemetry demands.
    - Profile apply drawer rendering when thousands of diff sections are present and consider chunked rendering or skeleton states.
-4. **Media Preview Iteration**
+6. **Media Preview Iteration**
    - Finalize manifest/local preview URLs so thumbnails render consistently across environments or fall back gracefully when sync paths differ.
    - Decide whether large assets should lazy-load to avoid blocking entity review.
-5. **Documentation & CLI**
+7. **Documentation & CLI**
    - Keep README/handoff updated as new workflows (taxonomy entities, official collections) become available.
-6. **Meta Field Masking Workflow**
+8. **Meta Field Masking Workflow**
    - ✅ Ship an “Apply masking rules” button above the All Entities table that auto-applies configured post/term meta masking directives (Tools panel, batching, undo).
    - ✅ Allow reviewers to pick ignore, auto-accept & suppress, or override behaviors via a bulk selector, with override inputs and help tooltips pointing into `docs/meta-masking.md`.
    - ✅ Ensure the action runs against live proposals so posts/terms/media flagged as Needs Review or Unresolved meta are relabeled once matching masked fields are processed, keeping entity badges and counts accurate after auto-masking.
@@ -94,14 +102,14 @@
    - ✅ Added PHPUnit coverage for `/masking` pagination + apply/undo flows (`tests/phpunit/MaskingEndpointsTest.php`) to lock in the behaviours above.
    - ✅ Tools panel now ships with a “Revert masking decisions” control backed by `/masking/revert`, clearing stored suppressions/overrides so proposals can be re-reviewed after rule changes.
    - ✅ Masking candidates now auto-prefetch after the entity table loads and persist in sessionStorage/cache, so reopening the drawer or switching tabs no longer re-fetches everything unless you hit Refresh.
-7. **Admin App Refactor**
+9. **Admin App Refactor**
    - The compiled UI currently lives in `src/admin-app/index.js` as a single ~3,300 line bundle, which makes day-to-day edits nearly impossible.
    - Before touching the bundle, capture a backup copy (tagged commit + `build/` artifact) and document the baseline so a reliable reference exists during the refactor; stage work in a separate branch or staging file to keep master stable.
    - Recover or recreate the original modular React source (components, hooks, api helpers) and treat the generated bundle as a build artifact under `build/`.
    - Break the work into smaller steps: first extract shared utilities/API calls, then UI primitives, then feature panels (diff table, masking drawer, resolver screens) so each PR stays reviewable and easy to roll back.
    - Update build/docs to clarify the source-of-truth paths so future contributors can work in smaller files and keep reviews manageable.
    - 📘 `docs/admin-app-refactor-plan.md` captures the staged architecture (data layer, hooks, components) so contributors can chip away at the refactor without editing the compiled bundle directly.
-8. **Granular Options Import/Export Controls**
+10. **Granular Options Import/Export Controls**
    - Replace coarse `options.json` import/apply behavior with key-level and prefix-level include/exclude controls.
    - Add preview/dry-run output that summarizes added/changed/removed option keys before writing.
    - Provide UI controls for selected option groups (core/plugin/theme/custom prefixes) plus WP-CLI flags for parity.

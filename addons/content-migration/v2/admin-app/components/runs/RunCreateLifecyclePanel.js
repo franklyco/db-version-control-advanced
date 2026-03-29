@@ -32,17 +32,33 @@ const humanizeKey = ( key ) =>
 		.replace( /\b\w/g, ( letter ) => letter.toUpperCase() )
 		.trim();
 
-const buildStatusCopy = ( status ) => {
+const buildLifecycleHeading = ( mode ) => {
+	if ( mode === 'replay' ) {
+		return 'Observe run replay without leaving the workspace';
+	}
+
+	return 'Observe run creation without leaving the workspace';
+};
+
+const buildStatusCopy = ( status, mode ) => {
+	const actionLabel =
+		mode === 'replay'
+			? 'Replaying schema sync, sitemap inventory, capture, and pipeline startup with stored run settings.'
+			: 'Submitting schema sync, sitemap inventory, capture, and pipeline startup in one V2 admin request.';
 	if ( status === 'submitting' ) {
-		return 'Submitting schema sync, sitemap inventory, capture, and pipeline startup in one V2 admin request.';
+		return actionLabel;
 	}
 
 	if ( status === 'success' ) {
-		return 'The run request finished and the created run is ready for review or handoff to the overview workspace.';
+		return mode === 'replay'
+			? 'The replay request finished and the new run is ready for review or handoff to the overview workspace.'
+			: 'The run request finished and the created run is ready for review or handoff to the overview workspace.';
 	}
 
 	if ( status === 'error' ) {
-		return 'The run request failed before the new run could be confirmed. Review the attempted inputs and error details below.';
+		return mode === 'replay'
+			? 'The replay request failed before the new run could be confirmed. Review the stored inputs and error details below.'
+			: 'The run request failed before the new run could be confirmed. Review the attempted inputs and error details below.';
 	}
 
 	return '';
@@ -128,6 +144,7 @@ export default function RunCreateLifecyclePanel( {
 	error,
 	lastCreatedRun,
 	lastRequest,
+	onOpenSourceRun,
 	onOpenOverview,
 	requestFinishedAt,
 	requestStartedAt,
@@ -143,17 +160,42 @@ export default function RunCreateLifecyclePanel( {
 	const stageEntries = buildStageEntries(
 		lastCreatedRun && lastCreatedRun.stageSummary
 	);
+	const requestMode =
+		lastRequest && typeof lastRequest.mode === 'string'
+			? lastRequest.mode
+			: 'create';
 	const statusLabel = buildStatusLabel( status );
-	const statusCopy = buildStatusCopy( status );
+	const statusCopy = buildStatusCopy( status, requestMode );
 	const runId =
 		lastCreatedRun && typeof lastCreatedRun.runId === 'string'
 			? lastCreatedRun.runId
+			: '';
+	const sourceRunId =
+		lastRequest && typeof lastRequest.sourceRunId === 'string'
+			? lastRequest.sourceRunId
 			: '';
 	let domain = '';
 	if ( lastCreatedRun && typeof lastCreatedRun.domain === 'string' ) {
 		domain = lastCreatedRun.domain;
 	} else if ( lastRequest && typeof lastRequest.domain === 'string' ) {
 		domain = lastRequest.domain;
+	}
+	const successHeadline =
+		requestMode === 'replay'
+			? `Created replay run ${ runId }`
+			: `Created run ${ runId }`;
+	let successCopy = 'The run is ready for deeper review.';
+
+	if ( requestMode === 'replay' ) {
+		const replaySourceRunId =
+			lastRequest && typeof lastRequest.sourceRunId === 'string'
+				? lastRequest.sourceRunId
+				: 'the selected run';
+		const replayDomainSuffix = domain ? ` for ${ domain }` : '';
+
+		successCopy = `Stored settings from ${ replaySourceRunId } were replayed${ replayDomainSuffix }.`;
+	} else if ( domain ) {
+		successCopy = `The run is now linked to ${ domain } and ready for deeper review.`;
 	}
 
 	return (
@@ -165,7 +207,7 @@ export default function RunCreateLifecyclePanel( {
 			<div className="dbvc-cc-v2-run-create-lifecycle__header">
 				<div>
 					<p className="dbvc-cc-v2-eyebrow">Run request status</p>
-					<h3>Observe run creation without leaving the workspace</h3>
+					<h3>{ buildLifecycleHeading( requestMode ) }</h3>
 					<p>{ statusCopy }</p>
 				</div>
 				<span
@@ -202,6 +244,14 @@ export default function RunCreateLifecyclePanel( {
 					data-testid="dbvc-cc-v2-run-create-lifecycle-request"
 				>
 					<div>
+						<span>Request mode</span>
+						<strong>
+							{ requestMode === 'replay'
+								? 'Replay stored settings'
+								: 'Start new run' }
+						</strong>
+					</div>
+					<div>
 						<span>Source domain</span>
 						<strong>
 							{ lastRequest.domain || 'derived from sitemap' }
@@ -231,6 +281,12 @@ export default function RunCreateLifecyclePanel( {
 						<span>Advanced overrides</span>
 						<strong>{ lastRequest.overrideCount }</strong>
 					</div>
+					{ lastRequest.sourceRunId ? (
+						<div>
+							<span>Source run</span>
+							<strong>{ lastRequest.sourceRunId }</strong>
+						</div>
+					) : null }
 				</div>
 			) : null }
 
@@ -247,26 +303,37 @@ export default function RunCreateLifecyclePanel( {
 			{ status === 'success' && runId ? (
 				<div
 					className="dbvc-cc-v2-run-create-lifecycle__alert"
+					data-run-id={ runId }
 					data-testid="dbvc-cc-v2-run-create-lifecycle-success"
 				>
 					<div>
-						<strong>Created run { runId }</strong>
-						<p>
-							{ domain
-								? `The run is now linked to ${ domain } and ready for deeper review.`
-								: 'The run is ready for deeper review.' }
-						</p>
+						<strong>{ successHeadline }</strong>
+						<p>{ successCopy }</p>
 					</div>
-					{ typeof onOpenOverview === 'function' ? (
-						<button
-							type="button"
-							className="button button-primary"
-							data-testid="dbvc-cc-v2-run-create-open-overview"
-							onClick={ () => onOpenOverview( runId ) }
-						>
-							Open overview
-						</button>
-					) : null }
+					<div className="dbvc-cc-v2-run-create-lifecycle__actions">
+						{ requestMode === 'replay' &&
+						sourceRunId &&
+						typeof onOpenSourceRun === 'function' ? (
+							<button
+								type="button"
+								className="button button-secondary"
+								data-testid="dbvc-cc-v2-run-create-open-source-run"
+								onClick={ () => onOpenSourceRun( sourceRunId ) }
+							>
+								Open source run
+							</button>
+						) : null }
+						{ typeof onOpenOverview === 'function' ? (
+							<button
+								type="button"
+								className="button button-primary"
+								data-testid="dbvc-cc-v2-run-create-open-overview"
+								onClick={ () => onOpenOverview( runId ) }
+							>
+								Open overview
+							</button>
+						) : null }
+					</div>
 				</div>
 			) : null }
 

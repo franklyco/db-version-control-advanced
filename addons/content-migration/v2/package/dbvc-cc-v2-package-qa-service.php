@@ -40,17 +40,17 @@ final class DBVC_CC_V2_Package_QA_Service
             );
         }
 
-        $inventory = DBVC_CC_V2_URL_Inventory_Service::get_instance()->get_inventory($domain);
+        $inventory = DBVC_CC_V2_URL_Inventory_Service::get_instance()->get_inventory_for_run($run_id);
         if (is_wp_error($inventory)) {
             return $inventory;
         }
 
-        $latest = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_latest_state($domain);
+        $latest = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_latest_state_for_run($run_id);
         if (is_wp_error($latest)) {
             return $latest;
         }
 
-        $events = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_events($domain);
+        $events = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_events_for_run($run_id);
         if (is_wp_error($events)) {
             return $events;
         }
@@ -81,7 +81,7 @@ final class DBVC_CC_V2_Package_QA_Service
             ++$summary['eligiblePages'];
 
             $page_id = isset($row['page_id']) ? sanitize_text_field((string) $row['page_id']) : '';
-            $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context($domain, $page_id);
+            $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context_for_run($run_id, $page_id);
             if (is_wp_error($page_context)) {
                 $blocking_issues[] = $this->make_issue(
                     'missing_page_context',

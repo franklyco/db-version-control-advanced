@@ -1,12 +1,17 @@
 import { startTransition } from '@wordpress/element';
 
 const FILTERS = [
-	{ key: 'all', label: 'All exceptions' },
+	{ key: 'all', label: 'All queue', countKey: 'all' },
+	{ key: 'conflicts', label: 'Conflicts', countKey: 'conflicts' },
+	{ key: 'unresolved', label: 'Unresolved', countKey: 'unresolved' },
 	{ key: 'blocked', label: 'Blocked' },
-	{ key: 'low-confidence', label: 'Low confidence' },
-	{ key: 'policy', label: 'Policy' },
-	{ key: 'overridden', label: 'Overridden' },
-	{ key: 'stale', label: 'Stale' },
+	{ key: 'stale', label: 'Stale', countKey: 'stale' },
+	{ key: 'overridden', label: 'Manual overrides', countKey: 'overridden' },
+	{
+		key: 'ready-after-review',
+		label: 'Ready after review',
+		countKey: 'readyAfterReview',
+	},
 ];
 
 const STATUSES = [
@@ -16,12 +21,19 @@ const STATUSES = [
 	{ key: 'completed', label: 'Completed' },
 ];
 
+const getCount = ( counts, countKey ) =>
+	typeof counts?.[ countKey ] === 'number' ? counts[ countKey ] : null;
+
 export default function ExceptionsToolbar( { route, counts, onRouteChange } ) {
 	return (
 		<div
 			className="dbvc-cc-v2-toolbar"
 			data-testid="dbvc-cc-v2-exceptions-toolbar"
 		>
+			<p className="dbvc-cc-v2-toolbar__summary">
+				Conflict and unresolved rows stay at the front of the queue so
+				operators can open the right review surface directly.
+			</p>
 			<div className="dbvc-cc-v2-toolbar__chips">
 				{ FILTERS.map( ( filter ) => (
 					<button
@@ -42,9 +54,11 @@ export default function ExceptionsToolbar( { route, counts, onRouteChange } ) {
 						}
 					>
 						{ filter.label }
-						{ typeof counts?.all === 'number' &&
-						filter.key === 'all' ? (
-							<span>{ counts.all }</span>
+						{ getCount( counts, filter.countKey || filter.key ) !==
+						null ? (
+							<span>
+								{ counts[ filter.countKey || filter.key ] }
+							</span>
 						) : null }
 					</button>
 				) ) }

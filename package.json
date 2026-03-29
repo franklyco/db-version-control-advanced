@@ -7,7 +7,11 @@
   "scripts": {
     "start": "wp-scripts start admin-app admin-entity-editor content-collector-v2-app",
     "build": "wp-scripts build admin-app admin-entity-editor content-collector-v2-app",
-    "lint": "wp-scripts lint-js admin-app.js admin-entity-editor.js content-collector-v2-app.js src/admin-app/index.js src/admin-entity-editor/index.js addons/content-migration/v2/admin-app/index.js addons/content-migration/v2/admin-app/app addons/content-migration/v2/admin-app/components addons/content-migration/v2/admin-app/workspaces"
+    "lint": "wp-scripts lint-js admin-app.js admin-entity-editor.js content-collector-v2-app.js src/admin-app/index.js src/admin-entity-editor/index.js addons/content-migration/v2/admin-app/index.js addons/content-migration/v2/admin-app/app addons/content-migration/v2/admin-app/components addons/content-migration/v2/admin-app/workspaces",
+    "playwright:install": "playwright install chromium",
+    "playwright:test": "playwright test",
+    "playwright:test:ccv2": "playwright test tests/playwright/content-collector-v2.spec.js",
+    "playwright:test:ccv2:headed": "playwright test tests/playwright/content-collector-v2.spec.js --headed"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",

@@ -1,8 +1,14 @@
+import { useMemo, useState } from '@wordpress/element';
+
 import { getBootstrap } from '../../api/client';
+import RunActionStatusPanel from '../../components/runs/RunActionStatusPanel';
+import RunCard from '../../components/runs/RunCard';
 import RunCreateForm from '../../components/runs/RunCreateForm';
 import RunCreateLifecyclePanel from '../../components/runs/RunCreateLifecyclePanel';
+import useRunActions from '../../hooks/useRunActions';
 import useRunCreation from '../../hooks/useRunCreation';
 import useRunList from '../../hooks/useRunList';
+import { buildRunCreatePayloadFromProfile } from './runCreateFields';
 
 export default function RunsWorkspace( {
 	onMutationComplete,
@@ -11,7 +17,15 @@ export default function RunsWorkspace( {
 	refreshToken,
 	selectedRunId,
 } ) {
-	const { items, isLoading, error } = useRunList( refreshToken );
+	const [ includeHidden, setIncludeHidden ] = useState( false );
+	const [ hasKnownHiddenRuns, setHasKnownHiddenRuns ] = useState( false );
+	const [ prefillProfile, setPrefillProfile ] = useState( null );
+	const [ prefillToken, setPrefillToken ] = useState( 0 );
+	const [ replaySourceRunId, setReplaySourceRunId ] = useState( '' );
+	const { items, meta, isLoading, error } = useRunList(
+		refreshToken,
+		includeHidden
+	);
 	const {
 		createRun,
 		clearError,
@@ -24,10 +38,32 @@ export default function RunsWorkspace( {
 		requestStartedAt,
 		status,
 	} = useRunCreation();
+	const {
+		clearStatus: clearRunActionStatus,
+		error: runActionError,
+		isSubmitting: isRunActionSubmitting,
+		label: runActionLabel,
+		lastCompletedAction,
+		lastRecoveryAction,
+		progress: runActionProgress,
+		rerunStageGroup,
+		runId: runActionRunId,
+		setRunVisibility,
+	} = useRunActions();
 	const bootstrap = getBootstrap();
+	const hiddenCount = Number( meta?.hiddenCount || 0 );
+	const effectiveHiddenCount = Math.max(
+		hiddenCount,
+		hasKnownHiddenRuns ? 1 : 0
+	);
+	const runCreateBootstrap = useMemo(
+		() => bootstrap.runCreate || {},
+		[ bootstrap.runCreate ]
+	);
 
 	const handleRunCreate = async ( payload ) => {
-		const created = await createRun( payload );
+		setReplaySourceRunId( '' );
+		const created = await createRun( payload, { mode: 'create' } );
 		if ( ! created || ! created.runId ) {
 			return;
 		}
@@ -38,6 +74,95 @@ export default function RunsWorkspace( {
 
 		onSelectRun( created.runId, 'runs' );
 		return created;
+	};
+
+	const handleDuplicateRun = ( run ) => {
+		if ( ! run || ! run.runProfile ) {
+			return;
+		}
+
+		setPrefillProfile( run.runProfile );
+		setPrefillToken( ( currentToken ) => currentToken + 1 );
+		clearRunActionStatus( { preserveRecovery: true } );
+	};
+
+	const handleReplayRun = async ( run ) => {
+		if ( ! run || ! run.runId || ! run.runProfile ) {
+			return;
+		}
+
+		const payload = buildRunCreatePayloadFromProfile( run.runProfile );
+		if ( ! payload.sitemapUrl ) {
+			return;
+		}
+
+		setReplaySourceRunId( run.runId );
+		clearRunActionStatus();
+
+		const created = await createRun( payload, {
+			mode: 'replay',
+			sourceRunId: run.runId,
+		} );
+
+		setReplaySourceRunId( '' );
+
+		if ( ! created || ! created.runId ) {
+			return;
+		}
+
+		if ( typeof onMutationComplete === 'function' ) {
+			onMutationComplete();
+		}
+
+		onSelectRun( created.runId, 'runs' );
+	};
+
+	const handleToggleHidden = async ( run, hidden ) => {
+		if ( ! run || ! run.runId ) {
+			return;
+		}
+
+		const result = await setRunVisibility( run.runId, hidden );
+		if ( ! result ) {
+			return;
+		}
+
+		if ( typeof onMutationComplete === 'function' ) {
+			onMutationComplete();
+		}
+
+		setHasKnownHiddenRuns( !! result.hidden );
+	};
+
+	const handleOpenRunOverview = ( runId ) => {
+		if ( ! runId ) {
+			return;
+		}
+
+		onSelectRun( runId, 'overview' );
+	};
+
+	const handleOpenRunExceptions = ( runId ) => {
+		if ( ! runId ) {
+			return;
+		}
+
+		onSelectRun( runId, 'exceptions' );
+	};
+
+	const handleRerunStageGroup = async ( run, candidate ) => {
+		if ( ! run || ! run.runId ) {
+			return;
+		}
+
+		const result = await rerunStageGroup( run.runId, candidate );
+		if ( ! result ) {
+			return;
+		}
+
+		if ( typeof onMutationComplete === 'function' ) {
+			onMutationComplete();
+		}
 	};
 
 	return (
@@ -60,12 +185,33 @@ export default function RunsWorkspace( {
 				</button>
 			</div>
 
+			{ effectiveHiddenCount > 0 || includeHidden ? (
+				<div className="dbvc-cc-v2-run-filters">
+					<button
+						type="button"
+						className="button button-secondary"
+						data-testid="dbvc-cc-v2-run-show-hidden-toggle"
+						onClick={ () =>
+							setIncludeHidden(
+								( currentState ) => ! currentState
+							)
+						}
+					>
+						{ includeHidden
+							? 'Hide hidden runs'
+							: `Show hidden runs (${ effectiveHiddenCount })` }
+					</button>
+				</div>
+			) : null }
+
 			<RunCreateForm
 				error={ createError }
 				isSubmitting={ isSubmitting }
 				onClearError={ clearError }
+				prefillProfile={ prefillProfile }
+				prefillToken={ prefillToken }
 				onSubmit={ handleRunCreate }
-				runCreateBootstrap={ bootstrap.runCreate }
+				runCreateBootstrap={ runCreateBootstrap }
 			/>
 
 			<RunCreateLifecyclePanel
@@ -73,10 +219,22 @@ export default function RunsWorkspace( {
 				error={ createError }
 				lastCreatedRun={ lastCreatedRun }
 				lastRequest={ lastRequest }
-				onOpenOverview={ ( runId ) => onSelectRun( runId, 'overview' ) }
+				onOpenOverview={ handleOpenRunOverview }
+				onOpenSourceRun={ handleOpenRunOverview }
 				requestFinishedAt={ requestFinishedAt }
 				requestStartedAt={ requestStartedAt }
 				status={ status }
+			/>
+
+			<RunActionStatusPanel
+				error={ runActionError }
+				isSubmitting={ isRunActionSubmitting }
+				label={ runActionLabel }
+				lastCompletedAction={ lastCompletedAction }
+				lastRecoveryAction={ lastRecoveryAction }
+				onOpenExceptions={ handleOpenRunExceptions }
+				onOpenOverview={ handleOpenRunOverview }
+				progress={ runActionProgress }
 			/>
 
 			{ isLoading ? (
@@ -95,45 +253,33 @@ export default function RunsWorkspace( {
 				<div className="dbvc-cc-v2-grid dbvc-cc-v2-grid--runs">
 					{ items.length ? (
 						items.map( ( run ) => (
-							<article
+							<RunCard
 								key={ run.runId }
-								className={ `dbvc-cc-v2-placeholder-card${
-									selectedRunId === run.runId
-										? ' dbvc-cc-v2-placeholder-card--active'
-										: ''
-								}` }
-								data-testid={ `dbvc-cc-v2-run-card-${ run.runId }` }
-							>
-								<div className="dbvc-cc-v2-run-card__header">
-									<p className="dbvc-cc-v2-chip">
-										{ run.status }
-									</p>
-									{ selectedRunId === run.runId ? (
-										<p className="dbvc-cc-v2-chip dbvc-cc-v2-chip--muted">
-											Selected
-										</p>
-									) : null }
-								</div>
-								<h3>{ run.runId }</h3>
-								<p>Domain: { run.domain }</p>
-								<p>Updated: { run.updatedAt || 'unknown' }</p>
-								<button
-									type="button"
-									className="button button-primary"
-									data-testid={ `dbvc-cc-v2-open-run-${ run.runId }` }
-									onClick={ () =>
-										onSelectRun( run.runId, 'overview' )
-									}
-								>
-									Open overview
-								</button>
-							</article>
+								isActionBusy={
+									isRunActionSubmitting &&
+									runActionRunId === run.runId
+								}
+								isCreateBusy={
+									isSubmitting &&
+									replaySourceRunId === run.runId
+								}
+								isSelected={ selectedRunId === run.runId }
+								onDuplicateRun={ handleDuplicateRun }
+								onOpenOverview={ ( runId ) =>
+									onSelectRun( runId, 'overview' )
+								}
+								onReplayRun={ handleReplayRun }
+								onRerunStageGroup={ handleRerunStageGroup }
+								onToggleHidden={ handleToggleHidden }
+								run={ run }
+							/>
 						) )
 					) : (
 						<div className="dbvc-cc-v2-placeholder-card">
 							<p>
-								No V2 runs exist yet. Use the run-start surface
-								above to create the first crawl-backed V2 run.
+								{ includeHidden
+									? 'No V2 runs match the current hidden-run view.'
+									: 'No V2 runs exist yet. Use the run-start surface above to create the first crawl-backed V2 run.' }
 							</p>
 						</div>
 					) }

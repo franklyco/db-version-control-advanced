@@ -1,90 +1,27 @@
-import { useEffect, useState } from '@wordpress/element';
+import RecommendationDecisionCard from './RecommendationDecisionCard';
 
-const buildOverrideState = ( recommendations, existingOverrides = [] ) => {
-	const overrideIndex = new Map();
-	if ( Array.isArray( existingOverrides ) ) {
-		existingOverrides.forEach( ( override ) => {
-			if ( override?.recommendation_id ) {
-				overrideIndex.set(
-					override.recommendation_id,
-					override.override_target || ''
-				);
-			}
-		} );
-	}
-
-	return Array.isArray( recommendations )
-		? recommendations.map( ( recommendation ) => ( {
-				recommendationId: recommendation.recommendation_id,
-				targetRef: recommendation.target_ref,
-				overrideTarget:
-					overrideIndex.get( recommendation.recommendation_id ) || '',
-		  } ) )
-		: [];
-};
-
-export default function InspectorActionPanel( {
-	detail,
-	isBusy,
-	statusMessage,
-	onSave,
-	onRerun,
-} ) {
-	const candidateTargetObjects =
-		detail?.recommendations?.candidateTargetObjects || [];
-	const recommendedTargetObject =
-		detail?.summary?.recommendedTargetObject || {};
-	const [ reviewerNote, setReviewerNote ] = useState( '' );
-	const [ selectedTargetObjectKey, setSelectedTargetObjectKey ] =
-		useState( '' );
-	const [ selectedResolutionMode, setSelectedResolutionMode ] =
-		useState( '' );
-	const [ fieldOverrides, setFieldOverrides ] = useState( [] );
-	const [ mediaOverrides, setMediaOverrides ] = useState( [] );
-
-	useEffect( () => {
-		const nextRecommendedTargetObject =
-			detail?.summary?.recommendedTargetObject || {};
-		const nextCurrentTargetObject =
-			detail?.summary?.currentTargetObject || {};
-
-		setReviewerNote(
-			detail?.decisions?.mapping?.reviewer_meta?.reviewer_note || ''
-		);
-		setSelectedTargetObjectKey(
-			nextCurrentTargetObject.targetObjectKey ||
-				nextRecommendedTargetObject.target_object_key ||
-				''
-		);
-		setSelectedResolutionMode(
-			nextCurrentTargetObject.resolutionMode ||
-				nextRecommendedTargetObject.resolution_mode ||
-				''
-		);
-		setFieldOverrides(
-			buildOverrideState(
-				detail?.recommendations?.fieldRecommendations,
-				detail?.decisions?.mapping?.overrides
-			)
-		);
-		setMediaOverrides(
-			buildOverrideState(
-				detail?.recommendations?.mediaRecommendations,
-				detail?.decisions?.media?.overrides
-			)
-		);
-	}, [ detail ] );
-
-	const selectedTargetObject =
-		candidateTargetObjects.find(
-			( candidate ) =>
-				candidate.target_object_key === selectedTargetObjectKey
-		) ||
-		candidateTargetObjects[ 0 ] ||
-		recommendedTargetObject;
-	const isTargetOverride =
-		selectedTargetObjectKey &&
-		selectedTargetObjectKey !== recommendedTargetObject.target_object_key;
+export default function InspectorActionPanel( { decisionDraft } ) {
+	const {
+		canResetToLatestRecommendations,
+		candidateTargetObjects,
+		fieldDecisions,
+		hasUnsavedChanges,
+		isStale,
+		mediaDecisions,
+		recommendedTargetObject,
+		resetToLatestRecommendations,
+		restoreSavedDraft,
+		reviewerNote,
+		selectedResolutionMode,
+		selectedTargetObject,
+		selectedTargetObjectKey,
+		setDecisionState,
+		setOverrideTarget,
+		setReviewerNote,
+		setSelectedResolutionMode,
+		setSelectedTargetObjectKey,
+		validationErrors,
+	} = decisionDraft;
 
 	return (
 		<div
@@ -94,14 +31,69 @@ export default function InspectorActionPanel( {
 			<div className="dbvc-cc-v2-action-panel__header">
 				<div>
 					<p className="dbvc-cc-v2-eyebrow">Review Actions</p>
-					<h3>Target overrides, field overrides, and reruns</h3>
+					<h3>Single-item decisions, target overrides, and reruns</h3>
 				</div>
-				{ statusMessage ? (
-					<p className="dbvc-cc-v2-action-panel__notice">
-						{ statusMessage }
-					</p>
-				) : null }
 			</div>
+
+			{ isStale ? (
+				<div
+					className="dbvc-cc-v2-action-panel__notice-card dbvc-cc-v2-action-panel__notice-card--warning"
+					data-testid="dbvc-cc-v2-inspector-stale-banner"
+				>
+					<div>
+						<p className="dbvc-cc-v2-eyebrow">Stale decisions</p>
+						<p>
+							Saved decisions were derived from an older
+							recommendation fingerprint. Reset to the latest
+							recommendations, review the updated evidence, and
+							save again to clear the stale state.
+						</p>
+					</div>
+					<div className="dbvc-cc-v2-toolbar__controls">
+						<button
+							type="button"
+							className="button button-secondary"
+							disabled={ ! canResetToLatestRecommendations }
+							data-testid="dbvc-cc-v2-inspector-reset-latest"
+							onClick={ resetToLatestRecommendations }
+						>
+							Reset to latest recommendations
+						</button>
+						<button
+							type="button"
+							className="button button-secondary"
+							disabled={ ! hasUnsavedChanges }
+							data-testid="dbvc-cc-v2-inspector-restore-saved"
+							onClick={ restoreSavedDraft }
+						>
+							Restore saved decisions
+						</button>
+					</div>
+				</div>
+			) : null }
+
+			{ hasUnsavedChanges ? (
+				<div
+					className="dbvc-cc-v2-action-panel__notice-card"
+					data-testid="dbvc-cc-v2-inspector-unsaved-banner"
+				>
+					<div>
+						<p className="dbvc-cc-v2-eyebrow">Unsaved edits</p>
+						<p>
+							Local review edits have not been written to the
+							decision artifacts yet.
+						</p>
+					</div>
+					<button
+						type="button"
+						className="button button-secondary"
+						data-testid="dbvc-cc-v2-inspector-discard-local"
+						onClick={ restoreSavedDraft }
+					>
+						Discard local edits
+					</button>
+				</div>
+			) : null }
 
 			<div className="dbvc-cc-v2-form-grid">
 				<div className="dbvc-cc-v2-toolbar__field">
@@ -122,6 +114,7 @@ export default function InspectorActionPanel( {
 								value={ candidate.target_object_key }
 							>
 								{ candidate.label ||
+									candidate.presentation?.label ||
 									candidate.target_object_key }
 							</option>
 						) ) }
@@ -152,6 +145,20 @@ export default function InspectorActionPanel( {
 				</div>
 			</div>
 
+			<div className="dbvc-cc-v2-placeholder-card dbvc-cc-v2-placeholder-card--full">
+				<h4>Target selection</h4>
+				<p>
+					Selected target:{ ' ' }
+					<strong>
+						{ selectedTargetObject?.label ||
+							selectedTargetObject?.presentation?.label ||
+							selectedTargetObject?.target_object_key ||
+							recommendedTargetObject.target_object_key ||
+							'Unassigned' }
+					</strong>
+				</p>
+			</div>
+
 			<div className="dbvc-cc-v2-toolbar__field">
 				<label htmlFor="dbvc-cc-v2-reviewer-note">
 					<span>Reviewer note</span>
@@ -169,166 +176,100 @@ export default function InspectorActionPanel( {
 
 			<div className="dbvc-cc-v2-action-panel__columns">
 				<div className="dbvc-cc-v2-placeholder-card">
-					<h4>Field and taxonomy overrides</h4>
-					{ fieldOverrides.map( ( override, index ) => (
-						<div
-							key={ override.recommendationId }
-							className="dbvc-cc-v2-toolbar__field"
-						>
-							<label
-								htmlFor={ `dbvc-cc-v2-field-override-${ override.recommendationId }` }
-							>
-								<span>{ override.targetRef }</span>
-							</label>
-							<input
-								id={ `dbvc-cc-v2-field-override-${ override.recommendationId }` }
-								type="text"
-								value={ override.overrideTarget }
-								placeholder="Override target ref"
-								data-testid={ `dbvc-cc-v2-field-override-${ override.recommendationId }` }
-								onChange={ ( event ) =>
-									setFieldOverrides( ( currentState ) =>
-										currentState.map(
-											(
-												currentOverride,
-												currentIndex
-											) =>
-												currentIndex === index
-													? {
-															...currentOverride,
-															overrideTarget:
-																event.target
-																	.value,
-													  }
-													: currentOverride
+					<h4>Field and taxonomy decisions</h4>
+					<div
+						className="dbvc-cc-v2-decision-card-list"
+						data-testid="dbvc-cc-v2-field-decision-list-edit"
+					>
+						{ fieldDecisions.length ? (
+							fieldDecisions.map( ( item ) => (
+								<RecommendationDecisionCard
+									key={ item.recommendationId }
+									item={ item }
+									mode="edit"
+									onOverrideTargetChange={ (
+										recommendationId,
+										value
+									) =>
+										setOverrideTarget(
+											'field',
+											recommendationId,
+											value
 										)
-									)
-								}
-							/>
-						</div>
-					) ) }
+									}
+									onStateChange={ (
+										recommendationId,
+										state
+									) =>
+										setDecisionState(
+											'field',
+											recommendationId,
+											state
+										)
+									}
+								/>
+							) )
+						) : (
+							<p className="dbvc-cc-v2-table__meta">
+								No field recommendations.
+							</p>
+						) }
+					</div>
 				</div>
 
 				<div className="dbvc-cc-v2-placeholder-card">
-					<h4>Media overrides</h4>
-					{ mediaOverrides.map( ( override, index ) => (
-						<div
-							key={ override.recommendationId }
-							className="dbvc-cc-v2-toolbar__field"
-						>
-							<label
-								htmlFor={ `dbvc-cc-v2-media-override-${ override.recommendationId }` }
-							>
-								<span>{ override.targetRef }</span>
-							</label>
-							<input
-								id={ `dbvc-cc-v2-media-override-${ override.recommendationId }` }
-								type="text"
-								value={ override.overrideTarget }
-								placeholder="Override media target ref"
-								data-testid={ `dbvc-cc-v2-media-override-${ override.recommendationId }` }
-								onChange={ ( event ) =>
-									setMediaOverrides( ( currentState ) =>
-										currentState.map(
-											(
-												currentOverride,
-												currentIndex
-											) =>
-												currentIndex === index
-													? {
-															...currentOverride,
-															overrideTarget:
-																event.target
-																	.value,
-													  }
-													: currentOverride
+					<h4>Media decisions</h4>
+					<div
+						className="dbvc-cc-v2-decision-card-list"
+						data-testid="dbvc-cc-v2-media-decision-list-edit"
+					>
+						{ mediaDecisions.length ? (
+							mediaDecisions.map( ( item ) => (
+								<RecommendationDecisionCard
+									key={ item.recommendationId }
+									item={ item }
+									mode="edit"
+									onOverrideTargetChange={ (
+										recommendationId,
+										value
+									) =>
+										setOverrideTarget(
+											'media',
+											recommendationId,
+											value
 										)
-									)
-								}
-							/>
-						</div>
+									}
+									onStateChange={ (
+										recommendationId,
+										state
+									) =>
+										setDecisionState(
+											'media',
+											recommendationId,
+											state
+										)
+									}
+								/>
+							) )
+						) : (
+							<p className="dbvc-cc-v2-table__meta">
+								No media recommendations.
+							</p>
+						) }
+					</div>
+				</div>
+			</div>
+
+			{ validationErrors.length ? (
+				<div
+					className="dbvc-cc-v2-action-panel__validation"
+					data-testid="dbvc-cc-v2-inspector-validation"
+				>
+					{ validationErrors.map( ( message ) => (
+						<p key={ message }>{ message }</p>
 					) ) }
 				</div>
-			</div>
-
-			<div className="dbvc-cc-v2-action-panel__footer">
-				<div className="dbvc-cc-v2-rerun-row">
-					{ Array.isArray( detail?.actions?.rerunStages ) &&
-						detail.actions.rerunStages.map( ( stage ) => (
-							<button
-								key={ stage }
-								type="button"
-								className="button button-secondary"
-								disabled={ isBusy }
-								data-testid={ `dbvc-cc-v2-rerun-${ stage }` }
-								onClick={ () => onRerun( stage ) }
-							>
-								Rerun { stage }
-							</button>
-						) ) }
-				</div>
-
-				<button
-					type="button"
-					className="button button-primary"
-					disabled={ isBusy }
-					data-testid="dbvc-cc-v2-save-decision"
-					onClick={ () =>
-						onSave( {
-							reviewerNote,
-							targetObject: {
-								decisionMode: isTargetOverride
-									? 'override'
-									: 'accept_recommended',
-								selectedTargetFamily:
-									selectedTargetObject?.target_family ||
-									recommendedTargetObject.target_family ||
-									'',
-								selectedTargetObjectKey,
-								selectedResolutionMode,
-							},
-							approvedRecommendationIds: (
-								detail?.recommendations?.fieldRecommendations ||
-								[]
-							).map(
-								( recommendation ) =>
-									recommendation.recommendation_id
-							),
-							approvedMediaIds: (
-								detail?.recommendations?.mediaRecommendations ||
-								[]
-							).map(
-								( recommendation ) =>
-									recommendation.recommendation_id
-							),
-							mappingOverrides: fieldOverrides
-								.filter(
-									( override ) => override.overrideTarget
-								)
-								.map( ( override ) => ( {
-									recommendationId: override.recommendationId,
-									overrideScope:
-										override.targetRef.startsWith(
-											'taxonomy:'
-										)
-											? 'taxonomy'
-											: 'field',
-									overrideTarget: override.overrideTarget,
-								} ) ),
-							mediaOverrides: mediaOverrides
-								.filter(
-									( override ) => override.overrideTarget
-								)
-								.map( ( override ) => ( {
-									recommendationId: override.recommendationId,
-									overrideTarget: override.overrideTarget,
-								} ) ),
-						} )
-					}
-				>
-					Save decision
-				</button>
-			</div>
+			) : null }
 		</div>
 	);
 }
