@@ -12,6 +12,7 @@ This addon absorbs Content Collector behavior into DBVC under modular boundaries
   - `docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
   - `docs/MIGRATION_MAPPER_V2_DECISIONS.md`
   - `docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
+  - `docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 - Primary V2 planning references:
   - `docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
   - `docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`
@@ -20,6 +21,7 @@ This addon absorbs Content Collector behavior into DBVC under modular boundaries
   - `docs/MIGRATION_MAPPER_V2_DOMAIN_JOURNEY.md`
   - `docs/MIGRATION_MAPPER_V2_PACKAGE_SPEC.md`
   - `docs/MIGRATION_MAPPER_V2_FILE_PLAN.md`
+  - `docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 
 ## Scope
 - Single-site only.

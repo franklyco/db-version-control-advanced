@@ -11,6 +11,7 @@ This file is intentionally short. The authoritative contract detail still lives 
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_CONTRACTS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOMAIN_JOURNEY.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_PACKAGE_SPEC.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 
 ## Naming Rules
 
@@ -27,11 +28,14 @@ This file is intentionally short. The authoritative contract detail still lives 
   - list latest runs
 - `POST /runs`
   - create a run
+  - accepts `domain`, `sitemapUrl`, `maxUrls`, `forceRebuild`, and `crawlOverrides`
   - can trigger schema sync, capture, and AI pipeline flow
 - `GET /runs/{run_id}`
   - get run summary
 - `GET /runs/{run_id}/overview`
   - get run overview surface
+  - powers the selected-run overview summary cards, stage cards, recent activity, and read-oriented next-action navigation
+  - current V2 UI auto-refreshes this route every `10s` for non-terminal runs and does not require a separate recent-activity route yet
 - `GET /runs/{run_id}/readiness`
   - get readiness summary and page reports
 - `POST /runs/{run_id}/urls/{page_id}/rerun`
@@ -104,7 +108,7 @@ This file is intentionally short. The authoritative contract detail still lives 
 ## Current Workspace Mapping
 
 - `runs`
-  - run listing and selection
+  - run listing, run selection, and the V2-native run-start surface
 - `overview`
   - run-level summary
 - `exceptions`
@@ -116,8 +120,10 @@ This file is intentionally short. The authoritative contract detail still lives 
 
 ## Current Runtime Note
 
-The currently defined implementation-guide phases are closed through `Phase 8`, and `Phase 9` is now open for operational UI and runtime polish.
+The currently defined implementation-guide phases are now closed through `Phase 12`, and `Phase 13` is open for reviewability foundation and schema label enrichment.
 
-The route surface now includes package dry-run, preflight approval, and execute bridging under the V2 namespace.
+The route surface now includes run-start, selected-run monitoring, recent activity, package dry-run, preflight approval, and execute bridging under the V2 namespace.
 
-The remaining documented runtime focus inside `Phase 9` is the reuse-alignment audit for the future crawl-start UI tranche, not new pipeline-stage logic.
+The run-create route is the current backend for the V2 crawl-start UI and accepts per-run crawl settings through `crawlOverrides`.
+
+The current open focus is reviewability inside the `exceptions`, `readiness`, and inspector surfaces, not new crawl-start transport or pipeline-stage logic.

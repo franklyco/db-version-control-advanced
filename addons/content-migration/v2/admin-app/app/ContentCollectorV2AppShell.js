@@ -12,19 +12,19 @@ import PackageWorkspace from '../workspaces/package/PackageWorkspace';
 const SUMMARY_CARDS = [
 	{
 		label: 'Status',
-		value: 'Phase 8 import bridge active',
+		value: 'Phase 12 activity observability active',
+	},
+	{
+		label: 'Runs',
+		value: 'Run-start observability active',
+	},
+	{
+		label: 'Overview',
+		value: 'Selected-run monitoring and activity active',
 	},
 	{
 		label: 'Exceptions',
 		value: 'Exception queue active',
-	},
-	{
-		label: 'Readiness',
-		value: 'QA reports live',
-	},
-	{
-		label: 'Package',
-		value: 'Dry-run and execute active',
 	},
 ];
 
@@ -61,8 +61,12 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 		if ( route.view === 'overview' ) {
 			return (
 				<RunOverviewWorkspace
+					onNavigateToView={ ( view ) =>
+						selectRun( route.runId || defaultRunId, view )
+					}
 					route={ route }
 					onOpenDrawer={ openDrawer }
+					refreshToken={ refreshToken }
 				/>
 			);
 		}
@@ -101,9 +105,11 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 
 		return (
 			<RunsWorkspace
+				onMutationComplete={ handleMutationComplete }
 				onOpenDrawer={ openDrawer }
 				onSelectRun={ selectRun }
 				refreshToken={ refreshToken }
+				selectedRunId={ route.runId }
 			/>
 		);
 	};
@@ -130,8 +136,10 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 						alignment, target transforms, canonical recommendations,
 						exception review, per-URL QA reports, package assembly,
 						build history, override actions, per-URL reruns,
-						package-first dry-run, preflight approval, and import
-						execution bridging are active.
+						package-first dry-run, preflight approval, import
+						execution bridging, a V2-native run-start surface, and
+						selected-run monitoring plus recent activity surfaces
+						are active.
 					</p>
 				</div>
 
@@ -162,9 +170,9 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 				className="dbvc-cc-v2-callout"
 				data-testid="dbvc-cc-v2-callout"
 			>
-				<strong>Scope guard:</strong> Phase 8 package dry-run, preflight
-				approval, and execute bridging are live. Browser QA remains
-				paused until explicitly resumed.
+				<strong>Scope guard:</strong> Phase 12 keeps the overview
+				read-oriented while surfacing recent run activity from the
+				existing journey log without broadening backend pipeline logic.
 			</section>
 
 			<section
