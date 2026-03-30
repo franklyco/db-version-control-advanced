@@ -121,6 +121,10 @@ This addon absorbs Content Collector behavior into DBVC under modular boundaries
       - `POST dbvc_cc/v1/mapping/catalog/build`
       - `POST dbvc_cc/v1/mapping/catalog/refresh`
       - `GET dbvc_cc/v1/mapping/catalog`
+  - `W1A` Vertical field-context bridge foundation:
+    - shared local provider service: `shared/dbvc-cc-field-context-provider-service.php`
+    - target field catalog now enriches ACF group and field entries with resolved Vertical field-context metadata when the provider is available
+    - section-field candidate pattern extraction now considers normalized `name_path` and purpose hints from the same resolved field-context payload
   - `W4` metadata-first media candidate foundations:
     - page-level media candidate service: `mapping-media/dbvc-cc-media-candidate-service.php`
     - media candidate REST transport:

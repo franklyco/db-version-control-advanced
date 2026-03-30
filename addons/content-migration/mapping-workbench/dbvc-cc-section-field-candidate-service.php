@@ -700,7 +700,23 @@ final class DBVC_CC_Section_Field_Candidate_Service
                 }
 
                 $target_ref = sprintf('acf:%s:%s', sanitize_key((string) $group_key), sanitize_key((string) $field_key));
-                foreach ($this->extract_patterns_from_field_key($name) as $pattern) {
+                $pattern_sources = [$name];
+                $field_context = isset($field['field_context']) && is_array($field['field_context']) ? $field['field_context'] : [];
+                if (! empty($field_context['name_path'])) {
+                    $pattern_sources[] = (string) $field_context['name_path'];
+                }
+                if (! empty($field_context['resolved_purpose'])) {
+                    $pattern_sources[] = (string) $field_context['resolved_purpose'];
+                } elseif (! empty($field_context['default_purpose'])) {
+                    $pattern_sources[] = (string) $field_context['default_purpose'];
+                }
+
+                $patterns = [];
+                foreach ($pattern_sources as $pattern_source) {
+                    $patterns = array_merge($patterns, $this->extract_patterns_from_field_key($pattern_source));
+                }
+
+                foreach (array_values(array_unique($patterns)) as $pattern) {
                     if (! isset($refs[$pattern])) {
                         $refs[$pattern] = [];
                     }

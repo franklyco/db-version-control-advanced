@@ -6,6 +6,7 @@ if (! defined('WPINC')) {
 
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-contracts.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-helpers.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-field-context-provider-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-module-interface.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-service-container.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-contracts.php';

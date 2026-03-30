@@ -455,6 +455,7 @@ final class DBVC_CC_Target_Field_Catalog_Service
         if (! function_exists('acf_get_field_groups') || ! function_exists('acf_get_fields')) {
             return [
                 'available' => false,
+                'field_context' => $this->build_acf_field_context_meta([]),
                 'groups' => [],
             ];
         }
@@ -463,10 +464,12 @@ final class DBVC_CC_Target_Field_Catalog_Service
         if (! is_array($groups)) {
             return [
                 'available' => true,
+                'field_context' => $this->build_acf_field_context_meta([]),
                 'groups' => [],
             ];
         }
 
+        $field_context_index = DBVC_CC_Field_Context_Provider_Service::get_instance()->get_mapping_index();
         $catalog_groups = [];
         foreach ($groups as $group) {
             if (! is_array($group)) {
@@ -480,6 +483,9 @@ final class DBVC_CC_Target_Field_Catalog_Service
 
             $group_fields = acf_get_fields($group_key);
             $field_catalog = [];
+            $group_field_context = isset($field_context_index['groups_by_acf_key'][$group_key]) && is_array($field_context_index['groups_by_acf_key'][$group_key])
+                ? $field_context_index['groups_by_acf_key'][$group_key]
+                : [];
             if (is_array($group_fields)) {
                 foreach ($group_fields as $field) {
                     if (! is_array($field)) {
@@ -499,6 +505,9 @@ final class DBVC_CC_Target_Field_Catalog_Service
                         'required' => ! empty($field['required']),
                         'parent' => isset($field['parent']) ? sanitize_key((string) $field['parent']) : '',
                         'return_format' => isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : '',
+                        'field_context' => isset($field_context_index['entries_by_acf_key'][$field_key]) && is_array($field_context_index['entries_by_acf_key'][$field_key])
+                            ? $field_context_index['entries_by_acf_key'][$field_key]
+                            : [],
                     ];
                 }
                 ksort($field_catalog);
@@ -518,6 +527,7 @@ final class DBVC_CC_Target_Field_Catalog_Service
                 'title' => isset($group['title']) ? sanitize_text_field((string) $group['title']) : '',
                 'position' => isset($group['position']) ? sanitize_key((string) $group['position']) : '',
                 'location' => isset($group['location']) && is_array($group['location']) ? $group['location'] : [],
+                'field_context' => $group_field_context,
                 'fields' => $field_catalog,
             ];
         }
@@ -525,7 +535,29 @@ final class DBVC_CC_Target_Field_Catalog_Service
         ksort($catalog_groups);
         return [
             'available' => true,
+            'field_context' => $this->build_acf_field_context_meta($field_context_index),
             'groups' => $catalog_groups,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $field_context_index
+     * @return array<string, mixed>
+     */
+    private function build_acf_field_context_meta(array $field_context_index)
+    {
+        return [
+            'available' => ! empty($field_context_index['available']),
+            'profile' => isset($field_context_index['profile']) ? sanitize_key((string) $field_context_index['profile']) : 'mapping',
+            'provider' => isset($field_context_index['provider']) && is_array($field_context_index['provider'])
+                ? $field_context_index['provider']
+                : [],
+            'catalog_meta' => isset($field_context_index['catalog_meta']) && is_array($field_context_index['catalog_meta'])
+                ? $field_context_index['catalog_meta']
+                : [],
+            'error' => isset($field_context_index['error']) && is_array($field_context_index['error'])
+                ? $field_context_index['error']
+                : [],
         ];
     }
 

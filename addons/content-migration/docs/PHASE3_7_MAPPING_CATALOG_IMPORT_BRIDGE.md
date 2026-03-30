@@ -14,6 +14,10 @@ Goal: bridge Phase 3.6 crawl artifacts to Phase 4 import planning by introducing
     - service added: `mapping-catalog/dbvc-cc-target-field-catalog-service.php`
     - REST controller added: `mapping-catalog/dbvc-cc-target-field-catalog-rest-controller.php`
     - module wiring added behind `dbvc_cc_flag_mapping_catalog_bridge`
+  - `W1A` Vertical field-context bridge foundation:
+    - shared provider service added: `shared/dbvc-cc-field-context-provider-service.php`
+    - `acf_catalog` now carries additive `field_context` provider metadata plus per-group and per-field resolved field-context payloads when Vertical exposes the same-runtime provider
+    - deterministic section-field candidate generation now considers resolved `name_path` and purpose hints from the normalized field-context payload
   - `W4` metadata-first media candidate foundation:
     - service added: `mapping-media/dbvc-cc-media-candidate-service.php`
     - REST controller added: `mapping-media/dbvc-cc-media-rest-controller.php`
