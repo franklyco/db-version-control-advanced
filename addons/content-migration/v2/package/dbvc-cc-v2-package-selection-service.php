@@ -172,6 +172,9 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'confidence' => isset($item['confidence']) ? (float) $item['confidence'] : 0.0,
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => $default_auto_accept ? 'auto_accept' : 'reviewed',
+                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
+                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
+                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $target_ref),
                 ];
                 continue;
@@ -187,6 +190,9 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'confidence' => isset($item['confidence']) ? (float) $item['confidence'] : 0.0,
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => 'override',
+                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
+                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
+                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $override_target),
                 ];
             }
@@ -260,6 +266,9 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'value_type' => 'attachment_reference',
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => $default_auto_accept ? 'auto_accept' : 'reviewed',
+                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
+                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
+                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $target_ref),
                 ];
                 continue;
@@ -276,6 +285,9 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'value_type' => 'attachment_reference',
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => 'override',
+                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
+                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
+                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $override_target),
                 ];
             }
@@ -328,6 +340,34 @@ final class DBVC_CC_V2_Package_Selection_Service
         }
 
         return $count;
+    }
+
+    /**
+     * @param array<string, mixed>|null $recommendations
+     * @return array<string, mixed>
+     */
+    public function extract_field_context_meta($recommendations)
+    {
+        if (! is_array($recommendations)) {
+            return [];
+        }
+
+        $field_context = isset($recommendations['field_context']) && is_array($recommendations['field_context'])
+            ? $recommendations['field_context']
+            : [];
+
+        return [
+            'available' => ! empty($field_context['available']),
+            'profile' => isset($field_context['profile']) ? sanitize_key((string) $field_context['profile']) : 'mapping',
+            'transport' => isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : 'local',
+            'provider_contract_version' => isset($field_context['provider_contract_version']) ? absint($field_context['provider_contract_version']) : 0,
+            'source_hash' => isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : '',
+            'status' => isset($field_context['status']) ? sanitize_key((string) $field_context['status']) : '',
+            'signature' => isset($field_context['signature']) ? sanitize_text_field((string) $field_context['signature']) : '',
+            'hints_enabled' => ! empty($field_context['hints_enabled']),
+            'consumer_policy' => isset($field_context['consumer_policy']) && is_array($field_context['consumer_policy']) ? $field_context['consumer_policy'] : [],
+            'diagnostics' => isset($field_context['diagnostics']) && is_array($field_context['diagnostics']) ? $field_context['diagnostics'] : [],
+        ];
     }
 
     /**
@@ -386,6 +426,32 @@ final class DBVC_CC_V2_Package_Selection_Service
         }
 
         return $indexed;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @param array<string, mixed>|null $recommendations
+     * @return array<string, mixed>
+     */
+    private function build_field_context_trace(array $item, $recommendations)
+    {
+        $trace = isset($item['field_context_trace']) && is_array($item['field_context_trace']) ? $item['field_context_trace'] : [];
+        $field_context = $this->extract_field_context_meta($recommendations);
+
+        return [
+            'matched_by' => isset($trace['matched_by']) ? sanitize_key((string) $trace['matched_by']) : '',
+            'resolved_from' => isset($trace['resolved_from']) ? sanitize_key((string) $trace['resolved_from']) : '',
+            'status_code' => isset($trace['status_code']) ? sanitize_key((string) $trace['status_code']) : '',
+            'provider_contract_version' => isset($trace['provider_contract_version']) && absint($trace['provider_contract_version']) > 0
+                ? absint($trace['provider_contract_version'])
+                : (isset($field_context['provider_contract_version']) ? absint($field_context['provider_contract_version']) : 0),
+            'source_hash' => isset($trace['source_hash']) && (string) $trace['source_hash'] !== ''
+                ? sanitize_text_field((string) $trace['source_hash'])
+                : (isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : ''),
+            'transport' => isset($trace['transport']) && (string) $trace['transport'] !== ''
+                ? sanitize_key((string) $trace['transport'])
+                : (isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : ''),
+        ];
     }
 
     /**

@@ -42,6 +42,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         $mapping_decisions = isset($artifacts['mapping_decisions']) ? $artifacts['mapping_decisions'] : null;
         $media_decisions = isset($artifacts['media_decisions']) ? $artifacts['media_decisions'] : null;
         $target_transform = isset($artifacts['target_transform']) ? $artifacts['target_transform'] : null;
+        $field_context = $selection_service->extract_field_context_meta($recommendations);
 
         $blocking_issues = $this->build_initial_blocking_issues($row, $artifact_relatives, $recommendations, $target_transform);
         $warnings = [];
@@ -77,7 +78,8 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             $review_status,
             $conflict_count,
             $unresolved_count,
-            empty($field_values) && empty($media_refs)
+            empty($field_values) && empty($media_refs),
+            $field_context
         );
         $this->append_warning_items(
             $warnings,
@@ -87,7 +89,8 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             $review_status,
             $manual_override_count,
             $rerun_count,
-            $schema_fingerprint === ''
+            $schema_fingerprint === '',
+            $field_context
         );
 
         $readiness_status = $this->resolve_page_status($blocking_issues, $decision_status, $review_status);
@@ -104,6 +107,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             'source_url' => isset($row['source_url']) ? (string) $row['source_url'] : '',
             'generated_at' => current_time('c'),
             'readiness_status' => $readiness_status,
+            'field_context' => $field_context,
             'blocking_issues' => $blocking_issues,
             'warnings' => $warnings,
             'quality_score' => $quality_score,
@@ -116,6 +120,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             'decisionStatus' => $decision_status,
             'resolutionMode' => isset($selected_target_object['resolutionMode']) ? (string) $selected_target_object['resolutionMode'] : '',
             'selectedTargetObject' => $selected_target_object,
+            'fieldContext' => $field_context,
             'blockingIssues' => $blocking_issues,
             'warnings' => $warnings,
             'qualityScore' => $quality_score,
@@ -138,6 +143,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                     'rerun_count' => $rerun_count,
                     'artifact_refs' => $artifact_relatives,
                     'recommendation_fingerprint' => $selection_service->compute_fingerprint($recommendations),
+                    'field_context' => $field_context,
                 ],
             ],
             'stats' => [
@@ -145,6 +151,9 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                 'mediaRefCount' => count($media_refs),
                 'conflictCount' => $conflict_count,
                 'unresolvedCount' => $unresolved_count,
+                'fieldContextWarningCount' => isset($field_context['diagnostics']['warnings']) && is_array($field_context['diagnostics']['warnings'])
+                    ? count($field_context['diagnostics']['warnings'])
+                    : 0,
             ],
         ];
     }
@@ -193,7 +202,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
      * @param bool                             $is_empty_package_record
      * @return void
      */
-    private function append_resolution_blockers(array &$issues, array $row, array $artifact_relatives, $is_stale, array $selected_target_object, $review_status, $conflict_count, $unresolved_count, $is_empty_package_record)
+    private function append_resolution_blockers(array &$issues, array $row, array $artifact_relatives, $is_stale, array $selected_target_object, $review_status, $conflict_count, $unresolved_count, $is_empty_package_record, array $field_context = [])
     {
         if (($selected_target_object['resolutionMode'] ?? '') === DBVC_CC_V2_Contracts::RESOLUTION_MODE_BLOCKED || $review_status === 'blocked') {
             $issues[] = $this->make_issue(
@@ -248,6 +257,15 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                 $this->build_issue_context($row, $artifact_relatives, 'mapping_recommendations')
             );
         }
+
+        if (! empty($field_context['diagnostics']['blocked'])) {
+            $issues[] = $this->make_issue(
+                'field_context_blocked',
+                __('Field-context policy has blocked automation for one or more required mappings.', 'dbvc'),
+                'blocking',
+                $this->build_issue_context($row, $artifact_relatives, 'mapping_recommendations')
+            );
+        }
     }
 
     /**
@@ -261,7 +279,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
      * @param bool                             $is_schema_missing
      * @return void
      */
-    private function append_warning_items(array &$warnings, array $row, array $artifact_relatives, $decision_status, $review_status, $manual_override_count, $rerun_count, $is_schema_missing)
+    private function append_warning_items(array &$warnings, array $row, array $artifact_relatives, $decision_status, $review_status, $manual_override_count, $rerun_count, $is_schema_missing, array $field_context = [])
     {
         if ($decision_status === 'pending' && $review_status !== 'auto_accept_candidate') {
             $warnings[] = $this->make_issue(
@@ -296,6 +314,15 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                 __('The run does not currently expose a target schema fingerprint.', 'dbvc'),
                 'warning',
                 $this->build_issue_context($row, $artifact_relatives, 'target_transform')
+            );
+        }
+
+        if (empty($field_context['diagnostics']['blocked']) && ! empty($field_context['diagnostics']['degraded'])) {
+            $warnings[] = $this->make_issue(
+                'field_context_degraded',
+                __('Field-context data is degraded and should be reviewed before import.', 'dbvc'),
+                'warning',
+                $this->build_issue_context($row, $artifact_relatives, 'mapping_recommendations')
             );
         }
     }

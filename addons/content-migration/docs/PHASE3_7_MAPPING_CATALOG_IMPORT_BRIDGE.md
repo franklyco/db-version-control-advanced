@@ -18,6 +18,24 @@ Goal: bridge Phase 3.6 crawl artifacts to Phase 4 import planning by introducing
     - shared provider service added: `shared/dbvc-cc-field-context-provider-service.php`
     - `acf_catalog` now carries additive `field_context` provider metadata plus per-group and per-field resolved field-context payloads when Vertical exposes the same-runtime provider
     - deterministic section-field candidate generation now considers resolved `name_path` and purpose hints from the normalized field-context payload
+  - `W1B` field-context consumer policy controls:
+    - new Content Collector add-on policy settings added for field-context integration mode, legacy fallback, degraded warnings, and missing-context blocking
+    - same-runtime field-context provider adapter now exposes additive `consumer_policy` and `diagnostics` metadata
+    - section-field candidate pattern extraction now prefers `effective_purpose`, allowing safe legacy fallback only when the operator leaves it enabled
+  - `W1C` field-context operator diagnostics and safe enforcement:
+    - Workbench review queue now surfaces field-context health separately from stale mapping artifacts
+    - Workbench mapping summary now shows the active field-context envelope from the queue or loaded catalog
+    - deterministic section-field candidate generation now disables field-context-derived hint expansion when consumer policy blocks usage
+    - queue state pills now distinguish `Ready`, `Stale`, `Warn`, and `Blocked` without changing base mapping availability
+  - `W1D` field-context remote adapter foundation:
+    - the shared DBVC field-context provider service now supports local-first transport resolution with a filter-driven remote fallback
+    - remote provider requests normalize into the same mapping index envelope used by the same-runtime path
+    - remote transport metadata is now exposed additively so QA and future UI can distinguish `local` vs `remote`
+  - `W1E` field-context preflight and QA persistence:
+    - `mapping-index.v1` now stores additive field-context provider metadata (`contract_version`, `source_hash`, transport, diagnostics) alongside target candidates
+    - `mapping-recommendations.v2` now preserves candidate provenance (`matched_by`, `resolved_from`, `field_context_trace`) for the selected target recommendation
+    - `mapping-decisions.v2`, package selection payloads, and `qa-report.v1` now carry the same field-context trace for auditability through review, preflight, and package build
+    - URL QA now surfaces `field_context_blocked` and `field_context_degraded` issues without removing the existing deterministic fallback path
   - `W4` metadata-first media candidate foundation:
     - service added: `mapping-media/dbvc-cc-media-candidate-service.php`
     - REST controller added: `mapping-media/dbvc-cc-media-rest-controller.php`
@@ -101,6 +119,8 @@ Goal: bridge Phase 3.6 crawl artifacts to Phase 4 import planning by introducing
 6. Drag/drop stays as explicit reviewer override, not the primary mapping engine.
 7. Auto-mapping remains deterministic-first; AI is refinement-only for unresolved ambiguity.
 8. No new DB tables are required for Phase 3.7; artifacts remain file-based under addon storage.
+9. Field-context consumer policy should only narrow semantic hint usage and operator diagnostics in this phase; it must not become a hidden hard-stop for unrelated deterministic mapping behavior.
+10. Remote field-context transport remains code-configured in this phase; do not add endpoint/auth UI until there is an actual multi-site/operator need.
 
 ## Why Phase 3.7 Exists
 

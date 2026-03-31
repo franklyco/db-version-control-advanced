@@ -42,6 +42,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
         $ingestion_package = isset($page_context['ingestion_package_artifact']) && is_array($page_context['ingestion_package_artifact']) ? $page_context['ingestion_package_artifact'] : [];
         $context_artifact = isset($page_context['context_artifact']) && is_array($page_context['context_artifact']) ? $page_context['context_artifact'] : [];
         $catalog = isset($catalog_bundle['catalog']) && is_array($catalog_bundle['catalog']) ? $catalog_bundle['catalog'] : [];
+        $field_context = $this->extract_field_context_meta($catalog);
         $primary = isset($classification_artifact['primary_classification']) && is_array($classification_artifact['primary_classification'])
             ? $classification_artifact['primary_classification']
             : [];
@@ -107,12 +108,15 @@ final class DBVC_CC_V2_Mapping_Index_Service
             'generated_at' => current_time('c'),
             'catalog_fingerprint' => isset($catalog_bundle['catalog_fingerprint']) ? (string) $catalog_bundle['catalog_fingerprint'] : '',
             'classification_ref' => isset($args['classification_ref']) ? (string) $args['classification_ref'] : '',
+            'field_context' => $field_context,
             'content_items' => $content_items,
             'unresolved_items' => $unresolved_items,
             'trace' => [
                 'input_artifacts' => isset($args['input_artifacts']) && is_array($args['input_artifacts']) ? array_values($args['input_artifacts']) : [],
                 'primary_object_key' => $object_key,
                 'pattern_memory_ref' => isset($args['pattern_memory_ref']) ? (string) $args['pattern_memory_ref'] : '',
+                'field_context_signature' => isset($field_context['signature']) ? (string) $field_context['signature'] : '',
+                'field_context_source_hash' => isset($field_context['source_hash']) ? (string) $field_context['source_hash'] : '',
                 'stage_budget' => DBVC_CC_V2_Contracts::get_ai_stage_budget(DBVC_CC_V2_Contracts::AI_STAGE_MAPPING_INDEX),
             ],
             'stats' => [
@@ -141,6 +145,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'confidence' => 0.97,
                 'reason' => 'page_title_to_post_title',
                 'pattern_key' => 'title',
+                'matched_by' => 'core_post_support',
             ];
         }
 
@@ -182,6 +187,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'confidence' => 0.88,
                 'reason' => 'meta_description_to_excerpt',
                 'pattern_key' => 'description',
+                'matched_by' => 'core_post_support',
             ];
         } elseif (! empty($narrowed_catalog['supports']['editor'])) {
             $candidates[] = [
@@ -189,6 +195,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'confidence' => 0.68,
                 'reason' => 'meta_description_to_content',
                 'pattern_key' => 'description',
+                'matched_by' => 'core_post_support',
             ];
         }
 
@@ -279,6 +286,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'confidence' => 0.91,
                 'reason' => 'hero_heading_to_post_title',
                 'pattern_key' => 'hero',
+                'matched_by' => 'core_post_support',
             ];
         }
 
@@ -288,6 +296,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'confidence' => $context_tag === 'hero' ? 0.74 : 0.78,
                 'reason' => 'section_copy_to_post_content',
                 'pattern_key' => $context_tag !== '' ? $context_tag : 'content',
+                'matched_by' => 'core_post_support',
             ];
         }
 
@@ -316,6 +325,12 @@ final class DBVC_CC_V2_Mapping_Index_Service
                     'confidence' => round(min(0.99, max(0.05, $confidence)), 2),
                     'reason' => isset($candidate['reason']) ? sanitize_key((string) $candidate['reason']) : '',
                     'pattern_key' => isset($candidate['pattern_key']) ? sanitize_key((string) $candidate['pattern_key']) : '',
+                    'matched_by' => isset($candidate['matched_by']) ? sanitize_key((string) $candidate['matched_by']) : '',
+                    'resolved_from' => isset($candidate['resolved_from']) ? sanitize_key((string) $candidate['resolved_from']) : '',
+                    'field_context_status' => isset($candidate['field_context_status']) ? sanitize_key((string) $candidate['field_context_status']) : '',
+                    'provider_contract_version' => isset($candidate['provider_contract_version']) ? absint($candidate['provider_contract_version']) : 0,
+                    'source_hash' => isset($candidate['source_hash']) ? sanitize_text_field((string) $candidate['source_hash']) : '',
+                    'transport' => isset($candidate['transport']) ? sanitize_key((string) $candidate['transport']) : '',
                 ];
             }
 
@@ -387,6 +402,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'editor' => in_array('editor', $supports, true),
                 'excerpt' => in_array('excerpt', $supports, true),
             ],
+            'field_context' => $this->extract_field_context_meta($catalog),
             'meta_refs' => $this->collect_meta_field_refs($catalog, $object_key),
             'acf_refs' => $this->collect_acf_field_refs($catalog, $object_key),
         ];
@@ -395,7 +411,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
     /**
      * @param array<string, mixed> $catalog
      * @param string $object_key
-     * @return array<string, array<int, string>>
+     * @return array<string, array<int, array<string, mixed>>>
      */
     private function collect_meta_field_refs(array $catalog, $object_key)
     {
@@ -423,7 +439,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                     if (! isset($refs[$pattern_key])) {
                         $refs[$pattern_key] = [];
                     }
-                    $refs[$pattern_key][] = $target_ref;
+                    $refs[$pattern_key][] = $this->build_target_ref_row($target_ref, 'meta_field_key');
                 }
             }
         }
@@ -434,7 +450,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
     /**
      * @param array<string, mixed> $catalog
      * @param string $object_key
-     * @return array<string, array<int, string>>
+     * @return array<string, array<int, array<string, mixed>>>
      */
     private function collect_acf_field_refs(array $catalog, $object_key)
     {
@@ -459,11 +475,57 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 }
 
                 $target_ref = sprintf('acf:%s:%s', sanitize_key((string) $group_key), sanitize_key((string) $field_key));
-                foreach ($this->extract_patterns_from_field_key($name) as $pattern_key) {
-                    if (! isset($refs[$pattern_key])) {
-                        $refs[$pattern_key] = [];
+                $field_context = isset($field['field_context']) && is_array($field['field_context']) ? $field['field_context'] : [];
+                $field_context_summary = $this->build_field_context_entry_summary($field_context);
+                $pattern_sources = [
+                    [
+                        'value' => $name,
+                        'matched_by' => 'acf_field_name',
+                    ],
+                ];
+                if (! empty($field_context['name_path'])) {
+                    $pattern_sources[] = [
+                        'value' => (string) $field_context['name_path'],
+                        'matched_by' => 'field_context_name_path',
+                    ];
+                }
+                if (! empty($field_context['resolved_purpose'])) {
+                    $pattern_sources[] = [
+                        'value' => (string) $field_context['resolved_purpose'],
+                        'matched_by' => 'field_context_resolved_purpose',
+                    ];
+                } elseif (! empty($field_context['default_purpose'])) {
+                    $pattern_sources[] = [
+                        'value' => (string) $field_context['default_purpose'],
+                        'matched_by' => 'field_context_default_purpose',
+                    ];
+                } elseif (! empty($field_context['legacy']['gardenai_field_purpose'])) {
+                    $pattern_sources[] = [
+                        'value' => (string) $field_context['legacy']['gardenai_field_purpose'],
+                        'matched_by' => 'field_context_legacy_purpose',
+                    ];
+                } elseif (! empty($field_context['effective_purpose'])) {
+                    $pattern_sources[] = [
+                        'value' => (string) $field_context['effective_purpose'],
+                        'matched_by' => 'field_context_effective_purpose',
+                    ];
+                }
+
+                foreach ($pattern_sources as $pattern_source) {
+                    if (! is_array($pattern_source) || empty($pattern_source['value'])) {
+                        continue;
                     }
-                    $refs[$pattern_key][] = $target_ref;
+
+                    foreach ($this->extract_patterns_from_field_key((string) $pattern_source['value']) as $pattern_key) {
+                        if (! isset($refs[$pattern_key])) {
+                            $refs[$pattern_key] = [];
+                        }
+                        $refs[$pattern_key][] = $this->build_target_ref_row(
+                            $target_ref,
+                            isset($pattern_source['matched_by']) ? (string) $pattern_source['matched_by'] : 'acf_field_name',
+                            $field_context_summary
+                        );
+                    }
                 }
             }
         }
@@ -592,13 +654,36 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 $pattern_refs = array_merge($pattern_refs, $acf_refs[$pattern_key]);
             }
 
-            foreach (array_slice(array_values(array_unique($pattern_refs)), 0, 8) as $target_ref) {
+            $seen = [];
+            foreach ($pattern_refs as $pattern_ref) {
+                if (! is_array($pattern_ref) || empty($pattern_ref['target_ref'])) {
+                    continue;
+                }
+
+                $target_ref = sanitize_text_field((string) $pattern_ref['target_ref']);
+                $matched_by = isset($pattern_ref['matched_by']) ? sanitize_key((string) $pattern_ref['matched_by']) : 'pattern_field_catalog_match';
+                $seen_key = $target_ref . '|' . $matched_by;
+                if (isset($seen[$seen_key])) {
+                    continue;
+                }
+
+                $seen[$seen_key] = true;
                 $candidates[] = [
                     'target_ref' => $target_ref,
                     'confidence' => $base_confidence,
                     'reason' => 'pattern_field_catalog_match',
                     'pattern_key' => $pattern_key,
+                    'matched_by' => $matched_by,
+                    'resolved_from' => isset($pattern_ref['resolved_from']) ? sanitize_key((string) $pattern_ref['resolved_from']) : '',
+                    'field_context_status' => isset($pattern_ref['field_context_status']) ? sanitize_key((string) $pattern_ref['field_context_status']) : '',
+                    'provider_contract_version' => isset($pattern_ref['provider_contract_version']) ? absint($pattern_ref['provider_contract_version']) : 0,
+                    'source_hash' => isset($pattern_ref['source_hash']) ? sanitize_text_field((string) $pattern_ref['source_hash']) : '',
+                    'transport' => isset($pattern_ref['transport']) ? sanitize_key((string) $pattern_ref['transport']) : '',
                 ];
+
+                if (count($seen) >= 8) {
+                    break;
+                }
             }
         }
 
@@ -615,11 +700,76 @@ final class DBVC_CC_V2_Mapping_Index_Service
                     'confidence' => min(0.96, max($base_confidence, isset($match['confidence']) ? (float) $match['confidence'] : 0.0)),
                     'reason' => 'pattern_memory_match',
                     'pattern_key' => isset($match['pattern_key']) ? (string) $match['pattern_key'] : '',
+                    'matched_by' => 'pattern_memory',
                 ];
             }
         }
 
         return $candidates;
+    }
+
+    /**
+     * @param array<string, mixed> $catalog
+     * @return array<string, mixed>
+     */
+    private function extract_field_context_meta(array $catalog)
+    {
+        $acf_catalog = isset($catalog['acf_catalog']) && is_array($catalog['acf_catalog']) ? $catalog['acf_catalog'] : [];
+        $field_context = isset($acf_catalog['field_context']) && is_array($acf_catalog['field_context']) ? $acf_catalog['field_context'] : [];
+        $provider = isset($field_context['provider']) && is_array($field_context['provider']) ? $field_context['provider'] : [];
+        $catalog_meta = isset($field_context['catalog_meta']) && is_array($field_context['catalog_meta']) ? $field_context['catalog_meta'] : [];
+
+        return [
+            'available' => ! empty($field_context['available']),
+            'profile' => isset($field_context['profile']) ? sanitize_key((string) $field_context['profile']) : 'mapping',
+            'transport' => isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : 'local',
+            'provider_contract_version' => isset($provider['contract_version']) ? absint($provider['contract_version']) : 0,
+            'source_hash' => isset($catalog_meta['source_hash']) ? sanitize_text_field((string) $catalog_meta['source_hash']) : '',
+            'status' => isset($catalog_meta['status']) ? sanitize_key((string) $catalog_meta['status']) : '',
+            'signature' => isset($field_context['signature']) ? sanitize_text_field((string) $field_context['signature']) : '',
+            'hints_enabled' => ! empty($field_context['hints_enabled']),
+            'consumer_policy' => isset($field_context['consumer_policy']) && is_array($field_context['consumer_policy']) ? $field_context['consumer_policy'] : [],
+            'diagnostics' => isset($field_context['diagnostics']) && is_array($field_context['diagnostics']) ? $field_context['diagnostics'] : [],
+        ];
+    }
+
+    /**
+     * @param string               $target_ref
+     * @param string               $matched_by
+     * @param array<string, mixed> $field_context_summary
+     * @return array<string, mixed>
+     */
+    private function build_target_ref_row($target_ref, $matched_by, array $field_context_summary = [])
+    {
+        return [
+            'target_ref' => sanitize_text_field((string) $target_ref),
+            'matched_by' => sanitize_key((string) $matched_by),
+            'resolved_from' => isset($field_context_summary['resolved_from']) ? sanitize_key((string) $field_context_summary['resolved_from']) : '',
+            'field_context_status' => isset($field_context_summary['field_context_status']) ? sanitize_key((string) $field_context_summary['field_context_status']) : '',
+            'provider_contract_version' => isset($field_context_summary['provider_contract_version']) ? absint($field_context_summary['provider_contract_version']) : 0,
+            'source_hash' => isset($field_context_summary['source_hash']) ? sanitize_text_field((string) $field_context_summary['source_hash']) : '',
+            'transport' => isset($field_context_summary['transport']) ? sanitize_key((string) $field_context_summary['transport']) : '',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $field_context
+     * @return array<string, mixed>
+     */
+    private function build_field_context_entry_summary(array $field_context)
+    {
+        $context = isset($field_context['context']) && is_array($field_context['context']) ? $field_context['context'] : [];
+        $provider = isset($context['provider']) && is_array($context['provider']) ? $context['provider'] : [];
+        $catalog_meta = isset($context['catalog_meta']) && is_array($context['catalog_meta']) ? $context['catalog_meta'] : [];
+        $status_meta = isset($field_context['status_meta']) && is_array($field_context['status_meta']) ? $field_context['status_meta'] : [];
+
+        return [
+            'resolved_from' => isset($field_context['resolved_from']) ? sanitize_key((string) $field_context['resolved_from']) : '',
+            'field_context_status' => isset($status_meta['code']) ? sanitize_key((string) $status_meta['code']) : '',
+            'provider_contract_version' => isset($provider['contract_version']) ? absint($provider['contract_version']) : 0,
+            'source_hash' => isset($catalog_meta['source_hash']) ? sanitize_text_field((string) $catalog_meta['source_hash']) : '',
+            'transport' => isset($context['transport']) ? sanitize_key((string) $context['transport']) : '',
+        ];
     }
 
     /**

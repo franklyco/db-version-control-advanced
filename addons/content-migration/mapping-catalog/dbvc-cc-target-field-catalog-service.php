@@ -546,19 +546,67 @@ final class DBVC_CC_Target_Field_Catalog_Service
      */
     private function build_acf_field_context_meta(array $field_context_index)
     {
-        return [
+        $meta = [
             'available' => ! empty($field_context_index['available']),
             'profile' => isset($field_context_index['profile']) ? sanitize_key((string) $field_context_index['profile']) : 'mapping',
+            'transport' => isset($field_context_index['transport']) ? sanitize_key((string) $field_context_index['transport']) : 'local',
+            'remote' => isset($field_context_index['remote']) && is_array($field_context_index['remote'])
+                ? $field_context_index['remote']
+                : [],
+            'consumer_policy' => isset($field_context_index['consumer_policy']) && is_array($field_context_index['consumer_policy'])
+                ? $field_context_index['consumer_policy']
+                : [],
             'provider' => isset($field_context_index['provider']) && is_array($field_context_index['provider'])
                 ? $field_context_index['provider']
                 : [],
             'catalog_meta' => isset($field_context_index['catalog_meta']) && is_array($field_context_index['catalog_meta'])
                 ? $field_context_index['catalog_meta']
                 : [],
+            'diagnostics' => isset($field_context_index['diagnostics']) && is_array($field_context_index['diagnostics'])
+                ? $field_context_index['diagnostics']
+                : [],
             'error' => isset($field_context_index['error']) && is_array($field_context_index['error'])
                 ? $field_context_index['error']
                 : [],
         ];
+
+        $policy = isset($meta['consumer_policy']) && is_array($meta['consumer_policy']) ? $meta['consumer_policy'] : [];
+        $diagnostics = isset($meta['diagnostics']) && is_array($meta['diagnostics']) ? $meta['diagnostics'] : [];
+        $meta['hints_enabled'] = ! empty($meta['available'])
+            && (($policy['integration_mode'] ?? 'auto') !== 'off')
+            && empty($diagnostics['blocked']);
+        $meta['signature'] = $this->build_field_context_signature($meta);
+
+        return $meta;
+    }
+
+    /**
+     * @param array<string, mixed> $meta
+     * @return string
+     */
+    private function build_field_context_signature(array $meta)
+    {
+        $policy = isset($meta['consumer_policy']) && is_array($meta['consumer_policy']) ? $meta['consumer_policy'] : [];
+        $provider = isset($meta['provider']) && is_array($meta['provider']) ? $meta['provider'] : [];
+        $catalog_meta = isset($meta['catalog_meta']) && is_array($meta['catalog_meta']) ? $meta['catalog_meta'] : [];
+        $diagnostics = isset($meta['diagnostics']) && is_array($meta['diagnostics']) ? $meta['diagnostics'] : [];
+        $error = isset($meta['error']) && is_array($meta['error']) ? $meta['error'] : [];
+
+        return hash('sha256', (string) wp_json_encode([
+            'available' => ! empty($meta['available']),
+            'profile' => isset($meta['profile']) ? sanitize_key((string) $meta['profile']) : 'mapping',
+            'transport' => isset($meta['transport']) ? sanitize_key((string) $meta['transport']) : 'local',
+            'hints_enabled' => ! empty($meta['hints_enabled']),
+            'integration_mode' => isset($policy['integration_mode']) ? sanitize_key((string) $policy['integration_mode']) : 'auto',
+            'use_legacy_fallback' => ! empty($policy['use_legacy_fallback']),
+            'block_on_missing' => ! empty($policy['block_on_missing']),
+            'provider_contract_version' => isset($provider['contract_version']) ? absint($provider['contract_version']) : 0,
+            'catalog_status' => isset($catalog_meta['status']) ? sanitize_key((string) $catalog_meta['status']) : '',
+            'source_hash' => isset($catalog_meta['source_hash']) ? sanitize_text_field((string) $catalog_meta['source_hash']) : '',
+            'blocked' => ! empty($diagnostics['blocked']),
+            'error_code' => isset($error['code']) ? sanitize_key((string) $error['code']) : '',
+            'error_status' => isset($error['status']) ? absint($error['status']) : 0,
+        ]));
     }
 
     /**

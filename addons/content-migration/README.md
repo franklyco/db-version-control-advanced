@@ -125,6 +125,23 @@ This addon absorbs Content Collector behavior into DBVC under modular boundaries
     - shared local provider service: `shared/dbvc-cc-field-context-provider-service.php`
     - target field catalog now enriches ACF group and field entries with resolved Vertical field-context metadata when the provider is available
     - section-field candidate pattern extraction now considers normalized `name_path` and purpose hints from the same resolved field-context payload
+  - `W1B` field-context consumer policy controls:
+    - Content Collector add-on settings now expose a small `Field Context Integration` policy group
+    - same-runtime provider normalization now carries additive `consumer_policy` and `diagnostics` metadata for downstream mapping/QA layers
+    - candidate pattern extraction now prefers `effective_purpose`, which only falls back to legacy GardenAI hints when the operator leaves that policy enabled
+  - `W1C` field-context operator diagnostics:
+    - Workbench queue state now distinguishes stale artifacts from degraded or blocked field-context health
+    - mapping summaries surface the active field-context envelope from the queue or loaded catalog
+    - deterministic candidate generation now falls back to narrower ACF-name signals when field-context hints are disabled or blocked
+  - `W1D` field-context remote adapter foundation:
+    - DBVC field-context provider service now supports a local-first, remote-fallback transport model
+    - remote access is configured by filter, not a new admin settings surface, to keep this phase lean
+    - remote responses normalize into the same mapping index shape and expose additive transport metadata
+  - `W1E` field-context preflight and QA persistence:
+    - V2 mapping index artifacts now persist additive field-context provider metadata (`contract_version`, `source_hash`, transport, policy diagnostics)
+    - chosen target candidates now carry additive provenance (`matched_by`, `resolved_from`, field-context trace) into mapping recommendations and review decisions
+    - package selection and URL QA artifacts now preserve the same trace so preflight/package review can audit which field-context contract and source hash informed the mapping
+    - degraded or blocked field-context states now surface in URL QA without replacing existing deterministic fallback behavior
   - `W4` metadata-first media candidate foundations:
     - page-level media candidate service: `mapping-media/dbvc-cc-media-candidate-service.php`
     - media candidate REST transport:

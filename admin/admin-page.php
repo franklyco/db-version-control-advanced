@@ -2823,6 +2823,7 @@ document.addEventListener('DOMContentLoaded', function () {
           <?php
           $content_activation_group = $addon_content_collector_groups['activation']['fields'] ?? [];
           $content_automation_group = $addon_content_collector_groups['automation']['fields'] ?? [];
+          $content_field_context_group = $addon_content_collector_groups['field_context']['fields'] ?? [];
           ?>
 
           <?php foreach ((array) $content_activation_group as $field_key) : ?>
@@ -2906,6 +2907,52 @@ document.addEventListener('DOMContentLoaded', function () {
                     step="<?php echo esc_attr((string) ($field_meta['step'] ?? '0.01')); ?>"
                     class="small-text"
                   />
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php endif; ?>
+            <?php endforeach; ?>
+          </details>
+
+          <details class="dbvc-addon-advanced-group">
+            <summary><strong><?php esc_html_e('Field Context Integration', 'dbvc'); ?></strong></summary>
+            <p class="description"><?php esc_html_e('Keep the Vertical field-context bridge simple: choose whether DBVC uses it at all, whether legacy hints can fill gaps, and whether degraded context should warn or block downstream automation.', 'dbvc'); ?></p>
+
+            <?php foreach ((array) $content_field_context_group as $field_key) : ?>
+              <?php
+              $field_key = (string) $field_key;
+              if (! isset($addon_content_collector_field_meta[$field_key])) {
+                continue;
+              }
+
+              $field_meta = $addon_content_collector_field_meta[$field_key];
+              $field_value = isset($addon_content_collector_settings[$field_key]) ? (string) $addon_content_collector_settings[$field_key] : '';
+              $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
+              $field_input = isset($field_meta['input']) ? (string) $field_meta['input'] : 'text';
+              $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
+              ?>
+
+              <?php if ($field_input === 'checkbox') : ?>
+                <p>
+                  <label>
+                    <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
+                    <?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?>
+                  </label>
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php else : ?>
+                <p>
+                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?></strong></label><br>
+                  <select id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>">
+                    <?php foreach ((array) ($field_meta['options'] ?? []) as $option_value => $option_label) : ?>
+                      <option value="<?php echo esc_attr((string) $option_value); ?>" <?php selected($field_value, (string) $option_value); ?>>
+                        <?php echo esc_html((string) $option_label); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
                   <?php if ($field_help !== '') : ?>
                     <br><small class="description"><?php echo esc_html($field_help); ?></small>
                   <?php endif; ?>
