@@ -1,0 +1,45 @@
+# Repomix-specific ignore patterns
+# Keep this file lean.
+# Exclude token-heavy noise, generated artifacts, and local-only clutter.
+# Do not exclude important source, tests, migrations, schemas, or core docs without a clear reason.
+
+# Package managers / vendored dependencies
+node_modules/
+vendor/
+.pnpm-store/
+.yarn/
+.bun/
+
+# Build / output / caches
+dist/
+build/
+out/
+coverage/
+.cache/
+.next/
+.nuxt/
+.svelte-kit/
+.parcel-cache/
+.tmp/
+temp/
+tmp/
+
+# Logs / reports
+*.log
+logs/
+playwright-report/
+test-results/
+
+# Media / binary-heavy directories (adjust carefully)
+screenshots/
+recordings/
+exports/
+artifacts/
+
+# Local editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+
+# Generated AI / repack outputs
+repomix-output*

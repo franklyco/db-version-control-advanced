@@ -521,6 +521,16 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/entity-editor/files/delete',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'delete_entity_editor_files'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/entity-editor/file/import-partial',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -569,6 +579,36 @@ final class DBVC_Admin_App
                 ],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/transfer-preview',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'preview_entity_editor_transfer_packet'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/raw-intake/preview',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'preview_entity_editor_raw_intake'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/raw-intake/commit',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'commit_entity_editor_raw_intake'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
     }
 
     /**
@@ -611,29 +651,35 @@ final class DBVC_Admin_App
                 ? $decision_store[$proposal_id]
                 : [];
             $decision_summary = self::summarize_proposal_decisions($proposal_decisions);
+            $transfer_context = self::build_transfer_packet_context($manifest);
 
-        $duplicate_summary = self::find_duplicate_manifest_entities($manifest);
+            $duplicate_summary = self::find_duplicate_manifest_entities($manifest);
 
-        $new_entity_summary = self::summarize_manifest_new_entities($manifest, $proposal_decisions);
+            $new_entity_summary = self::summarize_manifest_new_entities($manifest, $proposal_decisions);
 
-        $items[] = [
-            'id'             => $proposal_id,
-            'title'          => $proposal_id,
-            'generated_at'   => $manifest['generated_at'] ?? null,
-            'files'          => $manifest['totals']['files'] ?? null,
-            'media_items'    => $manifest['totals']['media_items'] ?? null,
-            'missing_hashes' => $manifest['totals']['missing_import_hash'] ?? null,
-            'locked'         => ! empty($backup['locked']),
-            'size'           => isset($backup['size']) ? (int) $backup['size'] : null,
-            'resolver'       => [
-                'metrics' => $resolver_metrics,
-            ],
-            'media_bundle'  => $manifest['media_bundle'] ?? null,
-            'decisions'      => $decision_summary,
-            'status'        => $manifest['status'] ?? 'draft',
-            'duplicate_count' => is_array($duplicate_summary) ? count($duplicate_summary) : 0,
-            'new_entities'    => $new_entity_summary,
-        ];
+            $items[] = [
+                'id'             => $proposal_id,
+                'title'          => $proposal_id,
+                'generated_at'   => $manifest['generated_at'] ?? null,
+                'files'          => $manifest['totals']['files'] ?? null,
+                'media_items'    => $manifest['totals']['media_items'] ?? null,
+                'missing_hashes' => $manifest['totals']['missing_import_hash'] ?? null,
+                'locked'         => ! empty($backup['locked']),
+                'size'           => isset($backup['size']) ? (int) $backup['size'] : null,
+                'resolver'       => [
+                    'metrics' => $resolver_metrics,
+                ],
+                'media_bundle'    => $manifest['media_bundle'] ?? null,
+                'decisions'       => $decision_summary,
+                'status'          => $manifest['status'] ?? 'draft',
+                'duplicate_count' => is_array($duplicate_summary) ? count($duplicate_summary) : 0,
+                'new_entities'    => $new_entity_summary,
+                'origin'          => $transfer_context['origin'],
+                'selection'       => $transfer_context['selection'],
+                'requirements'    => $transfer_context['requirements'],
+                'preflight'       => $transfer_context['preflight'],
+                'warnings'        => $transfer_context['warnings'],
+            ];
         }
 
         return new \WP_REST_Response([
@@ -901,6 +947,13 @@ final class DBVC_Admin_App
             return new \WP_Error('dbvc_manifest_duplicates', implode("\n", $messages), ['status' => 400]);
         }
 
+        $bundle_root = dirname($manifest_path);
+        $validation = self::validate_import_bundle_manifest($manifest, $bundle_root);
+        if (is_wp_error($validation)) {
+            self::delete_directory_recursive($temp_dir);
+            return $validation;
+        }
+
         if ($preferred_id === '') {
             $preferred_id = self::derive_proposal_id_from_manifest($manifest);
         }
@@ -1011,6 +1064,7 @@ final class DBVC_Admin_App
         $proposal_decisions  = isset($decision_store[$proposal_id]) && is_array($decision_store[$proposal_id])
             ? $decision_store[$proposal_id]
             : [];
+        $transfer_context = self::build_transfer_packet_context($manifest);
 
         $items = [];
 
@@ -1140,13 +1194,18 @@ final class DBVC_Admin_App
         }
 
         return new \WP_REST_Response([
-            'proposal_id' => $proposal_id,
-            'items'       => $items,
-            'resolver'    => [
+            'proposal_id'        => $proposal_id,
+            'items'              => $items,
+            'resolver'           => [
                 'metrics' => $resolver_result['metrics'] ?? [],
             ],
-            'decision_summary' => self::summarize_proposal_decisions($proposal_decisions),
+            'decision_summary'   => self::summarize_proposal_decisions($proposal_decisions),
             'resolver_decisions' => self::summarize_resolver_decisions($proposal_id),
+            'origin'             => $transfer_context['origin'],
+            'selection'          => $transfer_context['selection'],
+            'requirements'       => $transfer_context['requirements'],
+            'preflight'          => $transfer_context['preflight'],
+            'warnings'           => $transfer_context['warnings'],
         ]);
     }
 
@@ -1926,6 +1985,35 @@ final class DBVC_Admin_App
 
 
     /**
+     * Sanitize Entity Editor bulk path payloads from REST requests.
+     *
+     * @param mixed $paths
+     * @return array<int,string>
+     */
+    private static function sanitize_entity_editor_paths($paths): array
+    {
+        if (! is_array($paths)) {
+            return [];
+        }
+
+        $sanitized = [];
+        foreach ($paths as $path) {
+            if (! is_string($path)) {
+                continue;
+            }
+
+            $normalized = str_replace('\\', '/', ltrim(trim($path), '/'));
+            if ($normalized === '') {
+                continue;
+            }
+
+            $sanitized[$normalized] = $normalized;
+        }
+
+        return array_values($sanitized);
+    }
+
+    /**
      * REST: Return cached Entity Editor index payload.
      *
      * @param \WP_REST_Request $request
@@ -1940,6 +2028,8 @@ final class DBVC_Admin_App
                     'scanned_files' => 0,
                     'indexed_files' => 0,
                     'excluded_files' => 0,
+                    'duplicate_groups' => 0,
+                    'duplicate_files' => 0,
                 ],
                 'generated_at' => gmdate('c'),
                 'sync_root' => '',
@@ -2030,6 +2120,32 @@ final class DBVC_Admin_App
     }
 
     /**
+     * REST: Delete selected Entity Editor JSON files from sync.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function delete_entity_editor_files(\WP_REST_Request $request)
+    {
+        if (! class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_Error('dbvc_entity_editor_unavailable', __('Entity Editor indexer unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $paths = self::sanitize_entity_editor_paths($params['paths'] ?? []);
+        if (empty($paths)) {
+            return new \WP_Error('dbvc_entity_editor_delete_empty', __('No entity files were selected for removal.', 'dbvc'), ['status' => 400]);
+        }
+
+        $result = DBVC_Entity_Editor_Indexer::delete_entity_files($paths, get_current_user_id());
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
      * REST: Save entity JSON then run non-destructive partial import.
      *
      * @param \WP_REST_Request $request
@@ -2071,6 +2187,80 @@ final class DBVC_Admin_App
         $lock_token = (string) $request->get_param('lock_token');
         $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
         $result = DBVC_Entity_Editor_Indexer::save_and_full_replace($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover, $confirm_phrase);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: Preview an Entity Editor transfer packet before download.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function preview_entity_editor_transfer_packet(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\Transfer\EntityPacketBuilder')) {
+            return new \WP_Error('dbvc_transfer_unavailable', __('Transfer packet builder unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $paths = self::sanitize_entity_editor_paths($params['paths'] ?? []);
+        if (empty($paths)) {
+            return new \WP_Error('dbvc_transfer_empty_selection', __('No entity files selected for transfer preview.', 'dbvc'), ['status' => 400]);
+        }
+
+        $preview = \Dbvc\Transfer\EntityPacketBuilder::preview_from_entity_paths($paths);
+        if (is_wp_error($preview)) {
+            return $preview;
+        }
+
+        return new \WP_REST_Response($preview);
+    }
+
+    /**
+     * REST: Preview Entity Editor raw JSON intake before writing/importing.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function preview_entity_editor_raw_intake(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\RawJsonIntakeService')) {
+            return new \WP_Error('dbvc_entity_editor_raw_intake_unavailable', __('Raw JSON intake service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $content = isset($params['content']) ? (string) $params['content'] : '';
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
+
+        $preview = \Dbvc\EntityEditor\RawJsonIntakeService::preview($content, $mode);
+        if (is_wp_error($preview)) {
+            return $preview;
+        }
+
+        return new \WP_REST_Response($preview);
+    }
+
+    /**
+     * REST: Write/import a raw JSON payload from the Entity Editor.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function commit_entity_editor_raw_intake(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\RawJsonIntakeService')) {
+            return new \WP_Error('dbvc_entity_editor_raw_intake_unavailable', __('Raw JSON intake service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $content = isset($params['content']) ? (string) $params['content'] : '';
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
+
+        $result = \Dbvc\EntityEditor\RawJsonIntakeService::commit($content, $mode, get_current_user_id());
         if (is_wp_error($result)) {
             return $result;
         }
@@ -2261,6 +2451,540 @@ final class DBVC_Admin_App
         }
 
         return DBVC_Backup_Manager::read_manifest($folder);
+    }
+
+    /**
+     * Build transfer-packet metadata for proposal list/detail payloads.
+     *
+     * @param array $manifest
+     * @return array<string,mixed>
+     */
+    private static function build_transfer_packet_context(array $manifest): array
+    {
+        $origin      = self::extract_manifest_origin($manifest);
+        $is_transfer = self::is_transfer_packet_manifest($manifest, $origin);
+
+        if (! $is_transfer) {
+            return [
+                'origin'       => $origin,
+                'selection'    => null,
+                'requirements' => null,
+                'preflight'    => null,
+                'warnings'     => null,
+            ];
+        }
+
+        if (! is_array($origin)) {
+            $origin = [
+                'type' => 'entity_transfer',
+            ];
+        }
+
+        $requirements = self::extract_transfer_requirements($manifest);
+
+        return [
+            'origin'       => $origin,
+            'selection'    => self::extract_transfer_selection($manifest),
+            'requirements' => $requirements,
+            'preflight'    => self::build_transfer_preflight($manifest, $requirements),
+            'warnings'     => self::extract_transfer_warnings($manifest),
+        ];
+    }
+
+    /**
+     * Determine whether the manifest represents a transfer packet.
+     *
+     * @param array      $manifest
+     * @param array|null $origin
+     * @return bool
+     */
+    private static function is_transfer_packet_manifest(array $manifest, ?array $origin = null): bool
+    {
+        if (is_array($origin) && (($origin['type'] ?? '') === 'entity_transfer')) {
+            return true;
+        }
+
+        if (! empty($manifest['selection']) && is_array($manifest['selection'])) {
+            return true;
+        }
+
+        if (! empty($manifest['requirements']) && is_array($manifest['requirements'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Sanitize manifest origin data for the review UI.
+     *
+     * @param array $manifest
+     * @return array<string,string>|null
+     */
+    private static function extract_manifest_origin(array $manifest): ?array
+    {
+        $origin = isset($manifest['origin']) && is_array($manifest['origin']) ? $manifest['origin'] : [];
+        if (empty($origin)) {
+            return null;
+        }
+
+        $sanitized = [];
+
+        if (! empty($origin['type'])) {
+            $sanitized['type'] = sanitize_key((string) $origin['type']);
+        }
+
+        if (! empty($origin['packet_id'])) {
+            $sanitized['packet_id'] = sanitize_file_name((string) $origin['packet_id']);
+        }
+
+        if (! empty($origin['source_surface'])) {
+            $sanitized['source_surface'] = sanitize_key((string) $origin['source_surface']);
+        }
+
+        if (! empty($origin['generated_from_site'])) {
+            $sanitized['generated_from_site'] = esc_url_raw((string) $origin['generated_from_site']);
+        }
+
+        if (! empty($origin['generated_from_name'])) {
+            $sanitized['generated_from_name'] = sanitize_text_field((string) $origin['generated_from_name']);
+        }
+
+        return ! empty($sanitized) ? $sanitized : null;
+    }
+
+    /**
+     * Sanitize transfer selection summary for proposal payloads.
+     *
+     * @param array $manifest
+     * @return array<string,mixed>|null
+     */
+    private static function extract_transfer_selection(array $manifest): ?array
+    {
+        $selection = isset($manifest['selection']) && is_array($manifest['selection']) ? $manifest['selection'] : [];
+        if (empty($selection)) {
+            return null;
+        }
+
+        $summary = isset($selection['summary']) && is_array($selection['summary']) ? $selection['summary'] : [];
+        $summary_keys = [
+            'requested_paths',
+            'selected_posts',
+            'selected_terms',
+            'dependency_terms',
+            'live_exports',
+            'fallback_files',
+            'duplicates_skipped',
+            'missing_dependencies',
+        ];
+
+        $sanitized_summary = [];
+        foreach ($summary_keys as $summary_key) {
+            if (array_key_exists($summary_key, $summary)) {
+                $sanitized_summary[$summary_key] = max(0, (int) $summary[$summary_key]);
+            }
+        }
+
+        $requested_paths = isset($selection['requested_paths']) && is_array($selection['requested_paths'])
+            ? array_values(array_filter(array_map(static function ($path) {
+                return is_string($path) ? ltrim(str_replace('\\', '/', $path), '/') : '';
+            }, $selection['requested_paths'])))
+            : [];
+
+        $sanitized = [];
+        if (! empty($sanitized_summary)) {
+            $sanitized['summary'] = $sanitized_summary;
+        }
+        if (! empty($requested_paths)) {
+            $sanitized['requested_paths_count'] = count($requested_paths);
+        }
+
+        return ! empty($sanitized) ? $sanitized : null;
+    }
+
+    /**
+     * Sanitize structured transfer warnings for proposal payloads.
+     *
+     * @param array $manifest
+     * @return array<string,mixed>|null
+     */
+    private static function extract_transfer_warnings(array $manifest): ?array
+    {
+        $warnings = isset($manifest['warnings']) && is_array($manifest['warnings']) ? $manifest['warnings'] : [];
+        if (empty($warnings)) {
+            return null;
+        }
+
+        $summary = isset($warnings['summary']) && is_array($warnings['summary']) ? $warnings['summary'] : [];
+        $unsupported = isset($warnings['unsupported_post_references']) && is_array($warnings['unsupported_post_references'])
+            ? $warnings['unsupported_post_references']
+            : [];
+
+        $sanitized_unsupported = [];
+        foreach ($unsupported as $warning) {
+            if (! is_array($warning)) {
+                continue;
+            }
+
+            $referenced_post_id = isset($warning['referenced_post_id']) ? absint($warning['referenced_post_id']) : 0;
+            $source_path = isset($warning['source_path']) ? ltrim(str_replace('\\', '/', (string) $warning['source_path']), '/') : '';
+            $meta_key = isset($warning['meta_key']) ? sanitize_key((string) $warning['meta_key']) : '';
+            if ($referenced_post_id <= 0 || $source_path === '' || $meta_key === '') {
+                continue;
+            }
+
+            $sanitized_unsupported[] = [
+                'source_path'           => $source_path,
+                'source_post_title'     => isset($warning['source_post_title']) ? sanitize_text_field((string) $warning['source_post_title']) : '',
+                'source_post_type'      => isset($warning['source_post_type']) ? sanitize_key((string) $warning['source_post_type']) : '',
+                'meta_key'              => $meta_key,
+                'field_label'           => isset($warning['field_label']) ? sanitize_text_field((string) $warning['field_label']) : '',
+                'field_type'            => isset($warning['field_type']) ? sanitize_key((string) $warning['field_type']) : '',
+                'reference_source'      => isset($warning['reference_source']) ? sanitize_key((string) $warning['reference_source']) : '',
+                'referenced_post_id'    => $referenced_post_id,
+                'referenced_post_title' => isset($warning['referenced_post_title']) ? sanitize_text_field((string) $warning['referenced_post_title']) : '',
+                'referenced_post_type'  => isset($warning['referenced_post_type']) ? sanitize_key((string) $warning['referenced_post_type']) : '',
+                'referenced_post_name'  => isset($warning['referenced_post_name']) ? sanitize_title((string) $warning['referenced_post_name']) : '',
+            ];
+        }
+
+        $sanitized = [];
+        if (isset($summary['unsupported_post_references'])) {
+            $sanitized['summary'] = [
+                'unsupported_post_references' => max(0, (int) $summary['unsupported_post_references']),
+            ];
+        }
+        if (! empty($sanitized_unsupported)) {
+            $sanitized['unsupported_post_references'] = $sanitized_unsupported;
+        }
+
+        return ! empty($sanitized) ? $sanitized : null;
+    }
+
+    /**
+     * Extract transfer requirements from the manifest, falling back to inferred values when needed.
+     *
+     * @param array $manifest
+     * @return array<string,array>
+     */
+    private static function extract_transfer_requirements(array $manifest): array
+    {
+        $requirements = isset($manifest['requirements']) && is_array($manifest['requirements']) ? $manifest['requirements'] : [];
+        $post_types = [];
+        $taxonomies = [];
+        $notes = [];
+
+        foreach (($requirements['post_types'] ?? []) as $post_type) {
+            $normalized = sanitize_key((string) $post_type);
+            if ($normalized !== '') {
+                $post_types[$normalized] = $normalized;
+            }
+        }
+
+        foreach (($requirements['taxonomies'] ?? []) as $taxonomy) {
+            $normalized = sanitize_key((string) $taxonomy);
+            if ($normalized !== '') {
+                $taxonomies[$normalized] = $normalized;
+            }
+        }
+
+        foreach (($requirements['notes'] ?? []) as $note) {
+            $normalized = sanitize_text_field((string) $note);
+            if ($normalized !== '') {
+                $notes[$normalized] = $normalized;
+            }
+        }
+
+        $inferred = self::infer_manifest_requirements($manifest);
+        foreach ($inferred['post_types'] as $post_type) {
+            $post_types[$post_type] = $post_type;
+        }
+        foreach ($inferred['taxonomies'] as $taxonomy) {
+            $taxonomies[$taxonomy] = $taxonomy;
+        }
+
+        $post_types = array_values($post_types);
+        $taxonomies = array_values($taxonomies);
+        $notes = array_values($notes);
+
+        sort($post_types);
+        sort($taxonomies);
+        sort($notes);
+
+        return [
+            'post_types' => $post_types,
+            'taxonomies' => $taxonomies,
+            'notes'      => $notes,
+        ];
+    }
+
+    /**
+     * Infer post-type and taxonomy requirements from manifest items.
+     *
+     * @param array $manifest
+     * @return array{post_types:array<int,string>,taxonomies:array<int,string>}
+     */
+    private static function infer_manifest_requirements(array $manifest): array
+    {
+        $post_types = [];
+        $taxonomies = [];
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
+            if ($item_type === 'term') {
+                $taxonomy = isset($item['term_taxonomy']) ? sanitize_key((string) $item['term_taxonomy']) : '';
+                if ($taxonomy !== '') {
+                    $taxonomies[$taxonomy] = $taxonomy;
+                }
+                continue;
+            }
+
+            if ($item_type !== 'post') {
+                continue;
+            }
+
+            $post_type = isset($item['post_type']) ? sanitize_key((string) $item['post_type']) : '';
+            if ($post_type !== '') {
+                $post_types[$post_type] = $post_type;
+            }
+
+            if (! empty($item['tax_input']) && is_array($item['tax_input'])) {
+                foreach (array_keys($item['tax_input']) as $taxonomy_key) {
+                    $taxonomy = sanitize_key((string) $taxonomy_key);
+                    if ($taxonomy !== '') {
+                        $taxonomies[$taxonomy] = $taxonomy;
+                    }
+                }
+            }
+        }
+
+        return [
+            'post_types' => array_values($post_types),
+            'taxonomies' => array_values($taxonomies),
+        ];
+    }
+
+    /**
+     * Evaluate destination-side warnings for transfer packets.
+     *
+     * @param array $manifest
+     * @param array $requirements
+     * @return array<string,mixed>
+     */
+    private static function build_transfer_preflight(array $manifest, array $requirements): array
+    {
+        $missing_post_types = [];
+        foreach (($requirements['post_types'] ?? []) as $post_type) {
+            $normalized = sanitize_key((string) $post_type);
+            if ($normalized !== '' && ! post_type_exists($normalized)) {
+                $missing_post_types[$normalized] = $normalized;
+            }
+        }
+
+        $missing_taxonomies = [];
+        foreach (($requirements['taxonomies'] ?? []) as $taxonomy) {
+            $normalized = sanitize_key((string) $taxonomy);
+            if ($normalized !== '' && ! taxonomy_exists($normalized)) {
+                $missing_taxonomies[$normalized] = $normalized;
+            }
+        }
+
+        $unsupported_items = [];
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                $unsupported_items['invalid_payload'] = 'invalid_payload';
+                continue;
+            }
+
+            $item_type = isset($item['item_type']) ? sanitize_key((string) $item['item_type']) : 'post';
+            if (! in_array($item_type, ['post', 'term'], true)) {
+                $unsupported_items['item_type:' . $item_type] = 'item_type:' . $item_type;
+                continue;
+            }
+
+            if ($item_type === 'term') {
+                $taxonomy = isset($item['term_taxonomy']) ? sanitize_key((string) $item['term_taxonomy']) : '';
+                if ($taxonomy === '') {
+                    $unsupported_items['term_missing_taxonomy'] = 'term_missing_taxonomy';
+                }
+            }
+        }
+
+        $missing_post_types = array_values($missing_post_types);
+        $missing_taxonomies = array_values($missing_taxonomies);
+        $unsupported_items = array_values($unsupported_items);
+
+        sort($missing_post_types);
+        sort($missing_taxonomies);
+        sort($unsupported_items);
+
+        $warning_count = count($missing_post_types) + count($missing_taxonomies) + count($unsupported_items);
+
+        return [
+            'status'             => $warning_count > 0 ? 'warning' : 'ok',
+            'has_warnings'       => $warning_count > 0,
+            'warning_count'      => $warning_count,
+            'missing_post_types' => $missing_post_types,
+            'missing_taxonomies' => $missing_taxonomies,
+            'unsupported_items'  => $unsupported_items,
+        ];
+    }
+
+    /**
+     * Validate that an extracted proposal bundle is internally coherent before registration.
+     *
+     * @param array  $manifest
+     * @param string $bundle_root
+     * @return true|\WP_Error
+     */
+    private static function validate_import_bundle_manifest(array $manifest, string $bundle_root)
+    {
+        $bundle_root = realpath($bundle_root);
+        if ($bundle_root === false || ! is_dir($bundle_root)) {
+            return new \WP_Error(
+                'dbvc_bundle_root_invalid',
+                __('The uploaded bundle could not be validated.', 'dbvc'),
+                ['status' => 400]
+            );
+        }
+
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        $invalid_items = [];
+        $invalid_paths = [];
+        $missing_files = [];
+        $invalid_json = [];
+
+        foreach ($items as $index => $item) {
+            $item_label = sprintf('#%d', $index + 1);
+            if (! is_array($item)) {
+                $invalid_items[] = $item_label;
+                continue;
+            }
+
+            $relative_path = isset($item['path']) && is_string($item['path'])
+                ? ltrim(str_replace('\\', '/', $item['path']), '/')
+                : '';
+            if ($relative_path === '') {
+                $invalid_paths[] = $item_label;
+                continue;
+            }
+
+            $absolute_path = self::resolve_manifest_entry_path($bundle_root, $relative_path);
+            if (! $absolute_path) {
+                $invalid_paths[] = $relative_path;
+                continue;
+            }
+
+            if (! is_file($absolute_path) || ! is_readable($absolute_path)) {
+                $missing_files[] = $relative_path;
+                continue;
+            }
+
+            $raw = file_get_contents($absolute_path);
+            $decoded = is_string($raw) ? json_decode($raw, true) : null;
+            if (! is_array($decoded)) {
+                $invalid_json[] = $relative_path;
+            }
+        }
+
+        $missing_bundle_assets = self::validate_import_bundle_media_assets($manifest, $bundle_root);
+        if (empty($invalid_items) && empty($invalid_paths) && empty($missing_files) && empty($invalid_json) && empty($missing_bundle_assets)) {
+            return true;
+        }
+
+        $messages = [];
+        if (! empty($invalid_items)) {
+            $messages[] = sprintf(
+                __('Manifest items are malformed: %s.', 'dbvc'),
+                implode(', ', array_slice($invalid_items, 0, 5))
+            );
+        }
+        if (! empty($invalid_paths)) {
+            $messages[] = sprintf(
+                __('Manifest item paths are invalid: %s.', 'dbvc'),
+                implode(', ', array_slice($invalid_paths, 0, 5))
+            );
+        }
+        if (! empty($missing_files)) {
+            $messages[] = sprintf(
+                __('Referenced payload files are missing: %s.', 'dbvc'),
+                implode(', ', array_slice($missing_files, 0, 5))
+            );
+        }
+        if (! empty($invalid_json)) {
+            $messages[] = sprintf(
+                __('Referenced payload files are not valid JSON objects: %s.', 'dbvc'),
+                implode(', ', array_slice($invalid_json, 0, 5))
+            );
+        }
+        if (! empty($missing_bundle_assets)) {
+            $messages[] = sprintf(
+                __('Referenced media-bundle assets are missing: %s.', 'dbvc'),
+                implode(', ', array_slice($missing_bundle_assets, 0, 5))
+            );
+        }
+
+        return new \WP_Error(
+            'dbvc_manifest_bundle_invalid',
+            implode(' ', $messages),
+            [
+                'status'  => 400,
+                'details' => [
+                    'invalid_items'        => array_values($invalid_items),
+                    'invalid_paths'        => array_values($invalid_paths),
+                    'missing_files'        => array_values($missing_files),
+                    'invalid_json'         => array_values($invalid_json),
+                    'missing_bundle_assets'=> array_values($missing_bundle_assets),
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Validate that referenced media-bundle assets exist inside the extracted bundle.
+     *
+     * @param array  $manifest
+     * @param string $bundle_root
+     * @return array<int,string>
+     */
+    private static function validate_import_bundle_media_assets(array $manifest, string $bundle_root): array
+    {
+        $missing = [];
+        $media_bundle = isset($manifest['media_bundle']) && is_array($manifest['media_bundle']) ? $manifest['media_bundle'] : [];
+        if (empty($media_bundle)) {
+            return $missing;
+        }
+
+        $relative_keys = ['backup_relative', 'map'];
+        foreach ($relative_keys as $relative_key) {
+            $relative_path = isset($media_bundle[$relative_key]) && is_string($media_bundle[$relative_key])
+                ? ltrim(str_replace('\\', '/', $media_bundle[$relative_key]), '/')
+                : '';
+            if ($relative_path === '') {
+                continue;
+            }
+
+            $absolute_path = self::resolve_manifest_entry_path($bundle_root, $relative_path);
+            if (! $absolute_path) {
+                $missing[] = $relative_path;
+                continue;
+            }
+
+            $exists = $relative_key === 'backup_relative'
+                ? is_dir($absolute_path)
+                : (is_file($absolute_path) && is_readable($absolute_path));
+            if (! $exists) {
+                $missing[] = $relative_path;
+            }
+        }
+
+        return array_values(array_unique($missing));
     }
 
     private static function read_entity_payload(string $proposal_id, string $relative_path): ?array
@@ -2511,17 +3235,20 @@ final class DBVC_Admin_App
 
     private static function resolve_manifest_entry_path(string $base_dir, string $relative_path): ?string
     {
+        $base_dir = wp_normalize_path(untrailingslashit($base_dir));
         $relative_path = ltrim($relative_path, '/\\');
         if ($relative_path === '' || strpos($relative_path, '..') !== false) {
             return null;
         }
 
-        $absolute = trailingslashit($base_dir) . $relative_path;
+        $absolute = wp_normalize_path(trailingslashit($base_dir) . $relative_path);
         $real     = realpath($absolute);
         if ($real === false) {
             return $absolute;
         }
-        if (strpos($real, $base_dir) !== 0) {
+        $real = wp_normalize_path($real);
+        $base_prefix = trailingslashit($base_dir);
+        if ($real !== $base_dir && strpos($real, $base_prefix) !== 0) {
             return null;
         }
         return $real;

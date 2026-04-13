@@ -11,11 +11,6 @@ final class DBVC_CC_Workbench_Service
     public const DECISION_EDIT = 'edited';
 
     /**
-     * @var array<string, mixed>|null
-     */
-    private $field_context_health_cache = null;
-
-    /**
      * @return DBVC_CC_Workbench_Service
      */
     public static function get_instance()
@@ -114,7 +109,6 @@ final class DBVC_CC_Workbench_Service
             'total_items' => count($items),
             'pending_items' => $pending_count,
             'reviewed_items' => $reviewed_count,
-            'field_context' => $this->dbvc_cc_get_field_context_health(),
             'items' => $items,
         ];
     }
@@ -791,9 +785,6 @@ final class DBVC_CC_Workbench_Service
                 'media_stale' => false,
                 'mapping_decision_outdated' => false,
                 'media_decision_outdated' => false,
-                'degraded' => false,
-                'blocked' => false,
-                'field_context' => $this->dbvc_cc_get_field_context_health(),
             ];
         }
 
@@ -809,7 +800,6 @@ final class DBVC_CC_Workbench_Service
         ];
 
         $dbvc_cc_reasons = [];
-        $dbvc_cc_field_context = $this->dbvc_cc_get_field_context_health();
         $dbvc_cc_section_stale_reason = $this->dbvc_cc_detect_candidate_stale_reason(
             $dbvc_cc_files['section_candidates'],
             [
@@ -854,39 +844,15 @@ final class DBVC_CC_Workbench_Service
             }
         }
 
-        $dbvc_cc_field_context_reasons = [];
-        if (($dbvc_cc_field_context['integration_mode'] ?? 'auto') !== 'off') {
-            if (! empty($dbvc_cc_field_context['blocked'])) {
-                $dbvc_cc_field_context_reasons[] = 'field_context_blocked';
-            } elseif (! empty($dbvc_cc_field_context['degraded'])) {
-                $dbvc_cc_field_context_reasons[] = 'field_context_degraded';
-            }
-
-            $dbvc_cc_warning_codes = isset($dbvc_cc_field_context['warning_codes']) && is_array($dbvc_cc_field_context['warning_codes'])
-                ? array_values($dbvc_cc_field_context['warning_codes'])
-                : [];
-            foreach ($dbvc_cc_warning_codes as $dbvc_cc_warning_code) {
-                $dbvc_cc_warning_code = sanitize_key((string) $dbvc_cc_warning_code);
-                if ($dbvc_cc_warning_code !== '') {
-                    $dbvc_cc_field_context_reasons[] = $dbvc_cc_warning_code;
-                }
-            }
-        }
-
-        $dbvc_cc_stale_reasons = $dbvc_cc_reasons;
-        $dbvc_cc_reasons = array_values(array_unique(array_merge($dbvc_cc_reasons, $dbvc_cc_field_context_reasons)));
-        $dbvc_cc_field_context_degraded = ! empty($dbvc_cc_field_context['degraded']) || ! empty($dbvc_cc_field_context_reasons);
+        $dbvc_cc_reasons = array_values(array_unique($dbvc_cc_reasons));
 
         return [
-            'stale' => ! empty($dbvc_cc_stale_reasons),
+            'stale' => ! empty($dbvc_cc_reasons),
             'reasons' => $dbvc_cc_reasons,
             'section_stale' => $dbvc_cc_section_stale,
             'media_stale' => $dbvc_cc_media_stale,
             'mapping_decision_outdated' => $dbvc_cc_mapping_decision_outdated,
             'media_decision_outdated' => $dbvc_cc_media_decision_outdated,
-            'degraded' => $dbvc_cc_field_context_degraded,
-            'blocked' => ! empty($dbvc_cc_field_context['blocked']),
-            'field_context' => $dbvc_cc_field_context,
         ];
     }
 
@@ -922,59 +888,6 @@ final class DBVC_CC_Workbench_Service
         }
 
         return '';
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function dbvc_cc_get_field_context_health()
-    {
-        if (is_array($this->field_context_health_cache)) {
-            return $this->field_context_health_cache;
-        }
-
-        $provider_service = DBVC_CC_Field_Context_Provider_Service::get_instance();
-        $index = $provider_service->get_mapping_index();
-        $policy = isset($index['consumer_policy']) && is_array($index['consumer_policy'])
-            ? $index['consumer_policy']
-            : $provider_service->get_consumer_policy();
-        $provider = isset($index['provider']) && is_array($index['provider']) ? $index['provider'] : [];
-        $catalog_meta = isset($index['catalog_meta']) && is_array($index['catalog_meta']) ? $index['catalog_meta'] : [];
-        $diagnostics = isset($index['diagnostics']) && is_array($index['diagnostics']) ? $index['diagnostics'] : [];
-        $warnings = isset($diagnostics['warnings']) && is_array($diagnostics['warnings']) ? $diagnostics['warnings'] : [];
-        $warning_codes = [];
-
-        foreach ($warnings as $warning) {
-            if (! is_array($warning) || empty($warning['code'])) {
-                continue;
-            }
-
-            $warning_code = sanitize_key((string) $warning['code']);
-            if ($warning_code !== '') {
-                $warning_codes[] = $warning_code;
-            }
-        }
-
-        $integration_mode = isset($policy['integration_mode']) ? sanitize_key((string) $policy['integration_mode']) : 'auto';
-        $status = $integration_mode === 'off'
-            ? 'disabled'
-            : (isset($catalog_meta['status']) ? sanitize_key((string) $catalog_meta['status']) : 'missing');
-
-        $this->field_context_health_cache = [
-            'integration_mode' => $integration_mode,
-            'available' => ! empty($index['available']),
-            'transport' => isset($index['transport']) ? sanitize_key((string) $index['transport']) : 'local',
-            'remote' => isset($index['remote']) && is_array($index['remote']) ? $index['remote'] : [],
-            'degraded' => ! empty($diagnostics['degraded']),
-            'blocked' => ! empty($diagnostics['blocked']),
-            'status' => $status,
-            'source_hash' => isset($catalog_meta['source_hash']) ? sanitize_text_field((string) $catalog_meta['source_hash']) : '',
-            'contract_version' => isset($provider['contract_version']) ? absint($provider['contract_version']) : 0,
-            'warning_codes' => array_values(array_unique($warning_codes)),
-            'warnings' => $warnings,
-        ];
-
-        return $this->field_context_health_cache;
     }
 
     /**

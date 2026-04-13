@@ -133,7 +133,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'resolutionReason' => isset($target_transform['resolution_preview']['reason']) ? (string) $target_transform['resolution_preview']['reason'] : '',
                 'stale' => $stale,
                 'manualOverrideCount' => $manual_override_count,
-                'fieldContext' => $this->build_field_context_artifact_meta($recommendations),
                 'counts' => [
                     'recommendations' => count($field_recommendations),
                     'mediaRecommendations' => count($media_recommendations),
@@ -223,7 +222,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'source_url' => $page_context['source_url'],
             'generated_at' => current_time('c'),
             'recommendation_fingerprint' => $this->compute_fingerprint($recommendations),
-            'field_context' => $this->build_field_context_artifact_meta($recommendations),
             'decision_status' => 'reviewed',
             'target_object_decision' => $this->sanitize_target_object_decision(
                 isset($payload['targetObject']) && is_array($payload['targetObject']) ? $payload['targetObject'] : [],
@@ -260,7 +258,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'page_id' => $page_context['page_id'],
             'source_url' => $page_context['source_url'],
             'generated_at' => current_time('c'),
-            'field_context' => $this->build_field_context_artifact_meta($recommendations),
             'decision_status' => 'reviewed',
             'approved' => $this->sanitize_decision_selection(
                 isset($payload['approvedMediaIds']) ? $payload['approvedMediaIds'] : [],
@@ -594,11 +591,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         return [
             'decisionStatus' => $decision_status,
             'artifactRefs' => $artifact_relatives,
-            'fieldContext' => $this->build_field_context_artifact_meta(
-                isset($review_context['mapping_recommendations']) && is_array($review_context['mapping_recommendations'])
-                    ? $review_context['mapping_recommendations']
-                    : []
-            ),
             'trace' => [
                 'contextCreation' => isset($review_context['context_creation']['trace']) ? $review_context['context_creation']['trace'] : [],
                 'classification' => isset($review_context['initial_classification']['trace']) ? $review_context['initial_classification']['trace'] : [],
@@ -627,7 +619,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'source_url' => $page_context['source_url'],
             'generated_at' => '',
             'recommendation_fingerprint' => $this->compute_fingerprint($recommendations),
-            'field_context' => $this->build_field_context_artifact_meta($recommendations),
             'decision_status' => 'pending',
             'target_object_decision' => [
                 'decision_mode' => 'accept_recommended',
@@ -665,7 +656,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'page_id' => $page_context['page_id'],
             'source_url' => $page_context['source_url'],
             'generated_at' => '',
-            'field_context' => [],
             'decision_status' => 'pending',
             'approved' => [],
             'overrides' => [],
@@ -932,9 +922,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             $items[$recommendation_id] = [
                 'recommendation_id' => $recommendation_id,
                 'target_ref' => isset($index[$recommendation_id]['target_ref']) ? (string) $index[$recommendation_id]['target_ref'] : '',
-                'matched_by' => isset($index[$recommendation_id]['matched_by']) ? sanitize_key((string) $index[$recommendation_id]['matched_by']) : '',
-                'resolved_from' => isset($index[$recommendation_id]['resolved_from']) ? sanitize_key((string) $index[$recommendation_id]['resolved_from']) : '',
-                'field_context_trace' => $this->build_decision_field_context_trace($index[$recommendation_id]),
             ];
         }
 
@@ -977,9 +964,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'source_ref' => isset($index[$recommendation_id]['source_refs']) && is_array($index[$recommendation_id]['source_refs'])
                     ? array_values($index[$recommendation_id]['source_refs'])
                     : [],
-                'matched_by' => isset($index[$recommendation_id]['matched_by']) ? sanitize_key((string) $index[$recommendation_id]['matched_by']) : '',
-                'resolved_from' => isset($index[$recommendation_id]['resolved_from']) ? sanitize_key((string) $index[$recommendation_id]['resolved_from']) : '',
-                'field_context_trace' => $this->build_decision_field_context_trace($index[$recommendation_id]),
             ];
         }
 
@@ -1171,9 +1155,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'source_ref' => isset($index[$recommendation_id]['source_refs']) && is_array($index[$recommendation_id]['source_refs'])
                     ? array_values($index[$recommendation_id]['source_refs'])
                     : [],
-                'matched_by' => isset($index[$recommendation_id]['matched_by']) ? sanitize_key((string) $index[$recommendation_id]['matched_by']) : '',
-                'resolved_from' => isset($index[$recommendation_id]['resolved_from']) ? sanitize_key((string) $index[$recommendation_id]['resolved_from']) : '',
-                'field_context_trace' => $this->build_decision_field_context_trace($index[$recommendation_id]),
             ];
         }
 
@@ -1272,50 +1253,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'display_name' => $user instanceof WP_User ? (string) $user->display_name : '',
             'reviewed_at' => current_time('c'),
             'reviewer_note' => $reviewer_note,
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $recommendations
-     * @return array<string, mixed>
-     */
-    private function build_field_context_artifact_meta(array $recommendations)
-    {
-        $field_context = isset($recommendations['field_context']) && is_array($recommendations['field_context'])
-            ? $recommendations['field_context']
-            : [];
-
-        return [
-            'available' => ! empty($field_context['available']),
-            'profile' => isset($field_context['profile']) ? sanitize_key((string) $field_context['profile']) : 'mapping',
-            'transport' => isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : 'local',
-            'provider_contract_version' => isset($field_context['provider_contract_version']) ? absint($field_context['provider_contract_version']) : 0,
-            'source_hash' => isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : '',
-            'status' => isset($field_context['status']) ? sanitize_key((string) $field_context['status']) : '',
-            'signature' => isset($field_context['signature']) ? sanitize_text_field((string) $field_context['signature']) : '',
-            'hints_enabled' => ! empty($field_context['hints_enabled']),
-            'consumer_policy' => isset($field_context['consumer_policy']) && is_array($field_context['consumer_policy']) ? $field_context['consumer_policy'] : [],
-            'diagnostics' => isset($field_context['diagnostics']) && is_array($field_context['diagnostics']) ? $field_context['diagnostics'] : [],
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $recommendation
-     * @return array<string, mixed>
-     */
-    private function build_decision_field_context_trace(array $recommendation)
-    {
-        $trace = isset($recommendation['field_context_trace']) && is_array($recommendation['field_context_trace'])
-            ? $recommendation['field_context_trace']
-            : [];
-
-        return [
-            'matched_by' => isset($trace['matched_by']) ? sanitize_key((string) $trace['matched_by']) : '',
-            'resolved_from' => isset($trace['resolved_from']) ? sanitize_key((string) $trace['resolved_from']) : '',
-            'status_code' => isset($trace['status_code']) ? sanitize_key((string) $trace['status_code']) : '',
-            'provider_contract_version' => isset($trace['provider_contract_version']) ? absint($trace['provider_contract_version']) : 0,
-            'source_hash' => isset($trace['source_hash']) ? sanitize_text_field((string) $trace['source_hash']) : '',
-            'transport' => isset($trace['transport']) ? sanitize_key((string) $trace['transport']) : '',
         ];
     }
 

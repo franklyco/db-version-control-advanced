@@ -10,6 +10,8 @@ Open the **Tools** pill above the All Entities table to expand the toolbox. The 
 
 Admins can extend masking beyond postmeta by checking **Post fields to mask** within the Config → Masking tab. Selected fields (e.g., `post_date`, `post_modified`, `post_author`) appear alongside masked meta in the Tools panel. Decisions against these fields behave exactly like meta masks—ignored fields stop blocking reviews, “auto-accept + suppress” preserves local values during imports, and overrides let reviewers swap in sanitized timestamps or identifiers.
 
+The legacy **Full Export** screen also includes a combined manual-export mode that removes the saved masking defaults and eligible configured root post fields in the same run. Identity-critical fields such as `vf_object_uid` stay protected during export-time masking unless a developer explicitly overrides that safeguard.
+
 ## Tooltip Copy & Links
 
 Each tooltip must include concise help text plus a link to this document (or the published equivalent) so reviewers can dig deeper without cluttering the UI.
@@ -33,7 +35,7 @@ Each tooltip must include concise help text plus a link to this document (or the
 
 ## Behavior Notes
 
-- Export-time masking continues to run exactly as it does today; the new button simply mirrors those rules inside the live review experience.
+- Live proposal masking still mirrors the export masking rules inside the review experience, and the legacy Full Export screen now exposes an explicit combined mode for saved defaults plus eligible root post fields.
 - After any masking action finishes, the UI must re-query entity badges/counters so Needs Review and Unresolved meta indicators reflect the updated state.
 - Post field selections use the same suppression/override pipeline as meta. Suppressed post fields skip importer writes so local dates/authors remain unchanged, while overrides inject reviewer-provided values when the bundle applies.
 

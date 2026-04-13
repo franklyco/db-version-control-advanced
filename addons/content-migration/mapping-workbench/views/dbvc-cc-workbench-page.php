@@ -33,7 +33,6 @@ if (! defined('ABSPATH')) {
     </p>
 
     <p id="dbvc-cc-workbench-status" aria-live="polite"></p>
-    <p id="dbvc-cc-workbench-field-context-note" class="dbvc-cc-field-context-note dbvc-cc-hidden" aria-live="polite"></p>
     <p id="dbvc-cc-workbench-ai-refresh-note" class="dbvc-cc-ai-refresh-note dbvc-cc-hidden" aria-live="polite"></p>
 
     <div class="dbvc-cc-workbench-layout">
@@ -127,7 +126,6 @@ if (! defined('ABSPATH')) {
 
         <section class="dbvc-cc-mapping-summary" aria-label="<?php esc_attr_e('Mapping Summary', 'dbvc'); ?>">
             <p><strong><?php esc_html_e('Catalog', 'dbvc'); ?>:</strong> <span id="dbvc-cc-mapping-catalog-summary">n/a</span></p>
-            <p><strong><?php esc_html_e('Field Context', 'dbvc'); ?>:</strong> <span id="dbvc-cc-mapping-field-context-summary">n/a</span></p>
             <p><strong><?php esc_html_e('Section Candidates', 'dbvc'); ?>:</strong> <span id="dbvc-cc-mapping-sections-summary">n/a</span></p>
             <p><strong><?php esc_html_e('Media Candidates', 'dbvc'); ?>:</strong> <span id="dbvc-cc-mapping-media-summary">n/a</span></p>
             <p><strong><?php esc_html_e('Mapping Decision', 'dbvc'); ?>:</strong> <span id="dbvc-cc-mapping-decision-summary">n/a</span></p>

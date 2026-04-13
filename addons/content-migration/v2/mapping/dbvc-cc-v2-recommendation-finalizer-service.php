@@ -53,7 +53,6 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
             ? $target_transform_artifact['resolution_preview']
             : [];
         $transform_lookup = $this->build_transform_lookup($target_transform_artifact);
-        $field_context = $this->extract_field_context_meta($mapping_index_artifact);
 
         $recommendations = $this->build_recommendations($mapping_index_artifact, $transform_lookup);
         $media_recommendations = $this->build_media_recommendations($media_candidates_artifact, $transform_lookup);
@@ -68,7 +67,6 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
             'page_id' => isset($raw_artifact['page_id']) ? (string) $raw_artifact['page_id'] : '',
             'source_url' => isset($raw_artifact['source_url']) ? (string) $raw_artifact['source_url'] : '',
             'generated_at' => current_time('c'),
-            'field_context' => $field_context,
             'classification' => [
                 'primary' => $primary,
                 'alternates' => array_values($alternates),
@@ -96,8 +94,6 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'pattern_memory_ref' => isset($args['pattern_memory_ref']) ? (string) $args['pattern_memory_ref'] : '',
                 'pattern_group_count' => isset($pattern_memory['pattern_groups']) && is_array($pattern_memory['pattern_groups']) ? count($pattern_memory['pattern_groups']) : 0,
                 'source_fingerprint' => isset($raw_artifact['content_hash']) ? (string) $raw_artifact['content_hash'] : '',
-                'field_context_signature' => isset($field_context['signature']) ? (string) $field_context['signature'] : '',
-                'field_context_source_hash' => isset($field_context['source_hash']) ? (string) $field_context['source_hash'] : '',
                 'stage_budget' => DBVC_CC_V2_Contracts::get_ai_stage_budget(DBVC_CC_V2_Contracts::AI_STAGE_RECOMMENDATION_FINALIZATION),
             ],
         ];
@@ -179,9 +175,6 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'candidate_group' => isset($content_item['candidate_group']) ? (string) $content_item['candidate_group'] : '',
                 'context_tag' => isset($content_item['context_tag']) ? (string) $content_item['context_tag'] : '',
                 'pattern_key' => isset($candidate['pattern_key']) ? (string) $candidate['pattern_key'] : '',
-                'matched_by' => isset($candidate['matched_by']) ? sanitize_key((string) $candidate['matched_by']) : '',
-                'resolved_from' => isset($candidate['resolved_from']) ? sanitize_key((string) $candidate['resolved_from']) : '',
-                'field_context_trace' => $this->build_field_context_trace($candidate, $mapping_index_artifact),
             ];
         }
 
@@ -235,9 +228,6 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'media_kind' => isset($media_item['media_kind']) ? (string) $media_item['media_kind'] : '',
                 'source_section_id' => isset($media_item['source_section_id']) ? (string) $media_item['source_section_id'] : '',
                 'role_candidates' => isset($media_item['role_candidates']) && is_array($media_item['role_candidates']) ? array_values($media_item['role_candidates']) : [],
-                'matched_by' => isset($candidate['matched_by']) ? sanitize_key((string) $candidate['matched_by']) : '',
-                'resolved_from' => isset($candidate['resolved_from']) ? sanitize_key((string) $candidate['resolved_from']) : '',
-                'field_context_trace' => $this->build_field_context_trace($candidate, $mapping_index_artifact),
             ];
         }
 
@@ -457,54 +447,5 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
     private function target_ref_is_repeatable($target_ref)
     {
         return $target_ref === 'core:post_content' || strpos((string) $target_ref, 'taxonomy:') === 0;
-    }
-
-    /**
-     * @param array<string, mixed> $mapping_index_artifact
-     * @return array<string, mixed>
-     */
-    private function extract_field_context_meta(array $mapping_index_artifact)
-    {
-        $field_context = isset($mapping_index_artifact['field_context']) && is_array($mapping_index_artifact['field_context'])
-            ? $mapping_index_artifact['field_context']
-            : [];
-
-        return [
-            'available' => ! empty($field_context['available']),
-            'profile' => isset($field_context['profile']) ? sanitize_key((string) $field_context['profile']) : 'mapping',
-            'transport' => isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : 'local',
-            'provider_contract_version' => isset($field_context['provider_contract_version']) ? absint($field_context['provider_contract_version']) : 0,
-            'source_hash' => isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : '',
-            'status' => isset($field_context['status']) ? sanitize_key((string) $field_context['status']) : '',
-            'signature' => isset($field_context['signature']) ? sanitize_text_field((string) $field_context['signature']) : '',
-            'hints_enabled' => ! empty($field_context['hints_enabled']),
-            'consumer_policy' => isset($field_context['consumer_policy']) && is_array($field_context['consumer_policy']) ? $field_context['consumer_policy'] : [],
-            'diagnostics' => isset($field_context['diagnostics']) && is_array($field_context['diagnostics']) ? $field_context['diagnostics'] : [],
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $candidate
-     * @param array<string, mixed> $mapping_index_artifact
-     * @return array<string, mixed>
-     */
-    private function build_field_context_trace(array $candidate, array $mapping_index_artifact)
-    {
-        $field_context = $this->extract_field_context_meta($mapping_index_artifact);
-
-        return [
-            'matched_by' => isset($candidate['matched_by']) ? sanitize_key((string) $candidate['matched_by']) : '',
-            'resolved_from' => isset($candidate['resolved_from']) ? sanitize_key((string) $candidate['resolved_from']) : '',
-            'status_code' => isset($candidate['field_context_status']) ? sanitize_key((string) $candidate['field_context_status']) : '',
-            'provider_contract_version' => isset($candidate['provider_contract_version']) && absint($candidate['provider_contract_version']) > 0
-                ? absint($candidate['provider_contract_version'])
-                : (isset($field_context['provider_contract_version']) ? absint($field_context['provider_contract_version']) : 0),
-            'source_hash' => isset($candidate['source_hash']) && (string) $candidate['source_hash'] !== ''
-                ? sanitize_text_field((string) $candidate['source_hash'])
-                : (isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : ''),
-            'transport' => isset($candidate['transport']) && (string) $candidate['transport'] !== ''
-                ? sanitize_key((string) $candidate['transport'])
-                : (isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : ''),
-        ];
     }
 }

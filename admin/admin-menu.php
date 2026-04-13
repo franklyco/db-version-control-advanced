@@ -39,5 +39,14 @@ function dbvc_register_admin_menu()
 		'dbvc-entity-editor',
 		'dbvc_render_entity_editor_page'
 	);
+
+	add_submenu_page(
+		'dbvc-export',
+		esc_html__('Tools', 'dbvc'),
+		esc_html__('Tools', 'dbvc'),
+		'manage_options',
+		'dbvc-tools',
+		['DBVC_AI_Tools_Page', 'render_page']
+	);
 }
 add_action('admin_menu', 'dbvc_register_admin_menu');

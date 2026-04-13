@@ -34,11 +34,18 @@
    - Support preview/dry-run summaries for options changes before apply.
    - Add per-option-group toggles in UI + CLI parity for scripted imports/exports.
    - Preserve safe defaults for sensitive/core options while allowing explicit overrides.
-6. User documentation library integration (`DBVC_USER_DOCUMENTATION_LIBRARY`)
+6. Cross-site entity packet copy/paste between DBVC-enabled sites
+   - Let operators select one or many posts/CPTs or terms from Entity Editor and package them for transfer to another site that has DBVC and the relevant addon/runtime enabled.
+   - Expand selected entities into a portable packet that carries full post payloads plus required taxonomy terms, featured images, ACF/media references, and dependency metadata needed to recreate the content safely on the destination site.
+   - Support destination-side paste/upload intake that can preview, import as net-new entities, or intentionally map collisions instead of blindly overwriting existing content.
+   - Prefer source-side bulk actions in the existing Entity Editor index plus a transfer/import drawer or wizard that hands off to the current DBVC review/apply pipeline; avoid adding a dedicated per-row table column, and add a new submenu only if the workflow later outgrows the existing Entity Editor surface.
+   - Preserve UID/history, duplicate detection, media resolution, and audit logging so copied entities behave like first-class DBVC imports instead of ad hoc JSON writes.
+   - Implementation guide: `docs/CROSS_SITE_ENTITY_PACKET_IMPLEMENTATION_GUIDE.md`
+7. User documentation library integration (`DBVC_USER_DOCUMENTATION_LIBRARY`)
    - Adopt `docs/DBVC_USER_DOCUMENTATION_LIBRARY.md` as the seed source for user-facing operational docs.
    - Add an in-plugin documentation/library surface that can render and organize user guides.
    - Wire doc update workflow into release/backlog cadence so behavior notes stay current with implementation.
-7. Evaluate and test a dedicated Firecrawl/Firebase agent skill
+8. Evaluate and test a dedicated Firecrawl/Firebase agent skill
    - Confirm product naming/scope before implementation; the provided bootstrap command targets `firecrawl-cli`, not Firebase-native tooling.
    - Queue install/init for a later pass using `npx -y firecrawl-cli@latest init --all --browser`.
    - Verify the generated skill/tooling can scrape a page to clean Markdown.
@@ -46,13 +53,13 @@
    - Verify full-site crawl support.
    - Verify full-domain map support.
    - Document setup prerequisites, generated files, auth/config needs, and whether it should become a first-class Codex skill in this repo.
-
 ## In Progress
 - Triage and stabilize import/export edge cases across posts, terms, and media.
 - Temporary 5-minute FTP upload window toggle in Configure > Import Settings (still requires additional testing).
 - Complete manual QA for the new targeted upload immediate-import flow in the legacy upload area (`docs/legacy-upload-immediate-import-plan.md`).
 
 ## Shipped (Recent)
+- Entity Editor `New From Raw JSON` intake for DBVC post/CPT and term payloads, including preview, canonical sync write, staged-only mode, create-or-update mode, and direct handoff back into the normal Entity Editor flow (`docs/ENTITY_EDITOR_ENHANCEMENTS.md`).
 - Targeted upload immediate import for post JSON, including upload-area toggle, targeted post-only import helper, and combined routing/import report output.
 - Smart routing for flat JSON uploads into the sync folder.
 - Import/export guards to prevent unintended sync folder wipes.

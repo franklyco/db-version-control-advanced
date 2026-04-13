@@ -79,6 +79,29 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/BundleManager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Resolver.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Reconciler.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Official/Collections.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Settings.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Storage.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/AcfDiscoveryService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/ObservedShapeService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SchemaDiscoveryService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SiteFingerprintService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/RulesService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/OpenAiModelCatalogService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/TemplateBuilder.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SampleDocBuilder.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/PackageDocBuilder.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SamplePackageBuilder.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageDetector.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/IssueService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/PostLookupService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/ValidationReportFormatter.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/ImportReportFormatter.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageTranslator.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageValidator.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageImporter.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackagePostImportResolver.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/RawJsonIntakeService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Transfer/EntityPacketBuilder.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-export-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-import-router.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-entity-editor-indexer.php';
@@ -108,6 +131,7 @@ if (file_exists($dbvc_cc_addon_bootstrap)) {
 DBVC_Admin_App::init();
 DBVC_Entity_Editor_App::init();
 DBVC_Bricks_Addon::bootstrap();
+\Dbvc\AiPackage\OpenAiModelCatalogService::init();
 if (class_exists('DBVC_CC_Addon_Bootstrap')) {
 	DBVC_CC_Addon_Bootstrap::bootstrap();
 }
@@ -117,8 +141,16 @@ add_action('plugins_loaded', static function () {
 }, -1000);
 
 if (is_admin()) {
+	require_once DBVC_PLUGIN_PATH . 'admin/class-ai-intake-controller.php';
+	require_once DBVC_PLUGIN_PATH . 'admin/class-ai-tools-page.php';
 	require_once DBVC_PLUGIN_PATH . 'admin/admin-menu.php';
 	require_once DBVC_PLUGIN_PATH . 'admin/admin-page.php';
+	if (class_exists('DBVC_AI_Intake_Controller') && method_exists('DBVC_AI_Intake_Controller', 'init')) {
+		DBVC_AI_Intake_Controller::init();
+	}
+	if (class_exists('DBVC_AI_Tools_Page') && method_exists('DBVC_AI_Tools_Page', 'init')) {
+		DBVC_AI_Tools_Page::init();
+	}
 }
 
 DBVC_Database::init();

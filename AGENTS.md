@@ -81,6 +81,13 @@ Unless the user explicitly asks otherwise, do not stage or clean up these recurr
 - `docs/ROADMAP.md`
 - `test-results/`
 
+## LocalWP Safety Boundary
+
+- Treat `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` and the `dbvc-codexchanges.local` site as the only allowed LocalWP environment for commands, browser QA, file writes, or destructive runtime mutations in this repo unless the user explicitly broadens scope.
+- Do not run commands that touch other LocalWP site directories, other LocalWP databases, shared LocalWP infrastructure, or the LocalWP desktop app itself.
+- For destructive browser or runtime QA, prefer disposable fixture data inside `dbvc-codexchanges.local` and keep command cwd/path scope pinned to `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges`.
+- If a requested action could affect another LocalWP site or the LocalWP app, stop and ask the user before proceeding.
+
 ## UI Expectations
 
 Keep admin UI clean and intuitive.
@@ -106,8 +113,14 @@ Report back with:
 - Placeholder code presented as complete
 - Editing unrelated docs or modules without need
 
+## Repomix
 
-## vexp <!-- vexp v1.2.30 -->
+- Repomix is a complement here, not a replacement for `AGENTS.md`, `README.md`, `handoff.md`, or the Content Collector V2 resume pack.
+- Repo config lives in `repomix.config.json`, `.repomixignore`, and `repomix-instruction.md`; upkeep notes live in `docs/repomix-preflight.md` and `docs/repomix-maintenance.md`.
+- Refresh the Repomix files when top-level structure, directive docs, or major noise folders change so packed context stays accurate and low-noise.
+
+
+## vexp <!-- vexp v1.3.11 -->
 
 **MANDATORY: use `run_pipeline` — do NOT grep or glob the codebase.**
 vexp returns pre-indexed, graph-ranked context in a single call.

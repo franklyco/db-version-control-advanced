@@ -286,12 +286,19 @@ public static function ensure_directory_security($path)
 	}
 
 	/**
-	 * Export a single term to JSON.
+	 * Build the normalized export payload for a term.
 	 *
-	 * @since 1.3.0
+	 * @param \WP_Term $term
+	 * @param string   $taxonomy
+	 * @param mixed    $mode
+	 * @return array|\WP_Error
 	 */
-	protected static function export_term($term, $taxonomy, $mode)
+	private static function prepare_term_export($term, $taxonomy, $mode)
 	{
+		if (! $term || is_wp_error($term) || ! isset($term->term_id)) {
+			return new \WP_Error('dbvc_invalid_term', __('Invalid term supplied for export.', 'dbvc'));
+		}
+
 		$include_meta   = get_option('dbvc_tax_export_meta', '1') === '1';
 		$include_parent = get_option('dbvc_tax_export_parent_slugs', '1') === '1';
 
@@ -352,32 +359,108 @@ public static function ensure_directory_security($path)
 		}
 
 		$filename = self::resolve_filename_components($term, $taxonomy, $mode);
-		$path     = self::get_taxonomy_sync_path($taxonomy);
-
-		if (! is_dir($path)) {
-			if (! wp_mkdir_p($path)) {
-				error_log('[DBVC] Failed to create taxonomy directory: ' . $path);
-				return;
-			}
+		$json     = wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+		if ($json === false) {
+			return new \WP_Error('dbvc_term_encode_failed', __('Failed to encode taxonomy term JSON.', 'dbvc'));
 		}
+
+		return [
+			'term'     => $term,
+			'taxonomy' => $taxonomy,
+			'filename' => $filename['filename'],
+			'data'     => $data,
+			'json'     => $json,
+		];
+	}
+
+	/**
+	 * Write a prepared term export payload to disk.
+	 *
+	 * @param array  $prepared
+	 * @param string $path
+	 * @return bool
+	 */
+	private static function write_term_export(array $prepared, string $path): bool
+	{
+		if (! is_dir($path) && ! wp_mkdir_p($path)) {
+			error_log('[DBVC] Failed to create taxonomy directory: ' . $path);
+			return false;
+		}
+
 		self::ensure_directory_security($path);
 
-		$file_path = $path . $filename['filename'];
-		$file_path = apply_filters('dbvc_export_term_file_path', $file_path, $term, $taxonomy);
+		$file_path = trailingslashit($path) . $prepared['filename'];
+		$file_path = apply_filters('dbvc_export_term_file_path', $file_path, $prepared['term'], $prepared['taxonomy']);
 
 		if (! dbvc_is_safe_file_path($file_path)) {
 			error_log('[DBVC] Unsafe taxonomy file path: ' . $file_path);
+			return false;
+		}
+
+		if (false === file_put_contents($file_path, $prepared['json'])) {
+			error_log('[DBVC] Failed to write taxonomy term export: ' . $file_path);
+			return false;
+		}
+
+		do_action('dbvc_after_export_term', $prepared['term'], $prepared['taxonomy'], $file_path, $prepared['data']);
+		return true;
+	}
+
+	/**
+	 * Export a single term to JSON.
+	 *
+	 * @since 1.3.0
+	 */
+	protected static function export_term($term, $taxonomy, $mode)
+	{
+		$prepared = self::prepare_term_export($term, $taxonomy, $mode);
+		if (is_wp_error($prepared)) {
+			error_log('[DBVC] ' . $prepared->get_error_message());
 			return;
 		}
 
-		$json = wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-		if ($json === false) {
-			error_log('[DBVC] Failed to encode taxonomy term: ' . $term->term_id);
-			return;
+		$path = self::get_taxonomy_sync_path($taxonomy);
+		self::write_term_export($prepared, $path);
+	}
+
+	/**
+	 * Export a single term into an arbitrary staging directory.
+	 *
+	 * @param int    $term_id
+	 * @param string $taxonomy
+	 * @param string $base_path
+	 * @param mixed  $mode
+	 * @return array|\WP_Error
+	 */
+	public static function stage_term_export($term_id, $taxonomy, string $base_path, $mode = null)
+	{
+		$term_id   = absint($term_id);
+		$taxonomy  = sanitize_key($taxonomy);
+		$term      = get_term($term_id, $taxonomy);
+
+		if (! $term || is_wp_error($term)) {
+			return new \WP_Error('dbvc_invalid_term', __('Unable to load the term for staged export.', 'dbvc'));
 		}
 
-		file_put_contents($file_path, $json);
-		do_action('dbvc_after_export_term', $term, $taxonomy, $file_path, $data);
+		$prepared = self::prepare_term_export($term, $taxonomy, $mode);
+		if (is_wp_error($prepared)) {
+			return $prepared;
+		}
+
+		$target_dir = trailingslashit($base_path) . 'taxonomy/' . $taxonomy;
+		if (! self::write_term_export($prepared, $target_dir)) {
+			return new \WP_Error('dbvc_term_write_failed', __('Failed to write staged term export.', 'dbvc'));
+		}
+
+		return [
+			'entity_type'   => 'term',
+			'term_id'       => $term_id,
+			'taxonomy'      => $taxonomy,
+			'relative_path' => 'taxonomy/' . $taxonomy . '/' . $prepared['filename'],
+			'file_path'     => trailingslashit($target_dir) . $prepared['filename'],
+			'json_content'  => $prepared['json'],
+			'decoded'       => $prepared['data'],
+		];
 	}
 
 	/**
@@ -672,15 +755,29 @@ public static function ensure_directory_security($path)
 	 */
 	protected static function import_term_from_file($file_path, $taxonomy)
 	{
+		$result = self::import_term_json_file($file_path, $taxonomy);
+		if (is_wp_error($result)) {
+			error_log('[DBVC] ' . $result->get_error_message());
+		}
+	}
+
+	/**
+	 * Import a single term JSON file and return the result.
+	 *
+	 * @param string $file_path
+	 * @param string $taxonomy
+	 * @return array|\WP_Error
+	 */
+	public static function import_term_json_file($file_path, $taxonomy)
+	{
 		$contents = file_get_contents($file_path);
 		if ($contents === false) {
-			return;
+			return new \WP_Error('dbvc_term_read_failed', __('Unable to read the taxonomy JSON file.', 'dbvc'));
 		}
 
 		$data = json_decode($contents, true);
 		if (! is_array($data) || empty($data['slug'])) {
-			error_log('[DBVC] Invalid taxonomy JSON: ' . $file_path);
-			return;
+			return new \WP_Error('dbvc_term_invalid_json', __('Invalid taxonomy JSON payload.', 'dbvc'));
 		}
 
 		$incoming_uid = isset($data['vf_object_uid']) ? trim((string) $data['vf_object_uid']) : '';
@@ -713,8 +810,7 @@ public static function ensure_directory_security($path)
 		} else {
 			$insert = wp_insert_term($name, $taxonomy, ['slug' => $slug] + $args);
 			if (is_wp_error($insert)) {
-				error_log('[DBVC] Failed to insert term ' . $slug . ' in ' . $taxonomy . ': ' . $insert->get_error_message());
-				return;
+				return new \WP_Error('dbvc_term_insert_failed', $insert->get_error_message());
 			}
 			$term_id = $insert['term_id'];
 			$created = true;
@@ -767,5 +863,14 @@ public static function ensure_directory_security($path)
 		}
 
 		do_action('dbvc_after_import_term', $term_id, $taxonomy, $data);
+
+		return [
+			'status'        => $created ? 'created' : 'updated',
+			'term_id'       => (int) $term_id,
+			'taxonomy'      => (string) $taxonomy,
+			'created'       => (bool) $created,
+			'vf_object_uid' => (string) $effective_uid,
+			'data'          => $data,
+		];
 	}
 }

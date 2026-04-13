@@ -83,6 +83,8 @@ Do not reopen these decisions unless a concrete implementation blocker appears.
 - deterministic historical-review browser QA should also stay on the existing `POST /runs` transport
 - when historical review browser validation needs stable source-run data, use a dev-only synthetic fixture domain on the normal create-run contract instead of adding a second historical-review QA route
 - the deterministic replay helper may clone page artifacts into a true same-URL overwrite chain for QA, but that behavior must remain development-only behind the existing recovery-fixture availability gate
+- deterministic historical package execution-observability QA should not fire a real import by default
+- when LocalWP lacks real historical import history, use a current-user-scoped dev-only package execute fixture overlay on the existing package surface instead of mutating stored package artifacts or triggering `POST /runs/{run_id}/execute`
 
 ## Historical Page Artifact Preservation
 
@@ -91,6 +93,18 @@ Do not reopen these decisions unless a concrete implementation blocker appears.
 - historical run readers should prefer the current page artifact only when its `journey_id` still matches the requested run
 - when the current same-URL artifact belongs to a newer run, historical readers should fall back to the preserved `_runs/{run_id}/` copy before treating that artifact as missing
 - historical review and rerun writes should target the preserved `_runs/{run_id}/` page artifact path whenever the current same-URL page belongs to a newer run
+
+## Historical Package Conflict Filtering
+
+- package QA and readiness should evaluate recommendation conflicts against the requested run's saved decision artifacts, not against the raw `recommendations.conflicts` list alone
+- a conflict group remains active only while multiple active mappings survive or any pending/unresolved recommendation in that group still requires review
+- once saved `approve`, `reject`, or `override` decisions collapse a conflict group to one active mapping with the rest rejected, that group should no longer block historical package preflight or execute readiness
+
+## Historical Execute Boundary
+
+- real historical execute route fidelity is already sufficient on `dbvc-codexchanges.local`; rollback-specific historical execute QA is not required there by default
+- `dbvc-codexchanges.local` remains the approved route-fidelity baseline only unless the user explicitly designates a different disposable target
+- do not broaden to another LocalWP environment, disable guardrails, or reopen rollback-specific execute scope unless the user explicitly asks for that follow-up
 
 ## Delivery Policy
 

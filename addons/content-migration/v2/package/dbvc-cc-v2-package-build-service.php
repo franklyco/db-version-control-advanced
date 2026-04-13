@@ -77,7 +77,7 @@ final class DBVC_CC_V2_Package_Build_Service
             );
         }
 
-        return [
+        $payload = [
             'runId' => $run_context['runId'],
             'domain' => $run_context['domain'],
             'generatedAt' => current_time('c'),
@@ -87,6 +87,12 @@ final class DBVC_CC_V2_Package_Build_Service
             'selectedPackageId' => $selected_package_id,
             'selectedPackage' => $selected_package,
         ];
+
+        return DBVC_CC_V2_Package_Execution_QA_Fixture_Service::get_instance()->apply_to_package_surface(
+            $run_context['runId'],
+            $selected_package_id,
+            $payload
+        );
     }
 
     /**

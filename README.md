@@ -111,24 +111,15 @@ CLI commands continue to export menus and options automatically, respect chunked
 - **WP-CLI** – Use `--debug` to inspect chunking or diff baseline calculations; exported snapshot IDs are printed for traceability.
 - **Legacy proposals** – Term snapshots ship in 1.3.4+. Re-upload older proposal zips (or call `DBVC_Snapshot_Manager::capture_for_proposal()` for each proposal ID) so reopened reviews compare taxonomy changes against the live site instead of treating everything as new.
 
-### Vexp Agent Context Repair
+### Playwright Sandbox Note
 
-This repo expects agents to use `vexp` first for indexed codebase context. If `vexp` breaks in a future session, use this repair path:
+On this machine, a bare Playwright Chromium launch can fail under the Codex shell sandbox with `signal=SIGTRAP` before any repo test code runs, while the same launch succeeds immediately outside the sandbox.
 
-```bash
-which vexp
-vexp --version
-npm install -g vexp-cli@1.2.29
-ln -sfn "/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main" /tmp/dbvc-vexp-root
-cd /tmp/dbvc-vexp-root && vexp index --status
-cd /tmp/dbvc-vexp-root && vexp daemon-cmd status
-cd /tmp/dbvc-vexp-root && vexp capsule "your task" --max-tokens 2400
-```
-
-Notes:
-- On macOS, the full repo path can make `.vexp/daemon.sock` exceed the UNIX socket path limit and produce `Socket server error: path must be shorter than SUN_LEN`.
-- The `/tmp/dbvc-vexp-root` symlink shortens the effective workspace path and is the quickest fix.
-- If a coding-agent session still does not expose native `mcp__vexp__*` tools after the CLI is repaired, use CLI-driven `vexp` commands from `/tmp/dbvc-vexp-root` or restart the session so MCP tools can re-register.
+Practical guidance:
+- treat sandbox-only Chromium launch crashes as an environment boundary, not a V2 product regression
+- run CLI browser QA from the repo's Playwright npm scripts outside the Codex shell sandbox when browser launch is required
+- keep the command scope pinned to `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` and `dbvc-codexchanges.local`
+- if Chromium ever fails the same way outside the sandbox too, then investigate Playwright browser install, macOS permissions, or local Node version drift before changing spec code
 
 ## WP-CLI Usage
 

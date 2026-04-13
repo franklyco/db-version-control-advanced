@@ -44,6 +44,26 @@ final class DBVC_CC_V2_Package_REST_Controller
                 ],
             ]
         );
+
+        register_rest_route(
+            DBVC_CC_V2_Contracts::REST_NAMESPACE,
+            '/runs/(?P<run_id>[\w-]+)/package/qa/execution-observability-fixture',
+            [
+                'methods' => WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'set_execution_observability_fixture'],
+                'permission_callback' => [$this, 'qa_fixture_permissions_check'],
+                'args' => [
+                    'enabled' => [
+                        'required' => false,
+                        'sanitize_callback' => 'rest_sanitize_boolean',
+                    ],
+                    'packageId' => [
+                        'required' => false,
+                        'sanitize_callback' => 'sanitize_text_field',
+                    ],
+                ],
+            ]
+        );
     }
 
     /**
@@ -84,11 +104,86 @@ final class DBVC_CC_V2_Package_REST_Controller
     }
 
     /**
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response|WP_Error
+     */
+    public function set_execution_observability_fixture($request)
+    {
+        $params = $this->extract_request_params($request);
+        $run_id = sanitize_text_field((string) $request['run_id']);
+        $enabled = ! array_key_exists('enabled', $params) || ! empty($params['enabled']);
+        $service = DBVC_CC_V2_Package_Execution_QA_Fixture_Service::get_instance();
+
+        if (! $enabled) {
+            return rest_ensure_response(
+                $service->clear_fixture(
+                    $run_id,
+                    isset($params['packageId']) ? (string) $params['packageId'] : ''
+                )
+            );
+        }
+
+        $result = $service->seed_fixture(
+            $run_id,
+            [
+                'packageId' => isset($params['packageId']) ? $params['packageId'] : '',
+            ]
+        );
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return rest_ensure_response(
+            array_merge(
+                [
+                    'enabled' => true,
+                ],
+                $result
+            )
+        );
+    }
+
+    /**
      * @return bool
      */
     public function permissions_check()
     {
         return current_user_can(DBVC_CC_Contracts::ADMIN_CAPABILITY);
+    }
+
+    /**
+     * @return bool|WP_Error
+     */
+    public function qa_fixture_permissions_check()
+    {
+        if (! $this->permissions_check()) {
+            return false;
+        }
+
+        if (! DBVC_CC_V2_Package_Execution_QA_Fixture_Service::get_instance()->is_available()) {
+            return new WP_Error(
+                'dbvc_cc_v2_package_execution_fixture_unavailable',
+                __('The V2 package execution QA fixture helper is unavailable in this environment.', 'dbvc'),
+                ['status' => 403]
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return array<string, mixed>
+     */
+    private function extract_request_params($request)
+    {
+        $params = $request->get_params();
+        $json_params = $request->get_json_params();
+        if (is_array($json_params) && ! empty($json_params)) {
+            $params = array_merge($params, $json_params);
+        }
+
+        return is_array($params) ? $params : [];
     }
 
     /**

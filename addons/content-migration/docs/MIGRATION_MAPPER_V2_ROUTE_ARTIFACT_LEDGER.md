@@ -72,6 +72,10 @@ This file is intentionally short. The authoritative contract detail still lives 
   - the selected package can now carry additive `artifactActions` metadata for manifest, summary, QA, records, media, and ZIP actions
 - `POST /runs/{run_id}/package`
   - build a package for the run
+- `POST /runs/{run_id}/package/qa/execution-observability-fixture`
+  - dev-only, current-user-scoped helper for deterministic historical package execution-observability QA
+  - overlays one selected package's `workflowState.latestExecute`, `importHistory`, and matching `history[].workflowSummary` data without firing a real import or mutating stored package artifacts
+  - intended for local or PHPUnit validation only, with helper availability gated outside normal production runtime
 
 ### Package artifact download
 

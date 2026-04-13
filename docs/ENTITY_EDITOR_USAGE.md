@@ -13,6 +13,13 @@ Brief usage notes for the DBVC Entity Editor.
 
 ## Actions
 
+- `New From Raw JSON`
+  - Opens a dedicated intake modal from the Entity Editor toolbar.
+  - Accepts one DBVC post/CPT or term JSON payload.
+  - Previews detected kind, subtype, target sync path, live match state, warnings, and blocking reasons before commit.
+  - Supports `Create only`, `Create or Update Matched`, and `Stage JSON Only`.
+  - Can auto-open the resulting sync file in the normal Entity Editor modal after success.
+
 - `Save JSON`
   - Validates JSON.
   - Creates backup.

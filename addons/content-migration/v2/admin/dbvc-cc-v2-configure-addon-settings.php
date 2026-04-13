@@ -31,15 +31,6 @@ final class DBVC_CC_V2_Configure_Addon_Settings
                     DBVC_CC_V2_Contracts::OPTION_REQUIRE_MANUAL_REVIEW_FOR_OBJECT_FAMILY_CHANGE,
                 ],
             ],
-            'field_context' => [
-                'label' => __('Field Context Integration', 'dbvc'),
-                'fields' => [
-                    DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_INTEGRATION_MODE,
-                    DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_USE_LEGACY_FALLBACK,
-                    DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_WARN_ON_DEGRADED,
-                    DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_BLOCK_ON_MISSING,
-                ],
-            ],
         ];
     }
 
@@ -110,30 +101,6 @@ final class DBVC_CC_V2_Configure_Addon_Settings
                 'input' => 'checkbox',
                 'help' => __('Manual review is required when V2 predicts an object family change relative to prior accepted decisions.', 'dbvc'),
             ],
-            DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_INTEGRATION_MODE => [
-                'label' => __('Field context integration mode', 'dbvc'),
-                'input' => 'select',
-                'help' => __('`Auto` uses Vertical field context when the provider is available in this runtime. `Off` leaves DBVC on its existing deterministic signals only.', 'dbvc'),
-                'options' => [
-                    DBVC_CC_V2_Contracts::FIELD_CONTEXT_MODE_AUTO => __('Auto', 'dbvc'),
-                    DBVC_CC_V2_Contracts::FIELD_CONTEXT_MODE_OFF => __('Off', 'dbvc'),
-                ],
-            ],
-            DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_USE_LEGACY_FALLBACK => [
-                'label' => __('Use legacy hint fallback', 'dbvc'),
-                'input' => 'checkbox',
-                'help' => __('Allows DBVC to treat legacy GardenAI field-purpose hints as a last-resort semantic signal when resolved universal context is missing.', 'dbvc'),
-            ],
-            DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_WARN_ON_DEGRADED => [
-                'label' => __('Warn on degraded field context', 'dbvc'),
-                'input' => 'checkbox',
-                'help' => __('Preserves warnings when Vertical reports a partial, missing, or legacy-only field-context state.', 'dbvc'),
-            ],
-            DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_BLOCK_ON_MISSING => [
-                'label' => __('Block automation on missing field context', 'dbvc'),
-                'input' => 'checkbox',
-                'help' => __('Marks the field-context adapter as blocked when provider context is missing or too degraded for safe automation.', 'dbvc'),
-            ],
         ];
     }
 
@@ -192,19 +159,6 @@ final class DBVC_CC_V2_Configure_Addon_Settings
             $values[$option_key] = isset($request_data[$option_key]) ? '1' : '0';
         }
 
-        $field_context_mode = isset($request_data[DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_INTEGRATION_MODE])
-            ? sanitize_key((string) wp_unslash($request_data[DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_INTEGRATION_MODE]))
-            : $current[DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_INTEGRATION_MODE];
-        if (! in_array($field_context_mode, DBVC_CC_V2_Contracts::get_allowed_field_context_modes(), true)) {
-            $field_context_mode = DBVC_CC_V2_Contracts::FIELD_CONTEXT_MODE_AUTO;
-            $errors[] = __('Field context integration mode must be `auto` or `off`.', 'dbvc');
-        }
-        $values[DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_INTEGRATION_MODE] = $field_context_mode;
-
-        foreach (self::get_field_context_checkbox_option_keys() as $option_key) {
-            $values[$option_key] = isset($request_data[$option_key]) ? '1' : '0';
-        }
-
         foreach ($values as $option_key => $option_value) {
             update_option($option_key, $option_value);
         }
@@ -239,18 +193,6 @@ final class DBVC_CC_V2_Configure_Addon_Settings
             DBVC_CC_V2_Contracts::OPTION_REQUIRE_QA_PASS_FOR_AUTO_ACCEPT,
             DBVC_CC_V2_Contracts::OPTION_REQUIRE_UNAMBIGUOUS_RESOLUTION_FOR_AUTO_ACCEPT,
             DBVC_CC_V2_Contracts::OPTION_REQUIRE_MANUAL_REVIEW_FOR_OBJECT_FAMILY_CHANGE,
-        ];
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private static function get_field_context_checkbox_option_keys()
-    {
-        return [
-            DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_USE_LEGACY_FALLBACK,
-            DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_WARN_ON_DEGRADED,
-            DBVC_CC_V2_Contracts::OPTION_FIELD_CONTEXT_BLOCK_ON_MISSING,
         ];
     }
 

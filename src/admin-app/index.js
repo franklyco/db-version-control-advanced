@@ -127,6 +127,31 @@
                 className: `dbvc-badge dbvc-badge--${e}`,
                 children: t
               });
+            }, isTransferProposal = e => "entity_transfer" === e?.origin?.type || !!e?.selection || !!e?.requirements, getProposalSourceLabel = e => {
+              const t = e?.origin?.generated_from_name || "", s = e?.origin?.generated_from_site || "";
+              if (t && s) return `${t} (${s})`;
+              return t || s || "Source site unavailable";
+            }, getTransferSelectionSummaryParts = e => {
+              const t = e?.selection?.summary || {}, s = [];
+              const n = null != t.requested_paths ? t.requested_paths : e?.selection?.requested_paths_count;
+              return n > 0 && s.push(`${n} selected`), (t.selected_posts || 0) > 0 && s.push(`${t.selected_posts} post${1 === t.selected_posts ? "" : "s"}`), 
+              (t.selected_terms || 0) > 0 && s.push(`${t.selected_terms} term${1 === t.selected_terms ? "" : "s"}`), (t.dependency_terms || 0) > 0 && s.push(`${t.dependency_terms} dependent term${1 === t.dependency_terms ? "" : "s"}`), 
+              (t.fallback_files || 0) > 0 && s.push(`${t.fallback_files} fallback file${1 === t.fallback_files ? "" : "s"}`), (t.missing_dependencies || 0) > 0 && s.push(`${t.missing_dependencies} missing dependenc${1 === t.missing_dependencies ? "y" : "ies"}`), s;
+            }, getTransferWarningCount = e => {
+              const t = e?.preflight || {}, s = e?.warnings || {};
+              return [ t?.missing_post_types, t?.missing_taxonomies, t?.unsupported_items, s?.unsupported_post_references ].reduce((e, t) => e + (Array.isArray(t) ? t.length : 0), 0);
+            }, formatTransferUnsupportedItem = e => {
+              if (!e) return "Unsupported content detected.";
+              if ("term_missing_taxonomy" === e) return "A term payload is missing taxonomy data.";
+              if ("invalid_payload" === e) return "One or more packet items could not be parsed.";
+              if (e.startsWith("item_type:")) {
+                const t = e.slice("item_type:".length);
+                return `Unsupported manifest item type "${t}".`;
+              }
+              return e;
+            }, formatTransferReferenceWarning = e => {
+              const t = e?.field_label || e?.meta_key || "Unknown field", s = e?.referenced_post_title || e?.referenced_post_name || `Post #${e?.referenced_post_id || "?"}`, n = e?.source_post_title || e?.source_path || "Selected entity";
+              return `${n}: ${t} references ${s}, but that post is not included in this packet.`;
             }, b = e => Boolean(void 0 !== e?.is_new_entity ? e.is_new_entity : "missing_local_post" === e?.diff_state?.reason), f = e => e?.entity_type ? e.entity_type : "string" == typeof e?.post_type && e.post_type.startsWith("term:") ? "term" : "post", g = e => {
               if ("term" === f(e)) {
                 const t = (e?.term_taxonomy || e?.post_type || "").replace(/^term:/, "");
@@ -299,7 +324,7 @@
                   children: [ t.entityKept, " keep" ]
                 }) ]
               }) : "—"
-            } ], w = ({proposals: e, selectedId: k, onSelect: q, onDelete: z, deleteBusyId: x}) => e.length ? (0, s.jsx)("div", {
+            } ], w = ({proposals: e, selectedId: n, onSelect: i, onDelete: l, deleteBusyId: r}) => e.length ? (0, s.jsx)("div", {
               className: "dbvc-proposal-table-wrapper",
               children: (0, s.jsxs)("table", {
                 className: "widefat fixed striped dbvc-proposal-table",
@@ -327,59 +352,76 @@
                   })
                 }), (0, s.jsx)("tbody", {
                   children: e.map(e => {
-                  var i, l, o, r, c, d, u, p, h, m, v;
-                  const b = null !== (i = e.resolver?.metrics) && void 0 !== i ? i : {}, f = e.id === k, g = null !== (l = e.decisions) && void 0 !== l ? l : {}, x = null !== (o = g.accepted) && void 0 !== o ? o : 0, j = null !== (r = g.kept) && void 0 !== r ? r : 0, _ = null !== (c = g.entities_reviewed) && void 0 !== c ? c : 0, y = (null !== (d = g.total) && void 0 !== d ? d : 0) > 0, w = "closed" === e.status ? "Closed" : "Open";
-                  return (0, s.jsxs)("tr", {
-                    className: `${f ? "is-active" : ""} ${"closed" === e.status ? "is-archived" : ""}`,
-                    onClick: () => q(e.id),
-                    style: {
-                      cursor: "pointer"
-                    },
-                    children: [ (0, s.jsx)("td", {
-                      children: e.title
-                    }), (0, s.jsx)("td", {
-                      children: a(e.generated_at)
-                    }), (0, s.jsx)("td", {
-                      children: null !== (u = e.files) && void 0 !== u ? u : "—"
-                    }), (0, s.jsx)("td", {
-                      children: null !== (p = e.media_items) && void 0 !== p ? p : "—"
-                    }), (0, s.jsx)("td", {
-                      children: (0, s.jsx)("span", {
-                        className: `dbvc-status-badge dbvc-status-badge--${null !== (h = e.status) && void 0 !== h ? h : "draft"}`,
-                        children: w
-                      })
-                    }), (0, s.jsx)("td", {
-                      children: y ? (0, s.jsxs)("div", {
-                        className: "dbvc-decisions",
-                        children: [ (0, s.jsxs)("span", {
-                          className: "dbvc-badge dbvc-badge--accept",
-                          children: [ x, " accept" ]
-                        }), (0, s.jsxs)("span", {
-                          className: "dbvc-badge dbvc-badge--keep",
-                          children: [ j, " keep" ]
-                        }), _ > 0 && (0, s.jsxs)("span", {
-                          className: "dbvc-badge dbvc-badge--reviewed",
-                          children: [ _, " reviewed" ]
+                    var c, d, u, p, h, m, v, b;
+                    const f = null !== (c = e.resolver?.metrics) && void 0 !== c ? c : {}, g = e.id === n, x = null !== (d = e.decisions) && void 0 !== d ? d : {}, j = null !== (u = x.accepted) && void 0 !== u ? u : 0, _ = null !== (p = x.kept) && void 0 !== p ? p : 0, y = null !== (h = x.entities_reviewed) && void 0 !== h ? h : 0, w = (null !== (m = x.total) && void 0 !== m ? m : 0) > 0, C = "closed" === e.status ? "Closed" : "Open", N = isTransferProposal(e), k = getTransferWarningCount(e), S = getTransferSelectionSummaryParts(e);
+                    return (0, s.jsxs)("tr", {
+                      className: `${g ? "is-active" : ""} ${"closed" === e.status ? "is-archived" : ""}`,
+                      onClick: () => i(e.id),
+                      style: {
+                        cursor: "pointer"
+                      },
+                      children: [ (0, s.jsxs)("td", {
+                        children: [ (0, s.jsx)("div", {
+                          className: "dbvc-proposal-table__title",
+                          children: e.title
+                        }), N && (0, s.jsxs)("div", {
+                          className: "dbvc-proposal-table__subline",
+                          children: [ (0, s.jsx)("span", {
+                            className: "dbvc-badge dbvc-badge--reviewed",
+                            children: "Transfer packet"
+                          }), (0, s.jsx)("span", {
+                            children: getProposalSourceLabel(e)
+                          }), k > 0 && (0, s.jsxs)("span", {
+                            className: "dbvc-badge dbvc-badge--pending",
+                            children: [ k, " warning", 1 === k ? "" : "s" ]
+                          }) ]
+                        }), N && S.length > 0 && (0, s.jsx)("div", {
+                          className: "dbvc-proposal-table__subline",
+                          children: S.slice(0, 3).join(" · ")
                         }) ]
-                      }) : "—"
-                    }), (0, s.jsx)("td", {
-                      children: null !== (m = b.reused) && void 0 !== m ? m : "—"
-                    }), (0, s.jsx)("td", {
-                      children: null !== (v = b.unresolved) && void 0 !== v ? v : "—"
-                    }), (0, s.jsx)("td", {
-                      className: "dbvc-proposal-table__actions",
-                      children: !f ? (0, s.jsx)(t.Button, {
-                        variant: "tertiary",
-                        isDestructive: !0,
-                        onClick: t => {
-                          t.stopPropagation(), "function" == typeof z && z(e.id);
-                        },
-                        disabled: x === e.id || e.locked,
-                        title: e.locked ? "Locked proposals cannot be deleted." : void 0,
-                        children: x === e.id ? "Deleting…" : "Delete"
-                      }) : "—"
-                    }) ]
-                  }, e.id);
+                      }), (0, s.jsx)("td", {
+                        children: a(e.generated_at)
+                      }), (0, s.jsx)("td", {
+                        children: null !== (v = e.files) && void 0 !== v ? v : "—"
+                      }), (0, s.jsx)("td", {
+                        children: null !== (b = e.media_items) && void 0 !== b ? b : "—"
+                      }), (0, s.jsx)("td", {
+                        children: (0, s.jsx)("span", {
+                          className: `dbvc-status-badge dbvc-status-badge--${e.status ?? "draft"}`,
+                          children: C
+                        })
+                      }), (0, s.jsx)("td", {
+                        children: w ? (0, s.jsxs)("div", {
+                          className: "dbvc-decisions",
+                          children: [ (0, s.jsxs)("span", {
+                            className: "dbvc-badge dbvc-badge--accept",
+                            children: [ j, " accept" ]
+                          }), (0, s.jsxs)("span", {
+                            className: "dbvc-badge dbvc-badge--keep",
+                            children: [ _, " keep" ]
+                          }), y > 0 && (0, s.jsxs)("span", {
+                            className: "dbvc-badge dbvc-badge--reviewed",
+                            children: [ y, " reviewed" ]
+                          }) ]
+                        }) : "—"
+                      }), (0, s.jsx)("td", {
+                        children: null !== (c = f.reused) && void 0 !== c ? c : "—"
+                      }), (0, s.jsx)("td", {
+                        children: null !== (d = f.unresolved) && void 0 !== d ? d : "—"
+                      }), (0, s.jsx)("td", {
+                        className: "dbvc-proposal-table__actions",
+                        children: !g ? (0, s.jsx)(t.Button, {
+                          variant: "tertiary",
+                          isDestructive: !0,
+                          onClick: t => {
+                            t.stopPropagation(), "function" == typeof l && l(e.id);
+                          },
+                          disabled: r === e.id || e.locked,
+                          title: e.locked ? "Locked proposals cannot be deleted." : void 0,
+                          children: r === e.id ? "Deleting…" : "Delete"
+                        }) : "—"
+                      }) ]
+                    }, e.id);
                   })
                 }) ]
               })
@@ -431,24 +473,55 @@
                     e.preventDefault(), a(!1), b(e.dataTransfer?.files);
                   },
                   children: [ (0, s.jsxs)("div", {
+                    className: "dbvc-proposal-uploader__eyebrow",
+                    children: [ (0, s.jsx)("span", {
+                      className: "dbvc-badge dbvc-badge--reviewed",
+                      children: "Proposal Review"
+                    }), (0, s.jsx)("span", {
+                      className: "dbvc-proposal-uploader__eyebrow-note",
+                      children: "ZIP intake"
+                    }) ]
+                  }), (0, s.jsxs)("div", {
                     className: "dbvc-proposal-uploader__body",
-                    children: [ (0, s.jsxs)("div", {
-                      className: "dbvc-proposal-uploader__text",
-                      children: [ (0, s.jsx)("strong", {
-                        children: "Upload proposal bundle"
+                    children: [ (0, s.jsx)("div", {
+                      className: "dbvc-proposal-uploader__icon",
+                      "aria-hidden": "true",
+                      children: "ZIP"
+                    }), (0, s.jsxs)("div", {
+                      className: "dbvc-proposal-uploader__content",
+                      children: [ (0, s.jsxs)("div", {
+                        className: "dbvc-proposal-uploader__text",
+                        children: [ (0, s.jsx)("strong", {
+                          children: "Upload Transfer Packet"
+                        }), (0, s.jsx)("p", {
+                          children: "Upload a DBVC proposal bundle or cross-site transfer packet ZIP to register it in Proposal Review for review, warnings, and apply/import."
+                        }) ]
+                      }), (0, s.jsxs)("div", {
+                        className: "dbvc-proposal-uploader__meta",
+                        children: [ (0, s.jsx)("span", {
+                          className: "dbvc-proposal-uploader__meta-pill",
+                          children: "Proposal bundle"
+                        }), (0, s.jsx)("span", {
+                          className: "dbvc-proposal-uploader__meta-pill",
+                          children: "Transfer packet"
+                        }), (0, s.jsx)("span", {
+                          className: "dbvc-proposal-uploader__meta-pill",
+                          children: "ZIP only"
+                        }) ]
                       }), (0, s.jsx)("p", {
-                        children: "Drop a DBVC ZIP export here or select a file to register it."
+                        className: "dbvc-proposal-uploader__drop-hint",
+                        children: "Drop a DBVC ZIP here or choose a file to continue."
                       }) ]
                     }), (0, s.jsxs)("div", {
                       className: "dbvc-proposal-uploader__actions",
                       children: [ (0, s.jsx)(t.Button, {
-                        variant: "secondary",
+                        variant: "primary",
                         onClick: () => v.current?.click(),
                         disabled: o,
                         children: o ? "Uploading…" : "Select ZIP"
                       }), (0, s.jsx)("span", {
                         className: "dbvc-proposal-uploader__actions-note",
-                        children: "ZIP files only"
+                        children: "Registers the ZIP in Proposal Review"
                       }), (0, s.jsx)("input", {
                         ref: v,
                         type: "file",
@@ -519,14 +592,14 @@
                   })
                 }) ]
               });
-            }, k = ({entities: t, loading: n, selectedEntityId: i, onSelect: l, columns: a, selectedIds: o = new Set, onToggleSelection: r, onToggleSelectionAll: c}) => {
+            }, k = ({entities: t, loading: n, selectedEntityId: i, onSelect: l, columns: a, selectedIds: selectedIdsInput = new Set, onToggleSelection: r, onToggleSelectionAll: c}) => {
               if (n) return (0, s.jsx)("p", {
                 children: "Loading entities…"
               });
                 if (!t.length) return (0, s.jsx)("p", {
                   children: "No entities found for this proposal."
                 });
-              const d = a && a.length ? a : y, D = "function" == typeof r, R = o instanceof Set ? o : new Set(o), $ = t.map(e => e.vf_object_uid), I = D && t.length > 0 && t.every(e => R.has(e.vf_object_uid)), A = D && !I && t.some(e => R.has(e.vf_object_uid)), formatCellValue = o, E = (0, e.useRef)(null);
+              const d = a && a.length ? a : y, D = "function" == typeof r, R = selectedIdsInput instanceof Set ? selectedIdsInput : new Set(selectedIdsInput), $ = t.map(e => e.vf_object_uid), I = D && t.length > 0 && t.every(e => R.has(e.vf_object_uid)), A = D && !I && t.some(e => R.has(e.vf_object_uid)), formatCellValue = o, E = (0, e.useRef)(null);
               return (0, e.useEffect)(() => {
                 D && E.current && (E.current.indeterminate = A);
               }, [ D, A ]), (0, s.jsx)("div", {
@@ -598,7 +671,7 @@
                   }) ]
                 })
               });
-            }, S = ({entityDetail: n, resolverInfo: i, resolverDecisionSummary: l = null, decisions: a = {}, onDecisionChange: o, onBulkDecision: r, onResetDecisions: c, onCaptureSnapshot: m, onResolverDecision: v, onResolverDecisionReset: x, onApplyResolverDecisionToSimilar: y, savingPaths: w = {}, bulkSaving: C = !1, resolverSaving: N = {}, resolverError: k = null, decisionError: S, loading: D, error: R, onClose: $, filterMode: A, onFilterModeChange: M, isOpen: U = !0, resettingDecisions: B = !1, snapshotCapturing: O = !1, onHashSync: T, hashSyncing: P = !1, hashSyncTarget: F = "", maskFieldsByEntity: qt = {}}) => {
+            }, S = ({entityDetail: n, resolverInfo: i, resolverDecisionSummary: l = null, decisions: a = {}, onDecisionChange: handleDecisionChange, onBulkDecision: bulkDecision, onResetDecisions: c, onCaptureSnapshot: m, onResolverDecision: v, onResolverDecisionReset: x, onApplyResolverDecisionToSimilar: y, savingPaths: w = {}, bulkSaving: C = !1, resolverSaving: N = {}, resolverError: k = null, decisionError: S, loading: D, error: R, onClose: $, filterMode: A, onFilterModeChange: M, isOpen: U = !0, resettingDecisions: B = !1, snapshotCapturing: O = !1, onHashSync: T, hashSyncing: P = !1, hashSyncTarget: F = "", maskFieldsByEntity: qt = {}}) => {
               var V, L, z, H, K, J, q, W, G, X, Z, Q, Y, ee, te;
               const se = (0, e.useMemo)(() => n?.item?.vf_object_uid ? `dbvc-entity-detail-${n.item.vf_object_uid}` : n?.vf_object_uid ? `dbvc-entity-detail-${n.vf_object_uid}` : "dbvc-entity-detail", [ n ]), ne = (0, 
               e.useRef)(null), ie = (0, e.useRef)(null);
@@ -830,7 +903,7 @@
                           type: "button",
                           className: "button button-secondary",
                           onClick: () => {
-                            r && window.confirm(`Accept ${st.length} field(s)?`) && r("accept", st);
+                            bulkDecision && window.confirm(`Accept ${st.length} field(s)?`) && bulkDecision("accept", st);
                           },
                           disabled: C,
                           children: C ? "Accepting…" : "Accept All Visible"
@@ -846,7 +919,7 @@
                           type: "button",
                           className: "button",
                           onClick: () => {
-                            r && window.confirm(`Keep current values for ${st.length} field(s)?`) && r("keep", st);
+                            bulkDecision && window.confirm(`Keep current values for ${st.length} field(s)?`) && bulkDecision("keep", st);
                           },
                           disabled: C,
                           children: C ? "Keeping…" : "Keep All Visible"
@@ -950,19 +1023,19 @@
                     className: "dbvc-new-entity-actions",
                     children: [ (0, s.jsx)(t.Button, {
                       variant: "accept_new" === xe ? "primary" : "secondary",
-                      onClick: () => o && o(h, "accept_new"),
+                      onClick: () => handleDecisionChange && handleDecisionChange(h, "accept_new"),
                       disabled: je,
                       isBusy: je && "accept_new" === xe,
                       children: "Accept & import"
                     }), (0, s.jsx)(t.Button, {
                       variant: "decline_new" === xe ? "primary" : "secondary",
-                      onClick: () => o && o(h, "decline_new"),
+                      onClick: () => handleDecisionChange && handleDecisionChange(h, "decline_new"),
                       disabled: je,
                       isBusy: je && "decline_new" === xe,
                       children: "term" === f(le) ? "Decline new term" : "Decline new post"
                     }), (0, s.jsx)(t.Button, {
                       variant: "tertiary",
-                      onClick: () => o && o(h, "clear"),
+                      onClick: () => handleDecisionChange && handleDecisionChange(h, "clear"),
                       disabled: je || !xe,
                       children: "Clear choice"
                     }) ]
@@ -998,7 +1071,7 @@
                 }), et.length > 0 ? et.map(e => (0, s.jsx)(I, {
                   section: e,
                   decisions: a,
-                  onDecisionChange: o,
+                  onDecisionChange: handleDecisionChange,
                   savingPaths: w
                 }, e.key)) : (0, s.jsx)("p", {
                   children: $e && Ie > 0 ? "No resolver or media conflicts detected for this entity. Switch to Full Overview to inspect all differences." : "all" === A ? "No meta fields found for this entity." : "No differences detected."
@@ -1403,12 +1476,15 @@
                   const l = t && ![ "needs_review", "needs_review_media", "resolved", "new_entities" ].includes(t) || !t || "all" === t ? "" : `?status=${encodeURIComponent(t)}`, a = await n(`proposals/${encodeURIComponent(e)}/entities${l}`, {
                     signal: s
                   }), o = null !== (i = a.items) && void 0 !== i ? i : [], r = sortEntitiesForTable(o);
-                  return se(r), a.decision_summary && X(t => t.map(t => t.id === e ? {
+                  return se(r), X(t => t.map(t => t.id === e ? {
                     ...t,
-                    decisions: a.decision_summary
-                  } : t)), a.resolver_decisions && X(t => t.map(t => t.id === e ? {
-                    ...t,
-                    resolver_decisions: a.resolver_decisions
+                    decisions: a.decision_summary || t.decisions,
+                    resolver_decisions: a.resolver_decisions || t.resolver_decisions,
+                    origin: void 0 !== a.origin ? a.origin : t.origin,
+                    selection: void 0 !== a.selection ? a.selection : t.selection,
+                    requirements: void 0 !== a.requirements ? a.requirements : t.requirements,
+                    preflight: void 0 !== a.preflight ? a.preflight : t.preflight,
+                    warnings: void 0 !== a.warnings ? a.warnings : t.warnings
                   } : t)), r;
                 } catch (e) {
                   return "AbortError" !== e.name && Ae(e.message), [];
@@ -2425,7 +2501,7 @@
                 } finally {
                   Zt(!1), be({});
                 }
-              }, [ Z, oe ]), As = null !== (o = ps?.decisions) && void 0 !== o ? o : null, Es = null !== (r = As?.total) && void 0 !== r ? r : 0, Ms = null !== (c = As?.accepted) && void 0 !== c ? c : 0, Us = null !== (d = As?.kept) && void 0 !== d ? d : 0, Bs = null !== (u = As?.accepted_new) && void 0 !== u ? u : 0, Os = null !== (p = As?.entities_reviewed) && void 0 !== p ? p : 0, Ts = null !== (v = ps?.resolver_decisions) && void 0 !== v ? v : null, Ps = null !== (f = Ts?.reuse) && void 0 !== f ? f : 0, Fs = null !== (R = Ts?.map) && void 0 !== R ? R : 0, Vs = null !== ($ = Ts?.download) && void 0 !== $ ? $ : 0, Ls = null !== (I = Ts?.skip) && void 0 !== I ? I : 0, zs = null !== (A = null !== (E = Y?.metrics?.unresolved) && void 0 !== E ? E : ps?.resolver?.metrics?.unresolved) && void 0 !== A ? A : 0, Hs = Array.isArray(Ke?.result?.errors) ? Ke.result.errors : [], Ks = Hs.length ? "notice notice-warning" : "notice notice-success", Js = null !== (U = Ke?.result?.imported) && void 0 !== U ? U : 0, qs = null !== (B = Ke?.result?.skipped) && void 0 !== B ? B : 0, Ws = null !== (O = Ke?.result?.media_resolver?.metrics) && void 0 !== O ? O : {}, Gs = null !== (T = Ws?.unresolved) && void 0 !== T ? T : 0, Xs = null !== (P = Ke?.result?.media_reconcile) && void 0 !== P ? P : null, Zs = (0, 
+              }, [ Z, oe ]), As = null !== (o = ps?.decisions) && void 0 !== o ? o : null, Es = null !== (r = As?.total) && void 0 !== r ? r : 0, Ms = null !== (c = As?.accepted) && void 0 !== c ? c : 0, Us = null !== (d = As?.kept) && void 0 !== d ? d : 0, Bs = null !== (u = As?.accepted_new) && void 0 !== u ? u : 0, Os = null !== (p = As?.entities_reviewed) && void 0 !== p ? p : 0, Ts = null !== (v = ps?.resolver_decisions) && void 0 !== v ? v : null, Ps = null !== (f = Ts?.reuse) && void 0 !== f ? f : 0, Fs = null !== (R = Ts?.map) && void 0 !== R ? R : 0, Vs = null !== ($ = Ts?.download) && void 0 !== $ ? $ : 0, Ls = null !== (I = Ts?.skip) && void 0 !== I ? I : 0, zs = null !== (A = null !== (E = Y?.metrics?.unresolved) && void 0 !== E ? E : ps?.resolver?.metrics?.unresolved) && void 0 !== A ? A : 0, Hs = Array.isArray(Ke?.result?.errors) ? Ke.result.errors : [], Ks = Hs.length ? "notice notice-warning" : "notice notice-success", Js = null !== (U = Ke?.result?.imported) && void 0 !== U ? U : 0, qs = null !== (B = Ke?.result?.skipped) && void 0 !== B ? B : 0, Ws = null !== (O = Ke?.result?.media_resolver?.metrics) && void 0 !== O ? O : {}, Gs = null !== (T = Ws?.unresolved) && void 0 !== T ? T : 0, Xs = null !== (P = Ke?.result?.media_reconcile) && void 0 !== P ? P : null, transferPacketActive = isTransferProposal(ps), transferSourceLabel = transferPacketActive ? getProposalSourceLabel(ps) : "", transferSummaryParts = transferPacketActive ? getTransferSelectionSummaryParts(ps) : [], transferSelectionSummary = ps?.selection?.summary || {}, transferInfoNotes = Array.isArray(ps?.requirements?.notes) ? ps.requirements.notes : [], transferMissingPostTypes = Array.isArray(ps?.preflight?.missing_post_types) ? ps.preflight.missing_post_types : [], transferMissingTaxonomies = Array.isArray(ps?.preflight?.missing_taxonomies) ? ps.preflight.missing_taxonomies : [], transferUnsupportedItems = Array.isArray(ps?.preflight?.unsupported_items) ? ps.preflight.unsupported_items : [], transferReferenceWarnings = Array.isArray(ps?.warnings?.unsupported_post_references) ? ps.warnings.unsupported_post_references : [], transferPreflightWarningCount = [ transferMissingPostTypes, transferMissingTaxonomies, transferUnsupportedItems ].reduce((e, t) => e + (Array.isArray(t) ? t.length : 0), 0), transferWarningCount = getTransferWarningCount(ps), Zs = (0, 
               e.useCallback)(e => {
                 zt({
                   focusProposalId: e
@@ -3117,13 +3193,13 @@
                   children: nt.map(e => (0, s.jsxs)("div", {
                     className: `dbvc-toast dbvc-toast--${e.severity}`,
                     children: [ (0, s.jsxs)("div", {
-                      className: "dbvc-toast__content",
-                      children: [ (0, s.jsx)("strong", {
-                        children: o(e.title)
+                    className: "dbvc-toast__content",
+                    children: [ (0, s.jsx)("strong", {
+                        children: null == e.title ? "" : String(e.title)
                       }), (0, s.jsx)("span", {
-                        children: o(e.message)
+                        children: null == e.message ? "" : String(e.message)
                       }), e.detail && (0, s.jsx)("small", {
-                        children: o(e.detail)
+                        children: String(e.detail)
                       }), (0, s.jsx)("small", {
                         className: "dbvc-toast__time",
                         children: a(e.timestamp)
@@ -3195,6 +3271,61 @@
                         href: "#dbvc-global-resolver",
                         children: "Global rules enabled"
                       })
+                    }) ]
+                  }), transferPacketActive && (0, s.jsxs)("div", {
+                    className: "dbvc-proposal-transfer-card",
+                    children: [ (0, s.jsxs)("div", {
+                      className: "dbvc-decisions",
+                      children: [ (0, s.jsx)("span", {
+                        className: "dbvc-badge dbvc-badge--reviewed",
+                        children: "Transfer packet"
+                      }), transferWarningCount > 0 && (0, s.jsxs)("span", {
+                        className: "dbvc-badge dbvc-badge--pending",
+                        children: [ transferWarningCount, " destination warning", 1 === transferWarningCount ? "" : "s" ]
+                      }) ]
+                    }), (0, s.jsxs)("p", {
+                      className: "dbvc-proposal-transfer-card__source",
+                      children: [ "Source: ", transferSourceLabel ]
+                    }), transferSummaryParts.length > 0 && (0, s.jsx)("div", {
+                      className: "dbvc-proposal-transfer-card__meta",
+                      children: transferSummaryParts.join(" · ")
+                    }), (transferSelectionSummary.live_exports || 0) > 0 || (transferSelectionSummary.duplicates_skipped || 0) > 0 ? (0, s.jsxs)("div", {
+                      className: "dbvc-proposal-transfer-card__meta",
+                      children: [ (transferSelectionSummary.live_exports || 0) > 0 && `Live exports: ${transferSelectionSummary.live_exports}`, (transferSelectionSummary.live_exports || 0) > 0 && (transferSelectionSummary.duplicates_skipped || 0) > 0 ? " · " : "", (transferSelectionSummary.duplicates_skipped || 0) > 0 && `Duplicates skipped: ${transferSelectionSummary.duplicates_skipped}` ]
+                    }) : null ]
+                  }), transferPreflightWarningCount > 0 && (0, s.jsxs)("div", {
+                    className: "notice notice-warning",
+                    children: [ (0, s.jsx)("p", {
+                      children: "Destination preflight found issues that should be reviewed before apply:"
+                    }), (0, s.jsxs)("ul", {
+                      className: "dbvc-preflight-list",
+                      children: [ transferMissingPostTypes.length > 0 && (0, s.jsxs)("li", {
+                        children: [ "Missing post types: ", transferMissingPostTypes.join(", ") ]
+                      }), transferMissingTaxonomies.length > 0 && (0, s.jsxs)("li", {
+                        children: [ "Missing taxonomies: ", transferMissingTaxonomies.join(", ") ]
+                      }), transferUnsupportedItems.map((e, t) => (0, s.jsx)("li", {
+                        children: formatTransferUnsupportedItem(e)
+                      }, `${e}-${t}`)) ]
+                    }) ]
+                  }), transferReferenceWarnings.length > 0 && (0, s.jsxs)("div", {
+                    className: "notice notice-warning",
+                    children: [ (0, s.jsx)("p", {
+                      children: "This packet contains likely post-object or relationship references to posts that are not included:"
+                    }), (0, s.jsx)("ul", {
+                      className: "dbvc-preflight-list",
+                      children: transferReferenceWarnings.map((e, t) => (0, s.jsx)("li", {
+                        children: formatTransferReferenceWarning(e)
+                      }, `${e?.source_path || "warning"}-${t}`))
+                    }) ]
+                  }), transferInfoNotes.length > 0 && (0, s.jsxs)("div", {
+                    className: "notice notice-info",
+                    children: [ (0, s.jsx)("p", {
+                      children: "Transfer notes:"
+                    }), (0, s.jsx)("ul", {
+                      className: "dbvc-preflight-list",
+                      children: transferInfoNotes.map((e, t) => (0, s.jsx)("li", {
+                        children: e
+                      }, `${e}-${t}`))
                     }) ]
                   }), Ee && (0, s.jsx)("div", {
                     className: "notice notice-error",

@@ -172,9 +172,6 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'confidence' => isset($item['confidence']) ? (float) $item['confidence'] : 0.0,
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => $default_auto_accept ? 'auto_accept' : 'reviewed',
-                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
-                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
-                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $target_ref),
                 ];
                 continue;
@@ -190,9 +187,6 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'confidence' => isset($item['confidence']) ? (float) $item['confidence'] : 0.0,
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => 'override',
-                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
-                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
-                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $override_target),
                 ];
             }
@@ -266,9 +260,6 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'value_type' => 'attachment_reference',
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => $default_auto_accept ? 'auto_accept' : 'reviewed',
-                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
-                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
-                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $target_ref),
                 ];
                 continue;
@@ -285,9 +276,6 @@ final class DBVC_CC_V2_Package_Selection_Service
                     'value_type' => 'attachment_reference',
                     'source_refs' => isset($item['source_refs']) && is_array($item['source_refs']) ? array_values($item['source_refs']) : [],
                     'decision_source' => 'override',
-                    'matched_by' => isset($item['matched_by']) ? sanitize_key((string) $item['matched_by']) : '',
-                    'resolved_from' => isset($item['resolved_from']) ? sanitize_key((string) $item['resolved_from']) : '',
-                    'field_context_trace' => $this->build_field_context_trace($item, $recommendations),
                     'targetPresentation' => DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_ref($domain, $override_target),
                 ];
             }
@@ -344,30 +332,32 @@ final class DBVC_CC_V2_Package_Selection_Service
 
     /**
      * @param array<string, mixed>|null $recommendations
-     * @return array<string, mixed>
+     * @param array<string, mixed>|null $mapping_decisions
+     * @param array<string, mixed>|null $media_decisions
+     * @return array<int, array<string, mixed>>
      */
-    public function extract_field_context_meta($recommendations)
+    public function filter_active_conflicts($recommendations, $mapping_decisions, $media_decisions)
     {
-        if (! is_array($recommendations)) {
+        if (! is_array($recommendations) || ! isset($recommendations['conflicts']) || ! is_array($recommendations['conflicts'])) {
             return [];
         }
 
-        $field_context = isset($recommendations['field_context']) && is_array($recommendations['field_context'])
-            ? $recommendations['field_context']
-            : [];
+        $active_conflicts = [];
+        $decision_state_index = $this->build_decision_state_index($mapping_decisions, $media_decisions);
 
-        return [
-            'available' => ! empty($field_context['available']),
-            'profile' => isset($field_context['profile']) ? sanitize_key((string) $field_context['profile']) : 'mapping',
-            'transport' => isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : 'local',
-            'provider_contract_version' => isset($field_context['provider_contract_version']) ? absint($field_context['provider_contract_version']) : 0,
-            'source_hash' => isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : '',
-            'status' => isset($field_context['status']) ? sanitize_key((string) $field_context['status']) : '',
-            'signature' => isset($field_context['signature']) ? sanitize_text_field((string) $field_context['signature']) : '',
-            'hints_enabled' => ! empty($field_context['hints_enabled']),
-            'consumer_policy' => isset($field_context['consumer_policy']) && is_array($field_context['consumer_policy']) ? $field_context['consumer_policy'] : [],
-            'diagnostics' => isset($field_context['diagnostics']) && is_array($field_context['diagnostics']) ? $field_context['diagnostics'] : [],
-        ];
+        foreach ($recommendations['conflicts'] as $conflict) {
+            if (! is_array($conflict)) {
+                continue;
+            }
+
+            if (! $this->conflict_requires_review($conflict, $decision_state_index)) {
+                continue;
+            }
+
+            $active_conflicts[] = $conflict;
+        }
+
+        return array_values($active_conflicts);
     }
 
     /**
@@ -402,6 +392,156 @@ final class DBVC_CC_V2_Package_Selection_Service
     }
 
     /**
+     * @param array<string, mixed>|null $mapping_decisions
+     * @param array<string, mixed>|null $media_decisions
+     * @return array<string, string>
+     */
+    private function build_decision_state_index($mapping_decisions, $media_decisions)
+    {
+        $index = [];
+
+        if (is_array($mapping_decisions)) {
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['approved']) && is_array($mapping_decisions['approved']) ? $mapping_decisions['approved'] : [],
+                'approve'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['rejected']) && is_array($mapping_decisions['rejected']) ? $mapping_decisions['rejected'] : [],
+                'reject'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['unresolved']) && is_array($mapping_decisions['unresolved']) ? $mapping_decisions['unresolved'] : [],
+                'unresolved'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['overrides']) && is_array($mapping_decisions['overrides']) ? $mapping_decisions['overrides'] : [],
+                'override'
+            );
+        }
+
+        if (is_array($media_decisions)) {
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['approved']) && is_array($media_decisions['approved']) ? $media_decisions['approved'] : [],
+                'approve'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['ignored']) && is_array($media_decisions['ignored']) ? $media_decisions['ignored'] : [],
+                'reject'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['conflicts']) && is_array($media_decisions['conflicts']) ? $media_decisions['conflicts'] : [],
+                'unresolved'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['overrides']) && is_array($media_decisions['overrides']) ? $media_decisions['overrides'] : [],
+                'override'
+            );
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param array<string, string>            $index
+     * @param array<int, array<string, mixed>> $items
+     * @param string                           $state
+     * @return array<string, string>
+     */
+    private function add_decision_items_to_index(array $index, array $items, $state)
+    {
+        foreach ($items as $item) {
+            if (! is_array($item) || empty($item['recommendation_id'])) {
+                continue;
+            }
+
+            $index[(string) $item['recommendation_id']] = (string) $state;
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param array<string, mixed> $conflict
+     * @return array<int, string>
+     */
+    private function extract_conflict_recommendation_ids(array $conflict)
+    {
+        $ids = [];
+
+        if (! empty($conflict['recommendation_id'])) {
+            $ids[] = sanitize_text_field((string) $conflict['recommendation_id']);
+        }
+
+        if (isset($conflict['recommendation_ids']) && is_array($conflict['recommendation_ids'])) {
+            foreach ($conflict['recommendation_ids'] as $recommendation_id) {
+                $recommendation_id = sanitize_text_field((string) $recommendation_id);
+                if ($recommendation_id !== '') {
+                    $ids[] = $recommendation_id;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * @param array<string, mixed> $conflict
+     * @param array<string, string> $decision_state_index
+     * @return bool
+     */
+    private function conflict_requires_review(array $conflict, array $decision_state_index)
+    {
+        $recommendation_ids = $this->extract_conflict_recommendation_ids($conflict);
+        if (empty($recommendation_ids)) {
+            return true;
+        }
+
+        $active_count = 0;
+        $pending_count = 0;
+        $unresolved_count = 0;
+
+        foreach ($recommendation_ids as $recommendation_id) {
+            $state = isset($decision_state_index[$recommendation_id])
+                ? (string) $decision_state_index[$recommendation_id]
+                : 'pending';
+
+            if ($state === 'reject') {
+                continue;
+            }
+
+            if ($state === 'unresolved') {
+                ++$unresolved_count;
+                continue;
+            }
+
+            if ($state === 'approve' || $state === 'override') {
+                ++$active_count;
+                continue;
+            }
+
+            ++$pending_count;
+        }
+
+        if ($active_count > 1) {
+            return true;
+        }
+
+        if ($pending_count > 0 || $unresolved_count > 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * @param mixed $items
      * @return array<string, array<int, array<string, mixed>>>
      */
@@ -426,32 +566,6 @@ final class DBVC_CC_V2_Package_Selection_Service
         }
 
         return $indexed;
-    }
-
-    /**
-     * @param array<string, mixed> $item
-     * @param array<string, mixed>|null $recommendations
-     * @return array<string, mixed>
-     */
-    private function build_field_context_trace(array $item, $recommendations)
-    {
-        $trace = isset($item['field_context_trace']) && is_array($item['field_context_trace']) ? $item['field_context_trace'] : [];
-        $field_context = $this->extract_field_context_meta($recommendations);
-
-        return [
-            'matched_by' => isset($trace['matched_by']) ? sanitize_key((string) $trace['matched_by']) : '',
-            'resolved_from' => isset($trace['resolved_from']) ? sanitize_key((string) $trace['resolved_from']) : '',
-            'status_code' => isset($trace['status_code']) ? sanitize_key((string) $trace['status_code']) : '',
-            'provider_contract_version' => isset($trace['provider_contract_version']) && absint($trace['provider_contract_version']) > 0
-                ? absint($trace['provider_contract_version'])
-                : (isset($field_context['provider_contract_version']) ? absint($field_context['provider_contract_version']) : 0),
-            'source_hash' => isset($trace['source_hash']) && (string) $trace['source_hash'] !== ''
-                ? sanitize_text_field((string) $trace['source_hash'])
-                : (isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : ''),
-            'transport' => isset($trace['transport']) && (string) $trace['transport'] !== ''
-                ? sanitize_key((string) $trace['transport'])
-                : (isset($field_context['transport']) ? sanitize_key((string) $field_context['transport']) : ''),
-        ];
     }
 
     /**

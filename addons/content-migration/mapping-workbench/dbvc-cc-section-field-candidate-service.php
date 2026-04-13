@@ -7,11 +7,6 @@ if (! defined('WPINC')) {
 final class DBVC_CC_Section_Field_Candidate_Service
 {
     /**
-     * @var array<string, mixed>|null
-     */
-    private $field_context_meta_cache = null;
-
-    /**
      * @var DBVC_CC_Section_Field_Candidate_Service|null
      */
     private static $instance = null;
@@ -49,10 +44,9 @@ final class DBVC_CC_Section_Field_Candidate_Service
 
         $catalog = isset($catalog_result['catalog']) && is_array($catalog_result['catalog']) ? $catalog_result['catalog'] : [];
         $catalog_fingerprint = isset($catalog_result['catalog_fingerprint']) ? (string) $catalog_result['catalog_fingerprint'] : '';
-        $field_context_meta = $this->get_current_field_context_meta();
 
         $stale_reason = is_array($existing)
-            ? $this->detect_stale_candidates_reason($context, $existing, $catalog_fingerprint, $field_context_meta)
+            ? $this->detect_stale_candidates_reason($context, $existing, $catalog_fingerprint)
             : '';
 
         if (is_array($existing) && ! $force_rebuild && $stale_reason === '') {
@@ -94,10 +88,7 @@ final class DBVC_CC_Section_Field_Candidate_Service
         $typing_artifact = $this->read_json_file($context['section_typing_file']);
         $typing_map = $this->build_section_typing_map($typing_artifact);
         $meta_refs = $this->collect_meta_field_refs($catalog);
-        $acf_refs = $this->collect_acf_field_refs($catalog, $this->should_use_field_context_hints($field_context_meta));
-        $field_context_warning_count = isset($field_context_meta['diagnostics']['warnings']) && is_array($field_context_meta['diagnostics']['warnings'])
-            ? count($field_context_meta['diagnostics']['warnings'])
-            : 0;
+        $acf_refs = $this->collect_acf_field_refs($catalog);
 
         $sections = isset($sections_artifact['sections']) && is_array($sections_artifact['sections']) ? $sections_artifact['sections'] : [];
         $section_rows = [];
@@ -176,15 +167,10 @@ final class DBVC_CC_Section_Field_Candidate_Service
             'source_url' => $context['source_url'],
             'generated_at' => current_time('c'),
             'catalog_fingerprint' => $catalog_fingerprint,
-            'field_context' => $field_context_meta,
             'sections' => $section_rows,
             'stats' => [
                 'section_count' => count($section_rows),
                 'unresolved_section_count' => $unresolved_total,
-                'field_context_degraded' => ! empty($field_context_meta['diagnostics']['degraded']),
-                'field_context_blocked' => ! empty($field_context_meta['diagnostics']['blocked']),
-                'field_context_warning_count' => $field_context_warning_count,
-                'field_context_hints_enabled' => ! empty($field_context_meta['hints_enabled']),
             ],
         ];
         $payload = $this->hydrate_section_source_preview_fields($context, $payload, $sections_artifact, $elements_artifact);
@@ -239,7 +225,7 @@ final class DBVC_CC_Section_Field_Candidate_Service
             }
 
             $catalog_fingerprint = isset($catalog_result['catalog_fingerprint']) ? (string) $catalog_result['catalog_fingerprint'] : '';
-            $stale_reason = $this->detect_stale_candidates_reason($context, $payload, $catalog_fingerprint, $this->get_current_field_context_meta());
+            $stale_reason = $this->detect_stale_candidates_reason($context, $payload, $catalog_fingerprint);
             if ($stale_reason !== '' && $build_if_missing) {
                 return $this->build_candidates($context['domain'], $context['path'], true);
             }
@@ -487,7 +473,7 @@ final class DBVC_CC_Section_Field_Candidate_Service
      * @param string                $catalog_fingerprint
      * @return string
      */
-    private function detect_stale_candidates_reason(array $context, array $existing, $catalog_fingerprint, array $field_context_meta = [])
+    private function detect_stale_candidates_reason(array $context, array $existing, $catalog_fingerprint)
     {
         $artifact_schema_version = isset($existing['artifact_schema_version']) ? (string) $existing['artifact_schema_version'] : '';
         if ($artifact_schema_version !== DBVC_CC_Contracts::ARTIFACT_SCHEMA_VERSION) {
@@ -503,12 +489,6 @@ final class DBVC_CC_Section_Field_Candidate_Service
         $existing_catalog_fingerprint = isset($existing['catalog_fingerprint']) ? (string) $existing['catalog_fingerprint'] : '';
         if ($existing_catalog_fingerprint !== '' && $catalog_fingerprint !== '' && $existing_catalog_fingerprint !== $catalog_fingerprint) {
             return 'catalog_fingerprint_mismatch';
-        }
-
-        $existing_field_context_signature = isset($existing['field_context']['signature']) ? (string) $existing['field_context']['signature'] : '';
-        $current_field_context_signature = isset($field_context_meta['signature']) ? (string) $field_context_meta['signature'] : '';
-        if ($existing_field_context_signature !== '' && $current_field_context_signature !== '' && $existing_field_context_signature !== $current_field_context_signature) {
-            return 'field_context_signature_mismatch';
         }
 
         $candidate_mtime = is_file($context['candidates_file']) ? (int) @filemtime($context['candidates_file']) : 0;
@@ -699,7 +679,7 @@ final class DBVC_CC_Section_Field_Candidate_Service
      * @param array<string, mixed> $catalog
      * @return array<string, array<int, string>>
      */
-    private function collect_acf_field_refs(array $catalog, $use_field_context_hints = true)
+    private function collect_acf_field_refs(array $catalog)
     {
         $acf_catalog = isset($catalog['acf_catalog']) && is_array($catalog['acf_catalog']) ? $catalog['acf_catalog'] : [];
         $groups = isset($acf_catalog['groups']) && is_array($acf_catalog['groups']) ? $acf_catalog['groups'] : [];
@@ -720,27 +700,7 @@ final class DBVC_CC_Section_Field_Candidate_Service
                 }
 
                 $target_ref = sprintf('acf:%s:%s', sanitize_key((string) $group_key), sanitize_key((string) $field_key));
-                $pattern_sources = [$name];
-                if ($use_field_context_hints) {
-                    $field_context = isset($field['field_context']) && is_array($field['field_context']) ? $field['field_context'] : [];
-                    if (! empty($field_context['name_path'])) {
-                        $pattern_sources[] = (string) $field_context['name_path'];
-                    }
-                    if (! empty($field_context['effective_purpose'])) {
-                        $pattern_sources[] = (string) $field_context['effective_purpose'];
-                    } elseif (! empty($field_context['resolved_purpose'])) {
-                        $pattern_sources[] = (string) $field_context['resolved_purpose'];
-                    } elseif (! empty($field_context['default_purpose'])) {
-                        $pattern_sources[] = (string) $field_context['default_purpose'];
-                    }
-                }
-
-                $patterns = [];
-                foreach ($pattern_sources as $pattern_source) {
-                    $patterns = array_merge($patterns, $this->extract_patterns_from_field_key($pattern_source));
-                }
-
-                foreach (array_values(array_unique($patterns)) as $pattern) {
+                foreach ($this->extract_patterns_from_field_key($name) as $pattern) {
                     if (! isset($refs[$pattern])) {
                         $refs[$pattern] = [];
                     }
@@ -751,104 +711,6 @@ final class DBVC_CC_Section_Field_Candidate_Service
 
         ksort($refs);
         return $refs;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function get_current_field_context_meta()
-    {
-        if (is_array($this->field_context_meta_cache)) {
-            return $this->field_context_meta_cache;
-        }
-
-        $index = DBVC_CC_Field_Context_Provider_Service::get_instance()->get_mapping_index();
-        $policy = isset($index['consumer_policy']) && is_array($index['consumer_policy']) ? $index['consumer_policy'] : [];
-        $provider = isset($index['provider']) && is_array($index['provider']) ? $index['provider'] : [];
-        $catalog_meta = isset($index['catalog_meta']) && is_array($index['catalog_meta']) ? $index['catalog_meta'] : [];
-        $diagnostics = isset($index['diagnostics']) && is_array($index['diagnostics']) ? $index['diagnostics'] : [];
-        $error = isset($index['error']) && is_array($index['error']) ? $index['error'] : [];
-
-        $meta = [
-            'available' => ! empty($index['available']),
-            'profile' => isset($index['profile']) ? sanitize_key((string) $index['profile']) : 'mapping',
-            'transport' => isset($index['transport']) ? sanitize_key((string) $index['transport']) : 'local',
-            'remote' => isset($index['remote']) && is_array($index['remote']) ? $index['remote'] : [],
-            'consumer_policy' => $policy,
-            'provider' => $provider,
-            'catalog_meta' => $catalog_meta,
-            'diagnostics' => $diagnostics,
-            'error' => $error,
-        ];
-        $meta['hints_enabled'] = $this->should_use_field_context_hints($meta);
-        $meta['signature'] = $this->build_field_context_signature($meta);
-
-        $this->field_context_meta_cache = $meta;
-
-        return $meta;
-    }
-
-    /**
-     * @param array<string, mixed> $field_context_meta
-     * @return bool
-     */
-    private function should_use_field_context_hints(array $field_context_meta)
-    {
-        $policy = isset($field_context_meta['consumer_policy']) && is_array($field_context_meta['consumer_policy'])
-            ? $field_context_meta['consumer_policy']
-            : [];
-        $diagnostics = isset($field_context_meta['diagnostics']) && is_array($field_context_meta['diagnostics'])
-            ? $field_context_meta['diagnostics']
-            : [];
-
-        if (($policy['integration_mode'] ?? 'auto') === 'off') {
-            return false;
-        }
-
-        if (empty($field_context_meta['available'])) {
-            return false;
-        }
-
-        return empty($diagnostics['blocked']);
-    }
-
-    /**
-     * @param array<string, mixed> $field_context_meta
-     * @return string
-     */
-    private function build_field_context_signature(array $field_context_meta)
-    {
-        $policy = isset($field_context_meta['consumer_policy']) && is_array($field_context_meta['consumer_policy'])
-            ? $field_context_meta['consumer_policy']
-            : [];
-        $provider = isset($field_context_meta['provider']) && is_array($field_context_meta['provider'])
-            ? $field_context_meta['provider']
-            : [];
-        $catalog_meta = isset($field_context_meta['catalog_meta']) && is_array($field_context_meta['catalog_meta'])
-            ? $field_context_meta['catalog_meta']
-            : [];
-        $diagnostics = isset($field_context_meta['diagnostics']) && is_array($field_context_meta['diagnostics'])
-            ? $field_context_meta['diagnostics']
-            : [];
-        $error = isset($field_context_meta['error']) && is_array($field_context_meta['error'])
-            ? $field_context_meta['error']
-            : [];
-
-        return hash('sha256', (string) wp_json_encode([
-            'available' => ! empty($field_context_meta['available']),
-            'profile' => isset($field_context_meta['profile']) ? sanitize_key((string) $field_context_meta['profile']) : 'mapping',
-            'transport' => isset($field_context_meta['transport']) ? sanitize_key((string) $field_context_meta['transport']) : 'local',
-            'hints_enabled' => ! empty($field_context_meta['hints_enabled']),
-            'integration_mode' => isset($policy['integration_mode']) ? sanitize_key((string) $policy['integration_mode']) : 'auto',
-            'use_legacy_fallback' => ! empty($policy['use_legacy_fallback']),
-            'block_on_missing' => ! empty($policy['block_on_missing']),
-            'provider_contract_version' => isset($provider['contract_version']) ? absint($provider['contract_version']) : 0,
-            'catalog_status' => isset($catalog_meta['status']) ? sanitize_key((string) $catalog_meta['status']) : '',
-            'source_hash' => isset($catalog_meta['source_hash']) ? sanitize_text_field((string) $catalog_meta['source_hash']) : '',
-            'blocked' => ! empty($diagnostics['blocked']),
-            'error_code' => isset($error['code']) ? sanitize_key((string) $error['code']) : '',
-            'error_status' => isset($error['status']) ? absint($error['status']) : 0,
-        ]));
     }
 
     /**

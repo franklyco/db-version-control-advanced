@@ -20,7 +20,6 @@ jQuery(function($) {
     const dbvc_cc_domain_ai_health_by_key = {};
     const mappingState = {
         catalog: null,
-        reviewQueueFieldContext: null,
         sectionCandidates: null,
         sectionCandidatesStatus: null,
         mediaCandidates: null,
@@ -53,7 +52,6 @@ jQuery(function($) {
     const $minConfidence = $('#dbvc-cc-workbench-min-confidence');
     const $includeDecided = $('#dbvc-cc-workbench-include-decided');
     const $status = $('#dbvc-cc-workbench-status');
-    const $fieldContextNote = $('#dbvc-cc-workbench-field-context-note');
     const $aiRefreshNote = $('#dbvc-cc-workbench-ai-refresh-note');
     const $tbody = $('#dbvc-cc-workbench-table tbody');
     const $empty = $('#dbvc-cc-workbench-empty');
@@ -69,7 +67,6 @@ jQuery(function($) {
     const $mappingObjectPostType = $('#dbvc-cc-mapping-object-post-type');
     const $mappingStatus = $('#dbvc-cc-mapping-status');
     const $mappingCatalogSummary = $('#dbvc-cc-mapping-catalog-summary');
-    const $mappingFieldContextSummary = $('#dbvc-cc-mapping-field-context-summary');
     const $mappingSectionsSummary = $('#dbvc-cc-mapping-sections-summary');
     const $mappingMediaSummary = $('#dbvc-cc-mapping-media-summary');
     const $mappingDecisionSummary = $('#dbvc-cc-mapping-decision-summary');
@@ -144,18 +141,6 @@ jQuery(function($) {
 
         $aiRefreshNote.removeClass('dbvc-cc-hidden').text(note);
         $aiRefreshNote.css('color', isError ? '#d63638' : '#50575e');
-    }
-
-    function dbvc_cc_set_field_context_note(message = '', isError = false) {
-        const note = String(message || '').trim();
-        if (!note) {
-            $fieldContextNote.addClass('dbvc-cc-hidden').text('');
-            $fieldContextNote.css('color', '#8a4b00');
-            return;
-        }
-
-        $fieldContextNote.removeClass('dbvc-cc-hidden').text(note);
-        $fieldContextNote.css('color', isError ? '#d63638' : '#8a4b00');
     }
 
     function dbvc_cc_set_mapping_status(message, isError = false) {
@@ -300,121 +285,6 @@ jQuery(function($) {
         return normalizedValue.replace(/\b([a-z])/g, function(match, letter) {
             return String(letter || '').toUpperCase();
         });
-    }
-
-    function dbvc_cc_get_queue_field_context_meta() {
-        return mappingState.reviewQueueFieldContext && typeof mappingState.reviewQueueFieldContext === 'object'
-            ? mappingState.reviewQueueFieldContext
-            : null;
-    }
-
-    function dbvc_cc_get_catalog_field_context_meta() {
-        const catalog = mappingState.catalog && typeof mappingState.catalog === 'object'
-            ? mappingState.catalog
-            : null;
-        const acfCatalog = catalog && catalog.acf_catalog && typeof catalog.acf_catalog === 'object'
-            ? catalog.acf_catalog
-            : null;
-        const fieldContext = acfCatalog && acfCatalog.field_context && typeof acfCatalog.field_context === 'object'
-            ? acfCatalog.field_context
-            : null;
-
-        return fieldContext;
-    }
-
-    function dbvc_cc_describe_field_context_meta(meta) {
-        if (!meta || typeof meta !== 'object') {
-            return 'n/a';
-        }
-
-        const integrationMode = String(meta.integration_mode || (meta.consumer_policy && meta.consumer_policy.integration_mode) || 'auto');
-        if (integrationMode === 'off') {
-            return 'off | deterministic-only';
-        }
-
-        const status = String(meta.status || (meta.catalog_meta && meta.catalog_meta.status) || 'missing');
-        const available = !!meta.available;
-        const degraded = !!meta.degraded || !!(meta.diagnostics && meta.diagnostics.degraded);
-        const blocked = !!meta.blocked || !!(meta.diagnostics && meta.diagnostics.blocked);
-        const warnings = Array.isArray(meta.warnings)
-            ? meta.warnings
-            : (meta.diagnostics && Array.isArray(meta.diagnostics.warnings) ? meta.diagnostics.warnings : []);
-        const contractVersion = Number(meta.contract_version || (meta.provider && meta.provider.contract_version) || 0);
-        const sourceHash = String(meta.source_hash || (meta.catalog_meta && meta.catalog_meta.source_hash) || '');
-        const transport = String(meta.transport || 'local');
-        const summaryParts = [
-            integrationMode,
-            transport,
-            available ? status : 'unavailable',
-        ];
-
-        if (blocked) {
-            summaryParts.push('blocked');
-        } else if (degraded) {
-            summaryParts.push('degraded');
-        }
-
-        if (warnings.length > 0) {
-            summaryParts.push(`warnings:${warnings.length}`);
-        }
-
-        if (contractVersion > 0) {
-            summaryParts.push(`contract:v${contractVersion}`);
-        }
-
-        if (sourceHash) {
-            summaryParts.push(`src:${sourceHash.substring(0, 12)}`);
-        }
-
-        return summaryParts.join(' | ');
-    }
-
-    function dbvc_cc_build_field_context_note(meta) {
-        if (!meta || typeof meta !== 'object') {
-            return { message: '', isError: false };
-        }
-
-        const integrationMode = String(meta.integration_mode || (meta.consumer_policy && meta.consumer_policy.integration_mode) || 'auto');
-        if (integrationMode === 'off') {
-            return { message: '', isError: false };
-        }
-
-        const diagnostics = meta.diagnostics && typeof meta.diagnostics === 'object'
-            ? meta.diagnostics
-            : {};
-        const warnings = Array.isArray(meta.warnings)
-            ? meta.warnings
-            : (Array.isArray(diagnostics.warnings) ? diagnostics.warnings : []);
-        const warningMessages = warnings
-            .map((warning) => warning && warning.message ? String(warning.message).trim() : '')
-            .filter((message) => message !== '');
-        const summary = dbvc_cc_describe_field_context_meta(meta);
-
-        if (!!diagnostics.blocked) {
-            const detail = warningMessages.length > 0 ? warningMessages[0] : 'Operator policy is blocking field-context hints for mapping.';
-            return {
-                message: `Field context blocked. ${detail} (${summary})`,
-                isError: true,
-            };
-        }
-
-        if (!meta.available) {
-            const detail = warningMessages.length > 0 ? warningMessages[0] : 'The Vertical provider is unavailable in this runtime.';
-            return {
-                message: `Field context unavailable. ${detail} (${summary})`,
-                isError: true,
-            };
-        }
-
-        if (!!diagnostics.degraded || warningMessages.length > 0) {
-            const detail = warningMessages.length > 0 ? warningMessages[0] : 'Field-context coverage is degraded, so deterministic mapping will fall back to narrower signals.';
-            return {
-                message: `Field context degraded. ${detail} (${summary})`,
-                isError: false,
-            };
-        }
-
-        return { message: '', isError: false };
     }
 
     function dbvc_cc_build_html_attributes(attributes = {}) {
@@ -1917,26 +1787,18 @@ jQuery(function($) {
         const dbvc_cc_reasons = Array.isArray(dbvc_cc_mapping_health.reasons) ? dbvc_cc_mapping_health.reasons : [];
         const dbvc_cc_title = dbvc_cc_reasons.length > 0 ? escapeHtml(dbvc_cc_reasons.join(', ')) : '';
 
-        if (dbvc_cc_mapping_health.blocked) {
-            return `<span class="dbvc-cc-state-pill dbvc-cc-state-pill-error" title="${dbvc_cc_title}">Blocked</span>`;
+        if (!dbvc_cc_mapping_health.stale) {
+            return '<span class="dbvc-cc-state-pill dbvc-cc-state-pill-ok">Ready</span>';
         }
 
-        if (dbvc_cc_mapping_health.stale) {
-            const dbvc_cc_button = dbvc_cc_mapping_bridge_enabled
-                ? `<button type="button" class="button button-small dbvc-cc-queue-rebuild" data-index="${index}">Rebuild</button>`
-                : '';
+        const dbvc_cc_button = dbvc_cc_mapping_bridge_enabled
+            ? `<button type="button" class="button button-small dbvc-cc-queue-rebuild" data-index="${index}">Rebuild</button>`
+            : '';
 
-            return `
-                <span class="dbvc-cc-state-pill dbvc-cc-state-pill-warn" title="${dbvc_cc_title}">Stale</span>
-                <div class="dbvc-cc-state-actions">${dbvc_cc_button}</div>
-            `;
-        }
-
-        if (dbvc_cc_mapping_health.degraded) {
-            return `<span class="dbvc-cc-state-pill dbvc-cc-state-pill-warn" title="${dbvc_cc_title}">Warn</span>`;
-        }
-
-        return '<span class="dbvc-cc-state-pill dbvc-cc-state-pill-ok">Ready</span>';
+        return `
+            <span class="dbvc-cc-state-pill dbvc-cc-state-pill-warn" title="${dbvc_cc_title}">Stale</span>
+            <div class="dbvc-cc-state-actions">${dbvc_cc_button}</div>
+        `;
     }
 
     async function dbvc_cc_rebuild_queue_item_mapping(item) {
@@ -2048,24 +1910,15 @@ jQuery(function($) {
         try {
             const payload = await apiRequest(`workbench/review-queue?${params.toString()}`);
             queueItems = Array.isArray(payload.items) ? payload.items : [];
-            mappingState.reviewQueueFieldContext = payload && payload.field_context && typeof payload.field_context === 'object'
-                ? payload.field_context
-                : null;
             selected = null;
             setDetailVisible(false);
-            const fieldContextNote = dbvc_cc_build_field_context_note(mappingState.reviewQueueFieldContext);
-            dbvc_cc_set_field_context_note(fieldContextNote.message, fieldContextNote.isError);
             renderQueue();
-            dbvc_cc_update_mapping_summaries();
             setStatus(`Loaded ${queueItems.length} queue item(s).`);
         } catch (error) {
             queueItems = [];
-            mappingState.reviewQueueFieldContext = null;
             selected = null;
             setDetailVisible(false);
-            dbvc_cc_set_field_context_note('', false);
             renderQueue();
-            dbvc_cc_update_mapping_summaries();
             setStatus(error.message || 'Failed to load review queue.', true);
         }
     }
@@ -2375,15 +2228,6 @@ jQuery(function($) {
             const generatedAt = String(mappingState.catalog.generated_at || '');
             $mappingCatalogSummary.text(`${generatedAt || 'generated'} | ${fingerprint ? fingerprint.substring(0, 12) : 'no fingerprint'}`);
             $mappingCatalogJson.text(JSON.stringify(mappingState.catalog, null, 2));
-        } else {
-            $mappingCatalogSummary.text('n/a');
-            $mappingCatalogJson.text('');
-        }
-
-        const fieldContextMeta = dbvc_cc_get_catalog_field_context_meta() || dbvc_cc_get_queue_field_context_meta();
-        $mappingFieldContextSummary.text(dbvc_cc_describe_field_context_meta(fieldContextMeta));
-        if (!mappingState.catalog && !fieldContextMeta) {
-            $mappingFieldContextSummary.text('n/a');
         }
 
         if (mappingState.sectionCandidates) {
@@ -2394,9 +2238,6 @@ jQuery(function($) {
             const staleText = sectionStatus.stale ? `, stale (${String(sectionStatus.stale_reason || 'unknown')})` : '';
             $mappingSectionsSummary.text(`${sectionCount} section(s), ${unresolvedCount} unresolved${staleText}`);
             $mappingSectionsJson.text(JSON.stringify(mappingState.sectionCandidates, null, 2));
-        } else {
-            $mappingSectionsSummary.text('n/a');
-            $mappingSectionsJson.text('');
         }
 
         if (mappingState.mediaCandidates) {
@@ -2418,9 +2259,6 @@ jQuery(function($) {
                 status: 'disabled',
                 reason: 'media_mapping_bridge_disabled',
             }, null, 2));
-        } else {
-            $mappingMediaSummary.text('n/a');
-            $mappingMediaJson.text('');
         }
 
         const decisionSummary = mappingState.mappingDecision

@@ -19,6 +19,7 @@ final class DBVC_Entity_Editor_App
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_assets']);
         add_action('admin_post_dbvc_entity_editor_download', [self::class, 'handle_download']);
         add_action('admin_post_dbvc_entity_editor_download_bulk', [self::class, 'handle_bulk_download']);
+        add_action('admin_post_dbvc_entity_editor_transfer_packet', [self::class, 'handle_transfer_packet']);
     }
 
     /**
@@ -73,8 +74,10 @@ final class DBVC_Entity_Editor_App
                 'root' => esc_url_raw(rest_url('dbvc/v1/')),
                 'nonce' => wp_create_nonce('wp_rest'),
                 'download_url' => esc_url_raw(admin_url('admin-post.php')),
+                'proposal_review_url' => esc_url_raw(admin_url('admin.php?page=dbvc-export#proposal-review')),
                 'download_nonce' => wp_create_nonce('dbvc_entity_editor_download'),
                 'download_bulk_nonce' => wp_create_nonce('dbvc_entity_editor_download_bulk'),
+                'transfer_packet_nonce' => wp_create_nonce('dbvc_entity_editor_transfer_packet'),
             ]
         );
     }
@@ -127,24 +130,7 @@ final class DBVC_Entity_Editor_App
 
         check_admin_referer('dbvc_entity_editor_download_bulk');
 
-        $paths_raw = isset($_POST['paths']) ? wp_unslash((string) $_POST['paths']) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-        $decoded = json_decode($paths_raw, true);
-        if (! is_array($decoded)) {
-            wp_die(esc_html__('Invalid bulk download request.', 'dbvc'), 400);
-        }
-
-        $paths = [];
-        foreach ($decoded as $path) {
-            if (! is_string($path)) {
-                continue;
-            }
-            $normalized = str_replace('\\', '/', ltrim(trim($path), '/'));
-            if ($normalized === '') {
-                continue;
-            }
-            $paths[$normalized] = $normalized;
-        }
-        $paths = array_values($paths);
+        $paths = self::parse_bulk_paths_from_request();
 
         if (empty($paths)) {
             wp_die(esc_html__('No entity files selected for bulk download.', 'dbvc'), 400);
@@ -201,6 +187,51 @@ final class DBVC_Entity_Editor_App
     }
 
     /**
+     * Handle secure transfer-packet download request.
+     *
+     * @return void
+     */
+    public static function handle_transfer_packet()
+    {
+        if (! current_user_can('manage_options')) {
+            wp_die(esc_html__('You are not allowed to create transfer packets.', 'dbvc'), 403);
+        }
+
+        check_admin_referer('dbvc_entity_editor_transfer_packet');
+
+        $paths = self::parse_bulk_paths_from_request();
+        if (empty($paths)) {
+            wp_die(esc_html__('No entity files selected for transfer.', 'dbvc'), 400);
+        }
+
+        $result = \Dbvc\Transfer\EntityPacketBuilder::build_from_entity_paths($paths);
+        if (is_wp_error($result)) {
+            $status_data = $result->get_error_data();
+            $status = (int) (is_array($status_data) && isset($status_data['status']) ? $status_data['status'] : 0);
+            if ($status <= 0) {
+                $status = 500;
+            }
+            wp_die(esc_html($result->get_error_message()), $status);
+        }
+
+        $zip_path = isset($result['zip_path']) ? (string) $result['zip_path'] : '';
+        if ($zip_path === '' || ! is_file($zip_path)) {
+            \Dbvc\Transfer\EntityPacketBuilder::cleanup_build(is_array($result) ? $result : []);
+            wp_die(esc_html__('Transfer packet archive could not be prepared.', 'dbvc'), 500);
+        }
+
+        $filename = isset($result['filename']) ? (string) $result['filename'] : 'dbvc-transfer-packet.zip';
+
+        nocache_headers();
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name($filename) . '"');
+        header('Content-Length: ' . filesize($zip_path));
+        readfile($zip_path);
+        \Dbvc\Transfer\EntityPacketBuilder::cleanup_build($result);
+        exit;
+    }
+
+    /**
      * Locate built assets (if present).
      *
      * @return array<string,mixed>|null
@@ -232,5 +263,35 @@ final class DBVC_Entity_Editor_App
             'css'     => $css,
             'version' => isset($asset['version']) ? $asset['version'] : DBVC_PLUGIN_VERSION,
         ];
+    }
+
+    /**
+     * Parse the JSON path list used by bulk Entity Editor actions.
+     *
+     * @return array<int,string>
+     */
+    private static function parse_bulk_paths_from_request()
+    {
+        $paths_raw = isset($_POST['paths']) ? wp_unslash((string) $_POST['paths']) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+        $decoded = json_decode($paths_raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $paths = [];
+        foreach ($decoded as $path) {
+            if (! is_string($path)) {
+                continue;
+            }
+
+            $normalized = str_replace('\\', '/', ltrim(trim($path), '/'));
+            if ($normalized === '') {
+                continue;
+            }
+
+            $paths[$normalized] = $normalized;
+        }
+
+        return array_values($paths);
     }
 }
