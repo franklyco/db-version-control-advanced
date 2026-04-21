@@ -113,6 +113,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 'input_artifacts' => isset($args['input_artifacts']) && is_array($args['input_artifacts']) ? array_values($args['input_artifacts']) : [],
                 'primary_object_key' => $object_key,
                 'pattern_memory_ref' => isset($args['pattern_memory_ref']) ? (string) $args['pattern_memory_ref'] : '',
+                'field_context_provider' => isset($catalog['field_context_provider']) && is_array($catalog['field_context_provider']) ? $catalog['field_context_provider'] : [],
                 'stage_budget' => DBVC_CC_V2_Contracts::get_ai_stage_budget(DBVC_CC_V2_Contracts::AI_STAGE_MAPPING_INDEX),
             ],
             'stats' => [
@@ -317,6 +318,13 @@ final class DBVC_CC_V2_Mapping_Index_Service
                     'reason' => isset($candidate['reason']) ? sanitize_key((string) $candidate['reason']) : '',
                     'pattern_key' => isset($candidate['pattern_key']) ? sanitize_key((string) $candidate['pattern_key']) : '',
                 ];
+
+                if (isset($candidate['field_context']) && is_array($candidate['field_context']) && ! empty($candidate['field_context'])) {
+                    $deduped[$target_ref]['field_context'] = $candidate['field_context'];
+                    $deduped[$target_ref]['warnings'] = isset($candidate['field_context']['warnings']) && is_array($candidate['field_context']['warnings'])
+                        ? array_values($candidate['field_context']['warnings'])
+                        : [];
+                }
             }
 
             if (! empty($candidate['reason']) && strpos((string) $candidate['reason'], 'pattern') !== false) {
@@ -389,6 +397,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
             ],
             'meta_refs' => $this->collect_meta_field_refs($catalog, $object_key),
             'acf_refs' => $this->collect_acf_field_refs($catalog, $object_key),
+            'field_context_provider' => isset($catalog['field_context_provider']) && is_array($catalog['field_context_provider']) ? $catalog['field_context_provider'] : [],
         ];
     }
 
@@ -459,11 +468,32 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 }
 
                 $target_ref = sprintf('acf:%s:%s', sanitize_key((string) $group_key), sanitize_key((string) $field_key));
-                foreach ($this->extract_patterns_from_field_key($name) as $pattern_key) {
+                $field_context = isset($field['field_context']) && is_array($field['field_context']) ? $field['field_context'] : [];
+                $pattern_source = trim(
+                    implode(
+                        ' ',
+                        array_filter(
+                            [
+                                $name,
+                                isset($field['label']) ? (string) $field['label'] : '',
+                                isset($field_context['field_purpose']) ? (string) $field_context['field_purpose'] : '',
+                                isset($field_context['group_purpose']) ? (string) $field_context['group_purpose'] : '',
+                                isset($field_context['value_contract']['content_type']) ? (string) $field_context['value_contract']['content_type'] : '',
+                                isset($field_context['value_contract']['value_shape']) ? (string) $field_context['value_contract']['value_shape'] : '',
+                                isset($field_context['value_contract']['reference_kind']) ? (string) $field_context['value_contract']['reference_kind'] : '',
+                            ]
+                        )
+                    )
+                );
+
+                foreach ($this->extract_patterns_from_field_key($pattern_source) as $pattern_key) {
                     if (! isset($refs[$pattern_key])) {
                         $refs[$pattern_key] = [];
                     }
-                    $refs[$pattern_key][] = $target_ref;
+                    $refs[$pattern_key][] = [
+                        'target_ref' => $target_ref,
+                        'field_context' => $field_context,
+                    ];
                 }
             }
         }
@@ -592,12 +622,18 @@ final class DBVC_CC_V2_Mapping_Index_Service
                 $pattern_refs = array_merge($pattern_refs, $acf_refs[$pattern_key]);
             }
 
-            foreach (array_slice(array_values(array_unique($pattern_refs)), 0, 8) as $target_ref) {
+            $pattern_refs = $this->dedupe_pattern_refs($pattern_refs);
+            foreach (array_slice($pattern_refs, 0, 8) as $pattern_ref) {
+                $target_ref = is_array($pattern_ref) && isset($pattern_ref['target_ref']) ? (string) $pattern_ref['target_ref'] : (string) $pattern_ref;
+                $field_context = is_array($pattern_ref) && isset($pattern_ref['field_context']) && is_array($pattern_ref['field_context'])
+                    ? $pattern_ref['field_context']
+                    : [];
                 $candidates[] = [
                     'target_ref' => $target_ref,
-                    'confidence' => $base_confidence,
-                    'reason' => 'pattern_field_catalog_match',
+                    'confidence' => $this->adjust_confidence_for_field_context($base_confidence, $field_context),
+                    'reason' => ! empty($field_context) ? 'field_context_pattern_match' : 'pattern_field_catalog_match',
                     'pattern_key' => $pattern_key,
+                    'field_context' => $field_context,
                 ];
             }
         }
@@ -620,6 +656,64 @@ final class DBVC_CC_V2_Mapping_Index_Service
         }
 
         return $candidates;
+    }
+
+    /**
+     * @param array<int, mixed> $pattern_refs
+     * @return array<int, mixed>
+     */
+    private function dedupe_pattern_refs(array $pattern_refs)
+    {
+        $deduped = [];
+        foreach ($pattern_refs as $pattern_ref) {
+            $target_ref = is_array($pattern_ref) && isset($pattern_ref['target_ref']) ? (string) $pattern_ref['target_ref'] : (string) $pattern_ref;
+            if ($target_ref === '' || isset($deduped[$target_ref])) {
+                continue;
+            }
+
+            $deduped[$target_ref] = $pattern_ref;
+        }
+
+        return array_values($deduped);
+    }
+
+    /**
+     * @param float                $base_confidence
+     * @param array<string, mixed> $field_context
+     * @return float
+     */
+    private function adjust_confidence_for_field_context($base_confidence, array $field_context)
+    {
+        $confidence = (float) $base_confidence;
+        if (empty($field_context)) {
+            return $confidence;
+        }
+
+        $field_purpose = isset($field_context['field_purpose']) ? trim((string) $field_context['field_purpose']) : '';
+        if ($field_purpose !== '') {
+            $confidence += 0.03;
+        }
+
+        $status_meta = isset($field_context['status_meta']) && is_array($field_context['status_meta']) ? $field_context['status_meta'] : [];
+        $status_code = isset($status_meta['code']) ? sanitize_key((string) $status_meta['code']) : '';
+        if ($status_code === 'legacy_only') {
+            $confidence -= 0.08;
+        } elseif ($status_code === 'missing') {
+            $confidence -= 0.18;
+        }
+
+        $value_contract = isset($field_context['value_contract']) && is_array($field_context['value_contract']) ? $field_context['value_contract'] : [];
+        if (array_key_exists('writable', $value_contract) && ! $value_contract['writable']) {
+            $confidence -= 0.25;
+        }
+
+        $clone_context = isset($field_context['clone_context']) && is_array($field_context['clone_context']) ? $field_context['clone_context'] : [];
+        $publish_policy = isset($clone_context['publish_policy']) && is_array($clone_context['publish_policy']) ? $clone_context['publish_policy'] : [];
+        if (! empty($clone_context['is_clone_projection']) && array_key_exists('framework_default_writable', $publish_policy) && ! $publish_policy['framework_default_writable']) {
+            $confidence -= 0.10;
+        }
+
+        return round(min(0.99, max(0.05, $confidence)), 2);
     }
 
     /**

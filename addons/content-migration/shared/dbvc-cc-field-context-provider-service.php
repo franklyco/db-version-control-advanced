@@ -105,8 +105,15 @@ final class DBVC_CC_Field_Context_Provider_Service
                 'blocked' => false,
                 'legacy_only_count' => 0,
                 'missing_count' => 0,
+                'non_writable_count' => 0,
+                'clone_projection_count' => 0,
+                'clone_publish_blocked_count' => 0,
+                'duplicate_acf_key_count' => 0,
                 'warnings' => [],
             ];
+            $result['entries_by_key_path'] = [];
+            $result['entries_by_name_path'] = [];
+            $result['entries_by_group_and_acf_key'] = [];
             $this->mapping_index_cache[$cache_key] = $result;
 
             return $result;
@@ -207,11 +214,18 @@ final class DBVC_CC_Field_Context_Provider_Service
         $catalog_meta = isset($payload['catalog_meta']) && is_array($payload['catalog_meta']) ? $payload['catalog_meta'] : [];
         $groups = [];
         $entries_by_acf_key = [];
+        $entries_by_key_path = [];
+        $entries_by_name_path = [];
+        $entries_by_group_and_acf_key = [];
         $legacy_only_count = 0;
         $missing_count = 0;
+        $duplicate_acf_key_count = 0;
         $group_rows = isset($payload['data']['groups']) && is_array($payload['data']['groups'])
             ? $payload['data']['groups']
             : [];
+        $non_writable_count = 0;
+        $clone_projection_count = 0;
+        $clone_publish_blocked_count = 0;
 
         foreach ($group_rows as $group_key => $group_row) {
             if (! is_array($group_row)) {
@@ -242,18 +256,59 @@ final class DBVC_CC_Field_Context_Provider_Service
                     continue;
                 }
 
+                $key_path = isset($normalized_entry['key_path']) ? (string) $normalized_entry['key_path'] : '';
+                $name_path = isset($normalized_entry['name_path']) ? (string) $normalized_entry['name_path'] : '';
+                $entry_group_key = isset($normalized_entry['group_key']) ? sanitize_key((string) $normalized_entry['group_key']) : $acf_group_key;
                 $status_code = isset($normalized_entry['status_meta']['code']) ? sanitize_key((string) $normalized_entry['status_meta']['code']) : '';
                 if ($status_code === 'legacy_only') {
                     $legacy_only_count++;
                 } elseif ($status_code === 'missing') {
                     $missing_count++;
                 }
+                if (isset($normalized_entry['value_contract']['writable']) && ! $normalized_entry['value_contract']['writable']) {
+                    $non_writable_count++;
+                }
+                if (! empty($normalized_entry['clone_context']['is_clone_projection'])) {
+                    $clone_projection_count++;
+                    $publish_policy = isset($normalized_entry['clone_context']['publish_policy']) && is_array($normalized_entry['clone_context']['publish_policy'])
+                        ? $normalized_entry['clone_context']['publish_policy']
+                        : [];
+                    if (array_key_exists('framework_default_writable', $publish_policy) && ! $publish_policy['framework_default_writable']) {
+                        $clone_publish_blocked_count++;
+                    }
+                }
+                if (isset($entries_by_acf_key[$acf_field_key]) && $key_path !== '' && isset($entries_by_acf_key[$acf_field_key]['key_path']) && (string) $entries_by_acf_key[$acf_field_key]['key_path'] !== $key_path) {
+                    $duplicate_acf_key_count++;
+                }
                 $entries_by_acf_key[$acf_field_key] = $normalized_entry;
+                if ($key_path !== '') {
+                    $entries_by_key_path[$key_path] = $normalized_entry;
+                }
+                if ($name_path !== '') {
+                    $entries_by_name_path[$name_path] = $normalized_entry;
+                }
+                if ($entry_group_key !== '') {
+                    if (! isset($entries_by_group_and_acf_key[$entry_group_key]) || ! is_array($entries_by_group_and_acf_key[$entry_group_key])) {
+                        $entries_by_group_and_acf_key[$entry_group_key] = [];
+                    }
+                    $entries_by_group_and_acf_key[$entry_group_key][$acf_field_key] = $normalized_entry;
+                }
             }
         }
 
         ksort($groups);
         ksort($entries_by_acf_key);
+        ksort($entries_by_key_path);
+        ksort($entries_by_name_path);
+        foreach ($entries_by_group_and_acf_key as $group_key => $group_entries) {
+            if (is_array($group_entries)) {
+                ksort($group_entries);
+                $entries_by_group_and_acf_key[$group_key] = $group_entries;
+            }
+        }
+        ksort($entries_by_group_and_acf_key);
+        $normalized_provider = $this->normalize_provider_meta($provider);
+        $normalized_catalog_meta = $this->normalize_catalog_meta($catalog_meta);
 
         return [
             'available' => true,
@@ -261,20 +316,32 @@ final class DBVC_CC_Field_Context_Provider_Service
             'profile' => 'mapping',
             'transport' => sanitize_key((string) $transport),
             'remote' => $this->build_remote_meta($remote_config),
-            'provider' => $this->normalize_provider_meta($provider),
-            'catalog_meta' => $this->normalize_catalog_meta($catalog_meta),
+            'provider' => $normalized_provider,
+            'catalog_meta' => $normalized_catalog_meta,
             'consumer_policy' => $policy,
             'groups_by_acf_key' => $groups,
             'entries_by_acf_key' => $entries_by_acf_key,
+            'entries_by_key_path' => $entries_by_key_path,
+            'entries_by_name_path' => $entries_by_name_path,
+            'entries_by_group_and_acf_key' => $entries_by_group_and_acf_key,
             'diagnostics' => $this->build_diagnostics(
                 [
                     'available' => true,
-                    'catalog_meta' => $catalog_meta,
+                    'catalog_meta' => $normalized_catalog_meta,
                     'error' => [],
                 ],
                 $legacy_only_count,
                 $missing_count,
-                $policy
+                $policy,
+                [
+                    'non_writable_count' => $non_writable_count,
+                    'clone_projection_count' => $clone_projection_count,
+                    'clone_publish_blocked_count' => $clone_publish_blocked_count,
+                    'duplicate_acf_key_count' => $duplicate_acf_key_count,
+                    'source_hash_missing' => empty($normalized_catalog_meta['source_hash']),
+                    'provider_schema_version' => isset($normalized_provider['schema_version']) ? (int) $normalized_provider['schema_version'] : 0,
+                    'provider_site_fingerprint' => isset($normalized_provider['site_fingerprint']) ? (string) $normalized_provider['site_fingerprint'] : '',
+                ]
             ),
             'error' => [],
         ];
@@ -289,6 +356,14 @@ final class DBVC_CC_Field_Context_Provider_Service
     {
         if (($policy['integration_mode'] ?? DBVC_CC_V2_Contracts::FIELD_CONTEXT_MODE_AUTO) === DBVC_CC_V2_Contracts::FIELD_CONTEXT_MODE_OFF) {
             return 'disabled';
+        }
+
+        if (($policy['integration_mode'] ?? '') === DBVC_CC_V2_Contracts::FIELD_CONTEXT_MODE_LOCAL) {
+            return $this->is_local_available() ? 'local' : 'unavailable';
+        }
+
+        if (($policy['integration_mode'] ?? '') === DBVC_CC_V2_Contracts::FIELD_CONTEXT_MODE_REMOTE) {
+            return $this->has_remote_provider_config($criteria, $policy) ? 'remote' : 'unavailable';
         }
 
         if ($this->is_local_available()) {
@@ -499,6 +574,203 @@ final class DBVC_CC_Field_Context_Provider_Service
     }
 
     /**
+     * @param mixed $location
+     * @return array<int, array<int, array<string, string>>>
+     */
+    private function normalize_location_payload($location)
+    {
+        $normalized = [];
+        if (! is_array($location)) {
+            return $normalized;
+        }
+
+        foreach ($location as $rule_group) {
+            if (! is_array($rule_group)) {
+                continue;
+            }
+
+            $normalized_group = [];
+            foreach ($rule_group as $rule) {
+                if (! is_array($rule)) {
+                    continue;
+                }
+
+                $param = isset($rule['param']) ? sanitize_key((string) $rule['param']) : '';
+                $operator = isset($rule['operator']) ? sanitize_text_field((string) $rule['operator']) : '';
+                $value = isset($rule['value']) && is_scalar($rule['value']) ? sanitize_text_field((string) $rule['value']) : '';
+                if ($param === '') {
+                    continue;
+                }
+
+                $normalized_group[] = [
+                    'param' => $param,
+                    'operator' => $operator,
+                    'value' => $value,
+                ];
+            }
+
+            if (! empty($normalized_group)) {
+                $normalized[] = $normalized_group;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<int, array<int, array<string, string>>> $location
+     * @return array<string, array<int, string>>
+     */
+    private function build_object_context_from_location(array $location)
+    {
+        $context = [
+            'post_types' => [],
+            'taxonomies' => [],
+            'options_pages' => [],
+            'unknown_rules' => [],
+        ];
+
+        foreach ($location as $rule_group) {
+            foreach ($rule_group as $rule) {
+                $param = isset($rule['param']) ? sanitize_key((string) $rule['param']) : '';
+                $operator = isset($rule['operator']) ? sanitize_text_field((string) $rule['operator']) : '';
+                $value = isset($rule['value']) ? sanitize_text_field((string) $rule['value']) : '';
+                if ($operator !== '==' || $value === '') {
+                    $context['unknown_rules'][] = trim($param . ' ' . $operator . ' ' . $value);
+                    continue;
+                }
+
+                if ($param === 'post_type') {
+                    $context['post_types'][] = sanitize_key($value);
+                } elseif ($param === 'taxonomy') {
+                    $context['taxonomies'][] = sanitize_key($value);
+                } elseif (in_array($param, ['options_page', 'options_page_id'], true)) {
+                    $context['options_pages'][] = sanitize_key($value);
+                } else {
+                    $context['unknown_rules'][] = trim($param . ' ' . $operator . ' ' . $value);
+                }
+            }
+        }
+
+        foreach ($context as $key => $values) {
+            $context[$key] = array_values(array_unique(array_filter($values)));
+        }
+
+        return $context;
+    }
+
+    /**
+     * @param mixed $contract
+     * @return array<string, mixed>
+     */
+    private function normalize_value_contract($contract)
+    {
+        if (! is_array($contract)) {
+            return [];
+        }
+
+        $normalized = [
+            'version' => isset($contract['version']) ? absint($contract['version']) : 0,
+            'acf_type' => isset($contract['acf_type']) ? sanitize_key((string) $contract['acf_type']) : '',
+            'scope' => isset($contract['scope']) ? sanitize_key((string) $contract['scope']) : '',
+            'content_type' => isset($contract['content_type']) ? sanitize_key((string) $contract['content_type']) : '',
+            'value_shape' => isset($contract['value_shape']) ? sanitize_key((string) $contract['value_shape']) : '',
+            'storage_type' => isset($contract['storage_type']) ? sanitize_key((string) $contract['storage_type']) : '',
+            'write_behavior' => isset($contract['write_behavior']) ? sanitize_key((string) $contract['write_behavior']) : '',
+            'required' => ! empty($contract['required']),
+            'nullable' => ! empty($contract['nullable']),
+            'multiple' => ! empty($contract['multiple']),
+            'container' => ! empty($contract['container']),
+            'children_shape' => isset($contract['children_shape']) ? sanitize_key((string) $contract['children_shape']) : '',
+            'return_format' => isset($contract['return_format']) ? sanitize_key((string) $contract['return_format']) : '',
+            'reference_kind' => isset($contract['reference_kind']) ? sanitize_key((string) $contract['reference_kind']) : '',
+            'allowed_values' => [],
+            'allowed_values_truncated' => ! empty($contract['allowed_values_truncated']),
+            'constraints' => [],
+            'writable' => ! array_key_exists('writable', $contract) || ! empty($contract['writable']),
+            'notes' => [],
+        ];
+
+        if (isset($contract['allowed_values']) && is_array($contract['allowed_values'])) {
+            foreach ($contract['allowed_values'] as $allowed_value) {
+                if (is_array($allowed_value)) {
+                    $normalized['allowed_values'][] = [
+                        'value' => isset($allowed_value['value']) && is_scalar($allowed_value['value']) ? sanitize_text_field((string) $allowed_value['value']) : '',
+                        'label' => isset($allowed_value['label']) && is_scalar($allowed_value['label']) ? sanitize_text_field((string) $allowed_value['label']) : '',
+                    ];
+                } elseif (is_scalar($allowed_value)) {
+                    $normalized['allowed_values'][] = sanitize_text_field((string) $allowed_value);
+                }
+            }
+        }
+
+        foreach (['constraints', 'notes'] as $list_key) {
+            if (! isset($contract[$list_key]) || ! is_array($contract[$list_key])) {
+                continue;
+            }
+
+            foreach ($contract[$list_key] as $value) {
+                if (is_scalar($value)) {
+                    $normalized[$list_key][] = sanitize_text_field((string) $value);
+                }
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $clone_context
+     * @return array<string, mixed>
+     */
+    private function normalize_clone_context($clone_context)
+    {
+        if (! is_array($clone_context) || empty($clone_context)) {
+            return [];
+        }
+
+        $normalized = $this->sanitize_nested_payload($clone_context);
+        $normalized['is_clone_projection'] = ! empty($clone_context['is_clone_projection']);
+        $normalized['projection_depth'] = isset($clone_context['projection_depth']) ? absint($clone_context['projection_depth']) : 0;
+
+        if (isset($clone_context['publish_policy']) && is_array($clone_context['publish_policy'])) {
+            $publish_policy = $clone_context['publish_policy'];
+            $normalized['publish_policy'] = [
+                'framework_default_writable' => ! array_key_exists('framework_default_writable', $publish_policy) || ! empty($publish_policy['framework_default_writable']),
+                'recommended_action' => isset($publish_policy['recommended_action']) ? sanitize_key((string) $publish_policy['recommended_action']) : '',
+                'reason' => isset($publish_policy['reason']) ? sanitize_text_field((string) $publish_policy['reason']) : '',
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $payload
+     * @return mixed
+     */
+    private function sanitize_nested_payload($payload)
+    {
+        if (is_array($payload)) {
+            $normalized = [];
+            foreach ($payload as $key => $value) {
+                $normalized_key = is_int($key) ? $key : sanitize_key((string) $key);
+                if ($normalized_key === '') {
+                    continue;
+                }
+                $normalized[$normalized_key] = $this->sanitize_nested_payload($value);
+            }
+            return $normalized;
+        }
+
+        if (is_bool($payload) || is_int($payload) || is_float($payload) || $payload === null) {
+            return $payload;
+        }
+
+        return is_scalar($payload) ? sanitize_text_field((string) $payload) : '';
+    }
+
+    /**
      * @param array<string, mixed> $group
      * @return array<string, mixed>
      */
@@ -507,6 +779,7 @@ final class DBVC_CC_Field_Context_Provider_Service
         $resolved_purpose = isset($group['resolved_purpose']) ? sanitize_textarea_field((string) $group['resolved_purpose']) : '';
         $default_purpose = isset($group['default_purpose']) ? sanitize_textarea_field((string) $group['default_purpose']) : '';
         $legacy = ! empty($policy['use_legacy_fallback']) && isset($group['legacy']) && is_array($group['legacy']) ? $group['legacy'] : [];
+        $location = $this->normalize_location_payload(isset($group['location']) ? $group['location'] : []);
 
         return [
             'acf_key' => isset($group['acf_key']) ? sanitize_key((string) $group['acf_key']) : '',
@@ -515,6 +788,8 @@ final class DBVC_CC_Field_Context_Provider_Service
             'key_path' => isset($group['key_path']) ? sanitize_text_field((string) $group['key_path']) : '',
             'name_path' => isset($group['name_path']) ? sanitize_text_field((string) $group['name_path']) : '',
             'scope' => isset($group['scope']) ? sanitize_key((string) $group['scope']) : '',
+            'location' => $location,
+            'object_context' => $this->build_object_context_from_location($location),
             'resolved_purpose' => $resolved_purpose,
             'default_purpose' => $default_purpose,
             'effective_purpose' => $this->build_effective_purpose($resolved_purpose, $default_purpose, $legacy),
@@ -522,6 +797,8 @@ final class DBVC_CC_Field_Context_Provider_Service
             'coverage' => isset($group['coverage']) && is_array($group['coverage']) ? $group['coverage'] : [],
             'has_override' => ! empty($group['has_override']),
             'resolved_from' => isset($group['resolved_from']) ? sanitize_key((string) $group['resolved_from']) : '',
+            'value_contract' => $this->normalize_value_contract(isset($group['value_contract']) ? $group['value_contract'] : []),
+            'clone_context' => $this->normalize_clone_context(isset($group['clone_context']) ? $group['clone_context'] : []),
             'context' => isset($group['context']) && is_array($group['context']) ? $group['context'] : [],
             'default_context' => isset($group['default_context']) && is_array($group['default_context']) ? $group['default_context'] : [],
             'legacy' => $legacy,
@@ -558,6 +835,9 @@ final class DBVC_CC_Field_Context_Provider_Service
             'status_meta' => isset($entry['status_meta']) && is_array($entry['status_meta']) ? $entry['status_meta'] : [],
             'has_override' => ! empty($entry['has_override']),
             'resolved_from' => isset($entry['resolved_from']) ? sanitize_key((string) $entry['resolved_from']) : '',
+            'matched_by' => isset($entry['matched_by']) ? sanitize_key((string) $entry['matched_by']) : '',
+            'value_contract' => $this->normalize_value_contract(isset($entry['value_contract']) ? $entry['value_contract'] : []),
+            'clone_context' => $this->normalize_clone_context(isset($entry['clone_context']) ? $entry['clone_context'] : []),
             'context' => isset($entry['context']) && is_array($entry['context']) ? $entry['context'] : [],
             'default_context' => isset($entry['default_context']) && is_array($entry['default_context']) ? $entry['default_context'] : [],
             'legacy' => $legacy,
@@ -596,12 +876,23 @@ final class DBVC_CC_Field_Context_Provider_Service
      * @param array<string, mixed> $policy
      * @return array<string, mixed>
      */
-    private function build_diagnostics(array $result, $legacy_only_count, $missing_count, array $policy)
+    private function build_diagnostics(array $result, $legacy_only_count, $missing_count, array $policy, array $extra = [])
     {
         $catalog_meta = isset($result['catalog_meta']) && is_array($result['catalog_meta']) ? $result['catalog_meta'] : [];
         $catalog_status = isset($catalog_meta['status']) ? sanitize_key((string) $catalog_meta['status']) : '';
         $warnings = [];
-        $degraded = ! empty($result['error']) || in_array($catalog_status, ['missing', 'partial', 'stale'], true) || $legacy_only_count > 0 || $missing_count > 0;
+        $non_writable_count = isset($extra['non_writable_count']) ? absint($extra['non_writable_count']) : 0;
+        $clone_projection_count = isset($extra['clone_projection_count']) ? absint($extra['clone_projection_count']) : 0;
+        $clone_publish_blocked_count = isset($extra['clone_publish_blocked_count']) ? absint($extra['clone_publish_blocked_count']) : 0;
+        $duplicate_acf_key_count = isset($extra['duplicate_acf_key_count']) ? absint($extra['duplicate_acf_key_count']) : 0;
+        $source_hash_missing = ! empty($extra['source_hash_missing']);
+        $degraded = ! empty($result['error'])
+            || in_array($catalog_status, ['missing', 'partial', 'stale'], true)
+            || $legacy_only_count > 0
+            || $missing_count > 0
+            || $source_hash_missing
+            || $clone_publish_blocked_count > 0
+            || $duplicate_acf_key_count > 0;
         $blocked = false;
 
         if (! empty($result['error'])) {
@@ -632,6 +923,34 @@ final class DBVC_CC_Field_Context_Provider_Service
             ];
         }
 
+        if ($source_hash_missing) {
+            $warnings[] = [
+                'code' => 'field_context_source_hash_missing',
+                'message' => __('Field context provider did not return a catalog source hash; cache freshness checks are degraded.', 'dbvc'),
+            ];
+        }
+
+        if ($non_writable_count > 0) {
+            $warnings[] = [
+                'code' => 'field_context_non_writable_entries',
+                'message' => sprintf(__('Field context marks %d entries as non-writable control or container targets.', 'dbvc'), $non_writable_count),
+            ];
+        }
+
+        if ($clone_publish_blocked_count > 0) {
+            $warnings[] = [
+                'code' => 'field_context_clone_publish_blocked_entries',
+                'message' => sprintf(__('Field context marks %d clone-projected entries as blocked for direct framework-default publishing.', 'dbvc'), $clone_publish_blocked_count),
+            ];
+        }
+
+        if ($duplicate_acf_key_count > 0) {
+            $warnings[] = [
+                'code' => 'field_context_duplicate_acf_key_entries',
+                'message' => sprintf(__('Field context contains %d duplicated ACF-key projections; DBVC should prefer key_path or group-scoped matches.', 'dbvc'), $duplicate_acf_key_count),
+            ];
+        }
+
         if (! empty($policy['block_on_missing']) && (! empty($result['error']) || $missing_count > 0 || in_array($catalog_status, ['missing', 'partial'], true))) {
             $blocked = true;
         }
@@ -641,6 +960,13 @@ final class DBVC_CC_Field_Context_Provider_Service
             'blocked' => $blocked,
             'legacy_only_count' => absint($legacy_only_count),
             'missing_count' => absint($missing_count),
+            'non_writable_count' => $non_writable_count,
+            'clone_projection_count' => $clone_projection_count,
+            'clone_publish_blocked_count' => $clone_publish_blocked_count,
+            'duplicate_acf_key_count' => $duplicate_acf_key_count,
+            'source_hash_missing' => $source_hash_missing,
+            'provider_schema_version' => isset($extra['provider_schema_version']) ? absint($extra['provider_schema_version']) : 0,
+            'provider_site_fingerprint' => isset($extra['provider_site_fingerprint']) ? sanitize_text_field((string) $extra['provider_site_fingerprint']) : '',
             'warnings' => ! empty($policy['warn_on_degraded']) ? array_values($warnings) : [],
         ];
     }
@@ -673,11 +999,18 @@ final class DBVC_CC_Field_Context_Provider_Service
             ],
             'groups_by_acf_key' => [],
             'entries_by_acf_key' => [],
+            'entries_by_key_path' => [],
+            'entries_by_name_path' => [],
+            'entries_by_group_and_acf_key' => [],
             'diagnostics' => [
                 'degraded' => true,
                 'blocked' => false,
                 'legacy_only_count' => 0,
                 'missing_count' => 0,
+                'non_writable_count' => 0,
+                'clone_projection_count' => 0,
+                'clone_publish_blocked_count' => 0,
+                'duplicate_acf_key_count' => 0,
                 'warnings' => [],
             ],
             'error' => [

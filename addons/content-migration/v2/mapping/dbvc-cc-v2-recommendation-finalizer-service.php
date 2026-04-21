@@ -94,6 +94,9 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'pattern_memory_ref' => isset($args['pattern_memory_ref']) ? (string) $args['pattern_memory_ref'] : '',
                 'pattern_group_count' => isset($pattern_memory['pattern_groups']) && is_array($pattern_memory['pattern_groups']) ? count($pattern_memory['pattern_groups']) : 0,
                 'source_fingerprint' => isset($raw_artifact['content_hash']) ? (string) $raw_artifact['content_hash'] : '',
+                'field_context_provider' => isset($mapping_index_artifact['trace']['field_context_provider']) && is_array($mapping_index_artifact['trace']['field_context_provider'])
+                    ? $mapping_index_artifact['trace']['field_context_provider']
+                    : [],
                 'stage_budget' => DBVC_CC_V2_Contracts::get_ai_stage_budget(DBVC_CC_V2_Contracts::AI_STAGE_RECOMMENDATION_FINALIZATION),
             ],
         ];
@@ -157,8 +160,11 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 ? $transform_lookup[$this->build_lookup_key($source_refs, $target_ref)]
                 : [];
             $confidence = isset($candidate['confidence']) ? (float) $candidate['confidence'] : 0.0;
+            $field_context = isset($candidate['field_context']) && is_array($candidate['field_context']) ? $candidate['field_context'] : [];
+            $field_context_warnings = isset($field_context['warnings']) && is_array($field_context['warnings']) ? array_values($field_context['warnings']) : [];
             $requires_review = $confidence < (float) DBVC_CC_V2_Contracts::get_automation_settings()['autoAcceptMinConfidence']
-                || ! empty($transform['warnings']);
+                || ! empty($transform['warnings'])
+                || ! empty($field_context_warnings);
 
             $recommendations[] = [
                 'recommendation_id' => 'rec_' . str_pad((string) (count($recommendations) + 1), 3, '0', STR_PAD_LEFT),
@@ -175,6 +181,8 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'candidate_group' => isset($content_item['candidate_group']) ? (string) $content_item['candidate_group'] : '',
                 'context_tag' => isset($content_item['context_tag']) ? (string) $content_item['context_tag'] : '',
                 'pattern_key' => isset($candidate['pattern_key']) ? (string) $candidate['pattern_key'] : '',
+                'field_context' => $field_context,
+                'warnings' => $field_context_warnings,
             ];
         }
 
