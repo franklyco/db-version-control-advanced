@@ -1,9 +1,16 @@
 import {
+	getFieldContextCompact,
+	getFieldContextProviderName,
+	getFieldContextProviderStatus,
+	getFieldContextValueShapeLabel,
+	getFieldContextWarnings,
+	getFieldContextWritable,
 	getTargetContext,
 	getTargetFieldName,
 	getTargetLabel,
 	getTargetMachineRef,
 	getTargetTypeLabel,
+	isFieldContextCloneProjection,
 } from './targetPresentation';
 import { InspectorDecisionStates } from '../../hooks/useInspectorDecisionDraft';
 
@@ -84,6 +91,18 @@ const renderTargetMeta = ( recommendation ) => {
 	return null;
 };
 
+const formatFieldContextWarning = ( warning ) => {
+	if ( typeof warning === 'string' ) {
+		return warning;
+	}
+
+	if ( warning && typeof warning === 'object' ) {
+		return warning.message || warning.code || '';
+	}
+
+	return '';
+};
+
 export default function RecommendationDecisionCard( {
 	item,
 	mode = 'read',
@@ -95,6 +114,15 @@ export default function RecommendationDecisionCard( {
 	const testIdPrefix = `dbvc-cc-v2-${ item.kind }-decision`;
 	const fieldName = getTargetFieldName( recommendation );
 	const machineRef = getTargetMachineRef( recommendation );
+	const fieldContext = getFieldContextCompact( recommendation );
+	const fieldContextStatus = getFieldContextProviderStatus( recommendation );
+	const fieldContextProvider = getFieldContextProviderName( recommendation );
+	const fieldContextWarnings = getFieldContextWarnings( recommendation );
+	const fieldContextWritable = getFieldContextWritable( recommendation );
+	const fieldContextCloneProjection =
+		isFieldContextCloneProjection( recommendation );
+	const fieldContextValueShape =
+		getFieldContextValueShapeLabel( recommendation );
 	const confidence =
 		typeof recommendation.confidence === 'number'
 			? `${ Math.round( recommendation.confidence * 100 ) }% confidence`
@@ -133,6 +161,11 @@ export default function RecommendationDecisionCard( {
 							{ confidence }
 						</span>
 					) : null }
+					{ fieldContextStatus ? (
+						<span className="dbvc-cc-v2-chip dbvc-cc-v2-chip--muted">
+							Field Context: { fieldContextStatus }
+						</span>
+					) : null }
 					<span
 						className="dbvc-cc-v2-decision-card__state"
 						data-state={ item.state }
@@ -163,6 +196,58 @@ export default function RecommendationDecisionCard( {
 							'No target preview available.' }
 					</p>
 				</div>
+				{ fieldContext ? (
+					<div className="dbvc-cc-v2-decision-card__section">
+						<p className="dbvc-cc-v2-eyebrow">Field Context</p>
+						<p>
+							Provider:{ ' ' }
+							<strong>
+								{ fieldContextProvider || 'unavailable' }
+							</strong>
+							{ fieldContextStatus
+								? ` (${ fieldContextStatus })`
+								: '' }
+						</p>
+						{ fieldContext.field_purpose ? (
+							<p>Field purpose: { fieldContext.field_purpose }</p>
+						) : null }
+						{ fieldContext.group_purpose ? (
+							<p>Group purpose: { fieldContext.group_purpose }</p>
+						) : null }
+						{ fieldContextValueShape ? (
+							<p>Value shape: { fieldContextValueShape }</p>
+						) : null }
+						{ typeof fieldContextWritable === 'boolean' ? (
+							<p>
+								Writable:{ ' ' }
+								{ fieldContextWritable ? 'yes' : 'no' }
+							</p>
+						) : null }
+						<p>
+							Clone projection:{ ' ' }
+							{ fieldContextCloneProjection ? 'yes' : 'no' }
+						</p>
+						{ fieldContextWarnings.length ? (
+							<ul className="dbvc-cc-v2-inspector-list dbvc-cc-v2-inspector-list--compact">
+								{ fieldContextWarnings.map(
+									( warning, index ) => (
+										<li
+											key={ `${ recommendationId }-field-context-warning-${ index }` }
+										>
+											{ formatFieldContextWarning(
+												warning
+											) }
+										</li>
+									)
+								) }
+							</ul>
+						) : (
+							<p className="dbvc-cc-v2-table__meta">
+								No Field Context warnings.
+							</p>
+						) }
+					</div>
+				) : null }
 				<div className="dbvc-cc-v2-decision-card__section">
 					<p className="dbvc-cc-v2-eyebrow">Final decision</p>
 					<p>{ formatDecisionSummary( item ) }</p>

@@ -416,7 +416,7 @@ Current flow:
 | V2 target catalog enrichment | `v2/schema/dbvc-cc-v2-target-field-catalog-service.php` | Adds provider block and per-group/per-field traces | Add fixture coverage and schema docs |
 | Candidate generation | `v2/mapping/dbvc-cc-v2-mapping-index-service.php` | Uses purpose/value-shape terms and carries field context on candidates | Add object compatibility boosts/penalties |
 | Recommendation finalization | `v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php` | Copies selected Field Context and warnings into recommendations | Expose in review UI and QA reports |
-| Review UI | `v2/review/*`, `v2/admin-app/*` | Not yet updated for visible Field Context display | Add compact inspector panel and warning chips |
+| Review UI | `v2/review/*`, `v2/admin-app/*` | Compact Field Context evidence now rendered in existing inspector mapping/audit surfaces | Add polish for warning severity visuals and reviewer filtering |
 | Package QA | `v2/package/*` | Not yet using Field Context warnings directly | Add readiness blockers and stale-source checks |
 | Import execution | `v2/import/*`, legacy import bridge | Not yet value-contract-aware | Use `value_contract` for transform/write behavior |
 
@@ -470,9 +470,9 @@ Ran in both:
 
 ## Known Gaps
 
-### 1. Review UI Does Not Yet Surface Field Context
+### 1. Reviewer Visibility Tranche Landed (FC-DBVC-1)
 
-The artifact trace is now present, but reviewer UI surfaces have not been updated.
+The review payload and inspector UI now expose compact Field Context evidence without adding a new screen.
 
 Next places to inspect:
 
@@ -480,15 +480,21 @@ Next places to inspect:
 - `addons/content-migration/v2/admin-app/components/inspectors/InspectorMappingTab.js`
 - `addons/content-migration/v2/admin-app/components/inspectors/InspectorAuditTab.js`
 - `addons/content-migration/v2/admin-app/components/inspectors/targetPresentation.js`
+- `addons/content-migration/v2/admin-app/components/inspectors/RecommendationDecisionCard.js`
 
-Recommended UI additions:
+Current additions:
 
 - compact Field Context provider status
 - field/group purpose summary
 - value shape and writable status
 - clone projection flag
-- warning chips for degraded context
-- source hash and contract/schema version in audit/details
+- warning lists for degraded context
+- source hash and contract/schema version in mapping and audit details
+
+Follow-up polish:
+
+- style warning severity chips or color variants for blocker vs warning semantics
+- add optional reviewer filters to quickly isolate missing/non-writable/clone-projected targets
 
 ### 2. Package QA Does Not Yet Enforce Field Context Readiness
 
@@ -780,4 +786,3 @@ If the LocalWP site id changes, refresh the socket from:
 - `entries_by_acf_key` exists for backward compatibility only; it is not clone-safe.
 - Field Context is additive to DBVC. If unavailable, DBVC should continue existing behavior and record provider degradation.
 - DBVC must not mutate Vertical framework defaults, site overrides, smart-authoring runs, publish previews, backups, or rollback logs.
-
