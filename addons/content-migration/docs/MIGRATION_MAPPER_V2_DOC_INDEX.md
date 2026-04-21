@@ -21,7 +21,6 @@ Read these first when continuing active implementation work:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
-- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
 
 These are the shortest path to:
 
@@ -30,7 +29,6 @@ These are the shortest path to:
 - the active route and artifact surface
 - the current crawl reuse boundary
 - the next implementation seam
-- the current Vertical Field Context runtime implementation state
 
 ### 1. Product and workflow
 
@@ -131,8 +129,6 @@ These are useful for:
   - `MIGRATION_MAPPER_V2_UI_ARCHITECTURE.md`
 - Artifact, REST, and AI-stage contracts:
   - `MIGRATION_MAPPER_V2_CONTRACTS.md`
-- Vertical Field Context runtime handoff:
-  - `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
 - Current crawl reuse boundary and landed run-start model:
   - `MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 - Journey logging model:
@@ -169,11 +165,6 @@ When one of these changes, update the others if needed:
   - update `DOMAIN_JOURNEY`
   - update `PACKAGE_SPEC` if package-facing
 
-- If Vertical Field Context provider normalization, target catalog enrichment, mapping traces, or review/package usage changes:
-  - update `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
-  - update `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md` if the implementation plan changes
-  - update `CONTRACTS` if artifact fields become formal contract fields
-
 - If package outputs or readiness rules change:
   - update `PACKAGE_SPEC`
   - update `OVERVIEW`
@@ -189,7 +180,6 @@ When one of these changes, update the others if needed:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
-- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
 - `addons/content-migration/docs/CONTENT_COLLECTOR_PIPELINE_SWIMLANE.md`

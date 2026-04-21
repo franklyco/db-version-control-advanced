@@ -980,12 +980,6 @@
     padding-left: 18px;
 }
 
-.dbvc-cc-v2-inspector-list--compact {
-    margin-top: 8px;
-    gap: 6px;
-    font-size: 12px;
-}
-
 .dbvc-cc-v2-target-presentation {
     display: flex;
     flex-direction: column;

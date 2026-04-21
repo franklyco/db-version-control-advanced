@@ -15,17 +15,9 @@ final class DBVC_CC_V2_Contracts
     public const OPTION_REQUIRE_QA_PASS_FOR_AUTO_ACCEPT = 'dbvc_cc_v2_require_qa_pass_for_auto_accept';
     public const OPTION_REQUIRE_UNAMBIGUOUS_RESOLUTION_FOR_AUTO_ACCEPT = 'dbvc_cc_v2_require_unambiguous_resolution_for_auto_accept';
     public const OPTION_REQUIRE_MANUAL_REVIEW_FOR_OBJECT_FAMILY_CHANGE = 'dbvc_cc_v2_require_manual_review_for_object_family_change';
-    public const OPTION_FIELD_CONTEXT_INTEGRATION_MODE = 'dbvc_cc_v2_field_context_integration_mode';
-    public const OPTION_FIELD_CONTEXT_USE_LEGACY_FALLBACK = 'dbvc_cc_v2_field_context_use_legacy_fallback';
-    public const OPTION_FIELD_CONTEXT_WARN_ON_DEGRADED = 'dbvc_cc_v2_field_context_warn_on_degraded';
-    public const OPTION_FIELD_CONTEXT_BLOCK_ON_MISSING = 'dbvc_cc_v2_field_context_block_on_missing';
 
     public const RUNTIME_V1 = 'v1';
     public const RUNTIME_V2 = 'v2';
-    public const FIELD_CONTEXT_MODE_AUTO = 'auto';
-    public const FIELD_CONTEXT_MODE_LOCAL = 'local';
-    public const FIELD_CONTEXT_MODE_REMOTE = 'remote';
-    public const FIELD_CONTEXT_MODE_OFF = 'off';
 
     public const ADMIN_MENU_SLUG = DBVC_CC_Contracts::ADMIN_MENU_SLUG;
     public const REST_NAMESPACE = 'dbvc_cc/v2';
@@ -153,10 +145,6 @@ final class DBVC_CC_V2_Contracts
             self::OPTION_REQUIRE_QA_PASS_FOR_AUTO_ACCEPT => '1',
             self::OPTION_REQUIRE_UNAMBIGUOUS_RESOLUTION_FOR_AUTO_ACCEPT => '1',
             self::OPTION_REQUIRE_MANUAL_REVIEW_FOR_OBJECT_FAMILY_CHANGE => '1',
-            self::OPTION_FIELD_CONTEXT_INTEGRATION_MODE => self::FIELD_CONTEXT_MODE_AUTO,
-            self::OPTION_FIELD_CONTEXT_USE_LEGACY_FALLBACK => '1',
-            self::OPTION_FIELD_CONTEXT_WARN_ON_DEGRADED => '1',
-            self::OPTION_FIELD_CONTEXT_BLOCK_ON_MISSING => '0',
         ];
     }
 
@@ -224,38 +212,6 @@ final class DBVC_CC_V2_Contracts
             'requireQaPassForAutoAccept' => get_option(self::OPTION_REQUIRE_QA_PASS_FOR_AUTO_ACCEPT, $defaults[self::OPTION_REQUIRE_QA_PASS_FOR_AUTO_ACCEPT]) === '1',
             'requireUnambiguousResolutionForAutoAccept' => get_option(self::OPTION_REQUIRE_UNAMBIGUOUS_RESOLUTION_FOR_AUTO_ACCEPT, $defaults[self::OPTION_REQUIRE_UNAMBIGUOUS_RESOLUTION_FOR_AUTO_ACCEPT]) === '1',
             'requireManualReviewForObjectFamilyChange' => get_option(self::OPTION_REQUIRE_MANUAL_REVIEW_FOR_OBJECT_FAMILY_CHANGE, $defaults[self::OPTION_REQUIRE_MANUAL_REVIEW_FOR_OBJECT_FAMILY_CHANGE]) === '1',
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public static function get_field_context_settings()
-    {
-        $defaults = self::get_default_values();
-        $mode = sanitize_key((string) get_option(self::OPTION_FIELD_CONTEXT_INTEGRATION_MODE, $defaults[self::OPTION_FIELD_CONTEXT_INTEGRATION_MODE]));
-        if (! in_array($mode, self::get_allowed_field_context_modes(), true)) {
-            $mode = self::FIELD_CONTEXT_MODE_AUTO;
-        }
-
-        return [
-            'integrationMode' => $mode,
-            'useLegacyFallback' => get_option(self::OPTION_FIELD_CONTEXT_USE_LEGACY_FALLBACK, $defaults[self::OPTION_FIELD_CONTEXT_USE_LEGACY_FALLBACK]) === '1',
-            'warnOnDegraded' => get_option(self::OPTION_FIELD_CONTEXT_WARN_ON_DEGRADED, $defaults[self::OPTION_FIELD_CONTEXT_WARN_ON_DEGRADED]) === '1',
-            'blockOnMissing' => get_option(self::OPTION_FIELD_CONTEXT_BLOCK_ON_MISSING, $defaults[self::OPTION_FIELD_CONTEXT_BLOCK_ON_MISSING]) === '1',
-        ];
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    public static function get_allowed_field_context_modes()
-    {
-        return [
-            self::FIELD_CONTEXT_MODE_AUTO,
-            self::FIELD_CONTEXT_MODE_LOCAL,
-            self::FIELD_CONTEXT_MODE_REMOTE,
-            self::FIELD_CONTEXT_MODE_OFF,
         ];
     }
 

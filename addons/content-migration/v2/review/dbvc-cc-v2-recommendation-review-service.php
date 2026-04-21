@@ -557,10 +557,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         $mapping_index = $review_context['mapping_index'];
         $media_candidates = $review_context['media_candidates'];
         $target_transform = $review_context['target_transform'];
-        $field_context_provider = isset($review_context['mapping_recommendations']['trace']['field_context_provider'])
-            && is_array($review_context['mapping_recommendations']['trace']['field_context_provider'])
-            ? $review_context['mapping_recommendations']['trace']['field_context_provider']
-            : [];
 
         return [
             'contentItems' => isset($mapping_index['content_items']) && is_array($mapping_index['content_items'])
@@ -581,7 +577,6 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'recommendations' => $field_recommendations,
             'mediaRecommendations' => $media_recommendations,
             'conflicts' => $conflicts,
-            'fieldContextProvider' => $this->build_field_context_provider_audit($field_context_provider),
         ];
     }
 
@@ -593,15 +588,9 @@ final class DBVC_CC_V2_Recommendation_Review_Service
      */
     private function build_audit_evidence(array $review_context, $decision_status, array $artifact_relatives)
     {
-        $field_context_provider = isset($review_context['mapping_recommendations']['trace']['field_context_provider'])
-            && is_array($review_context['mapping_recommendations']['trace']['field_context_provider'])
-            ? $review_context['mapping_recommendations']['trace']['field_context_provider']
-            : [];
-
         return [
             'decisionStatus' => $decision_status,
             'artifactRefs' => $artifact_relatives,
-            'fieldContextProvider' => $this->build_field_context_provider_audit($field_context_provider),
             'trace' => [
                 'contextCreation' => isset($review_context['context_creation']['trace']) ? $review_context['context_creation']['trace'] : [],
                 'classification' => isset($review_context['initial_classification']['trace']) ? $review_context['initial_classification']['trace'] : [],
@@ -690,188 +679,14 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 continue;
             }
 
-            $field_context = isset($recommendation['field_context']) && is_array($recommendation['field_context']) ? $recommendation['field_context'] : [];
-            $fallback_warnings = isset($recommendation['warnings']) && is_array($recommendation['warnings']) ? $recommendation['warnings'] : [];
             $recommendation['targetPresentation'] = $schema_presentation->resolve_target_ref(
                 $domain,
                 isset($recommendation['target_ref']) ? (string) $recommendation['target_ref'] : ''
             );
-            $recommendation['field_context_compact'] = $this->build_field_context_compact($field_context, $fallback_warnings);
             $decorated[] = $recommendation;
         }
 
         return $decorated;
-    }
-
-    /**
-     * @param array<string, mixed> $field_context
-     * @param array<int, mixed>    $fallback_warnings
-     * @return array<string, mixed>
-     */
-    private function build_field_context_compact(array $field_context, array $fallback_warnings = [])
-    {
-        if (empty($field_context)) {
-            return [];
-        }
-
-        $value_contract = isset($field_context['value_contract']) && is_array($field_context['value_contract']) ? $field_context['value_contract'] : [];
-        $clone_context = isset($field_context['clone_context']) && is_array($field_context['clone_context']) ? $field_context['clone_context'] : [];
-        $warnings = $this->normalize_warning_list(
-            isset($field_context['warnings']) && is_array($field_context['warnings'])
-                ? array_values($field_context['warnings'])
-                : []
-        );
-        $fallback = $this->normalize_warning_list($fallback_warnings);
-
-        foreach ($fallback as $warning) {
-            if (
-                empty($warning['code'])
-                && empty($warning['message'])
-            ) {
-                continue;
-            }
-
-            $already_recorded = false;
-            foreach ($warnings as $existing) {
-                if (
-                    isset($existing['code'], $warning['code'], $existing['message'], $warning['message'])
-                    && $existing['code'] === $warning['code']
-                    && $existing['message'] === $warning['message']
-                ) {
-                    $already_recorded = true;
-                    break;
-                }
-            }
-
-            if (! $already_recorded) {
-                $warnings[] = $warning;
-            }
-        }
-
-        return [
-            'provider_status' => $this->resolve_field_context_provider_status($field_context),
-            'provider' => isset($field_context['provider']) ? sanitize_key((string) $field_context['provider']) : '',
-            'catalog_status' => isset($field_context['catalog_status']) ? sanitize_key((string) $field_context['catalog_status']) : '',
-            'resolver_status' => isset($field_context['resolver_status']) ? sanitize_key((string) $field_context['resolver_status']) : '',
-            'field_purpose' => isset($field_context['field_purpose']) ? sanitize_text_field((string) $field_context['field_purpose']) : '',
-            'group_purpose' => isset($field_context['group_purpose']) ? sanitize_text_field((string) $field_context['group_purpose']) : '',
-            'value_shape' => [
-                'content_type' => isset($value_contract['content_type']) ? sanitize_key((string) $value_contract['content_type']) : '',
-                'value_shape' => isset($value_contract['value_shape']) ? sanitize_key((string) $value_contract['value_shape']) : '',
-                'reference_kind' => isset($value_contract['reference_kind']) ? sanitize_key((string) $value_contract['reference_kind']) : '',
-                'storage_type' => isset($value_contract['storage_type']) ? sanitize_key((string) $value_contract['storage_type']) : '',
-            ],
-            'writable' => array_key_exists('writable', $value_contract) ? (bool) $value_contract['writable'] : null,
-            'clone_projection' => ! empty($clone_context['is_clone_projection']),
-            'warnings' => $warnings,
-            'source_hash' => isset($field_context['source_hash']) ? sanitize_text_field((string) $field_context['source_hash']) : '',
-            'contract_version' => isset($field_context['contract_version']) ? absint($field_context['contract_version']) : 0,
-            'schema_version' => isset($field_context['schema_version']) ? absint($field_context['schema_version']) : 0,
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $field_context
-     * @return string
-     */
-    private function resolve_field_context_provider_status(array $field_context)
-    {
-        $provider = isset($field_context['provider']) ? sanitize_key((string) $field_context['provider']) : '';
-        if ($provider === '') {
-            return 'unavailable';
-        }
-
-        $catalog_status = isset($field_context['catalog_status']) ? sanitize_key((string) $field_context['catalog_status']) : '';
-        $resolver_status = isset($field_context['resolver_status']) ? sanitize_key((string) $field_context['resolver_status']) : '';
-
-        if (
-            in_array($catalog_status, ['missing', 'partial', 'stale', 'degraded', 'error'], true)
-            || in_array($resolver_status, ['missing', 'partial', 'degraded', 'error'], true)
-        ) {
-            return 'degraded';
-        }
-
-        return 'available';
-    }
-
-    /**
-     * @param array<string, mixed> $provider
-     * @return array<string, mixed>
-     */
-    private function build_field_context_provider_audit(array $provider)
-    {
-        if (empty($provider)) {
-            return [
-                'available' => false,
-                'status' => 'unavailable',
-                'warnings' => [],
-            ];
-        }
-
-        $diagnostics = isset($provider['diagnostics']) && is_array($provider['diagnostics']) ? $provider['diagnostics'] : [];
-        $warnings = isset($diagnostics['warnings']) && is_array($diagnostics['warnings'])
-            ? $this->normalize_warning_list($diagnostics['warnings'])
-            : [];
-        $available = ! empty($provider['available']);
-        $degraded = ! empty($provider['degraded']);
-        $blocked = ! empty($provider['blocked']);
-
-        $status = 'available';
-        if (! $available) {
-            $status = 'unavailable';
-        } elseif ($blocked) {
-            $status = 'blocked';
-        } elseif ($degraded) {
-            $status = 'degraded';
-        }
-
-        return [
-            'available' => $available,
-            'status' => $status,
-            'provider' => isset($provider['provider']) ? sanitize_key((string) $provider['provider']) : '',
-            'transport' => isset($provider['transport']) ? sanitize_key((string) $provider['transport']) : '',
-            'catalog_status' => isset($provider['catalog_status']) ? sanitize_key((string) $provider['catalog_status']) : '',
-            'resolver_status' => isset($provider['resolver_status']) ? sanitize_key((string) $provider['resolver_status']) : '',
-            'degraded' => $degraded,
-            'blocked' => $blocked,
-            'source_hash' => isset($provider['source_hash']) ? sanitize_text_field((string) $provider['source_hash']) : '',
-            'contract_version' => isset($provider['contract_version']) ? absint($provider['contract_version']) : 0,
-            'schema_version' => isset($provider['schema_version']) ? absint($provider['schema_version']) : 0,
-            'site_fingerprint' => isset($provider['site_fingerprint']) ? sanitize_text_field((string) $provider['site_fingerprint']) : '',
-            'group_count' => isset($provider['group_count']) ? absint($provider['group_count']) : 0,
-            'entry_count' => isset($provider['entry_count']) ? absint($provider['entry_count']) : 0,
-            'warnings' => $warnings,
-        ];
-    }
-
-    /**
-     * @param array<int, mixed> $warnings
-     * @return array<int, array<string, string>>
-     */
-    private function normalize_warning_list(array $warnings)
-    {
-        $normalized = [];
-
-        foreach ($warnings as $warning) {
-            if (is_array($warning)) {
-                $code = isset($warning['code']) ? sanitize_key((string) $warning['code']) : '';
-                $message = isset($warning['message']) ? sanitize_text_field((string) $warning['message']) : '';
-                $normalized[] = [
-                    'code' => $code,
-                    'message' => $message,
-                ];
-                continue;
-            }
-
-            if (is_string($warning)) {
-                $normalized[] = [
-                    'code' => '',
-                    'message' => sanitize_text_field($warning),
-                ];
-            }
-        }
-
-        return array_values($normalized);
     }
 
     /**

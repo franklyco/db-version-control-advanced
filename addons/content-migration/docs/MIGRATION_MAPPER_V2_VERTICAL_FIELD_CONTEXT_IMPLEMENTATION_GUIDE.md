@@ -271,11 +271,6 @@ Update `DBVC_CC_V2_Recommendation_Review_Service` so review payloads include con
 
 Do not add a new complex UI initially. Reuse existing inspector/detail surfaces and expose data in a compact field-context block.
 
-Current implementation note:
-
-- Reviewer payload now includes a compact per-recommendation `field_context_compact` block (provider status, purposes, value shape, writable, clone projection, warnings, source hash, contract/schema).
-- Inspector mapping and audit tabs now render provider status plus source-hash and contract/schema details from review evidence.
-
 ## Step 9 - Add Package And Readiness Safety Checks
 
 Update package and QA services after recommendation trace is available.

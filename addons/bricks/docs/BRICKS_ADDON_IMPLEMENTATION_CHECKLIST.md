@@ -211,19 +211,19 @@ Archive files (completed phases/history):
 - Phase 19B complete.
 
 ### Tasks / Sub-tasks
-- `P19C-T1` Mothership protected-variant visibility
-  - `P19C-T1-S1` Add connected-client summary table with protected counts by artifact class.
-  - `P19C-T1-S2` Add drill-down list for each client’s protected variants.
-  - `P19C-T1-S3` Add deep-link and copy-link helper to client `DBVC -> Bricks -> Protected Artifacts`.
-  - `P19C-T1-S4` Add freshness indicators (`last_seen`, `last_sync`) per client.
+- `P19C-T1` Mothership protected-variant visibility: `DONE`
+  - `P19C-T1-S1` Add connected-client summary table with protected counts by artifact class: `DONE`
+  - `P19C-T1-S2` Add drill-down list for each client’s protected variants: `DONE`
+  - `P19C-T1-S3` Add deep-link and copy-link helper to client `DBVC -> Bricks -> Protected Artifacts`: `DONE`
+  - `P19C-T1-S4` Add freshness indicators (`last_seen`, `last_sync`) per client: `DONE`
 - `P19C-T2` Final validation and closure
   - `P19C-T2-S1` Run full network drill (shared rules distribution + protected variant visibility) across mothership/clientA/clientB.
   - `P19C-T2-S2` Capture commands, timestamps, receipts, diagnostics traces, and UI evidence.
   - `P19C-T2-S3` Update tracker statuses to `DONE` and write Phase 19 completion note.
 
 ### Required tests
-- `P19C-TEST-01` Mothership aggregation visibility tests.
-- `P19C-TEST-02` Deep-link/copy-link rendering tests.
+- `P19C-TEST-01` Mothership aggregation visibility tests: `PASS` on 2026-04-15 via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19CTest.php`.
+- `P19C-TEST-02` Deep-link/copy-link rendering tests: `PASS` on 2026-04-15 via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19CTest.php`.
 - `P19C-TEST-03` Full live cross-site drill evidence test.
 
 ### Exit criteria

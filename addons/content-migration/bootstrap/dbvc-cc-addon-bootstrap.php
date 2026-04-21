@@ -8,7 +8,6 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-contrac
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-helpers.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-module-interface.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-service-container.php';
-require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-field-context-provider-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-contracts.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-page-artifact-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-configure-addon-settings.php';
