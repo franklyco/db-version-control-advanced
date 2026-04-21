@@ -116,6 +116,7 @@ final class DBVC_CC_V2_Domain_Journey_Service
             'journey_log_file' => trailingslashit($journey_dir) . DBVC_CC_V2_Contracts::STORAGE_JOURNEY_LOG_FILE,
             'journey_latest_file' => trailingslashit($journey_dir) . DBVC_CC_V2_Contracts::STORAGE_JOURNEY_LATEST_FILE,
             'journey_stage_summary_file' => trailingslashit($journey_dir) . DBVC_CC_V2_Contracts::STORAGE_STAGE_SUMMARY_FILE,
+            'run_profile_file' => trailingslashit($journey_dir) . DBVC_CC_V2_Contracts::STORAGE_RUN_PROFILE_FILE,
             'url_inventory_file' => trailingslashit($inventory_dir) . DBVC_CC_V2_Contracts::STORAGE_URL_INVENTORY_FILE,
             'pattern_memory_file' => trailingslashit($learning_dir) . DBVC_CC_V2_Contracts::STORAGE_DOMAIN_PATTERN_MEMORY_FILE,
             'package_builds_file' => trailingslashit($packages_dir) . DBVC_CC_V2_Contracts::STORAGE_PACKAGE_BUILDS_FILE,
@@ -230,6 +231,54 @@ final class DBVC_CC_V2_Domain_Journey_Service
 
     /**
      * @param string $journey_id
+     * @return array<string, mixed>|WP_Error
+     */
+    public function get_latest_state_for_run($journey_id)
+    {
+        $run_state = $this->get_run_materialized_state($journey_id);
+        if (is_wp_error($run_state)) {
+            return $run_state;
+        }
+
+        return isset($run_state['latest']) && is_array($run_state['latest'])
+            ? $run_state['latest']
+            : [];
+    }
+
+    /**
+     * @param string $journey_id
+     * @return array<string, mixed>|WP_Error
+     */
+    public function get_stage_summary_for_run($journey_id)
+    {
+        $run_state = $this->get_run_materialized_state($journey_id);
+        if (is_wp_error($run_state)) {
+            return $run_state;
+        }
+
+        return isset($run_state['stage_summary']) && is_array($run_state['stage_summary'])
+            ? $run_state['stage_summary']
+            : [];
+    }
+
+    /**
+     * @param string $journey_id
+     * @return array<int, array<string, mixed>>|WP_Error
+     */
+    public function get_events_for_run($journey_id)
+    {
+        $run_state = $this->get_run_materialized_state($journey_id);
+        if (is_wp_error($run_state)) {
+            return $run_state;
+        }
+
+        return isset($run_state['events']) && is_array($run_state['events'])
+            ? $run_state['events']
+            : [];
+    }
+
+    /**
+     * @param string $journey_id
      * @return string
      */
     public function find_domain_by_journey_id($journey_id)
@@ -249,6 +298,23 @@ final class DBVC_CC_V2_Domain_Journey_Service
             }
         }
 
+        foreach ($this->list_domain_keys() as $domain) {
+            $events = $this->get_events($domain);
+            if (is_wp_error($events) || empty($events)) {
+                continue;
+            }
+
+            foreach ($events as $event) {
+                if (! is_array($event)) {
+                    continue;
+                }
+
+                if ((string) ($event['journey_id'] ?? '') === $journey_id) {
+                    return $domain;
+                }
+            }
+        }
+
         return '';
     }
 
@@ -262,22 +328,8 @@ final class DBVC_CC_V2_Domain_Journey_Service
             return [];
         }
 
-        $entries = @scandir($base_dir);
-        if (! is_array($entries)) {
-            return [];
-        }
-
         $runs = [];
-        foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..' || strpos($entry, '.') === 0) {
-                continue;
-            }
-
-            $domain = $this->sanitize_domain_key($entry);
-            if ($domain === '') {
-                continue;
-            }
-
+        foreach ($this->list_domain_keys() as $domain) {
             $latest_file = trailingslashit($base_dir) . $domain . '/' . DBVC_CC_V2_Contracts::STORAGE_JOURNEY_SUBDIR . '/' . DBVC_CC_V2_Contracts::STORAGE_JOURNEY_LATEST_FILE;
             if (! file_exists($latest_file)) {
                 continue;
@@ -304,6 +356,36 @@ final class DBVC_CC_V2_Domain_Journey_Service
         );
 
         return $runs;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function list_domain_keys()
+    {
+        $base_dir = DBVC_CC_Artifact_Manager::get_storage_base_dir();
+        if (! is_string($base_dir) || ! is_dir($base_dir)) {
+            return [];
+        }
+
+        $entries = @scandir($base_dir);
+        if (! is_array($entries)) {
+            return [];
+        }
+
+        $domains = [];
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..' || strpos($entry, '.') === 0) {
+                continue;
+            }
+
+            $domain = $this->sanitize_domain_key($entry);
+            if ($domain !== '') {
+                $domains[] = $domain;
+            }
+        }
+
+        return array_values(array_unique($domains));
     }
 
     /**
@@ -473,6 +555,66 @@ final class DBVC_CC_V2_Domain_Journey_Service
 
         ksort($normalized);
         return $normalized;
+    }
+
+    /**
+     * @param string $journey_id
+     * @return array<string, mixed>|WP_Error
+     */
+    private function get_run_materialized_state($journey_id)
+    {
+        $journey_id = sanitize_text_field((string) $journey_id);
+        if ($journey_id === '') {
+            return new WP_Error(
+                'dbvc_cc_v2_run_missing',
+                __('The requested V2 run could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $domain = $this->find_domain_by_journey_id($journey_id);
+        if ($domain === '') {
+            return new WP_Error(
+                'dbvc_cc_v2_run_missing',
+                __('The requested V2 run could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $events = $this->get_events($domain);
+        if (is_wp_error($events)) {
+            return $events;
+        }
+
+        $run_events = [];
+        foreach ($events as $event) {
+            if (! is_array($event)) {
+                continue;
+            }
+
+            if ((string) ($event['journey_id'] ?? '') !== $journey_id) {
+                continue;
+            }
+
+            $run_events[] = $event;
+        }
+
+        if (empty($run_events)) {
+            return new WP_Error(
+                'dbvc_cc_v2_run_missing',
+                __('The requested V2 run could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $materializer = DBVC_CC_V2_Domain_Journey_Materializer_Service::get_instance();
+
+        return [
+            'domain' => $domain,
+            'events' => $run_events,
+            'latest' => $materializer->build_latest_state_for_events($domain, $run_events),
+            'stage_summary' => $materializer->build_stage_summary_for_events($domain, $run_events),
+        ];
     }
 
     /**

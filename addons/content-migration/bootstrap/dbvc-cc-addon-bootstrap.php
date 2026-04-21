@@ -16,6 +16,12 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-ad
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-materializer-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-run-activity-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-run-profile-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-run-visibility-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-run-action-summary-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-run-recovery-qa-fixture-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-run-replay-qa-fixture-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-historical-review-qa-fixture-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/discovery/dbvc-cc-v2-url-scope-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/discovery/dbvc-cc-v2-url-inventory-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/capture/dbvc-cc-v2-page-capture-service.php';
@@ -33,6 +39,7 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/capture/dbvc-cc-v2-capture-orchestrator-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-object-inventory-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-schema-presentation-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-schema-sync-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-rest-controller.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-journey-module.php';
@@ -142,6 +149,7 @@ final class DBVC_CC_Addon_Bootstrap
         }
 
         DBVC_CC_V2_Addon::bootstrap();
+        DBVC_CC_V2_Historical_Review_QA_Fixture_Service::get_instance()->register_http_stub_filter();
 
         dbvc_cc_guard_no_source_runtime_imports('dbvc_cc_bootstrap_complete');
     }

@@ -13,7 +13,10 @@ export default function OverviewNextActions( { latest, onNavigate } ) {
 					<p className="dbvc-cc-v2-eyebrow">Next actions</p>
 					<h3>Where to go next</h3>
 				</div>
-				<p>Phase 11 keeps overview read-oriented and navigational.</p>
+				<p>
+					Phase 16 keeps overview read-oriented while adding direct
+					blocker shortcuts.
+				</p>
 			</div>
 
 			<div className="dbvc-cc-v2-grid dbvc-cc-v2-grid--overview-actions">
@@ -34,10 +37,10 @@ export default function OverviewNextActions( { latest, onNavigate } ) {
 									? 'button-primary'
 									: 'button-secondary'
 							}` }
-							data-testid={ `dbvc-cc-v2-overview-next-action-${ action.view }` }
-							onClick={ () => onNavigate( action.view ) }
+							data-testid={ `dbvc-cc-v2-overview-next-action-${ action.key }` }
+							onClick={ () => onNavigate( action ) }
 						>
-							Open { action.view }
+							{ action.buttonLabel || 'Open' }
 						</button>
 					</div>
 				) ) }

@@ -209,6 +209,49 @@ final class DBVC_CC_V2_URL_Inventory_Service
     }
 
     /**
+     * @param string $run_id
+     * @return array<string, mixed>|WP_Error
+     */
+    public function get_inventory_for_run($run_id)
+    {
+        $run_id = sanitize_text_field((string) $run_id);
+        if ($run_id === '') {
+            return new WP_Error(
+                'dbvc_cc_v2_run_missing',
+                __('The requested V2 run could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $journey = DBVC_CC_V2_Domain_Journey_Service::get_instance();
+        $domain = $journey->find_domain_by_journey_id($run_id);
+        if ($domain === '') {
+            return new WP_Error(
+                'dbvc_cc_v2_run_missing',
+                __('The requested V2 run could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $inventory = $this->get_inventory($domain);
+        if (! is_wp_error($inventory) && (string) ($inventory['journey_id'] ?? '') === $run_id) {
+            return $inventory;
+        }
+
+        $latest = $journey->get_latest_state_for_run($run_id);
+        if (is_wp_error($latest)) {
+            return $latest;
+        }
+
+        $events = $journey->get_events_for_run($run_id);
+        if (is_wp_error($events)) {
+            return $events;
+        }
+
+        return $this->build_inventory_from_events($domain, $run_id, $latest, $events);
+    }
+
+    /**
      * @param string $path
      * @param string $domain_dir
      * @return string
@@ -216,5 +259,165 @@ final class DBVC_CC_V2_URL_Inventory_Service
     private function get_domain_relative_path($path, $domain_dir)
     {
         return ltrim(str_replace(wp_normalize_path((string) $domain_dir), '', wp_normalize_path((string) $path)), '/');
+    }
+
+    /**
+     * @param string                           $domain
+     * @param string                           $journey_id
+     * @param array<string, mixed>             $latest
+     * @param array<int, array<string, mixed>> $events
+     * @return array<string, mixed>
+     */
+    private function build_inventory_from_events($domain, $journey_id, array $latest, array $events)
+    {
+        $rows = [];
+
+        foreach ($events as $event) {
+            if (! is_array($event)) {
+                continue;
+            }
+
+            $step_key = isset($event['step_key']) ? sanitize_key((string) $event['step_key']) : '';
+            if (
+                $step_key !== DBVC_CC_V2_Contracts::STEP_URL_DISCOVERED
+                && $step_key !== DBVC_CC_V2_Contracts::STEP_URL_SCOPE_DECIDED
+            ) {
+                continue;
+            }
+
+            $page_id = sanitize_text_field((string) ($event['page_id'] ?? ''));
+            if ($page_id === '') {
+                continue;
+            }
+
+            if (! isset($rows[$page_id])) {
+                $rows[$page_id] = $this->build_inventory_row(
+                    $page_id,
+                    sanitize_text_field((string) ($event['path'] ?? '')),
+                    esc_url_raw((string) ($event['source_url'] ?? ''))
+                );
+            }
+
+            $metadata = isset($event['metadata']) && is_array($event['metadata']) ? $event['metadata'] : [];
+            if ($step_key === DBVC_CC_V2_Contracts::STEP_URL_DISCOVERED) {
+                $rows[$page_id]['discovery_status'] = sanitize_key((string) ($metadata['discovery_status'] ?? 'discovered'));
+                $rows[$page_id]['discovery_reason'] = sanitize_text_field((string) ($metadata['discovery_reason'] ?? ''));
+                continue;
+            }
+
+            $rows[$page_id]['scope_status'] = sanitize_key((string) ($metadata['scope_status'] ?? 'eligible'));
+            $rows[$page_id]['scope_reason'] = sanitize_text_field((string) ($metadata['scope_reason'] ?? ''));
+        }
+
+        $latest_stage_by_url = isset($latest['latest_stage_by_url']) && is_array($latest['latest_stage_by_url'])
+            ? $latest['latest_stage_by_url']
+            : [];
+        foreach ($latest_stage_by_url as $page_id => $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            $normalized_page_id = sanitize_text_field((string) $page_id);
+            if ($normalized_page_id === '') {
+                continue;
+            }
+
+            if (! isset($rows[$normalized_page_id])) {
+                $rows[$normalized_page_id] = $this->build_inventory_row(
+                    $normalized_page_id,
+                    sanitize_text_field((string) ($entry['path'] ?? '')),
+                    esc_url_raw((string) ($entry['sourceUrl'] ?? ''))
+                );
+                continue;
+            }
+
+            if ($rows[$normalized_page_id]['path'] === '') {
+                $rows[$normalized_page_id]['path'] = sanitize_text_field((string) ($entry['path'] ?? ''));
+            }
+
+            if ($rows[$normalized_page_id]['source_url'] === '') {
+                $rows[$normalized_page_id]['source_url'] = esc_url_raw((string) ($entry['sourceUrl'] ?? ''));
+                $rows[$normalized_page_id]['normalized_url'] = $rows[$normalized_page_id]['source_url'];
+            }
+        }
+
+        uasort(
+            $rows,
+            static function ($left, $right) {
+                $path_compare = strnatcasecmp((string) ($left['path'] ?? ''), (string) ($right['path'] ?? ''));
+                if ($path_compare !== 0) {
+                    return $path_compare;
+                }
+
+                return strnatcasecmp((string) ($left['page_id'] ?? ''), (string) ($right['page_id'] ?? ''));
+            }
+        );
+
+        $inventory_rows = array_values($rows);
+        $eligible_count = 0;
+        $out_of_scope_count = 0;
+        foreach ($inventory_rows as $row) {
+            if (($row['scope_status'] ?? 'eligible') === 'eligible') {
+                ++$eligible_count;
+            } else {
+                ++$out_of_scope_count;
+            }
+        }
+
+        $run_profile = DBVC_CC_V2_Run_Profile_Service::get_instance()->get_profile_for_run($journey_id);
+        $sitemap_url = '';
+        if (! is_wp_error($run_profile)) {
+            $request = isset($run_profile['request']) && is_array($run_profile['request']) ? $run_profile['request'] : [];
+            $sitemap_url = isset($request['sitemap_url']) ? esc_url_raw((string) $request['sitemap_url']) : '';
+        }
+
+        $discovered_count = isset($latest['counts']['urls_discovered']) ? absint($latest['counts']['urls_discovered']) : count($inventory_rows);
+
+        return [
+            'artifact_schema_version' => DBVC_CC_Contracts::ARTIFACT_SCHEMA_VERSION,
+            'artifact_type' => 'domain-url-inventory.v1',
+            'journey_id' => $journey_id,
+            'domain' => sanitize_text_field((string) $domain),
+            'generated_at' => current_time('c'),
+            'source' => [
+                'type' => 'run-materialized-events',
+                'sitemap_url' => $sitemap_url,
+            ],
+            'urls' => $inventory_rows,
+            'stats' => [
+                'raw_url_count' => $discovered_count,
+                'url_count' => count($inventory_rows),
+                'eligible_count' => $eligible_count,
+                'out_of_scope_count' => $out_of_scope_count,
+                'duplicate_count' => 0,
+                'invalid_count' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * @param string $page_id
+     * @param string $path
+     * @param string $source_url
+     * @return array<string, mixed>
+     */
+    private function build_inventory_row($page_id, $path, $source_url)
+    {
+        $normalized_path = sanitize_text_field((string) $path);
+        $normalized_source_url = esc_url_raw((string) $source_url);
+
+        return [
+            'page_id' => sanitize_text_field((string) $page_id),
+            'normalized_url' => $normalized_source_url,
+            'source_url' => $normalized_source_url,
+            'path' => $normalized_path,
+            'slug' => DBVC_CC_Artifact_Manager::get_slug_from_url(
+                $normalized_source_url !== '' ? $normalized_source_url : $normalized_path
+            ),
+            'discovery_status' => 'discovered',
+            'discovery_reason' => '',
+            'scope_status' => 'eligible',
+            'scope_reason' => '',
+        ];
     }
 }

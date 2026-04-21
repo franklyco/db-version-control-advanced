@@ -64,6 +64,26 @@ final class DBVC_CC_V2_Domain_Journey_Materializer_Service
     }
 
     /**
+     * @param string                           $domain
+     * @param array<int, array<string, mixed>> $events
+     * @return array<string, mixed>
+     */
+    public function build_latest_state_for_events($domain, array $events)
+    {
+        return $this->build_latest_state($domain, $events);
+    }
+
+    /**
+     * @param string                           $domain
+     * @param array<int, array<string, mixed>> $events
+     * @return array<string, mixed>
+     */
+    public function build_stage_summary_for_events($domain, array $events)
+    {
+        return $this->build_stage_summary($domain, $events);
+    }
+
+    /**
      * @param string                      $domain
      * @param array<int, array<string, mixed>> $events
      * @return array<string, mixed>

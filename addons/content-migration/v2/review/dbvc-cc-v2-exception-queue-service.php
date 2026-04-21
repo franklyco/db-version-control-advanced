@@ -40,7 +40,7 @@ final class DBVC_CC_V2_Exception_Queue_Service
             );
         }
 
-        $inventory = DBVC_CC_V2_URL_Inventory_Service::get_instance()->get_inventory($domain);
+        $inventory = DBVC_CC_V2_URL_Inventory_Service::get_instance()->get_inventory_for_run($run_id);
         if (is_wp_error($inventory)) {
             return $inventory;
         }
@@ -54,7 +54,10 @@ final class DBVC_CC_V2_Exception_Queue_Service
         $totals = [
             'all' => 0,
             'blocked' => 0,
+            'conflicts' => 0,
             'needsReview' => 0,
+            'readyAfterReview' => 0,
+            'unresolved' => 0,
             'overridden' => 0,
             'stale' => 0,
         ];
@@ -74,8 +77,17 @@ final class DBVC_CC_V2_Exception_Queue_Service
             if ($item['status'] === 'blocked') {
                 ++$totals['blocked'];
             }
+            if (! empty($item['hasConflicts'])) {
+                ++$totals['conflicts'];
+            }
             if ($item['status'] === 'needs_review') {
                 ++$totals['needsReview'];
+            }
+            if (! empty($item['isReadyAfterReview'])) {
+                ++$totals['readyAfterReview'];
+            }
+            if (! empty($item['hasUnresolved'])) {
+                ++$totals['unresolved'];
             }
             if (! empty($item['manualOverrideCount'])) {
                 ++$totals['overridden'];
@@ -124,7 +136,7 @@ final class DBVC_CC_V2_Exception_Queue_Service
             return null;
         }
 
-        $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context($domain, $page_id);
+        $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context_for_run($run_id, $page_id);
         if (is_wp_error($page_context)) {
             return null;
         }
@@ -154,6 +166,22 @@ final class DBVC_CC_V2_Exception_Queue_Service
         $is_stale = is_array($mapping_decisions)
             && ! empty($mapping_decisions['recommendation_fingerprint'])
             && (string) $mapping_decisions['recommendation_fingerprint'] !== $fingerprint;
+        $unresolved_count = isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
+            ? count($recommendations['unresolved_items'])
+            : 0;
+        $active_conflicts = DBVC_CC_V2_Recommendation_Review_Service::get_instance()->filter_active_conflicts(
+            isset($recommendations['conflicts']) && is_array($recommendations['conflicts'])
+                ? $recommendations['conflicts']
+                : [],
+            $mapping_decisions,
+            $media_decisions
+        );
+        $conflict_count = count($active_conflicts);
+        $is_ready_after_review = $decision_status === 'reviewed'
+            && ! $is_stale
+            && $review_status !== 'blocked'
+            && $conflict_count === 0
+            && $unresolved_count === 0;
 
         $needs_review = in_array($review_status, ['needs_review', 'blocked'], true)
             || $decision_status === 'needs_review'
@@ -170,6 +198,14 @@ final class DBVC_CC_V2_Exception_Queue_Service
         } elseif ($decision_status !== 'pending') {
             $status = 'completed';
         }
+        $queue_state = $this->resolve_queue_state(
+            $status,
+            $conflict_count,
+            $unresolved_count,
+            $manual_override_count,
+            $is_stale,
+            $is_ready_after_review
+        );
 
         $recommended_object = isset($recommendations['recommended_target_object']) && is_array($recommendations['recommended_target_object'])
             ? $recommendations['recommended_target_object']
@@ -186,9 +222,14 @@ final class DBVC_CC_V2_Exception_Queue_Service
             'status' => $status,
             'reviewStatus' => $review_status,
             'decisionStatus' => $decision_status,
+            'queueState' => $queue_state,
+            'queueStateLabel' => $this->format_queue_state_label($queue_state),
             'reasonCodes' => array_values(array_unique($reason_codes)),
             'stale' => $is_stale,
             'needsReview' => $needs_review,
+            'hasConflicts' => $conflict_count > 0,
+            'hasUnresolved' => $unresolved_count > 0,
+            'isReadyAfterReview' => $is_ready_after_review,
             'resolutionMode' => isset($resolution_preview['mode'])
                 ? (string) $resolution_preview['mode']
                 : (isset($recommended_object['resolution_mode']) ? (string) $recommended_object['resolution_mode'] : ''),
@@ -203,13 +244,10 @@ final class DBVC_CC_V2_Exception_Queue_Service
             'mediaRecommendationCount' => isset($recommendations['media_recommendations']) && is_array($recommendations['media_recommendations'])
                 ? count($recommendations['media_recommendations'])
                 : 0,
-            'unresolvedCount' => isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
-                ? count($recommendations['unresolved_items'])
-                : 0,
-            'conflictCount' => isset($recommendations['conflicts']) && is_array($recommendations['conflicts'])
-                ? count($recommendations['conflicts'])
-                : 0,
+            'unresolvedCount' => $unresolved_count,
+            'conflictCount' => $conflict_count,
             'manualOverrideCount' => $manual_override_count,
+            'quickAction' => $this->build_quick_action($queue_state),
             'decisionUpdatedAt' => is_array($mapping_decisions) && ! empty($mapping_decisions['generated_at'])
                 ? (string) $mapping_decisions['generated_at']
                 : '',
@@ -232,10 +270,19 @@ final class DBVC_CC_V2_Exception_Queue_Service
         if ($filter === 'blocked' && ($item['status'] ?? '') !== 'blocked') {
             return false;
         }
+        if ($filter === 'conflicts' && empty($item['hasConflicts'])) {
+            return false;
+        }
+        if ($filter === 'unresolved' && empty($item['hasUnresolved'])) {
+            return false;
+        }
         if ($filter === 'low-confidence' && ! in_array('low_confidence_recommendations', isset($item['reasonCodes']) && is_array($item['reasonCodes']) ? $item['reasonCodes'] : [], true)) {
             return false;
         }
         if ($filter === 'overridden' && empty($item['manualOverrideCount'])) {
+            return false;
+        }
+        if ($filter === 'ready-after-review' && empty($item['isReadyAfterReview'])) {
             return false;
         }
         if ($filter === 'stale' && empty($item['stale'])) {
@@ -283,13 +330,8 @@ final class DBVC_CC_V2_Exception_Queue_Service
             }
         }
 
-        $priority_order = [
-            'blocked' => 0,
-            'needs_review' => 1,
-            'completed' => 2,
-        ];
-        $left_priority = isset($priority_order[$left['status']]) ? $priority_order[$left['status']] : 9;
-        $right_priority = isset($priority_order[$right['status']]) ? $priority_order[$right['status']] : 9;
+        $left_priority = $this->resolve_queue_priority($left);
+        $right_priority = $this->resolve_queue_priority($right);
         if ($left_priority !== $right_priority) {
             return $left_priority <=> $right_priority;
         }
@@ -307,7 +349,7 @@ final class DBVC_CC_V2_Exception_Queue_Service
     private function normalize_filter($value)
     {
         $value = sanitize_key((string) $value);
-        $allowed = ['all', 'blocked', 'low-confidence', 'stale', 'policy', 'overridden'];
+        $allowed = ['all', 'blocked', 'conflicts', 'low-confidence', 'overridden', 'policy', 'ready-after-review', 'stale', 'unresolved'];
 
         return in_array($value, $allowed, true) ? $value : 'all';
     }
@@ -348,6 +390,127 @@ final class DBVC_CC_V2_Exception_Queue_Service
         }
 
         return false;
+    }
+
+    /**
+     * @param string $status
+     * @param int    $conflict_count
+     * @param int    $unresolved_count
+     * @param int    $manual_override_count
+     * @param bool   $is_stale
+     * @param bool   $is_ready_after_review
+     * @return string
+     */
+    private function resolve_queue_state($status, $conflict_count, $unresolved_count, $manual_override_count, $is_stale, $is_ready_after_review)
+    {
+        if ((int) $conflict_count > 0) {
+            return 'conflicts';
+        }
+
+        if ((int) $unresolved_count > 0) {
+            return 'unresolved';
+        }
+
+        if ((string) $status === 'blocked') {
+            return 'blocked';
+        }
+
+        if ($is_stale) {
+            return 'stale';
+        }
+
+        if ((int) $manual_override_count > 0) {
+            return 'overridden';
+        }
+
+        if ($is_ready_after_review) {
+            return 'ready_after_review';
+        }
+
+        return 'needs_review';
+    }
+
+    /**
+     * @param string $queue_state
+     * @return string
+     */
+    private function format_queue_state_label($queue_state)
+    {
+        return ucfirst(str_replace('_', ' ', (string) $queue_state));
+    }
+
+    /**
+     * @param string $queue_state
+     * @return array<string, string>
+     */
+    private function build_quick_action($queue_state)
+    {
+        if ($queue_state === 'conflicts') {
+            return [
+                'label' => 'Resolve conflicts',
+                'panelTab' => 'conflicts',
+            ];
+        }
+
+        if ($queue_state === 'unresolved') {
+            return [
+                'label' => 'Review unresolved',
+                'panelTab' => 'mapping',
+            ];
+        }
+
+        if ($queue_state === 'stale') {
+            return [
+                'label' => 'Review stale decision',
+                'panelTab' => 'mapping',
+            ];
+        }
+
+        if ($queue_state === 'overridden') {
+            return [
+                'label' => 'Review overrides',
+                'panelTab' => 'mapping',
+            ];
+        }
+
+        if ($queue_state === 'blocked') {
+            return [
+                'label' => 'Inspect blockers',
+                'panelTab' => 'summary',
+            ];
+        }
+
+        if ($queue_state === 'ready_after_review') {
+            return [
+                'label' => 'Reopen reviewed item',
+                'panelTab' => 'summary',
+            ];
+        }
+
+        return [
+            'label' => 'Review recommendations',
+            'panelTab' => 'mapping',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return int
+     */
+    private function resolve_queue_priority(array $item)
+    {
+        $priority_order = [
+            'conflicts' => 0,
+            'unresolved' => 1,
+            'blocked' => 2,
+            'stale' => 3,
+            'overridden' => 4,
+            'ready_after_review' => 5,
+            'needs_review' => 6,
+        ];
+
+        $queue_state = isset($item['queueState']) ? (string) $item['queueState'] : '';
+        return isset($priority_order[$queue_state]) ? $priority_order[$queue_state] : 9;
     }
 
     /**

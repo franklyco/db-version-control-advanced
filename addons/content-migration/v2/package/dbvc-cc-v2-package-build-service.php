@@ -41,21 +41,39 @@ final class DBVC_CC_V2_Package_Build_Service
         }
 
         $storage_service = DBVC_CC_V2_Package_Storage_Service::get_instance();
-        $history = $storage_service->list_builds_by_domain($run_context['domain']);
+        $history = $this->filter_history_for_run(
+            $storage_service->list_builds_by_domain($run_context['domain']),
+            $run_context['runId']
+        );
         $selected_package_id = sanitize_text_field((string) $package_id);
         if ($selected_package_id === '' && ! empty($history[0]['package_id'])) {
             $selected_package_id = (string) $history[0]['package_id'];
         }
 
         $selected_history_item = $this->find_history_item($history, $selected_package_id);
+        if (! is_array($selected_history_item) && ! empty($history[0]['package_id'])) {
+            $selected_package_id = (string) $history[0]['package_id'];
+            $selected_history_item = $this->find_history_item($history, $selected_package_id);
+        }
+
+        if (! is_array($selected_history_item)) {
+            $selected_package_id = '';
+        }
+
         $history = DBVC_CC_V2_Package_Observability_Service::get_instance()->augment_history($history);
-        $selected_package = $selected_package_id !== ''
+        $selected_package = $selected_package_id !== '' && is_array($selected_history_item)
             ? $storage_service->read_package_detail($run_context['context'], $selected_package_id)
             : null;
         if (is_array($selected_package) && is_array($selected_history_item)) {
             $selected_package = DBVC_CC_V2_Package_Observability_Service::get_instance()->augment_package_detail(
                 $selected_package,
                 $selected_history_item
+            );
+        }
+        if (is_array($selected_package)) {
+            $selected_package['artifactActions'] = DBVC_CC_V2_Package_Artifact_Service::get_instance()->build_operator_actions(
+                $run_context,
+                $selected_package_id
             );
         }
 
@@ -328,5 +346,27 @@ final class DBVC_CC_V2_Package_Build_Service
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $history
+     * @param string                           $run_id
+     * @return array<int, array<string, mixed>>
+     */
+    private function filter_history_for_run(array $history, $run_id)
+    {
+        $run_id = sanitize_text_field((string) $run_id);
+        if ($run_id === '') {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                $history,
+                static function ($item) use ($run_id) {
+                    return is_array($item) && (string) ($item['journey_id'] ?? '') === $run_id;
+                }
+            )
+        );
     }
 }

@@ -2,6 +2,7 @@ import OverviewNextActions from '../../components/run-overview/OverviewNextActio
 import OverviewRecentActivity from '../../components/run-overview/OverviewRecentActivity';
 import OverviewStageCards from '../../components/run-overview/OverviewStageCards';
 import OverviewSummaryCards from '../../components/run-overview/OverviewSummaryCards';
+import { buildOperatorActionRoute } from '../../app/operatorActionRoutes';
 import useRunOverview from '../../hooks/useRunOverview';
 import { formatTimestamp, humanizeKey } from './overviewTransforms';
 
@@ -36,7 +37,7 @@ const buildRefreshCopy = ( {
 };
 
 export default function RunOverviewWorkspace( {
-	onNavigateToView,
+	onRouteChange,
 	onOpenDrawer,
 	refreshToken,
 	route,
@@ -171,7 +172,23 @@ export default function RunOverviewWorkspace( {
 
 					<OverviewNextActions
 						latest={ latest }
-						onNavigate={ onNavigateToView }
+						onNavigate={ ( action ) => {
+							const nextRoute = buildOperatorActionRoute(
+								route,
+								{},
+								{
+									...( action?.action || {} ),
+									runId: route.runId,
+								}
+							);
+
+							if (
+								nextRoute &&
+								typeof onRouteChange === 'function'
+							) {
+								onRouteChange( nextRoute );
+							}
+						} }
 					/>
 				</>
 			) : null }

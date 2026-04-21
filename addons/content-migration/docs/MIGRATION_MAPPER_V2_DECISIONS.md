@@ -70,6 +70,28 @@ Do not reopen these decisions unless a concrete implementation blocker appears.
 - strict domain isolation is required
 - learned behavior, reviewer decisions, and pattern reuse must not spill across domains
 
+## Deterministic Recovery QA
+
+- deterministic rerun-follow-up QA uses a current-user-scoped fixture overlay, not manual edits to stored journey artifacts
+- the recovery fixture helper is development-only by default:
+  - enabled in PHPUnit
+  - enabled in debug environments
+  - filterable through `dbvc_cc_v2_enable_recovery_qa_fixture`
+- the helper may overlay `actionSummary.rerunCandidates` for browser validation, but it must not change normal production runtime behavior unless explicitly enabled
+- deterministic replay-follow-up QA should keep using the existing `POST /runs` transport
+- when replay browser validation needs stable seeded data, the dev-only helper should piggyback on `POST /runs` through an explicit `qaReplaySourceRunId` request flag instead of introducing a second replay route
+- deterministic historical-review browser QA should also stay on the existing `POST /runs` transport
+- when historical review browser validation needs stable source-run data, use a dev-only synthetic fixture domain on the normal create-run contract instead of adding a second historical-review QA route
+- the deterministic replay helper may clone page artifacts into a true same-URL overwrite chain for QA, but that behavior must remain development-only behind the existing recovery-fixture availability gate
+
+## Historical Page Artifact Preservation
+
+- active same-URL page artifacts still write to the canonical domain-scoped page path for the current run
+- capture, AI pipeline, and review writes also preserve a per-run copy under `{page_dir}/_runs/{run_id}/`
+- historical run readers should prefer the current page artifact only when its `journey_id` still matches the requested run
+- when the current same-URL artifact belongs to a newer run, historical readers should fall back to the preserved `_runs/{run_id}/` copy before treating that artifact as missing
+- historical review and rerun writes should target the preserved `_runs/{run_id}/` page artifact path whenever the current same-URL page belongs to a newer run
+
 ## Delivery Policy
 
 - V2 is package-first

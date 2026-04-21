@@ -30,14 +30,17 @@ final class DBVC_CC_V2_Contracts
     public const AI_STAGE_INITIAL_CLASSIFICATION = 'initial_classification';
     public const AI_STAGE_MAPPING_INDEX = 'mapping_index';
     public const AI_STAGE_RECOMMENDATION_FINALIZATION = 'recommendation_finalization';
+    public const QA_HISTORICAL_REVIEW_FIXTURE_DOMAIN = 'qa-historical-review-fixture.example';
 
     public const STORAGE_JOURNEY_SUBDIR = '_journey';
     public const STORAGE_INVENTORY_SUBDIR = '_inventory';
     public const STORAGE_LEARNING_SUBDIR = '_learning';
     public const STORAGE_PACKAGES_SUBDIR = '_packages';
+    public const STORAGE_PAGE_RUNS_SUBDIR = '_runs';
     public const STORAGE_JOURNEY_LOG_FILE = 'domain-journey.ndjson';
     public const STORAGE_JOURNEY_LATEST_FILE = 'domain-journey.latest.v1.json';
     public const STORAGE_STAGE_SUMMARY_FILE = 'domain-stage-summary.v1.json';
+    public const STORAGE_RUN_PROFILE_FILE = 'run-request-profile.latest.v1.json';
     public const STORAGE_URL_INVENTORY_FILE = 'domain-url-inventory.v1.json';
     public const STORAGE_DOMAIN_PATTERN_MEMORY_FILE = 'domain-pattern-memory.v1.json';
     public const STORAGE_PACKAGE_BUILDS_FILE = 'package-builds.v1.json';

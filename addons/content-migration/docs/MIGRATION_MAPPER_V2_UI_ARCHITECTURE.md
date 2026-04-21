@@ -106,10 +106,12 @@ Advanced detail should appear on demand through:
 Purpose:
 - entry point for recent and active runs
 - entry point for starting a new crawl-backed run
+- entry point for replaying a profiled run with stored settings
 - quick understanding of run status and next actions
 
 Should emphasize:
 - start-run controls
+- direct replay for profiled runs
 - collapsed advanced override controls that open inside the same workspace
 - request lifecycle feedback after submit
 - run status
@@ -134,6 +136,9 @@ Should emphasize:
 - recent activity from the selected run
 - read-oriented next actions into `exceptions`, `readiness`, and `package`
 
+Current landed note:
+- overview next-action cards now route directly to the first blocked or reviewable URL, the matching readiness audit target, or the latest built package while keeping the overview itself read-oriented
+
 ### 3. Exceptions Workspace
 
 Purpose:
@@ -146,6 +151,15 @@ Should emphasize:
 - human-readable target object and field preview
 - quick next actions
 - queue filters aligned to conflicts, stale decisions, and manual overrides
+
+Current landed note:
+- the exception queue now prioritizes `conflicts`, `unresolved`, `stale`, `manual overrides`, and `ready after review` as distinct operator queue states instead of leaving them as generic counts
+- row-level quick actions now route operators directly into the relevant resolver tab, while summary remains available as a secondary action
+- field, taxonomy, media, and ACF recommendations now render human-readable schema labels as the primary display treatment, with raw machine refs retained as secondary evidence
+- explicit per-item `approve`, `reject`, `override`, and `unresolved` controls now live in the inspector action surface instead of forcing operators into raw override entry first
+- stale-decision drift and unsaved local edits now surface directly in the inspector so operators can reset to latest recommendations or confirm discard before navigation drops local work
+- the inspector now includes a dedicated conflicts tab that groups recommendations by conflicted target and lets operators resolve them in place
+- previous, next, save-and-next, and save-and-close controls now use the active exception queue as navigation context instead of sending operators back to the table after each record
 
 ### 4. Readiness Workspace
 
@@ -160,6 +174,11 @@ Should emphasize:
 - dry-run readiness
 - direct shortcuts into the first relevant blocking review target
 
+Current landed note:
+- the readiness workspace now uses filter chips for `review`, `qa`, `package`, and `ready` so per-page QA rows can be narrowed without requesting a second readiness payload
+- blocking issues and warnings now share the same route-aware action model as per-page readiness rows, which lets operators jump directly into the filtered exceptions queue, the inspector audit tab, or the package workspace from the blocker they are looking at
+- overview and package now reuse that same operator action model so route-aware shortcuts behave consistently across monitoring, readiness, and package surfaces instead of each workspace inventing a different navigation pattern
+
 ### 5. Package Workspace
 
 Purpose:
@@ -172,6 +191,11 @@ Should emphasize:
 - package build history
 - action eligibility and disabled reasons
 - useful artifact actions instead of raw storage paths
+
+Current landed note:
+- the package bridge now requires explicit confirmation before preflight approval or execute, keeps disabled-reason messaging visible when the action is not yet eligible, and surfaces recent import follow-up state in the same workspace
+- selected packages now expose in-app drill-ins for manifest, summary, QA, records, and media together with signed artifact download actions so operators do not need to parse raw storage-relative paths
+- package detail and execute-blocked states now expose direct blocker shortcuts into the relevant exceptions or readiness target so operators can resolve the exact issue that is preventing import without manually triangulating the source row first
 
 ### 6. URL Inspector Drawer
 
@@ -188,6 +212,11 @@ Should contain:
 - human-readable schema labels with raw refs as secondary detail
 - save-and-next, previous, and next review navigation once conflict review is active
 - unsaved-change and stale-decision safeguards
+
+Current landed note:
+- the inspector mapping and override surfaces now consume additive schema presentation metadata from the V2 review payload instead of treating raw `target_ref` values as the primary operator label
+- the inspector now uses a shared draft layer so the mapping evidence view and the action surface stay aligned on current per-item decision state
+- route-level discard confirmation now protects the current draft when the operator closes the drawer, switches tabs, opens another URL, changes workspaces, or switches runs
 
 ## Layout Regions
 
@@ -438,9 +467,16 @@ Owns:
 Consumes:
 
 - run summaries
+- stored latest run request profiles
+- stage-group rerun candidate summaries
+- hidden-run visibility state
 - run-create response summary
 - readiness counts
 - exception counts
+
+The runs workspace should keep duplicate-settings prefill and hidden-run toggles in the same surface as the run-start form so operators do not bounce into a separate control center for simple cleanup or retry actions.
+It should also keep direct replay and legacy-profile availability messaging on the run card so operators can tell immediately whether a run can be replayed or must be recreated manually.
+It should keep replay follow-up actions in the existing run-create lifecycle panel and preserve the latest rerun follow-up context in the existing run-action status panel, even when later non-recovery actions occur in the same workspace session.
 
 ### Run Overview Workspace
 
@@ -461,7 +497,9 @@ Consumes:
 Owns:
 - exception queue filters for conflicts, stale decisions, unresolved items, and manual overrides
 - queue-context navigation into the inspector
-- future bulk-selection state after single-item reviewability is stable
+- bulk-selection state for low-risk rows
+- bulk-review action state and progress messaging
+- family-scoped selection helpers for conservative bulk approval
 - exception filters
 - row expansion state
 - selected URL drawer state
@@ -471,7 +509,7 @@ Consumes:
 - exception counts and queue summaries
 - human-readable target label metadata
 - conflict and stale-state explanations
-- future save-and-next navigation context
+- save-and-next navigation context
 - exception queue
 - recommendation summaries
 - target resolution previews

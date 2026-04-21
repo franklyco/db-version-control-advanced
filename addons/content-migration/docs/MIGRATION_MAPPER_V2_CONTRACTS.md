@@ -91,6 +91,7 @@ Recommended resource families:
 
 - `/runs`
 - `/runs/{run_id}`
+- `/runs/{run_id}/visibility`
 - `/runs/{run_id}/overview`
 - `/runs/{run_id}/exceptions`
 - `/runs/{run_id}/readiness`
@@ -105,15 +106,24 @@ Recommended resource families:
 Recommended behavior:
 
 - list and summary routes should be optimized for default workspace views
+- `GET /runs` may add transport-only run-card metadata such as stored latest `runProfile`, stage-group `actionSummary`, and user-scoped hidden state
+- the current V2 UI may reuse stored `runProfile` metadata to replay a run through the existing `POST /runs` contract; this is an operator-surface behavior, not a second replay endpoint
 - deep evidence routes should support drawers and inspector panels
 - mutation routes should be scoped to the affected run and URL where possible
 - `POST /runs` should remain the canonical V2 crawl-start entry and should carry `domain`, `sitemapUrl`, `maxUrls`, `forceRebuild`, and `crawlOverrides`
+- `POST /runs/{run_id}/visibility` may manage operator-specific run cleanup state such as hide or restore without changing canonical journey artifacts
 - `GET /runs/{run_id}/overview` should remain the selected-run monitoring source for `latest`, `inventory`, `stageSummary`, and bounded `recentActivity` before introducing richer activity-specific routes
+- `GET /runs/{run_id}/exceptions` may add transport-only queue metadata such as queue-state counts, row-level `queueState`, and quick-action hints so the operator UI can be conflict-first without mutating persisted decision artifacts
+- low-risk bulk review should continue to reuse `POST /runs/{run_id}/urls/{page_id}/decision` per selected URL so reviewer audit artifacts and journey events stay page-scoped instead of introducing a second bulk-write artifact contract
 - package dry-run, preflight approval, and execute routes should consume the selected package as their preferred upstream input
 - the package surface should expose selected-package workflow state and recent import execution history once package observability is available
+- the package surface may add transport-only `artifactActions` metadata for operator-safe inspect and download affordances without changing the package artifact files themselves
+- authenticated package artifact downloads may use a scoped `admin-post.php` transport when the UI needs binary or JSON downloads that do not fit the JSON-only REST client
 - internal pipeline step names should not force the default UI to think in raw phase endpoints
 - the V2 crawl-start UI should keep wrapping this V2 route instead of reviving the V1 collect tab or `admin-ajax` transport
 - URL review payloads should be able to carry human-readable schema presentation metadata without replacing stable machine refs such as `target_ref`
+- readiness-adjacent package preview payloads should be able to carry the same additive schema presentation metadata for field and media rows without changing the stored artifact schema
+- package drill-ins should prioritize manifest, summary, QA, records, and media previews inside V2 before falling back to raw artifact downloads
 
 Identifier rule:
 
@@ -202,6 +212,7 @@ Recommended domain-level artifacts:
 - `_journey/domain-journey.ndjson`
 - `_journey/domain-journey.latest.v1.json`
 - `_journey/domain-stage-summary.v1.json`
+- `_journey/run-request-profile.latest.v1.json`
 - `_inventory/domain-url-inventory.v1.json`
 - `_learning/domain-pattern-memory.v1.json`
 - `_schema/dbvc_cc_target_object_inventory.v1.json`
@@ -228,6 +239,9 @@ Recommended URL-level artifacts:
 - `{slug}.media-candidates.v2.json`
 - `{slug}.media-decisions.v2.json`
 - `{slug}.qa-report.v1.json`
+
+Presentation rule:
+- artifact payloads remain machine-oriented, but REST review and readiness surfaces may add transport-only schema presentation objects alongside machine refs so the operator UI can stay human-readable without mutating canonical artifact shapes
 
 ## Canonical Domain-Level Contracts
 

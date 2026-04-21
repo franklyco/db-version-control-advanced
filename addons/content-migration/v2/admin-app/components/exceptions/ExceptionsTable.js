@@ -1,7 +1,56 @@
-const renderReasonLabel = ( reasonCode ) =>
-	`${ reasonCode || '' }`.replaceAll( '_', ' ' );
+import { useEffect, useRef } from '@wordpress/element';
+
+import {
+	getBulkEligibilityReason,
+	isBulkEligibleItem,
+} from './bulkReviewHelpers';
+
+function renderReasonLabel( reasonCode ) {
+	return `${ reasonCode || '' }`.replaceAll( '_', ' ' );
+}
+
+function getQueueState( item ) {
+	return item.queueState || item.status || 'needs_review';
+}
+
+function getQueueStateLabel( item ) {
+	return (
+		item.queueStateLabel ||
+		`${ getQueueState( item ) }`.replaceAll( '_', ' ' )
+	);
+}
+
+function EligibleSelectionCheckbox( {
+	checked,
+	disabled,
+	indeterminate,
+	label,
+	onChange,
+	testId,
+} ) {
+	const inputRef = useRef( null );
+
+	useEffect( () => {
+		if ( inputRef.current ) {
+			inputRef.current.indeterminate = indeterminate;
+		}
+	}, [ indeterminate ] );
+
+	return (
+		<input
+			ref={ inputRef }
+			type="checkbox"
+			checked={ checked }
+			disabled={ disabled }
+			aria-label={ label }
+			data-testid={ testId }
+			onChange={ onChange }
+		/>
+	);
+}
 
 export default function ExceptionsTable( {
+	bulkReview,
 	items,
 	isLoading,
 	error,
@@ -48,8 +97,23 @@ export default function ExceptionsTable( {
 			<table className="dbvc-cc-v2-table">
 				<thead>
 					<tr>
+						<th scope="col">
+							<EligibleSelectionCheckbox
+								checked={ bulkReview.allEligibleSelected }
+								disabled={
+									bulkReview.isBusy ||
+									bulkReview.eligibleVisibleCount < 1
+								}
+								indeterminate={
+									bulkReview.hasPartialEligibleSelection
+								}
+								label="Select all eligible exception rows"
+								testId="dbvc-cc-v2-exception-select-all-visible"
+								onChange={ bulkReview.toggleAllEligible }
+							/>
+						</th>
 						<th scope="col">URL</th>
-						<th scope="col">Status</th>
+						<th scope="col">Queue state</th>
 						<th scope="col">Target</th>
 						<th scope="col">Signals</th>
 						<th scope="col">Actions</th>
@@ -61,6 +125,28 @@ export default function ExceptionsTable( {
 							key={ item.pageId }
 							data-testid={ `dbvc-cc-v2-exception-row-${ item.pageId }` }
 						>
+							<td className="dbvc-cc-v2-table__select">
+								{ isBulkEligibleItem( item ) ? (
+									<EligibleSelectionCheckbox
+										checked={ bulkReview.selectedPageIdSet.has(
+											item.pageId
+										) }
+										disabled={ bulkReview.isBusy }
+										indeterminate={ false }
+										label={ `Select ${
+											item.path || item.pageId
+										} for bulk review` }
+										testId={ `dbvc-cc-v2-exception-select-${ item.pageId }` }
+										onChange={ () =>
+											bulkReview.togglePage( item.pageId )
+										}
+									/>
+								) : (
+									<span className="dbvc-cc-v2-table__meta">
+										{ getBulkEligibilityReason( item ) }
+									</span>
+								) }
+							</td>
 							<td>
 								<strong>{ item.path || item.pageId }</strong>
 								<p className="dbvc-cc-v2-table__meta">
@@ -69,13 +155,20 @@ export default function ExceptionsTable( {
 							</td>
 							<td>
 								<span
-									className={ `dbvc-cc-v2-status-pill is-${ item.status }` }
+									className={ `dbvc-cc-v2-status-pill is-${ getQueueState(
+										item
+									) }` }
 								>
-									{ item.status.replaceAll( '_', ' ' ) }
+									{ getQueueStateLabel( item ) }
 								</span>
 								<p className="dbvc-cc-v2-table__meta">
 									Review{ ' ' }
-									{ item.reviewStatus.replaceAll( '_', ' ' ) }
+									{ item.reviewStatus.replaceAll( '_', ' ' ) }{ ' ' }
+									/ Decision{ ' ' }
+									{ item.decisionStatus.replaceAll(
+										'_',
+										' '
+									) }
 								</p>
 							</td>
 							<td>
@@ -105,9 +198,15 @@ export default function ExceptionsTable( {
 											overrides
 										</span>
 									) : null }
+									{ item.stale ? (
+										<span>
+											Recommendation drift detected
+										</span>
+									) : null }
 									{ Array.isArray( item.reasonCodes ) &&
 									item.reasonCodes.length ? (
 										<span>
+											Primary signal:{ ' ' }
 											{ renderReasonLabel(
 												item.reasonCodes[ 0 ]
 											) }
@@ -116,16 +215,36 @@ export default function ExceptionsTable( {
 								</div>
 							</td>
 							<td>
-								<button
-									type="button"
-									className="button button-secondary"
-									data-testid={ `dbvc-cc-v2-open-exception-${ item.pageId }` }
-									onClick={ () =>
-										onOpenDrawer( item.pageId, 'summary' )
-									}
-								>
-									Open inspector
-								</button>
+								<div className="dbvc-cc-v2-table__actions">
+									<button
+										type="button"
+										className="button button-secondary"
+										data-testid={ `dbvc-cc-v2-open-exception-${ item.pageId }` }
+										onClick={ () =>
+											onOpenDrawer(
+												item.pageId,
+												item.quickAction?.panelTab ||
+													'mapping'
+											)
+										}
+									>
+										{ item.quickAction?.label ||
+											'Review recommendations' }
+									</button>
+									<button
+										type="button"
+										className="button button-link"
+										data-testid={ `dbvc-cc-v2-open-exception-summary-${ item.pageId }` }
+										onClick={ () =>
+											onOpenDrawer(
+												item.pageId,
+												'summary'
+											)
+										}
+									>
+										Open summary
+									</button>
+								</div>
 							</td>
 						</tr>
 					) ) }

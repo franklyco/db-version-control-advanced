@@ -1,4 +1,9 @@
-export default function ReadinessIssuesList( { title, items, testId } ) {
+export default function ReadinessIssuesList( {
+	title,
+	items,
+	testId,
+	onItemAction,
+} ) {
 	return (
 		<article className="dbvc-cc-v2-placeholder-card" data-testid={ testId }>
 			<h3>{ title }</h3>
@@ -14,6 +19,30 @@ export default function ReadinessIssuesList( { title, items, testId } ) {
 								<p className="dbvc-cc-v2-table__meta">
 									{ item.path }
 								</p>
+							) : null }
+							{ item.action ? (
+								<div className="dbvc-cc-v2-actions">
+									<button
+										type="button"
+										className="button button-secondary"
+										data-testid={ `dbvc-cc-v2-readiness-issue-action-${
+											item.pageId || index
+										}` }
+										onClick={ () => {
+											if (
+												typeof onItemAction ===
+												'function'
+											) {
+												onItemAction(
+													item,
+													item.action
+												);
+											}
+										} }
+									>
+										{ item.action.label }
+									</button>
+								</div>
 							) : null }
 						</li>
 					) ) }

@@ -32,7 +32,7 @@ final class DBVC_CC_V2_Recommendation_Review_Service
      */
     public function get_review_payload($domain, $run_id, $page_id, array $args = [])
     {
-        $review_context = $this->load_review_context($domain, $page_id);
+        $review_context = $this->load_review_context($domain, $run_id, $page_id);
         if (is_wp_error($review_context)) {
             return $review_context;
         }
@@ -43,7 +43,42 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         $mapping_decisions = $review_context['mapping_decisions'];
         $media_decisions = $review_context['media_decisions'];
         $target_transform = $review_context['target_transform'];
-        $current_target_object = $this->build_current_target_object($recommendations, $mapping_decisions);
+        $recommended_target_object = $this->decorate_target_object(
+            $domain,
+            isset($recommendations['recommended_target_object']) && is_array($recommendations['recommended_target_object'])
+                ? $recommendations['recommended_target_object']
+                : []
+        );
+        $candidate_target_objects = $this->decorate_target_object_list(
+            $domain,
+            isset($recommendations['candidate_target_objects']) && is_array($recommendations['candidate_target_objects'])
+                ? $recommendations['candidate_target_objects']
+                : []
+        );
+        $field_recommendations = $this->decorate_recommendations(
+            $domain,
+            isset($recommendations['recommendations']) && is_array($recommendations['recommendations'])
+                ? $recommendations['recommendations']
+                : []
+        );
+        $media_recommendations = $this->decorate_recommendations(
+            $domain,
+            isset($recommendations['media_recommendations']) && is_array($recommendations['media_recommendations'])
+                ? $recommendations['media_recommendations']
+                : []
+        );
+        $active_conflicts = $this->filter_active_conflicts(
+            isset($recommendations['conflicts']) && is_array($recommendations['conflicts'])
+                ? $recommendations['conflicts']
+                : [],
+            $mapping_decisions,
+            $media_decisions
+        );
+        $conflicts = $this->decorate_conflicts(
+            $domain,
+            $active_conflicts
+        );
+        $current_target_object = $this->build_current_target_object($domain, $recommendations, $mapping_decisions);
         $decision_status = $this->resolve_decision_status($mapping_decisions, $media_decisions);
         $manual_override_count = $this->count_overrides($mapping_decisions, $media_decisions);
         $recommendation_fingerprint = $this->compute_fingerprint($recommendations);
@@ -99,42 +134,45 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'stale' => $stale,
                 'manualOverrideCount' => $manual_override_count,
                 'counts' => [
-                    'recommendations' => isset($recommendations['recommendations']) && is_array($recommendations['recommendations'])
-                        ? count($recommendations['recommendations'])
-                        : 0,
-                    'mediaRecommendations' => isset($recommendations['media_recommendations']) && is_array($recommendations['media_recommendations'])
-                        ? count($recommendations['media_recommendations'])
-                        : 0,
+                    'recommendations' => count($field_recommendations),
+                    'mediaRecommendations' => count($media_recommendations),
                     'unresolved' => isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
                         ? count($recommendations['unresolved_items'])
                         : 0,
-                    'conflicts' => isset($recommendations['conflicts']) && is_array($recommendations['conflicts'])
-                        ? count($recommendations['conflicts'])
-                        : 0,
+                    'conflicts' => count($conflicts),
                 ],
                 'currentTargetObject' => $current_target_object,
-                'recommendedTargetObject' => isset($recommendations['recommended_target_object']) && is_array($recommendations['recommended_target_object'])
-                    ? $recommendations['recommended_target_object']
-                    : [],
+                'recommendedTargetObject' => $recommended_target_object,
             ],
             'recommendations' => [
                 'classification' => isset($review_context['initial_classification']['primary_classification']) ? $review_context['initial_classification'] : [],
-                'recommendedTargetObject' => isset($recommendations['recommended_target_object']) ? $recommendations['recommended_target_object'] : [],
-                'candidateTargetObjects' => isset($recommendations['candidate_target_objects']) ? $recommendations['candidate_target_objects'] : [],
-                'fieldRecommendations' => isset($recommendations['recommendations']) ? $recommendations['recommendations'] : [],
-                'mediaRecommendations' => isset($recommendations['media_recommendations']) ? $recommendations['media_recommendations'] : [],
+                'recommendedTargetObject' => $recommended_target_object,
+                'candidateTargetObjects' => $candidate_target_objects,
+                'fieldRecommendations' => $field_recommendations,
+                'mediaRecommendations' => $media_recommendations,
                 'unresolvedItems' => isset($recommendations['unresolved_items']) ? $recommendations['unresolved_items'] : [],
-                'conflicts' => isset($recommendations['conflicts']) ? $recommendations['conflicts'] : [],
+                'conflicts' => $conflicts,
                 'review' => isset($recommendations['review']) ? $recommendations['review'] : [],
             ],
             'decisions' => [
-                'mapping' => $this->build_mapping_decision_payload($mapping_decisions, $page_context, $recommendations),
-                'media' => $this->build_media_decision_payload($media_decisions, $page_context),
+                'mapping' => $this->decorate_mapping_decision_payload(
+                    $domain,
+                    $this->build_mapping_decision_payload($mapping_decisions, $page_context, $recommendations)
+                ),
+                'media' => $this->decorate_media_decision_payload(
+                    $domain,
+                    $this->build_media_decision_payload($media_decisions, $page_context)
+                ),
             ],
             'evidence' => [
                 'source' => $this->build_source_evidence($review_context),
                 'context' => $this->build_context_evidence($review_context),
-                'mapping' => $this->build_mapping_evidence($review_context),
+                'mapping' => $this->build_mapping_evidence(
+                    $review_context,
+                    $field_recommendations,
+                    $media_recommendations,
+                    $conflicts
+                ),
                 'audit' => $this->build_audit_evidence($review_context, $decision_status, $artifact_relatives),
             ],
             'actions' => [
@@ -153,14 +191,15 @@ final class DBVC_CC_V2_Recommendation_Review_Service
      */
     public function save_decisions($domain, $run_id, $page_id, array $payload, $user_id)
     {
-        $review_context = $this->load_review_context($domain, $page_id);
+        $review_context = $this->load_review_context($domain, $run_id, $page_id);
         if (is_wp_error($review_context)) {
             return $review_context;
         }
 
         $page_context = $review_context['page_context'];
         $artifact_paths = isset($page_context['artifact_paths']) && is_array($page_context['artifact_paths']) ? $page_context['artifact_paths'] : [];
-        $artifact_relatives = isset($page_context['artifact_relatives']) && is_array($page_context['artifact_relatives']) ? $page_context['artifact_relatives'] : [];
+        $write_artifact_paths = isset($page_context['write_artifact_paths']) && is_array($page_context['write_artifact_paths']) ? $page_context['write_artifact_paths'] : $artifact_paths;
+        $artifact_relatives = isset($page_context['write_artifact_relatives']) && is_array($page_context['write_artifact_relatives']) ? $page_context['write_artifact_relatives'] : [];
         $recommendations = $review_context['mapping_recommendations'];
         $existing_mapping_decisions = $review_context['mapping_decisions'];
         $existing_media_decisions = $review_context['media_decisions'];
@@ -248,8 +287,8 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         }
 
         if (
-            ! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['mapping_decisions'], $mapping_decisions)
-            || ! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['media_decisions'], $media_decisions)
+            ! DBVC_CC_V2_Page_Artifact_Service::get_instance()->write_page_artifact($write_artifact_paths['mapping_decisions'], $mapping_decisions, $run_id)
+            || ! DBVC_CC_V2_Page_Artifact_Service::get_instance()->write_page_artifact($write_artifact_paths['media_decisions'], $media_decisions, $run_id)
         ) {
             return new WP_Error(
                 'dbvc_cc_v2_review_write_failed',
@@ -326,12 +365,13 @@ final class DBVC_CC_V2_Recommendation_Review_Service
 
     /**
      * @param string $domain
+     * @param string $run_id
      * @param string $page_id
      * @return array<string, mixed>|WP_Error
      */
-    private function load_review_context($domain, $page_id)
+    private function load_review_context($domain, $run_id, $page_id)
     {
-        $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context($domain, $page_id);
+        $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context_for_run($run_id, $page_id);
         if (is_wp_error($page_context)) {
             return $page_context;
         }
@@ -376,7 +416,7 @@ final class DBVC_CC_V2_Recommendation_Review_Service
      * @param array<string, mixed>|null $mapping_decisions
      * @return array<string, mixed>
      */
-    private function build_current_target_object(array $recommendations, $mapping_decisions)
+    private function build_current_target_object($domain, array $recommendations, $mapping_decisions)
     {
         $recommended = isset($recommendations['recommended_target_object']) && is_array($recommendations['recommended_target_object'])
             ? $recommendations['recommended_target_object']
@@ -391,15 +431,23 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         $target_family = ! empty($decision['selected_target_family'])
             ? (string) $decision['selected_target_family']
             : (isset($recommended['target_family']) ? (string) $recommended['target_family'] : '');
+        $presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_object(
+            $domain,
+            $target_object_key,
+            $target_family
+        );
 
         return [
             'targetObjectKey' => $target_object_key,
             'targetFamily' => $target_family,
-            'label' => $this->resolve_target_label($target_object_key, $recommendations),
+            'label' => isset($presentation['label']) && $presentation['label'] !== ''
+                ? (string) $presentation['label']
+                : $this->resolve_target_label($target_object_key, $recommendations),
             'resolutionMode' => ! empty($decision['selected_resolution_mode'])
                 ? (string) $decision['selected_resolution_mode']
                 : (isset($recommended['resolution_mode']) ? (string) $recommended['resolution_mode'] : ''),
             'decisionMode' => ! empty($decision['decision_mode']) ? (string) $decision['decision_mode'] : 'accept_recommended',
+            'presentation' => $presentation,
         ];
     }
 
@@ -504,12 +552,11 @@ final class DBVC_CC_V2_Recommendation_Review_Service
      * @param array<string, mixed> $review_context
      * @return array<string, mixed>
      */
-    private function build_mapping_evidence(array $review_context)
+    private function build_mapping_evidence(array $review_context, array $field_recommendations, array $media_recommendations, array $conflicts)
     {
         $mapping_index = $review_context['mapping_index'];
         $media_candidates = $review_context['media_candidates'];
         $target_transform = $review_context['target_transform'];
-        $recommendations = $review_context['mapping_recommendations'];
 
         return [
             'contentItems' => isset($mapping_index['content_items']) && is_array($mapping_index['content_items'])
@@ -527,8 +574,9 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'resolutionPreview' => isset($target_transform['resolution_preview']) && is_array($target_transform['resolution_preview'])
                 ? $target_transform['resolution_preview']
                 : [],
-            'recommendations' => isset($recommendations['recommendations']) ? $recommendations['recommendations'] : [],
-            'mediaRecommendations' => isset($recommendations['media_recommendations']) ? $recommendations['media_recommendations'] : [],
+            'recommendations' => $field_recommendations,
+            'mediaRecommendations' => $media_recommendations,
+            'conflicts' => $conflicts,
         ];
     }
 
@@ -617,6 +665,225 @@ final class DBVC_CC_V2_Recommendation_Review_Service
     }
 
     /**
+     * @param string                            $domain
+     * @param array<int, array<string, mixed>>  $recommendations
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorate_recommendations($domain, array $recommendations)
+    {
+        $schema_presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance();
+        $decorated = [];
+
+        foreach ($recommendations as $recommendation) {
+            if (! is_array($recommendation)) {
+                continue;
+            }
+
+            $recommendation['targetPresentation'] = $schema_presentation->resolve_target_ref(
+                $domain,
+                isset($recommendation['target_ref']) ? (string) $recommendation['target_ref'] : ''
+            );
+            $decorated[] = $recommendation;
+        }
+
+        return $decorated;
+    }
+
+    /**
+     * @param string                           $domain
+     * @param array<int, array<string, mixed>> $conflicts
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorate_conflicts($domain, array $conflicts)
+    {
+        $schema_presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance();
+        $decorated = [];
+
+        foreach ($conflicts as $conflict) {
+            if (! is_array($conflict)) {
+                continue;
+            }
+
+            $conflict['targetPresentation'] = $schema_presentation->resolve_target_ref(
+                $domain,
+                isset($conflict['target_ref']) ? (string) $conflict['target_ref'] : ''
+            );
+            $decorated[] = $conflict;
+        }
+
+        return $decorated;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $conflicts
+     * @param array<string, mixed>|null        $mapping_decisions
+     * @param array<string, mixed>|null        $media_decisions
+     * @return array<int, array<string, mixed>>
+     */
+    public function filter_active_conflicts(array $conflicts, $mapping_decisions, $media_decisions)
+    {
+        $active_conflicts = [];
+        $decision_state_index = $this->build_decision_state_index($mapping_decisions, $media_decisions);
+
+        foreach ($conflicts as $conflict) {
+            if (! is_array($conflict)) {
+                continue;
+            }
+
+            if (! $this->conflict_requires_review($conflict, $decision_state_index)) {
+                continue;
+            }
+
+            $active_conflicts[] = $conflict;
+        }
+
+        return array_values($active_conflicts);
+    }
+
+    /**
+     * @param string               $domain
+     * @param array<string, mixed> $target_object
+     * @return array<string, mixed>
+     */
+    private function decorate_target_object($domain, array $target_object)
+    {
+        if (empty($target_object)) {
+            return [];
+        }
+
+        $presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_object(
+            $domain,
+            isset($target_object['target_object_key']) ? (string) $target_object['target_object_key'] : '',
+            isset($target_object['target_family']) ? (string) $target_object['target_family'] : ''
+        );
+
+        if (empty($target_object['label']) && ! empty($presentation['label'])) {
+            $target_object['label'] = $presentation['label'];
+        }
+        $target_object['presentation'] = $presentation;
+
+        return $target_object;
+    }
+
+    /**
+     * @param string                           $domain
+     * @param array<int, array<string, mixed>> $target_objects
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorate_target_object_list($domain, array $target_objects)
+    {
+        $decorated = [];
+        foreach ($target_objects as $target_object) {
+            if (! is_array($target_object)) {
+                continue;
+            }
+
+            $decorated[] = $this->decorate_target_object($domain, $target_object);
+        }
+
+        return $decorated;
+    }
+
+    /**
+     * @param string               $domain
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function decorate_mapping_decision_payload($domain, array $payload)
+    {
+        $payload['approved'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['approved']) && is_array($payload['approved']) ? $payload['approved'] : [],
+            'target_ref'
+        );
+        $payload['rejected'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['rejected']) && is_array($payload['rejected']) ? $payload['rejected'] : [],
+            'target_ref'
+        );
+        $payload['unresolved'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['unresolved']) && is_array($payload['unresolved']) ? $payload['unresolved'] : [],
+            'target_ref'
+        );
+        $payload['overrides'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['overrides']) && is_array($payload['overrides']) ? $payload['overrides'] : [],
+            'override_target',
+            'overrideTargetPresentation'
+        );
+
+        if (isset($payload['target_object_decision']) && is_array($payload['target_object_decision'])) {
+            $payload['target_object_decision']['selected_target_object_presentation'] = DBVC_CC_V2_Schema_Presentation_Service::get_instance()->resolve_target_object(
+                $domain,
+                isset($payload['target_object_decision']['selected_target_object_key']) ? (string) $payload['target_object_decision']['selected_target_object_key'] : '',
+                isset($payload['target_object_decision']['selected_target_family']) ? (string) $payload['target_object_decision']['selected_target_family'] : ''
+            );
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param string               $domain
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function decorate_media_decision_payload($domain, array $payload)
+    {
+        $payload['approved'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['approved']) && is_array($payload['approved']) ? $payload['approved'] : [],
+            'target_ref'
+        );
+        $payload['ignored'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['ignored']) && is_array($payload['ignored']) ? $payload['ignored'] : [],
+            'target_ref'
+        );
+        $payload['conflicts'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['conflicts']) && is_array($payload['conflicts']) ? $payload['conflicts'] : [],
+            'target_ref'
+        );
+        $payload['overrides'] = $this->decorate_selection_items(
+            $domain,
+            isset($payload['overrides']) && is_array($payload['overrides']) ? $payload['overrides'] : [],
+            'override_target',
+            'overrideTargetPresentation'
+        );
+
+        return $payload;
+    }
+
+    /**
+     * @param string                           $domain
+     * @param array<int, array<string, mixed>> $items
+     * @param string                           $target_key
+     * @param string                           $presentation_key
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorate_selection_items($domain, array $items, $target_key, $presentation_key = 'targetPresentation')
+    {
+        $schema_presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance();
+        $decorated = [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $item[$presentation_key] = $schema_presentation->resolve_target_ref(
+                $domain,
+                isset($item[$target_key]) ? (string) $item[$target_key] : ''
+            );
+            $decorated[] = $item;
+        }
+
+        return $decorated;
+    }
+
+    /**
      * @param array<string, mixed> $payload
      * @return array<string, array<string, mixed>>
      */
@@ -701,6 +968,156 @@ final class DBVC_CC_V2_Recommendation_Review_Service
         }
 
         return array_values($items);
+    }
+
+    /**
+     * @param array<string, mixed>|null $mapping_decisions
+     * @param array<string, mixed>|null $media_decisions
+     * @return array<string, string>
+     */
+    private function build_decision_state_index($mapping_decisions, $media_decisions)
+    {
+        $index = [];
+
+        if (is_array($mapping_decisions)) {
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['approved']) && is_array($mapping_decisions['approved']) ? $mapping_decisions['approved'] : [],
+                'approve'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['rejected']) && is_array($mapping_decisions['rejected']) ? $mapping_decisions['rejected'] : [],
+                'reject'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['unresolved']) && is_array($mapping_decisions['unresolved']) ? $mapping_decisions['unresolved'] : [],
+                'unresolved'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['overrides']) && is_array($mapping_decisions['overrides']) ? $mapping_decisions['overrides'] : [],
+                'override'
+            );
+        }
+
+        if (is_array($media_decisions)) {
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['approved']) && is_array($media_decisions['approved']) ? $media_decisions['approved'] : [],
+                'approve'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['ignored']) && is_array($media_decisions['ignored']) ? $media_decisions['ignored'] : [],
+                'reject'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['conflicts']) && is_array($media_decisions['conflicts']) ? $media_decisions['conflicts'] : [],
+                'unresolved'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['overrides']) && is_array($media_decisions['overrides']) ? $media_decisions['overrides'] : [],
+                'override'
+            );
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param array<string, string>            $index
+     * @param array<int, array<string, mixed>> $items
+     * @param string                           $state
+     * @return array<string, string>
+     */
+    private function add_decision_items_to_index(array $index, array $items, $state)
+    {
+        foreach ($items as $item) {
+            if (! is_array($item) || empty($item['recommendation_id'])) {
+                continue;
+            }
+
+            $index[(string) $item['recommendation_id']] = (string) $state;
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param array<string, mixed> $conflict
+     * @return array<int, string>
+     */
+    private function extract_conflict_recommendation_ids(array $conflict)
+    {
+        $ids = [];
+
+        if (! empty($conflict['recommendation_id'])) {
+            $ids[] = sanitize_text_field((string) $conflict['recommendation_id']);
+        }
+
+        if (isset($conflict['recommendation_ids']) && is_array($conflict['recommendation_ids'])) {
+            foreach ($conflict['recommendation_ids'] as $recommendation_id) {
+                $recommendation_id = sanitize_text_field((string) $recommendation_id);
+                if ($recommendation_id !== '') {
+                    $ids[] = $recommendation_id;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * @param array<string, mixed> $conflict
+     * @param array<string, string> $decision_state_index
+     * @return bool
+     */
+    private function conflict_requires_review(array $conflict, array $decision_state_index)
+    {
+        $recommendation_ids = $this->extract_conflict_recommendation_ids($conflict);
+        if (empty($recommendation_ids)) {
+            return true;
+        }
+
+        $active_count = 0;
+        $pending_count = 0;
+        $unresolved_count = 0;
+
+        foreach ($recommendation_ids as $recommendation_id) {
+            $state = isset($decision_state_index[$recommendation_id])
+                ? (string) $decision_state_index[$recommendation_id]
+                : 'pending';
+
+            if ($state === 'reject') {
+                continue;
+            }
+
+            if ($state === 'unresolved') {
+                ++$unresolved_count;
+                continue;
+            }
+
+            if ($state === 'approve' || $state === 'override') {
+                ++$active_count;
+                continue;
+            }
+
+            ++$pending_count;
+        }
+
+        if ($active_count > 1) {
+            return true;
+        }
+
+        if ($pending_count > 0 || $unresolved_count > 0) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

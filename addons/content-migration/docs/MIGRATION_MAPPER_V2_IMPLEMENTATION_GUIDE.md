@@ -730,12 +730,12 @@ Current tranche notes:
 ### Phase 13: Reviewability Foundation and Schema Label Enrichment
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Replace raw target refs with human-readable schema labels across review surfaces.
-- `[OPEN]` Build explicit single-item recommendation decisions before expanding bulk or control-center actions.
-- `[OPEN]` Add stale and unsaved-decision safeguards so review work is trustworthy.
+- `[CLOSED]` Replace raw target refs with human-readable schema labels across review surfaces.
+- `[CLOSED]` Build explicit single-item recommendation decisions before expanding bulk or control-center actions.
+- `[CLOSED]` Add stale and unsaved-decision safeguards so review work is trustworthy.
 
 Acceptance criteria:
 - Field, taxonomy, media, and ACF targets are displayed with human-readable labels plus machine refs as secondary detail.
@@ -747,16 +747,27 @@ Current tranche notes:
 - `2026-03-19`: Raw `target_ref` strings are still too technical for operators, especially for ACF-heavy targets, so schema label enrichment is the first dependency for the next UX batch.
 - `2026-03-19`: Single-item review quality must be fixed before adding bulk review or control-center shortcuts.
 - `2026-03-19`: The next implementation round should enrich existing review payloads and inspector surfaces rather than adding parallel review pages.
+- `2026-03-19`: `P13-T1` is now landed. V2 review payloads, readiness-adjacent package preview rows, and inspector surfaces all carry additive schema presentation metadata while preserving stable machine refs.
+- `2026-03-19`: The new schema presentation resolver reuses the existing target field catalog and exposes human-readable labels, object context, field types, taxonomy labels, and ACF group context without creating a second schema source.
+- `2026-03-19`: Inspector mapping and override surfaces now present human-readable target labels first and raw refs as secondary evidence, which clears the path for explicit single-item review controls in `P13-T2`.
+- `2026-03-19`: Targeted validation for `P13-T1` now includes `ContentCollectorV2Phase13Test`, targeted inspector linting, and a full V2 asset build.
+- `2026-03-19`: `P13-T2` is now landed. The inspector no longer treats overrides as the only actionable decision path; field and media recommendations now expose explicit `approve`, `reject`, `override`, and `unresolved` controls.
+- `2026-03-19`: The mapping tab now renders side-by-side source evidence, recommended target evidence, and final decision state from the shared inspector draft layer.
+- `2026-03-19`: Existing decision artifacts remain stable. The new UI draft layer translates explicit per-item controls back into the current mapping and media decision payloads instead of widening downstream import contracts.
+- `2026-03-19`: LocalWP Playwright smoke remains green after the reviewability UI refactor, but the smoke intentionally stays data-agnostic and does not assume a seeded inspector record always contains recommendation rows.
+- `2026-03-19`: `P13-T3` is now landed. The inspector now surfaces stale-decision drift explicitly, exposes a deterministic reset-to-latest path, and warns before unsaved local edits are lost through drawer close, tab changes, workspace changes, run changes, or record navigation.
+- `2026-03-19`: The unsaved-change guard is enforced at the V2 shell route boundary, so the same discard-confirm behavior now applies whether the operator leaves through the drawer chrome, a row action, or workspace navigation.
+- `2026-03-19`: Targeted validation for the safety-rail tranche includes inspector linting, a full V2 asset build, and LocalWP Playwright coverage for the new guard flow. A final targeted rerun hit a transient Chromium launch crash after the guard assertion was corrected, so browser validation notes should treat that as an environment issue, not a product regression.
 
 ### Phase 14: Conflict-First Review Workflow
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Make conflicts and unresolved recommendations directly actionable from the queue.
-- `[OPEN]` Add fast review navigation so operators can move through flagged URLs without table hopping.
-- `[OPEN]` Add operator-facing explanations for why items are blocked, stale, conflicted, or review-required.
+- `[CLOSED]` Make conflicts and unresolved recommendations directly actionable from the queue.
+- `[CLOSED]` Add fast review navigation so operators can move through flagged URLs without table hopping.
+- `[CLOSED]` Add operator-facing explanations for why items are blocked, stale, conflicted, or review-required.
 
 Acceptance criteria:
 - Conflict counts in the exception queue lead to dedicated conflict-resolution surfaces, not just generic inspector entry.
@@ -765,19 +776,20 @@ Acceptance criteria:
 - Conflict and decision surfaces clearly explain confidence, policy, resolution, and stale-state reasons.
 
 Current tranche notes:
-- `2026-03-19`: The current exception queue surfaces conflict counts but still lacks a conflict-specific resolution workflow.
-- `2026-03-19`: Save-and-next navigation belongs after explicit single-item decision controls exist, not before.
-- `2026-03-19`: Explanation copy should be grounded in existing recommendation, QA, and journey data rather than freeform UI prose.
+- `2026-03-19`: `P14-T1` is now landed. The exception queue now exposes conflict, unresolved, stale, manual-override, blocked, and ready-after-review filters with queue-state-aware ordering and row-level quick actions into the relevant inspector tab.
+- `2026-03-19`: `P14-T2` is now landed. The inspector now exposes a dedicated conflict tab with editable decision cards, current resolution reasoning, review reasons, confidence context, and stale-state guidance instead of forcing operators to infer conflicts from counts alone.
+- `2026-03-19`: `P14-T3-S1` and `P14-T3-S2` are now landed. Previous, next, save-and-next, and save-and-close controls now move through the currently filtered exception queue without dropping queue context.
+- `2026-03-19`: `P14-T3-S3` is now closed. Targeted validation covers `ContentCollectorV2Phase14Test`, targeted linting, a V2 asset build, a dedicated conflict-flow Playwright spec, and live LocalWP browser QA for `Resolve conflicts`, `Next`, `Previous`, and `Save and next`. The Playwright runner still shows intermittent Chromium launch crashes on this machine, so the browser-validation record should treat those as environment issues rather than product regressions.
 
 ### Phase 15: Readiness and Package Actionability
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Make readiness blockers route directly into actionable review paths.
-- `[OPEN]` Harden package and import controls with clearer confirmations, disabled reasons, and follow-up visibility.
-- `[OPEN]` Turn package artifact references into usable operator actions.
+- `[CLOSED]` Make readiness blockers route directly into actionable review paths.
+- `[CLOSED]` Harden package and import controls with clearer confirmations, disabled reasons, and follow-up visibility.
+- `[CLOSED]` Turn package artifact references into usable operator actions.
 
 Acceptance criteria:
 - Blocking readiness items can open the first relevant review target or filtered queue directly from the readiness workspace.
@@ -786,19 +798,25 @@ Acceptance criteria:
 - The tranche preserves existing import guardrails, rollback, and journaling behavior.
 
 Current tranche notes:
-- `2026-03-19`: The readiness workspace currently shows blockers and page reports, but does not yet route operators directly into the blocking review work.
 - `2026-03-19`: The package workspace already exposes core actions, but still needs safer action framing and more useful artifact access.
 - `2026-03-19`: This tranche should stay workflow-glue focused and not broaden package-building logic.
+- `2026-03-19`: `P15-T1` is now landed. The readiness workspace reuses the existing `GET /runs/{run_id}/readiness` payload to drive blocker actions without adding a second readiness endpoint.
+- `2026-03-19`: Blocking issues and warnings now expose direct action buttons into the filtered exceptions queue, QA audit tab, or package workspace based on existing issue codes such as `target_conflicts`, `manual_review_pending`, `empty_package_record`, and `missing_target_transform`.
+- `2026-03-19`: The readiness table now exposes focused filter chips for `review`, `qa`, `package`, and `ready`, and per-page primary actions now mirror the same route-aware action model used by the blocker lists.
+- `2026-03-19`: Targeted validation for `P15-T1` now includes readiness UI linting, a full V2 asset build, and live LocalWP browser QA covering readiness filter chips plus blocker routes into exceptions and the audit drawer.
+- `2026-03-19`: `P15-T2` is now landed. The package workspace now requires explicit confirmation before preflight approval or execute, surfaces disabled-reason messaging when package actions are not yet eligible, and keeps recent import or rollback follow-up visible in the same bridge panel.
+- `2026-03-19`: `P15-T3` is now landed. Selected packages now expose signed artifact download actions plus in-app drill-ins for manifest, summary, QA, records, and media so operators do not have to parse raw storage-relative paths.
+- `2026-03-19`: Targeted validation for the closed Phase 15 tranche now includes `ContentCollectorV2Phase15Test`, package-surface JS linting, a full V2 asset build, and live LocalWP browser QA covering package artifact drill-ins plus signed ZIP download links. The CLI Playwright spec is also landed, but intermittent local Chromium `SIGTRAP` launch failures still make the command-line runner less reliable than the live browser session on this machine.
 
 ### Phase 16: Operator Efficiency and Control-Center Enhancements
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Add carefully guarded bulk review operations once single-item review is stable.
-- `[OPEN]` Add pragmatic run-level actions for rerun, duplication, and noise management.
-- `[OPEN]` Add cross-workspace navigation shortcuts that turn the overview into a usable control center later.
+- `[CLOSED]` Add carefully guarded bulk review operations once single-item review is stable.
+- `[CLOSED]` Add pragmatic run-level actions for rerun, duplication, and noise management.
+- `[CLOSED]` Add cross-workspace navigation shortcuts that turn the overview into a usable control center later.
 
 Acceptance criteria:
 - Bulk review actions operate on explicit filtered selections and preserve auditability.
@@ -810,6 +828,199 @@ Current tranche notes:
 - `2026-03-19`: Bulk actions should be deferred until single-item reviewability and stale-state handling are trustworthy.
 - `2026-03-19`: Run-level convenience actions are useful, but they are lower priority than fixing conflict review and schema-label clarity.
 - `2026-03-19`: Control-center behavior should grow from the stabilized monitoring and review surfaces, not bypass them.
+- `2026-03-19`: `P16-T1` is now landed. The exceptions workspace now supports explicit low-risk row selection, family-scoped selection helpers, and audited bulk apply actions without adding a second review write endpoint.
+- `2026-03-19`: Bulk review stays deliberately narrow: conflict rows, stale rows, blocked rows, unresolved rows, and manual-override rows remain single-item workflows, while low-risk approval and defer actions iterate through the existing per-page `POST /runs/{run_id}/urls/{page_id}/decision` contract.
+- `2026-03-19`: Targeted validation for `P16-T1` includes exceptions-surface JS linting, a full V2 asset build, `git diff --check`, and a Playwright smoke update. The new bulk-review smoke is currently skip-guarded when the LocalWP dataset does not contain a qualifying low-risk queue row.
+- `2026-03-19`: `P16-T3` is now landed. Overview next actions, readiness actions, and package blocker shortcuts now share the same route-aware action model instead of each workspace inventing its own navigation behavior.
+- `2026-03-19`: Overview shortcuts can now jump directly into the first blocked or reviewable URL, open the matching readiness audit target, or reopen the latest built package without adding a second overview endpoint.
+- `2026-03-19`: The package workspace now exposes direct blocker shortcuts from both the package action cards and the execute-blocked notice so operators can move straight into the relevant exceptions or readiness target while preserving package selection in route state.
+- `2026-03-19`: Targeted validation for `P16-T3` includes control-center JS linting, a full V2 asset build, `git diff --check`, and a Playwright smoke update that now proves the overview shortcut path reaches the exceptions workspace through the shared route patch model.
+- `2026-03-19`: `P16-T2` is now landed. The V2 `/runs` surface now carries additive latest-run request profiles, stage-group rerun candidates, and user-scoped hidden-run visibility state without introducing a second run list model or reviving V1 transport patterns.
+- `2026-03-19`: The runs workspace now supports duplicate-settings prefill, rerun helpers for failed or blocked stage groups through the existing per-URL rerun route, and hide or restore controls with a hidden-run toggle for noisy operator cleanup.
+- `2026-03-19`: Targeted validation for the closed Phase 16 tranche includes `ContentCollectorV2Phase16Test`, runs-surface JS linting, a full V2 asset build, `git diff --check`, and a LocalWP Playwright smoke update covering the new run-card actions.
+
+### Phase 17: Run Replay and Recovery
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add direct replay flows on top of stored run request profiles.
+- `[CLOSED]` Make run-card action eligibility and disabled reasons clearer.
+- `[OPEN]` Add targeted validation for replay and recovery flows.
+
+Acceptance criteria:
+- Operators can replay a profiled run without manually re-entering the crawl form.
+- Run cards explain why replay or duplicate helpers are disabled for older runs that predate request-profile capture.
+- Replay keeps using the existing `POST /dbvc_cc/v2/runs` contract instead of adding a second replay transport.
+- The tranche preserves the existing run-start lifecycle visibility so replay progress is observable in the `runs` workspace.
+
+Current tranche notes:
+- `2026-03-19`: Phase 16 added the underlying request-profile and rerun-candidate metadata, but the operator still needs a one-click replay path on top of that data.
+- `2026-03-19`: This tranche should stay additive to the current `runs` workspace and reuse the existing run-start lifecycle panel instead of introducing a second replay-only status surface.
+- `2026-03-19`: Disabled replay and duplicate helpers should explain legacy-data limitations directly on the run card, rather than silently rendering unavailable controls.
+- `2026-03-19`: `P17-T1` is now landed. Profile-backed run cards now expose a direct `Replay run` action that reuses the existing `POST /runs` contract instead of adding a second replay transport.
+- `2026-03-19`: Replay now flows through the existing run-start lifecycle panel, which makes replay mode, source run, stored request inputs, and replay success visible without leaving the `runs` workspace.
+- `2026-03-19`: `P17-T2` is now landed. Older runs that predate request-profile capture now explain why replay and duplicate helpers are unavailable instead of silently rendering disabled controls with no context.
+- `2026-03-19`: Targeted validation for the current Phase 17 slice includes runs-surface JS linting, a full V2 asset build, `git diff --check`, a landed Playwright replay smoke update, and live LocalWP browser QA proving replay, duplicate-settings prefill, and hide or restore behavior. The CLI Playwright runner is still intermittently blocked by the same local Chromium `SIGTRAP` launch failure on this machine.
+
+### Phase 18: Recovery Follow-up Context
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Make replay and rerun outcomes actionable from the existing runs workspace surfaces.
+- `[CLOSED]` Keep recovery follow-up state contextual without introducing a second run-recovery route model.
+- `[CLOSED]` Add targeted validation for recovery follow-up actions.
+
+Acceptance criteria:
+- Replay follow-up actions remain available through the existing run-create lifecycle panel.
+- Rerun follow-up actions remain available through the existing run-action status panel even when later non-recovery actions occur in the same runs workspace session.
+- The tranche does not add a second recovery route model or a new recovery-only workspace panel.
+- Recovery actionability grows from the existing runs surfaces instead of bypassing them.
+
+Current tranche notes:
+- `2026-03-19`: `P18-T1` is now landed. Replay success now exposes direct follow-up actions to reopen the source run or the newly created run from the existing lifecycle panel, while rerun outcomes expose direct follow-up actions into overview and exceptions from the existing run-action status panel.
+- `2026-03-20`: `P18-T2` is now landed. The runs workspace now preserves the latest rerun recovery context inside the existing run-action status panel even when later non-recovery actions such as hide, restore, or duplicate-settings prefill occur during the same session.
+- `2026-03-20`: Duplicate-settings prefill now clears transient run-action messages without discarding the latest rerun recovery follow-up context from the current runs workspace session.
+- `2026-03-20`: `P18-T3` is now in progress. The Playwright smoke was refreshed to assert replay follow-up buttons in the lifecycle panel and to add a skip-guarded rerun recovery-context test, but the CLI runner is still intermittently blocked by the local Chromium `SIGTRAP` launcher failure before the refreshed suite can finish green.
+- `2026-03-20`: Same-domain replay no longer strands the lifecycle panel's `Open source run` shortcut on a missing overview. Historical `GET /runs/{run_id}`, `/overview`, and readiness payloads now materialize state for the requested run from the domain journey log when the domain latest snapshot has already advanced to a newer run.
+- `2026-03-20`: Headed LocalWP QA now confirms replay follow-up opens the historical source overview for `ccv2_dbvc-codexchanges-local_20260320T070018Z_298600` after replay created `ccv2_dbvc-codexchanges-local_20260320T071726Z_921d8b`, and the refreshed browser smoke now checks that path before it continues to duplicate-settings and hide or restore actions on the new replay run.
+- `2026-03-20`: `P18-T3` remains open because the current LocalWP dataset has no visible run whose `actionSummary.rerunCandidates` exposes a runs-workspace rerun shortcut. The rerun follow-up smoke still has no eligible target even in headed QA, while CLI Playwright on this machine continues to intermittently crash Chromium with `SIGTRAP`.
+- `2026-03-25`: `P18-T3` is now landed. LocalWP headed QA seeded a temporary rerun candidate for `ccv2_dbvc-codexchanges-local_20260320T071726Z_921d8b`, confirmed the runs workspace exposed `Rerun recommendation finalization (1)`, confirmed the rerun follow-up `Open overview` shortcut routed back into the affected run overview, replayed that same run into `ccv2_dbvc-codexchanges-local_20260325T182037Z_49db4b`, and confirmed the lifecycle panel's `Open source run` shortcut still re-opened the historical source overview.
+- `2026-03-25`: Local PHPUnit is restored for the current LocalWP site through the socket-backed WordPress test bootstrap, so `vendor/bin/phpunit --filter "ContentCollectorV2Phase(16|18)Test"` is now green again alongside the existing lint and build baseline.
+- `2026-03-25`: CLI Playwright on this machine is still intermittently blocked by the local Chromium `SIGTRAP` launcher failure, so the current Phase 18 validation record remains headed/manual browser QA plus the refreshed spec updates rather than a fresh green CLI browser run.
+
+### Phase 19: Deterministic Recovery QA Harness
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add a deterministic way to materialize rerun-candidate runs for recovery QA without depending on incidental LocalWP failures.
+- `[CLOSED]` Capture replay and rerun follow-up browser coverage against deterministic recovery data.
+- `[CLOSED]` Keep LocalWP validation bootstrap guidance aligned with the socket-backed PHPUnit and browser workflow.
+
+Acceptance criteria:
+- Recovery QA can surface at least one runs-workspace rerun helper without manual artifact editing in the active LocalWP dataset.
+- Replay and rerun follow-up browser coverage can exercise the intended shortcuts against deterministic seeded data.
+- The tranche does not add production-only debug surfaces or weaken V1/V2 runtime gating to make QA easier.
+- Local validation guidance stays explicit about the current LocalWP browser route and socket-backed PHPUnit expectations.
+
+Current tranche notes:
+- `2026-03-25`: This phase starts only after Phase 18 closes. The immediate goal is to replace ad hoc LocalWP data surgery with a repeatable recovery-fixture path that keeps browser validation stable even while CLI Playwright remains environment-blocked on this machine.
+- `2026-03-25`: Any recovery-fixture helper should stay out of production operator flows unless it is explicitly gated for development or test use only.
+- `2026-03-26`: `P19-T2` is now landed. Replay browser validation no longer depends on live sitemap refetch during QA: the refreshed smoke now injects a dev-only deterministic replay source through the existing `POST /runs` transport, the lifecycle success payload exposes a stable created-run identifier for follow-up actions, and the runs-workspace opener now tolerates transient LocalWP `ERR_ABORTED` admin navigations instead of failing on the second retry.
+- `2026-03-26`: Targeted validation for the closed Phase 19 tranche now includes `ContentCollectorV2Phase19Test`, targeted JS linting for the revised runs lifecycle and Playwright harness, a full V2 asset build, and green unsandboxed LocalWP Playwright coverage for both replay and rerun follow-up shortcuts.
+
+### Phase 20: Historical Run Artifact Fidelity
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Make historical run detail surfaces resolve run-scoped discovery artifacts after same-domain replay chains instead of falling back to domain-latest files when that would drift the requested run.
+- `[CLOSED]` Audit readiness and package entry points for historical run artifact drift after later same-domain replays.
+- `[CLOSED]` Add targeted validation for historical run fidelity across same-domain replay chains.
+
+Acceptance criteria:
+- Opening an older run after a later same-domain replay does not show discovery or package artifacts from the newer run.
+- Historical overview, readiness, and package readers share the same run-scoped artifact-resolution rule instead of each surface inventing its own fallback.
+- The tranche keeps the existing run routes and recovery QA helpers intact while improving historical-run fidelity.
+
+Current tranche notes:
+- `2026-03-26`: Phase 18 and Phase 19 stabilized replay and rerun follow-up actions in the runs workspace, but some artifact families still remain domain-latest even when the operator reopens an older run after a same-domain replay.
+- `2026-03-26`: This phase should stay focused on run-scoped artifact resolution and validation, not on adding new run-card actions or a second recovery transport.
+- `2026-03-26`: `P20-T1` is now landed. Historical overview reads now resolve discovery inventory per requested run: the shared inventory reader reuses the persisted `domain-url-inventory.v1` file only when it already belongs to the requested run and otherwise reconstructs that inventory from the run's journey events plus run-scoped materialized latest state.
+- `2026-03-26`: Reopening an older run after a newer same-domain run no longer drifts overview inventory rows or counts toward the newer run's domain-latest inventory artifact.
+- `2026-03-26`: `P20-T2` is now landed. Readiness now starts from the requested run's inventory and page context instead of the domain-latest inventory file, run-aware artifact loading refuses page artifacts whose `journey_id` belongs to a newer run, and the package surface now defaults and filters package history to the requested run instead of the latest package built for the domain.
+- `2026-03-26`: `P20-T3` is now landed. `ContentCollectorV2Phase20Test` now covers overview, readiness, and package surface behavior across later same-domain runs, and the combined `ContentCollectorV2Phase(19|20)Test` filter is green alongside syntax checks and `git diff --check`.
+
+### Phase 21: Historical Page Artifact Preservation
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Preserve run-scoped page artifacts when later same-domain reruns touch the same URL again.
+- `[CLOSED]` Reuse preserved historical page artifacts in readiness and package readers before falling back to mismatch-blocked reads.
+- `[CLOSED]` Add targeted validation for same-URL historical fidelity after rerun or replay chains.
+
+Acceptance criteria:
+- Older runs can still reopen their own page-level mapping and transform artifacts after a later same-domain run processes the same URL again.
+- Historical readiness and package readers no longer degrade to missing-artifact blockers solely because a later run overwrote the current page artifact files for the same URL.
+- The tranche keeps the existing run routes, recovery QA helpers, and workspace surfaces intact while improving historical fidelity.
+
+Current tranche notes:
+- `2026-03-26`: Phase 20 closed the known read-side drift where overview inventory, readiness inventory, or package history could jump to a newer same-domain run.
+- `2026-03-26`: The remaining historical-fidelity gap is artifact preservation for the same URL. Page-level recommendation and transform files still live at domain-scoped paths, so older runs can avoid newer-run drift but may still lose direct access to their own historical files after a later overwrite.
+- `2026-03-26`: This phase should stay focused on run-scoped artifact preservation and lookup, not on new operator actions, new replay transport, or workspace expansion.
+- `2026-03-26`: `P21-T1` and `P21-T2` are now landed. Capture, AI pipeline, and review writes now preserve per-run page artifact copies under the page's `_runs/{run_id}/` directory, and historical `resolve_page_context_for_run()` reads now prefer the current URL-scoped file only when its `journey_id` still matches the requested run.
+- `2026-03-26`: Historical readiness and package flows already reuse `resolve_page_context_for_run()`, so they now reopen preserved same-URL page artifacts without adding new readiness or package routes.
+- `2026-03-26`: `P21-T3` is now landed. `ContentCollectorV2Phase21Test` covers a same-domain same-URL overwrite chain where the older run reopens its preserved raw artifact and still builds a package after the later run replaced the current page files.
+
+### Phase 22: Historical Review Fidelity
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Make historical exceptions and review payloads resolve run-scoped page artifacts after later same-domain same-URL runs.
+- `[CLOSED]` Keep decision-save and rerun flows scoped to the requested historical run instead of mutating whichever same-URL page file is currently latest.
+- `[CLOSED]` Add targeted validation for historical review fidelity after same-URL replay or rerun chains.
+
+Acceptance criteria:
+- Opening an older run's exceptions queue or URL review payload after a later same-domain same-URL run still shows the older run's own recommendations, transform preview, and persisted decisions.
+- Saving review decisions or triggering reruns from a historical run does not silently overwrite a newer same-domain run's current page artifacts.
+- The tranche keeps the current review routes and workspace structure intact while extending the same run-scoped artifact rule into the remaining review surfaces.
+
+Current tranche notes:
+- `2026-03-26`: Phase 21 closed readiness and package fidelity for same-URL historical runs, but exception queue and review loaders still resolve page artifacts from the latest domain-scoped page path.
+- `2026-03-26`: This phase should stay focused on historical review fidelity and write scoping, not on new review surfaces or route expansion.
+- `2026-03-28`: `P22-T1` is now landed. Historical exceptions and review payloads now resolve inventory and page artifacts by requested run instead of by the latest domain-scoped same-URL page path.
+- `2026-03-28`: `P22-T2` is now landed. Historical decision-save and rerun flows now choose run-scoped write paths whenever the current same-URL page belongs to a newer run, so those actions stop mutating the newer run's current page files.
+- `2026-03-28`: `P22-T3` is now landed. `ContentCollectorV2Phase22Test` covers both historical read fidelity and write scoping after a same-domain same-URL overwrite chain, and the combined `ContentCollectorV2Phase(20|21|22)Test` filter is green.
+
+### Phase 23: Historical Review Browser Validation
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add targeted browser validation for same-URL historical exceptions and review flows.
+- `[CLOSED]` Verify historical queue navigation, review payload loading, and rerun follow-up actions from operator-facing V2 routes after a later same-domain same-URL run exists.
+- `[CLOSED]` Document the final validation record and any remaining environment-specific browser constraints without broadening runtime scope.
+
+Acceptance criteria:
+- Browser validation proves that reopening an older run after a later same-domain same-URL run still loads the older run's exception queue and review payloads.
+- Historical decision-save or rerun actions in the browser no longer push the operator into a newer run's page state or silently mutate the newer run's same-URL current files.
+- The tranche keeps the existing review routes, current Playwright transport choices, and workspace architecture intact while closing the remaining browser-validation gap for historical review fidelity.
+
+Current tranche notes:
+- `2026-03-28`: Phase 22 closed the backend review-fidelity gap in PHPUnit, but the same historical review paths still need operator-facing browser validation.
+- `2026-03-28`: This phase should stay focused on validation and route-state behavior, not on new review controls or additional REST routes.
+- `2026-03-28`: Phase 23 is now landed. Historical review browser validation now uses the existing `POST /runs` transport with two dev-only helpers: a synthetic single-page fixture domain for deterministic source runs and the upgraded replay fixture path that clones page artifacts into a true same-URL overwrite chain.
+- `2026-03-28`: The unsandboxed targeted Playwright smoke `preserves historical exception review actions after a same-url overwrite run` is green, and it proves the older run still opens, saves, and reruns without drifting into the newer same-URL run.
+
+### Phase 24: Historical Workspace Browser Validation
+
+Phase status:
+- `OPEN`
+
+Checklist:
+- `[OPEN]` Add targeted browser validation for historical overview, readiness, and package surfaces after a later same-domain same-URL run exists.
+- `[OPEN]` Verify that historical workspace shortcuts and selected package state stay pinned to the requested run in operator-facing browser flows.
+- `[OPEN]` Record the final validation result and any remaining browser-environment constraints without expanding the runtime surface.
+
+Acceptance criteria:
+- Browser validation proves that reopening an older run after a later same-domain same-URL run still loads the older run's overview, readiness, and package surfaces rather than silently drifting to newer domain-latest state.
+- Historical workspace shortcuts and selected package actions in the browser stay pinned to the requested run and package context after same-URL overwrite chains.
+- The tranche keeps using the current V2 routes, deterministic QA helper transport, and existing workspace architecture instead of introducing new operator surfaces.
+
+Current tranche notes:
+- `2026-03-28`: Phase 23 closed the historical exception and review browser-validation gap, so the next remaining browser seam is the rest of the historical workspace stack.
+- `2026-03-28`: This phase should stay focused on operator-facing overview, readiness, and package route fidelity after overwrite chains, not on new package or overview controls.
 
 ## Granular Implementation Checklist
 
@@ -1045,56 +1256,143 @@ Recommended stage budget notes:
 
 ### Phase 13 Task Matrix
 
-- `[OPEN]` `P13-T1` Enrich V2 review payloads with human-readable schema labels.
-- `[OPEN]` `P13-T1-S1` Add a thin schema presentation resolver that maps `target_ref` values to field labels, machine refs, field types, object labels, and ACF group context from the existing target field catalog.
-- `[OPEN]` `P13-T1-S2` Extend review, readiness-adjacent, and package-adjacent payloads with additive display metadata instead of replacing machine refs.
-- `[OPEN]` `P13-T1-S3` Render human-readable labels everywhere the operator currently sees raw field or ACF refs as the primary label.
-- `[OPEN]` `P13-T2` Replace the raw override-first inspector workflow with explicit single-item recommendation decisions.
-- `[OPEN]` `P13-T2-S1` Add per-recommendation controls for `approve`, `reject`, `override`, and `leave unresolved` across field and media recommendations.
-- `[OPEN]` `P13-T2-S2` Keep raw refs and low-level override targets visible as secondary evidence, not the primary call to action.
-- `[OPEN]` `P13-T2-S3` Rework the mapping tab into side-by-side source evidence, recommended target evidence, and final decision state.
-- `[OPEN]` `P13-T3` Add single-item decision safety rails.
-- `[OPEN]` `P13-T3-S1` Warn on unsaved inspector changes before close, tab change, or record navigation.
-- `[OPEN]` `P13-T3-S2` Surface stale recommendation drift clearly and provide a deterministic reset or re-review path.
-- `[OPEN]` `P13-T3-S3` Add targeted validation for enriched review payloads and single-item decision state handling.
+- `[CLOSED]` `P13-T1` Enrich V2 review payloads with human-readable schema labels.
+- `[CLOSED]` `P13-T1-S1` Add a thin schema presentation resolver that maps `target_ref` values to field labels, machine refs, field types, object labels, and ACF group context from the existing target field catalog.
+- `[CLOSED]` `P13-T1-S2` Extend review, readiness-adjacent, and package-adjacent payloads with additive display metadata instead of replacing machine refs.
+- `[CLOSED]` `P13-T1-S3` Render human-readable labels everywhere the operator currently sees raw field or ACF refs as the primary label.
+- `[CLOSED]` `P13-T2` Replace the raw override-first inspector workflow with explicit single-item recommendation decisions.
+- `[CLOSED]` `P13-T2-S1` Add per-recommendation controls for `approve`, `reject`, `override`, and `leave unresolved` across field and media recommendations.
+- `[CLOSED]` `P13-T2-S2` Keep raw refs and low-level override targets visible as secondary evidence, not the primary call to action.
+- `[CLOSED]` `P13-T2-S3` Rework the mapping tab into side-by-side source evidence, recommended target evidence, and final decision state.
+- `[CLOSED]` `P13-T3` Add single-item decision safety rails.
+- `[CLOSED]` `P13-T3-S1` Warn on unsaved inspector changes before close, tab change, or record navigation.
+- `[CLOSED]` `P13-T3-S2` Surface stale recommendation drift clearly and provide a deterministic reset or re-review path.
+- `[CLOSED]` `P13-T3-S3` Add targeted validation for enriched review payloads and single-item decision state handling.
 
 ### Phase 14 Task Matrix
 
-- `[OPEN]` `P14-T1` Make the exception queue conflict-first and action-oriented.
-- `[OPEN]` `P14-T1-S1` Add dedicated queue filters and counts for conflicts, unresolved items, stale decisions, manual overrides, and ready-after-review items.
-- `[OPEN]` `P14-T1-S2` Add row-level quick actions that open the operator directly into the relevant conflict or unresolved resolver state.
-- `[OPEN]` `P14-T2` Build a conflict-resolution workflow inside the inspector.
-- `[OPEN]` `P14-T2-S1` Add a dedicated conflict-focused panel or tab that compares conflicting targets, source evidence, and current resolution reasoning.
-- `[OPEN]` `P14-T2-S2` Surface confidence, policy, resolution, and stale-state explanations in operator-readable language.
-- `[OPEN]` `P14-T3` Add fast flagged-record navigation.
-- `[OPEN]` `P14-T3-S1` Add `previous`, `next`, `save and next`, and `save and close` review actions inside the drawer.
-- `[OPEN]` `P14-T3-S2` Preserve queue context while moving across flagged URLs so operators do not lose filter state.
-- `[OPEN]` `P14-T3-S3` Add targeted validation for conflict filtering, resolver state, and save-and-next navigation.
+- `[CLOSED]` `P14-T1` Make the exception queue conflict-first and action-oriented.
+- `[CLOSED]` `P14-T1-S1` Add dedicated queue filters and counts for conflicts, unresolved items, stale decisions, manual overrides, and ready-after-review items.
+- `[CLOSED]` `P14-T1-S2` Add row-level quick actions that open the operator directly into the relevant conflict or unresolved resolver state.
+- `[CLOSED]` `P14-T2` Build a conflict-resolution workflow inside the inspector.
+- `[CLOSED]` `P14-T2-S1` Add a dedicated conflict-focused panel or tab that compares conflicting targets, source evidence, and current resolution reasoning.
+- `[CLOSED]` `P14-T2-S2` Surface confidence, policy, resolution, and stale-state explanations in operator-readable language.
+- `[CLOSED]` `P14-T3` Add fast flagged-record navigation.
+- `[CLOSED]` `P14-T3-S1` Add `previous`, `next`, `save and next`, and `save and close` review actions inside the drawer.
+- `[CLOSED]` `P14-T3-S2` Preserve queue context while moving across flagged URLs so operators do not lose filter state.
+- `[CLOSED]` `P14-T3-S3` Add targeted validation for conflict filtering, resolver state, and save-and-next navigation.
 
 ### Phase 15 Task Matrix
 
-- `[OPEN]` `P15-T1` Make readiness blockers actionable.
-- `[OPEN]` `P15-T1-S1` Add shortcuts from readiness blockers and per-page QA rows into the first relevant review target or filtered queue state.
-- `[OPEN]` `P15-T1-S2` Add readiness-focused filters for pages blocked by review, QA, or package prerequisites.
-- `[OPEN]` `P15-T2` Harden package preflight and execute controls.
-- `[OPEN]` `P15-T2-S1` Add intentional confirmation UX for preflight approval and execute operations.
-- `[OPEN]` `P15-T2-S2` Add clear disabled-reason messaging when package actions are not yet eligible.
-- `[OPEN]` `P15-T2-S3` Surface post-execute follow-up state such as rollback status and recent import outcome more clearly.
-- `[OPEN]` `P15-T3` Turn package artifact references into useful operator actions.
-- `[OPEN]` `P15-T3-S1` Add inspect, open, or download actions for selected package artifacts where safe.
-- `[OPEN]` `P15-T3-S2` Add clearer package manifest drill-ins so operators can see what will land where before execute.
+- `[CLOSED]` `P15-T1` Make readiness blockers actionable.
+- `[CLOSED]` `P15-T1-S1` Add shortcuts from readiness blockers and per-page QA rows into the first relevant review target or filtered queue state.
+- `[CLOSED]` `P15-T1-S2` Add readiness-focused filters for pages blocked by review, QA, or package prerequisites.
+- `[CLOSED]` `P15-T2` Harden package preflight and execute controls.
+- `[CLOSED]` `P15-T2-S1` Add intentional confirmation UX for preflight approval and execute operations.
+- `[CLOSED]` `P15-T2-S2` Add clear disabled-reason messaging when package actions are not yet eligible.
+- `[CLOSED]` `P15-T2-S3` Surface post-execute follow-up state such as rollback status and recent import outcome more clearly.
+- `[CLOSED]` `P15-T3` Turn package artifact references into useful operator actions.
+- `[CLOSED]` `P15-T3-S1` Add inspect, open, or download actions for selected package artifacts where safe.
+- `[CLOSED]` `P15-T3-S2` Add clearer package manifest drill-ins so operators can see what will land where before execute.
 
 ### Phase 16 Task Matrix
 
-- `[OPEN]` `P16-T1` Add bulk review actions on top of the stabilized review workflow.
-- `[OPEN]` `P16-T1-S1` Support explicit filtered selection and bulk apply for low-risk review actions with auditability preserved.
-- `[OPEN]` `P16-T1-S2` Add carefully scoped bulk target-family assignment or approval helpers where the review model supports it.
-- `[OPEN]` `P16-T2` Add pragmatic run-level actions.
-- `[OPEN]` `P16-T2-S1` Add rerun helpers for failed or blocked stage groups without reviving V1 transport paths.
-- `[OPEN]` `P16-T2-S2` Add duplicate-run and noisy-run archive or hide affordances for operator cleanup.
-- `[OPEN]` `P16-T3` Add cross-workspace control-center shortcuts.
-- `[OPEN]` `P16-T3-S1` Add direct jumps from overview, readiness, and package surfaces to the most relevant blocking review targets.
-- `[OPEN]` `P16-T3-S2` Keep route and query state stable so control-center additions do not eject the operator from queue context.
+- `[CLOSED]` `P16-T1` Add bulk review actions on top of the stabilized review workflow.
+- `[CLOSED]` `P16-T1-S1` Support explicit filtered selection and bulk apply for low-risk review actions with auditability preserved.
+- `[CLOSED]` `P16-T1-S2` Add carefully scoped bulk target-family assignment or approval helpers where the review model supports it.
+- `[CLOSED]` `P16-T2` Add pragmatic run-level actions.
+- `[CLOSED]` `P16-T2-S1` Add rerun helpers for failed or blocked stage groups without reviving V1 transport paths.
+- `[CLOSED]` `P16-T2-S2` Add duplicate-run and noisy-run archive or hide affordances for operator cleanup.
+- `[CLOSED]` `P16-T3` Add cross-workspace control-center shortcuts.
+- `[CLOSED]` `P16-T3-S1` Add direct jumps from overview, readiness, and package surfaces to the most relevant blocking review targets.
+- `[CLOSED]` `P16-T3-S2` Keep route and query state stable so control-center additions do not eject the operator from queue context.
+
+### Phase 17 Task Matrix
+
+- `[CLOSED]` `P17-T1` Add direct run replay actions.
+- `[CLOSED]` `P17-T1-S1` Add a run-card replay action that reuses the stored run request profile through the existing `POST /runs` contract.
+- `[CLOSED]` `P17-T1-S2` Keep replay progress, success, and failure visible through the existing run-start lifecycle surface instead of introducing a second replay panel.
+- `[CLOSED]` `P17-T2` Clarify run-card action eligibility.
+- `[CLOSED]` `P17-T2-S1` Explain why replay and duplicate helpers are unavailable for runs that predate request-profile capture.
+- `[CLOSED]` `P17-T2-S2` Keep run-card state stable while replay is in progress so other control surfaces do not misreport availability.
+- `[CLOSED]` `P17-T3` Add targeted validation for replay and recovery flows.
+- `[CLOSED]` `P17-T3-S1` Extend browser coverage to prove replay starts from a stored profile and reuses lifecycle feedback.
+- `[CLOSED]` `P17-T3-S2` Keep lint and build validation current for the revised runs surface.
+
+### Phase 18 Task Matrix
+
+- `[CLOSED]` `P18-T1` Make replay and rerun outcomes actionable from the existing runs workspace surfaces.
+- `[CLOSED]` `P18-T1-S1` Add replay follow-up actions that let operators open the source run or the newly created run from the lifecycle panel.
+- `[CLOSED]` `P18-T1-S2` Add rerun follow-up actions that let operators jump into the affected run overview or exception flow from the existing run-action status panel.
+- `[CLOSED]` `P18-T2` Keep recovery follow-up state contextual without introducing a second run-recovery route model.
+- `[CLOSED]` `P18-T2-S1` Keep replay and rerun follow-up actions scoped to the last visible recovery outcome in the current runs workspace session.
+- `[CLOSED]` `P18-T2-S2` Preserve the existing run-start lifecycle and run-action status surfaces as the only recovery panels while actionability expands.
+- `[CLOSED]` `P18-T3` Add targeted validation for recovery follow-up actions.
+- `[CLOSED]` `P18-T3-S1` Add or refresh targeted browser coverage for replay follow-up and rerun follow-up shortcuts.
+- `[CLOSED]` `P18-T3-S2` Keep lint and build validation current for the revised runs workspace.
+
+### Phase 19 Task Matrix
+
+- `[CLOSED]` `P19-T1` Materialize deterministic rerun-candidate recovery data for QA.
+- `[CLOSED]` `P19-T1-S1` Add a non-production helper or fixture path that can surface `actionSummary.rerunCandidates` without waiting for incidental live failures.
+- `[CLOSED]` `P19-T1-S2` Keep the seeded recovery data scoped so it does not change normal operator runtime behavior outside explicit QA or development use.
+- `[CLOSED]` `P19-T2` Capture deterministic browser validation for replay and rerun follow-up shortcuts.
+- `[CLOSED]` `P19-T2-S1` Update the refreshed browser smoke or companion validation path so replay and rerun follow-up shortcuts no longer depend on incidental LocalWP state.
+- `[CLOSED]` `P19-T3` Keep LocalWP validation bootstrap guidance aligned with the active recovery QA workflow.
+- `[CLOSED]` `P19-T3-S1` Document the current socket-backed PHPUnit setup and direct-admin browser entry expectations alongside the deterministic recovery-fixture workflow.
+
+Phase 19 notes:
+
+- deterministic rerun QA now uses a current-user-scoped recovery fixture route that overlays `actionSummary.rerunCandidates` without mutating stored journey artifacts
+- the runs status panel now keeps the preserved recovery follow-up visible after duplicate-settings prefill even when no newer non-rerun completion message exists
+- deterministic replay QA now reuses the existing `POST /runs` transport through an explicit dev-only `qaReplaySourceRunId` request flag, so replay follow-up coverage no longer depends on live sitemap refetch during LocalWP validation
+- the replay lifecycle success alert now exposes a stable created-run identifier for browser validation, and the refreshed smoke keeps using the existing replay UI path while tolerating transient `ERR_ABORTED` admin navigations in LocalWP
+- unsandboxed targeted CLI Playwright is now green for both the replay smoke and the rerun recovery smoke
+
+### Phase 20 Task Matrix
+
+- `[CLOSED]` `P20-T1` Make historical overview reads use run-scoped discovery artifacts after same-domain replay chains.
+- `[CLOSED]` `P20-T1-S1` Add or reuse a run-scoped inventory resolver so historical overview reads stop depending on domain-latest inventory when a newer replay exists.
+- `[CLOSED]` `P20-T2` Audit readiness and package readers for historical artifact drift after later same-domain replays.
+- `[CLOSED]` `P20-T2-S1` Reuse the same run-scoped artifact-resolution rule across readiness and package entry points instead of adding surface-specific exceptions.
+- `[CLOSED]` `P20-T3` Add targeted validation for same-domain historical run fidelity.
+- `[CLOSED]` `P20-T3-S1` Cover at least one same-domain replay chain in PHPUnit or browser validation so older overview, readiness, or package surfaces prove they keep the requested run's artifacts.
+
+### Phase 21 Task Matrix
+
+- `[CLOSED]` `P21-T1` Preserve run-scoped page artifact references for same-URL historical reads.
+- `[CLOSED]` `P21-T1-S1` Add a per-run snapshot, alias, or equivalent resolver for historical page artifacts that currently live at domain-scoped URL paths.
+- `[CLOSED]` `P21-T2` Reuse preserved page artifacts in historical readiness and package flows.
+- `[CLOSED]` `P21-T2-S1` Teach package and QA readers to prefer preserved run-scoped page artifacts before they treat a historical artifact as missing.
+- `[CLOSED]` `P21-T3` Add targeted validation for same-URL historical fidelity.
+- `[CLOSED]` `P21-T3-S1` Cover at least one same-domain rerun or replay where the same URL is processed twice and the older run still keeps its own page-level artifacts.
+
+### Phase 22 Task Matrix
+
+- `[CLOSED]` `P22-T1` Make historical exceptions and review payloads resolve run-scoped page artifacts after later same-domain same-URL runs.
+- `[CLOSED]` `P22-T1-S1` Update exception queue and review context loaders to prefer `resolve_page_context_for_run()` or an equivalent run-aware page artifact resolver.
+- `[CLOSED]` `P22-T2` Keep review-save and rerun writes scoped to the requested historical run.
+- `[CLOSED]` `P22-T2-S1` Ensure review decisions and stage reruns do not overwrite a newer same-domain run's current page files when invoked from an older run.
+- `[CLOSED]` `P22-T3` Add targeted validation for historical review fidelity.
+- `[CLOSED]` `P22-T3-S1` Cover at least one same-domain same-URL review or rerun flow where the older run keeps its own recommendations and decisions after a newer run exists.
+
+### Phase 23 Task Matrix
+
+- `[CLOSED]` `P23-T1` Add targeted browser validation for same-URL historical exceptions and review flows.
+- `[CLOSED]` `P23-T1-S1` Cover at least one same-domain same-URL chain where the older run's exception queue and review payload still open in the browser after a newer run exists.
+- `[CLOSED]` `P23-T2` Validate historical decision-save and rerun follow-up route behavior in browser flows.
+- `[CLOSED]` `P23-T2-S1` Confirm the browser follows the requested historical run after save or rerun instead of drifting into the newer same-URL run.
+- `[CLOSED]` `P23-T3` Record the browser validation result and any remaining environment blockers.
+- `[CLOSED]` `P23-T3-S1` Keep the validation record explicit if CLI Playwright or LocalWP browser constraints still require a headed or manual fallback.
+
+### Phase 24 Task Matrix
+
+- `[OPEN]` `P24-T1` Add targeted browser validation for historical overview and readiness flows after same-URL overwrite chains.
+- `[OPEN]` `P24-T1-S1` Cover at least one overwrite chain where an older run's overview and readiness surfaces still load in the browser after a newer same-domain same-URL run exists.
+- `[OPEN]` `P24-T2` Validate historical package workspace route and selection fidelity in browser flows.
+- `[OPEN]` `P24-T2-S1` Confirm the package workspace keeps the requested `runId` and `packageId` pinned after historical shortcuts and artifact actions.
+- `[OPEN]` `P24-T3` Record the browser validation result and any remaining environment blockers for historical workspace fidelity.
+- `[OPEN]` `P24-T3-S1` Keep the validation record explicit if unsandboxed CLI Playwright or LocalWP still requires a narrowed fallback path.
 
 ## Reuse Strategy
 

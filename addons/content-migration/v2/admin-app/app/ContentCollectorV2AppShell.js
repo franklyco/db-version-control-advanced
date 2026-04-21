@@ -1,6 +1,7 @@
-import { useState } from '@wordpress/element';
+import { useRef, useState } from '@wordpress/element';
 
 import InspectorDrawer from '../components/drawers/InspectorDrawer';
+import InspectorUnsavedChangesDialog from '../components/drawers/InspectorUnsavedChangesDialog';
 import WorkspaceNav from '../components/WorkspaceNav';
 import useWorkspaceRoute from './useWorkspaceRoute';
 import RunsWorkspace from '../workspaces/runs/RunsWorkspace';
@@ -12,11 +13,11 @@ import PackageWorkspace from '../workspaces/package/PackageWorkspace';
 const SUMMARY_CARDS = [
 	{
 		label: 'Status',
-		value: 'Phase 12 activity observability active',
+		value: 'Operator efficiency actions active',
 	},
 	{
 		label: 'Runs',
-		value: 'Run-start observability active',
+		value: 'Run-start, replay, rerun, duplicate, and hide helpers active',
 	},
 	{
 		label: 'Overview',
@@ -24,9 +25,44 @@ const SUMMARY_CARDS = [
 	},
 	{
 		label: 'Exceptions',
-		value: 'Exception queue active',
+		value: 'Conflict-first review, queue navigation, and bulk helpers active',
 	},
 ];
+
+const buildBlockedTransition = ( type ) => {
+	if ( type === 'tab' ) {
+		return {
+			type,
+			label: 'switching inspector tabs',
+		};
+	}
+
+	if ( type === 'record' ) {
+		return {
+			type,
+			label: 'opening another URL',
+		};
+	}
+
+	if ( type === 'view' ) {
+		return {
+			type,
+			label: 'changing workspaces',
+		};
+	}
+
+	if ( type === 'run' ) {
+		return {
+			type,
+			label: 'switching runs',
+		};
+	}
+
+	return {
+		type,
+		label: 'closing the inspector',
+	};
+};
 
 const buildRouteLabel = ( route ) => {
 	if ( route.view === 'runs' ) {
@@ -52,20 +88,150 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 		isDrawerOpen,
 	} = useWorkspaceRoute( bootstrap.route || {}, defaultRunId );
 	const [ refreshToken, setRefreshToken ] = useState( 0 );
+	const [ isInspectorDirty, setIsInspectorDirty ] = useState( false );
+	const [ discardChangesToken, setDiscardChangesToken ] = useState( 0 );
+	const [ exceptionQueueContext, setExceptionQueueContext ] = useState( {
+		runId: '',
+		items: [],
+		filter: '',
+		status: '',
+		q: '',
+		sort: '',
+	} );
+	const [ pendingInspectorTransition, setPendingInspectorTransition ] =
+		useState( null );
+	const pendingInspectorActionRef = useRef( null );
 
 	const handleMutationComplete = () => {
 		setRefreshToken( ( currentToken ) => currentToken + 1 );
+	};
+
+	const runOrQueueInspectorTransition = ( transition, action ) => {
+		if ( ! isDrawerOpen || ! isInspectorDirty ) {
+			action();
+			return;
+		}
+
+		pendingInspectorActionRef.current = action;
+		setPendingInspectorTransition( transition );
+	};
+
+	const clearPendingInspectorTransition = () => {
+		pendingInspectorActionRef.current = null;
+		setPendingInspectorTransition( null );
+	};
+
+	const handleDiscardInspectorChanges = () => {
+		const pendingAction = pendingInspectorActionRef.current;
+		clearPendingInspectorTransition();
+		setDiscardChangesToken( ( currentToken ) => currentToken + 1 );
+
+		if ( typeof pendingAction === 'function' ) {
+			pendingAction();
+		}
+	};
+
+	const handleSelectView = ( view ) => {
+		if ( view === route.view ) {
+			return;
+		}
+
+		runOrQueueInspectorTransition( buildBlockedTransition( 'view' ), () =>
+			selectView( view )
+		);
+	};
+
+	const handleSelectRun = ( runId, view = 'overview' ) => {
+		const nextRunId = runId || defaultRunId;
+		if (
+			nextRunId === route.runId &&
+			view === route.view &&
+			! isDrawerOpen
+		) {
+			return;
+		}
+
+		runOrQueueInspectorTransition(
+			buildBlockedTransition(
+				nextRunId !== route.runId ? 'run' : 'view'
+			),
+			() => selectRun( nextRunId, view )
+		);
+	};
+
+	const handleOpenDrawer = ( pageId, panelTab = 'summary' ) => {
+		const nextPageId = pageId || route.pageId || 'seed-home';
+		const nextPanelTab = panelTab || 'summary';
+
+		if (
+			isDrawerOpen &&
+			nextPageId === route.pageId &&
+			nextPanelTab === route.panelTab
+		) {
+			return;
+		}
+
+		runOrQueueInspectorTransition(
+			buildBlockedTransition(
+				nextPageId !== route.pageId ? 'record' : 'tab'
+			),
+			() => openDrawer( nextPageId, nextPanelTab )
+		);
+	};
+
+	const handleCloseDrawer = () => {
+		if ( ! isDrawerOpen ) {
+			return;
+		}
+
+		runOrQueueInspectorTransition( buildBlockedTransition( 'close' ), () =>
+			closeDrawer()
+		);
+	};
+
+	const handleRouteChange = ( nextRoute ) => {
+		const patch =
+			typeof nextRoute === 'function' ? nextRoute( route ) : nextRoute;
+		const nextResolvedRoute = {
+			...route,
+			...( patch || {} ),
+		};
+		const changesInspectorContext =
+			nextResolvedRoute.view !== route.view ||
+			nextResolvedRoute.runId !== route.runId ||
+			nextResolvedRoute.pageId !== route.pageId ||
+			nextResolvedRoute.panel !== route.panel ||
+			nextResolvedRoute.panelTab !== route.panelTab;
+
+		if ( ! changesInspectorContext ) {
+			updateRoute( nextRoute );
+			return;
+		}
+
+		let transitionType = 'close';
+		if ( nextResolvedRoute.view !== route.view ) {
+			transitionType = 'view';
+		} else if ( nextResolvedRoute.runId !== route.runId ) {
+			transitionType = 'run';
+		} else if ( nextResolvedRoute.pageId !== route.pageId ) {
+			transitionType = 'record';
+		} else if ( nextResolvedRoute.panelTab !== route.panelTab ) {
+			transitionType = 'tab';
+		}
+
+		runOrQueueInspectorTransition(
+			buildBlockedTransition( transitionType ),
+			() => updateRoute( nextRoute )
+		);
 	};
 
 	const renderWorkspace = () => {
 		if ( route.view === 'overview' ) {
 			return (
 				<RunOverviewWorkspace
-					onNavigateToView={ ( view ) =>
-						selectRun( route.runId || defaultRunId, view )
-					}
+					onRouteChange={ handleRouteChange }
 					route={ route }
-					onOpenDrawer={ openDrawer }
+					onOpenDrawer={ handleOpenDrawer }
 					refreshToken={ refreshToken }
 				/>
 			);
@@ -74,10 +240,12 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 		if ( route.view === 'exceptions' ) {
 			return (
 				<ExceptionsWorkspace
+					onMutationComplete={ handleMutationComplete }
+					onQueueItemsChange={ setExceptionQueueContext }
 					refreshToken={ refreshToken }
 					route={ route }
-					onOpenDrawer={ openDrawer }
-					onRouteChange={ updateRoute }
+					onOpenDrawer={ handleOpenDrawer }
+					onRouteChange={ handleRouteChange }
 				/>
 			);
 		}
@@ -87,7 +255,8 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 				<ReadinessWorkspace
 					refreshToken={ refreshToken }
 					route={ route }
-					onOpenDrawer={ openDrawer }
+					onOpenDrawer={ handleOpenDrawer }
+					onRouteChange={ handleRouteChange }
 				/>
 			);
 		}
@@ -96,7 +265,7 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 			return (
 				<PackageWorkspace
 					onMutationComplete={ handleMutationComplete }
-					onRouteChange={ updateRoute }
+					onRouteChange={ handleRouteChange }
 					refreshToken={ refreshToken }
 					route={ route }
 				/>
@@ -106,8 +275,8 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 		return (
 			<RunsWorkspace
 				onMutationComplete={ handleMutationComplete }
-				onOpenDrawer={ openDrawer }
-				onSelectRun={ selectRun }
+				onOpenDrawer={ handleOpenDrawer }
+				onSelectRun={ handleSelectRun }
 				refreshToken={ refreshToken }
 				selectedRunId={ route.runId }
 			/>
@@ -134,12 +303,15 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 						discovery, capture, deterministic extraction, context
 						creation, initial classification, mapping, media
 						alignment, target transforms, canonical recommendations,
-						exception review, per-URL QA reports, package assembly,
-						build history, override actions, per-URL reruns,
+						exception review, explicit single-item recommendation
+						decisions, guarded bulk review helpers, per-URL QA
+						reports, package assembly, build history, override
+						actions, per-URL reruns, stage-group rerun helpers,
+						run-profile duplication, hidden-run cleanup,
 						package-first dry-run, preflight approval, import
 						execution bridging, a V2-native run-start surface, and
-						selected-run monitoring plus recent activity surfaces
-						are active.
+						selected-run monitoring plus recent activity and
+						control-center shortcut surfaces are active.
 					</p>
 				</div>
 
@@ -155,7 +327,7 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 						className="button button-primary"
 						data-testid="dbvc-cc-v2-drawer-toggle"
 						onClick={ () =>
-							openDrawer(
+							handleOpenDrawer(
 								route.pageId || 'seed-home',
 								route.panelTab || 'summary'
 							)
@@ -170,9 +342,10 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 				className="dbvc-cc-v2-callout"
 				data-testid="dbvc-cc-v2-callout"
 			>
-				<strong>Scope guard:</strong> Phase 12 keeps the overview
-				read-oriented while surfacing recent run activity from the
-				existing journey log without broadening backend pipeline logic.
+				<strong>Scope guard:</strong> Readiness blockers now route into
+				the right review queue, QA audit, or package workspace, while
+				exceptions can apply carefully guarded low-risk bulk actions
+				without leaving the audited V2 decision path.
 			</section>
 
 			<section
@@ -193,20 +366,37 @@ export default function ContentCollectorV2AppShell( { bootstrap } ) {
 			<WorkspaceNav
 				currentView={ route.view }
 				views={ views }
-				onSelectView={ selectView }
+				onSelectView={ handleSelectView }
 			/>
 
 			<main className="dbvc-cc-v2-main" data-testid="dbvc-cc-v2-main">
 				{ renderWorkspace() }
 			</main>
 
+			<InspectorUnsavedChangesDialog
+				transition={ pendingInspectorTransition }
+				onCancel={ clearPendingInspectorTransition }
+				onDiscard={ handleDiscardInspectorChanges }
+			/>
+
 			<InspectorDrawer
+				discardChangesToken={ discardChangesToken }
 				isOpen={ isDrawerOpen }
+				onDirtyStateChange={ setIsInspectorDirty }
 				onMutationComplete={ handleMutationComplete }
+				onOpenQueueRecord={ ( item ) =>
+					handleOpenDrawer(
+						item?.pageId || route.pageId || 'seed-home',
+						item?.quickAction?.panelTab ||
+							route.panelTab ||
+							'summary'
+					)
+				}
 				route={ route }
-				onClose={ closeDrawer }
+				queueContext={ exceptionQueueContext }
+				onClose={ handleCloseDrawer }
 				onSelectTab={ ( panelTab ) =>
-					openDrawer( route.pageId || 'seed-home', panelTab )
+					handleOpenDrawer( route.pageId || 'seed-home', panelTab )
 				}
 				refreshToken={ refreshToken }
 			/>

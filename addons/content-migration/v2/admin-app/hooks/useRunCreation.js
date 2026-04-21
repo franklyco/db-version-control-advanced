@@ -10,7 +10,13 @@ const getElapsedMs = ( requestStartedAt ) => {
 	return Math.max( 0, Date.now() - requestStartedAt );
 };
 
-const buildRequestSummary = ( payload = {} ) => ( {
+const buildRequestSummary = ( payload = {}, options = {} ) => ( {
+	mode:
+		typeof options.mode === 'string' && options.mode
+			? options.mode
+			: 'create',
+	sourceRunId:
+		typeof options.sourceRunId === 'string' ? options.sourceRunId : '',
 	domain: typeof payload.domain === 'string' ? payload.domain : '',
 	sitemapUrl:
 		typeof payload.sitemapUrl === 'string' ? payload.sitemapUrl : '',
@@ -77,9 +83,9 @@ export default function useRunCreation() {
 		} ) );
 	};
 
-	const createRun = async ( payload ) => {
+	const createRun = async ( payload, options = {} ) => {
 		const requestStartedAt = Date.now();
-		const lastRequest = buildRequestSummary( payload );
+		const lastRequest = buildRequestSummary( payload, options );
 
 		setState( {
 			isSubmitting: true,

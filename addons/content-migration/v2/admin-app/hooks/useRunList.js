@@ -2,9 +2,10 @@ import { useEffect, useState } from '@wordpress/element';
 
 import { request } from '../api/client';
 
-export default function useRunList( refreshToken = 0 ) {
+export default function useRunList( refreshToken = 0, includeHidden = false ) {
 	const [ state, setState ] = useState( {
 		items: [],
+		meta: {},
 		isLoading: true,
 		error: '',
 	} );
@@ -19,7 +20,7 @@ export default function useRunList( refreshToken = 0 ) {
 			error: '',
 		} ) );
 
-		request( 'runs', {
+		request( includeHidden ? 'runs?includeHidden=1' : 'runs', {
 			signal: controller.signal,
 		} )
 			.then( ( payload ) => {
@@ -29,6 +30,10 @@ export default function useRunList( refreshToken = 0 ) {
 
 				setState( {
 					items: Array.isArray( payload.items ) ? payload.items : [],
+					meta:
+						payload.meta && typeof payload.meta === 'object'
+							? payload.meta
+							: {},
 					isLoading: false,
 					error: '',
 				} );
@@ -40,6 +45,7 @@ export default function useRunList( refreshToken = 0 ) {
 
 				setState( {
 					items: [],
+					meta: {},
 					isLoading: false,
 					error:
 						error instanceof Error
@@ -52,7 +58,7 @@ export default function useRunList( refreshToken = 0 ) {
 			isMounted = false;
 			controller.abort();
 		};
-	}, [ refreshToken ] );
+	}, [ includeHidden, refreshToken ] );
 
 	return state;
 }

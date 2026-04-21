@@ -1,15 +1,27 @@
-const renderRecommendation = ( recommendation ) => (
-	<li key={ recommendation.recommendation_id }>
-		<strong>{ recommendation.target_ref }</strong>
-		<p className="dbvc-cc-v2-table__meta">
-			{ recommendation.source_evidence || 'No source evidence' }
-		</p>
-	</li>
+import RecommendationDecisionCard from './RecommendationDecisionCard';
+
+const renderDecisionList = ( items, kind ) => (
+	<div
+		className="dbvc-cc-v2-decision-card-list"
+		data-testid={ `dbvc-cc-v2-${ kind }-decision-list-read` }
+	>
+		{ Array.isArray( items ) && items.length ? (
+			items.map( ( item ) => (
+				<RecommendationDecisionCard
+					key={ item.recommendationId }
+					item={ item }
+				/>
+			) )
+		) : (
+			<p className="dbvc-cc-v2-table__meta">No recommendations.</p>
+		) }
+	</div>
 );
 
-export default function InspectorMappingTab( { detail } ) {
-	const recommendations = detail?.recommendations || {};
-
+export default function InspectorMappingTab( {
+	fieldDecisions,
+	mediaDecisions,
+} ) {
 	return (
 		<div
 			className="dbvc-cc-v2-inspector-tab"
@@ -18,27 +30,11 @@ export default function InspectorMappingTab( { detail } ) {
 			<div className="dbvc-cc-v2-inspector-grid">
 				<article className="dbvc-cc-v2-placeholder-card">
 					<h3>Field recommendations</h3>
-					<ul className="dbvc-cc-v2-inspector-list">
-						{ Array.isArray(
-							recommendations.fieldRecommendations
-						) && recommendations.fieldRecommendations.length
-							? recommendations.fieldRecommendations.map(
-									renderRecommendation
-							  )
-							: 'No field recommendations.' }
-					</ul>
+					{ renderDecisionList( fieldDecisions, 'field' ) }
 				</article>
 				<article className="dbvc-cc-v2-placeholder-card">
 					<h3>Media recommendations</h3>
-					<ul className="dbvc-cc-v2-inspector-list">
-						{ Array.isArray(
-							recommendations.mediaRecommendations
-						) && recommendations.mediaRecommendations.length
-							? recommendations.mediaRecommendations.map(
-									renderRecommendation
-							  )
-							: 'No media recommendations.' }
-					</ul>
+					{ renderDecisionList( mediaDecisions, 'media' ) }
 				</article>
 			</div>
 		</div>

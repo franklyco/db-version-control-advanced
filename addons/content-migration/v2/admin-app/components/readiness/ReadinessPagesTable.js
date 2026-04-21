@@ -4,7 +4,11 @@ const STATUS_LABELS = {
 	blocked: 'Blocked',
 };
 
-export default function ReadinessPagesTable( { items, onOpenDrawer } ) {
+export default function ReadinessPagesTable( {
+	items,
+	onItemAction,
+	onOpenDrawer,
+} ) {
 	return (
 		<div
 			className="dbvc-cc-v2-table-wrap"
@@ -56,16 +60,49 @@ export default function ReadinessPagesTable( { items, onOpenDrawer } ) {
 									</div>
 								</td>
 								<td>
-									<button
-										type="button"
-										className="button button-secondary"
-										data-testid={ `dbvc-cc-v2-readiness-open-${ item.pageId }` }
-										onClick={ () =>
-											onOpenDrawer( item.pageId, 'audit' )
-										}
-									>
-										Inspect QA
-									</button>
+									<div className="dbvc-cc-v2-actions dbvc-cc-v2-actions--stack">
+										{ item.primaryAction ? (
+											<button
+												type="button"
+												className="button button-secondary"
+												data-testid={ `dbvc-cc-v2-readiness-primary-${ item.pageId }` }
+												onClick={ () => {
+													if (
+														typeof onItemAction ===
+														'function'
+													) {
+														onItemAction(
+															item,
+															item.primaryAction
+														);
+													}
+												} }
+											>
+												{ item.primaryAction.label }
+											</button>
+										) : null }
+										{ item.primaryAction?.target !==
+										'readiness' ? (
+											<button
+												type="button"
+												className="button button-link"
+												data-testid={ `dbvc-cc-v2-readiness-audit-${ item.pageId }` }
+												onClick={ () => {
+													if (
+														typeof onOpenDrawer ===
+														'function'
+													) {
+														onOpenDrawer(
+															item.pageId,
+															'audit'
+														);
+													}
+												} }
+											>
+												Inspect QA
+											</button>
+										) : null }
+									</div>
 								</td>
 							</tr>
 						) )

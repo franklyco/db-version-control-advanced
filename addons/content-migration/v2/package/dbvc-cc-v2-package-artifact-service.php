@@ -7,6 +7,11 @@ if (! defined('WPINC')) {
 final class DBVC_CC_V2_Package_Artifact_Service
 {
     /**
+     * @var string
+     */
+    private const DOWNLOAD_ACTION = 'dbvc_cc_v2_package_artifact_download';
+
+    /**
      * @var DBVC_CC_V2_Package_Artifact_Service|null
      */
     private static $instance = null;
@@ -218,5 +223,225 @@ final class DBVC_CC_V2_Package_Artifact_Service
         }
 
         return array_values($items);
+    }
+
+    /**
+     * @param array<string, mixed> $run_context
+     * @param string               $package_id
+     * @return array<string, array<string, mixed>>
+     */
+    public function build_operator_actions(array $run_context, $package_id)
+    {
+        $package_id = sanitize_text_field((string) $package_id);
+        if ($package_id === '' || empty($run_context['runId'])) {
+            return [];
+        }
+
+        $actions = [];
+        foreach ($this->get_artifact_definitions() as $artifact_key => $definition) {
+            $actions[$artifact_key] = [
+                'key' => $artifact_key,
+                'label' => isset($definition['label']) ? (string) $definition['label'] : $artifact_key,
+                'description' => isset($definition['description']) ? (string) $definition['description'] : '',
+                'fileName' => isset($definition['file']) ? (string) $definition['file'] : '',
+                'contentType' => isset($definition['content_type']) ? (string) $definition['content_type'] : '',
+                'canInspect' => ! empty($definition['inspectable']),
+                'canDownload' => ! empty($definition['downloadable']),
+                'downloadUrl' => ! empty($definition['downloadable'])
+                    ? $this->build_download_url((string) $run_context['runId'], $package_id, $artifact_key)
+                    : '',
+            ];
+        }
+
+        return $actions;
+    }
+
+    /**
+     * @param string $run_id
+     * @param string $package_id
+     * @param string $artifact_key
+     * @return array<string, mixed>|WP_Error
+     */
+    public function resolve_artifact_download($run_id, $package_id, $artifact_key)
+    {
+        $run_context = $this->resolve_run_context($run_id);
+        if (is_wp_error($run_context)) {
+            return $run_context;
+        }
+
+        $package_id = sanitize_text_field((string) $package_id);
+        if ($package_id === '') {
+            return new WP_Error(
+                'dbvc_cc_v2_package_artifact_package_missing',
+                __('A package ID is required to download a V2 package artifact.', 'dbvc'),
+                ['status' => 400]
+            );
+        }
+
+        $definition = $this->get_artifact_definition($artifact_key);
+        if (! is_array($definition)) {
+            return new WP_Error(
+                'dbvc_cc_v2_package_artifact_unknown',
+                __('The requested V2 package artifact is not supported.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $path = trailingslashit($run_context['context']['packages_dir']) . $package_id . '/' . $definition['file'];
+        if (! file_exists($path)) {
+            return new WP_Error(
+                'dbvc_cc_v2_package_artifact_missing',
+                __('The requested V2 package artifact file could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        return [
+            'artifactKey' => sanitize_key((string) $artifact_key),
+            'label' => isset($definition['label']) ? (string) $definition['label'] : '',
+            'path' => $path,
+            'fileName' => basename($path),
+            'contentType' => isset($definition['content_type']) ? (string) $definition['content_type'] : 'application/octet-stream',
+        ];
+    }
+
+    /**
+     * @param string $run_id
+     * @param string $package_id
+     * @param string $artifact_key
+     * @return string
+     */
+    public function get_download_nonce_action($run_id, $package_id, $artifact_key)
+    {
+        return self::DOWNLOAD_ACTION . ':' . sanitize_text_field((string) $run_id) . ':' . sanitize_text_field((string) $package_id) . ':' . sanitize_key((string) $artifact_key);
+    }
+
+    /**
+     * @return string
+     */
+    public function get_download_action_name()
+    {
+        return self::DOWNLOAD_ACTION;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function get_artifact_definitions()
+    {
+        return [
+            'manifest' => [
+                'label' => __('Manifest', 'dbvc'),
+                'description' => __('Inspect included pages, object types, and target schema fingerprints for this package.', 'dbvc'),
+                'file' => DBVC_CC_V2_Contracts::STORAGE_PACKAGE_MANIFEST_FILE,
+                'content_type' => 'application/json',
+                'inspectable' => true,
+                'downloadable' => true,
+            ],
+            'summary' => [
+                'label' => __('Summary', 'dbvc'),
+                'description' => __('Inspect high-level readiness, exception, and override counts before execute.', 'dbvc'),
+                'file' => DBVC_CC_V2_Contracts::STORAGE_PACKAGE_SUMMARY_FILE,
+                'content_type' => 'application/json',
+                'inspectable' => true,
+                'downloadable' => true,
+            ],
+            'qa' => [
+                'label' => __('QA report', 'dbvc'),
+                'description' => __('Inspect package-level blockers and warnings without leaving the V2 workflow.', 'dbvc'),
+                'file' => DBVC_CC_V2_Contracts::STORAGE_PACKAGE_QA_REPORT_FILE,
+                'content_type' => 'application/json',
+                'inspectable' => true,
+                'downloadable' => true,
+            ],
+            'records' => [
+                'label' => __('Records', 'dbvc'),
+                'description' => __('Inspect the package records that will be handed to the shared import executor.', 'dbvc'),
+                'file' => DBVC_CC_V2_Contracts::STORAGE_PACKAGE_RECORDS_FILE,
+                'content_type' => 'application/json',
+                'inspectable' => true,
+                'downloadable' => true,
+            ],
+            'media' => [
+                'label' => __('Media manifest', 'dbvc'),
+                'description' => __('Inspect package media references and their target attachments before execute.', 'dbvc'),
+                'file' => DBVC_CC_V2_Contracts::STORAGE_PACKAGE_MEDIA_MANIFEST_FILE,
+                'content_type' => 'application/json',
+                'inspectable' => true,
+                'downloadable' => true,
+            ],
+            'zip' => [
+                'label' => __('ZIP package', 'dbvc'),
+                'description' => __('Download the packaged handoff archive for external review or backup.', 'dbvc'),
+                'file' => DBVC_CC_V2_Contracts::STORAGE_PACKAGE_ZIP_FILE,
+                'content_type' => 'application/zip',
+                'inspectable' => false,
+                'downloadable' => true,
+            ],
+        ];
+    }
+
+    /**
+     * @param string $artifact_key
+     * @return array<string, mixed>|null
+     */
+    private function get_artifact_definition($artifact_key)
+    {
+        $artifact_key = sanitize_key((string) $artifact_key);
+        $definitions = $this->get_artifact_definitions();
+
+        return isset($definitions[$artifact_key]) && is_array($definitions[$artifact_key])
+            ? $definitions[$artifact_key]
+            : null;
+    }
+
+    /**
+     * @param string $run_id
+     * @param string $package_id
+     * @param string $artifact_key
+     * @return string
+     */
+    private function build_download_url($run_id, $package_id, $artifact_key)
+    {
+        return wp_nonce_url(
+            add_query_arg(
+                [
+                    'action' => self::DOWNLOAD_ACTION,
+                    'runId' => sanitize_text_field((string) $run_id),
+                    'packageId' => sanitize_text_field((string) $package_id),
+                    'artifact' => sanitize_key((string) $artifact_key),
+                ],
+                admin_url('admin-post.php')
+            ),
+            $this->get_download_nonce_action($run_id, $package_id, $artifact_key)
+        );
+    }
+
+    /**
+     * @param string $run_id
+     * @return array<string, mixed>|WP_Error
+     */
+    private function resolve_run_context($run_id)
+    {
+        $run_id = sanitize_text_field((string) $run_id);
+        $domain = DBVC_CC_V2_Domain_Journey_Service::get_instance()->find_domain_by_journey_id($run_id);
+        if ($domain === '') {
+            return new WP_Error(
+                'dbvc_cc_v2_package_artifact_run_missing',
+                __('The requested V2 run could not be found for package artifact access.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $context = DBVC_CC_V2_Domain_Journey_Service::get_instance()->get_domain_context($domain);
+        if (is_wp_error($context)) {
+            return $context;
+        }
+
+        return [
+            'runId' => $run_id,
+            'domain' => $domain,
+            'context' => $context,
+        ];
     }
 }

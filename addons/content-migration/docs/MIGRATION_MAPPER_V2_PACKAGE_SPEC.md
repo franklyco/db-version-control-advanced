@@ -57,6 +57,33 @@ Recommended package index extensions per build entry:
   - latest build, dry-run, preflight, and execute snapshots for that package
 - `import_history[]`
   - recent package-linked import execution summaries with downstream import run identifiers and rollback state
+- `artifact_actions`
+  - operator-facing inspect and download affordances for the selected package surface
+
+## Operator Package Surface
+
+The V2 package workspace should expose a selected-package operator surface in addition to the raw stored files.
+
+Recommended selected-package operator affordances:
+
+- explicit confirm-before-mutate controls for preflight approval and execute
+- disabled-reason messaging when execute is blocked by package readiness, missing fresh approvals, or in-flight requests
+- direct blocker shortcuts that jump to the relevant exceptions or readiness target for the selected package
+- in-app drill-ins for:
+  - manifest
+  - summary
+  - QA report
+  - records
+  - media manifest
+- authenticated download actions for the underlying package artifacts, including the ZIP handoff bundle
+
+Manifest drill-ins should emphasize:
+
+- included pages
+- included object types
+- schema fingerprint
+- record and media counts
+- readiness status before execute
 
 ## Package Files
 

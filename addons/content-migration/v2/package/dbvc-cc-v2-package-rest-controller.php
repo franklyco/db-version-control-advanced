@@ -90,4 +90,51 @@ final class DBVC_CC_V2_Package_REST_Controller
     {
         return current_user_can(DBVC_CC_Contracts::ADMIN_CAPABILITY);
     }
+
+    /**
+     * @return void
+     */
+    public function download_artifact()
+    {
+        if (! $this->permissions_check()) {
+            status_header(403);
+            wp_die(esc_html__('You are not allowed to download V2 package artifacts.', 'dbvc'));
+        }
+
+        $run_id = isset($_GET['runId']) ? sanitize_text_field(wp_unslash((string) $_GET['runId'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $package_id = isset($_GET['packageId']) ? sanitize_text_field(wp_unslash((string) $_GET['packageId'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $artifact_key = isset($_GET['artifact']) ? sanitize_key(wp_unslash((string) $_GET['artifact'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field(wp_unslash((string) $_GET['_wpnonce'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $service = DBVC_CC_V2_Package_Artifact_Service::get_instance();
+
+        if (! wp_verify_nonce($nonce, $service->get_download_nonce_action($run_id, $package_id, $artifact_key))) {
+            status_header(403);
+            wp_die(esc_html__('The V2 package artifact download link is no longer valid.', 'dbvc'));
+        }
+
+        $artifact = $service->resolve_artifact_download($run_id, $package_id, $artifact_key);
+        if (is_wp_error($artifact)) {
+            $data = $artifact->get_error_data();
+            if (is_array($data) && ! empty($data['status'])) {
+                status_header((int) $data['status']);
+            }
+
+            wp_die(esc_html($artifact->get_error_message()));
+        }
+
+        $path = isset($artifact['path']) ? (string) $artifact['path'] : '';
+        if ($path === '' || ! file_exists($path)) {
+            status_header(404);
+            wp_die(esc_html__('The requested V2 package artifact file could not be found.', 'dbvc'));
+        }
+
+        nocache_headers();
+        header('Content-Type: ' . (isset($artifact['contentType']) ? (string) $artifact['contentType'] : 'application/octet-stream'));
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name(isset($artifact['fileName']) ? (string) $artifact['fileName'] : basename($path)) . '"');
+        header('Content-Length: ' . (string) filesize($path));
+        header('X-Content-Type-Options: nosniff');
+
+        readfile($path);
+        exit;
+    }
 }

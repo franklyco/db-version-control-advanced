@@ -185,7 +185,7 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
         }
 
         $raw_path = trailingslashit($page_dir) . $slug . '.json';
-        if (! DBVC_CC_Artifact_Manager::write_json_file($raw_path, $parsed['raw_artifact'])) {
+        if (! DBVC_CC_V2_Page_Artifact_Service::get_instance()->write_page_artifact($raw_path, $parsed['raw_artifact'], $journey_id)) {
             return new WP_Error(
                 'dbvc_cc_v2_raw_write_failed',
                 __('Could not write the V2 raw page artifact.', 'dbvc'),
@@ -217,7 +217,7 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
 
         $source_normalization = DBVC_CC_V2_Source_Normalization_Service::get_instance()->build_artifact($parsed['raw_artifact']);
         $source_normalization_path = trailingslashit($page_dir) . $slug . DBVC_CC_V2_Contracts::STORAGE_SOURCE_NORMALIZATION_SUFFIX;
-        if (! DBVC_CC_Artifact_Manager::write_json_file($source_normalization_path, $source_normalization)) {
+        if (! DBVC_CC_V2_Page_Artifact_Service::get_instance()->write_page_artifact($source_normalization_path, $source_normalization, $journey_id)) {
             return new WP_Error(
                 'dbvc_cc_v2_source_normalization_write_failed',
                 __('Could not write the V2 source normalization artifact.', 'dbvc'),
@@ -260,7 +260,7 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
 
         if (! empty($extracted['elements'])) {
             $elements_path = trailingslashit($page_dir) . $slug . DBVC_CC_Contracts::STORAGE_ELEMENTS_V2_SUFFIX;
-            if (! DBVC_CC_Artifact_Manager::write_json_file($elements_path, $extracted['elements'])) {
+            if (! DBVC_CC_V2_Page_Artifact_Service::get_instance()->write_page_artifact($elements_path, $extracted['elements'], $journey_id)) {
                 return new WP_Error(
                     'dbvc_cc_v2_elements_write_failed',
                     __('Could not write the V2 elements artifact.', 'dbvc'),
@@ -273,7 +273,7 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
 
         if (! empty($extracted['sections'])) {
             $sections_path = trailingslashit($page_dir) . $slug . DBVC_CC_Contracts::STORAGE_SECTIONS_V2_SUFFIX;
-            if (! DBVC_CC_Artifact_Manager::write_json_file($sections_path, $extracted['sections'])) {
+            if (! DBVC_CC_V2_Page_Artifact_Service::get_instance()->write_page_artifact($sections_path, $extracted['sections'], $journey_id)) {
                 return new WP_Error(
                     'dbvc_cc_v2_sections_write_failed',
                     __('Could not write the V2 sections artifact.', 'dbvc'),
@@ -286,7 +286,7 @@ final class DBVC_CC_V2_Capture_Orchestrator_Service
 
         if (! empty($extracted['ingestion_package'])) {
             $ingestion_path = trailingslashit($page_dir) . $slug . DBVC_CC_Contracts::STORAGE_INGESTION_PACKAGE_V2_SUFFIX;
-            if (! DBVC_CC_Artifact_Manager::write_json_file($ingestion_path, $extracted['ingestion_package'])) {
+            if (! DBVC_CC_V2_Page_Artifact_Service::get_instance()->write_page_artifact($ingestion_path, $extracted['ingestion_package'], $journey_id)) {
                 return new WP_Error(
                     'dbvc_cc_v2_ingestion_package_write_failed',
                     __('Could not write the V2 ingestion package artifact.', 'dbvc'),

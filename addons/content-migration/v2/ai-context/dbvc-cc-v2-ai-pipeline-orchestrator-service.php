@@ -174,7 +174,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
             return $pipeline_bundle;
         }
 
-        $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context($context['domain'], $page_id);
+        $page_context = DBVC_CC_V2_Page_Artifact_Service::get_instance()->resolve_page_context_for_run($journey_id, $page_id);
         if (is_wp_error($page_context)) {
             return $page_context;
         }
@@ -269,7 +269,9 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
         $artifact_service = DBVC_CC_V2_Page_Artifact_Service::get_instance();
         $journey = DBVC_CC_V2_Domain_Journey_Service::get_instance();
         $artifact_paths = isset($page_context['artifact_paths']) && is_array($page_context['artifact_paths']) ? $page_context['artifact_paths'] : [];
+        $write_artifact_paths = isset($page_context['write_artifact_paths']) && is_array($page_context['write_artifact_paths']) ? $page_context['write_artifact_paths'] : $artifact_paths;
         $artifact_relatives = isset($page_context['artifact_relatives']) && is_array($page_context['artifact_relatives']) ? $page_context['artifact_relatives'] : [];
+        $write_artifact_relatives = isset($page_context['write_artifact_relatives']) && is_array($page_context['write_artifact_relatives']) ? $page_context['write_artifact_relatives'] : $artifact_relatives;
 
         $raw_artifact = $artifact_service->read_required_artifact($artifact_paths['raw'], 'dbvc_cc_v2_raw_missing', 'raw page');
         if (is_wp_error($raw_artifact)) {
@@ -355,7 +357,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                 ]
             );
 
-            if (! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['context_creation'], $context_artifact)) {
+            if (! $artifact_service->write_page_artifact($write_artifact_paths['context_creation'], $context_artifact, $journey_id)) {
                 return $this->append_failure_event(
                     $page_context['domain'],
                     $journey_id,
@@ -369,7 +371,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
             }
 
             $page_context['context_artifact'] = $context_artifact;
-            $artifacts_written[] = $artifact_relatives['context_creation'];
+            $artifacts_written[] = $write_artifact_relatives['context_creation'];
             $result['contextStatus'] = isset($context_artifact['status']) ? (string) $context_artifact['status'] : 'completed';
 
             $journey->append_event(
@@ -388,7 +390,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         $artifact_relatives['elements'],
                         $artifact_relatives['sections'],
                     ],
-                    'output_artifacts' => [$artifact_relatives['context_creation']],
+                    'output_artifacts' => [$write_artifact_relatives['context_creation']],
                     'source_fingerprint' => $source_fingerprint,
                     'schema_fingerprint' => $effective_schema_fingerprint,
                     'actor' => $actor,
@@ -442,7 +444,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                 ]
             );
 
-            if (! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['initial_classification'], $classification_artifact)) {
+            if (! $artifact_service->write_page_artifact($write_artifact_paths['initial_classification'], $classification_artifact, $journey_id)) {
                 return $this->append_failure_event(
                     $page_context['domain'],
                     $journey_id,
@@ -457,7 +459,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
 
             $review_status = isset($classification_artifact['review']['status']) ? sanitize_key((string) $classification_artifact['review']['status']) : '';
             $event_status = in_array($review_status, ['blocked', 'needs_review'], true) ? 'completed_with_warnings' : 'completed';
-            $artifacts_written[] = $artifact_relatives['initial_classification'];
+            $artifacts_written[] = $write_artifact_relatives['initial_classification'];
             $result['classificationStatus'] = isset($classification_artifact['status']) ? (string) $classification_artifact['status'] : 'completed';
             $result['reviewStatus'] = $review_status;
             $page_context['classification_artifact'] = $classification_artifact;
@@ -482,7 +484,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         $artifact_relatives['context_creation'],
                         isset($pipeline_bundle['inventory_artifact_relative_path']) ? (string) $pipeline_bundle['inventory_artifact_relative_path'] : '',
                     ],
-                    'output_artifacts' => [$artifact_relatives['initial_classification']],
+                    'output_artifacts' => [$write_artifact_relatives['initial_classification']],
                     'source_fingerprint' => $source_fingerprint,
                     'schema_fingerprint' => $inventory_fingerprint,
                     'actor' => $actor,
@@ -581,8 +583,8 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
             );
 
             if (
-                ! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['mapping_index'], $mapping_index_artifact)
-                || ! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['media_candidates'], $media_candidates_artifact)
+                ! $artifact_service->write_page_artifact($write_artifact_paths['mapping_index'], $mapping_index_artifact, $journey_id)
+                || ! $artifact_service->write_page_artifact($write_artifact_paths['media_candidates'], $media_candidates_artifact, $journey_id)
             ) {
                 return $this->append_failure_event(
                     $page_context['domain'],
@@ -598,8 +600,8 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
 
             $page_context['mapping_index_artifact'] = $mapping_index_artifact;
             $page_context['media_candidates_artifact'] = $media_candidates_artifact;
-            $artifacts_written[] = $artifact_relatives['mapping_index'];
-            $artifacts_written[] = $artifact_relatives['media_candidates'];
+            $artifacts_written[] = $write_artifact_relatives['mapping_index'];
+            $artifacts_written[] = $write_artifact_relatives['media_candidates'];
             $result['mappingStatus'] = 'completed';
 
             $journey->append_event(
@@ -619,8 +621,8 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         $pattern_memory_relative,
                     ],
                     'output_artifacts' => [
-                        $artifact_relatives['mapping_index'],
-                        $artifact_relatives['media_candidates'],
+                        $write_artifact_relatives['mapping_index'],
+                        $write_artifact_relatives['media_candidates'],
                     ],
                     'source_fingerprint' => $source_fingerprint,
                     'schema_fingerprint' => $effective_schema_fingerprint,
@@ -667,7 +669,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                 ]
             );
 
-            if (! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['target_transform'], $target_transform_artifact)) {
+            if (! $artifact_service->write_page_artifact($write_artifact_paths['target_transform'], $target_transform_artifact, $journey_id)) {
                 return $this->append_failure_event(
                     $page_context['domain'],
                     $journey_id,
@@ -681,7 +683,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
             }
 
             $page_context['target_transform_artifact'] = $target_transform_artifact;
-            $artifacts_written[] = $artifact_relatives['target_transform'];
+            $artifacts_written[] = $write_artifact_relatives['target_transform'];
 
             $journey->append_event(
                 $page_context['domain'],
@@ -702,7 +704,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         $artifact_relatives['mapping_index'],
                         $artifact_relatives['media_candidates'],
                     ],
-                    'output_artifacts' => [$artifact_relatives['target_transform']],
+                    'output_artifacts' => [$write_artifact_relatives['target_transform']],
                     'source_fingerprint' => $source_fingerprint,
                     'schema_fingerprint' => $effective_schema_fingerprint,
                     'actor' => $actor,
@@ -789,7 +791,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
             ]
         );
 
-        if (! DBVC_CC_Artifact_Manager::write_json_file($artifact_paths['mapping_recommendations'], $mapping_recommendations_artifact)) {
+        if (! $artifact_service->write_page_artifact($write_artifact_paths['mapping_recommendations'], $mapping_recommendations_artifact, $journey_id)) {
             return $this->append_failure_event(
                 $page_context['domain'],
                 $journey_id,
@@ -814,7 +816,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
 
         $review_status = isset($mapping_recommendations_artifact['review']['status']) ? sanitize_key((string) $mapping_recommendations_artifact['review']['status']) : '';
         $event_status = $review_status === 'blocked' ? 'completed_with_warnings' : 'completed';
-        $artifacts_written[] = $artifact_relatives['mapping_recommendations'];
+        $artifacts_written[] = $write_artifact_relatives['mapping_recommendations'];
         $result['finalizationStatus'] = 'completed';
         $result['reviewStatus'] = $review_status;
         $result['resolutionMode'] = isset($target_transform_artifact['resolution_preview']['mode']) ? (string) $target_transform_artifact['resolution_preview']['mode'] : '';
@@ -836,7 +838,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                     $artifact_relatives['media_candidates'],
                     $pattern_memory_relative,
                 ],
-                'output_artifacts' => [$artifact_relatives['mapping_recommendations']],
+                'output_artifacts' => [$write_artifact_relatives['mapping_recommendations']],
                 'source_fingerprint' => $source_fingerprint,
                 'schema_fingerprint' => $effective_schema_fingerprint,
                 'actor' => $actor,
