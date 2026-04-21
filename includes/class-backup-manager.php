@@ -45,13 +45,18 @@ if (! class_exists('DBVC_Backup_Manager')) {
          * Create the manifest file for a completed backup.
          *
          * @param string $backup_path Absolute path to the backup folder.
+         * @param array  $options
          * @return void
          */
-        public static function generate_manifest($backup_path)
+        public static function generate_manifest($backup_path, array $options = [])
         {
             if (! is_dir($backup_path)) {
                 return;
             }
+
+        $build_media_bundle = array_key_exists('build_media_bundle', $options)
+            ? (bool) $options['build_media_bundle']
+            : true;
 
         $items             = [];
         $missing_hashes    = 0;
@@ -211,7 +216,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
                         $term_parent,
                         $term_parent_slug,
                     ]));
-                    $media_refs       = ['meta' => [], 'content' => []];
+                    $media_refs       = self::collect_term_media_refs($decoded, $term_id, $media_index, $source_lookup);
                     $term_items++;
 
                     if (class_exists('DBVC_Sync_Taxonomies')) {
@@ -312,6 +317,8 @@ if (! class_exists('DBVC_Backup_Manager')) {
 
             $media_bundle_meta = null;
             if (
+                $build_media_bundle
+                &&
                 class_exists('DBVC_Media_Sync')
                 && DBVC_Media_Sync::is_bundle_enabled()
                 && ! empty($media_index)
@@ -451,30 +458,110 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 }
             }
 
-            // Content URLs (remote assets).
-            if (! empty($decoded['post_content']) && is_string($decoded['post_content'])) {
-                if (preg_match_all('#https?://[^\s"\']+#', $decoded['post_content'], $matches)) {
-                    $urls = array_unique($matches[0]);
-                    foreach ($urls as $url_raw) {
-                        $url = esc_url_raw($url_raw);
-                        if (! $url) {
-                            continue;
-                        }
-                        $original_id = null;
-                        if (isset($source_lookup[$url])) {
-                            $original_id = $source_lookup[$url];
+            $refs['content'] = self::collect_content_url_refs(
+                isset($decoded['post_content']) ? $decoded['post_content'] : '',
+                $source_lookup
+            );
+
+            return $refs;
+        }
+
+        /**
+         * Gather media references from a term JSON payload.
+         *
+         * @param array $decoded
+         * @param int   $term_id
+         * @param array $media_index
+         * @param array $source_lookup
+         * @return array
+         */
+    private static function collect_term_media_refs(array $decoded, $term_id, array &$media_index, array &$source_lookup)
+    {
+        unset($term_id);
+
+        $refs = [
+            'meta'    => [],
+            'content' => [],
+        ];
+
+        if (! empty($decoded['meta']) && is_array($decoded['meta'])) {
+            foreach ($decoded['meta'] as $meta_key => $values) {
+                if (! is_array($values)) {
+                    continue;
+                }
+                foreach ($values as $index => $value) {
+                    $matches = self::detect_attachment_ids($value);
+                    if (empty($matches)) {
+                        continue;
+                    }
+                    foreach ($matches as $match) {
+                        $attachment_id = $match['id'];
+                        $path          = $match['path'];
+
+                        if (! isset($media_index[$attachment_id])) {
+                            $entry = self::build_media_index_entry($attachment_id);
+                            if (! $entry) {
+                                continue;
+                            }
+                            $media_index[$attachment_id] = $entry;
+                            if (! empty($entry['source_url'])) {
+                                $source_lookup[$entry['source_url']] = $attachment_id;
+                            }
                         }
 
-                        $refs['content'][] = [
-                            'original_url' => $url,
-                            'original_id'  => $original_id,
+                        $refs['meta'][] = [
+                            'original_id' => $attachment_id,
+                            'meta_key'    => sanitize_key($meta_key),
+                            'value_index' => $index,
+                            'path'        => $path,
                         ];
                     }
                 }
             }
+        }
 
+        $refs['content'] = self::collect_content_url_refs(
+            isset($decoded['description']) ? $decoded['description'] : '',
+            $source_lookup
+        );
+
+        return $refs;
+    }
+
+        /**
+         * Extract URL references from a content field and map them back to known media.
+         *
+         * @param mixed $content
+         * @param array $source_lookup
+         * @return array
+         */
+    private static function collect_content_url_refs($content, array $source_lookup): array
+    {
+        $refs = [];
+        if (! is_string($content) || $content === '') {
             return $refs;
         }
+
+        if (! preg_match_all('#https?://[^\s"\']+#', $content, $matches)) {
+            return $refs;
+        }
+
+        $urls = array_unique($matches[0]);
+        foreach ($urls as $url_raw) {
+            $url = esc_url_raw($url_raw);
+            if (! $url) {
+                continue;
+            }
+
+            $original_id = isset($source_lookup[$url]) ? $source_lookup[$url] : null;
+            $refs[] = [
+                'original_url' => $url,
+                'original_id'  => $original_id,
+            ];
+        }
+
+        return $refs;
+    }
 
         private static function build_entity_reference_index(string $item_type, array $context): array
         {

@@ -130,6 +130,9 @@ final class DBVC_Entity_Editor_Indexer
             return strcmp($a_title, $b_title);
         });
 
+        $duplicate_summary = self::annotate_duplicate_groups($items);
+        $items             = $duplicate_summary['items'];
+
         return [
             'items' => $items,
             'stats' => [
@@ -137,6 +140,8 @@ final class DBVC_Entity_Editor_Indexer
                 'indexed_files' => count($items),
                 'excluded_files' => $excluded,
                 'latest_mtime' => $latest_mtime,
+                'duplicate_groups' => (int) ($duplicate_summary['duplicate_groups'] ?? 0),
+                'duplicate_files' => (int) ($duplicate_summary['duplicate_files'] ?? 0),
             ],
             'generated_at' => gmdate('c'),
             'sync_root' => basename($sync_real),
@@ -181,7 +186,10 @@ final class DBVC_Entity_Editor_Indexer
             ? (string) ($decoded['slug'] ?? '')
             : (string) ($decoded['post_name'] ?? '');
 
-        $uid = (string) ($decoded['vf_object_uid'] ?? $decoded['dbvc_object_uid'] ?? '');
+        $uid = self::extract_entity_uid($decoded);
+        $matched_wp = self::find_matched_wp_entity($kind, $subtype, $slug, $uid);
+        $payload_entity_id = self::extract_payload_entity_id($kind, $decoded);
+        $filename_entity_id = self::extract_filename_entity_id($relative, $subtype);
 
         $mtime = (int) filemtime($path);
 
@@ -191,12 +199,242 @@ final class DBVC_Entity_Editor_Indexer
             'title' => $title,
             'slug' => $slug,
             'uid' => $uid,
-            'matched_wp' => self::find_matched_wp_entity($kind, $subtype, $slug, $uid),
+            'matched_wp' => $matched_wp,
+            'payload_entity_id' => $payload_entity_id > 0 ? $payload_entity_id : null,
+            'filename_entity_id' => $filename_entity_id > 0 ? $filename_entity_id : null,
             'relative_path' => $relative,
             'filename' => basename($relative),
             'mtime' => $mtime,
             'mtime_gmt' => gmdate('c', $mtime),
+            'is_duplicate' => false,
+            'is_canonical_duplicate' => false,
+            'duplicate_group' => null,
         ];
+    }
+
+    /**
+     * Annotate duplicate file groups so the UI can highlight the canonical row.
+     *
+     * @param array<int,array<string,mixed>> $items
+     * @return array{items:array<int,array<string,mixed>>,duplicate_groups:int,duplicate_files:int}
+     */
+    private static function annotate_duplicate_groups(array $items): array
+    {
+        $groups = [];
+
+        foreach ($items as $index => $item) {
+            $descriptor = self::build_duplicate_group_descriptor($item);
+            if ($descriptor['key'] === '') {
+                continue;
+            }
+
+            if (! isset($groups[$descriptor['key']])) {
+                $groups[$descriptor['key']] = [
+                    'match_basis' => $descriptor['match_basis'],
+                    'indexes' => [],
+                ];
+            }
+
+            $groups[$descriptor['key']]['indexes'][] = $index;
+        }
+
+        $duplicate_group_count = 0;
+        $duplicate_file_count  = 0;
+
+        foreach ($groups as $group_key => $group) {
+            $indexes = isset($group['indexes']) && is_array($group['indexes']) ? $group['indexes'] : [];
+            if (count($indexes) <= 1) {
+                continue;
+            }
+
+            $duplicate_group_count++;
+            $duplicate_file_count += count($indexes);
+
+            $canonical_index = self::pick_canonical_duplicate_index($items, $indexes);
+            $canonical_path  = isset($items[$canonical_index]['relative_path']) ? (string) $items[$canonical_index]['relative_path'] : '';
+            $match_basis     = isset($group['match_basis']) ? (string) $group['match_basis'] : 'vf_object_uid';
+
+            foreach ($indexes as $index) {
+                $is_canonical = $index === $canonical_index;
+                $items[$index]['is_duplicate'] = true;
+                $items[$index]['is_canonical_duplicate'] = $is_canonical;
+                $items[$index]['duplicate_group'] = [
+                    'key' => $group_key,
+                    'size' => count($indexes),
+                    'match_basis' => $match_basis,
+                    'canonical_relative_path' => $canonical_path,
+                ];
+            }
+        }
+
+        return [
+            'items' => $items,
+            'duplicate_groups' => $duplicate_group_count,
+            'duplicate_files' => $duplicate_file_count,
+        ];
+    }
+
+    /**
+     * Build the duplicate-group descriptor for an indexed entity file.
+     *
+     * Primary key: matched WP entity ID. Fallback: vf_object_uid.
+     *
+     * @param array<string,mixed> $item
+     * @return array{key:string,match_basis:string}
+     */
+    private static function build_duplicate_group_descriptor(array $item): array
+    {
+        $kind = isset($item['entity_kind']) ? sanitize_key((string) $item['entity_kind']) : 'entity';
+        $payload_id = isset($item['payload_entity_id']) ? (int) $item['payload_entity_id'] : 0;
+        $matched_id = isset($item['matched_wp']['id']) ? (int) $item['matched_wp']['id'] : 0;
+
+        if ($payload_id > 0) {
+            return [
+                'key' => sprintf('%s:payload:%d', $kind, $payload_id),
+                'match_basis' => 'payload_entity_id',
+            ];
+        }
+
+        if ($matched_id > 0) {
+            return [
+                'key' => sprintf('%s:db:%d', $kind, $matched_id),
+                'match_basis' => 'matched_wp_id',
+            ];
+        }
+
+        $uid = isset($item['uid']) ? trim((string) $item['uid']) : '';
+        if ($uid !== '') {
+            return [
+                'key' => sprintf('%s:uid:%s', $kind, $uid),
+                'match_basis' => 'vf_object_uid',
+            ];
+        }
+
+        return [
+            'key' => '',
+            'match_basis' => '',
+        ];
+    }
+
+    /**
+     * Pick the canonical file row for a duplicate group.
+     *
+     * Preference order:
+     * 1. Filename-aligned local entity ID.
+     * 2. Newest file mtime.
+     * 3. Relative path for deterministic ordering.
+     *
+     * @param array<int,array<string,mixed>> $items
+     * @param array<int,int>                 $indexes
+     * @return int
+     */
+    private static function pick_canonical_duplicate_index(array $items, array $indexes): int
+    {
+        $best_index = (int) reset($indexes);
+
+        foreach ($indexes as $candidate_index) {
+            if (! isset($items[$candidate_index])) {
+                continue;
+            }
+
+            if (! isset($items[$best_index])) {
+                $best_index = $candidate_index;
+                continue;
+            }
+
+            $candidate_score = self::score_duplicate_candidate($items[$candidate_index]);
+            $best_score      = self::score_duplicate_candidate($items[$best_index]);
+
+            if ($candidate_score['filename_matches_local_id'] !== $best_score['filename_matches_local_id']) {
+                if ($candidate_score['filename_matches_local_id'] > $best_score['filename_matches_local_id']) {
+                    $best_index = $candidate_index;
+                }
+                continue;
+            }
+
+            if ($candidate_score['mtime'] !== $best_score['mtime']) {
+                if ($candidate_score['mtime'] > $best_score['mtime']) {
+                    $best_index = $candidate_index;
+                }
+                continue;
+            }
+
+            if (strcmp($candidate_score['relative_path'], $best_score['relative_path']) < 0) {
+                $best_index = $candidate_index;
+            }
+        }
+
+        return $best_index;
+    }
+
+    /**
+     * Score an indexed entity file for duplicate canonical selection.
+     *
+     * @param array<string,mixed> $item
+     * @return array{filename_matches_local_id:int,mtime:int,relative_path:string}
+     */
+    private static function score_duplicate_candidate(array $item): array
+    {
+        $payload_id = isset($item['payload_entity_id']) ? (int) $item['payload_entity_id'] : 0;
+        $matched_id = isset($item['matched_wp']['id']) ? (int) $item['matched_wp']['id'] : 0;
+        $filename_id = isset($item['filename_entity_id']) ? (int) $item['filename_entity_id'] : 0;
+        $reference_id = $payload_id > 0 ? $payload_id : $matched_id;
+
+        return [
+            'filename_matches_local_id' => ($reference_id > 0 && $filename_id > 0 && $reference_id === $filename_id) ? 1 : 0,
+            'mtime' => isset($item['mtime']) ? (int) $item['mtime'] : 0,
+            'relative_path' => isset($item['relative_path']) ? (string) $item['relative_path'] : '',
+        ];
+    }
+
+    /**
+     * Extract the current local entity ID recorded inside the JSON payload.
+     *
+     * @param string              $kind
+     * @param array<string,mixed> $decoded
+     * @return int
+     */
+    private static function extract_payload_entity_id(string $kind, array $decoded): int
+    {
+        if ($kind === 'post' && isset($decoded['ID'])) {
+            return (int) $decoded['ID'];
+        }
+
+        if ($kind === 'term') {
+            if (isset($decoded['term_id'])) {
+                return (int) $decoded['term_id'];
+            }
+
+            if (isset($decoded['id'])) {
+                return (int) $decoded['id'];
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Extract the trailing numeric entity ID from a sync filename when present.
+     *
+     * @param string $relative
+     * @param string $subtype
+     * @return int
+     */
+    private static function extract_filename_entity_id(string $relative, string $subtype): int
+    {
+        $basename = basename($relative, '.json');
+        $prefix   = sanitize_file_name($subtype) . '-';
+        $token    = $basename;
+
+        if ($subtype !== '' && strpos($basename, $prefix) === 0) {
+            $token = substr($basename, strlen($prefix));
+        }
+
+        if (preg_match('/(?:^|-)(\d+)$/', (string) $token, $matches)) {
+            return isset($matches[1]) ? (int) $matches[1] : 0;
+        }
+
+        return 0;
     }
 
 
@@ -636,6 +874,106 @@ final class DBVC_Entity_Editor_Indexer
     }
 
     /**
+     * Delete selected entity JSON files after creating backup copies.
+     *
+     * This removes sync-folder rows only. It does not delete WordPress entities.
+     *
+     * @param array<int,string> $relative_paths
+     * @param int               $user_id
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function delete_entity_files(array $relative_paths, $user_id = 0)
+    {
+        if ($user_id <= 0) {
+            return new \WP_Error('dbvc_entity_editor_lock_user_required', __('Unable to determine current user for file removal.', 'dbvc'), ['status' => 401]);
+        }
+
+        $paths = [];
+        foreach ($relative_paths as $relative_path) {
+            if (! is_string($relative_path)) {
+                continue;
+            }
+
+            $normalized = str_replace('\\', '/', ltrim(trim($relative_path), '/'));
+            if ($normalized === '') {
+                continue;
+            }
+
+            $paths[$normalized] = $normalized;
+        }
+
+        if (empty($paths)) {
+            return new \WP_Error('dbvc_entity_editor_delete_empty', __('No entity files were selected for removal.', 'dbvc'), ['status' => 400]);
+        }
+
+        $deleted_paths = [];
+        $backup_paths  = [];
+        $errors        = [];
+
+        foreach ($paths as $relative_path) {
+            $resolved = self::resolve_entity_file_path($relative_path);
+            if (is_wp_error($resolved)) {
+                $errors[] = self::format_file_operation_error($relative_path, $resolved);
+                continue;
+            }
+
+            $lock = self::validate_file_lock_for_delete($relative_path, (int) $user_id);
+            if (is_wp_error($lock)) {
+                $errors[] = self::format_file_operation_error($relative_path, $lock);
+                continue;
+            }
+
+            $backup = self::create_backup_copy($resolved, $relative_path);
+            if (is_wp_error($backup)) {
+                $errors[] = self::format_file_operation_error($relative_path, $backup);
+                continue;
+            }
+
+            if (! @unlink($resolved)) {
+                $errors[] = [
+                    'path' => $relative_path,
+                    'code' => 'dbvc_entity_editor_delete_failed',
+                    'message' => __('Unable to remove the selected entity JSON file.', 'dbvc'),
+                    'status' => 500,
+                ];
+                continue;
+            }
+
+            self::release_file_lock($relative_path);
+            $deleted_paths[]              = $relative_path;
+            $backup_paths[$relative_path] = $backup;
+
+            if (class_exists('DBVC_Sync_Logger')) {
+                DBVC_Sync_Logger::log('Entity Editor JSON delete', [
+                    'relative_path' => $relative_path,
+                    'user_id' => (int) $user_id,
+                    'backup_path' => $backup,
+                ]);
+            }
+        }
+
+        if (empty($deleted_paths) && ! empty($errors)) {
+            $first = $errors[0];
+            return new \WP_Error(
+                'dbvc_entity_editor_delete_failed',
+                __('Unable to remove the selected entity files.', 'dbvc'),
+                [
+                    'status' => isset($first['status']) ? (int) $first['status'] : 500,
+                    'errors' => $errors,
+                ]
+            );
+        }
+
+        return [
+            'deleted_count' => count($deleted_paths),
+            'deleted_paths' => array_values($deleted_paths),
+            'backup_paths' => $backup_paths,
+            'errors' => $errors,
+            'index' => self::get_index(true),
+        ];
+    }
+
+    /**
      * @param string $relative_path
      * @param int    $user_id
      * @param bool   $force_takeover
@@ -741,6 +1079,45 @@ final class DBVC_Entity_Editor_Indexer
     }
 
     /**
+     * Allow deletes when the file is unlocked or locked by the current user.
+     *
+     * @param string $relative_path
+     * @param int    $user_id
+     * @return array<string,mixed>|null|\WP_Error
+     */
+    private static function validate_file_lock_for_delete($relative_path, $user_id)
+    {
+        if ($user_id <= 0) {
+            return new \WP_Error('dbvc_entity_editor_lock_user_required', __('Unable to determine current user for file removal.', 'dbvc'), ['status' => 401]);
+        }
+
+        $key = self::lock_transient_key($relative_path);
+        $existing = get_transient($key);
+        if (! is_array($existing)) {
+            return null;
+        }
+
+        if (self::is_lock_expired($existing)) {
+            delete_transient($key);
+            return null;
+        }
+
+        $owner_id = isset($existing['user_id']) ? (int) $existing['user_id'] : 0;
+        if ($owner_id > 0 && $owner_id !== $user_id) {
+            return new \WP_Error(
+                'dbvc_entity_editor_locked',
+                __('This entity file is currently being edited by another user.', 'dbvc'),
+                [
+                    'status' => 409,
+                    'lock' => self::format_lock($existing, $relative_path),
+                ]
+            );
+        }
+
+        return self::format_lock($existing, $relative_path);
+    }
+
+    /**
      * @param string $relative_path
      * @param int    $user_id
      * @param string $token
@@ -798,6 +1175,15 @@ final class DBVC_Entity_Editor_Indexer
     {
         $normalized = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
         return self::LOCK_KEY_PREFIX . md5($normalized);
+    }
+
+    /**
+     * @param string $relative_path
+     * @return void
+     */
+    private static function release_file_lock($relative_path)
+    {
+        delete_transient(self::lock_transient_key($relative_path));
     }
 
     /**
@@ -1638,10 +2024,28 @@ final class DBVC_Entity_Editor_Indexer
         $backup_path = trailingslashit($backup_dir) . $backup_name;
 
         if (! @copy($file_path, $backup_path)) {
-            return new \WP_Error('dbvc_entity_editor_backup_failed', __('Unable to create backup before save.', 'dbvc'), ['status' => 500]);
+            return new \WP_Error('dbvc_entity_editor_backup_failed', __('Unable to create backup before changing or deleting the file.', 'dbvc'), ['status' => 500]);
         }
 
         return '.dbvc_entity_editor_backups/' . $backup_name;
+    }
+
+    /**
+     * @param string    $relative_path
+     * @param \WP_Error $error
+     * @return array<string,mixed>
+     */
+    private static function format_file_operation_error($relative_path, \WP_Error $error)
+    {
+        $data = $error->get_error_data();
+
+        return [
+            'path' => str_replace('\\', '/', ltrim((string) $relative_path, '/')),
+            'code' => (string) $error->get_error_code(),
+            'message' => (string) $error->get_error_message(),
+            'status' => is_array($data) && isset($data['status']) ? (int) $data['status'] : 500,
+            'lock' => is_array($data) && isset($data['lock']) && is_array($data['lock']) ? $data['lock'] : null,
+        ];
     }
 
     /**

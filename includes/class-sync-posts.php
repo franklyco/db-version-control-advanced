@@ -2533,6 +2533,7 @@ $acf_relationship_fields = [
         $smart_import = (bool) $smart_import;
         $options = wp_parse_args($options, [
             'source' => 'selected_files',
+            'allow_outside_sync' => false,
         ]);
 
         $result = [
@@ -2584,7 +2585,7 @@ $acf_relationship_fields = [
             }
             $seen_paths[$real_path] = true;
 
-            if (! self::is_safe_file_path($real_path)) {
+            if (empty($options['allow_outside_sync']) && ! self::is_safe_file_path($real_path)) {
                 $result['errors']++;
                 $result['details'][] = [
                     'file'    => basename($real_path),
@@ -2855,6 +2856,12 @@ $acf_relationship_fields = [
                 };
             }
 
+            if (isset($json['post_parent'])) {
+                $field_map['post_parent'] = static function () use ($json) {
+                    return absint($json['post_parent']);
+                };
+            }
+
             foreach ($field_map as $path => $callback) {
                 if ($normalized_decisions !== null && ! self::decision_allows_path($normalized_decisions, $path)) {
                     continue;
@@ -2911,12 +2918,18 @@ $acf_relationship_fields = [
                 'post_type'    => $post_type,
                 'post_status'  => $target_status,
             ];
+            if (! empty($json['post_name'])) {
+                $post_array['post_name'] = sanitize_title((string) $json['post_name']);
+            }
 
             if (! empty($json['post_date'])) {
                 $post_array['post_date'] = sanitize_text_field($json['post_date']);
             }
             if (! empty($json['post_modified'])) {
                 $post_array['post_modified'] = sanitize_text_field($json['post_modified']);
+            }
+            if (isset($json['post_parent'])) {
+                $post_array['post_parent'] = absint($json['post_parent']);
             }
 
             $post_id = wp_insert_post($post_array);
@@ -2928,6 +2941,7 @@ $acf_relationship_fields = [
 
             self::$needs_rewrite_flush = true;
             self::$imported_post_id_map[$original_id] = $post_id;
+            $did_apply_post_fields = true;
             error_log("[DBVC] Created new post ID {$post_id} (from original ID {$original_id})");
 
             // Overwrite JSON ID with actual new ID
@@ -3178,6 +3192,66 @@ $acf_relationship_fields = [
     {
         self::$allow_clean_export_directory = false;
     }
+
+    /**
+     * Export a single post into an arbitrary staging directory.
+     *
+     * @param int    $post_id
+     * @param string $base_path
+     * @param mixed  $filename_mode
+     * @return array|\WP_Error
+     */
+    public static function stage_post_export($post_id, string $base_path, $filename_mode = null)
+    {
+        $post_id = absint($post_id);
+        if (! $post_id) {
+            return new WP_Error('dbvc_invalid_post', __('Invalid post ID supplied for staged export.', 'dbvc'));
+        }
+
+        $post = get_post($post_id);
+        if (! $post || is_wp_error($post)) {
+            return new WP_Error('dbvc_missing_post', __('Unable to load the post for staged export.', 'dbvc'));
+        }
+
+        $prepared = self::prepare_post_export($post_id, $post, $filename_mode);
+        if (is_wp_error($prepared) || empty($prepared)) {
+            return $prepared;
+        }
+
+        $relative_dir = sanitize_key($post->post_type);
+        if ($relative_dir === '') {
+            return new WP_Error('dbvc_invalid_post_type', __('Invalid post type for staged export.', 'dbvc'));
+        }
+
+        $target_dir = trailingslashit($base_path) . $relative_dir;
+        if (! is_dir($target_dir) && ! wp_mkdir_p($target_dir)) {
+            return new WP_Error('dbvc_directory_failed', __('Unable to create staged export directory.', 'dbvc'));
+        }
+
+        self::ensure_directory_security($target_dir);
+
+        $filename = basename((string) $prepared['file_path']);
+        if ($filename === '') {
+            return new WP_Error('dbvc_invalid_filename', __('Unable to derive staged export filename.', 'dbvc'));
+        }
+
+        $prepared['file_path'] = trailingslashit($target_dir) . $filename;
+        if (! self::write_export_payload($prepared, $post_id, $post)) {
+            return new WP_Error('dbvc_write_failed', __('Failed to write staged post export.', 'dbvc'));
+        }
+
+        return [
+            'entity_type'   => 'post',
+            'post_id'       => $post_id,
+            'post_type'     => $relative_dir,
+            'relative_path' => $relative_dir . '/' . $filename,
+            'file_path'     => $prepared['file_path'],
+            'json_content'  => $prepared['json_content'],
+            'decoded'       => $prepared['data'],
+            'hash'          => $prepared['hash'],
+        ];
+    }
+
     private static function prepare_post_export($post_id, $post, $filename_mode = null)
     {
         // Validate inputs.
@@ -3511,6 +3585,10 @@ $acf_relationship_fields = [
      */
     public static function export_options_to_json()
     {
+        if (! function_exists('current_user_can') || ! function_exists('wp_get_current_user')) {
+            return;
+        }
+
         // Check user capabilities for options export (skip for WP-CLI)
         if (! defined('WP_CLI') || ! WP_CLI) {
             if (! current_user_can('manage_options')) {
@@ -4373,6 +4451,71 @@ $acf_relationship_fields = [
                 'count' => count($upload_names),
                 'files' => $upload_names,
             ]);
+        }
+
+        delete_option('dbvc_ai_upload_report');
+
+        $is_single_zip_upload = count($uploads) === 1
+            && $extension === 'zip'
+            && class_exists('\Dbvc\AiPackage\SubmissionPackageDetector')
+            && class_exists('\Dbvc\AiPackage\SubmissionPackageValidator');
+
+        if ($is_single_zip_upload) {
+            $ai_inspection = \Dbvc\AiPackage\SubmissionPackageDetector::inspect_uploaded_zip($tmp);
+            if (is_array($ai_inspection) && ! empty($ai_inspection['detected'])) {
+                if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_upload_logging_enabled()) {
+                    DBVC_Sync_Logger::log_upload('AI package upload detected before sync routing', array_merge($log_context, [
+                        'package_type' => (string) ($ai_inspection['package_type'] ?? ''),
+                        'manifest_entry' => (string) ($ai_inspection['manifest_entry'] ?? ''),
+                    ]));
+                }
+
+                delete_option('dbvc_sync_upload_report');
+
+                $ai_report = \Dbvc\AiPackage\SubmissionPackageValidator::intake_uploaded_zip($primary);
+                if (is_wp_error($ai_report)) {
+                    $ai_report = [
+                        'mode' => 'ai_package',
+                        'generated_at' => current_time('mysql'),
+                        'status' => 'blocked',
+                        'package_type' => '',
+                        'package_schema_version' => null,
+                        'counts' => [
+                            'post_entities' => 0,
+                            'term_entities' => 0,
+                            'issues' => 1,
+                            'warnings' => 0,
+                            'blocked' => 1,
+                        ],
+                        'issues' => [
+                            [
+                                'severity' => 'error',
+                                'code' => 'intake_failed',
+                                'message' => $ai_report->get_error_message(),
+                                'path' => '',
+                            ],
+                        ],
+                        'entities' => [],
+                        'artifacts' => [
+                            'source_archive' => '',
+                            'extracted_root' => '',
+                            'validation_report' => '',
+                            'validation_summary' => '',
+                            'translation_manifest' => null,
+                            'translated_sync_root' => null,
+                        ],
+                    ];
+                }
+
+                update_option('dbvc_ai_upload_report', $ai_report, false);
+
+                $query_var = (($ai_report['status'] ?? 'blocked') === 'blocked')
+                    ? 'ai_blocked'
+                    : 'ai_review';
+
+                wp_redirect(add_query_arg('dbvc_upload', $query_var, wp_get_referer()));
+                exit;
+            }
         }
 
         $success = false;

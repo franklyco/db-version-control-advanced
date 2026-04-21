@@ -61,9 +61,13 @@ final class DBVC_CC_V2_URL_QA_Report_Service
         $selected_target_object = $selection_service->resolve_selected_target_object($recommended_target, $mapping_decisions, $domain);
         $field_values = $selection_service->build_field_values($recommendations, $mapping_decisions, $domain);
         $media_refs = $selection_service->build_media_refs($recommendations, $media_decisions, $domain);
-        $conflict_count = is_array($recommendations) && isset($recommendations['conflicts']) && is_array($recommendations['conflicts'])
-            ? count($recommendations['conflicts'])
-            : 0;
+        $conflict_count = count(
+            $selection_service->filter_active_conflicts(
+                $recommendations,
+                $mapping_decisions,
+                $media_decisions
+            )
+        );
         $unresolved_count = is_array($recommendations) && isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
             ? count($recommendations['unresolved_items'])
             : 0;

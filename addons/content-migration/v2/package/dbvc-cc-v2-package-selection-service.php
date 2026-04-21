@@ -331,6 +331,36 @@ final class DBVC_CC_V2_Package_Selection_Service
     }
 
     /**
+     * @param array<string, mixed>|null $recommendations
+     * @param array<string, mixed>|null $mapping_decisions
+     * @param array<string, mixed>|null $media_decisions
+     * @return array<int, array<string, mixed>>
+     */
+    public function filter_active_conflicts($recommendations, $mapping_decisions, $media_decisions)
+    {
+        if (! is_array($recommendations) || ! isset($recommendations['conflicts']) || ! is_array($recommendations['conflicts'])) {
+            return [];
+        }
+
+        $active_conflicts = [];
+        $decision_state_index = $this->build_decision_state_index($mapping_decisions, $media_decisions);
+
+        foreach ($recommendations['conflicts'] as $conflict) {
+            if (! is_array($conflict)) {
+                continue;
+            }
+
+            if (! $this->conflict_requires_review($conflict, $decision_state_index)) {
+                continue;
+            }
+
+            $active_conflicts[] = $conflict;
+        }
+
+        return array_values($active_conflicts);
+    }
+
+    /**
      * @param mixed $value
      * @return string
      */
@@ -359,6 +389,156 @@ final class DBVC_CC_V2_Package_Selection_Service
         }
 
         return $indexed;
+    }
+
+    /**
+     * @param array<string, mixed>|null $mapping_decisions
+     * @param array<string, mixed>|null $media_decisions
+     * @return array<string, string>
+     */
+    private function build_decision_state_index($mapping_decisions, $media_decisions)
+    {
+        $index = [];
+
+        if (is_array($mapping_decisions)) {
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['approved']) && is_array($mapping_decisions['approved']) ? $mapping_decisions['approved'] : [],
+                'approve'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['rejected']) && is_array($mapping_decisions['rejected']) ? $mapping_decisions['rejected'] : [],
+                'reject'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['unresolved']) && is_array($mapping_decisions['unresolved']) ? $mapping_decisions['unresolved'] : [],
+                'unresolved'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($mapping_decisions['overrides']) && is_array($mapping_decisions['overrides']) ? $mapping_decisions['overrides'] : [],
+                'override'
+            );
+        }
+
+        if (is_array($media_decisions)) {
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['approved']) && is_array($media_decisions['approved']) ? $media_decisions['approved'] : [],
+                'approve'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['ignored']) && is_array($media_decisions['ignored']) ? $media_decisions['ignored'] : [],
+                'reject'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['conflicts']) && is_array($media_decisions['conflicts']) ? $media_decisions['conflicts'] : [],
+                'unresolved'
+            );
+            $index = $this->add_decision_items_to_index(
+                $index,
+                isset($media_decisions['overrides']) && is_array($media_decisions['overrides']) ? $media_decisions['overrides'] : [],
+                'override'
+            );
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param array<string, string>            $index
+     * @param array<int, array<string, mixed>> $items
+     * @param string                           $state
+     * @return array<string, string>
+     */
+    private function add_decision_items_to_index(array $index, array $items, $state)
+    {
+        foreach ($items as $item) {
+            if (! is_array($item) || empty($item['recommendation_id'])) {
+                continue;
+            }
+
+            $index[(string) $item['recommendation_id']] = (string) $state;
+        }
+
+        return $index;
+    }
+
+    /**
+     * @param array<string, mixed> $conflict
+     * @return array<int, string>
+     */
+    private function extract_conflict_recommendation_ids(array $conflict)
+    {
+        $ids = [];
+
+        if (! empty($conflict['recommendation_id'])) {
+            $ids[] = sanitize_text_field((string) $conflict['recommendation_id']);
+        }
+
+        if (isset($conflict['recommendation_ids']) && is_array($conflict['recommendation_ids'])) {
+            foreach ($conflict['recommendation_ids'] as $recommendation_id) {
+                $recommendation_id = sanitize_text_field((string) $recommendation_id);
+                if ($recommendation_id !== '') {
+                    $ids[] = $recommendation_id;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * @param array<string, mixed> $conflict
+     * @param array<string, string> $decision_state_index
+     * @return bool
+     */
+    private function conflict_requires_review(array $conflict, array $decision_state_index)
+    {
+        $recommendation_ids = $this->extract_conflict_recommendation_ids($conflict);
+        if (empty($recommendation_ids)) {
+            return true;
+        }
+
+        $active_count = 0;
+        $pending_count = 0;
+        $unresolved_count = 0;
+
+        foreach ($recommendation_ids as $recommendation_id) {
+            $state = isset($decision_state_index[$recommendation_id])
+                ? (string) $decision_state_index[$recommendation_id]
+                : 'pending';
+
+            if ($state === 'reject') {
+                continue;
+            }
+
+            if ($state === 'unresolved') {
+                ++$unresolved_count;
+                continue;
+            }
+
+            if ($state === 'approve' || $state === 'override') {
+                ++$active_count;
+                continue;
+            }
+
+            ++$pending_count;
+        }
+
+        if ($active_count > 1) {
+            return true;
+        }
+
+        if ($pending_count > 0 || $unresolved_count > 0) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

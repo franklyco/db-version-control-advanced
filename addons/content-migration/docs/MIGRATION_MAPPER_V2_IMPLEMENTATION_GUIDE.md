@@ -1006,12 +1006,12 @@ Current tranche notes:
 ### Phase 24: Historical Workspace Browser Validation
 
 Phase status:
-- `OPEN`
+- `CLOSED`
 
 Checklist:
-- `[OPEN]` Add targeted browser validation for historical overview, readiness, and package surfaces after a later same-domain same-URL run exists.
-- `[OPEN]` Verify that historical workspace shortcuts and selected package state stay pinned to the requested run in operator-facing browser flows.
-- `[OPEN]` Record the final validation result and any remaining browser-environment constraints without expanding the runtime surface.
+- `[CLOSED]` Add targeted browser validation for historical overview, readiness, and package surfaces after a later same-domain same-URL run exists.
+- `[CLOSED]` Verify that historical workspace shortcuts and selected package state stay pinned to the requested run in operator-facing browser flows.
+- `[CLOSED]` Record the final validation result and any remaining browser-environment constraints without expanding the runtime surface.
 
 Acceptance criteria:
 - Browser validation proves that reopening an older run after a later same-domain same-URL run still loads the older run's overview, readiness, and package surfaces rather than silently drifting to newer domain-latest state.
@@ -1021,6 +1021,175 @@ Acceptance criteria:
 Current tranche notes:
 - `2026-03-28`: Phase 23 closed the historical exception and review browser-validation gap, so the next remaining browser seam is the rest of the historical workspace stack.
 - `2026-03-28`: This phase should stay focused on operator-facing overview, readiness, and package route fidelity after overwrite chains, not on new package or overview controls.
+- `2026-03-31`: The targeted unsandboxed Playwright smoke `preserves historical overview, readiness, and package routes after a same-url overwrite run` is green. It proves overview shortcuts, readiness flows, package routing, and selected package state stay pinned to the requested older run after a deterministic overwrite chain.
+
+### Phase 25: Historical Package Workflow Browser Validation
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add targeted browser validation for historical package workflow follow-through after a later same-domain same-URL run exists.
+- `[CLOSED]` Verify that dry-run and package guardrail surfaces stay pinned to the requested historical `runId` and `packageId` in operator-facing browser flows.
+- `[CLOSED]` Record the validation result and any remaining browser-environment constraints without broadening the runtime surface.
+
+Acceptance criteria:
+- Browser validation proves that reopening an older run after a later same-domain same-URL run still keeps package dry-run or closely adjacent workflow state pinned to the requested run and package rather than silently drifting to newer domain-latest state.
+- Historical package workflow blocker shortcuts, dry-run preview state, and route parameters in the browser stay pinned to the requested run and package context after same-URL overwrite chains.
+- The tranche keeps using the current V2 routes, deterministic QA helper transport, and existing package workspace architecture instead of introducing new operator surfaces.
+
+Current tranche notes:
+- `2026-03-31`: Phase 24 closed the historical overview, readiness, and package route-fidelity gap, so the next remaining browser seam is package workflow follow-through on historical runs.
+- `2026-03-31`: This phase should stay focused on dry-run and guardrail/browser-state fidelity for historical package workspaces, not on new import controls or route families.
+- `2026-04-05`: The targeted unsandboxed Playwright smoke `preserves historical package dry-run and guardrail shortcuts after a same-url overwrite run` is green. It proves dry-run preview and the execute-blocked resolve shortcut stay pinned to the requested older run and selected package after a deterministic overwrite chain.
+
+### Phase 26: Historical Package Preflight Browser Validation
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add targeted browser validation for historical package preflight approval after a later same-domain same-URL run exists.
+- `[CLOSED]` Verify that preflight request state and persisted preflight summary stay pinned to the requested historical `runId` and `packageId` in operator-facing browser flows.
+- `[CLOSED]` Record the validation result and any remaining browser-environment constraints without broadening the runtime surface or executing destructive import flows.
+
+Acceptance criteria:
+- Browser validation proves that reopening an older run after a later same-domain same-URL run still keeps preflight approval requests and closely adjacent persisted preflight state pinned to the requested run and package rather than silently drifting to newer domain-latest state.
+- Historical preflight route parameters, summary surfaces, and follow-up browser state stay pinned to the requested run and package context after same-URL overwrite chains.
+- The tranche keeps using the current V2 routes, deterministic QA helper transport, and existing package workspace architecture instead of introducing new operator surfaces.
+
+Current tranche notes:
+- `2026-04-05`: Phase 25 closed the historical package dry-run and guardrail browser gap, so the next remaining package seam is preflight fidelity on historical runs.
+- `2026-04-05`: This phase should stay focused on preflight approval and persisted preflight state, not on execute mutations or new route families.
+- `2026-04-05`: The targeted unsandboxed Playwright smoke `preserves historical package preflight approval and persisted summary after a same-url overwrite run` is green. It proves historical preflight requests and persisted preflight summary stay pinned to the requested older run and selected package after a deterministic overwrite chain.
+
+### Phase 27: Historical Package Execution Observability Browser Validation
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Add targeted browser validation for historical package execution-observability surfaces after a later same-domain same-URL run exists.
+- `[CLOSED]` Verify that latest recorded import summary and import-history route state stay pinned to the requested historical `runId` and `packageId` in operator-facing browser flows.
+- `[CLOSED]` Record the validation result and any remaining browser-environment constraints without broadening the runtime surface or triggering fresh destructive imports by default.
+
+Acceptance criteria:
+- Browser validation proves that reopening an older run after a later same-domain same-URL run still keeps latest recorded import and import-history surfaces pinned to the requested run and package rather than silently drifting to newer domain-latest state.
+- Historical execution-observability route parameters, summary surfaces, and selected package context stay pinned to the requested run and package context after same-URL overwrite chains.
+- The tranche keeps using the current V2 routes, deterministic QA helper transport, and existing package workspace architecture instead of introducing new operator surfaces or executing a fresh import by default.
+
+Current tranche notes:
+- `2026-04-05`: Phase 26 closed the historical package preflight browser gap, so the next remaining package seam is execution observability on historical runs.
+- `2026-04-05`: This phase should stay focused on persisted import-summary and history fidelity, not on firing a new execute mutation unless explicitly approved as a follow-up.
+- `2026-04-05`: The targeted unsandboxed Playwright smoke `preserves historical package execution observability after a same-url overwrite run` is green. It proves the historical latest-recorded-import card, execute workflow summary, and import-history table stay pinned to the requested older run and package after a deterministic overwrite chain.
+- `2026-04-05`: When LocalWP lacks real historical import history, the dev-only package execution QA fixture can overlay one selected package's latest execute summary and import history without firing a real import.
+
+### Phase 28: Historical Package Execute Mutation Approval Boundary
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Keep historical package browser coverage non-destructive by default now that dry-run, preflight, and execution-observability routes are green.
+- `[CLOSED]` Define the explicit approval and disposable-data requirements for any future real historical execute browser mutation QA.
+- `[CLOSED]` Record the current validation boundary and environment constraints before any destructive import follow-up is attempted.
+
+Acceptance criteria:
+- The guide makes clear that historical package browser fidelity is closed through read-only execution observability without firing a real import by default.
+- Any future browser validation that actually triggers `POST /runs/{run_id}/execute` on historical packages is treated as an explicit opt-in tranche with disposable LocalWP data and rollback expectations called out first.
+- No new runtime surface is introduced while establishing that boundary.
+
+Current tranche notes:
+- `2026-04-05`: Phase 27 closed the remaining non-destructive historical package browser seam.
+- `2026-04-05`: The next unvalidated package action would be a real execute mutation, so Phase 28 should stay focused on approval boundaries and disposable-data requirements before any destructive QA is attempted.
+- `2026-04-05`: Phase 28 is now closed as a documentation and approval-boundary tranche. The next open work would require explicit approval before any real historical execute mutation runs.
+
+### Phase 29: Historical Package Execute Mutation Browser QA
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Obtain explicit approval before any browser test triggers a real `POST /runs/{run_id}/execute` mutation on disposable LocalWP data.
+- `[CLOSED]` Scope destructive execute QA to disposable historical run and package data with rollback or cleanup expectations called out first.
+- `[CLOSED]` Record the browser result and any remaining environment blockers after the explicit approval boundary is satisfied.
+
+Acceptance criteria:
+- No browser validation triggers a real historical execute mutation until explicit approval is granted for the disposable LocalWP data set being used.
+- If approved, browser validation proves the historical execute mutation route stays pinned to the requested `runId` and `packageId` after a same-domain same-URL overwrite chain.
+- The tranche records rollback or cleanup expectations and keeps unsandboxed Playwright requirements explicit.
+
+Current tranche notes:
+- `2026-04-05`: All currently planned historical package browser seams short of a real execute mutation are now green.
+- `2026-04-05`: This phase should not start execution work until explicit approval is granted for destructive LocalWP import QA.
+- `2026-04-06`: Destructive execute QA for this tranche must stay scoped to disposable data inside `dbvc-codexchanges.local` and `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` only. Do not touch any other LocalWP site, database, directory, or the LocalWP desktop app.
+- `2026-04-06`: Explicit approval was granted for a real historical `POST /runs/{run_id}/execute` mutation on disposable fixture data inside `dbvc-codexchanges.local` only.
+- `2026-04-06`: Package readiness now filters recommendation conflicts through saved decision state, so resolved conflict groups do not keep preflight or execute blocked just because the raw recommendation artifact still lists the original conflict set.
+- `2026-04-06`: The targeted unsandboxed Playwright smoke `preserves historical package execute mutation after a same-url overwrite run` is now green. It proves the real execute mutation, route state, selected package state, and persisted execution follow-up all stay pinned to the approved historical run and package after a same-domain same-URL overwrite chain.
+- `2026-04-06`: The approved destructive execute on `dbvc-codexchanges.local` remained guardrail-blocked and recorded `import_runs = 0`, so rollback cleanup was a no-op on this site. That still closes the route-fidelity seam because the real execute mutation, guardrail-blocked outcome, and persisted execution state were all validated without bypassing site protections.
+
+### Phase 30: Rollback-Eligible Historical Execute Boundary
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Record that `dbvc-codexchanges.local` now validates real historical execute route fidelity, but still does not provide rollback-eligible import runs under the site's current guardrails.
+- `[CLOSED]` Define the exact isolation and approval requirements for any future rollback-specific historical execute QA.
+- `[CLOSED]` Keep rollback-specific follow-up explicitly out of scope for `dbvc-codexchanges.local` unless the user deliberately reopens that boundary.
+
+Acceptance criteria:
+- The guide makes clear that Phase 29 closed the real historical execute route-fidelity seam on `dbvc-codexchanges.local`, even though site guardrails prevented write execution and rollbackable import runs.
+- Any future rollback-specific QA requires a separately designated disposable target and must not disable guardrails or broaden LocalWP scope just to fabricate rollback coverage on `dbvc-codexchanges.local`.
+- The LocalWP boundary remains explicit: no commands, writes, deletions, destructive runtime mutations, or browser QA should touch any LocalWP environment other than `dbvc-codexchanges.local` and `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` unless the user explicitly broadens scope.
+
+Current tranche notes:
+- `2026-04-06`: Phase 30 begins as a boundary-definition tranche, not a new runtime tranche.
+- `2026-04-06`: The next open work is no longer route fidelity on `dbvc-codexchanges.local`; it is deciding whether rollback-eligible execute QA is needed at all and, if so, where it can happen safely.
+- `2026-04-06`: Do not disable guardrails or broaden to other LocalWP sites, databases, directories, or the LocalWP desktop app without explicit user approval.
+- `2026-04-06`: The Playwright environment split is now directly confirmed on this machine: a bare Chromium launch exits with `SIGTRAP` under the Codex shell sandbox but succeeds immediately outside it, so browser QA should treat that as a sandbox boundary and keep using unsandboxed repo scripts when launch is required.
+- `2026-04-06`: Phase 30 is now closed as a boundary-definition tranche. `dbvc-codexchanges.local` remains the approved route-fidelity baseline only; rollback-specific QA is deferred until a separate rollback-enabled disposable target is explicitly designated by the user.
+
+### Phase 31: Rollback-Enabled Historical Execute Target Selection
+
+Phase status:
+- `CLOSED`
+
+Checklist:
+- `[CLOSED]` Decide whether rollback-specific historical execute QA is required beyond the closed Phase 29 route-fidelity coverage.
+- `[CLOSED]` If rollback-specific QA is required, require an explicit user-designated disposable target before any further execute mutation work starts.
+- `[CLOSED]` Preserve the current safety boundary so `dbvc-codexchanges.local` stays the route-fidelity baseline unless the user deliberately broadens scope.
+
+Acceptance criteria:
+- The guide makes clear that rollback-specific follow-up is now a separate opt-in decision, not an automatic continuation of the closed historical execute tranche.
+- Any future rollback-focused QA must use an explicitly approved disposable target and must not broaden into another LocalWP environment by default.
+- The current boundary remains explicit: `dbvc-codexchanges.local` is still the only approved LocalWP environment for current V2 work unless the user directs otherwise.
+
+Current tranche notes:
+- `2026-04-06`: Phase 31 starts only after the rollback boundary is documented and closed in Phase 30.
+- `2026-04-06`: The immediate next step is a decision gate, not a runtime code tranche.
+- `2026-04-06`: Do not start rollback-focused execute QA, disable guardrails, or touch any other LocalWP site, database, directory, shared LocalWP infrastructure, or the LocalWP desktop app unless the user explicitly opens that scope.
+- `2026-04-06`: Phase 31 is now closed by decision. Rollback-specific historical execute QA is not needed now on `dbvc-codexchanges.local`, and no broader LocalWP target should be opened for that purpose unless the user explicitly reopens it later.
+
+### Phase 32: Post-Historical V2 Tranche Selection
+
+Phase status:
+- `OPEN`
+
+Checklist:
+- `[OPEN]` Audit the now-closed historical-fidelity stream and identify the next highest-value V2 product or release-readiness seam.
+- `[OPEN]` Separate product/runtime gaps from environment-only backlog items before defining the next tranche.
+- `[OPEN]` Keep rollback-specific QA deferred unless the user explicitly reopens it with a separate disposable target.
+
+Acceptance criteria:
+- The guide identifies the next real V2 tranche or explicitly records that the historical-fidelity stream is complete and awaiting a new product seam.
+- Tooling-only items such as agent-session transport problems or Codex sandboxed Playwright launch issues stay visible as backlog items, but they do not get mistaken for V2 runtime gaps.
+- No new destructive LocalWP scope is opened by default.
+
+Current tranche notes:
+- `2026-04-06`: Phase 32 begins only after Phase 31 closes by decision.
+- `2026-04-06`: Historical route, review, readiness, package, and execute-route fidelity are now closed on `dbvc-codexchanges.local`.
+- `2026-04-06`: The next logical work is to choose the next real V2 product seam instead of extending rollback-specific QA on the current LocalWP target.
 
 ## Granular Implementation Checklist
 
@@ -1387,12 +1556,84 @@ Phase 19 notes:
 
 ### Phase 24 Task Matrix
 
-- `[OPEN]` `P24-T1` Add targeted browser validation for historical overview and readiness flows after same-URL overwrite chains.
-- `[OPEN]` `P24-T1-S1` Cover at least one overwrite chain where an older run's overview and readiness surfaces still load in the browser after a newer same-domain same-URL run exists.
-- `[OPEN]` `P24-T2` Validate historical package workspace route and selection fidelity in browser flows.
-- `[OPEN]` `P24-T2-S1` Confirm the package workspace keeps the requested `runId` and `packageId` pinned after historical shortcuts and artifact actions.
-- `[OPEN]` `P24-T3` Record the browser validation result and any remaining environment blockers for historical workspace fidelity.
-- `[OPEN]` `P24-T3-S1` Keep the validation record explicit if unsandboxed CLI Playwright or LocalWP still requires a narrowed fallback path.
+- `[CLOSED]` `P24-T1` Add targeted browser validation for historical overview and readiness flows after same-URL overwrite chains.
+- `[CLOSED]` `P24-T1-S1` Cover at least one overwrite chain where an older run's overview and readiness surfaces still load in the browser after a newer same-domain same-URL run exists.
+- `[CLOSED]` `P24-T2` Validate historical package workspace route and selection fidelity in browser flows.
+- `[CLOSED]` `P24-T2-S1` Confirm the package workspace keeps the requested `runId` and `packageId` pinned after historical shortcuts and artifact actions.
+- `[CLOSED]` `P24-T3` Record the browser validation result and any remaining environment blockers for historical workspace fidelity.
+- `[CLOSED]` `P24-T3-S1` Keep the validation record explicit if unsandboxed CLI Playwright or LocalWP still requires a narrowed fallback path.
+
+### Phase 25 Task Matrix
+
+- `[CLOSED]` `P25-T1` Add targeted browser validation for historical package dry-run follow-through after same-URL overwrite chains.
+- `[CLOSED]` `P25-T1-S1` Cover at least one overwrite chain where an older run's package dry-run preview still opens in the browser after a newer same-domain same-URL run exists.
+- `[CLOSED]` `P25-T2` Validate historical package workflow blocker shortcuts and guardrail state in browser flows.
+- `[CLOSED]` `P25-T2-S1` Confirm package workflow blocker shortcuts and route parameters stay pinned to the requested historical `runId` and `packageId` instead of drifting into the newer run or package.
+- `[CLOSED]` `P25-T3` Record the browser validation result and any remaining environment blockers for historical package workflow fidelity.
+- `[CLOSED]` `P25-T3-S1` Keep the validation record explicit if unsandboxed CLI Playwright or LocalWP still requires a narrowed fallback path.
+
+### Phase 26 Task Matrix
+
+- `[CLOSED]` `P26-T1` Add targeted browser validation for historical package preflight approval after same-URL overwrite chains.
+- `[CLOSED]` `P26-T1-S1` Cover at least one overwrite chain where an older run's package preflight approval request still completes in the browser after a newer same-domain same-URL run exists.
+- `[CLOSED]` `P26-T2` Validate historical preflight summary and route-state fidelity in browser flows.
+- `[CLOSED]` `P26-T2-S1` Confirm persisted preflight summary, route parameters, and selected package context stay pinned to the requested historical `runId` and `packageId` instead of drifting into the newer run or package.
+- `[CLOSED]` `P26-T3` Record the browser validation result and any remaining environment blockers for historical preflight fidelity.
+- `[CLOSED]` `P26-T3-S1` Keep the validation record explicit if unsandboxed CLI Playwright or LocalWP still requires a narrowed fallback path.
+
+### Phase 27 Task Matrix
+
+- `[CLOSED]` `P27-T1` Add targeted browser validation for historical package execution-observability after same-URL overwrite chains.
+- `[CLOSED]` `P27-T1-S1` Cover at least one overwrite chain where an older run's latest recorded import summary still opens in the browser after a newer same-domain same-URL run exists.
+- `[CLOSED]` `P27-T2` Validate historical import-history and route-state fidelity in browser flows.
+- `[CLOSED]` `P27-T2-S1` Confirm import-history surfaces, route parameters, and selected package context stay pinned to the requested historical `runId` and `packageId` instead of drifting into the newer run or package.
+- `[CLOSED]` `P27-T3` Record the browser validation result and any remaining environment blockers for historical execution observability.
+- `[CLOSED]` `P27-T3-S1` Keep the validation record explicit if unsandboxed CLI Playwright or LocalWP still requires a narrowed fallback path.
+
+### Phase 28 Task Matrix
+
+- `[CLOSED]` `P28-T1` Record the current non-destructive historical package browser-validation boundary in the guide and working state.
+- `[CLOSED]` `P28-T1-S1` Make it explicit that dry-run, preflight, and execution-observability routes are green without firing a real import by default.
+- `[CLOSED]` `P28-T2` Define the approval and disposable-data prerequisites for any future historical package execute browser mutation QA.
+- `[CLOSED]` `P28-T2-S1` Require explicit approval before browser validation triggers a real `POST /runs/{run_id}/execute` mutation on LocalWP data.
+- `[CLOSED]` `P28-T3` Preserve the environment record for unsandboxed CLI Playwright and the dev-only package execution QA fixture transport.
+- `[CLOSED]` `P28-T3-S1` Keep the validation record explicit if the execution-observability smoke still depends on unsandboxed Playwright or fixture overlays when real import history is absent.
+
+### Phase 29 Task Matrix
+
+- `[CLOSED]` `P29-T1` Obtain explicit approval before any browser test triggers a real historical package execute mutation on LocalWP data.
+- `[CLOSED]` `P29-T1-S1` Confirm the disposable data and rollback expectations for the exact run and package scope before execute QA starts.
+- `[CLOSED]` `P29-T2` Validate that a real historical execute mutation stays pinned to the requested `runId` and `packageId` after a same-domain same-URL overwrite chain.
+- `[CLOSED]` `P29-T2-S1` Keep the browser route, selected package context, and follow-up execution state on the approved historical package instead of drifting into the newer run or package.
+- `[CLOSED]` `P29-T3` Record destructive-QA results and any remaining environment blockers.
+- `[CLOSED]` `P29-T3-S1` Keep unsandboxed Playwright requirements and cleanup expectations explicit for the approved execute mutation run.
+
+### Phase 30 Task Matrix
+
+- `[CLOSED]` `P30-T1` Record the post-Phase-29 boundary for rollback-eligible historical execute QA.
+- `[CLOSED]` `P30-T1-S1` Make it explicit that `dbvc-codexchanges.local` validated real execute route fidelity but still produced zero rollbackable import runs under current guardrails.
+- `[CLOSED]` `P30-T2` Define the isolation requirements for any future rollback-specific execute QA.
+- `[CLOSED]` `P30-T2-S1` Keep all LocalWP scope pinned to `dbvc-codexchanges.local` and `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` unless the user explicitly broadens it.
+- `[CLOSED]` `P30-T3` Preserve the guardrail boundary for future rollback follow-up.
+- `[CLOSED]` `P30-T3-S1` Do not disable guardrails or touch another LocalWP site or the LocalWP desktop app merely to fabricate rollback coverage.
+
+### Phase 31 Task Matrix
+
+- `[CLOSED]` `P31-T1` Decide whether rollback-specific historical execute QA is actually needed beyond the closed route-fidelity tranche.
+- `[CLOSED]` `P31-T1-S1` Keep `dbvc-codexchanges.local` positioned as the approved route-fidelity baseline unless the user explicitly designates a different disposable target.
+- `[CLOSED]` `P31-T2` Define the opt-in requirements for any future rollback-enabled target.
+- `[CLOSED]` `P31-T2-S1` Require explicit user approval before touching another LocalWP environment, changing guardrail assumptions, or reopening destructive execute scope.
+- `[CLOSED]` `P31-T3` Preserve the no-drift safety boundary for future follow-up.
+- `[CLOSED]` `P31-T3-S1` Do not broaden beyond `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` and `dbvc-codexchanges.local` unless the user explicitly says to do so.
+
+### Phase 32 Task Matrix
+
+- `[OPEN]` `P32-T1` Audit the closed historical-fidelity stream and nominate the next real V2 tranche.
+- `[OPEN]` `P32-T1-S1` Separate product/runtime gaps from environment-only backlog items such as agent-session transport problems or sandboxed Playwright launch failures.
+- `[OPEN]` `P32-T2` Define the next delivery boundary without reopening rollback-specific QA by default.
+- `[OPEN]` `P32-T2-S1` Keep `dbvc-codexchanges.local` as the approved current LocalWP scope unless the user explicitly broadens it.
+- `[OPEN]` `P32-T3` Record the next recommended seam or explicitly park the historical-fidelity stream as complete.
+- `[OPEN]` `P32-T3-S1` Do not create a new destructive execute target or rollback-specific tranche unless the user directly asks for it.
 
 ## Reuse Strategy
 

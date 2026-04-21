@@ -422,6 +422,12 @@ final class DBVC_Bricks_Packages
             'created_at' => gmdate('c'),
             'updated_at' => gmdate('c'),
         ];
+        if (isset($payload['protected_variant_summary']) && is_array($payload['protected_variant_summary'])) {
+            $base['protected_variant_summary'] = self::sanitize_protected_variant_summary($payload['protected_variant_summary']);
+        }
+        if (isset($payload['protected_variant_lookup']) && is_array($payload['protected_variant_lookup'])) {
+            $base['protected_variant_lookup'] = self::sanitize_protected_variant_lookup($payload['protected_variant_lookup']);
+        }
         $base['digest'] = 'sha256:' . hash('sha256', wp_json_encode($base));
         return $base;
     }
@@ -1068,6 +1074,7 @@ final class DBVC_Bricks_Packages
         }
 
         $package = self::normalize_package($package_payload);
+        $package = self::annotate_package_with_protected_variants($package, true);
         $site_uid = DBVC_Bricks_Addon::get_setting('dbvc_bricks_site_uid', '');
         if ($site_uid === '') {
             $site_uid = 'site_' . get_current_blog_id();
@@ -1565,5 +1572,103 @@ final class DBVC_Bricks_Packages
             'by_artifact_type' => $by_artifact_type,
             'by_scope' => $by_scope,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @return array<string, mixed>
+     */
+    private static function sanitize_protected_variant_summary(array $summary)
+    {
+        $by_artifact_type = [];
+        foreach ((array) ($summary['by_artifact_type'] ?? []) as $artifact_type => $count) {
+            $artifact_type = sanitize_key((string) $artifact_type);
+            if ($artifact_type === '') {
+                continue;
+            }
+            $by_artifact_type[$artifact_type] = max(0, (int) $count);
+        }
+        $by_scope = [];
+        foreach ((array) ($summary['by_scope'] ?? []) as $scope => $count) {
+            $scope = sanitize_key((string) $scope);
+            if ($scope === '') {
+                continue;
+            }
+            $by_scope[$scope] = max(0, (int) $count);
+        }
+        ksort($by_artifact_type, SORT_STRING);
+        ksort($by_scope, SORT_STRING);
+
+        return [
+            'variant_records' => max(0, (int) ($summary['variant_records'] ?? 0)),
+            'unique_artifact_uids' => max(0, (int) ($summary['unique_artifact_uids'] ?? 0)),
+            'by_artifact_type' => $by_artifact_type,
+            'by_scope' => $by_scope,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $lookup
+     * @return array<string, array<string, mixed>>
+     */
+    private static function sanitize_protected_variant_lookup(array $lookup)
+    {
+        $clean = [];
+        foreach ($lookup as $artifact_uid => $annotation) {
+            if (! is_array($annotation)) {
+                continue;
+            }
+            $artifact_uid = sanitize_text_field((string) $artifact_uid);
+            if ($artifact_uid === '') {
+                $artifact_uid = sanitize_text_field((string) ($annotation['artifact_uid'] ?? ''));
+            }
+            if ($artifact_uid === '') {
+                continue;
+            }
+            $variant_ids = [];
+            foreach ((array) ($annotation['variant_ids'] ?? []) as $variant_id) {
+                $variant_id = sanitize_key((string) $variant_id);
+                if ($variant_id !== '' && ! in_array($variant_id, $variant_ids, true)) {
+                    $variant_ids[] = $variant_id;
+                }
+            }
+            $scopes = [];
+            foreach ((array) ($annotation['scopes'] ?? []) as $scope) {
+                $scope = sanitize_key((string) $scope);
+                if ($scope !== '' && ! in_array($scope, $scopes, true)) {
+                    $scopes[] = $scope;
+                }
+            }
+            sort($variant_ids, SORT_STRING);
+            sort($scopes, SORT_STRING);
+            $clean[$artifact_uid] = [
+                'is_protected' => rest_sanitize_boolean($annotation['is_protected'] ?? true),
+                'artifact_uid' => $artifact_uid,
+                'variant_count' => max(0, (int) ($annotation['variant_count'] ?? count($variant_ids))),
+                'variant_ids' => $variant_ids,
+                'scopes' => $scopes,
+                'latest_updated_at' => self::sanitize_timestamp((string) ($annotation['latest_updated_at'] ?? '')),
+                'latest_reason' => sanitize_textarea_field((string) ($annotation['latest_reason'] ?? '')),
+            ];
+        }
+        ksort($clean, SORT_STRING);
+        return $clean;
+    }
+
+    /**
+     * @param string $value
+     * @return string
+     */
+    private static function sanitize_timestamp($value)
+    {
+        $value = sanitize_text_field((string) $value);
+        if ($value === '') {
+            return '';
+        }
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            return '';
+        }
+        return gmdate('c', $timestamp);
     }
 }

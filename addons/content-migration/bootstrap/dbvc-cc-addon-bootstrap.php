@@ -53,6 +53,7 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-artifact-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-storage-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-observability-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-execution-qa-fixture-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-build-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-rest-controller.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-module.php';

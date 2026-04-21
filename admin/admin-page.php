@@ -65,7 +65,7 @@ function dbvc_render_export_page()
   $taxonomy_include_parent = get_option('dbvc_tax_export_parent_slugs', '1');
   $taxonomy_filename_mode   = dbvc_get_taxonomy_filename_format();
 
-  $allowed_export_mask_modes = ['none', 'remove_defaults', 'remove_customize', 'redact_custom'];
+  $allowed_export_mask_modes = ['none', 'remove_defaults', 'remove_defaults_with_post_fields', 'remove_customize', 'redact_custom'];
   $current_export_mask_mode  = get_option('dbvc_export_last_mask_mode', 'none');
   if (! in_array($current_export_mask_mode, $allowed_export_mask_modes, true)) {
     $current_export_mask_mode = 'none';
@@ -109,12 +109,27 @@ function dbvc_render_export_page()
   }
   $addon_bricks_enabled = $addon_bricks_settings['dbvc_addon_bricks_enabled'] ?? get_option('dbvc_addon_bricks_enabled', '0');
   $addon_bricks_visibility = $addon_bricks_settings['dbvc_addon_bricks_visibility'] ?? get_option('dbvc_addon_bricks_visibility', 'configure_and_submenu');
+  $ai_package_settings = [];
+  if (class_exists('\Dbvc\AiPackage\Settings')) {
+    $ai_package_settings = \Dbvc\AiPackage\Settings::get_all_settings();
+  }
+  $ai_storage_roots = [];
+  $ai_storage_error = '';
+  if (class_exists('\Dbvc\AiPackage\Storage')) {
+    $storage_result = \Dbvc\AiPackage\Storage::ensure_base_roots();
+    if (is_wp_error($storage_result)) {
+      $ai_storage_error = $storage_result->get_error_message();
+    } elseif (is_array($storage_result)) {
+      $ai_storage_roots = $storage_result;
+    }
+  }
 
   $config_feedback = [
     'post_types' => ['success' => [], 'error' => []],
     'taxonomies' => ['success' => [], 'error' => []],
     'masking'    => ['success' => [], 'error' => []],
     'import'     => ['success' => [], 'error' => []],
+    'ai'         => ['success' => [], 'error' => []],
     'addons'     => ['success' => [], 'error' => []],
     'media'      => ['success' => [], 'error' => []],
   ];
@@ -123,6 +138,7 @@ function dbvc_render_export_page()
     'taxonomies' => 'dbvc-config-taxonomies',
     'masking'    => 'dbvc-config-masking',
     'import'     => 'dbvc-config-import',
+    'ai'         => 'dbvc-config-ai',
     'addons'     => 'dbvc-config-addons',
     'media'      => 'dbvc-config-media',
   ];
@@ -669,6 +685,59 @@ function dbvc_render_export_page()
       $config_feedback['import']['success'][] = esc_html__('Import defaults saved.', 'dbvc');
     }
 
+    if (in_array('ai', $config_sections_submitted, true)) {
+      if (class_exists('\Dbvc\AiPackage\Settings')) {
+        $ai_save_result = \Dbvc\AiPackage\Settings::save_settings((array) $_POST);
+        foreach ((array) ($ai_save_result['errors'] ?? []) as $save_error) {
+          $config_feedback['ai']['error'][] = sanitize_text_field((string) $save_error);
+        }
+
+        $ai_package_settings = \Dbvc\AiPackage\Settings::get_all_settings();
+
+        if (class_exists('\Dbvc\AiPackage\OpenAiModelCatalogService')) {
+          \Dbvc\AiPackage\OpenAiModelCatalogService::sync_schedule_for_current_settings();
+          if (! empty($ai_package_settings['providers']['api_key'])) {
+            $ai_model_catalog = \Dbvc\AiPackage\OpenAiModelCatalogService::refresh_catalog(true);
+            if (is_array($ai_model_catalog) && ! empty($ai_model_catalog['last_error'])) {
+              $config_feedback['ai']['error'][] = sprintf(
+                /* translators: %s model refresh error */
+                esc_html__('AI settings saved, but OpenAI model refresh failed: %s', 'dbvc'),
+                sanitize_text_field((string) $ai_model_catalog['last_error'])
+              );
+            } elseif (is_array($ai_model_catalog)) {
+              $model_count = isset($ai_model_catalog['models']) && is_array($ai_model_catalog['models'])
+                ? count($ai_model_catalog['models'])
+                : 0;
+              $config_feedback['ai']['success'][] = sprintf(
+                /* translators: %d number of models */
+                esc_html__('OpenAI model catalog refreshed (%d models).', 'dbvc'),
+                $model_count
+              );
+            }
+          } else {
+            \Dbvc\AiPackage\OpenAiModelCatalogService::clear_catalog();
+          }
+        }
+
+        if (class_exists('\Dbvc\AiPackage\Storage')) {
+          $storage_result = \Dbvc\AiPackage\Storage::ensure_base_roots();
+          if (is_wp_error($storage_result)) {
+            $ai_storage_error = $storage_result->get_error_message();
+            $config_feedback['ai']['error'][] = $ai_storage_error;
+          } elseif (is_array($storage_result)) {
+            $ai_storage_roots = $storage_result;
+            $ai_storage_error = '';
+          }
+        }
+
+        if (empty($config_feedback['ai']['error'])) {
+          $config_feedback['ai']['success'][] = esc_html__('AI package defaults saved.', 'dbvc');
+        }
+      } else {
+        $config_feedback['ai']['error'][] = esc_html__('AI package settings module unavailable.', 'dbvc');
+      }
+    }
+
     // Ensure we always have at least one success notice for the triggering section
     if ($config_sections_submitted) {
       $primary = $config_sections_submitted[0];
@@ -810,10 +879,10 @@ function dbvc_render_export_page()
       update_option('dbvc_export_sort_meta', $sort_meta_enabled ? '1' : '0');
       $sort_export_meta = $sort_meta_enabled;
 
-      // --- New: Determine masking mode (from Export tab radio) ---
+      // --- Determine masking mode (from Export tab select) ---
       $mask_mode = isset($_POST['dbvc_export_mask_mode'])
         ? sanitize_key($_POST['dbvc_export_mask_mode'])
-        : 'none'; // none | remove_defaults | remove_customize | redact_custom
+        : 'none'; // none | remove_defaults | remove_defaults_with_post_fields | remove_customize | redact_custom
       if (! in_array($mask_mode, $allowed_export_mask_modes, true)) {
         $mask_mode = 'none';
       }
@@ -828,15 +897,16 @@ function dbvc_render_export_page()
         'placeholder' => get_option('dbvc_mask_placeholder', '***'),
       ];
 
-    // Load defaults (raw strings) saved in Tab #3
-    $defaults_meta_raw = (string) get_option('dbvc_mask_defaults_meta_keys', '');
-    $defaults_sub_raw  = (string) get_option('dbvc_mask_defaults_subkeys',  '');
+      // Load defaults (raw strings) saved in Tab #3
+      $defaults_meta_raw = (string) get_option('dbvc_mask_defaults_meta_keys', '');
+      $defaults_sub_raw  = (string) get_option('dbvc_mask_defaults_subkeys',  '');
 
-    // Build effective masking for this run
-    $effective_action      = 'remove';
-    $effective_meta_keys   = '';
-    $effective_subkeys     = '';
-    $effective_placeholder = $prev_mask['placeholder']; // carry over unless user supplies
+      // Build effective masking for this run
+      $effective_action      = 'remove';
+      $effective_meta_keys   = '';
+      $effective_subkeys     = '';
+      $effective_placeholder = $prev_mask['placeholder']; // carry over unless user supplies
+      $export_mask_post_fields = [];
 
     if ($mask_mode === 'none') {
       // No masking at all
@@ -848,6 +918,14 @@ function dbvc_render_export_page()
       $effective_action    = 'remove';
       $effective_meta_keys = $defaults_meta_raw;
       $effective_subkeys   = $defaults_sub_raw;
+    } elseif ($mask_mode === 'remove_defaults_with_post_fields') {
+      // Remove using saved defaults and eligible configured root post fields.
+      $effective_action    = 'remove';
+      $effective_meta_keys = $defaults_meta_raw;
+      $effective_subkeys   = $defaults_sub_raw;
+      if (function_exists('dbvc_get_export_mask_post_fields')) {
+        $export_mask_post_fields = dbvc_get_export_mask_post_fields($selected_post_field_masks);
+      }
     } elseif ($mask_mode === 'remove_customize') {
       // Merge defaults + user additions (pre-filled UI)
       $effective_action = 'remove';
@@ -880,6 +958,14 @@ function dbvc_render_export_page()
     update_option('dbvc_mask_meta_keys',   $effective_meta_keys);
     update_option('dbvc_mask_subkeys',     $effective_subkeys);
     update_option('dbvc_mask_placeholder', $effective_placeholder);
+
+    $post_field_mask_cb = null;
+    if (! empty($export_mask_post_fields) && function_exists('dbvc_mask_apply_to_post_fields')) {
+      $post_field_mask_cb = static function (array $data) use ($export_mask_post_fields, $effective_action, $effective_placeholder) {
+        return dbvc_mask_apply_to_post_fields($data, $export_mask_post_fields, $effective_action, $effective_placeholder);
+      };
+      add_filter('dbvc_export_post_data', $post_field_mask_cb, 25, 3);
+    }
 
     // --- Mirror vs Strip coordination for THIS run (unchanged) ---
     $mirror_raw  = trim((string) get_option('dbvc_mirror_domain', ''));
@@ -1048,6 +1134,9 @@ function dbvc_render_export_page()
       // --- Cleanup (mirror filter + strip restoration; temp filters; restore masking options) ---
       if ($mirror_cb) {
         remove_filter('dbvc_export_post_data', $mirror_cb, 9);
+      }
+      if ($post_field_mask_cb) {
+        remove_filter('dbvc_export_post_data', $post_field_mask_cb, 25);
       }
       if ($restore_strip_opt !== null) {
         update_option('dbvc_strip_domain_urls', $restore_strip_opt);
@@ -1459,6 +1548,7 @@ function dbvc_render_export_page()
     'dbvc-config-taxonomies' => esc_html__('Taxonomies', 'dbvc'),
     'dbvc-config-masking'    => esc_html__('Masking & Auto-Exports', 'dbvc'),
     'dbvc-config-import'     => esc_html__('Import Defaults', 'dbvc'),
+    'dbvc-config-ai'         => esc_html__('AI + Integrations', 'dbvc'),
     'dbvc-config-addons'     => esc_html__('Add-ons', 'dbvc'),
     'dbvc-config-media'      => esc_html__('Media Handling', 'dbvc'),
     'dbvc-config-tools'      => esc_html__('Maintenance & Tools', 'dbvc'),
@@ -1871,6 +1961,535 @@ function dbvc_render_export_page()
               if (isset($_GET['dbvc_sync_report']) && $_GET['dbvc_sync_report'] === 'dismiss') {
                 delete_option('dbvc_sync_upload_report');
               }
+              if (isset($_GET['dbvc_ai_report']) && $_GET['dbvc_ai_report'] === 'dismiss') {
+                delete_option('dbvc_ai_upload_report');
+              }
+              $ai_upload_report = get_option('dbvc_ai_upload_report');
+              if (is_array($ai_upload_report) && (($ai_upload_report['mode'] ?? '') === 'ai_package')) :
+                $ai_report_counts = isset($ai_upload_report['counts']) && is_array($ai_upload_report['counts'])
+                  ? $ai_upload_report['counts']
+                  : [];
+                $ai_report_issues = isset($ai_upload_report['issues']) && is_array($ai_upload_report['issues'])
+                  ? $ai_upload_report['issues']
+                  : [];
+                $ai_issue_groups = class_exists('\Dbvc\AiPackage\IssueService')
+                  ? \Dbvc\AiPackage\IssueService::group_for_display($ai_report_issues)
+                  : [];
+                $ai_report_entities = isset($ai_upload_report['entities']) && is_array($ai_upload_report['entities'])
+                  ? $ai_upload_report['entities']
+                  : [];
+                $ai_report_artifacts = isset($ai_upload_report['artifacts']) && is_array($ai_upload_report['artifacts'])
+                  ? $ai_upload_report['artifacts']
+                  : [];
+                $ai_report_status = isset($ai_upload_report['status']) ? (string) $ai_upload_report['status'] : 'blocked';
+                $ai_report_notice_class = $ai_report_status === 'blocked'
+                  ? 'notice notice-error'
+                  : 'notice notice-info';
+                $ai_report_title = $ai_report_status === 'blocked'
+                  ? __('AI package intake blocked', 'dbvc')
+                  : __('AI package intake report', 'dbvc');
+                $ai_intake_id = isset($ai_upload_report['intake_id']) ? (string) $ai_upload_report['intake_id'] : '';
+                $ai_warning_policy = class_exists('\Dbvc\AiPackage\Settings')
+                  ? (string) ((\Dbvc\AiPackage\Settings::get_all_settings()['validation']['warning_policy'] ?? 'confirm'))
+                  : 'confirm';
+                $ai_import_result = isset($ai_upload_report['import_result']) && is_array($ai_upload_report['import_result'])
+                  ? $ai_upload_report['import_result']
+                  : [];
+                $ai_relationship_result = isset($ai_import_result['relationship_resolution']) && is_array($ai_import_result['relationship_resolution'])
+                  ? $ai_import_result['relationship_resolution']
+                  : [];
+                $ai_manifest = isset($ai_upload_report['manifest']) && is_array($ai_upload_report['manifest'])
+                  ? $ai_upload_report['manifest']
+                  : [];
+                $ai_source_fingerprint = isset($ai_manifest['source_sample_package']['site_fingerprint'])
+                  ? (string) $ai_manifest['source_sample_package']['site_fingerprint']
+                  : '';
+                $ai_current_fingerprint = isset($ai_upload_report['site_fingerprint']) ? (string) $ai_upload_report['site_fingerprint'] : '';
+                $ai_fingerprint_status = ($ai_source_fingerprint !== '' && $ai_current_fingerprint !== '' && $ai_source_fingerprint === $ai_current_fingerprint)
+                  ? __('matched', 'dbvc')
+                  : __('unknown', 'dbvc');
+                $ai_validation_summary_url = ($ai_intake_id !== '' && ! empty($ai_report_artifacts['validation_summary']) && class_exists('DBVC_AI_Intake_Controller'))
+                  ? DBVC_AI_Intake_Controller::get_download_url($ai_intake_id, (string) $ai_report_artifacts['validation_summary'])
+                  : '';
+                $ai_validation_report_url = ($ai_intake_id !== '' && ! empty($ai_report_artifacts['validation_report']) && class_exists('DBVC_AI_Intake_Controller'))
+                  ? DBVC_AI_Intake_Controller::get_download_url($ai_intake_id, (string) $ai_report_artifacts['validation_report'])
+                  : '';
+                $ai_translation_manifest_url = ($ai_intake_id !== '' && ! empty($ai_report_artifacts['translation_manifest']) && class_exists('DBVC_AI_Intake_Controller'))
+                  ? DBVC_AI_Intake_Controller::get_download_url($ai_intake_id, (string) $ai_report_artifacts['translation_manifest'])
+                  : '';
+                $ai_import_summary_url = ($ai_intake_id !== '' && ! empty($ai_report_artifacts['import_summary']) && class_exists('DBVC_AI_Intake_Controller'))
+                  ? DBVC_AI_Intake_Controller::get_download_url($ai_intake_id, (string) $ai_report_artifacts['import_summary'])
+                  : '';
+                $ai_import_report_url = ($ai_intake_id !== '' && ! empty($ai_report_artifacts['import_report']) && class_exists('DBVC_AI_Intake_Controller'))
+                  ? DBVC_AI_Intake_Controller::get_download_url($ai_intake_id, (string) $ai_report_artifacts['import_report'])
+                  : '';
+                $ai_import_url = ($ai_intake_id !== '' && class_exists('DBVC_AI_Intake_Controller'))
+                  ? DBVC_AI_Intake_Controller::get_import_url($ai_intake_id)
+                  : '';
+                $ai_cancel_url = ($ai_intake_id !== '' && class_exists('DBVC_AI_Intake_Controller'))
+                  ? DBVC_AI_Intake_Controller::get_cancel_url($ai_intake_id)
+                  : '';
+              ?>
+                <div class="<?php echo esc_attr($ai_report_notice_class); ?> dbvc-ai-review-panel" style="margin-top:1em;">
+                  <p><strong><?php echo esc_html($ai_report_title); ?></strong></p>
+                  <p>
+                    <?php
+                    echo esc_html(
+                      sprintf(
+                        /* translators: 1: status 2: posts 3: terms 4: warnings 5: blocked */
+                        __('Status: %1$s. Posts: %2$d. Terms: %3$d. Warnings: %4$d. Blocked issues: %5$d.', 'dbvc'),
+                        $ai_report_status,
+                        (int) ($ai_report_counts['post_entities'] ?? 0),
+                        (int) ($ai_report_counts['term_entities'] ?? 0),
+                        (int) ($ai_report_counts['warnings'] ?? 0),
+                        (int) ($ai_report_counts['blocked'] ?? 0)
+                      )
+                    );
+                    ?>
+                  </p>
+                  <?php if (! empty($ai_upload_report['intake_id'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Intake ID: %s', 'dbvc'), (string) $ai_upload_report['intake_id'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_upload_report['intended_operation'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Operation mode: %s', 'dbvc'), (string) $ai_upload_report['intended_operation'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_upload_report['package_type'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Package type: %s', 'dbvc'), (string) $ai_upload_report['package_type'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_upload_report['package_schema_version'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Schema version: %s', 'dbvc'), (string) $ai_upload_report['package_schema_version'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if ($ai_source_fingerprint !== '' || $ai_current_fingerprint !== '') : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Site fingerprint: %s', 'dbvc'), $ai_fingerprint_status)); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_report_artifacts['validation_summary'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Validation summary: %s', 'dbvc'), (string) $ai_report_artifacts['validation_summary'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_report_artifacts['translation_manifest'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Translation manifest: %s', 'dbvc'), (string) $ai_report_artifacts['translation_manifest'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_report_artifacts['translated_sync_root'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Translated sync root: %s', 'dbvc'), (string) $ai_report_artifacts['translated_sync_root'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_report_artifacts['import_summary'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Import summary: %s', 'dbvc'), (string) $ai_report_artifacts['import_summary'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_report_artifacts['import_report'])) : ?>
+                    <p><small><?php echo esc_html(sprintf(__('Import report: %s', 'dbvc'), (string) $ai_report_artifacts['import_report'])); ?></small></p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_report_counts['translated_entities'])) : ?>
+                    <p>
+                      <?php
+                      echo esc_html(
+                        sprintf(
+                          /* translators: 1: total translated 2: translated posts 3: translated terms */
+                          __('Translated entities: %1$d total (%2$d posts, %3$d terms).', 'dbvc'),
+                          (int) ($ai_report_counts['translated_entities'] ?? 0),
+                          (int) ($ai_report_counts['translated_posts'] ?? 0),
+                          (int) ($ai_report_counts['translated_terms'] ?? 0)
+                        )
+                      );
+                      ?>
+                    </p>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_import_result)) : ?>
+                    <div class="notice notice-info inline">
+                      <p>
+                        <?php
+                        echo esc_html(
+                          sprintf(
+                            /* translators: 1: post applied count 2: term applied count */
+                            __('AI import completed. Posts applied: %1$d. Terms applied: %2$d.', 'dbvc'),
+                            (int) ($ai_import_result['posts']['applied'] ?? 0),
+                            (int) ($ai_import_result['terms']['applied'] ?? 0)
+                          )
+                        );
+                        ?>
+                      </p>
+                      <?php if (! empty($ai_import_result['message'])) : ?>
+                        <p><small><?php echo esc_html((string) $ai_import_result['message']); ?></small></p>
+                      <?php endif; ?>
+                      <?php if (! empty($ai_import_result['artifact_errors']) && is_array($ai_import_result['artifact_errors'])) : ?>
+                        <ul style="margin:.5rem 0 0 1rem; list-style:disc;">
+                          <?php foreach ((array) $ai_import_result['artifact_errors'] as $artifact_error) :
+                            if (! is_scalar($artifact_error)) {
+                              continue;
+                            }
+                          ?>
+                            <li><?php echo esc_html((string) $artifact_error); ?></li>
+                          <?php endforeach; ?>
+                        </ul>
+                      <?php endif; ?>
+                      <?php if (! empty($ai_relationship_result)) : ?>
+                        <p>
+                          <?php
+                          echo esc_html(
+                            sprintf(
+                              /* translators: 1: processed 2: applied 3: warnings 4: errors */
+                              __('Post-import relationship resolution: %1$d processed, %2$d applied, %3$d warnings, %4$d errors.', 'dbvc'),
+                              (int) ($ai_relationship_result['processed'] ?? 0),
+                              (int) ($ai_relationship_result['applied'] ?? 0),
+                              (int) ($ai_relationship_result['warnings'] ?? 0),
+                              (int) ($ai_relationship_result['errors'] ?? 0)
+                            )
+                          );
+                          ?>
+                        </p>
+                        <?php if (! empty($ai_relationship_result['families']) && is_array($ai_relationship_result['families'])) : ?>
+                          <div class="dbvc-ai-review-panel__table-wrap">
+                            <table class="widefat striped dbvc-ai-review-panel__table">
+                              <thead>
+                                <tr>
+                                  <th><?php esc_html_e('Resolution Family', 'dbvc'); ?></th>
+                                  <th><?php esc_html_e('Processed', 'dbvc'); ?></th>
+                                  <th><?php esc_html_e('Applied', 'dbvc'); ?></th>
+                                  <th><?php esc_html_e('Warnings', 'dbvc'); ?></th>
+                                  <th><?php esc_html_e('Errors', 'dbvc'); ?></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <?php foreach ((array) $ai_relationship_result['families'] as $family_key => $family_counts) :
+                                  if (! is_array($family_counts)) {
+                                    continue;
+                                  }
+                                ?>
+                                  <tr>
+                                    <td><code><?php echo esc_html((string) $family_key); ?></code></td>
+                                    <td><?php echo esc_html((string) (int) ($family_counts['processed'] ?? 0)); ?></td>
+                                    <td><?php echo esc_html((string) (int) ($family_counts['applied'] ?? 0)); ?></td>
+                                    <td><?php echo esc_html((string) (int) ($family_counts['warnings'] ?? 0)); ?></td>
+                                    <td><?php echo esc_html((string) (int) ($family_counts['errors'] ?? 0)); ?></td>
+                                  </tr>
+                                <?php endforeach; ?>
+                              </tbody>
+                            </table>
+                          </div>
+                        <?php endif; ?>
+                        <?php if (! empty($ai_relationship_result['details']) && is_array($ai_relationship_result['details'])) : ?>
+                          <details class="dbvc-ai-review-panel__issue-group" style="margin-top:0.75rem;">
+                            <summary class="dbvc-ai-review-panel__issue-summary">
+                              <strong><?php esc_html_e('Relationship Resolution Details', 'dbvc'); ?></strong>
+                              <span class="dbvc-ai-review-panel__issue-meta"><?php echo esc_html(sprintf(__('Showing %d detail rows', 'dbvc'), min(8, count($ai_relationship_result['details'])))); ?></span>
+                            </summary>
+                            <div class="dbvc-ai-review-panel__issue-body">
+                              <div class="dbvc-ai-review-panel__table-wrap">
+                                <table class="widefat striped dbvc-ai-review-panel__table">
+                                  <thead>
+                                    <tr>
+                                      <th><?php esc_html_e('Family', 'dbvc'); ?></th>
+                                      <th><?php esc_html_e('Entity', 'dbvc'); ?></th>
+                                      <th><?php esc_html_e('Status', 'dbvc'); ?></th>
+                                      <th><?php esc_html_e('Message', 'dbvc'); ?></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <?php foreach (array_slice((array) $ai_relationship_result['details'], 0, 8) as $detail) :
+                                      if (! is_array($detail)) {
+                                        continue;
+                                      }
+                                    ?>
+                                      <tr>
+                                        <td><code><?php echo esc_html((string) ($detail['family'] ?? '')); ?></code></td>
+                                        <td><code><?php echo esc_html((string) ($detail['path'] ?? '')); ?></code></td>
+                                        <td><?php echo esc_html((string) ($detail['status'] ?? '')); ?></td>
+                                        <td><?php echo esc_html((string) ($detail['message'] ?? '')); ?></td>
+                                      </tr>
+                                    <?php endforeach; ?>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </details>
+                        <?php endif; ?>
+                      <?php endif; ?>
+                      <?php if (! empty($ai_import_result['posts']['details']) || ! empty($ai_import_result['terms']['details'])) : ?>
+                        <div class="dbvc-ai-review-panel__table-wrap">
+                          <table class="widefat striped dbvc-ai-review-panel__table">
+                            <thead>
+                              <tr>
+                                <th><?php esc_html_e('Imported File', 'dbvc'); ?></th>
+                                <th><?php esc_html_e('Kind', 'dbvc'); ?></th>
+                                <th><?php esc_html_e('Status', 'dbvc'); ?></th>
+                                <th><?php esc_html_e('Message', 'dbvc'); ?></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <?php foreach (array_slice((array) ($ai_import_result['posts']['details'] ?? []), 0, 5) as $detail) :
+                                if (! is_array($detail)) {
+                                  continue;
+                                }
+                              ?>
+                                <tr>
+                                  <td><code><?php echo esc_html((string) ($detail['file'] ?? '')); ?></code></td>
+                                  <td><?php esc_html_e('Post', 'dbvc'); ?></td>
+                                  <td><?php echo esc_html((string) ($detail['status'] ?? '')); ?></td>
+                                  <td><?php echo esc_html((string) ($detail['message'] ?? '')); ?></td>
+                                </tr>
+                              <?php endforeach; ?>
+                              <?php foreach (array_slice((array) ($ai_import_result['terms']['details'] ?? []), 0, 5) as $detail) :
+                                if (! is_array($detail)) {
+                                  continue;
+                                }
+                              ?>
+                                <tr>
+                                  <td><code><?php echo esc_html((string) ($detail['file'] ?? '')); ?></code></td>
+                                  <td><?php esc_html_e('Term', 'dbvc'); ?></td>
+                                  <td><?php echo esc_html((string) ($detail['status'] ?? '')); ?></td>
+                                  <td><?php echo esc_html((string) ($detail['message'] ?? '')); ?></td>
+                                </tr>
+                              <?php endforeach; ?>
+                            </tbody>
+                          </table>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+                  <?php endif; ?>
+                  <?php if ($ai_validation_summary_url !== '' || $ai_validation_report_url !== '' || $ai_translation_manifest_url !== '' || $ai_import_summary_url !== '' || $ai_import_report_url !== '') : ?>
+                    <div class="dbvc-ai-review-panel__actions">
+                      <?php if ($ai_validation_summary_url !== '') : ?>
+                        <a class="button button-secondary" href="<?php echo esc_url($ai_validation_summary_url); ?>"><?php esc_html_e('Download Validation Summary', 'dbvc'); ?></a>
+                      <?php endif; ?>
+                      <?php if ($ai_validation_report_url !== '') : ?>
+                        <a class="button button-secondary" href="<?php echo esc_url($ai_validation_report_url); ?>"><?php esc_html_e('Download Validation Report', 'dbvc'); ?></a>
+                      <?php endif; ?>
+                      <?php if ($ai_translation_manifest_url !== '') : ?>
+                        <a class="button button-secondary" href="<?php echo esc_url($ai_translation_manifest_url); ?>"><?php esc_html_e('Download Translation Manifest', 'dbvc'); ?></a>
+                      <?php endif; ?>
+                      <?php if ($ai_import_summary_url !== '') : ?>
+                        <a class="button button-secondary" href="<?php echo esc_url($ai_import_summary_url); ?>"><?php esc_html_e('Download Import Summary', 'dbvc'); ?></a>
+                      <?php endif; ?>
+                      <?php if ($ai_import_report_url !== '') : ?>
+                        <a class="button button-secondary" href="<?php echo esc_url($ai_import_report_url); ?>"><?php esc_html_e('Download Import Report', 'dbvc'); ?></a>
+                      <?php endif; ?>
+                    </div>
+                  <?php endif; ?>
+                  <?php if ($ai_report_status !== 'blocked' && $ai_import_url !== '') : ?>
+                    <form method="post" action="<?php echo esc_url($ai_import_url); ?>" class="dbvc-ai-review-panel__import-form">
+                      <?php if ($ai_report_status === 'valid_with_warnings' && ! empty($ai_report_counts['warnings']) && $ai_warning_policy === 'confirm') : ?>
+                        <div class="dbvc-option-chip-grid" style="margin-bottom:0.75rem;">
+                          <label class="dbvc-option-chip">
+                            <input type="checkbox" name="dbvc_ai_confirm_warnings" value="1" />
+                            <span class="dbvc-option-chip__text"><?php esc_html_e('I understand the remaining AI intake warnings and want to continue with import.', 'dbvc'); ?></span>
+                          </label>
+                        </div>
+                      <?php endif; ?>
+                      <div class="dbvc-ai-review-panel__actions">
+                        <button type="submit" class="button button-primary"><?php esc_html_e('Import Translated Package', 'dbvc'); ?></button>
+                        <?php if ($ai_cancel_url !== '') : ?>
+                          <a class="button button-secondary" href="<?php echo esc_url($ai_cancel_url); ?>"><?php esc_html_e('Cancel AI Intake', 'dbvc'); ?></a>
+                        <?php endif; ?>
+                      </div>
+                    </form>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_report_entities)) : ?>
+                    <p><strong><?php esc_html_e('Entity translation preview', 'dbvc'); ?></strong></p>
+                    <div class="dbvc-ai-review-panel__table-wrap">
+                      <table class="widefat striped dbvc-ai-review-panel__table">
+                        <thead>
+                          <tr>
+                            <th><?php esc_html_e('Entity', 'dbvc'); ?></th>
+                            <th><?php esc_html_e('Intent', 'dbvc'); ?></th>
+                            <th><?php esc_html_e('Status', 'dbvc'); ?></th>
+                            <th><?php esc_html_e('Match', 'dbvc'); ?></th>
+                            <th><?php esc_html_e('Translated Path', 'dbvc'); ?></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <?php foreach (array_slice($ai_report_entities, 0, 10) as $entity_row) :
+                            if (! is_array($entity_row)) {
+                              continue;
+                            }
+                          ?>
+                            <tr>
+                              <td><code><?php echo esc_html((string) ($entity_row['path'] ?? '')); ?></code></td>
+                              <td><?php echo esc_html((string) ($entity_row['intent'] ?? '')); ?></td>
+                              <td><?php echo esc_html((string) ($entity_row['status'] ?? '')); ?></td>
+                              <td><?php echo esc_html((string) ($entity_row['match_source'] ?? '')); ?></td>
+                              <td><code><?php echo esc_html((string) ($entity_row['translated_path'] ?? '')); ?></code></td>
+                            </tr>
+                          <?php endforeach; ?>
+                        </tbody>
+                      </table>
+                    </div>
+                  <?php endif; ?>
+                  <?php if (! empty($ai_issue_groups)) : ?>
+                    <p><strong><?php esc_html_e('AI intake issues', 'dbvc'); ?></strong></p>
+                    <div class="dbvc-ai-review-panel__issue-groups">
+                      <?php foreach (array_slice($ai_issue_groups, 0, 12) as $issue_group) :
+                        if (! is_array($issue_group)) {
+                          continue;
+                        }
+                        $issue_group_counts = isset($issue_group['counts']) && is_array($issue_group['counts'])
+                          ? $issue_group['counts']
+                          : [];
+                        $issue_group_issues = isset($issue_group['issues']) && is_array($issue_group['issues'])
+                          ? $issue_group['issues']
+                          : [];
+                        $issue_group_scope_bits = [];
+                        if (! empty($issue_group['stage'])) {
+                          $issue_group_scope_bits[] = sprintf(__('stage: %s', 'dbvc'), (string) $issue_group['stage']);
+                        }
+                        if (! empty($issue_group['level'])) {
+                          $issue_group_scope_bits[] = sprintf(__('level: %s', 'dbvc'), (string) $issue_group['level']);
+                        }
+                        if (! empty($issue_group['entity_kind']) && ! empty($issue_group['object_key'])) {
+                          $entity_scope_label = (string) $issue_group['entity_kind'] . ':' . (string) $issue_group['object_key'];
+                          if (! empty($issue_group['entity_slug'])) {
+                            $entity_scope_label .= '/' . (string) $issue_group['entity_slug'];
+                          }
+                          $issue_group_scope_bits[] = $entity_scope_label;
+                        }
+                      ?>
+                        <details class="dbvc-ai-review-panel__issue-group" open>
+                          <summary class="dbvc-ai-review-panel__issue-summary">
+                            <strong><?php echo esc_html((string) ($issue_group['label'] ?? __('Issue group', 'dbvc'))); ?></strong>
+                            <span class="dbvc-ai-review-panel__issue-meta">
+                              <?php
+                              echo esc_html(
+                                sprintf(
+                                  /* translators: 1: total issues 2: errors 3: warnings */
+                                  __('%1$d issues · %2$d errors · %3$d warnings', 'dbvc'),
+                                  count($issue_group_issues),
+                                  (int) ($issue_group_counts['error'] ?? 0),
+                                  (int) ($issue_group_counts['warning'] ?? 0)
+                                )
+                              );
+                              ?>
+                            </span>
+                          </summary>
+                          <div class="dbvc-ai-review-panel__issue-body">
+                            <?php if (! empty($issue_group['file_path']) || ! empty($issue_group['field_path'])) : ?>
+                              <p class="description">
+                                <?php if (! empty($issue_group['file_path'])) : ?>
+                                  <code><?php echo esc_html((string) $issue_group['file_path']); ?></code>
+                                <?php endif; ?>
+                                <?php if (! empty($issue_group['field_path'])) : ?>
+                                  <span><?php echo esc_html(' · ' . (string) $issue_group['field_path']); ?></span>
+                                <?php endif; ?>
+                              </p>
+                            <?php endif; ?>
+                            <?php if (! empty($issue_group_scope_bits)) : ?>
+                              <div class="dbvc-ai-review-panel__issue-scope-row">
+                                <?php foreach ($issue_group_scope_bits as $scope_bit) : ?>
+                                  <span class="dbvc-ai-review-panel__issue-chip"><?php echo esc_html((string) $scope_bit); ?></span>
+                                <?php endforeach; ?>
+                              </div>
+                            <?php endif; ?>
+                            <ul class="dbvc-ai-review-panel__issue-list">
+                              <?php foreach ($issue_group_issues as $issue) :
+                                if (! is_array($issue)) {
+                                  continue;
+                                }
+                                $issue_code = isset($issue['code']) ? (string) $issue['code'] : '';
+                                $issue_path = isset($issue['path']) ? (string) $issue['path'] : '';
+                                $issue_message = isset($issue['message']) ? (string) $issue['message'] : '';
+                                $issue_severity = isset($issue['severity']) ? (string) $issue['severity'] : '';
+                                $issue_stage = isset($issue['stage']) ? (string) $issue['stage'] : '';
+                                $issue_scope = isset($issue['scope']) && is_array($issue['scope']) ? $issue['scope'] : [];
+                                $issue_scope_rows = [];
+                                if ($issue_stage !== '') {
+                                  $issue_scope_rows[] = [
+                                    'label' => __('Stage', 'dbvc'),
+                                    'value' => $issue_stage,
+                                  ];
+                                }
+                                if (! empty($issue_scope['level'])) {
+                                  $issue_scope_rows[] = [
+                                    'label' => __('Level', 'dbvc'),
+                                    'value' => (string) $issue_scope['level'],
+                                  ];
+                                }
+                                if (! empty($issue_scope['entity_kind']) || ! empty($issue_scope['object_key']) || ! empty($issue_scope['entity_slug'])) {
+                                  $entity_scope_value = '';
+                                  if (! empty($issue_scope['entity_kind']) && ! empty($issue_scope['object_key'])) {
+                                    $entity_scope_value = (string) $issue_scope['entity_kind'] . ':' . (string) $issue_scope['object_key'];
+                                  }
+                                  if ($entity_scope_value !== '' && ! empty($issue_scope['entity_slug'])) {
+                                    $entity_scope_value .= '/' . (string) $issue_scope['entity_slug'];
+                                  }
+                                  if ($entity_scope_value !== '') {
+                                    $issue_scope_rows[] = [
+                                      'label' => __('Entity', 'dbvc'),
+                                      'value' => $entity_scope_value,
+                                    ];
+                                  }
+                                }
+                                if (! empty($issue_scope['field_path'])) {
+                                  $issue_scope_rows[] = [
+                                    'label' => __('Field', 'dbvc'),
+                                    'value' => (string) $issue_scope['field_path'],
+                                  ];
+                                }
+                                if ($issue_path !== '') {
+                                  $issue_scope_rows[] = [
+                                    'label' => __('Path', 'dbvc'),
+                                    'value' => $issue_path,
+                                  ];
+                                }
+                              ?>
+                                <li>
+                                  <details class="dbvc-ai-review-panel__issue-detail">
+                                    <summary class="dbvc-ai-review-panel__issue-detail-summary">
+                                      <strong><?php echo esc_html($issue_code !== '' ? strtoupper($issue_code) : __('Issue', 'dbvc')); ?></strong>
+                                      <?php if ($issue_severity !== '') : ?>
+                                        <span class="dbvc-ai-review-panel__issue-meta"><?php echo esc_html('(' . $issue_severity . ')'); ?></span>
+                                      <?php endif; ?>
+                                    </summary>
+                                    <div class="dbvc-ai-review-panel__issue-detail-body">
+                                      <?php if ($issue_message !== '') : ?>
+                                        <p><small><?php echo esc_html($issue_message); ?></small></p>
+                                      <?php endif; ?>
+                                      <?php if (! empty($issue_scope_rows)) : ?>
+                                        <div class="dbvc-ai-review-panel__issue-data">
+                                          <?php foreach ($issue_scope_rows as $scope_row) : ?>
+                                            <div class="dbvc-ai-review-panel__issue-data-row">
+                                              <span class="dbvc-ai-review-panel__issue-data-label"><?php echo esc_html((string) $scope_row['label']); ?></span>
+                                              <code><?php echo esc_html((string) $scope_row['value']); ?></code>
+                                            </div>
+                                          <?php endforeach; ?>
+                                        </div>
+                                      <?php endif; ?>
+                                    </div>
+                                  </details>
+                                </li>
+                              <?php endforeach; ?>
+                            </ul>
+                          </div>
+                        </details>
+                      <?php endforeach; ?>
+                    </div>
+                  <?php elseif (! empty($ai_report_issues)) : ?>
+                    <p><strong><?php esc_html_e('AI intake issues', 'dbvc'); ?></strong></p>
+                    <ul>
+                      <?php foreach (array_slice($ai_report_issues, 0, 10) as $issue) :
+                        if (! is_array($issue)) {
+                          continue;
+                        }
+                        $issue_code = isset($issue['code']) ? (string) $issue['code'] : '';
+                        $issue_path = isset($issue['path']) ? (string) $issue['path'] : '';
+                        $issue_message = isset($issue['message']) ? (string) $issue['message'] : '';
+                        $issue_severity = isset($issue['severity']) ? (string) $issue['severity'] : '';
+                      ?>
+                        <li>
+                          <?php echo esc_html($issue_code !== '' ? strtoupper($issue_code) : __('Issue', 'dbvc')); ?>
+                          <?php if ($issue_severity !== '') : ?>
+                            <?php echo esc_html(' (' . $issue_severity . ')'); ?>
+                          <?php endif; ?>
+                          <?php if ($issue_message !== '') : ?>
+                            <br><small><?php echo esc_html($issue_message); ?></small>
+                          <?php endif; ?>
+                          <?php if ($issue_path !== '') : ?>
+                            <br><small><?php echo esc_html($issue_path); ?></small>
+                          <?php endif; ?>
+                        </li>
+                      <?php endforeach; ?>
+                    </ul>
+                  <?php endif; ?>
+                  <p><a href="<?php echo esc_url(add_query_arg('dbvc_ai_report', 'dismiss', wp_get_referer())); ?>"><?php esc_html_e('Dismiss AI intake report', 'dbvc'); ?></a></p>
+                </div>
+              <?php endif; ?>
+
+              <?php
               $upload_report = get_option('dbvc_sync_upload_report');
               $immediate_import_report = null;
               if (is_array($upload_report)) :
@@ -1969,14 +2588,38 @@ function dbvc_render_export_page()
 
               <?php if (isset($_GET['dbvc_upload'])) :
                 $state = sanitize_key($_GET['dbvc_upload']);
-                $class = ('success' === $state) ? 'updated' : 'error';
-                $msg   = ('success' === $state)
-                  ? (! empty($immediate_import_report['requested']) && ! empty($immediate_import_report['enabled'])
+                if ('success' === $state) {
+                  $class = 'updated';
+                  $msg   = ! empty($immediate_import_report['requested']) && ! empty($immediate_import_report['enabled'])
                     ? __('Upload and immediate import completed!', 'dbvc')
-                    : __('Upload completed!', 'dbvc'))
-                  : (! empty($immediate_import_report['requested'])
+                    : __('Upload completed!', 'dbvc');
+                } elseif ('ai_review' === $state) {
+                  $class = 'notice-info';
+                  $msg   = __('AI package detected and staged for intake review. See the AI intake report below.', 'dbvc');
+                } elseif ('ai_blocked' === $state) {
+                  $class = 'notice-error';
+                  $msg   = __('AI package intake was blocked. See the AI intake report below.', 'dbvc');
+                } elseif ('ai_imported' === $state) {
+                  $class = 'updated';
+                  $msg   = __('AI package import completed. Review the import summary below.', 'dbvc');
+                } elseif ('ai_confirm_required' === $state) {
+                  $class = 'notice-warning';
+                  $msg   = __('Confirm the remaining AI intake warnings before importing this package.', 'dbvc');
+                } elseif ('ai_cancelled' === $state) {
+                  $class = 'notice-info';
+                  $msg   = __('AI package intake was cancelled and cleared from the review surface.', 'dbvc');
+                } elseif ('ai_import_missing' === $state) {
+                  $class = 'notice-error';
+                  $msg   = __('AI package intake data is no longer available. Re-upload the package to continue.', 'dbvc');
+                } elseif ('ai_import_failed' === $state) {
+                  $class = 'notice-error';
+                  $msg   = __('AI package import failed. Review the retained report below for details.', 'dbvc');
+                } else {
+                  $class = 'error';
+                  $msg   = ! empty($immediate_import_report['requested'])
                     ? __('Upload or immediate import failed – check the report for details.', 'dbvc')
-                    : __('Upload failed – check file type & permissions.', 'dbvc'));
+                    : __('Upload failed – check file type & permissions.', 'dbvc');
+                }
               ?>
                 <div class="notice <?php echo esc_attr($class); ?>" style="margin-top:1em;">
                   <p><?php echo esc_html($msg); ?></p>
@@ -2114,7 +2757,7 @@ document.addEventListener('DOMContentLoaded', function () {
               <br><br>
 
               <!-- Export Masking Mode -->
-              <h3 style="margin-top:0;"><?php esc_html_e('Export Masking (Post Meta)', 'dbvc'); ?></h3>
+              <h3 style="margin-top:0;"><?php esc_html_e('Export Masking', 'dbvc'); ?></h3>
 
               <?php
               // Load defaults once for the UI (saved in Tab #3).
@@ -2123,44 +2766,36 @@ document.addEventListener('DOMContentLoaded', function () {
               $mask_placeholder_d = (string) get_option('dbvc_mask_placeholder', '***'); // re-use existing option as a default value
               ?>
 
-              <fieldset id="dbvc-mask-mode-wrap" style="margin-bottom:1rem;">
-                <legend><strong><?php esc_html_e('Choose how to handle post meta during export', 'dbvc'); ?></strong></legend>
-                <label style="display:block;margin:.25rem 0;">
-                  <input type="radio" name="dbvc_export_mask_mode" value="none" <?php checked($current_export_mask_mode, 'none'); ?> />
-                  <?php esc_html_e('1) Standard Export (No Masking)', 'dbvc'); ?>
-                </label>
-
-                <label style="display:block;margin:.25rem 0;">
-                  <input type="radio" name="dbvc_export_mask_mode" value="remove_defaults" <?php checked($current_export_mask_mode, 'remove_defaults'); ?> />
-                  <?php esc_html_e('2) Remove matched Masking Defaults from exports', 'dbvc'); ?>
-                  <br><small>
-                    <?php esc_html_e('Uses the default keys saved under Configure → Export Masking Defaults.', 'dbvc'); ?>
-                  </small>
-                </label>
-
-                <label style="display:block;margin:.25rem 0;">
-                  <input type="radio" name="dbvc_export_mask_mode" value="remove_customize" <?php checked($current_export_mask_mode, 'remove_customize'); ?> />
-                  <?php esc_html_e('3) Remove & Customize matched Masking Defaults', 'dbvc'); ?>
-                  <br><small>
-                    <?php esc_html_e('Pre-fills the inputs below with your saved defaults; you can add extra keys before running export.', 'dbvc'); ?>
-                  </small>
-                </label>
-
-                <label style="display:block;margin:.25rem 0;">
-                  <input type="radio" name="dbvc_export_mask_mode" value="redact_custom" <?php checked($current_export_mask_mode, 'redact_custom'); ?> />
-                  <?php esc_html_e('4) Redact matched items with a placeholder', 'dbvc'); ?>
-                  <br><small>
-                    <?php esc_html_e('Same behavior as before: provide keys to redact and a placeholder token.', 'dbvc'); ?>
-                  </small>
-                </label>
-              </fieldset>
+              <div id="dbvc-mask-mode-wrap" style="margin-bottom:1rem;max-width:720px;">
+                <label for="dbvc_export_mask_mode"><strong><?php esc_html_e('Choose how to handle export masking', 'dbvc'); ?></strong></label><br>
+                <select name="dbvc_export_mask_mode" id="dbvc_export_mask_mode" class="regular-text" style="width:100%;max-width:100%;margin-top:.35rem;">
+                  <option value="none" <?php selected($current_export_mask_mode, 'none'); ?>>
+                    <?php esc_html_e('1) Standard Export (No Masking)', 'dbvc'); ?>
+                  </option>
+                  <option value="remove_defaults" <?php selected($current_export_mask_mode, 'remove_defaults'); ?>>
+                    <?php esc_html_e('2) Remove matched Masking Defaults from exports', 'dbvc'); ?>
+                  </option>
+                  <option value="remove_defaults_with_post_fields" <?php selected($current_export_mask_mode, 'remove_defaults_with_post_fields'); ?>>
+                    <?php esc_html_e('3) Remove matched Masking Defaults + configured Post fields', 'dbvc'); ?>
+                  </option>
+                  <option value="remove_customize" <?php selected($current_export_mask_mode, 'remove_customize'); ?>>
+                    <?php esc_html_e('4) Remove & Customize matched Masking Defaults', 'dbvc'); ?>
+                  </option>
+                  <option value="redact_custom" <?php selected($current_export_mask_mode, 'redact_custom'); ?>>
+                    <?php esc_html_e('5) Redact matched items with a placeholder', 'dbvc'); ?>
+                  </option>
+                </select>
+                <p id="dbvc-export-mask-mode-help" class="description" style="margin:.5rem 0 0;">
+                  <?php esc_html_e('Uses the default keys saved under Configure → Export Masking Defaults. The combined mode also removes eligible root post fields selected in Configure → Export Masking Defaults → Post fields to mask, while keeping identity-critical fields protected.', 'dbvc'); ?>
+                </p>
+              </div>
               <p class="description">
                 <?php esc_html_e('Defaults are managed in Configure → Export Masking Defaults (Tab 3).', 'dbvc'); ?>
                 <a href="#tab-config"><?php esc_html_e('Open Tab 3', 'dbvc'); ?></a>
               </p>
 
 
-              <!-- Mode 3 inputs (pre-filled with defaults; user can add lines) -->
+              <!-- Custom remove inputs (pre-filled with defaults; user can add lines) -->
               <div id="dbvc-mask-mode-3" style="display:none;margin-left:1rem;">
                 <p>
                   <label for="dbvc_custom_remove_meta_keys"><strong><?php esc_html_e('Exclude whole postmeta keys', 'dbvc'); ?></strong></label><br>
@@ -2186,7 +2821,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 </p>
               </div>
 
-              <!-- Mode 4 inputs (classic redact mode) -->
+              <!-- Redact inputs (classic redact mode) -->
               <div id="dbvc-mask-mode-4" style="display:none;margin-left:1rem;">
                 <p>
                   <label for="dbvc_redact_meta_keys"><strong><?php esc_html_e('Redact these whole postmeta keys', 'dbvc'); ?></strong></label><br>
@@ -2216,17 +2851,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
               <script>
                 (function() {
-                  const radios = document.querySelectorAll('#dbvc-mask-mode-wrap input[name="dbvc_export_mask_mode"]');
+                  const modeSelect = document.getElementById('dbvc_export_mask_mode');
                   const mode3 = document.getElementById('dbvc-mask-mode-3');
                   const mode4 = document.getElementById('dbvc-mask-mode-4');
+                  const modeHelp = document.getElementById('dbvc-export-mask-mode-help');
+                  const helpText = {
+                    none: <?php echo wp_json_encode(__('Runs a standard full export without masking.', 'dbvc')); ?>,
+                    remove_defaults: <?php echo wp_json_encode(__('Uses the default keys saved under Configure → Export Masking Defaults.', 'dbvc')); ?>,
+                    remove_defaults_with_post_fields: <?php echo wp_json_encode(__('Uses the default masking rules and also removes eligible root post fields selected under Configure → Export Masking Defaults → Post fields to mask. Identity-critical fields stay protected.', 'dbvc')); ?>,
+                    remove_customize: <?php echo wp_json_encode(__('Pre-fills the inputs below with your saved defaults; you can add extra keys before running export.', 'dbvc')); ?>,
+                    redact_custom: <?php echo wp_json_encode(__('Provide keys to redact and a placeholder token for the exported values.', 'dbvc')); ?>
+                  };
 
                   function sync() {
-                    const val = (document.querySelector('#dbvc-mask-mode-wrap input[name="dbvc_export_mask_mode"]:checked') || {}).value;
+                    const val = modeSelect ? modeSelect.value : '';
                     if (!val) return;
                     mode3.style.display = (val === 'remove_customize') ? '' : 'none';
                     mode4.style.display = (val === 'redact_custom') ? '' : 'none';
+                    if (modeHelp && helpText[val]) {
+                      modeHelp.textContent = helpText[val];
+                    }
                   }
-                  radios.forEach(r => r.addEventListener('change', sync));
+                  if (modeSelect) {
+                    modeSelect.addEventListener('change', sync);
+                  }
                   sync();
                 })();
               </script>
@@ -2527,7 +3175,7 @@ document.addEventListener('DOMContentLoaded', function () {
         <fieldset class="dbvc-mask-post-fields" style="margin:1rem 0;">
           <legend><strong><?php esc_html_e('Post fields to mask', 'dbvc'); ?></strong></legend>
           <p class="description" style="margin-top:0;">
-            <?php esc_html_e('Select root post fields that should flow through live masking alongside meta values.', 'dbvc'); ?>
+            <?php esc_html_e('Select root post fields that should flow through live proposal masking and the combined Full Export masking mode alongside meta values.', 'dbvc'); ?>
           </p>
           <div class="dbvc-mask-post-fields__grid" style="display:flex;flex-wrap:wrap;gap:0.75rem;">
             <?php foreach ($maskable_post_fields as $field_key => $field_label) : ?>
@@ -2811,6 +3459,251 @@ document.addEventListener('DOMContentLoaded', function () {
             </section>
           </div>
         </div>
+      </section>
+
+      <section id="dbvc-config-ai" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-ai' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-ai" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-ai" <?php echo $active_config_subtab === 'dbvc-config-ai' ? '' : 'hidden'; ?>>
+        <?php
+        $render_config_feedback($config_feedback['ai']);
+        $ai_generation_settings = isset($ai_package_settings['generation']) && is_array($ai_package_settings['generation']) ? $ai_package_settings['generation'] : [];
+        $ai_validation_settings = isset($ai_package_settings['validation']) && is_array($ai_package_settings['validation']) ? $ai_package_settings['validation'] : [];
+        $ai_guidance_settings = isset($ai_package_settings['guidance']) && is_array($ai_package_settings['guidance']) ? $ai_package_settings['guidance'] : [];
+        $ai_provider_settings = isset($ai_package_settings['providers']) && is_array($ai_package_settings['providers']) ? $ai_package_settings['providers'] : [];
+        $ai_included_docs = isset($ai_generation_settings['included_docs']) && is_array($ai_generation_settings['included_docs']) ? $ai_generation_settings['included_docs'] : [];
+        $ai_shape_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_shape_mode_options() : [];
+        $ai_value_style_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_value_style_options() : [];
+        $ai_variant_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_variant_set_options() : [];
+        $ai_warning_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_warning_policy_options() : [];
+        $ai_package_mode_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_package_mode_options() : [];
+        $ai_strictness_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_strictness_options() : [];
+        $ai_doc_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_included_doc_options() : [];
+        $ai_service_mode_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_service_mode_options() : [];
+        $ai_provider_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_provider_options() : [];
+        $ai_model_catalog = class_exists('\Dbvc\AiPackage\OpenAiModelCatalogService')
+          ? \Dbvc\AiPackage\OpenAiModelCatalogService::get_catalog($active_config_subtab === 'dbvc-config-ai')
+          : [];
+        $ai_model_options = isset($ai_model_catalog['models']) && is_array($ai_model_catalog['models']) ? $ai_model_catalog['models'] : [];
+        $ai_model_refreshed_at = isset($ai_model_catalog['refreshed_at']) ? (string) $ai_model_catalog['refreshed_at'] : '';
+        $ai_model_last_error = isset($ai_model_catalog['last_error']) ? (string) $ai_model_catalog['last_error'] : '';
+        $ai_api_key_present = ! empty($ai_provider_settings['api_key']);
+        $ai_retention_days = isset($ai_storage_roots['retention_days']) ? (int) $ai_storage_roots['retention_days'] : 0;
+        ?>
+        <h2><?php esc_html_e('AI + Integrations', 'dbvc'); ?></h2>
+        <p class="description"><?php esc_html_e('Set default AI package generation preferences, intake validation defaults, reusable operator guidance, and the default OpenAI service configuration for future AI-assisted workflows.', 'dbvc'); ?></p>
+
+        <h3><?php esc_html_e('Package Generation Defaults', 'dbvc'); ?></h3>
+        <p>
+          <label for="dbvc-ai-generation-shape-mode"><strong><?php esc_html_e('Default shape mode', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-generation-shape-mode" name="dbvc_ai_settings[generation][shape_mode]">
+            <?php foreach ($ai_shape_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_generation_settings['shape_mode'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-generation-value-style"><strong><?php esc_html_e('Default value style', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-generation-value-style" name="dbvc_ai_settings[generation][value_style]">
+            <?php foreach ($ai_value_style_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_generation_settings['value_style'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-generation-variant-set"><strong><?php esc_html_e('Default variant set', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-generation-variant-set" name="dbvc_ai_settings[generation][variant_set]">
+            <?php foreach ($ai_variant_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_generation_settings['variant_set'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-generation-observed-scan-cap"><strong><?php esc_html_e('Observed-shape scan cap', 'dbvc'); ?></strong></label><br>
+          <input
+            type="number"
+            id="dbvc-ai-generation-observed-scan-cap"
+            name="dbvc_ai_settings[generation][observed_scan_cap]"
+            min="<?php echo esc_attr((string) \Dbvc\AiPackage\Settings::MIN_OBSERVED_SCAN_CAP); ?>"
+            max="<?php echo esc_attr((string) \Dbvc\AiPackage\Settings::MAX_OBSERVED_SCAN_CAP); ?>"
+            value="<?php echo esc_attr((string) ($ai_generation_settings['observed_scan_cap'] ?? '')); ?>"
+            class="small-text"
+          />
+          <br><small class="description"><?php esc_html_e('Used later by observed-shape package builds to cap how many live entities are sampled per object type.', 'dbvc'); ?></small>
+        </p>
+
+        <fieldset style="margin:1rem 0;">
+          <legend><strong><?php esc_html_e('Default included top-level docs', 'dbvc'); ?></strong></legend>
+          <?php foreach ($ai_doc_options as $doc_key => $doc_label) : ?>
+            <label style="display:block;margin:0 0 0.35rem 0;">
+              <input
+                type="checkbox"
+                name="dbvc_ai_settings[generation][included_docs][]"
+                value="<?php echo esc_attr($doc_key); ?>"
+                <?php checked(in_array($doc_key, $ai_included_docs, true)); ?>
+              />
+              <?php echo esc_html($doc_label); ?>
+            </label>
+          <?php endforeach; ?>
+        </fieldset>
+
+        <hr />
+
+        <h3><?php esc_html_e('Validation and Intake Defaults', 'dbvc'); ?></h3>
+        <p>
+          <label for="dbvc-ai-validation-warning-policy"><strong><?php esc_html_e('Warning handling policy', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-validation-warning-policy" name="dbvc_ai_settings[validation][warning_policy]">
+            <?php foreach ($ai_warning_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_validation_settings['warning_policy'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-validation-package-mode"><strong><?php esc_html_e('Allowed package operation mode', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-validation-package-mode" name="dbvc_ai_settings[validation][package_mode]">
+            <?php foreach ($ai_package_mode_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_validation_settings['package_mode'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-validation-strictness"><strong><?php esc_html_e('Validation strictness', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-validation-strictness" name="dbvc_ai_settings[validation][strictness]">
+            <?php foreach ($ai_strictness_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_validation_settings['strictness'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+
+        <hr />
+
+        <h3><?php esc_html_e('Operator Guidance Defaults', 'dbvc'); ?></h3>
+        <p>
+          <label for="dbvc-ai-guidance-global"><strong><?php esc_html_e('Global AI guidance', 'dbvc'); ?></strong></label><br>
+          <textarea id="dbvc-ai-guidance-global" name="dbvc_ai_settings[guidance][global_ai_guidance]" rows="4" style="width:100%;"><?php echo esc_textarea((string) ($ai_guidance_settings['global_ai_guidance'] ?? '')); ?></textarea>
+          <br><small class="description"><?php esc_html_e('High-level site or editorial instructions that should be available to future sample package docs and prompts.', 'dbvc'); ?></small>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-guidance-starter-prompt"><strong><?php esc_html_e('Starter prompt template', 'dbvc'); ?></strong></label><br>
+          <textarea id="dbvc-ai-guidance-starter-prompt" name="dbvc_ai_settings[guidance][starter_prompt_template]" rows="4" style="width:100%;"><?php echo esc_textarea((string) ($ai_guidance_settings['starter_prompt_template'] ?? '')); ?></textarea>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-guidance-notes"><strong><?php esc_html_e('Global notes and rules', 'dbvc'); ?></strong></label><br>
+          <textarea id="dbvc-ai-guidance-notes" name="dbvc_ai_settings[guidance][global_notes_markdown]" rows="6" style="width:100%;"><?php echo esc_textarea((string) ($ai_guidance_settings['global_notes_markdown'] ?? '')); ?></textarea>
+          <br><small class="description"><?php esc_html_e('Per-post-type and per-taxonomy rule editing will expand in a later tranche. This first pass locks global defaults and the stored rules container.', 'dbvc'); ?></small>
+        </p>
+
+        <hr />
+
+        <h3><?php esc_html_e('AI Service', 'dbvc'); ?></h3>
+        <p class="description"><?php esc_html_e('OpenAI is the default provider. Once an API key is saved, DBVC refreshes the available model list on save and then on a recurring schedule so the default model selector stays current.', 'dbvc'); ?></p>
+        <p>
+          <label for="dbvc-ai-provider-key"><strong><?php esc_html_e('Provider', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-provider-key" name="dbvc_ai_settings[providers][provider_key]">
+            <?php foreach ($ai_provider_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_provider_settings['provider_key'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+        <p>
+          <label for="dbvc-ai-provider-api-key"><strong><?php esc_html_e('OpenAI API key', 'dbvc'); ?></strong></label><br>
+          <input type="password" id="dbvc-ai-provider-api-key" name="dbvc_ai_settings[providers][api_key]" value="" class="regular-text" autocomplete="off" placeholder="sk-..." />
+          <br><small class="description">
+            <?php
+            echo esc_html(
+              $ai_api_key_present
+                ? __('A key is currently stored. Leave this blank to keep it, or enter a new key to replace it.', 'dbvc')
+                : __('Enter an OpenAI API key to enable automatic model catalog refreshes.', 'dbvc')
+            );
+            ?>
+          </small>
+          <?php if ($ai_api_key_present) : ?>
+            <div class="dbvc-option-chip-grid" style="margin-top:0.5rem;">
+              <label class="dbvc-option-chip dbvc-option-chip--compact">
+                <input type="checkbox" name="dbvc_ai_settings[providers][clear_api_key]" value="1" />
+                <span class="dbvc-option-chip__text"><?php esc_html_e('Remove the saved API key', 'dbvc'); ?></span>
+              </label>
+            </div>
+          <?php endif; ?>
+        </p>
+        <p>
+          <label for="dbvc-ai-provider-service-mode"><strong><?php esc_html_e('Service mode', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-provider-service-mode" name="dbvc_ai_settings[providers][service_mode]">
+            <?php foreach ($ai_service_mode_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_provider_settings['service_mode'] ?? ''), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </p>
+        <p>
+          <label for="dbvc-ai-provider-model"><strong><?php esc_html_e('Default model', 'dbvc'); ?></strong></label><br>
+          <?php if (! empty($ai_model_options)) : ?>
+            <select id="dbvc-ai-provider-model" name="dbvc_ai_settings[providers][model_default]">
+              <?php foreach ($ai_model_options as $model_row) :
+                if (! is_array($model_row)) {
+                  continue;
+                }
+                $model_id = isset($model_row['id']) ? (string) $model_row['id'] : '';
+                if ($model_id === '') {
+                  continue;
+                }
+              ?>
+                <option value="<?php echo esc_attr($model_id); ?>" <?php selected((string) ($ai_provider_settings['model_default'] ?? ''), $model_id); ?>>
+                  <?php echo esc_html($model_id); ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          <?php else : ?>
+            <input type="text" id="dbvc-ai-provider-model" name="dbvc_ai_settings[providers][model_default]" value="<?php echo esc_attr((string) ($ai_provider_settings['model_default'] ?? '')); ?>" class="regular-text" />
+          <?php endif; ?>
+          <br><small class="description"><?php esc_html_e('The model list is fetched from the OpenAI Models API and sorted newest-first for supported text/reasoning models.', 'dbvc'); ?></small>
+        </p>
+        <?php if ($ai_model_refreshed_at !== '') : ?>
+          <p><strong><?php esc_html_e('Last model refresh', 'dbvc'); ?>:</strong> <?php echo esc_html($ai_model_refreshed_at); ?></p>
+        <?php endif; ?>
+        <?php if (! empty($ai_model_options)) : ?>
+          <p><strong><?php esc_html_e('Cached model count', 'dbvc'); ?>:</strong> <?php echo esc_html((string) count($ai_model_options)); ?></p>
+        <?php endif; ?>
+        <p><small class="description"><?php esc_html_e('Refresh cadence: on save when a key is present, then automatically every 12 hours while the key remains stored.', 'dbvc'); ?></small></p>
+        <?php if ($ai_model_last_error !== '') : ?>
+          <div class="notice notice-warning inline">
+            <p><?php echo esc_html($ai_model_last_error); ?></p>
+          </div>
+        <?php endif; ?>
+
+        <hr />
+
+        <h3><?php esc_html_e('Storage Status', 'dbvc'); ?></h3>
+        <?php if ($ai_storage_error !== '') : ?>
+          <div class="notice notice-error inline">
+            <p><?php echo esc_html($ai_storage_error); ?></p>
+          </div>
+        <?php elseif (! empty($ai_storage_roots)) : ?>
+          <p><strong><?php esc_html_e('Sample packages root', 'dbvc'); ?>:</strong> <code><?php echo esc_html((string) ($ai_storage_roots['sample_packages_root'] ?? '')); ?></code></p>
+          <p><strong><?php esc_html_e('AI intake root', 'dbvc'); ?>:</strong> <code><?php echo esc_html((string) ($ai_storage_roots['intake_root'] ?? '')); ?></code></p>
+          <p><strong><?php esc_html_e('Cleanup scaffold', 'dbvc'); ?>:</strong> <?php echo esc_html(sprintf(_n('%d day retention via %s', '%d day retention via %s', max(1, $ai_retention_days), 'dbvc'), max(1, $ai_retention_days), (string) ($ai_storage_roots['cleanup_hook'] ?? ''))); ?></p>
+        <?php endif; ?>
+
+        <?php submit_button(__('Save AI Settings', 'dbvc'), 'secondary', 'dbvc_config_save[ai]', false); ?>
       </section>
 
       <section id="dbvc-config-addons" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-addons' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-addons" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-addons" <?php echo $active_config_subtab === 'dbvc-config-addons' ? '' : 'hidden'; ?>>
@@ -3879,6 +4772,44 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     .dbvc-docs__quick-links a:focus { color:#0a4b78; text-decoration:underline; }
     .dbvc-docs__section { border:1px solid #dcdcde; border-radius:4px; padding:1.25rem; background:#fff; }
     .dbvc-docs__section h3 { margin-top:0; }
+    .dbvc-option-chip-grid { display:flex; flex-wrap:wrap; gap:0.5rem 0.75rem; max-width:1040px; }
+    .dbvc-option-chip {
+      display:inline-flex;
+      align-items:flex-start;
+      gap:0.5rem;
+      flex:0 1 280px;
+      max-width:320px;
+      padding:0.55rem 0.75rem;
+      border:1px solid #dcdcde;
+      border-radius:4px;
+      background:#fff;
+      box-sizing:border-box;
+    }
+    .dbvc-option-chip--compact { flex:0 0 auto; max-width:none; min-width:0; }
+    .dbvc-option-chip input { margin:2px 0 0; }
+    .dbvc-option-chip__text { display:block; line-height:1.35; }
+    .dbvc-ai-review-panel { padding:1rem 1.25rem; }
+    .dbvc-ai-review-panel__actions { display:flex; flex-wrap:wrap; gap:0.5rem; margin:0.75rem 0 1rem; }
+    .dbvc-ai-review-panel__import-form { margin:0.5rem 0 1rem; }
+    .dbvc-ai-review-panel__table-wrap { overflow:auto; margin:0.5rem 0 1rem; }
+    .dbvc-ai-review-panel__table code { white-space:nowrap; }
+    .dbvc-ai-review-panel__issue-groups { display:grid; gap:0.75rem; margin:0.75rem 0; }
+    .dbvc-ai-review-panel__issue-group { border:1px solid #dcdcde; border-radius:8px; background:#fff; padding:0.85rem 1rem; }
+    .dbvc-ai-review-panel__issue-summary { cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:0.75rem; }
+    .dbvc-ai-review-panel__issue-body { margin-top:0.55rem; }
+    .dbvc-ai-review-panel__issue-group p { margin:0 0 0.4rem; }
+    .dbvc-ai-review-panel__issue-scope-row { display:flex; flex-wrap:wrap; gap:0.4rem; margin:0.4rem 0 0.55rem; }
+    .dbvc-ai-review-panel__issue-chip { display:inline-flex; align-items:center; padding:0.15rem 0.5rem; border-radius:999px; background:#f0f6fc; border:1px solid #d0d7de; color:#1f2328; font-size:12px; line-height:1.4; }
+    .dbvc-ai-review-panel__issue-list { margin:0.5rem 0 0 1.1rem; }
+    .dbvc-ai-review-panel__issue-list li { margin:0 0 0.5rem; }
+    .dbvc-ai-review-panel__issue-meta { color:#646970; font-size:12px; margin-left:0.4rem; }
+    .dbvc-ai-review-panel__issue-detail { margin-top:0.15rem; }
+    .dbvc-ai-review-panel__issue-detail-summary { cursor:pointer; display:inline-flex; align-items:center; gap:0.35rem; }
+    .dbvc-ai-review-panel__issue-detail-body { margin:0.4rem 0 0; }
+    .dbvc-ai-review-panel__issue-detail-body p { margin:0 0 0.4rem; }
+    .dbvc-ai-review-panel__issue-data { display:grid; gap:0.3rem; }
+    .dbvc-ai-review-panel__issue-data-row { display:flex; flex-wrap:wrap; gap:0.45rem; align-items:flex-start; }
+    .dbvc-ai-review-panel__issue-data-label { min-width:68px; color:#50575e; font-size:12px; font-weight:600; }
     .dbvc-docs__card { padding-top:1rem; margin-top:1rem; border-top:1px solid #e2e4e7; }
     .dbvc-docs__card:first-of-type { margin-top:0; padding-top:0; border-top:0; }
     .dbvc-docs__card h4 { margin:0 0 0.5rem; }

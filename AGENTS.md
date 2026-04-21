@@ -81,6 +81,13 @@ Unless the user explicitly asks otherwise, do not stage or clean up these recurr
 - `docs/ROADMAP.md`
 - `test-results/`
 
+## LocalWP Safety Boundary
+
+- Treat `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` and the `dbvc-codexchanges.local` site as the only allowed LocalWP environment for commands, browser QA, file writes, or destructive runtime mutations in this repo unless the user explicitly broadens scope.
+- Do not run commands that touch other LocalWP site directories, other LocalWP databases, shared LocalWP infrastructure, or the LocalWP desktop app itself.
+- For destructive browser or runtime QA, prefer disposable fixture data inside `dbvc-codexchanges.local` and keep command cwd/path scope pinned to `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges`.
+- If a requested action could affect another LocalWP site or the LocalWP app, stop and ask the user before proceeding.
+
 ## UI Expectations
 
 Keep admin UI clean and intuitive.
@@ -106,37 +113,8 @@ Report back with:
 - Placeholder code presented as complete
 - Editing unrelated docs or modules without need
 
+## Repomix
 
-## vexp <!-- vexp v1.2.30 -->
-
-**MANDATORY: use `run_pipeline` — do NOT grep or glob the codebase.**
-vexp returns pre-indexed, graph-ranked context in a single call.
-
-### Workflow
-1. `run_pipeline` with your task description — ALWAYS FIRST (replaces all other tools)
-2. Make targeted changes based on the context returned
-3. `run_pipeline` again only if you need more context
-
-### Available MCP tools
-- `run_pipeline` — **PRIMARY TOOL**. Runs capsule + impact + memory in 1 call.
-  Auto-detects intent. Includes file content. Example: `run_pipeline({ "task": "fix auth bug" })`
-- `get_context_capsule` — lightweight, for simple questions only
-- `get_impact_graph` — impact analysis of a specific symbol
-- `search_logic_flow` — execution paths between functions
-- `get_skeleton` — compact file structure
-- `index_status` — indexing status
-- `get_session_context` — recall observations from sessions
-- `search_memory` — cross-session search
-- `save_observation` — persist insights (prefer run_pipeline's observation param)
-
-### Agentic search
-- Do NOT use built-in file search, grep, or codebase indexing — always call `run_pipeline` first
-- If you spawn sub-agents or background tasks, pass them the context from `run_pipeline`
-  rather than letting them search the codebase independently
-
-### Smart Features
-Intent auto-detection, hybrid ranking, session memory, auto-expanding budget.
-
-### Multi-Repo
-`run_pipeline` auto-queries all indexed repos. Use `repos: ["alias"]` to scope. Run `index_status` to see aliases.
-<!-- /vexp -->
+- Repomix is a complement here, not a replacement for `AGENTS.md`, `README.md`, `handoff.md`, or the Content Collector V2 resume pack.
+- Repo config lives in `repomix.config.json`, `.repomixignore`, and `repomix-instruction.md`; upkeep notes live in `docs/repomix-preflight.md` and `docs/repomix-maintenance.md`.
+- Refresh the Repomix files when top-level structure, directive docs, or major noise folders change so packed context stays accurate and low-noise.

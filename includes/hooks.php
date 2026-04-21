@@ -333,6 +333,12 @@ function dbvc_handle_option_updates($option, $old_value, $new_value)
 	if (defined('DBVC_PHPUNIT') && DBVC_PHPUNIT) {
 		return;
 	}
+
+	// Some plugins update options during bootstrap before user functions are loaded.
+	// Skip option exports until WordPress runtime is ready enough to evaluate capabilities safely.
+	if (! function_exists('current_user_can') || ! function_exists('wp_get_current_user')) {
+		return;
+	}
 	// Allow other plugins to add their own options to skip
 	$skip_options = apply_filters('dbvc_skip_option_names', ['dbvc_']);
 

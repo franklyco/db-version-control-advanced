@@ -9,10 +9,10 @@ Use it when resuming implementation after a pause instead of rereading the full 
 ## Current Anchor
 
 - Branch: `codex/content-addon-v2`
-- Active phase: `Phase 24`
-- Active task: `P24-T1`
-- Current seam: Phase 23 is now closed. Historical exception and review browser flows are now green through the existing V2 routes, including save and rerun follow-up after a deterministic same-URL overwrite chain. The next open slice is browser validation for historical overview, readiness, and package surfaces.
-- Latest landed focus: `P23-T1`, `P23-T2`, and `P23-T3` are now landed. Historical review browser validation now uses a dev-only synthetic source-run fixture on the existing `POST /runs` transport plus an upgraded deterministic replay fixture that clones page artifacts into a true same-URL overwrite chain, and the targeted unsandboxed Playwright smoke is green.
+- Active phase: `Phase 32`
+- Active task: `P32-T1`
+- Current seam: Phase 31 is now closed by decision. Rollback-specific historical execute QA is not needed now on `dbvc-codexchanges.local`, so the next open slice is to audit the closed historical-fidelity stream and choose the next real V2 product or release-readiness seam without broadening LocalWP scope. Do not touch any other LocalWP site, database, directory, shared LocalWP infrastructure, or the LocalWP app.
+- Latest landed focus: `P27-T1`, `P27-T2`, `P27-T3`, `P28-T1`, `P28-T2`, `P28-T3`, `P29-T1`, `P29-T2`, `P29-T3`, `P30-T1`, `P30-T2`, `P30-T3`, `P31-T1`, `P31-T2`, and `P31-T3` are now landed. Historical package browser validation now reaches real execute mutation on `dbvc-codexchanges.local`, resolved conflicts no longer keep package preflight blocked after saved reviewer decisions collapse them, and rollback-specific follow-up is now explicitly deferred by decision.
 
 ## Phase Snapshot
 
@@ -39,7 +39,15 @@ Use it when resuming implementation after a pause instead of rereading the full 
 - `Phase 21`: `CLOSED`
 - `Phase 22`: `CLOSED`
 - `Phase 23`: `CLOSED`
-- `Phase 24`: `OPEN`
+- `Phase 24`: `CLOSED`
+- `Phase 25`: `CLOSED`
+- `Phase 26`: `CLOSED`
+- `Phase 27`: `CLOSED`
+- `Phase 28`: `CLOSED`
+- `Phase 29`: `CLOSED`
+- `Phase 30`: `CLOSED`
+- `Phase 31`: `CLOSED`
+- `Phase 32`: `OPEN`
 
 ## Current Runtime Shape
 
@@ -58,7 +66,7 @@ Use it when resuming implementation after a pause instead of rereading the full 
 
 ## Current Open Seam
 
-All currently defined guide phases are closed through `Phase 23`.
+All currently defined guide phases are closed through `Phase 31`.
 
 What is already true:
 
@@ -114,18 +122,26 @@ What is already true:
 - historical review browser validation now uses a dev-only synthetic single-page fixture domain on the normal `POST /runs` transport, so the source-run side of the overwrite chain no longer depends on incidental LocalWP data
 - the deterministic replay helper now clones page artifacts into a real same-URL overwrite chain, so the historical review browser smoke can exercise older-run save and rerun behavior without waiting for a live sitemap recrawl
 - the targeted unsandboxed Playwright smoke `preserves historical exception review actions after a same-url overwrite run` is now green, and it proves the older run still opens, saves, and reruns without drifting into the newer same-URL run
+- the targeted unsandboxed Playwright smoke `preserves historical overview, readiness, and package routes after a same-url overwrite run` is now green, and it proves overview shortcuts, readiness flows, package routing, and selected package state stay pinned to the older source run after a newer same-URL overwrite run exists
+- the targeted unsandboxed Playwright smoke `preserves historical package dry-run and guardrail shortcuts after a same-url overwrite run` is now green, and it proves historical dry-run preview plus the execute-blocked resolve-shortcut stay pinned to the older source run and selected package after a newer same-URL overwrite run exists
+- the targeted unsandboxed Playwright smoke `preserves historical package preflight approval and persisted summary after a same-url overwrite run` is now green, and it proves historical preflight requests plus the persisted preflight summary stay pinned to the older source run and selected package after a newer same-URL overwrite run exists
 - the runs status panel now shows the preserved recovery follow-up block after duplicate-settings prefill even when there is no newer hide or restore completion message
 - historical overview inventory now resolves through a run-scoped inventory reader, so reopening an older run after a later same-domain run no longer shows the newer run's domain-latest discovery inventory
 - readiness now resolves eligible pages and page contexts from the requested run, so reopening an older run after a later same-domain run no longer swaps in the newer run's discovery rows
 - the package workspace now defaults and filters package history by run, so reopening an older run no longer auto-selects the newest package built for the domain
 - run-aware package artifact loading now refuses page-level artifacts whose `journey_id` belongs to a newer run, so historical readiness and package reads stop showing newer-run page artifacts when direct historical files are unavailable
+- package QA now filters recommendation conflicts through saved decision state, so resolved conflict groups do not keep historical package preflight or execute blocked just because the raw recommendation artifact still lists the original conflict set
+- the targeted unsandboxed Playwright smoke `preserves historical package execute mutation after a same-url overwrite run` is now green, and it proves a real historical `POST /runs/{run_id}/execute` mutation stays pinned to the approved older `runId` and `packageId` on disposable data inside `dbvc-codexchanges.local`
 
 What is still open:
 
 - the LocalWP site's custom `/login` page still renders a front-end login form even for an authenticated admin, so browser QA should keep using direct V2 admin routes instead of depending on the admin-menu path
-- the next open tranche slice is now `P24-T1`, focused on browser validation for historical overview, readiness, and package fidelity when the same URL is processed again by a later same-domain run
-- sandboxed CLI Playwright still dies on this machine when Chromium launches under the Codex shell sandbox, so browser runs still need unsandboxed execution
-- the remaining browser-validation gap is historical overview, readiness, and package route fidelity after same-URL overwrite chains, not historical review save or rerun behavior
+- the next open tranche slice is now `P32-T1`, focused on auditing the closed historical-fidelity stream and nominating the next real V2 tranche
+- sandboxed CLI Playwright still dies on this machine when Chromium launches under the Codex shell sandbox, and the same bare Chromium launch now reproduces that split directly: sandboxed launch exits with `SIGTRAP`, while the identical headless launch succeeds unsandboxed
+- treat that split as a Codex shell sandbox browser-launch boundary, not as a V2 spec-level regression; use unsandboxed repo Playwright scripts when browser launch is required
+- `dbvc-codexchanges.local` still keeps real execute guardrail-blocked for this historical fixture flow, so the approved destructive execute recorded zero import runs and left rollback cleanup as a no-op
+- do not disable guardrails or broaden scope to another LocalWP site, database, directory, shared LocalWP infrastructure, or the LocalWP desktop app merely to fabricate rollback coverage
+- the next open work should come from a real product/runtime seam or release-readiness need, not from more rollback-specific QA on the current LocalWP target
 
 ## Last Validation Baseline
 
@@ -138,6 +154,10 @@ vendor/bin/phpunit --filter ContentCollectorV2Phase21Test
 vendor/bin/phpunit --filter ContentCollectorV2Phase22Test
 vendor/bin/phpunit --filter "ContentCollectorV2Phase(20|21)Test"
 vendor/bin/phpunit --filter "ContentCollectorV2Phase(20|21|22)Test"
+vendor/bin/phpunit --filter ContentCollectorV2Phase29Test
+vendor/bin/phpunit --filter "ContentCollectorV2Phase(27|29)Test"
+./node_modules/.bin/wp-scripts lint-js tests/playwright/content-collector-v2.spec.js
+npm run playwright:test:ccv2 -- --grep 'preserves historical package execute mutation after a same-url overwrite run'
 git diff --check -- addons/content-migration/v2/discovery/dbvc-cc-v2-url-inventory-service.php addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-rest-controller.php addons/content-migration/v2/shared/dbvc-cc-v2-page-artifact-service.php addons/content-migration/v2/package/dbvc-cc-v2-package-selection-service.php addons/content-migration/v2/package/dbvc-cc-v2-package-qa-service.php addons/content-migration/v2/package/dbvc-cc-v2-url-qa-report-service.php addons/content-migration/v2/package/dbvc-cc-v2-package-build-service.php tests/phpunit/ContentCollectorV2Phase20Test.php addons/content-migration/docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md
 vendor/bin/phpunit --filter "ContentCollectorV2Phase(16|18)Test"
 vendor/bin/phpunit --filter ContentCollectorV2Phase19Test
@@ -147,6 +167,9 @@ npm run build
 npm run playwright:test:ccv2 -- --grep 'supports replay, duplicate-settings prefill, and hide or restore on run cards'
 npm run playwright:test:ccv2 -- --grep 'keeps rerun recovery follow-up context after duplicate-settings prefill'
 npm run playwright:test:ccv2 -- --grep 'preserves historical exception review actions after a same-url overwrite run'
+npm run playwright:test:ccv2 -- --grep 'preserves historical overview, readiness, and package routes after a same-url overwrite run'
+npm run playwright:test:ccv2 -- --grep 'preserves historical package dry-run and guardrail shortcuts after a same-url overwrite run'
+npm run playwright:test:ccv2 -- --grep 'preserves historical package preflight approval and persisted summary after a same-url overwrite run'
 ./node_modules/.bin/wp-scripts lint-js addons/content-migration/v2/admin-app/app/ContentCollectorV2AppShell.js addons/content-migration/v2/admin-app/components/package/PackageActionConfirmDialog.js addons/content-migration/v2/admin-app/components/package/PackageArtifactActionsPanel.js addons/content-migration/v2/admin-app/components/package/PackageArtifactInspectorPanel.js addons/content-migration/v2/admin-app/components/package/PackageDetailPanel.js addons/content-migration/v2/admin-app/components/package/PackageImportPanel.js addons/content-migration/v2/admin-app/workspaces/package/PackageWorkspace.js tests/playwright/content-collector-v2.spec.js
 npm run build
 ./node_modules/.bin/wp-scripts lint-js addons/content-migration/v2/admin-app/components/drawers/InspectorDrawer.js addons/content-migration/v2/admin-app/components/inspectors/InspectorActionPanel.js addons/content-migration/v2/admin-app/components/inspectors/InspectorMappingTab.js addons/content-migration/v2/admin-app/components/inspectors/RecommendationDecisionCard.js addons/content-migration/v2/admin-app/hooks/useInspectorDecisionDraft.js tests/playwright/content-collector-v2.spec.js

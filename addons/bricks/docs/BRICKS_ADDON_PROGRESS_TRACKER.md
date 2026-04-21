@@ -215,29 +215,29 @@ Completed: 2026-03-08
 - [x] Required tests pass with tracker evidence.
 
 ## Phase 19C - Mothership Visibility + Cross-Site Operations Drill
-Status: NOT_STARTED
+Status: IN_PROGRESS
 Owner: Codex
-Started: n/a
+Started: 2026-04-15
 Completed: n/a
 
 ### Tasks
-- [ ] P19C-T1 Mothership visibility for protected variants (Status: NOT_STARTED)
-  - [ ] P19C-T1-S1 Add connected-client summary with protected counts by artifact class (Status: NOT_STARTED)
-  - [ ] P19C-T1-S2 Add client drill-down list of protected variants (`bricks_template`, `global_classes`, etc) (Status: NOT_STARTED)
-  - [ ] P19C-T1-S3 Add deep-link + copy-link helpers to client `DBVC -> Bricks -> Protected Artifacts` tab (Status: NOT_STARTED)
-  - [ ] P19C-T1-S4 Add data-freshness indicator (last synced/seen timestamp) per client (Status: NOT_STARTED)
+- [x] P19C-T1 Mothership visibility for protected variants (Status: DONE)
+  - [x] P19C-T1-S1 Add connected-client summary with protected counts by artifact class (Status: DONE)
+  - [x] P19C-T1-S2 Add client drill-down list of protected variants (`bricks_template`, `global_classes`, etc) (Status: DONE)
+  - [x] P19C-T1-S3 Add deep-link + copy-link helpers to client `DBVC -> Bricks -> Protected Artifacts` tab (Status: DONE)
+  - [x] P19C-T1-S4 Add data-freshness indicator (last synced/seen timestamp) per client (Status: DONE)
 - [ ] P19C-T2 End-to-end governance and evidence closure (Status: NOT_STARTED)
   - [ ] P19C-T2-S1 Run full drill: shared rules distribution + protected variant visibility across mothership/clientA/clientB (Status: NOT_STARTED)
   - [ ] P19C-T2-S2 Capture timestamps, command logs, receipts, diagnostics traces, and UI evidence (Status: NOT_STARTED)
   - [ ] P19C-T2-S3 Write completion note and close all Phase 19* statuses (Status: NOT_STARTED)
 
 ### Test Evidence
-- P19C-TEST-01: NOT_RUN - mothership aggregation visibility tests.
-- P19C-TEST-02: NOT_RUN - deep-link/copy-link rendering tests.
+- P19C-TEST-01: PASS - mothership aggregation visibility tests on 2026-04-15 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19CTest.php`) including latest-package-per-site aggregation, protected counts by artifact type/scope, freshness fields, and zero-protected connected-client rows.
+- P19C-TEST-02: PASS - deep-link/copy-link rendering tests on 2026-04-15 (`vendor/bin/phpunit tests/phpunit/BricksAddonPhase19CTest.php`) including mothership Packages panel controls, fleet endpoint config, `Open Protected Artifacts`, and `Copy Link` wiring; adjacent regression coverage also passed via `vendor/bin/phpunit tests/phpunit/BricksAddonPhase19BTest.php tests/phpunit/BricksAddonPhase13Test.php`.
 - P19C-TEST-03: NOT_RUN - full live cross-site drill evidence.
 
 ### Exit Criteria Check
-- [ ] Mothership can identify clients with protected variants and inspect details.
-- [ ] Operators have usable deep-link/copy-link navigation to client protected tab paths.
+- [x] Mothership can identify clients with protected variants and inspect details.
+- [x] Operators have usable deep-link/copy-link navigation to client protected tab paths.
 - [ ] Cross-site drill evidence is complete and auditable.
 - [ ] Required tests pass with tracker evidence.

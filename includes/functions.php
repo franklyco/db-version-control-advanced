@@ -193,6 +193,109 @@ if (! function_exists('dbvc_mask_apply_to_meta')) {
 	}
 }
 
+if (! function_exists('dbvc_get_export_mask_protected_post_fields')) {
+	/**
+	 * Root post fields that stay protected during export-time masking.
+	 *
+	 * @since 1.6.1
+	 * @return array<int,string>
+	 */
+	function dbvc_get_export_mask_protected_post_fields(): array
+	{
+		$protected = apply_filters('dbvc_export_mask_protected_post_fields', ['vf_object_uid']);
+		if (! is_array($protected)) {
+			$protected = ['vf_object_uid'];
+		}
+
+		$available  = array_keys(dbvc_get_maskable_post_fields());
+		$protected  = array_map('sanitize_key', $protected);
+		$protected  = array_values(array_unique(array_intersect($protected, $available)));
+
+		if (empty($protected) && in_array('vf_object_uid', $available, true)) {
+			$protected = ['vf_object_uid'];
+		}
+
+		return $protected;
+	}
+}
+
+if (! function_exists('dbvc_get_export_mask_post_fields')) {
+	/**
+	 * Sanitize configured post fields for export-time masking.
+	 *
+	 * @since 1.6.1
+	 *
+	 * @param array<int|string,mixed>|null $requested Optional raw field list.
+	 * @return array<int,string>
+	 */
+	function dbvc_get_export_mask_post_fields(?array $requested = null): array
+	{
+		if ($requested === null) {
+			$requested = get_option('dbvc_mask_post_fields', []);
+		}
+
+		if (! is_array($requested) || empty($requested)) {
+			return [];
+		}
+
+		$available = array_keys(dbvc_get_maskable_post_fields());
+		$selected  = array_values(array_unique(array_intersect(array_map('sanitize_key', $requested), $available)));
+		$protected = dbvc_get_export_mask_protected_post_fields();
+
+		if (empty($protected)) {
+			return $selected;
+		}
+
+		return array_values(array_diff($selected, $protected));
+	}
+}
+
+if (! function_exists('dbvc_mask_apply_to_post_fields')) {
+	/**
+	 * Apply export masking rules to selected root post fields.
+	 *
+	 * @since 1.6.1
+	 *
+	 * @param array<string,mixed> $data
+	 * @param array<int,string>   $fields
+	 * @param string|null         $action
+	 * @param string|null         $placeholder
+	 * @return array<string,mixed>
+	 */
+	function dbvc_mask_apply_to_post_fields(array $data, array $fields, ?string $action = null, ?string $placeholder = null): array
+	{
+		if (empty($fields)) {
+			return $data;
+		}
+
+		$available = array_keys(dbvc_get_maskable_post_fields());
+		$fields    = array_values(array_unique(array_intersect(array_map('sanitize_key', $fields), $available)));
+		if (empty($fields)) {
+			return $data;
+		}
+
+		$action = $action !== null
+			? (($action === 'redact') ? 'redact' : 'remove')
+			: ((get_option('dbvc_mask_action', 'remove') === 'redact') ? 'redact' : 'remove');
+		$placeholder = $placeholder !== null ? (string) $placeholder : (string) get_option('dbvc_mask_placeholder', '***');
+
+		foreach ($fields as $field) {
+			if (! array_key_exists($field, $data)) {
+				continue;
+			}
+
+			if ($action === 'redact') {
+				$data[$field] = $placeholder;
+				continue;
+			}
+
+			unset($data[$field]);
+		}
+
+		return $data;
+	}
+}
+
 if (! function_exists('dbvc_get_maskable_post_fields')) {
 	/**
 	 * List core post fields that can be masked via live masking.
