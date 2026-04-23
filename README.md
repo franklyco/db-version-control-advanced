@@ -3,6 +3,7 @@
 **Review, diff, and apply WordPress content safely via proposal bundles, JSON manifests, and a React-based admin workflow.**
 
 [![WordPress](https://img.shields.io/badge/WordPress-6.4%2B-blue.svg)](https://wordpress.org/) [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net/) [![License](https://img.shields.io/badge/License-GPL%20v2%2B-green.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
+[![gitcgr](https://gitcgr.com/badge/franklyco/db-version-control-advanced.svg)](https://gitcgr.com/franklyco/db-version-control-advanced)
 
 ## Overview
 
