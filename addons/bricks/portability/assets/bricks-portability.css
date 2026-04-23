@@ -1,0 +1,66 @@
+.dbvc-bricks-portability-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  margin: 16px 0;
+}
+
+.dbvc-bricks-portability-column {
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  padding: 16px;
+}
+
+.dbvc-bricks-portability-box,
+.dbvc-bricks-portability-pre {
+  background: #f6f7f7;
+  border: 1px solid #dcdcde;
+  padding: 12px;
+  min-height: 72px;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.dbvc-bricks-portability-domain-option {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.dbvc-bricks-portability-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  background: #f0f0f1;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dbvc-bricks-portability-workbench {
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.dbvc-bricks-portability-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+.dbvc-bricks-portability-detail-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  margin: 16px 0;
+}
+
+.dbvc-bricks-portability-status {
+  font-weight: 600;
+}
+
+.dbvc-bricks-portability-row {
+  cursor: pointer;
+}
