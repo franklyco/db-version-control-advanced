@@ -19,15 +19,21 @@
 - more text-like field types
 - non-current-owner badges for related/query-loop items
 - inspect-only repeater/flexible/relationship-collection markers
+- shared active hover/focus badge controller
+- lazy session bootstrap with on-demand descriptor hydration
 
 ## Phase 3
+- descriptor V2 owner/page/path/loop/mutation metadata
 - durable Visual Editor change journal tables
+- dedicated save-contract groundwork for loop-owned sources
 - repeater scalar subfield editing
 - flexible content scalar subfield editing
 - image/media support
 - structured repeater/flexible subfields
 - revision restore UX
 - grouped change queue / review mode
+- runtime profiling and performance instrumentation
+- optional materialized inventory cache only if profiling proves request-time classification is the bottleneck
 
 ## Phase 4
 - relationship collection editing

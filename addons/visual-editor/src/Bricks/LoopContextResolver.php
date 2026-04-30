@@ -94,27 +94,46 @@ final class LoopContextResolver
      */
     public function supportsRelatedPostEditing(array $context)
     {
+        if (! $this->supportsLoopOwnedEditing($context)) {
+            return false;
+        }
+
         $owner = isset($context['effective_owner_entity']) && is_array($context['effective_owner_entity'])
             ? $context['effective_owner_entity']
             : (isset($context['owner_entity']) && is_array($context['owner_entity']) ? $context['owner_entity'] : []);
 
-        if (empty($context['active'])
-            || ! isset($owner['type'], $owner['id'])
-            || (string) $owner['type'] !== 'post'
-            || absint($owner['id']) <= 0) {
+        return isset($owner['type'], $owner['id'])
+            && (string) $owner['type'] === 'post'
+            && absint($owner['id']) > 0;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return bool
+     */
+    public function hasConcreteOwner(array $context)
+    {
+        $owner = isset($context['effective_owner_entity']) && is_array($context['effective_owner_entity'])
+            ? $context['effective_owner_entity']
+            : (isset($context['owner_entity']) && is_array($context['owner_entity']) ? $context['owner_entity'] : []);
+
+        return ! empty($context['active'])
+            && isset($owner['type'], $owner['id'])
+            && in_array((string) $owner['type'], ['post', 'term', 'user'], true)
+            && absint($owner['id']) > 0;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return bool
+     */
+    public function supportsLoopOwnedEditing(array $context)
+    {
+        if (! $this->hasConcreteOwner($context)) {
             return false;
         }
 
-        if (isset($context['query_object_type']) && in_array((string) $context['query_object_type'], ['relationship', 'post_object'], true)) {
-            return true;
-        }
-
-        $parent = isset($context['parent']) && is_array($context['parent']) ? $context['parent'] : [];
-
-        return isset($context['query_object_type'])
-            && strpos((string) $context['query_object_type'], 'acf_') === 0
-            && isset($parent['query_object_type'])
-            && in_array((string) $parent['query_object_type'], ['relationship', 'post_object'], true);
+        return true;
     }
 
     /**
@@ -151,8 +170,10 @@ final class LoopContextResolver
             'loop_object_type' => isset($context['loop_object_type']) ? sanitize_key((string) $context['loop_object_type']) : '',
             'loop_object_id' => isset($context['loop_object_id']) ? absint($context['loop_object_id']) : 0,
             'loop_index' => isset($context['loop_index']) ? $this->normalizeScalar($context['loop_index']) : '',
+            'has_concrete_owner' => $this->hasConcreteOwner($context),
             'signature' => isset($context['signature']) ? sanitize_text_field((string) $context['signature']) : '',
             'has_concrete_post_owner' => $this->hasConcretePostOwner($context),
+            'supports_loop_owned_editing' => $this->supportsLoopOwnedEditing($context),
             'supports_related_post_editing' => $this->supportsRelatedPostEditing($context),
             'parent_query_object_type' => isset($context['parent']['query_object_type']) ? sanitize_key((string) $context['parent']['query_object_type']) : '',
             'parent_loop_object_type' => isset($context['parent']['loop_object_type']) ? sanitize_key((string) $context['parent']['loop_object_type']) : '',
@@ -177,16 +198,18 @@ final class LoopContextResolver
      */
     private function buildSignature(array $context, array $parent_context = [])
     {
+        $parts = [];
+
         if (method_exists('\\Bricks\\Query', 'get_looping_unique_identifier')) {
             $unique = \Bricks\Query::get_looping_unique_identifier('interaction');
 
             if (is_scalar($unique) && (string) $unique !== '') {
-                return sanitize_text_field((string) $unique);
+                $parts[] = sanitize_text_field((string) $unique);
             }
         }
 
-        return implode(
-            '|',
+        $parts = array_merge(
+            $parts,
             [
                 sanitize_text_field((string) ($context['query_id'] ?? '')),
                 sanitize_text_field((string) ($context['query_element_id'] ?? '')),
@@ -201,6 +224,8 @@ final class LoopContextResolver
                 sanitize_text_field((string) ($parent_context['loop_index'] ?? '')),
             ]
         );
+
+        return implode('|', $parts);
     }
 
     /**
@@ -211,7 +236,29 @@ final class LoopContextResolver
      */
     private function mapLoopObjectToEntity($loop_object_type, $loop_object_id, $loop_object)
     {
-        if ($loop_object_type === 'post' && $loop_object_id > 0) {
+        $loop_object_type = sanitize_key((string) $loop_object_type);
+
+        if ($loop_object instanceof \WP_Post) {
+            $loop_object_id = $loop_object_id > 0 ? $loop_object_id : absint($loop_object->ID);
+        }
+
+        if ($loop_object instanceof \WP_User) {
+            $loop_object_id = $loop_object_id > 0 ? $loop_object_id : absint($loop_object->ID);
+        }
+
+        if ($loop_object instanceof \WP_Term) {
+            $loop_object_id = $loop_object_id > 0 ? $loop_object_id : absint($loop_object->term_id);
+        }
+
+        if (
+            $loop_object_id > 0
+            && (
+                $loop_object instanceof \WP_Post
+                || $loop_object_type === 'post'
+                || ($loop_object_type !== '' && post_type_exists($loop_object_type))
+                || get_post_type($loop_object_id)
+            )
+        ) {
             return [
                 'type' => 'post',
                 'id' => $loop_object_id,
@@ -220,8 +267,17 @@ final class LoopContextResolver
             ];
         }
 
-        if ($loop_object_type === 'term' && $loop_object instanceof \WP_Term && $loop_object_id > 0) {
-            $taxonomy = sanitize_key((string) $loop_object->taxonomy);
+        if (
+            $loop_object_id > 0
+            && (
+                $loop_object instanceof \WP_Term
+                || $loop_object_type === 'term'
+                || ($loop_object_type !== '' && taxonomy_exists($loop_object_type))
+            )
+        ) {
+            $taxonomy = $loop_object instanceof \WP_Term
+                ? sanitize_key((string) $loop_object->taxonomy)
+                : $loop_object_type;
 
             return [
                 'type' => 'term',
@@ -232,7 +288,7 @@ final class LoopContextResolver
             ];
         }
 
-        if ($loop_object_type === 'user' && $loop_object_id > 0) {
+        if ($loop_object_id > 0 && ($loop_object instanceof \WP_User || $loop_object_type === 'user')) {
             return [
                 'type' => 'user',
                 'id' => $loop_object_id,

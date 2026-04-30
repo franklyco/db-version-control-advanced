@@ -4,6 +4,8 @@ namespace Dbvc\VisualEditor\Save;
 
 use Dbvc\VisualEditor\Audit\ChangeLogger;
 use Dbvc\VisualEditor\Cache\CacheInvalidator;
+use Dbvc\VisualEditor\Journal\ChangeJournalRecorder;
+use Dbvc\VisualEditor\Presentation\DescriptorSummaryBuilder;
 use Dbvc\VisualEditor\Registry\EditableDescriptor;
 use Dbvc\VisualEditor\Resolvers\ResolverRegistry;
 
@@ -34,13 +36,25 @@ final class MutationService
      */
     private $cache;
 
-    public function __construct(ResolverRegistry $resolvers, ValidationService $validator, SanitizationService $sanitizer, ChangeLogger $audit, CacheInvalidator $cache)
+    /**
+     * @var DescriptorSummaryBuilder
+     */
+    private $summaries;
+
+    /**
+     * @var ChangeJournalRecorder|null
+     */
+    private $journal;
+
+    public function __construct(ResolverRegistry $resolvers, ValidationService $validator, SanitizationService $sanitizer, ChangeLogger $audit, CacheInvalidator $cache, DescriptorSummaryBuilder $summaries, ?ChangeJournalRecorder $journal = null)
     {
         $this->resolvers = $resolvers;
         $this->validator = $validator;
         $this->sanitizer = $sanitizer;
         $this->audit = $audit;
         $this->cache = $cache;
+        $this->summaries = $summaries;
+        $this->journal = $journal;
     }
 
     /**
@@ -75,11 +89,26 @@ final class MutationService
         }
 
         $sanitized = $this->sanitizer->sanitize($resolver, $descriptor, $value);
+        $change_set_id = $this->journal instanceof ChangeJournalRecorder
+            ? $this->journal->start($descriptor, $resolver->name())
+            : 0;
         $result = $resolver->save($descriptor, $sanitized);
         if (empty($result['ok'])) {
+            if ($this->journal instanceof ChangeJournalRecorder) {
+                $this->journal->recordFailure(
+                    $change_set_id,
+                    $descriptor,
+                    $resolver->name(),
+                    $old_value,
+                    $sanitized,
+                    isset($result['message']) ? (string) $result['message'] : __('Save failed.', 'dbvc')
+                );
+            }
+
             return [
                 'ok' => false,
                 'message' => isset($result['message']) ? (string) $result['message'] : __('Save failed.', 'dbvc'),
+                'changeSetId' => $change_set_id,
             ];
         }
 
@@ -87,6 +116,12 @@ final class MutationService
         $display_value = $resolver->getDisplayValue($descriptor, $current_value);
         $display_mode = $resolver->getDisplayMode($descriptor);
         $display_candidates = $this->resolveDisplayCandidates($resolver, $descriptor, $current_value);
+        $entity_summary = $this->summaries->buildEntitySummary($descriptor);
+        $source_summary = $this->summaries->buildSourceSummary($descriptor);
+        $save_summary = $this->summaries->buildSaveSummary($descriptor, $entity_summary, $source_summary);
+        if ($this->journal instanceof ChangeJournalRecorder) {
+            $this->journal->recordSuccess($change_set_id, $descriptor, $resolver->name(), $old_value, $current_value);
+        }
         $this->audit->log($descriptor, $old_value, $current_value);
         $this->cache->invalidate($descriptor);
 
@@ -101,6 +136,16 @@ final class MutationService
             'displayKey' => isset($descriptor->render['display_key']) ? (string) $descriptor->render['display_key'] : 'default',
             'syncGroup' => isset($descriptor->render['sync_group']) ? (string) $descriptor->render['sync_group'] : '',
             'sourceGroup' => isset($descriptor->render['source_group']) ? (string) $descriptor->render['source_group'] : '',
+            'descriptorVersion' => isset($descriptor->mutation['version']) ? absint($descriptor->mutation['version']) : 1,
+            'pageContext' => isset($descriptor->page) && is_array($descriptor->page) ? $descriptor->page : [],
+            'ownerContext' => isset($descriptor->owner) && is_array($descriptor->owner) ? $descriptor->owner : [],
+            'loopContext' => isset($descriptor->loop) && is_array($descriptor->loop) ? $descriptor->loop : [],
+            'pathContext' => isset($descriptor->path) && is_array($descriptor->path) ? $descriptor->path : [],
+            'mutationContract' => isset($descriptor->mutation) && is_array($descriptor->mutation) ? $descriptor->mutation : [],
+            'changeSetId' => $change_set_id,
+            'entitySummary' => $entity_summary,
+            'sourceSummary' => $source_summary,
+            'saveSummary' => $save_summary,
             'message' => __('Saved successfully.', 'dbvc'),
         ];
     }

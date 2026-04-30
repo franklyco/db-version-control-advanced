@@ -46,6 +46,23 @@
 - Added narrow writable ACF repeater row support for stable Bricks repeater loops on current-post and related-post owners
 - Added repeater-aware source and sync grouping so saves no longer bleed across rows of the same repeater field
 - Added repeater row metadata to the modal source summary and a repo-specific repeater implementation plan doc
-- Tightened badge visibility so hidden megamenus, offcanvas panels, and other non-painted containers do not show edit badges until their marked nodes are actually visible
-- Switched badge visibility checks toward native effective-visibility detection where available, added burst relayout passes across hover/open transitions for megamenus and offcanvas reveals, moved badge placement inside the target corner, and removed the child overflow override that triggered media-tag console warnings
 - Kept unsupported scopes explicitly out of the MVP slice instead of guessing from rendered HTML
+- Added a repo-specific badge/hydration planning doc and updated the advanced/phase architecture docs around a shared active badge runtime, lazy descriptor hydration, and no runtime token-cache table by default
+- Replaced per-marker detached badges with one shared active badge controller and changed initial session bootstrap to public-map-only by default, with descriptor payloads fetched on demand and cached after first lookup
+- Added short-dwell active-marker descriptor prefetch, shared descriptor-request reuse, and first-tap/second-tap touch selection rules for the shared Visual Editor badge flow
+- Added direct WordPress `{featured_image}` support for Bricks image and `_background.image` controls, reusing the attachment-ID-first media modal and post thumbnail save contract instead of limiting image editing to ACF image fields only
+- Added lightweight owner-type badge refinement so the shared badge and source summary can distinguish `Related Post`, `Shared Term`, `Shared User`, and similar non-current owner labels from the session public map without eager descriptor hydration
+- Extended that owner-type refinement into panel acknowledgement copy, save-button labels, and locked-state messaging so shared term/user/option targets read consistently once the editor opens
+- Added entity-aware panel summaries so the editor can show the actual entity title/name, canonical frontend/backend editor links where available, and an expandable raw source-details block for the current dynamic binding
+- Added structured panel notice summaries so inspect-only and locked states can call out the exact entity and source field that remain outside the current save scope
+- Extracted descriptor/entity/source summary building into a shared presentation builder so save responses can reuse the same summaries for post-save panel and status-bar confirmations
+- Added a formal Descriptor V2 shape carrying explicit page, owner, loop, path, and mutation-contract metadata for advanced loop-owned and nested-field planning
+- Added dedicated Visual Editor journal tables and recorder services so saves can write durable change-set and change-item history without overloading transient descriptor sessions
+- Added an explicit mutation-contract service so supported current/shared/repeater/loop-owned save paths are enforced by contract rather than only by scope inference
+- Added save-contract details to the panel source-summary block and tightened `canEdit` so non-enabled contracts do not present as writable in the modal
+- Merged the latest frontend styling tweaks for related-scope badge color tokens, pulsing empty-field placeholders on text-like targets, and a narrow image overflow override instead of a broad target overflow rule
+- Broadened loop-owner handling so direct safe ACF fields on concrete queried post, term, and user owners can save through the explicit loop-owned contract path instead of being forced into inspect-only mode
+- Added stable direct flexible-content descendant support with row + layout descriptor metadata, resolver-backed value inspection, and narrow writable `flexible_layout` / `loop_owned_flexible_layout` contracts for current/related post text-like, WYSIWYG, choice, link, and image subfields
+- Relaxed flexible layout-name inference so Bricks flexible query loops that use shortened child tags like `acf_flexible_layouts_*` against fuller loop object types such as `acf_core_sections_flexible_layouts` can still resolve editable flexible descendants safely
+- Fixed a Bricks link-setting inspector warning path where array-valued `settings.link` data was being coerced into a string during render-time candidate inspection
+- Broadened loop-owner entity mapping so Bricks custom query-editor loops that surface real `WP_Post` objects or CPT slugs such as `benefit` can still resolve queried-post ACF fields as editable related owners

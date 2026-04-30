@@ -186,12 +186,29 @@ final class EditableRegistry
             $map[$token] = [
                 'token' => (string) $token,
                 'status' => (string) $descriptor->status,
+                'scope' => (string) $descriptor->scope,
                 'label' => isset($descriptor->ui['label']) ? (string) $descriptor->ui['label'] : __('Field', 'dbvc'),
                 'input' => isset($descriptor->ui['input']) ? (string) $descriptor->ui['input'] : 'text',
+                'entity' => $this->exportPublicEntitySummary($descriptor),
             ];
         }
 
         return $map;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<string, mixed>
+     */
+    private function exportPublicEntitySummary(EditableDescriptor $descriptor)
+    {
+        $entity = isset($descriptor->entity) && is_array($descriptor->entity) ? $descriptor->entity : [];
+
+        return [
+            'type' => isset($entity['type']) ? sanitize_key((string) $entity['type']) : '',
+            'id' => isset($entity['id']) ? absint($entity['id']) : 0,
+            'subtype' => isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '',
+        ];
     }
 
     /**

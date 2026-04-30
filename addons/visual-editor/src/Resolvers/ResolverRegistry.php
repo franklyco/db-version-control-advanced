@@ -31,6 +31,7 @@ final class ResolverRegistry
         $instances = [
             new PostTitleResolver(),
             new PostExcerptResolver(),
+            new PostFeaturedImageResolver(),
             new AcfWysiwygResolver(),
             new AcfChoiceResolver(),
             new AcfLinkResolver(),
@@ -98,6 +99,7 @@ final class ResolverRegistry
     private function classifyPostField(array $candidate, array $page_context)
     {
         $field_name = isset($candidate['field_name']) ? sanitize_key((string) $candidate['field_name']) : '';
+        $render_context = isset($candidate['render_context']) ? sanitize_key((string) $candidate['render_context']) : '';
         $page_entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
         $loop_context = $this->loops->resolve();
         $has_concrete_post_owner = $this->loops->hasConcretePostOwner($loop_context);
@@ -164,7 +166,38 @@ final class ResolverRegistry
             ];
         }
 
-        return $this->buildUnsupported('Only direct post title and post excerpt bindings are enabled in the MVP.');
+        if ($field_name === 'featured_image') {
+            if (! in_array($render_context, ['image_src', 'background_image'], true)) {
+                return $this->buildUnsupported('Only direct Bricks image and background-image projections are enabled for featured image editing in the current slice.');
+            }
+
+            return [
+                'status' => $status,
+                'scope' => $scope,
+                'entity' => $entity,
+                'loop' => $this->loops->export($loop_context),
+                'source' => [
+                    'type' => 'post_field',
+                    'expression' => isset($candidate['expression']) ? (string) $candidate['expression'] : '',
+                    'expression_args' => isset($candidate['args']) && is_array($candidate['args']) ? $candidate['args'] : [],
+                    'field_name' => 'featured_image',
+                    'field_key' => '',
+                    'field_type' => 'image',
+                    'media_size' => isset($candidate['media_size']) ? sanitize_key((string) $candidate['media_size']) : '',
+                ],
+                'resolver' => [
+                    'name' => 'post_featured_image',
+                    'version' => 1,
+                ],
+                'ui' => [
+                    'label' => __('Featured Image', 'dbvc'),
+                    'input' => 'media_reference',
+                    'warning' => $this->buildPostFieldWarning($scope, $loop_context, $status, 'featured_image', $render_context),
+                ],
+            ];
+        }
+
+        return $this->buildUnsupported('Only direct post title, post excerpt, and featured image bindings are enabled in the current post-field slice.');
     }
 
     /**
@@ -204,7 +237,29 @@ final class ResolverRegistry
         $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
         $return_format = isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : 'value';
         $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
-        $source_type = ! empty($repeater['supported']) ? 'acf_repeater_subfield' : 'acf_field';
+        $flexible = isset($resolved['flexible']) && is_array($resolved['flexible']) ? $resolved['flexible'] : [];
+        $source_type = 'acf_field';
+
+        if (! empty($repeater['supported'])) {
+            $source_type = 'acf_repeater_subfield';
+        } elseif (! empty($flexible['supported'])) {
+            $source_type = 'acf_flexible_subfield';
+        }
+
+        $container_type = ! empty($repeater['supported'])
+            ? 'repeater'
+            : (! empty($flexible['supported']) ? 'flexible_content' : '');
+        $parent_field_name = ! empty($repeater['supported'])
+            ? sanitize_key((string) ($repeater['parent_field_name'] ?? ''))
+            : (! empty($flexible['supported']) ? sanitize_key((string) ($flexible['parent_field_name'] ?? '')) : '');
+        $parent_field_key = ! empty($repeater['supported'])
+            ? sanitize_key((string) ($repeater['parent_field_key'] ?? ''))
+            : (! empty($flexible['supported']) ? sanitize_key((string) ($flexible['parent_field_key'] ?? '')) : '');
+        $row_index = ! empty($repeater['supported'])
+            ? (isset($repeater['row_index']) ? absint($repeater['row_index']) : null)
+            : (! empty($flexible['supported']) && isset($flexible['row_index']) ? absint($flexible['row_index']) : null);
+        $layout_key = ! empty($flexible['supported']) ? sanitize_key((string) ($flexible['layout_key'] ?? '')) : '';
+        $layout_name = ! empty($flexible['supported']) ? sanitize_key((string) ($flexible['layout_name'] ?? '')) : '';
         $label = isset($field['label']) && (string) $field['label'] !== ''
             ? sanitize_text_field((string) $field['label'])
             : ucwords(str_replace('_', ' ', $field_name));
@@ -239,10 +294,12 @@ final class ResolverRegistry
                 'reference_post_types' => $this->normalizeStringList($field['post_type'] ?? []),
                 'reference_taxonomies' => $this->normalizeStringList($field['taxonomy'] ?? []),
                 'reference_multiple' => $this->isReferenceMultiple($field),
-                'container_type' => ! empty($repeater['supported']) ? 'repeater' : '',
-                'parent_field_name' => ! empty($repeater['supported']) ? sanitize_key((string) ($repeater['parent_field_name'] ?? '')) : '',
-                'parent_field_key' => ! empty($repeater['supported']) ? sanitize_key((string) ($repeater['parent_field_key'] ?? '')) : '',
-                'row_index' => ! empty($repeater['supported']) && isset($repeater['row_index']) ? absint($repeater['row_index']) : null,
+                'container_type' => $container_type,
+                'parent_field_name' => $parent_field_name,
+                'parent_field_key' => $parent_field_key,
+                'row_index' => $row_index,
+                'layout_key' => $layout_key,
+                'layout_name' => $layout_name,
             ],
             'resolver' => [
                 'name' => $resolver_name,
@@ -465,21 +522,26 @@ final class ResolverRegistry
         $loop = isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [];
         $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
 
-        if ($entity_type === 'option') {
+        if (($resolved['scope'] ?? '') === 'related_entity') {
+            if ($entity_type === 'term') {
+                $warnings[] = __('This field is rendered from the related taxonomy term currently shown in a Bricks query loop. Saving here updates that related term, not the current page.', 'dbvc');
+            } elseif ($entity_type === 'user') {
+                $warnings[] = __('This field is rendered from the related user currently shown in a Bricks query loop. Saving here updates that related user, not the current page.', 'dbvc');
+            } elseif (! empty($loop['supports_related_post_editing'])) {
+                $warnings[] = __('This field is rendered from a related post inside a Bricks query loop. Saving here updates that related post, not the current page.', 'dbvc');
+            } else {
+                $warnings[] = __('This field is rendered from a non-current item inside a Bricks query loop rather than the current page.', 'dbvc');
+            }
+        } elseif ($entity_type === 'option') {
             $warnings[] = __('This field resolves to a shared options-level ACF target. Saving here affects every frontend context using that option value.', 'dbvc');
         } elseif ($entity_type === 'term') {
             $warnings[] = __('This field resolves to a shared taxonomy term target rather than the current post. Saving here affects any view using that term field.', 'dbvc');
         } elseif ($entity_type === 'user') {
             $warnings[] = __('This field resolves to a shared user profile target rather than the current post. Saving here affects any view using that user field.', 'dbvc');
-        } elseif (($resolved['scope'] ?? '') === 'related_entity') {
-            if (! empty($loop['supports_related_post_editing'])) {
-                $warnings[] = __('This field is rendered from a related post inside a Bricks ACF relationship/post-object query loop. Saving here updates that related post, not the current page.', 'dbvc');
-            } else {
-                $warnings[] = __('This field is rendered from a non-current post inside a Bricks query loop rather than the current page.', 'dbvc');
-            }
         }
 
         $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
+        $flexible = isset($resolved['flexible']) && is_array($resolved['flexible']) ? $resolved['flexible'] : [];
         if (! empty($repeater['supported'])) {
             $row_index = isset($repeater['row_index']) ? absint($repeater['row_index']) : 0;
             $parent_field_name = isset($repeater['parent_field_name']) ? sanitize_key((string) $repeater['parent_field_name']) : '';
@@ -490,6 +552,22 @@ final class ResolverRegistry
                     __('This field is being edited through repeater `%1$s`, row %2$d.', 'dbvc'),
                     $parent_field_name,
                     $row_index + 1
+                );
+            }
+        }
+
+        if (! empty($flexible['supported'])) {
+            $row_index = isset($flexible['row_index']) ? absint($flexible['row_index']) : 0;
+            $parent_field_name = isset($flexible['parent_field_name']) ? sanitize_key((string) $flexible['parent_field_name']) : '';
+            $layout_name = isset($flexible['layout_name']) ? sanitize_key((string) $flexible['layout_name']) : '';
+
+            if ($parent_field_name !== '') {
+                $warnings[] = sprintf(
+                    /* translators: 1: flexible field name, 2: row number, 3: layout slug */
+                    __('This field is rendered through flexible content `%1$s`, row %2$d, layout `%3$s`.', 'dbvc'),
+                    $parent_field_name,
+                    $row_index + 1,
+                    $layout_name !== '' ? $layout_name : 'unknown'
                 );
             }
         }
@@ -534,9 +612,24 @@ final class ResolverRegistry
         if ($reason === 'restricted_options_group') {
             $warnings[] = __('This Site Settings global-link field group is intentionally locked in Visual Editor. Edit it from the ACF Site Settings options page instead.', 'dbvc');
         } elseif ($reason === 'repeater_shared_owner') {
-            $warnings[] = __('This repeater row resolves to a shared non-post owner. Shared repeater mutation is still inspect-only until it has a dedicated rollback-safe contract.', 'dbvc');
+            $warnings[] = __('This repeater row resolves to a non-post owner. Non-post repeater mutation is still inspect-only until it has a dedicated rollback-safe contract.', 'dbvc');
         } elseif ($reason === 'loop_owned_readonly') {
-            $warnings[] = __('This field belongs to a non-current post rendered by a Bricks query loop. It is surfaced here for inspection only until that loop-owned mutation path has a dedicated save contract.', 'dbvc');
+            $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
+            $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
+
+            if ($entity_type === 'term') {
+                $warnings[] = __('This field belongs to a non-current taxonomy term rendered by a Bricks query loop. It is surfaced here for inspection only until that loop-owned term mutation path has a dedicated save contract.', 'dbvc');
+            } elseif ($entity_type === 'user') {
+                $warnings[] = __('This field belongs to a non-current user rendered by a Bricks query loop. It is surfaced here for inspection only until that loop-owned user mutation path has a dedicated save contract.', 'dbvc');
+            } else {
+                $warnings[] = __('This field belongs to a non-current post rendered by a Bricks query loop. It is surfaced here for inspection only until that loop-owned mutation path has a dedicated save contract.', 'dbvc');
+            }
+        } elseif ($reason === 'flexible_non_post_owner') {
+            $warnings[] = __('This flexible-content subfield belongs to a non-post owner. Flexible mutation is currently limited to current and related post owners only.', 'dbvc');
+        } elseif ($reason === 'flexible_shared_post_owner') {
+            $warnings[] = __('This flexible-content subfield belongs to a shared non-current post outside the current loop-owned slice. It is surfaced here for inspection only until that post-owner contract is enabled.', 'dbvc');
+        } elseif ($reason === 'flexible_pending') {
+            $warnings[] = __('This flexible-content subfield is surfaced here for inspection only. Flexible mutation is currently limited to text-like, WYSIWYG, choice, link, and image subfields with stable post-owned row identity.', 'dbvc');
         } elseif ($reason === 'gallery_collection') {
             $warnings[] = __('This gallery field is surfaced here for inspection only. Multi-image collection editing needs a dedicated mutation and rollback contract before it can be saved safely.', 'dbvc');
         } elseif ($reason === 'image_projection') {
@@ -563,6 +656,7 @@ final class ResolverRegistry
         }
 
         $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
+        $flexible = isset($resolved['flexible']) && is_array($resolved['flexible']) ? $resolved['flexible'] : [];
         if (! empty($repeater['supported'])) {
             $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
             $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
@@ -572,8 +666,27 @@ final class ResolverRegistry
             }
         }
 
+        if (! empty($flexible['supported'])) {
+            $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
+            $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
+            $scope = isset($resolved['scope']) ? (string) $resolved['scope'] : 'current_entity';
+            $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+
+            if ($entity_type !== 'post') {
+                return 'flexible_non_post_owner';
+            }
+
+            if ($scope === 'shared_entity') {
+                return 'flexible_shared_post_owner';
+            }
+
+            if (! $this->isEditableFlexibleFieldType($field_type)) {
+                return 'flexible_pending';
+            }
+        }
+
         $loop = isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [];
-        if (! empty($loop['active']) && ! empty($loop['has_concrete_post_owner']) && empty($loop['supports_related_post_editing'])) {
+        if (! empty($loop['active']) && ! empty($loop['has_concrete_owner']) && empty($loop['supports_loop_owned_editing'])) {
             return 'loop_owned_readonly';
         }
 
@@ -606,6 +719,19 @@ final class ResolverRegistry
         return in_array(
             $field_type,
             ['text', 'textarea', 'url', 'email', 'number', 'range', 'wysiwyg', 'checkbox', 'select', 'radio', 'button_group', 'link', 'image', 'gallery', 'post_object', 'relationship', 'taxonomy'],
+            true
+        );
+    }
+
+    /**
+     * @param string $field_type
+     * @return bool
+     */
+    private function isEditableFlexibleFieldType($field_type)
+    {
+        return in_array(
+            $field_type,
+            ['text', 'textarea', 'url', 'email', 'number', 'range', 'wysiwyg', 'checkbox', 'select', 'radio', 'button_group', 'link', 'image'],
             true
         );
     }
@@ -771,21 +897,33 @@ final class ResolverRegistry
      * @param string               $status
      * @return string|null
      */
-    private function buildPostFieldWarning($scope, array $loop_context, $status = 'editable')
+    private function buildPostFieldWarning($scope, array $loop_context, $status = 'editable', $field_name = '', $render_context = '')
     {
+        $warnings = [];
+
         if ($scope !== 'related_entity') {
-            return null;
+            if ($field_name === 'featured_image' && in_array($render_context, ['image_src', 'background_image'], true)) {
+                $warnings[] = $render_context === 'background_image'
+                    ? __('This featured image control saves the underlying post thumbnail attachment ID and refreshes the rendered background image in place after save.', 'dbvc')
+                    : __('This featured image control saves the underlying post thumbnail attachment ID and refreshes the rendered image attributes in place after save.', 'dbvc');
+            }
+
+            return empty($warnings) ? null : implode(' ', $warnings);
         }
 
         if ($status !== 'editable') {
-            return __('This value belongs to a non-current post rendered by a Bricks query loop. It is surfaced here for inspection only until that loop-owned mutation path has a dedicated save contract.', 'dbvc');
+            $warnings[] = __('This value belongs to a non-current post rendered by a Bricks query loop. It is surfaced here for inspection only until that loop-owned mutation path has a dedicated save contract.', 'dbvc');
+        } elseif ($this->loops->supportsRelatedPostEditing($loop_context)) {
+            $warnings[] = __('This value belongs to the related post currently rendered by a Bricks ACF relationship/post-object query loop. Saving here updates that related post, not the current page.', 'dbvc');
         }
 
-        if ($this->loops->supportsRelatedPostEditing($loop_context)) {
-            return __('This value belongs to the related post currently rendered by a Bricks ACF relationship/post-object query loop. Saving here updates that related post, not the current page.', 'dbvc');
+        if ($field_name === 'featured_image' && in_array($render_context, ['image_src', 'background_image'], true)) {
+            $warnings[] = $render_context === 'background_image'
+                ? __('This featured image control saves the underlying post thumbnail attachment ID and refreshes the rendered background image in place after save.', 'dbvc')
+                : __('This featured image control saves the underlying post thumbnail attachment ID and refreshes the rendered image attributes in place after save.', 'dbvc');
         }
 
-        return null;
+        return empty($warnings) ? null : implode(' ', $warnings);
     }
 
     /**

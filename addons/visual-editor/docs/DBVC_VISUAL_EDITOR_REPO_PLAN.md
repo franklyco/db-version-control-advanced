@@ -32,11 +32,11 @@
 
 ### Immediate next planning targets
 
-1. Inspect-only marker support for repeater, flexible-content, relationship-collection, and unsupported loop-derived nodes.
-2. Explicit non-current-owner badges for related/query-loop items in the overlay and modal.
-3. Descriptor V2 metadata for owner/page/path/loop identity.
-4. Path-aware resolver expansion for nested ACF fields.
-5. Durable write journaling and rollback support before any multi-step nested mutation.
+1. Descriptor V2 metadata for owner/page/path/loop identity and mutation contract shape.
+2. Durable write journaling and rollback support before any multi-step nested mutation.
+3. Dedicated save-contract groundwork for loop-owned sources whose owner differs from the current page entity.
+4. Inspect-only marker support for flexible-content, relationship-collection, and unsupported loop-derived nodes where ownership is stable.
+5. Path-aware resolver expansion for nested ACF fields after the contract and journal layer are in place.
 
 ### UI direction
 
@@ -64,6 +64,12 @@ Advanced nested writes need durable operational state for:
 - future review/apply history
 
 That is materially different from ephemeral marker sessions, so it should not be stored only in transients or the generic activity log.
+
+### Recommended sequencing note
+
+If choosing between broader loop-owned save contracts and flexible-content query-loop editing, do the loop-owned contract and journaling groundwork first.
+
+Flexible-content descendants should consume that groundwork. They should not be the place where it is invented.
 
 ## Risks To Watch
 

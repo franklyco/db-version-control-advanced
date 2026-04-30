@@ -20,6 +20,48 @@ Rules:
   "token": "ve_4f8a1d",
   "status": "editable",
   "scope": "shared_entity",
+  "page": {
+    "type": "post",
+    "id": 245,
+    "subtype": "page",
+    "url": "https://example.com/services/"
+  },
+  "owner": {
+    "type": "option",
+    "id": "option",
+    "subtype": "option",
+    "acf_object_id": "option",
+    "scope": "shared_entity",
+    "isCurrentPageEntity": false,
+    "isLoopOwned": false
+  },
+  "loop": {
+    "active": false
+  },
+  "path": {
+    "containerType": "",
+    "rootFieldName": "cta_link",
+    "fieldName": "cta_link",
+    "isNested": false,
+    "segments": [
+      {
+        "type": "field",
+        "fieldName": "cta_link",
+        "fieldKey": "field_64abc123"
+      }
+    ],
+    "summary": "field:cta_link"
+  },
+  "mutation": {
+    "version": 2,
+    "kind": "structured",
+    "target": "field",
+    "contract": "shared_field",
+    "renderContext": "text",
+    "loopOwned": false,
+    "requiresJournal": true,
+    "status": "editable"
+  },
   "entity": {
     "type": "option",
     "id": "option",
@@ -80,6 +122,104 @@ Repeater-backed descriptors use the same contract with row metadata added to `so
 }
 ```
 
+Direct flexible-content descendants now use the same descriptor contract shape with layout metadata added to `source`, for example:
+
+```json
+{
+  "source": {
+    "type": "acf_flexible_subfield",
+    "field_name": "details",
+    "field_key": "field_672419f1bfe48",
+    "field_type": "wysiwyg",
+    "container_type": "flexible_content",
+    "parent_field_name": "alternative_flexible_layouts",
+    "parent_field_key": "field_672419f0bfe12",
+    "row_index": 0,
+    "layout_key": "layout_6605e29de3f7e",
+    "layout_name": "criteria_cost"
+  }
+}
+```
+
+The repeater row identity is also formalized in `path`, for example:
+
+```json
+{
+  "path": {
+    "containerType": "repeater",
+    "rootFieldName": "faq_group_items_repeater",
+    "fieldName": "faq_answer",
+    "rowIndex": 0,
+    "isNested": true,
+    "segments": [
+      {
+        "type": "repeater",
+        "fieldName": "faq_group_items_repeater",
+        "fieldKey": "field_66bd748d71063",
+        "index": 0
+      },
+      {
+        "type": "field",
+        "fieldName": "faq_answer",
+        "fieldKey": "field_66bd749f71065"
+      }
+    ],
+    "summary": "repeater:faq_group_items_repeater / row:1 / field:faq_answer"
+  },
+  "mutation": {
+    "version": 2,
+    "kind": "scalar",
+    "target": "row",
+    "contract": "repeater_row",
+    "requiresJournal": true
+  }
+}
+```
+
+Flexible row identity is formalized in the same `path` contract, for example:
+
+```json
+{
+  "path": {
+    "containerType": "flexible_content",
+    "rootFieldName": "alternative_flexible_layouts",
+    "fieldName": "details",
+    "rowIndex": 0,
+    "layoutKey": "layout_6605e29de3f7e",
+    "layoutName": "criteria_cost",
+    "isNested": true,
+    "segments": [
+      {
+        "type": "flexible_content",
+        "fieldName": "alternative_flexible_layouts",
+        "fieldKey": "field_672419f0bfe12",
+        "index": 0,
+        "layoutKey": "layout_6605e29de3f7e",
+        "layoutName": "criteria_cost"
+      },
+      {
+        "type": "field",
+        "fieldName": "details",
+        "fieldKey": "field_672419f1bfe48"
+      }
+    ],
+    "summary": "flexible:alternative_flexible_layouts / row:1 / layout:criteria_cost / field:details"
+  },
+  "mutation": {
+    "version": 2,
+    "kind": "scalar",
+    "target": "layout",
+    "contract": "flexible_layout",
+    "requiresJournal": true
+  }
+}
+```
+
+In the current slice:
+- `flexible_layout` is writable only for text-like, WYSIWYG, choice, link, and image flexible descendants on the current post owner
+- `loop_owned_flexible_layout` is writable only for text-like, WYSIWYG, choice, link, and image flexible descendants on the concrete related post currently rendered by the loop
+- `shared_flexible_layout` remains inspect-only
+
 `scope` values currently used:
 - `current_entity`
 - `shared_entity`
@@ -120,7 +260,7 @@ Image fields may submit an object with:
 - `attachmentId`
 - `url`
 
-`attachmentId` is the canonical save target for image fields. A pasted local Media Library URL is only used as a fallback lookup when no attachment ID is supplied.
+`attachmentId` is the canonical save target for image fields. A pasted local Media Library URL is only used as a fallback lookup when no attachment ID is supplied. This same attachment-aware contract now applies to both direct ACF image fields and direct WordPress `{featured_image}` bindings rendered by Bricks as an image or background image source.
 
 In the current slice, the backend only accepts image changes that resolve to an existing local Media Library attachment, and the normalized image value returned after save includes image-specific render metadata such as:
 - `attachmentId`
@@ -140,6 +280,8 @@ The same acknowledgement gate is also used for `related_entity` descriptors so t
   "ok": true,
   "token": "ve_4f8a1d",
   "status": "saved",
+  "descriptorVersion": 2,
+  "changeSetId": 148,
   "value": {
     "url": "https://example.com/contact",
     "title": "Contact Sales",
@@ -161,13 +303,87 @@ The same acknowledgement gate is also used for `related_entity` descriptors so t
   ],
   "sourceGroup": "vesg_6f89e4b7a0c1",
   "syncGroup": "veg_18fe4a7c0e2b",
+  "pageContext": {
+    "type": "post",
+    "id": 245
+  },
+  "ownerContext": {
+    "type": "term",
+    "id": 19,
+    "scope": "shared_entity"
+  },
+  "pathContext": {
+    "summary": "field:cta_link"
+  },
+  "mutationContract": {
+    "version": 2,
+    "kind": "structured",
+    "target": "field",
+    "contract": "shared_field"
+  },
+  "saveContractSummary": {
+    "name": "shared_field",
+    "label": "shared field",
+    "detail": "shared field / structured / field / text",
+    "writable": true,
+    "requiresAcknowledgement": true,
+    "acknowledgementType": "shared"
+  },
+  "entitySummary": {
+    "title": "Dental Implants",
+    "typeLabel": "Service Category"
+  },
+  "sourceSummary": {
+    "label": "CTA Link",
+    "summary": "acf_field / cta_link / term:19"
+  },
+  "saveSummary": {
+    "title": "Saved Dental Implants",
+    "detail": "Service Category / Source: CTA Link / shared term target"
+  },
   "message": "Saved successfully."
 }
 ```
 
 ## Session bootstrap response
 
-The authenticated session bootstrap endpoint can also return hydrated descriptor payloads for the current page so the overlay can cache editable field data up front.
+The authenticated session bootstrap endpoint returns the public descriptor map for the current page by default.
+
+It can also return hydrated descriptor payloads when explicit warmup is requested, but that is no longer the default interactive mode.
+
+```json
+{
+  "ok": true,
+  "sessionId": "ves_ab12cd34ef56",
+  "descriptors": {
+    "ve_4f8a1d": {
+      "token": "ve_4f8a1d",
+      "label": "CTA Link",
+      "input": "link",
+      "status": "editable",
+      "scope": "shared_entity",
+      "entity": {
+        "type": "term",
+        "id": 19,
+        "subtype": "service_category"
+      }
+    }
+  },
+  "descriptorHydrations": {}
+}
+```
+
+The lightweight public-map `entity` summary is only intended for badge and panel labeling. It is not a mutable save target.
+
+The new durable journal layer is intentionally separate from the request/session bootstrap contract:
+- transient sessions remain the source of truth for per-request marker lookup
+- `dbvc_ve_change_sets` and `dbvc_ve_change_items` store committed mutation history, not live token caches
+
+The save-contract layer is also separate from public marker/session summaries:
+- the browser can read the contract summary for UI messaging
+- the backend still treats the mutation contract as authoritative when deciding whether a save path is enabled
+
+When warmup hydration is explicitly requested:
 
 ```json
 {
@@ -196,11 +412,37 @@ The authenticated session bootstrap endpoint can also return hydrated descriptor
       "acknowledgementType": "shared",
       "canEdit": true,
       "requiresSharedScopeAck": true,
-      "editMessage": ""
+      "editMessage": "",
+      "noticeSummary": {
+        "title": "Editing Dental Implants",
+        "detail": "Service Category / Source: CTA Link / shared term target"
+      },
+      "entitySummary": {
+        "title": "Dental Implants",
+        "typeLabel": "Service Category",
+        "frontendLink": {
+          "label": "Frontend - Service Category Content Editor",
+          "url": "https://example.com/service-category/dental-implants/"
+        },
+        "backendLink": {
+          "label": "Backend - Service Category Full Editor",
+          "url": "https://example.com/wp-admin/term.php?taxonomy=service_category&tag_ID=19"
+        }
+      },
+      "sourceSummary": {
+        "label": "CTA Link",
+        "type": "acf_field",
+        "fieldName": "cta_link",
+        "parentFieldName": "",
+        "expression": "{acf_cta_link:array_value|url}",
+        "summary": "acf_field / cta_link / term:19"
+      }
     }
   }
 }
 ```
+
+`noticeSummary` is intended for the panel notice/status area so inspect-only and locked fields can name the exact entity and source context without forcing the client to infer it from generic message strings.
 
 ## Verification note
 

@@ -66,6 +66,7 @@ final class HookRegistrar
         if ($this->service instanceof ElementInstrumentationService) {
             remove_filter('bricks/element/render_attributes', [$this->service, 'instrumentAttributes'], 20);
             remove_filter('bricks/frontend/render_element', [$this->service, 'verifyRenderedElement'], 20);
+            remove_filter('bricks/frontend/render_data', [$this->service, 'finalizeRenderedData'], 20);
         }
     }
 
@@ -84,6 +85,7 @@ final class HookRegistrar
 
         add_filter('bricks/element/render_attributes', [$this->service, 'instrumentAttributes'], 20, 3);
         add_filter('bricks/frontend/render_element', [$this->service, 'verifyRenderedElement'], 20, 2);
+        add_filter('bricks/frontend/render_data', [$this->service, 'finalizeRenderedData'], 20, 3);
     }
 
     /**

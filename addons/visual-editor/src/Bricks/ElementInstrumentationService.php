@@ -96,25 +96,33 @@ final class ElementInstrumentationService
                 'subtype' => isset($page_context['postType']) ? (string) $page_context['postType'] : '',
                 'acf_object_id' => $entity_id,
             ];
+        $loop_context = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : [];
         $rendered_post_id = $this->page_context->resolveRenderedPostId();
-        if ($rendered_post_id > 0 && ($entity['type'] ?? '') === 'post' && absint($entity['id'] ?? 0) !== $rendered_post_id) {
+        if ($rendered_post_id > 0
+            && ($entity['type'] ?? '') === 'post'
+            && absint($entity['id'] ?? 0) !== $rendered_post_id
+            && ! $this->allowsLoopOwnedPostEntity($entity, $loop_context)) {
             return $attributes;
         }
 
-        $loop_context = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : [];
         $seed = $this->buildSeed($element, $inspection, $loop_context);
         $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
         $this->instrumented[$seed] = $token;
         $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
         $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : 'text';
         $render_attribute = isset($inspection['render_attribute']) ? sanitize_key((string) $inspection['render_attribute']) : '';
+        $scope = isset($classification['scope']) ? (string) $classification['scope'] : 'current_entity';
         $source_group = $this->buildSourceGroup($entity, $source);
         $sync_group = $this->buildSyncGroup($entity, $source, $render_context);
+        $page_descriptor = $this->buildPageDescriptor($page_context);
+        $owner_descriptor = $this->buildOwnerDescriptor($entity, $scope, $page_descriptor, $loop_context);
+        $path_descriptor = $this->buildPathDescriptor($source);
+        $mutation_descriptor = $this->buildMutationDescriptor($source, $render_context, $scope, $status, $path_descriptor, $loop_context);
 
         $descriptor = new EditableDescriptor(
             $token,
             $status,
-            isset($classification['scope']) ? (string) $classification['scope'] : 'current_entity',
+            $scope,
             $entity,
             [
                 'template_id' => 0,
@@ -132,7 +140,12 @@ final class ElementInstrumentationService
             ],
             $source,
             isset($classification['ui']) && is_array($classification['ui']) ? $classification['ui'] : [],
-            isset($classification['resolver']) && is_array($classification['resolver']) ? $classification['resolver'] : []
+            isset($classification['resolver']) && is_array($classification['resolver']) ? $classification['resolver'] : [],
+            $page_descriptor,
+            $owner_descriptor,
+            $loop_context,
+            $path_descriptor,
+            $mutation_descriptor
         );
 
         $this->registry->add($descriptor);
@@ -175,10 +188,45 @@ final class ElementInstrumentationService
         }
 
         foreach ($descriptors as $descriptor) {
+            $element_html = $this->ensureMarkerAttributesForDescriptor($element_html, $descriptor);
             $element_html = $this->verifyDescriptor($element_html, $descriptor);
         }
 
         return $element_html;
+    }
+
+    /**
+     * @param string $content
+     * @param mixed  $post
+     * @param mixed  $area
+     * @return string
+     */
+    public function finalizeRenderedData($content, $post = null, $area = null)
+    {
+        unset($post, $area);
+
+        if (! is_string($content) || $content === '' || empty($this->descriptors)) {
+            return is_string($content) ? $content : '';
+        }
+
+        $occurrences = [];
+
+        foreach ($this->descriptors as $descriptor) {
+            if (! $descriptor instanceof EditableDescriptor) {
+                continue;
+            }
+
+            $element_id = isset($descriptor->render['element_id']) ? sanitize_key((string) $descriptor->render['element_id']) : '';
+            if ($element_id === '') {
+                continue;
+            }
+
+            $index = isset($occurrences[$element_id]) ? (int) $occurrences[$element_id] : 0;
+            $content = $this->injectMarkerIntoElementOccurrence($content, $descriptor, $element_id, $index);
+            $occurrences[$element_id] = $index + 1;
+        }
+
+        return $content;
     }
 
     /**
@@ -237,6 +285,27 @@ final class ElementInstrumentationService
         ];
 
         return implode('|', $seed_parts);
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     * @param array<string, mixed> $loop_context
+     * @return bool
+     */
+    private function allowsLoopOwnedPostEntity(array $entity, array $loop_context)
+    {
+        if (empty($loop_context['active'])
+            || empty($loop_context['supports_loop_owned_editing'])
+            || ($entity['type'] ?? '') !== 'post') {
+            return false;
+        }
+
+        $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
+        $loop_object_id = isset($loop_context['loop_object_id']) ? absint($loop_context['loop_object_id']) : 0;
+        $parent_loop_object_id = isset($loop_context['parent_loop_object_id']) ? absint($loop_context['parent_loop_object_id']) : 0;
+
+        return $entity_id > 0
+            && ($entity_id === $loop_object_id || $entity_id === $parent_loop_object_id);
     }
 
     /**
@@ -596,6 +665,8 @@ final class ElementInstrumentationService
                     'parent_field_name' => isset($source['parent_field_name']) ? (string) $source['parent_field_name'] : '',
                     'parent_field_key' => isset($source['parent_field_key']) ? (string) $source['parent_field_key'] : '',
                     'row_index' => isset($source['row_index']) ? (string) $source['row_index'] : '',
+                    'layout_key' => isset($source['layout_key']) ? (string) $source['layout_key'] : '',
+                    'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
                 ],
             ]
         );
@@ -628,6 +699,8 @@ final class ElementInstrumentationService
                     'parent_field_name' => isset($source['parent_field_name']) ? (string) $source['parent_field_name'] : '',
                     'parent_field_key' => isset($source['parent_field_key']) ? (string) $source['parent_field_key'] : '',
                     'row_index' => isset($source['row_index']) ? (string) $source['row_index'] : '',
+                    'layout_key' => isset($source['layout_key']) ? (string) $source['layout_key'] : '',
+                    'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
                 ],
                 'render' => [
                     'context' => (string) $render_context,
@@ -689,6 +762,105 @@ final class ElementInstrumentationService
     }
 
     /**
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_id
+     * @param int                $occurrence_index
+     * @return string
+     */
+    private function injectMarkerIntoElementOccurrence($content, EditableDescriptor $descriptor, $element_id, $occurrence_index)
+    {
+        $pattern = '/<([A-Za-z][A-Za-z0-9:-]*)([^>]*\bclass=(["\'])(?:(?:(?!\3).)*)\bbrxe-' . preg_quote($element_id, '/') . '\b(?:(?:(?!\3).)*)\3[^>]*)>/s';
+        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
+            return $content;
+        }
+
+        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
+            return $content;
+        }
+
+        $tag = (string) $matches[0][$occurrence_index][0];
+        $offset = (int) $matches[0][$occurrence_index][1];
+        if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
+            return $content;
+        }
+
+        $updated_tag = $this->appendMarkerAttributesToTag($tag, $descriptor);
+        if ($updated_tag === $tag) {
+            return $content;
+        }
+
+        return substr((string) $content, 0, $offset)
+            . $updated_tag
+            . substr((string) $content, $offset + strlen($tag));
+    }
+
+    /**
+     * @param string             $element_html
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function ensureMarkerAttributesForDescriptor($element_html, EditableDescriptor $descriptor)
+    {
+        if ($this->findMarkerTag($element_html, $descriptor->token) !== '') {
+            return $element_html;
+        }
+
+        if (! preg_match('/<([A-Za-z][A-Za-z0-9:-]*)(\s[^>]*)?>/s', (string) $element_html, $matches)) {
+            return $element_html;
+        }
+
+        $tag = isset($matches[0]) ? (string) $matches[0] : '';
+        if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
+            return $element_html;
+        }
+
+        $updated_tag = $this->appendMarkerAttributesToTag($tag, $descriptor);
+
+        return $updated_tag !== $tag
+            ? preg_replace('/' . preg_quote($tag, '/') . '/', addcslashes($updated_tag, '\\$'), (string) $element_html, 1) ?: (string) $element_html
+            : $element_html;
+    }
+
+    /**
+     * @param string             $tag
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function appendMarkerAttributesToTag($tag, EditableDescriptor $descriptor)
+    {
+        $attributes = [
+            'data-dbvc-ve' => $descriptor->token,
+            'data-dbvc-ve-status' => $descriptor->status,
+            'data-dbvc-ve-scope' => $this->mapScopeToMarkerValue($descriptor->scope),
+            'data-dbvc-ve-source-group' => isset($descriptor->render['source_group']) ? (string) $descriptor->render['source_group'] : '',
+            'data-dbvc-ve-group' => isset($descriptor->render['sync_group']) ? (string) $descriptor->render['sync_group'] : '',
+            'data-dbvc-ve-context' => isset($descriptor->render['context']) ? (string) $descriptor->render['context'] : 'text',
+        ];
+
+        if (! empty($descriptor->render['attribute'])) {
+            $attributes['data-dbvc-ve-attribute'] = (string) $descriptor->render['attribute'];
+        }
+
+        $attribute_markup = '';
+        foreach ($attributes as $name => $value) {
+            if ($value === '') {
+                continue;
+            }
+
+            $attribute_markup .= ' ' . sanitize_key((string) $name) . '="' . esc_attr((string) $value) . '"';
+        }
+
+        if ($attribute_markup === '') {
+            return $tag;
+        }
+
+        $closing = substr($tag, -2) === '/>' ? '/>' : '>';
+        $tag_base = substr($tag, 0, -strlen($closing));
+        return $tag_base . $attribute_markup . $closing;
+    }
+
+    /**
      * @param string $scope
      * @return string
      */
@@ -703,5 +875,188 @@ final class ElementInstrumentationService
         }
 
         return 'current';
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function buildPageDescriptor(array $page_context)
+    {
+        return [
+            'type' => isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '',
+            'id' => isset($page_context['entityId']) ? absint($page_context['entityId']) : 0,
+            'subtype' => isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '',
+            'url' => isset($page_context['url']) ? esc_url_raw((string) $page_context['url']) : '',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     * @param string               $scope
+     * @param array<string, mixed> $page_descriptor
+     * @param array<string, mixed> $loop_context
+     * @return array<string, mixed>
+     */
+    private function buildOwnerDescriptor(array $entity, $scope, array $page_descriptor, array $loop_context)
+    {
+        $page_id = isset($page_descriptor['id']) ? absint($page_descriptor['id']) : 0;
+        $owner_id = isset($entity['id']) && is_numeric($entity['id']) ? absint($entity['id']) : 0;
+        $acf_object_id = isset($entity['acf_object_id']) ? $entity['acf_object_id'] : '';
+
+        return [
+            'type' => isset($entity['type']) ? sanitize_key((string) $entity['type']) : '',
+            'id' => $owner_id,
+            'subtype' => isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '',
+            'acf_object_id' => is_numeric($acf_object_id)
+                ? absint($acf_object_id)
+                : sanitize_text_field((string) $acf_object_id),
+            'scope' => sanitize_key((string) $scope),
+            'isCurrentPageEntity' => $scope === 'current_entity',
+            'isLoopOwned' => ! empty($loop_context['active']) && $scope === 'related_entity',
+            'pageEntityId' => $page_id,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $source
+     * @return array<string, mixed>
+     */
+    private function buildPathDescriptor(array $source)
+    {
+        $container_type = isset($source['container_type']) ? sanitize_key((string) $source['container_type']) : '';
+        $field_name = isset($source['field_name']) ? sanitize_key((string) $source['field_name']) : '';
+        $field_key = isset($source['field_key']) ? sanitize_key((string) $source['field_key']) : '';
+        $parent_field_name = isset($source['parent_field_name']) ? sanitize_key((string) $source['parent_field_name']) : '';
+        $parent_field_key = isset($source['parent_field_key']) ? sanitize_key((string) $source['parent_field_key']) : '';
+        $layout_key = isset($source['layout_key']) ? sanitize_key((string) $source['layout_key']) : '';
+        $layout_name = isset($source['layout_name']) ? sanitize_key((string) $source['layout_name']) : '';
+        $row_index = isset($source['row_index']) && $source['row_index'] !== null && $source['row_index'] !== ''
+            ? absint($source['row_index'])
+            : null;
+        $root_field_name = $container_type !== '' ? $parent_field_name : $field_name;
+        $root_field_key = $container_type !== '' ? $parent_field_key : $field_key;
+        $segments = [];
+        $summary = [];
+
+        if ($container_type === 'repeater' && $root_field_name !== '') {
+            $segments[] = [
+                'type' => 'repeater',
+                'fieldName' => $root_field_name,
+                'fieldKey' => $root_field_key,
+                'index' => $row_index,
+            ];
+            $summary[] = 'repeater:' . $root_field_name;
+        } elseif ($container_type === 'flexible_content' && $root_field_name !== '') {
+            $segments[] = [
+                'type' => 'flexible_content',
+                'fieldName' => $root_field_name,
+                'fieldKey' => $root_field_key,
+                'index' => $row_index,
+                'layoutKey' => $layout_key,
+                'layoutName' => $layout_name,
+            ];
+            $summary[] = 'flexible:' . $root_field_name;
+        }
+
+        if ($row_index !== null) {
+            $summary[] = 'row:' . ($row_index + 1);
+        }
+
+        if ($layout_name !== '' || $layout_key !== '') {
+            $summary[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
+        }
+
+        if ($field_name !== '') {
+            $segments[] = [
+                'type' => 'field',
+                'fieldName' => $field_name,
+                'fieldKey' => $field_key,
+            ];
+            $summary[] = 'field:' . $field_name;
+        }
+
+        return [
+            'containerType' => $container_type,
+            'rootFieldName' => $root_field_name,
+            'rootFieldKey' => $root_field_key,
+            'fieldName' => $field_name,
+            'fieldKey' => $field_key,
+            'rowIndex' => $row_index,
+            'layoutKey' => $layout_key,
+            'layoutName' => $layout_name,
+            'isNested' => $container_type !== '',
+            'segments' => $segments,
+            'summary' => implode(' / ', $summary),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $source
+     * @param string               $render_context
+     * @param string               $scope
+     * @param string               $status
+     * @param array<string, mixed> $path_descriptor
+     * @param array<string, mixed> $loop_context
+     * @return array<string, mixed>
+     */
+    private function buildMutationDescriptor(array $source, $render_context, $scope, $status, array $path_descriptor, array $loop_context)
+    {
+        $field_type = isset($source['field_type']) ? sanitize_key((string) $source['field_type']) : '';
+        $container_type = isset($path_descriptor['containerType']) ? sanitize_key((string) $path_descriptor['containerType']) : '';
+        $kind = 'scalar';
+
+        if (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
+            $kind = 'structured';
+        } elseif ($field_type === 'gallery') {
+            $kind = 'collection';
+        } elseif (in_array($field_type, ['checkbox', 'select'], true) && ! empty($source['reference_multiple'])) {
+            $kind = 'collection';
+        } elseif (in_array($field_type, ['checkbox', 'select', 'radio', 'button_group'], true)) {
+            $kind = 'structured';
+        }
+
+        $target = 'field';
+        if ($container_type === 'repeater') {
+            $target = 'row';
+        } elseif ($container_type === 'flexible_content') {
+            $target = 'layout';
+        }
+        $contract = 'direct_field';
+
+        if ($target === 'row') {
+            $contract = 'repeater_row';
+        } elseif ($target === 'layout') {
+            $contract = 'flexible_layout';
+        }
+
+        if (! empty($loop_context['active']) && $scope === 'related_entity') {
+            if ($target === 'row') {
+                $contract = 'loop_owned_repeater_row';
+            } elseif ($target === 'layout') {
+                $contract = 'loop_owned_flexible_layout';
+            } else {
+                $contract = 'loop_owned_field';
+            }
+        } elseif ($scope === 'shared_entity') {
+            if ($target === 'row') {
+                $contract = 'shared_repeater_row';
+            } elseif ($target === 'layout') {
+                $contract = 'shared_flexible_layout';
+            } else {
+                $contract = 'shared_field';
+            }
+        }
+
+        return [
+            'version' => 2,
+            'kind' => $kind,
+            'target' => $target,
+            'contract' => $contract,
+            'renderContext' => sanitize_key((string) $render_context),
+            'loopOwned' => ! empty($loop_context['active']) && $scope === 'related_entity',
+            'requiresJournal' => $target !== 'field' || $kind !== 'scalar' || $scope !== 'current_entity',
+            'status' => sanitize_key((string) $status),
+        ];
     }
 }

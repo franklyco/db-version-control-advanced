@@ -8,11 +8,18 @@
     activeAcknowledgementType: 'none',
     sharedScopeAcknowledged: false,
     descriptorCache: {},
-    badges: {},
+    descriptorRequests: {},
+    badgeLayer: null,
+    badgeNode: null,
     badgeLayoutFrame: 0,
-    badgeLayoutTimeouts: [],
     badgeEventsBound: false,
-    badgeVisibilityObserver: null
+    previewNode: null,
+    badgeHideTimeout: 0,
+    prefetchTimeout: 0,
+    prefetchToken: '',
+    touchSelectionToken: '',
+    touchSuppressToken: '',
+    touchClickSuppressUntil: 0
   };
 
   function strings() {
@@ -30,6 +37,15 @@
 
   function clonePayload(payload) {
     return payload ? JSON.parse(JSON.stringify(payload)) : null;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function cacheDescriptorPayload(payload) {
@@ -56,6 +72,98 @@
     }
 
     return clonePayload(state.descriptorCache[token]);
+  }
+
+  function getMarkerToken(node) {
+    return node && typeof node.getAttribute === 'function'
+      ? String(node.getAttribute('data-dbvc-ve') || '')
+      : '';
+  }
+
+  function getSessionId() {
+    return state.session && typeof state.session.sessionId === 'string'
+      ? state.session.sessionId
+      : '';
+  }
+
+  function getSessionDescriptorSummary(token) {
+    if (!token
+      || !state.session
+      || !state.session.descriptors
+      || typeof state.session.descriptors !== 'object'
+      || !state.session.descriptors[token]
+      || typeof state.session.descriptors[token] !== 'object') {
+      return null;
+    }
+
+    return state.session.descriptors[token];
+  }
+
+  function clearDescriptorPrefetch() {
+    if (state.prefetchTimeout) {
+      window.clearTimeout(state.prefetchTimeout);
+      state.prefetchTimeout = 0;
+    }
+
+    state.prefetchToken = '';
+  }
+
+  function loadDescriptorPayload(sessionId, token) {
+    const cached = getCachedDescriptorPayload(token);
+
+    if (cached && cached.ok && cached.descriptor) {
+      return Promise.resolve(cached);
+    }
+
+    if (!sessionId || !token) {
+      return Promise.reject(new Error(strings().descriptorMissing || 'Descriptor not found.'));
+    }
+
+    if (state.descriptorRequests[token]) {
+      return state.descriptorRequests[token].then(clonePayload);
+    }
+
+    state.descriptorRequests[token] = window.DBVCVisualEditorApi.getDescriptor(sessionId, token)
+      .then(function (result) {
+        if (!result || !result.ok || !result.descriptor) {
+          throw new Error(strings().descriptorMissing || 'Descriptor not found.');
+        }
+
+        cacheDescriptorPayload(result);
+
+        return result;
+      })
+      .finally(function () {
+        delete state.descriptorRequests[token];
+      });
+
+    return state.descriptorRequests[token].then(clonePayload);
+  }
+
+  function scheduleDescriptorPrefetch(node) {
+    const token = getMarkerToken(node);
+    const sessionId = getSessionId();
+
+    clearDescriptorPrefetch();
+
+    if (!node || !token || !sessionId) {
+      return;
+    }
+
+    if (getCachedDescriptorPayload(token) || state.descriptorRequests[token]) {
+      return;
+    }
+
+    state.prefetchToken = token;
+    state.prefetchTimeout = window.setTimeout(function () {
+      state.prefetchTimeout = 0;
+
+      if (state.prefetchToken !== token) {
+        return;
+      }
+
+      loadDescriptorPayload(sessionId, token).catch(function () {});
+    }, 180);
   }
 
   function getDescriptorRenderContext(descriptor, node) {
@@ -95,7 +203,11 @@
 
     const cached = getCachedDescriptorPayload(token);
 
-    return cached && cached.descriptor ? cached.descriptor : null;
+    if (cached && cached.descriptor) {
+      return cached.descriptor;
+    }
+
+    return getSessionDescriptorSummary(token);
   }
 
   function getDescriptorDisplayKey(descriptor) {
@@ -162,6 +274,219 @@
     }
 
     return 'current_entity';
+  }
+
+  function getDescriptorEntityType(descriptor) {
+    return descriptor
+      && descriptor.entity
+      && typeof descriptor.entity.type === 'string'
+      && descriptor.entity.type
+      ? descriptor.entity.type
+      : '';
+  }
+
+  function resolveRelatedBadgeLabel(entityType) {
+    if (entityType === 'term') {
+      return strings().badgeRelatedTerm || 'Related Term';
+    }
+
+    if (entityType === 'user') {
+      return strings().badgeRelatedUser || 'Related User';
+    }
+
+    if (entityType === 'option') {
+      return strings().badgeRelatedOption || 'Related Option';
+    }
+
+    if (entityType === 'post') {
+      return strings().badgeRelated || 'Related Post';
+    }
+
+    return strings().badgeRelatedGeneric || 'Related';
+  }
+
+  function resolveSharedBadgeLabel(entityType) {
+    if (entityType === 'term') {
+      return strings().badgeSharedTerm || 'Shared Term';
+    }
+
+    if (entityType === 'user') {
+      return strings().badgeSharedUser || 'Shared User';
+    }
+
+    if (entityType === 'option') {
+      return strings().badgeSharedOption || 'Shared Option';
+    }
+
+    if (entityType === 'post') {
+      return strings().badgeSharedPost || 'Shared Post';
+    }
+
+    return strings().badgeShared || strings().badgeSharedGeneric || 'Shared';
+  }
+
+  function resolveRelatedSaveLabel(entityType) {
+    if (entityType === 'term') {
+      return strings().panelRelatedScopeSaveTerm || 'Save related term';
+    }
+
+    if (entityType === 'user') {
+      return strings().panelRelatedScopeSaveUser || 'Save related user';
+    }
+
+    if (entityType === 'option') {
+      return strings().panelRelatedScopeSaveOption || 'Save related option';
+    }
+
+    if (entityType === 'post') {
+      return strings().panelRelatedScopeSave || 'Save related post';
+    }
+
+    return strings().panelRelatedScopeSaveGeneric || 'Save related item';
+  }
+
+  function resolveSharedSaveLabel(entityType) {
+    if (entityType === 'term') {
+      return strings().panelSharedScopeSaveTerm || 'Save shared term';
+    }
+
+    if (entityType === 'user') {
+      return strings().panelSharedScopeSaveUser || 'Save shared user';
+    }
+
+    if (entityType === 'option') {
+      return strings().panelSharedScopeSaveOption || 'Save shared option';
+    }
+
+    if (entityType === 'post') {
+      return strings().panelSharedScopeSavePost || 'Save shared post';
+    }
+
+    return strings().panelSharedScopeSave || strings().panelSharedScopeSaveGeneric || 'Save shared field';
+  }
+
+  function resolveRelatedAckText(entityType) {
+    if (entityType === 'term') {
+      return strings().panelRelatedScopeAckTerm || 'I understand this updates the related term shown in this Bricks query loop, not the current page.';
+    }
+
+    if (entityType === 'user') {
+      return strings().panelRelatedScopeAckUser || 'I understand this updates the related user shown in this Bricks query loop, not the current page.';
+    }
+
+    if (entityType === 'option') {
+      return strings().panelRelatedScopeAckOption || 'I understand this updates the related option source shown in this Bricks query loop, not the current page.';
+    }
+
+    if (entityType === 'post') {
+      return strings().panelRelatedScopeAck || 'I understand this updates the related post shown in this Bricks query loop, not the current page.';
+    }
+
+    return strings().panelRelatedScopeAckGeneric || 'I understand this updates a related item shown in this Bricks query loop, not the current page.';
+  }
+
+  function resolveSharedAckText(entityType) {
+    if (entityType === 'term') {
+      return strings().panelSharedScopeAckTerm || 'I understand this updates a shared taxonomy term field and may affect other pages.';
+    }
+
+    if (entityType === 'user') {
+      return strings().panelSharedScopeAckUser || 'I understand this updates a shared user field and may affect other pages.';
+    }
+
+    if (entityType === 'option') {
+      return strings().panelSharedScopeAckOption || 'I understand this updates a shared Site Settings value and may affect other pages.';
+    }
+
+    if (entityType === 'post') {
+      return strings().panelSharedScopeAckPost || 'I understand this updates a shared post-owned field and may affect other pages.';
+    }
+
+    return strings().panelSharedScopeAck || strings().panelSharedScopeAckGeneric || 'I understand this updates a shared field and may affect other pages.';
+  }
+
+  function resolveRelatedRequiredText(entityType) {
+    if (entityType === 'term') {
+      return strings().panelRelatedScopeRequiredTerm || 'Acknowledge the related-term warning before saving this field.';
+    }
+
+    if (entityType === 'user') {
+      return strings().panelRelatedScopeRequiredUser || 'Acknowledge the related-user warning before saving this field.';
+    }
+
+    if (entityType === 'option') {
+      return strings().panelRelatedScopeRequiredOption || 'Acknowledge the related-option warning before saving this field.';
+    }
+
+    if (entityType === 'post') {
+      return strings().panelRelatedScopeRequired || 'Acknowledge the related-post warning before saving this field.';
+    }
+
+    return strings().panelRelatedScopeRequiredGeneric || 'Acknowledge the related-item warning before saving this field.';
+  }
+
+  function resolveSharedRequiredText(entityType) {
+    if (entityType === 'term') {
+      return strings().panelSharedScopeRequiredTerm || 'Acknowledge the shared-term warning before saving this field.';
+    }
+
+    if (entityType === 'user') {
+      return strings().panelSharedScopeRequiredUser || 'Acknowledge the shared-user warning before saving this field.';
+    }
+
+    if (entityType === 'option') {
+      return strings().panelSharedScopeRequiredOption || 'Acknowledge the shared-option warning before saving this field.';
+    }
+
+    if (entityType === 'post') {
+      return strings().panelSharedScopeRequiredPost || 'Acknowledge the shared-post warning before saving this field.';
+    }
+
+    return strings().panelSharedScopeRequired || strings().panelSharedScopeRequiredGeneric || 'Acknowledge the shared scope warning before saving this field.';
+  }
+
+  function resolveScopeMetaLabel(scope, entityType) {
+    if (scope === 'related_entity') {
+      if (entityType === 'term') {
+        return strings().panelScopeRelatedTerm || 'related term';
+      }
+
+      if (entityType === 'user') {
+        return strings().panelScopeRelatedUser || 'related user';
+      }
+
+      if (entityType === 'option') {
+        return strings().panelScopeRelatedOption || 'related option';
+      }
+
+      if (entityType === 'post') {
+        return strings().panelScopeRelated || 'related post';
+      }
+
+      return strings().panelScopeRelatedGeneric || 'related item';
+    }
+
+    if (scope === 'shared_entity') {
+      if (entityType === 'term') {
+        return strings().panelScopeSharedTerm || 'shared term';
+      }
+
+      if (entityType === 'user') {
+        return strings().panelScopeSharedUser || 'shared user';
+      }
+
+      if (entityType === 'option') {
+        return strings().panelScopeSharedOption || 'shared option';
+      }
+
+      if (entityType === 'post') {
+        return strings().panelScopeSharedPost || 'shared post';
+      }
+
+      return strings().panelScopeShared || strings().panelScopeSharedGeneric || 'shared target';
+    }
+
+    return '';
   }
 
   function normalizeProjection(candidate, fallbackValue, fallbackMode) {
@@ -292,6 +617,14 @@
       payload.currentValue = saveResult.value;
       payload.displayValue = projection.value;
       payload.displayMode = projection.mode;
+
+      if (saveResult && saveResult.entitySummary) {
+        payload.entitySummary = clonePayload(saveResult.entitySummary);
+      }
+
+      if (saveResult && saveResult.sourceSummary) {
+        payload.sourceSummary = clonePayload(saveResult.sourceSummary);
+      }
     });
   }
 
@@ -312,6 +645,25 @@
     }
 
     return normalizeValue(displayValue);
+  }
+
+  function formatSaveSummary(saveResult) {
+    const summary = saveResult && saveResult.saveSummary && typeof saveResult.saveSummary === 'object'
+      ? saveResult.saveSummary
+      : null;
+
+    if (!summary) {
+      return '';
+    }
+
+    const title = summary.title ? String(summary.title) : '';
+    const detail = summary.detail ? String(summary.detail) : '';
+
+    if (title && detail) {
+      return `${title}. ${detail}`;
+    }
+
+    return title || detail || '';
   }
 
   function readNodeComparableValue(node, descriptor) {
@@ -387,17 +739,86 @@
   }
 
   function ensureBadgeLayer() {
+    if (state.badgeLayer && state.badgeLayer.isConnected) {
+      return state.badgeLayer;
+    }
+
     let layer = document.querySelector('.dbvc-ve-badge-layer');
 
     if (layer) {
+      state.badgeLayer = layer;
       return layer;
     }
 
     layer = document.createElement('div');
     layer.className = 'dbvc-ve-badge-layer';
     document.body.appendChild(layer);
+    state.badgeLayer = layer;
 
     return layer;
+  }
+
+  function ensureSharedBadge() {
+    if (state.badgeNode && state.badgeNode.isConnected) {
+      return state.badgeNode;
+    }
+
+    const badge = document.createElement('button');
+
+    badge.type = 'button';
+    badge.className = 'dbvc-ve-badge';
+    badge.addEventListener('click', function (event) {
+      const target = resolveBadgeTarget();
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!target || !state.session) {
+        return;
+      }
+
+      openEditor(target, state.session);
+    });
+    badge.addEventListener('mouseenter', clearBadgeHideTimeout);
+    badge.addEventListener('focusin', clearBadgeHideTimeout);
+    badge.addEventListener('mouseleave', function (event) {
+      const relatedMarker = resolveMarkerNodeFromTarget(event.relatedTarget);
+
+      if (relatedMarker) {
+        setPreviewNode(relatedMarker);
+        return;
+      }
+
+      if (state.activeNode) {
+        state.previewNode = null;
+        scheduleBadgeLayout();
+        return;
+      }
+
+      scheduleBadgeHide();
+    });
+    badge.addEventListener('focusout', function (event) {
+      if (isBadgeElement(event.relatedTarget)) {
+        return;
+      }
+
+      if (resolveMarkerNodeFromTarget(event.relatedTarget)) {
+        return;
+      }
+
+      if (state.activeNode) {
+        state.previewNode = null;
+        scheduleBadgeLayout();
+        return;
+      }
+
+      scheduleBadgeHide();
+    });
+
+    ensureBadgeLayer().appendChild(badge);
+    state.badgeNode = badge;
+
+    return badge;
   }
 
   function bindBadgeEvents() {
@@ -407,138 +828,278 @@
 
     state.badgeEventsBound = true;
 
-    window.addEventListener('resize', scheduleBadgeLayoutBurst);
+    window.addEventListener('resize', scheduleBadgeLayout);
     window.addEventListener('scroll', scheduleBadgeLayout, true);
-    document.addEventListener('mouseover', scheduleBadgeLayoutBurst, true);
-    document.addEventListener('focusin', scheduleBadgeLayoutBurst, true);
-    document.addEventListener('click', scheduleBadgeLayoutBurst, true);
-    document.addEventListener('transitionstart', scheduleBadgeLayoutBurst, true);
-    document.addEventListener('transitionend', scheduleBadgeLayoutBurst, true);
-    document.addEventListener('animationstart', scheduleBadgeLayoutBurst, true);
-    document.addEventListener('animationend', scheduleBadgeLayoutBurst, true);
-
-    bindBadgeVisibilityObserver();
+    document.addEventListener('mouseover', handleMarkerMouseOver, true);
+    document.addEventListener('mouseout', handleMarkerMouseOut, true);
+    document.addEventListener('focusin', handleMarkerFocusIn, true);
+    document.addEventListener('focusout', handleMarkerFocusOut, true);
+    document.addEventListener('pointerup', handleMarkerPointerUp, true);
+    document.addEventListener('click', handleMarkerClick, true);
+    document.addEventListener('keydown', handleBadgeKeydown, true);
   }
 
-  function bindBadgeVisibilityObserver() {
-    if (state.badgeVisibilityObserver || !window.MutationObserver || !document.body) {
+  function clearBadgeHideTimeout() {
+    if (!state.badgeHideTimeout) {
       return;
     }
 
-    state.badgeVisibilityObserver = new window.MutationObserver(function (mutations) {
-      if (!mutations || !mutations.length) {
-        return;
-      }
-
-      scheduleBadgeLayoutBurst();
-    });
-
-    state.badgeVisibilityObserver.observe(document.body, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class', 'style', 'hidden', 'aria-hidden', 'inert', 'open']
-    });
+    window.clearTimeout(state.badgeHideTimeout);
+    state.badgeHideTimeout = 0;
   }
 
-  function hideBadge(entry) {
-    if (!entry || !entry.badge) {
+  function scheduleBadgeHide() {
+    clearBadgeHideTimeout();
+
+    state.badgeHideTimeout = window.setTimeout(function () {
+      state.badgeHideTimeout = 0;
+      state.previewNode = null;
+      clearDescriptorPrefetch();
+      scheduleBadgeLayout();
+    }, 90);
+  }
+
+  function resolveMarkerNodeFromTarget(target) {
+    if (!target || typeof target.closest !== 'function') {
+      return null;
+    }
+
+    return target.closest('[data-dbvc-ve]');
+  }
+
+  function isBadgeElement(target) {
+    return Boolean(state.badgeNode && target && (state.badgeNode === target || state.badgeNode.contains(target)));
+  }
+
+  function setPreviewNode(node) {
+    clearBadgeHideTimeout();
+    state.previewNode = node && node.isConnected ? node : null;
+    if (state.previewNode) {
+      scheduleDescriptorPrefetch(state.previewNode);
+    } else {
+      clearDescriptorPrefetch();
+    }
+    scheduleBadgeLayout();
+  }
+
+  function handleMarkerMouseOver(event) {
+    if (isBadgeElement(event.target)) {
       return;
     }
 
-    entry.badge.style.opacity = '0';
-    entry.badge.style.pointerEvents = 'none';
+    const marker = resolveMarkerNodeFromTarget(event.target);
+
+    if (!marker) {
+      return;
+    }
+
+    if (state.activeNode && state.activeNode !== marker) {
+      return;
+    }
+
+    setPreviewNode(marker);
   }
 
-  function isNodeSuppressedByVisibility(node) {
-    if (!node || node.nodeType !== 1) {
-      return true;
+  function handleMarkerMouseOut(event) {
+    if (isBadgeElement(event.target)) {
+      return;
     }
 
-    if (node.hidden || node.getAttribute('hidden') !== null) {
-      return true;
+    const marker = resolveMarkerNodeFromTarget(event.target);
+
+    if (!marker) {
+      return;
     }
 
-    if (typeof node.checkVisibility === 'function') {
-      try {
-        return !node.checkVisibility({
-          opacityProperty: true,
-          visibilityProperty: true,
-          contentVisibilityAuto: true
-        });
-      } catch (error) {
-        try {
-          return !node.checkVisibility({
-            checkOpacity: true,
-            checkVisibilityCSS: true,
-            contentVisibilityAuto: true
-          });
-        } catch (innerError) {
-          try {
-            return !node.checkVisibility();
-          } catch (finalError) {}
-        }
-      }
+    if (state.activeNode && state.activeNode !== marker) {
+      return;
     }
 
-    if (window.getComputedStyle) {
-      const ownStyle = window.getComputedStyle(node);
-
-      if (ownStyle) {
-        if (ownStyle.display === 'none' || ownStyle.visibility === 'hidden' || ownStyle.visibility === 'collapse') {
-          return true;
-        }
-
-        if (ownStyle.contentVisibility === 'hidden') {
-          return true;
-        }
-      }
+    if (event.relatedTarget && marker.contains(event.relatedTarget)) {
+      return;
     }
 
-    let current = node;
-
-    while (current && current.nodeType === 1) {
-      if (current.hidden || current.getAttribute('hidden') !== null) {
-        return true;
-      }
-
-      if (window.getComputedStyle) {
-        const style = window.getComputedStyle(current);
-
-        if (style) {
-          if (style.display === 'none') {
-            return true;
-          }
-
-          if (style.contentVisibility === 'hidden') {
-            return true;
-          }
-
-          if (Number(style.opacity || '1') <= 0.01) {
-            return true;
-          }
-        }
-      }
-
-      current = current.parentElement;
+    if (isBadgeElement(event.relatedTarget)) {
+      return;
     }
 
-    return false;
+    if (state.previewNode === marker) {
+      scheduleBadgeHide();
+    }
   }
 
-  function isBadgeTargetVisible(node, rect) {
-    if (!node || !node.isConnected) {
-      return false;
+  function handleMarkerFocusIn(event) {
+    if (isBadgeElement(event.target)) {
+      return;
     }
 
-    if (isNodeSuppressedByVisibility(node)) {
-      return false;
+    const marker = resolveMarkerNodeFromTarget(event.target);
+
+    if (!marker) {
+      return;
     }
 
-    if (!rect || rect.width <= 0 || rect.height <= 0 || rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) {
-      return false;
+    if (state.activeNode && state.activeNode !== marker) {
+      return;
     }
 
-    return true;
+    setPreviewNode(marker);
+  }
+
+  function handleMarkerFocusOut(event) {
+    if (isBadgeElement(event.target)) {
+      return;
+    }
+
+    const marker = resolveMarkerNodeFromTarget(event.target);
+
+    if (!marker) {
+      return;
+    }
+
+    if (state.activeNode && state.activeNode !== marker) {
+      return;
+    }
+
+    if (event.relatedTarget && marker.contains(event.relatedTarget)) {
+      return;
+    }
+
+    if (isBadgeElement(event.relatedTarget)) {
+      return;
+    }
+
+    if (state.previewNode === marker) {
+      scheduleBadgeHide();
+    }
+  }
+
+  function handleBadgeKeydown(event) {
+    if (event.key !== 'Escape') {
+      return;
+    }
+
+    if (state.activeNode) {
+      return;
+    }
+
+    clearBadgeHideTimeout();
+    state.previewNode = null;
+    clearDescriptorPrefetch();
+    scheduleBadgeLayout();
+  }
+
+  function isTouchLikePointer(event) {
+    return Boolean(event && (event.pointerType === 'touch' || event.pointerType === 'pen'));
+  }
+
+  function suppressTouchClick(token) {
+    state.touchSuppressToken = token;
+    state.touchClickSuppressUntil = Date.now() + 700;
+  }
+
+  function handleMarkerPointerUp(event) {
+    if (!isTouchLikePointer(event) || isBadgeElement(event.target)) {
+      return;
+    }
+
+    const marker = resolveMarkerNodeFromTarget(event.target);
+    const token = getMarkerToken(marker);
+
+    if (!marker || !token) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    suppressTouchClick(token);
+
+    if (state.activeNode && state.activeNode !== marker && state.session) {
+      state.touchSelectionToken = token;
+      openEditor(marker, state.session);
+      return;
+    }
+
+    if (state.touchSelectionToken === token && state.previewNode === marker && state.session) {
+      openEditor(marker, state.session);
+      return;
+    }
+
+    state.touchSelectionToken = token;
+    setPreviewNode(marker);
+  }
+
+  function handleMarkerClick(event) {
+    const marker = resolveMarkerNodeFromTarget(event.target);
+    const token = getMarkerToken(marker);
+
+    if (!marker || !token) {
+      return;
+    }
+
+    if (state.touchSuppressToken !== token || Date.now() > state.touchClickSuppressUntil) {
+      return;
+    }
+
+    state.touchSuppressToken = '';
+    state.touchClickSuppressUntil = 0;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function resolveBadgeTarget() {
+    if (state.activeNode && state.activeNode.isConnected) {
+      return state.activeNode;
+    }
+
+    if (state.previewNode && state.previewNode.isConnected) {
+      return state.previewNode;
+    }
+
+    return null;
+  }
+
+  function applyBadgePresentation(node) {
+    const badge = ensureSharedBadge();
+    const descriptor = lookupDescriptorForNode(node);
+    const scope = getDescriptorScope(descriptor, node);
+    const status = getDescriptorStatus(descriptor, node);
+    const entityType = getDescriptorEntityType(descriptor);
+    const token = node.getAttribute('data-dbvc-ve') || '';
+
+    badge.className = 'dbvc-ve-badge';
+    badge.dataset.token = token;
+
+    if (scope === 'related_entity') {
+      badge.classList.add('dbvc-ve-badge--related');
+      badge.textContent = resolveRelatedBadgeLabel(entityType);
+      return badge;
+    }
+
+    if (scope === 'shared_entity') {
+      badge.classList.add('dbvc-ve-badge--shared');
+      badge.textContent = resolveSharedBadgeLabel(entityType);
+      return badge;
+    }
+
+    if (status === 'readonly') {
+      badge.classList.add('dbvc-ve-badge--readonly');
+      badge.textContent = strings().inspectLabel || 'Inspect';
+      return badge;
+    }
+
+    badge.textContent = strings().editLabel || 'Edit';
+
+    return badge;
+  }
+
+  function hideSharedBadge() {
+    if (!state.badgeNode) {
+      return;
+    }
+
+    state.badgeNode.style.opacity = '0';
+    state.badgeNode.style.pointerEvents = 'none';
   }
 
   function scheduleBadgeLayout() {
@@ -548,78 +1109,43 @@
 
     state.badgeLayoutFrame = window.requestAnimationFrame(function () {
       state.badgeLayoutFrame = 0;
-      Object.keys(state.badges).forEach(function (token) {
-        positionBadge(token);
-      });
+      positionSharedBadge();
     });
   }
 
-  function clearBadgeLayoutTimeouts() {
-    state.badgeLayoutTimeouts.forEach(function (timeoutId) {
-      window.clearTimeout(timeoutId);
-    });
+  function positionSharedBadge() {
+    const target = resolveBadgeTarget();
+    const badge = ensureSharedBadge();
 
-    state.badgeLayoutTimeouts = [];
-  }
-
-  function scheduleBadgeLayoutBurst() {
-    scheduleBadgeLayout();
-    clearBadgeLayoutTimeouts();
-
-    [80, 180, 320].forEach(function (delay) {
-      const timeoutId = window.setTimeout(function () {
-        scheduleBadgeLayout();
-      }, delay);
-
-      state.badgeLayoutTimeouts.push(timeoutId);
-    });
-  }
-
-  function positionBadge(token) {
-    const entry = state.badges[token];
-
-    if (!entry || !entry.node || !entry.badge || !entry.node.isConnected || !entry.badge.isConnected) {
+    if (!target || !target.isConnected) {
+      hideSharedBadge();
       return;
     }
 
-    const rect = entry.node.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
 
-    if (!isBadgeTargetVisible(entry.node, rect)) {
-      hideBadge(entry);
+    if (!rect || rect.width <= 0 || rect.height <= 0 || rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) {
+      hideSharedBadge();
       return;
     }
 
-    const badgeWidth = entry.badge.offsetWidth || 0;
-    const badgeHeight = entry.badge.offsetHeight || 0;
-    let left = Math.min(
-      Math.max(8, rect.right - badgeWidth - 8),
+    applyBadgePresentation(target);
+
+    const badgeWidth = badge.offsetWidth || 0;
+    const badgeHeight = badge.offsetHeight || 0;
+    const left = Math.min(
+      Math.max(8, rect.right - Math.min(24, badgeWidth / 2)),
       window.innerWidth - badgeWidth - 8
     );
-    let top = Math.min(
-      Math.max(8, rect.top + 8),
+    const top = Math.min(
+      Math.max(8, rect.top - Math.max(12, badgeHeight / 2)),
       window.innerHeight - badgeHeight - 8
     );
 
-    if (rect.width < badgeWidth + 16) {
-      left = Math.min(
-        Math.max(8, rect.left),
-        window.innerWidth - badgeWidth - 8
-      );
-    }
-
-    if (rect.height < badgeHeight + 20) {
-      top = rect.top - badgeHeight - 6 >= 8
-        ? rect.top - badgeHeight - 6
-        : Math.min(
-          Math.max(8, rect.bottom + 6),
-          window.innerHeight - badgeHeight - 8
-        );
-    }
-
-    entry.badge.style.left = `${left}px`;
-    entry.badge.style.top = `${top}px`;
-    entry.badge.style.opacity = '1';
-    entry.badge.style.pointerEvents = 'auto';
+    badge.style.left = `${left}px`;
+    badge.style.top = `${top}px`;
+    badge.style.opacity = '1';
+    badge.style.pointerEvents = 'auto';
   }
 
   function updateStatusBar(statePatch) {
@@ -651,13 +1177,15 @@
       '  <div>',
       '    <div class="dbvc-ve-panel__eyebrow">DBVC Visual Editor</div>',
       '    <h2 class="dbvc-ve-panel__title"></h2>',
+      '    <div class="dbvc-ve-panel__entity-type"></div>',
       '  </div>',
       '  <button type="button" class="dbvc-ve-panel__close" aria-label="Close">×</button>',
       '</div>',
-      '<div class="dbvc-ve-panel__meta"></div>',
+      '<div class="dbvc-ve-panel__entity-links"></div>',
       '<div class="dbvc-ve-panel__notice"></div>',
       '<div class="dbvc-ve-panel__body">',
       '  <label class="dbvc-ve-panel__field-label" for="dbvc-ve-panel-input"></label>',
+      '  <div class="dbvc-ve-panel__meta"></div>',
       '  <div class="dbvc-ve-panel__field-wrap"></div>',
       '</div>',
       '<div class="dbvc-ve-panel__status"></div>',
@@ -684,6 +1212,8 @@
     return {
       panel,
       title: panel.querySelector('.dbvc-ve-panel__title'),
+      entityType: panel.querySelector('.dbvc-ve-panel__entity-type'),
+      entityLinks: panel.querySelector('.dbvc-ve-panel__entity-links'),
       meta: panel.querySelector('.dbvc-ve-panel__meta'),
       notice: panel.querySelector('.dbvc-ve-panel__notice'),
       fieldLabel: panel.querySelector('.dbvc-ve-panel__field-label'),
@@ -698,17 +1228,21 @@
     const panelNodes = getPanelNodes();
 
     destroyActiveController();
+    clearDescriptorPrefetch();
     state.activeNode = null;
     state.activeDescriptor = null;
     state.activeController = null;
     state.activeRequiresSharedScopeAck = false;
     state.activeAcknowledgementType = 'none';
     state.sharedScopeAcknowledged = false;
+    state.touchSelectionToken = '';
     panelNodes.panel.dataset.state = 'idle';
     panelNodes.panel.dataset.scope = 'current_entity';
     panelNodes.panel.dataset.status = 'idle';
     panelNodes.title.textContent = strings().panelTitle || 'Edit field';
-    panelNodes.meta.textContent = strings().panelEmpty || 'No field is selected yet.';
+    panelNodes.entityType.textContent = '';
+    panelNodes.entityLinks.innerHTML = '';
+    panelNodes.meta.innerHTML = '';
     panelNodes.notice.innerHTML = '';
     panelNodes.fieldLabel.textContent = '';
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
@@ -721,6 +1255,8 @@
     document.querySelectorAll('.dbvc-ve-target.is-active').forEach(function (node) {
       node.classList.remove('is-active');
     });
+
+    scheduleBadgeLayout();
   }
 
   function closeEditorPanel() {
@@ -1494,24 +2030,31 @@
     const scope = getDescriptorScope(descriptor);
     const status = getDescriptorStatus(descriptor);
     const sourceType = descriptor.source && descriptor.source.type ? descriptor.source.type : '';
-    const sourceTypeLabel = sourceType === 'acf_repeater_subfield'
-      ? (strings().panelSourceRepeater || 'acf repeater')
-      : sourceType;
+    let sourceTypeLabel = sourceType;
+
+    if (sourceType === 'acf_repeater_subfield') {
+      sourceTypeLabel = strings().panelSourceRepeater || 'acf repeater';
+    } else if (sourceType === 'acf_flexible_subfield') {
+      sourceTypeLabel = strings().panelSourceFlexible || 'acf flexible';
+    }
+
     const sourceField = descriptor.source && descriptor.source.field_name ? descriptor.source.field_name : '';
+    const containerType = descriptor.source && descriptor.source.container_type ? descriptor.source.container_type : '';
     const parentField = descriptor.source && descriptor.source.parent_field_name ? descriptor.source.parent_field_name : '';
     const rowIndex = descriptor.source && Number.isFinite(Number(descriptor.source.row_index))
       ? Number(descriptor.source.row_index)
       : null;
+    const layoutName = descriptor.source && descriptor.source.layout_name ? descriptor.source.layout_name : '';
+    const layoutKey = descriptor.source && descriptor.source.layout_key ? descriptor.source.layout_key : '';
     const entity = descriptor.entity || {};
     const loop = descriptor.render && descriptor.render.loop && typeof descriptor.render.loop === 'object'
       ? descriptor.render.loop
       : null;
     const bits = [sourceTypeLabel, sourceField].filter(Boolean);
+    const scopeLabel = resolveScopeMetaLabel(scope, entity.type || '');
 
-    if (scope === 'related_entity') {
-      bits.unshift(strings().panelScopeRelated || 'related post');
-    } else if (scope === 'shared_entity') {
-      bits.unshift(strings().panelScopeShared || 'shared target');
+    if (scopeLabel) {
+      bits.unshift(scopeLabel);
     }
 
     if (status === 'readonly') {
@@ -1519,11 +2062,19 @@
     }
 
     if (parentField) {
-      bits.push(`${strings().panelRepeater || 'repeater'}:${parentField}`);
+      if (containerType === 'flexible_content') {
+        bits.push(`${strings().panelFlexible || 'flexible'}:${parentField}`);
+      } else {
+        bits.push(`${strings().panelRepeater || 'repeater'}:${parentField}`);
+      }
     }
 
     if (rowIndex !== null && rowIndex >= 0) {
       bits.push(`${strings().panelRow || 'row'}:${rowIndex + 1}`);
+    }
+
+    if (layoutName || layoutKey) {
+      bits.push(`${strings().panelLayout || 'layout'}:${layoutName || layoutKey}`);
     }
 
     if (entity.type === 'post' && entity.id) {
@@ -1553,10 +2104,85 @@
       : '';
   }
 
+  function createEntityLinkMarkup(link) {
+    if (!link || typeof link !== 'object' || !link.url) {
+      return '';
+    }
+
+    const label = link.label ? String(link.label) : String(link.url);
+    const url = String(link.url);
+
+    return `<a class="dbvc-ve-panel__entity-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+  }
+
+  function renderEntityHeader(result, panelNodes) {
+    const summary = result && result.entitySummary && typeof result.entitySummary === 'object'
+      ? result.entitySummary
+      : {};
+    const title = summary.title ? String(summary.title) : (strings().panelTitle || 'Edit field');
+    const typeLabel = summary.typeLabel ? String(summary.typeLabel) : '';
+    const links = [createEntityLinkMarkup(summary.frontendLink), createEntityLinkMarkup(summary.backendLink)].filter(Boolean);
+
+    panelNodes.title.textContent = title;
+    panelNodes.entityType.textContent = typeLabel;
+    panelNodes.entityLinks.innerHTML = links.join('');
+  }
+
+  function renderSourceMeta(result, panelNodes) {
+    const summary = result && result.sourceSummary && typeof result.sourceSummary === 'object'
+      ? result.sourceSummary
+      : {};
+    const label = summary.label ? String(summary.label) : '';
+    const sourceSummary = summary.summary ? String(summary.summary) : '';
+    const expression = summary.expression ? String(summary.expression) : '';
+
+    panelNodes.meta.innerHTML = '';
+
+    if (!label && !sourceSummary && !expression) {
+      return;
+    }
+
+    const details = document.createElement('details');
+    const summaryNode = document.createElement('summary');
+    const body = document.createElement('div');
+    const lines = [];
+
+    details.className = 'dbvc-ve-panel__meta-toggle';
+    summaryNode.className = 'dbvc-ve-panel__meta-summary';
+    summaryNode.textContent = strings().panelSourceDetails || 'Source details';
+    body.className = 'dbvc-ve-panel__meta-body';
+
+    if (label) {
+      lines.push(`<div><strong>${escapeHtml(strings().panelSourceLabel || 'Label')}:</strong> ${escapeHtml(label)}</div>`);
+    }
+
+    if (expression) {
+      lines.push(`<div><strong>${escapeHtml(strings().panelSourceExpression || 'Dynamic tag')}:</strong> <code>${escapeHtml(expression)}</code></div>`);
+    }
+
+    if (sourceSummary) {
+      lines.push(`<div><strong>${escapeHtml(strings().panelSource || 'Source')}:</strong> ${escapeHtml(sourceSummary)}</div>`);
+    }
+
+    if (result.saveContractSummary && result.saveContractSummary.label) {
+      lines.push(`<div><strong>${escapeHtml(strings().panelSaveContract || 'Save contract')}:</strong> ${escapeHtml(String(result.saveContractSummary.label))}</div>`);
+    }
+
+    if (result.saveContractSummary && result.saveContractSummary.detail) {
+      lines.push(`<div><strong>${escapeHtml(strings().panelSaveContractDetail || 'Contract detail')}:</strong> ${escapeHtml(String(result.saveContractSummary.detail))}</div>`);
+    }
+
+    body.innerHTML = lines.join('');
+    details.appendChild(summaryNode);
+    details.appendChild(body);
+    panelNodes.meta.appendChild(details);
+  }
+
   function updateSaveButtonState(panelNodes, canEdit) {
     const status = getDescriptorStatus(state.activeDescriptor, state.activeNode);
     const needsSharedAck = state.activeRequiresSharedScopeAck;
     const acknowledgementType = state.activeAcknowledgementType;
+    const entityType = getDescriptorEntityType(state.activeDescriptor);
 
     if (status === 'readonly') {
       panelNodes.saveButton.textContent = strings().panelInspectOnly || 'Inspect only';
@@ -1565,9 +2191,9 @@
     }
 
     if (needsSharedAck && acknowledgementType === 'related') {
-      panelNodes.saveButton.textContent = strings().panelRelatedScopeSave || 'Save related post';
+      panelNodes.saveButton.textContent = resolveRelatedSaveLabel(entityType);
     } else if (needsSharedAck) {
-      panelNodes.saveButton.textContent = strings().panelSharedScopeSave || 'Save shared field';
+      panelNodes.saveButton.textContent = resolveSharedSaveLabel(entityType);
     } else {
       panelNodes.saveButton.textContent = strings().panelSave || 'Save';
     }
@@ -1579,13 +2205,39 @@
     const descriptor = result.descriptor;
     const warning = descriptor.ui && descriptor.ui.warning ? String(descriptor.ui.warning) : '';
     const editMessage = result.editMessage ? String(result.editMessage) : '';
+    const noticeSummary = result.noticeSummary && typeof result.noticeSummary === 'object'
+      ? result.noticeSummary
+      : null;
     const requiresSharedAck = Boolean(result.requiresSharedScopeAck) && canEdit;
     const acknowledgementType = result.acknowledgementType || 'none';
+    const entityType = getDescriptorEntityType(descriptor);
 
     panelNodes.notice.innerHTML = '';
 
-    if (!warning && !editMessage && !requiresSharedAck) {
+    if (!warning && !editMessage && !requiresSharedAck && !noticeSummary) {
       return;
+    }
+
+    if (noticeSummary && (noticeSummary.title || noticeSummary.detail)) {
+      const summaryBlock = document.createElement('div');
+      const titleBlock = document.createElement('div');
+      const detailBlock = document.createElement('div');
+
+      summaryBlock.className = 'dbvc-ve-panel__notice-block is-context';
+      titleBlock.className = 'dbvc-ve-panel__notice-title';
+      detailBlock.className = 'dbvc-ve-panel__notice-detail';
+      titleBlock.textContent = noticeSummary.title ? String(noticeSummary.title) : '';
+      detailBlock.textContent = noticeSummary.detail ? String(noticeSummary.detail) : '';
+
+      if (titleBlock.textContent) {
+        summaryBlock.appendChild(titleBlock);
+      }
+
+      if (detailBlock.textContent) {
+        summaryBlock.appendChild(detailBlock);
+      }
+
+      panelNodes.notice.appendChild(summaryBlock);
     }
 
     if (warning) {
@@ -1609,8 +2261,8 @@
       const checkbox = document.createElement('input');
       const text = document.createElement('span');
       const acknowledgementText = acknowledgementType === 'related'
-        ? (strings().panelRelatedScopeAck || 'I understand this updates the related post shown in this Bricks query loop, not the current page.')
-        : (strings().panelSharedScopeAck || 'I understand this updates a shared field and may affect other pages.');
+        ? resolveRelatedAckText(entityType)
+        : resolveSharedAckText(entityType);
 
       label.className = 'dbvc-ve-panel__ack';
       checkbox.type = 'checkbox';
@@ -1661,10 +2313,10 @@
       : (getDescriptorStatus(descriptor, state.activeNode) === 'readonly' ? 'inspect' : 'locked');
     panelNodes.panel.dataset.scope = getDescriptorScope(descriptor, state.activeNode);
     panelNodes.panel.dataset.status = getDescriptorStatus(descriptor, state.activeNode);
-    panelNodes.title.textContent = descriptor.ui && descriptor.ui.label ? descriptor.ui.label : (strings().panelTitle || 'Edit field');
-    panelNodes.meta.textContent = formatEntityMeta(descriptor);
-    renderPanelNotice(result, panelNodes, canEdit);
     panelNodes.fieldLabel.textContent = descriptor.ui && descriptor.ui.label ? descriptor.ui.label : '';
+    renderEntityHeader(result, panelNodes);
+    renderSourceMeta(result, panelNodes);
+    renderPanelNotice(result, panelNodes, canEdit);
     panelNodes.fieldWrap.innerHTML = '';
     panelNodes.fieldWrap.appendChild(controller.element);
     if (typeof controller.mount === 'function') {
@@ -1680,6 +2332,8 @@
       });
       state.activeNode.classList.add('is-active');
     }
+
+    scheduleBadgeLayout();
 
     if (canEdit) {
       controller.focus();
@@ -1848,7 +2502,7 @@
   }
 
   async function openEditor(node, session) {
-    const token = node.getAttribute('data-dbvc-ve');
+    const token = getMarkerToken(node);
     const panelNodes = getPanelNodes();
     const cached = getCachedDescriptorPayload(token);
 
@@ -1856,7 +2510,9 @@
     state.activeController = null;
     panelNodes.panel.dataset.state = 'loading';
     panelNodes.title.textContent = strings().panelTitle || 'Edit field';
-    panelNodes.meta.textContent = '';
+    panelNodes.entityType.textContent = '';
+    panelNodes.entityLinks.innerHTML = '';
+    panelNodes.meta.innerHTML = '';
     panelNodes.notice.innerHTML = '';
     panelNodes.fieldLabel.textContent = '';
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
@@ -1869,6 +2525,8 @@
     state.activeRequiresSharedScopeAck = false;
     state.activeAcknowledgementType = 'none';
     state.sharedScopeAcknowledged = false;
+    state.touchSelectionToken = token;
+    clearDescriptorPrefetch();
 
     if (cached && cached.ok && cached.descriptor) {
       cached.sourceMismatch = hasSourceMismatch(node, cached);
@@ -1879,15 +2537,7 @@
     }
 
     try {
-      const result = await window.DBVCVisualEditorApi.getDescriptor(session.sessionId, token);
-
-      if (!result || !result.ok || !result.descriptor) {
-        panelNodes.panel.dataset.state = 'error';
-        panelNodes.status.textContent = strings().descriptorMissing || 'Descriptor not found.';
-        return;
-      }
-
-      cacheDescriptorPayload(result);
+      const result = await loadDescriptorPayload(session.sessionId, token);
       result.sourceMismatch = hasSourceMismatch(node, result);
       result.renderedValue = getNodeDisplayValue(node, result.descriptor);
       state.activeDescriptor = result.descriptor;
@@ -1912,9 +2562,10 @@
 
     if (!acknowledgeSharedScope) {
       panelNodes.panel.dataset.state = 'locked';
+      const entityType = getDescriptorEntityType(state.activeDescriptor);
       panelNodes.status.textContent = state.activeAcknowledgementType === 'related'
-        ? (strings().panelRelatedScopeRequired || 'Acknowledge the related-post warning before saving this field.')
-        : (strings().panelSharedScopeRequired || 'Acknowledge the shared scope warning before saving this field.');
+        ? resolveRelatedRequiredText(entityType)
+        : resolveSharedRequiredText(entityType);
       return;
     }
 
@@ -1927,20 +2578,26 @@
       const saveResult = await window.DBVCVisualEditorApi.save(state.session.sessionId, token, value, acknowledgeSharedScope);
       const syncGroup = getActiveSyncGroup();
       const sourceGroup = getActiveSourceGroup();
+      const saveSummaryMessage = formatSaveSummary(saveResult);
 
       updateCachedDescriptors(syncGroup, sourceGroup, saveResult);
       syncSavedDisplayValues(syncGroup, sourceGroup, saveResult);
       state.activeController.setValue(saveResult.value);
       state.activeController.setDisabled(false);
+      if (saveResult && saveResult.entitySummary) {
+        renderEntityHeader(saveResult, panelNodes);
+      }
+      if (saveResult && saveResult.sourceSummary) {
+        renderSourceMeta(saveResult, panelNodes);
+      }
       panelNodes.panel.dataset.state = 'saved';
-      panelNodes.status.textContent = saveResult && saveResult.message
-        ? saveResult.message
-        : (strings().panelSaved || 'Saved successfully.');
+      panelNodes.status.textContent = saveSummaryMessage
+        || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.'));
       updateSaveButtonState(panelNodes, true);
       updateStatusBar({
         kind: 'ready',
         count: getMarkerCount(),
-        message: strings().panelSaved || 'Saved successfully.'
+        message: saveSummaryMessage || (strings().panelSaved || 'Saved successfully.')
       });
     } catch (error) {
       panelNodes.panel.dataset.state = 'error';
@@ -1956,39 +2613,6 @@
     }
   }
 
-  function buildBadge(node, session) {
-    const badge = document.createElement('button');
-    const descriptor = lookupDescriptorForNode(node);
-    const scope = getDescriptorScope(descriptor, node);
-    const status = getDescriptorStatus(descriptor, node);
-    const token = node.getAttribute('data-dbvc-ve') || '';
-
-    badge.type = 'button';
-    badge.className = 'dbvc-ve-badge';
-    badge.dataset.token = token;
-
-    if (scope === 'related_entity') {
-      badge.classList.add('dbvc-ve-badge--related');
-      badge.textContent = strings().badgeRelated || 'Related Post';
-    } else if (scope === 'shared_entity') {
-      badge.classList.add('dbvc-ve-badge--shared');
-      badge.textContent = strings().badgeShared || 'Shared';
-    } else if (status === 'readonly') {
-      badge.classList.add('dbvc-ve-badge--readonly');
-      badge.textContent = strings().inspectLabel || 'Inspect';
-    } else {
-      badge.textContent = strings().editLabel || 'Edit';
-    }
-
-    badge.addEventListener('click', function (event) {
-      event.preventDefault();
-      event.stopPropagation();
-      openEditor(node, session);
-    });
-
-    return badge;
-  }
-
   async function mount() {
     if (!window.DBVCVisualEditorBootstrap || !window.DBVCVisualEditorBootstrap.active) {
       return;
@@ -1998,6 +2622,7 @@
     ensureStatusBar();
     ensureEditorPanel();
     ensureBadgeLayer();
+    ensureSharedBadge();
     bindBadgeEvents();
 
     const markers = findMarkers();
@@ -2031,6 +2656,10 @@
     state.session = session;
     cacheDescriptorHydrations(session.descriptorHydrations);
 
+    if (state.previewNode) {
+      scheduleDescriptorPrefetch(state.previewNode);
+    }
+
     updateStatusBar({
       kind: 'ready',
       count: markers.length,
@@ -2052,17 +2681,7 @@
       if (node.dataset.dbvcVeStatus === 'readonly') {
         node.classList.add('is-readonly');
       }
-      node.dataset.dbvcVeDisplayValue = readNodeComparableValue(node, lookupDescriptorForNode(node));
-
-      const badge = buildBadge(node, session);
-      const token = node.getAttribute('data-dbvc-ve') || '';
-
-      state.badges[token] = {
-        node,
-        badge
-      };
-
-      ensureBadgeLayer().appendChild(badge);
+      node.dataset.dbvcVeDisplayValue = normalizeValue(readNodeComparableValue(node, lookupDescriptorForNode(node)));
     });
 
     scheduleBadgeLayout();

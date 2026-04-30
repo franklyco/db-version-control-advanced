@@ -1,7 +1,10 @@
 (function () {
   window.DBVCVisualEditorApi = {
-    getSession(sessionId) {
-      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}?hydrate=1`, {
+    getSession(sessionId, options) {
+      const shouldHydrate = Boolean(options && options.hydrate);
+      const query = shouldHydrate ? '?hydrate=1' : '';
+
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}${query}`, {
         headers: { 'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce }
       }).then(async (response) => {
         const data = await response.json().catch(function () {

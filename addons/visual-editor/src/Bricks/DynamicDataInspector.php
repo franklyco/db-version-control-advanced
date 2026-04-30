@@ -144,7 +144,9 @@ final class DynamicDataInspector
             return $candidate;
         }
 
-        $image_link_mode = isset($settings['link']) ? sanitize_key((string) $settings['link']) : '';
+        $image_link_mode = isset($settings['link']) && is_scalar($settings['link'])
+            ? sanitize_key((string) $settings['link'])
+            : '';
         $image_url_link = isset($settings['url']) && is_array($settings['url']) ? $settings['url'] : [];
         if ($image_link_mode === 'url') {
             $candidate = $this->inspectLinkControlArray($image_url_link, 'url');
@@ -171,7 +173,7 @@ final class DynamicDataInspector
 
         if ($dynamic_image !== '') {
             $candidate = $this->inspectExpression($dynamic_image, 'image');
-            if (! empty($candidate['supported']) && ($candidate['source_type'] ?? '') === 'acf_field') {
+            if ($this->supportsDirectImageSource($candidate)) {
                 $candidate['render_context'] = 'image_src';
                 $candidate['render_attribute'] = 'src';
                 $candidate['media_size'] = isset($image_settings['size']) ? sanitize_key((string) $image_settings['size']) : '';
@@ -190,7 +192,7 @@ final class DynamicDataInspector
 
         if ($dynamic_background_image !== '') {
             $candidate = $this->inspectExpression($dynamic_background_image, '_background.image');
-            if (! empty($candidate['supported']) && ($candidate['source_type'] ?? '') === 'acf_field') {
+            if ($this->supportsDirectImageSource($candidate)) {
                 $candidate['render_context'] = 'background_image';
                 $candidate['render_attribute'] = 'style';
                 $candidate['media_size'] = isset($background_image_settings['size']) ? sanitize_key((string) $background_image_settings['size']) : '';
@@ -218,6 +220,26 @@ final class DynamicDataInspector
         return [
             'supported' => false,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @return bool
+     */
+    private function supportsDirectImageSource(array $candidate)
+    {
+        if (empty($candidate['supported'])) {
+            return false;
+        }
+
+        $source_type = isset($candidate['source_type']) ? (string) $candidate['source_type'] : '';
+        if ($source_type === 'acf_field') {
+            return true;
+        }
+
+        return $source_type === 'post_field'
+            && isset($candidate['field_name'])
+            && sanitize_key((string) $candidate['field_name']) === 'featured_image';
     }
 
     /**
@@ -305,7 +327,7 @@ final class DynamicDataInspector
             ];
         }
 
-        if (in_array($tag, ['post_title', 'post_excerpt'], true)) {
+        if (in_array($tag, ['post_title', 'post_excerpt', 'featured_image'], true)) {
             return [
                 'supported' => true,
                 'setting_key' => $setting_key,

@@ -5,12 +5,14 @@ namespace Dbvc\VisualEditor\Rest;
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Context\PageContextResolver;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
+use Dbvc\VisualEditor\Presentation\DescriptorSummaryBuilder;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
 use Dbvc\VisualEditor\Resolvers\ResolverRegistry;
 use Dbvc\VisualEditor\Rest\DescriptorPayloadBuilder;
 use Dbvc\VisualEditor\Rest\Controllers\DescriptorController;
 use Dbvc\VisualEditor\Rest\Controllers\SaveController;
 use Dbvc\VisualEditor\Rest\Controllers\SessionController;
+use Dbvc\VisualEditor\Save\MutationContractService;
 use Dbvc\VisualEditor\Save\MutationService;
 
 final class Routes
@@ -45,13 +47,19 @@ final class Routes
      */
     private $capabilities;
 
+    /**
+     * @var DescriptorSummaryBuilder
+     */
+    private $summaries;
+
     public function __construct(
         EditableRegistry $registry,
         ResolverRegistry $resolvers,
         MutationService $mutations,
         EditModeState $edit_mode,
         PageContextResolver $page_context,
-        CapabilityManager $capabilities
+        CapabilityManager $capabilities,
+        DescriptorSummaryBuilder $summaries
     ) {
         $this->registry = $registry;
         $this->resolvers = $resolvers;
@@ -59,6 +67,7 @@ final class Routes
         $this->edit_mode = $edit_mode;
         $this->page_context = $page_context;
         $this->capabilities = $capabilities;
+        $this->summaries = $summaries;
     }
 
     /**
@@ -82,10 +91,11 @@ final class Routes
      */
     public function registerRoutes()
     {
-        $payloads = new DescriptorPayloadBuilder($this->resolvers, $this->capabilities);
+        $contracts = new MutationContractService();
+        $payloads = new DescriptorPayloadBuilder($this->resolvers, $this->capabilities, $this->summaries, $contracts);
 
         (new SessionController($this->registry, $this->edit_mode, $this->page_context, $this->capabilities, $payloads))->register();
         (new DescriptorController($this->registry, $payloads, $this->edit_mode, $this->capabilities))->register();
-        (new SaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities))->register();
+        (new SaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
     }
 }

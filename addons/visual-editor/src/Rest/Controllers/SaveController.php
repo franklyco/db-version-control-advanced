@@ -5,6 +5,7 @@ namespace Dbvc\VisualEditor\Rest\Controllers;
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
+use Dbvc\VisualEditor\Save\MutationContractService;
 use Dbvc\VisualEditor\Save\MutationService;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -31,16 +32,23 @@ final class SaveController
      */
     private $capabilities;
 
+    /**
+     * @var MutationContractService
+     */
+    private $contracts;
+
     public function __construct(
         EditableRegistry $registry,
         MutationService $mutations,
         EditModeState $edit_mode,
-        CapabilityManager $capabilities
+        CapabilityManager $capabilities,
+        MutationContractService $contracts
     ) {
         $this->registry = $registry;
         $this->mutations = $mutations;
         $this->edit_mode = $edit_mode;
         $this->capabilities = $capabilities;
+        $this->contracts = $contracts;
     }
 
     /**
@@ -118,28 +126,32 @@ final class SaveController
             );
         }
 
-        if ($this->requiresSharedScopeAcknowledgement($descriptor) && ! $this->hasSharedScopeAcknowledgement($request)) {
+        $contract_summary = $this->contracts->buildSummary($descriptor);
+
+        if (empty($contract_summary['writable'])) {
             return new WP_REST_Response(
                 [
                     'ok' => false,
-                    'message' => $this->getAcknowledgementMessage($descriptor),
+                    'message' => $this->contracts->getUnsupportedMessage($descriptor),
+                ],
+                400
+            );
+        }
+
+        if (! empty($contract_summary['requiresAcknowledgement']) && ! $this->hasSharedScopeAcknowledgement($request)) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => $this->contracts->getAcknowledgementMessage($descriptor),
                 ],
                 400
             );
         }
 
         $result = $this->mutations->mutate($descriptor, $value);
+        $result['saveContractSummary'] = $contract_summary;
 
         return new WP_REST_Response($result, ! empty($result['ok']) ? 200 : 400);
-    }
-
-    /**
-     * @param \Dbvc\VisualEditor\Registry\EditableDescriptor $descriptor
-     * @return bool
-     */
-    private function requiresSharedScopeAcknowledgement($descriptor)
-    {
-        return isset($descriptor->scope) && (string) $descriptor->scope !== 'current_entity';
     }
 
     /**
@@ -163,18 +175,5 @@ final class SaveController
         }
 
         return false;
-    }
-
-    /**
-     * @param \Dbvc\VisualEditor\Registry\EditableDescriptor $descriptor
-     * @return string
-     */
-    private function getAcknowledgementMessage($descriptor)
-    {
-        if (isset($descriptor->scope) && (string) $descriptor->scope === 'related_entity') {
-            return __('This related post field requires explicit acknowledgement before it can be saved.', 'dbvc');
-        }
-
-        return __('This shared field requires explicit acknowledgement before it can be saved.', 'dbvc');
     }
 }
