@@ -1,3 +1,19 @@
+.dbvc-bricks-portability-page [hidden] {
+  display: none !important;
+}
+
+.dbvc-bricks-portability-subtabs {
+  margin: 18px 0 12px;
+}
+
+.dbvc-bricks-portability-tab-panel {
+  margin-bottom: 18px;
+}
+
+body.dbvc-bricks-portability-modal-open {
+  overflow: hidden;
+}
+
 .dbvc-bricks-portability-layout {
   display: grid;
   gap: 16px;
@@ -12,14 +28,165 @@
 }
 
 .dbvc-bricks-portability-box,
-.dbvc-bricks-portability-pre {
+.dbvc-bricks-portability-pre,
+.dbvc-bricks-portability-detail-view {
   background: #f6f7f7;
   border: 1px solid #dcdcde;
   padding: 12px;
   min-height: 72px;
-  max-height: 280px;
+  max-height: 560px;
   overflow: auto;
+}
+
+.dbvc-bricks-portability-pre {
   white-space: pre-wrap;
+}
+
+.dbvc-bricks-portability-detail-view {
+  background: linear-gradient(180deg, #fff, #f6f7f7);
+}
+
+.dbvc-bricks-portability-context-note {
+  margin-top: -4px;
+}
+
+.dbvc-bricks-portability-review-state {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 16px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+}
+
+.dbvc-bricks-portability-review-state__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.dbvc-bricks-portability-review-state__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dbvc-bricks-portability-applied-summary {
+  margin: 0 0 14px;
+}
+
+.dbvc-bricks-portability-stats {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin: 0 0 14px;
+}
+
+.dbvc-bricks-portability-stat-card {
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+  padding: 10px 12px;
+}
+
+.dbvc-bricks-portability-stat-card__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #50575e;
+}
+
+.dbvc-bricks-portability-stat-card__value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1d2327;
+}
+
+.dbvc-bricks-portability-stat-card__detail {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #50575e;
+}
+
+.dbvc-bricks-portability-stat-card--incoming {
+  background: #eef6ff;
+}
+
+.dbvc-bricks-portability-stat-card--current {
+  background: #f3f4f6;
+}
+
+.dbvc-bricks-portability-stat-card--replace_with_incoming {
+  background: #fff8e1;
+}
+
+.dbvc-bricks-portability-stat-card--add_incoming {
+  background: #e6f7ff;
+}
+
+.dbvc-bricks-portability-stat-card--keep_current {
+  background: #f5f5f5;
+}
+
+.dbvc-bricks-portability-stat-card--skip {
+  background: #fdf2f8;
+}
+
+.dbvc-bricks-portability-summary-toggle {
+  margin: 0 0 14px;
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+}
+
+.dbvc-bricks-portability-summary-toggle summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-weight: 600;
+}
+
+.dbvc-bricks-portability-summary-toggle .dbvc-bricks-portability-pre {
+  margin: 0;
+  border-width: 1px 0 0;
+  max-height: 240px;
+}
+
+.dbvc-bricks-portability-row-hint {
+  margin-top: -4px;
+  margin-bottom: 10px;
+}
+
+.dbvc-bricks-portability-approval-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px;
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+  margin: 0 0 16px;
+}
+
+.dbvc-bricks-portability-approval-controls[data-portability-approval-controls="top"] {
+  position: sticky;
+  top: 2rem;
+  z-index: 999;
+}
+
+.dbvc-bricks-portability-approval-controls__confirm {
+  flex: 1 1 360px;
+}
+
+.dbvc-bricks-portability-approval-controls__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .dbvc-bricks-portability-domain-option {
@@ -27,15 +194,77 @@
   margin-bottom: 10px;
 }
 
-.dbvc-bricks-portability-badge {
+.dbvc-bricks-portability-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.dbvc-bricks-portability-inline-badge--approved {
+  background: #e6f6ea;
+  color: #0f6b2d;
+}
+
+.dbvc-bricks-portability-inline-badge--applied {
+  background: #dff4ff;
+  color: #055160;
+}
+
+.dbvc-bricks-portability-inline-badge--pending {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.dbvc-bricks-portability-inline-badge--fresh {
+  background: #e6f6ea;
+  color: #0f6b2d;
+}
+
+.dbvc-bricks-portability-inline-badge--stale {
+  background: #fff3cd;
+  color: #7a4b00;
+}
+
+.dbvc-bricks-portability-inline-badge--rollback {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
+.dbvc-bricks-portability-inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.dbvc-bricks-portability-badge,
+.dbvc-bricks-portability-chip,
+.dbvc-bricks-portability-diff-label {
   display: inline-block;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dbvc-bricks-portability-badge {
   margin-left: 6px;
   padding: 2px 6px;
   background: #f0f0f1;
-  border-radius: 999px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+}
+
+.dbvc-bricks-portability-chip {
+  padding: 4px 8px;
+  background: #e7f0ff;
+  color: #0b57d0;
 }
 
 .dbvc-bricks-portability-workbench {
@@ -45,22 +274,430 @@
   margin: 16px 0;
 }
 
+.dbvc-bricks-portability-session-summary-line {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
 .dbvc-bricks-portability-table-wrap {
   overflow-x: auto;
   margin-bottom: 16px;
 }
 
-.dbvc-bricks-portability-detail-grid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  margin: 16px 0;
+.dbvc-bricks-portability-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 16px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+}
+
+.dbvc-bricks-portability-pagination__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dbvc-bricks-portability-pagination__summary {
+  color: #50575e;
+}
+
+.dbvc-bricks-portability-sort-button {
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.dbvc-bricks-portability-sort-button.is-active {
+  color: #0b57d0;
 }
 
 .dbvc-bricks-portability-status {
+  display: inline-block;
   font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e7f0ff;
+  color: #0b57d0;
+}
+
+.dbvc-bricks-portability-status--identical {
+  background: #e6f6ea;
+  color: #0f6b2d;
+}
+
+.dbvc-bricks-portability-status--missing_from_source {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.dbvc-bricks-portability-status--same_name_different_id,
+.dbvc-bricks-portability-status--same_id_different_name,
+.dbvc-bricks-portability-status--value_changed,
+.dbvc-bricks-portability-status--changed_props,
+.dbvc-bricks-portability-status--added_props,
+.dbvc-bricks-portability-status--removed_props {
+  background: #fff3cd;
+  color: #7a4b00;
+}
+
+.dbvc-bricks-portability-status--new_in_source {
+  background: #dff4ff;
+  color: #055160;
+}
+
+.dbvc-bricks-portability-action-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.dbvc-bricks-portability-action-pill--keep_current {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.dbvc-bricks-portability-action-pill--add_incoming {
+  background: #dff4ff;
+  color: #055160;
+}
+
+.dbvc-bricks-portability-action-pill--replace_with_incoming {
+  background: #fff3cd;
+  color: #7a4b00;
+}
+
+.dbvc-bricks-portability-action-pill--skip {
+  background: #fce7f3;
+  color: #9d174d;
 }
 
 .dbvc-bricks-portability-row {
   cursor: pointer;
+}
+
+.dbvc-bricks-portability-row.is-selected td {
+  background: #eef4ff;
+}
+
+.dbvc-bricks-portability-approval-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.dbvc-bricks-portability-approval-cell__time {
+  font-size: 12px;
+  color: #50575e;
+  white-space: nowrap;
+}
+
+.dbvc-bricks-portability-empty,
+.dbvc-bricks-portability-diff-empty,
+.dbvc-bricks-portability-value-empty {
+  margin: 0;
+  color: #50575e;
+}
+
+.dbvc-bricks-portability-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.dbvc-bricks-portability-detail-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.dbvc-bricks-portability-detail-subtitle,
+.dbvc-bricks-portability-detail-note,
+.dbvc-bricks-portability-reference-summary {
+  color: #50575e;
+}
+
+.dbvc-bricks-portability-detail-subtitle {
+  margin-top: 4px;
+}
+
+.dbvc-bricks-portability-detail-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dbvc-bricks-portability-detail-note,
+.dbvc-bricks-portability-reference-summary {
+  margin: 0 0 12px;
+}
+
+.dbvc-bricks-portability-verification-summary {
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+
+.dbvc-bricks-portability-verification-item + .dbvc-bricks-portability-verification-item {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #dcdcde;
+}
+
+.dbvc-bricks-portability-verification-item__title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.dbvc-bricks-portability-verification-item__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.dbvc-bricks-portability-verification-item__warnings {
+  margin: 8px 0 0 18px;
+}
+
+.dbvc-bricks-portability-reference-analysis {
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+
+.dbvc-bricks-portability-reference-analysis ul {
+  margin: 8px 0 0 18px;
+}
+
+.dbvc-bricks-portability-reference-analysis__tokens {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.dbvc-bricks-portability-reference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.dbvc-bricks-portability-reference-actions.is-success {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #e6f6ea;
+  border: 1px solid #8fd19e;
+  animation: dbvcBricksPortabilityReferenceSuccess 450ms ease-out;
+}
+
+.dbvc-bricks-portability-reference-action.is-success {
+  background: #0f6b2d;
+  border-color: #0f6b2d;
+  color: #fff;
+}
+
+.dbvc-bricks-portability-reference-actions .description {
+  color: #50575e;
+}
+
+.dbvc-bricks-portability-reference-action-status {
+  font-weight: 600;
+  color: #0f6b2d;
+}
+
+@keyframes dbvcBricksPortabilityReferenceSuccess {
+  0% {
+    transform: scale(0.985);
+    box-shadow: 0 0 0 0 rgba(15, 107, 45, 0.18);
+  }
+  60% {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 10px rgba(15, 107, 45, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(15, 107, 45, 0);
+  }
+}
+
+.dbvc-bricks-portability-warning-box {
+  border: 1px solid #f0c36d;
+  background: #fff8e1;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.dbvc-bricks-portability-warning-box ul {
+  margin: 8px 0 0 18px;
+}
+
+.dbvc-bricks-portability-diff-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dbvc-bricks-portability-diff-entry {
+  border: 1px solid #dcdcde;
+  background: #fff;
+  padding: 12px;
+}
+
+.dbvc-bricks-portability-diff-entry--changed {
+  border-left: 4px solid #dba617;
+}
+
+.dbvc-bricks-portability-diff-entry--added {
+  border-left: 4px solid #0b57d0;
+}
+
+.dbvc-bricks-portability-diff-entry--removed {
+  border-left: 4px solid #6b7280;
+}
+
+.dbvc-bricks-portability-diff-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.dbvc-bricks-portability-diff-label {
+  padding: 3px 8px;
+  background: #f0f0f1;
+  color: #1d2327;
+}
+
+.dbvc-bricks-portability-diff-grid,
+.dbvc-bricks-portability-snapshot-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dbvc-bricks-portability-diff-side,
+.dbvc-bricks-portability-snapshot-panel {
+  min-width: 0;
+}
+
+.dbvc-bricks-portability-diff-side-label,
+.dbvc-bricks-portability-snapshot-panel h5 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #50575e;
+}
+
+.dbvc-bricks-portability-value-preview {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #dcdcde;
+  background: #f6f7f7;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dbvc-bricks-portability-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+}
+
+.dbvc-bricks-portability-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.5);
+}
+
+.dbvc-bricks-portability-modal__dialog {
+  position: relative;
+  z-index: 1;
+  width: min(1200px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  margin: 24px auto;
+  background: #fff;
+  border: 1px solid #ccd0d4;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.24);
+  display: flex;
+  flex-direction: column;
+}
+
+.dbvc-bricks-portability-modal__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dcdcde;
+}
+
+.dbvc-bricks-portability-modal__header h4 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.dbvc-bricks-portability-modal__subtitle {
+  margin: 0;
+}
+
+.dbvc-bricks-portability-modal__close {
+  font-size: 28px;
+  line-height: 1;
+  text-decoration: none;
+  padding: 0 4px;
+}
+
+.dbvc-bricks-portability-modal__body {
+  padding: 20px;
+  overflow: auto;
+  background: linear-gradient(180deg, #fff, #f6f7f7);
+}
+
+@media (max-width: 782px) {
+  .dbvc-bricks-portability-detail-header,
+  .dbvc-bricks-portability-diff-grid,
+  .dbvc-bricks-portability-snapshot-grid {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .dbvc-bricks-portability-detail-badges {
+    justify-content: flex-start;
+  }
+
+  .dbvc-bricks-portability-modal__dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    margin: 10px auto;
+  }
+
+  .dbvc-bricks-portability-modal__header,
+  .dbvc-bricks-portability-modal__body {
+    padding: 14px;
+  }
 }

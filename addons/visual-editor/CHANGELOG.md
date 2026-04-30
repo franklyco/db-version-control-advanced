@@ -1,0 +1,51 @@
+# Changelog
+
+## Unreleased
+
+- Renamed the dropped scaffold package to `addons/visual-editor/` and aligned docs to the repo path
+- Added repo-adapted bootstrap facade `DBVC_Visual_Editor_Addon` and DBVC core loading integration
+- Added Add-ons screen settings integration for enabling/disabling the Visual Editor runtime
+- Added nonce-backed frontend edit mode toggle for authorized users on supported singular views
+- Added Bricks render-attribute instrumentation for direct supported dynamic text bindings
+- Added transient-backed descriptor session registry keyed to the current user and request session
+- Added authenticated REST session, descriptor inspection, and guarded save endpoints under `dbvc/v1/visual-editor/...`
+- Added initial resolver allowlist for direct post title and simple ACF text-like fields
+- Added audit logging and post-cache invalidation hooks for successful saves
+- Replaced browser prompt editing with an in-page overlay editor panel and in-place DOM updates after save
+- Added a client-side guard that disables saving when the resolved backend value does not match the rendered page text
+- Added a server-side Bricks render verification pass that removes mismatched markers before they reach the browser
+- Added direct `post_excerpt` support to the guarded MVP resolver allowlist
+- Added Bricks-backed ACF object-context resolution for current-post, options, user, and taxonomy-term targets on singular page requests
+- Expanded the guarded ACF allowlist to include `wysiwyg`, `checkbox`, `select`, `radio`, `button_group`, and `link`
+- Expanded the overlay panel with field-type-aware editors for rich text, checkbox groups, selects, and structured link values
+- Added resolver-aware display projection matching so structured fields can verify and update against the actual rendered text safely
+- Added shared-scope warnings for option, term, and user-backed ACF targets and option-cache invalidation hooks after save
+- Added server-enforced shared-scope acknowledgement before saving option, term, or user-backed targets
+- Added session-local sync groups so repeated markers for the same resolved field projection update together after save
+- Replaced the temporary WYSIWYG proof-of-life control with a real WordPress `wp.editor.initialize()` Visual/Code editor when frontend editor assets are available
+- Added authenticated session descriptor hydration and client-side caching so the modal can open fields without a second cold descriptor request in the common case
+- Broadened candidate detection to exact single-tag Bricks dynamic expressions with safe args, while still rejecting mixed literal content
+- Added safe Bricks top-level `link` control support for direct single-tag external ACF bindings, with render-verified `href` markers and in-place attribute updates after save
+- Tightened sync groups so repeated markers stay scoped to the matched render projection instead of cross-updating different projections of the same field
+- Added source-level projection syncing so structured field saves can refresh other matched projections of the same resolved field on the current page without a reload
+- Added support for image-style Bricks `link = url` payloads when the URL resolves from a direct single-tag external ACF binding
+- Added support for deterministic repeater-style Bricks link collections such as `list`, `social-icons`, and custom-link `image-gallery` anchors
+- Added permalink-based save support for current-entity ACF `post_object`, single-target `relationship`, and single-select `taxonomy` fields when rendered as direct link targets
+- Added a Bricks loop-context resolver for safe ACF `relationship` / `post_object` post-loop ownership detection
+- Added per-loop-row descriptor identity so repeated Bricks element UIDs can be marked safely across related-post loop rows
+- Added related-post loop modal context and acknowledgement copy so saves can explicitly target the loop owner rather than the current page
+- Kept the Site Settings `universal_cta_options` global-link group read-only in Visual Editor so those fields remain editable only from the ACF options page
+- Added inspect-only `readonly` descriptors so advanced exact-tag ACF sources and generic concrete-owner query-loop rows can surface in the overlay without enabling unsafe writes
+- Added a dedicated inspect-only ACF resolver and preview panel state for nested/object-style fields such as repeater-, relationship-, and flexible-like payloads that are not yet save-capable
+- Broadened loop context handling so concrete non-current post owners can be surfaced honestly in the modal even when the save path is still out of scope
+- Added related/shared/inspect marker treatments so non-current post and inspect-only sources remain visually distinct before interaction
+- Added direct Bricks image element support for single-tag ACF image fields, with rendered `src` verification, attachment-ID-first saving, local Media Library URL fallback resolution, and in-place refresh of responsive image attributes after save
+- Added direct Bricks `_background.image` support for single-tag ACF image fields, with rendered background-image verification and in-place background refresh after attachment-backed saves
+- Added inspect-only Bricks image-gallery surfacing for single-tag ACF gallery fields with thumbnail preview in the modal
+- Moved marker badges into a fixed overlay layer so theme `overflow: hidden` styles no longer clip the Visual Editor controls
+- Added narrow writable ACF repeater row support for stable Bricks repeater loops on current-post and related-post owners
+- Added repeater-aware source and sync grouping so saves no longer bleed across rows of the same repeater field
+- Added repeater row metadata to the modal source summary and a repo-specific repeater implementation plan doc
+- Tightened badge visibility so hidden megamenus, offcanvas panels, and other non-painted containers do not show edit badges until their marked nodes are actually visible
+- Switched badge visibility checks toward native effective-visibility detection where available, added burst relayout passes across hover/open transitions for megamenus and offcanvas reveals, moved badge placement inside the target corner, and removed the child overflow override that triggered media-tag console warnings
+- Kept unsupported scopes explicitly out of the MVP slice instead of guessing from rendered HTML

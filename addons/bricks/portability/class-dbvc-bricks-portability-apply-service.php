@@ -11,7 +11,7 @@ final class DBVC_Bricks_Portability_Apply_Service
      * @param array<string, string> $requested_decisions
      * @return array<string, mixed>|\WP_Error
      */
-    public static function apply_session($session_id, array $requested_decisions)
+    public static function apply_session($session_id, array $requested_decisions, array $manual_row_ids = [])
     {
         if (class_exists('DBVC_Bricks_Addon') && DBVC_Bricks_Addon::get_bool_setting('dbvc_bricks_read_only', false)) {
             return new \WP_Error('dbvc_bricks_portability_read_only', __('Bricks portability apply is disabled while Bricks read-only mode is active.', 'dbvc'), ['status' => 403]);
@@ -23,23 +23,55 @@ final class DBVC_Bricks_Portability_Apply_Service
         }
 
         $rows = isset($session['rows']) && is_array($session['rows']) ? $session['rows'] : [];
-        $effective_decisions = self::resolve_effective_decisions($rows, $requested_decisions);
-        $validation = self::validate_decisions($rows, $effective_decisions);
-        if (is_wp_error($validation)) {
-            return $validation;
+        $effective_decisions = self::prepare_review_decisions($rows, $requested_decisions);
+        if (is_wp_error($effective_decisions)) {
+            return $effective_decisions;
         }
 
+        $approved_at_gmt = gmdate('c');
         $affected_domains = self::collect_affected_domains($rows, $effective_decisions);
         if (empty($affected_domains)) {
+            $persisted_session = DBVC_Bricks_Portability_Package_Service::persist_session_approval($session, $effective_decisions, [
+                'approved_at_gmt' => $approved_at_gmt,
+                'applied_to_site' => false,
+                'job_id' => (int) ($session['job_id'] ?? 0),
+                'manual_row_ids' => $manual_row_ids,
+            ]);
+            if (is_wp_error($persisted_session)) {
+                return $persisted_session;
+            }
+
+            self::log_activity(
+                'portability_apply_approved_only',
+                'info',
+                'Bricks portability decisions approved with no site mutations required.',
+                [
+                    'session_id' => sanitize_key((string) ($session['session_id'] ?? '')),
+                    'package_id' => sanitize_key((string) ($session['package_id'] ?? '')),
+                    'approved_at_gmt' => $approved_at_gmt,
+                    'decision_count' => count($effective_decisions),
+                ],
+                0
+            );
+
             return [
                 'ok' => true,
                 'applied' => false,
-                'message' => __('No incoming changes were selected for apply.', 'dbvc'),
+                'message' => __('Approved decisions were recorded. No incoming changes were selected for site mutation.', 'dbvc'),
+                'session_id' => sanitize_key((string) ($session['session_id'] ?? '')),
+                'package_id' => sanitize_key((string) ($session['package_id'] ?? '')),
+                'approved_at_gmt' => $approved_at_gmt,
                 'summary' => [
                     'affected_domains' => [],
                     'affected_options' => [],
+                    'decision_count' => count($effective_decisions),
                 ],
             ];
+        }
+
+        $source_validation = self::validate_session_domain_verification($session, array_keys($affected_domains));
+        if (is_wp_error($source_validation)) {
+            return $source_validation;
         }
 
         $target_validation = self::validate_live_target_state($session, array_keys($affected_domains));
@@ -83,12 +115,26 @@ final class DBVC_Bricks_Portability_Apply_Service
             return $write_result;
         }
 
+        $persisted_session = DBVC_Bricks_Portability_Package_Service::persist_session_approval($session, $effective_decisions, [
+            'approved_at_gmt' => $approved_at_gmt,
+            'applied_to_site' => true,
+            'backup_id' => sanitize_key((string) ($backup['backup_id'] ?? '')),
+            'job_id' => $job_id,
+            'manual_row_ids' => $manual_row_ids,
+        ]);
+        if (is_wp_error($persisted_session)) {
+            DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+            self::update_job($job_id, 'failed', ['error' => $persisted_session->get_error_code()]);
+            return $persisted_session;
+        }
+
         $result = [
             'ok' => true,
             'applied' => true,
             'session_id' => sanitize_key((string) ($session['session_id'] ?? '')),
             'package_id' => sanitize_key((string) ($session['package_id'] ?? '')),
             'backup_id' => sanitize_key((string) ($backup['backup_id'] ?? '')),
+            'approved_at_gmt' => $approved_at_gmt,
             'summary' => [
                 'affected_domains' => array_keys($affected_domains),
                 'affected_options' => $affected_option_names,
@@ -108,6 +154,22 @@ final class DBVC_Bricks_Portability_Apply_Service
         );
 
         return $result;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<string, string> $requested_decisions
+     * @return array<string, string>|\WP_Error
+     */
+    public static function prepare_review_decisions(array $rows, array $requested_decisions)
+    {
+        $effective = self::resolve_effective_decisions($rows, $requested_decisions);
+        $validation = self::validate_decisions($rows, $effective);
+        if (is_wp_error($validation)) {
+            return $validation;
+        }
+
+        return $effective;
     }
 
     /**
@@ -140,8 +202,23 @@ final class DBVC_Bricks_Portability_Apply_Service
             'ok' => true,
             'rolled_back' => true,
             'backup_id' => sanitize_key((string) ($backup['backup_id'] ?? '')),
+            'session_id' => sanitize_key((string) ($backup['session_id'] ?? '')),
             'option_names' => array_values((array) ($backup['option_names'] ?? [])),
         ];
+
+        $session_id = sanitize_key((string) ($backup['session_id'] ?? ''));
+        if ($session_id !== '') {
+            $session_update = DBVC_Bricks_Portability_Package_Service::mark_session_rollback($session_id, [
+                'rolled_back_at_gmt' => gmdate('c'),
+                'backup_id' => sanitize_key((string) ($backup['backup_id'] ?? '')),
+                'job_id' => $job_id,
+                'option_names' => array_values((array) ($backup['option_names'] ?? [])),
+            ]);
+            if (is_wp_error($session_update)) {
+                self::update_job($job_id, 'failed', ['error' => $session_update->get_error_code()]);
+                return $session_update;
+            }
+        }
 
         self::update_job($job_id, 'completed', $result);
         self::log_activity(
@@ -167,12 +244,12 @@ final class DBVC_Bricks_Portability_Apply_Service
             if (! is_array($row)) {
                 continue;
             }
-            $row_id = sanitize_key((string) ($row['row_id'] ?? ''));
+            $row_id = self::normalize_row_id($row['row_id'] ?? '');
             if ($row_id === '') {
                 continue;
             }
 
-            $requested = isset($requested_decisions[$row_id]) ? sanitize_key((string) $requested_decisions[$row_id]) : '';
+            $requested = self::find_requested_decision($requested_decisions, $row_id);
             $allowed = isset($row['available_actions']) && is_array($row['available_actions']) ? $row['available_actions'] : [];
             if ($requested !== '' && in_array($requested, $allowed, true)) {
                 $effective[$row_id] = $requested;
@@ -195,7 +272,7 @@ final class DBVC_Bricks_Portability_Apply_Service
             if (! is_array($row)) {
                 continue;
             }
-            $row_id = sanitize_key((string) ($row['row_id'] ?? ''));
+            $row_id = self::normalize_row_id($row['row_id'] ?? '');
             if ($row_id === '') {
                 continue;
             }
@@ -225,7 +302,7 @@ final class DBVC_Bricks_Portability_Apply_Service
             if (! is_array($row)) {
                 continue;
             }
-            $row_id = sanitize_key((string) ($row['row_id'] ?? ''));
+            $row_id = self::normalize_row_id($row['row_id'] ?? '');
             $decision = sanitize_key((string) ($effective_decisions[$row_id] ?? ''));
             if (! in_array($decision, ['add_incoming', 'replace_with_incoming'], true)) {
                 continue;
@@ -261,6 +338,18 @@ final class DBVC_Bricks_Portability_Apply_Service
                 : [];
             $live_fp = sanitize_text_field((string) ($live['domain_fingerprint'] ?? ''));
             $expected_fp = sanitize_text_field((string) ($expected['domain_fingerprint'] ?? ''));
+            $verification = isset($live['verification']) && is_array($live['verification']) ? $live['verification'] : [];
+            if (DBVC_Bricks_Portability_Domain_Verifier::blocks_apply($verification)) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_target_verification_failed',
+                    sprintf(
+                        __('The target Bricks domain `%1$s` cannot be applied because its current storage shape could not be verified safely. %2$s', 'dbvc'),
+                        $domain_key,
+                        sanitize_text_field((string) (($verification['warnings'][0] ?? '')))
+                    ),
+                    ['status' => 409]
+                );
+            }
             if ($expected_fp !== '' && $live_fp !== '' && ! hash_equals($expected_fp, $live_fp)) {
                 return new \WP_Error(
                     'dbvc_bricks_portability_target_changed',
@@ -268,6 +357,36 @@ final class DBVC_Bricks_Portability_Apply_Service
                     ['status' => 409]
                 );
             }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $session
+     * @param array<int, string> $domain_keys
+     * @return true|\WP_Error
+     */
+    private static function validate_session_domain_verification(array $session, array $domain_keys)
+    {
+        foreach ($domain_keys as $domain_key) {
+            $source_domain = isset($session['source_domains'][$domain_key]) && is_array($session['source_domains'][$domain_key])
+                ? $session['source_domains'][$domain_key]
+                : [];
+            $verification = isset($source_domain['verification']) && is_array($source_domain['verification']) ? $source_domain['verification'] : [];
+            if (! DBVC_Bricks_Portability_Domain_Verifier::blocks_apply($verification)) {
+                continue;
+            }
+
+            return new \WP_Error(
+                'dbvc_bricks_portability_source_verification_failed',
+                sprintf(
+                    __('The imported Bricks domain `%1$s` cannot be applied because the package shape could not be verified safely. %2$s', 'dbvc'),
+                    $domain_key,
+                    sanitize_text_field((string) (($verification['warnings'][0] ?? '')))
+                ),
+                ['status' => 400]
+            );
         }
 
         return true;
@@ -293,7 +412,7 @@ final class DBVC_Bricks_Portability_Apply_Service
                 if (! is_array($row)) {
                     continue;
                 }
-                $decision = sanitize_key((string) ($effective_decisions[sanitize_key((string) ($row['row_id'] ?? ''))] ?? ''));
+                $decision = sanitize_key((string) ($effective_decisions[self::normalize_row_id($row['row_id'] ?? '')] ?? ''));
                 if ($decision !== 'replace_with_incoming') {
                     continue;
                 }
@@ -332,7 +451,7 @@ final class DBVC_Bricks_Portability_Apply_Service
                 }
                 $row = $row_map[(int) $target_index] ?? null;
                 if (is_array($row)) {
-                    $row_id = sanitize_key((string) ($row['row_id'] ?? ''));
+                    $row_id = self::normalize_row_id($row['row_id'] ?? '');
                     $decision = sanitize_key((string) ($effective_decisions[$row_id] ?? 'keep_current'));
                     if ($decision === 'replace_with_incoming' && isset($row['source']) && is_array($row['source'])) {
                         $final_entries[] = [
@@ -352,7 +471,7 @@ final class DBVC_Bricks_Portability_Apply_Service
                 if (! is_array($row) || ($row['row_type'] ?? '') !== 'object' || empty($row['source']) || ! is_array($row['source'])) {
                     continue;
                 }
-                $row_id = sanitize_key((string) ($row['row_id'] ?? ''));
+                $row_id = self::normalize_row_id($row['row_id'] ?? '');
                 $decision = sanitize_key((string) ($effective_decisions[$row_id] ?? 'keep_current'));
                 if ($decision !== 'add_incoming') {
                     continue;
@@ -374,7 +493,7 @@ final class DBVC_Bricks_Portability_Apply_Service
             if (! is_array($row) || ($row['row_type'] ?? '') !== 'meta') {
                 continue;
             }
-            $row_id = sanitize_key((string) ($row['row_id'] ?? ''));
+            $row_id = self::normalize_row_id($row['row_id'] ?? '');
             $decision = sanitize_key((string) ($effective_decisions[$row_id] ?? 'keep_current'));
             if ($decision !== 'replace_with_incoming') {
                 continue;
@@ -513,5 +632,38 @@ final class DBVC_Bricks_Portability_Apply_Service
             $context,
             ['job_id' => (int) $job_id]
         );
+    }
+
+    /**
+     * @param array<string, string> $requested_decisions
+     * @param string $row_id
+     * @return string
+     */
+    private static function find_requested_decision(array $requested_decisions, $row_id)
+    {
+        $row_id = self::normalize_row_id($row_id);
+        if ($row_id === '') {
+            return '';
+        }
+
+        if (isset($requested_decisions[$row_id])) {
+            return sanitize_key((string) $requested_decisions[$row_id]);
+        }
+
+        $legacy_key = sanitize_key($row_id);
+        if ($legacy_key !== '' && isset($requested_decisions[$legacy_key])) {
+            return sanitize_key((string) $requested_decisions[$legacy_key]);
+        }
+
+        return '';
+    }
+
+    /**
+     * @param mixed $row_id
+     * @return string
+     */
+    private static function normalize_row_id($row_id)
+    {
+        return trim(sanitize_text_field((string) $row_id));
     }
 }

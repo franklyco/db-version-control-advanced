@@ -109,6 +109,16 @@ function dbvc_render_export_page()
   }
   $addon_bricks_enabled = $addon_bricks_settings['dbvc_addon_bricks_enabled'] ?? get_option('dbvc_addon_bricks_enabled', '0');
   $addon_bricks_visibility = $addon_bricks_settings['dbvc_addon_bricks_visibility'] ?? get_option('dbvc_addon_bricks_visibility', 'configure_and_submenu');
+  $addon_visual_editor_settings = [];
+  $addon_visual_editor_groups = [];
+  $addon_visual_editor_field_meta = [];
+  if (class_exists('DBVC_Visual_Editor_Addon')) {
+    DBVC_Visual_Editor_Addon::ensure_defaults();
+    $addon_visual_editor_settings = DBVC_Visual_Editor_Addon::get_all_settings();
+    $addon_visual_editor_groups = DBVC_Visual_Editor_Addon::get_settings_groups();
+    $addon_visual_editor_field_meta = DBVC_Visual_Editor_Addon::get_field_meta();
+  }
+  $addon_visual_editor_enabled = $addon_visual_editor_settings[DBVC_Visual_Editor_Addon::OPTION_ENABLED] ?? get_option('dbvc_addon_visual_editor_enabled', '0');
   $ai_package_settings = [];
   if (class_exists('\Dbvc\AiPackage\Settings')) {
     $ai_package_settings = \Dbvc\AiPackage\Settings::get_all_settings();
@@ -640,14 +650,26 @@ function dbvc_render_export_page()
         foreach ((array) ($save_result['errors'] ?? []) as $save_error) {
           $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
         }
-        if (empty($config_feedback['addons']['error'])) {
-          $config_feedback['addons']['success'][] = esc_html__('Add-on settings saved.', 'dbvc');
-        }
         $addon_bricks_settings = DBVC_Bricks_Addon::get_all_settings();
         $addon_bricks_enabled = $addon_bricks_settings['dbvc_addon_bricks_enabled'] ?? '0';
         $addon_bricks_visibility = $addon_bricks_settings['dbvc_addon_bricks_visibility'] ?? 'configure_and_submenu';
       } else {
         $config_feedback['addons']['error'][] = esc_html__('Bricks add-on module unavailable.', 'dbvc');
+      }
+
+      if (class_exists('DBVC_Visual_Editor_Addon')) {
+        $visual_editor_save_result = DBVC_Visual_Editor_Addon::save_settings((array) $_POST);
+        foreach ((array) ($visual_editor_save_result['errors'] ?? []) as $save_error) {
+          $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
+        }
+        $addon_visual_editor_settings = DBVC_Visual_Editor_Addon::get_all_settings();
+        $addon_visual_editor_enabled = $addon_visual_editor_settings[DBVC_Visual_Editor_Addon::OPTION_ENABLED] ?? '0';
+      } else {
+        $config_feedback['addons']['error'][] = esc_html__('Visual Editor add-on module unavailable.', 'dbvc');
+      }
+
+      if (empty($config_feedback['addons']['error'])) {
+        $config_feedback['addons']['success'][] = esc_html__('Add-on settings saved.', 'dbvc');
       }
     }
 
@@ -3880,6 +3902,57 @@ document.addEventListener('DOMContentLoaded', function () {
           <?php endforeach; ?>
         <?php else : ?>
           <p><?php esc_html_e('Bricks add-on settings metadata unavailable.', 'dbvc'); ?></p>
+        <?php endif; ?>
+
+        <?php if (! empty($addon_visual_editor_groups) && ! empty($addon_visual_editor_field_meta)) : ?>
+          <h3><?php esc_html_e('Visual Editor Add-on', 'dbvc'); ?></h3>
+          <p class="description"><?php esc_html_e('MVP runtime for singular Bricks frontend inspection and tightly allowlisted editing of supported dynamic content.', 'dbvc'); ?></p>
+          <?php foreach ($addon_visual_editor_groups as $group) : ?>
+            <?php
+            $group_label = isset($group['label']) ? (string) $group['label'] : '';
+            $group_fields = isset($group['fields']) && is_array($group['fields']) ? $group['fields'] : [];
+            ?>
+            <?php if ($group_label !== '') : ?>
+              <h4><?php echo esc_html($group_label); ?></h4>
+            <?php endif; ?>
+            <?php foreach ($group_fields as $field_key) : ?>
+              <?php
+              $field_key = (string) $field_key;
+              if (! isset($addon_visual_editor_field_meta[$field_key])) {
+                continue;
+              }
+              $field_meta = $addon_visual_editor_field_meta[$field_key];
+              $input_type = isset($field_meta['input']) ? (string) $field_meta['input'] : 'text';
+              $field_label = isset($field_meta['label']) ? (string) $field_meta['label'] : $field_key;
+              $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
+              $field_value = isset($addon_visual_editor_settings[$field_key]) ? (string) $addon_visual_editor_settings[$field_key] : '';
+              $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
+              ?>
+
+              <?php if ($input_type === 'checkbox') : ?>
+                <p>
+                  <label>
+                    <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
+                    <?php echo esc_html($field_label); ?>
+                  </label>
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php else : ?>
+                <p>
+                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
+                  <input type="text" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="<?php echo esc_attr($field_value); ?>" class="regular-text" />
+                  <?php if ($field_help !== '') : ?>
+                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <?php endif; ?>
+                </p>
+              <?php endif; ?>
+            <?php endforeach; ?>
+          <?php endforeach; ?>
+          <p><small class="description"><?php echo esc_html($addon_visual_editor_enabled === '1' ? __('Enabled. Authorized users can toggle frontend edit mode from the admin bar on supported singular Bricks pages.', 'dbvc') : __('Disabled. No frontend markers, overlay assets, or Visual Editor REST runtime will load.', 'dbvc')); ?></small></p>
+        <?php else : ?>
+          <p><?php esc_html_e('Visual Editor add-on settings metadata unavailable.', 'dbvc'); ?></p>
         <?php endif; ?>
 
         <?php submit_button(__('Save Add-ons', 'dbvc'), 'secondary', 'dbvc_config_save[addons]', false); ?>

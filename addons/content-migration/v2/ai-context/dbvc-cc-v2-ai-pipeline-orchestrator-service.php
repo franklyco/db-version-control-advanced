@@ -316,6 +316,7 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
             'artifacts' => [],
             'contextStatus' => '',
             'classificationStatus' => '',
+            'routingStatus' => '',
             'mappingStatus' => '',
             'finalizationStatus' => '',
             'reviewStatus' => '',
@@ -469,6 +470,37 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                 'reviewStatus' => $review_status,
             ];
 
+            $routing_artifact = DBVC_CC_V2_Routing_Artifact_Service::get_instance()->build_artifact(
+                $page_context,
+                $page_context['context_artifact'],
+                $classification_artifact,
+                [
+                    'input_artifacts' => [
+                        $artifact_relatives['context_creation'],
+                        $artifact_relatives['initial_classification'],
+                    ],
+                    'context_ref' => $artifact_relatives['context_creation'],
+                    'classification_ref' => $artifact_relatives['initial_classification'],
+                ]
+            );
+
+            if (! $artifact_service->write_page_artifact($write_artifact_paths['routing_artifact'], $routing_artifact, $journey_id)) {
+                return $this->append_failure_event(
+                    $page_context['domain'],
+                    $journey_id,
+                    DBVC_CC_V2_Contracts::STEP_INITIAL_CLASSIFICATION_COMPLETED,
+                    'Initial classification completed',
+                    new WP_Error('dbvc_cc_v2_routing_write_failed', __('Could not write the V2 routing artifact.', 'dbvc'), ['status' => 500]),
+                    $page_context,
+                    $actor,
+                    $trigger
+                );
+            }
+
+            $page_context['routing_artifact'] = $routing_artifact;
+            $artifacts_written[] = $write_artifact_relatives['routing_artifact'];
+            $result['routingStatus'] = isset($routing_artifact['status']) ? (string) $routing_artifact['status'] : 'completed';
+
             $journey->append_event(
                 $page_context['domain'],
                 [
@@ -484,7 +516,10 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         $artifact_relatives['context_creation'],
                         isset($pipeline_bundle['inventory_artifact_relative_path']) ? (string) $pipeline_bundle['inventory_artifact_relative_path'] : '',
                     ],
-                    'output_artifacts' => [$write_artifact_relatives['initial_classification']],
+                    'output_artifacts' => [
+                        $write_artifact_relatives['initial_classification'],
+                        $write_artifact_relatives['routing_artifact'],
+                    ],
                     'source_fingerprint' => $source_fingerprint,
                     'schema_fingerprint' => $inventory_fingerprint,
                     'actor' => $actor,
@@ -496,8 +531,10 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                         'review_status' => $review_status,
                         'primary_object_key' => isset($classification_artifact['primary_classification']['object_key']) ? (string) $classification_artifact['primary_classification']['object_key'] : '',
                         'primary_confidence' => isset($classification_artifact['primary_classification']['confidence']) ? (float) $classification_artifact['primary_classification']['confidence'] : 0.0,
+                        'page_intent' => isset($routing_artifact['primary_route']['page_intent']) ? (string) $routing_artifact['primary_route']['page_intent'] : '',
+                        'routing_review_status' => isset($routing_artifact['review']['status']) ? (string) $routing_artifact['review']['status'] : '',
                     ],
-                    'message' => 'Initial classification artifact written.',
+                    'message' => 'Initial classification and routing artifacts written.',
                 ]
             );
         }
@@ -511,6 +548,43 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
             if (is_wp_error($page_context['classification_artifact'])) {
                 return $page_context['classification_artifact'];
             }
+        }
+
+        if (! isset($page_context['context_artifact']) || ! is_array($page_context['context_artifact'])) {
+            $page_context['context_artifact'] = $artifact_service->read_required_artifact(
+                $artifact_paths['context_creation'],
+                'dbvc_cc_v2_context_missing',
+                'context creation'
+            );
+            if (is_wp_error($page_context['context_artifact'])) {
+                return $page_context['context_artifact'];
+            }
+        }
+
+        if (! isset($page_context['routing_artifact']) || ! is_array($page_context['routing_artifact'])) {
+            $routing_artifact = $artifact_service->read_required_artifact(
+                isset($artifact_paths['routing_artifact']) ? $artifact_paths['routing_artifact'] : '',
+                'dbvc_cc_v2_routing_missing',
+                'routing artifact'
+            );
+            if (is_wp_error($routing_artifact)) {
+                $routing_artifact = DBVC_CC_V2_Routing_Artifact_Service::get_instance()->build_artifact(
+                    $page_context,
+                    $page_context['context_artifact'],
+                    $page_context['classification_artifact'],
+                    [
+                        'input_artifacts' => [
+                            isset($artifact_relatives['context_creation']) ? (string) $artifact_relatives['context_creation'] : '',
+                            isset($artifact_relatives['initial_classification']) ? (string) $artifact_relatives['initial_classification'] : '',
+                        ],
+                        'context_ref' => isset($artifact_relatives['context_creation']) ? (string) $artifact_relatives['context_creation'] : '',
+                        'classification_ref' => isset($artifact_relatives['initial_classification']) ? (string) $artifact_relatives['initial_classification'] : '',
+                    ]
+                );
+            }
+
+            $page_context['routing_artifact'] = $routing_artifact;
+            $result['routingStatus'] = isset($routing_artifact['status']) ? (string) $routing_artifact['status'] : 'reused';
         }
 
         $domain_context = $journey->get_domain_context($page_context['domain']);
@@ -557,9 +631,11 @@ final class DBVC_CC_V2_AI_Pipeline_Orchestrator_Service
                 is_array($pattern_memory) ? $pattern_memory : [],
                 [
                     'classification_ref' => $artifact_relatives['initial_classification'],
+                    'routing_ref' => isset($artifact_relatives['routing_artifact']) ? (string) $artifact_relatives['routing_artifact'] : '',
                     'pattern_memory_ref' => $pattern_memory_relative,
                     'input_artifacts' => [
                         $artifact_relatives['initial_classification'],
+                        isset($artifact_relatives['routing_artifact']) ? (string) $artifact_relatives['routing_artifact'] : '',
                         $artifact_relatives['ingestion_package'],
                         isset($pipeline_bundle['catalog_artifact_relative_path']) ? (string) $pipeline_bundle['catalog_artifact_relative_path'] : '',
                     ],

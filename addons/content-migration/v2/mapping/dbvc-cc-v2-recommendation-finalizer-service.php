@@ -53,10 +53,14 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
             ? $target_transform_artifact['resolution_preview']
             : [];
         $transform_lookup = $this->build_transform_lookup($target_transform_artifact);
+        $assignment = DBVC_CC_V2_Mapping_Assignment_Service::get_instance()->assign_content_items(
+            isset($page_context['domain']) ? (string) $page_context['domain'] : '',
+            $mapping_index_artifact
+        );
 
-        $recommendations = $this->build_recommendations($mapping_index_artifact, $transform_lookup);
+        $recommendations = $this->build_recommendations($assignment, $transform_lookup);
         $media_recommendations = $this->build_media_recommendations($media_candidates_artifact, $transform_lookup);
-        $unresolved_items = $this->build_unresolved_items($mapping_index_artifact, $media_candidates_artifact);
+        $unresolved_items = $this->build_unresolved_items($assignment, $media_candidates_artifact);
         $conflicts = $this->build_conflicts($recommendations, $media_recommendations);
         $review = $this->build_review($primary, $resolution_preview, $recommendations, $media_recommendations, $unresolved_items, $conflicts);
 
@@ -67,6 +71,9 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
             'page_id' => isset($raw_artifact['page_id']) ? (string) $raw_artifact['page_id'] : '',
             'source_url' => isset($raw_artifact['source_url']) ? (string) $raw_artifact['source_url'] : '',
             'generated_at' => current_time('c'),
+            'field_context_provider' => isset($mapping_index_artifact['field_context_provider']) && is_array($mapping_index_artifact['field_context_provider'])
+                ? $mapping_index_artifact['field_context_provider']
+                : [],
             'classification' => [
                 'primary' => $primary,
                 'alternates' => array_values($alternates),
@@ -94,6 +101,9 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'pattern_memory_ref' => isset($args['pattern_memory_ref']) ? (string) $args['pattern_memory_ref'] : '',
                 'pattern_group_count' => isset($pattern_memory['pattern_groups']) && is_array($pattern_memory['pattern_groups']) ? count($pattern_memory['pattern_groups']) : 0,
                 'source_fingerprint' => isset($raw_artifact['content_hash']) ? (string) $raw_artifact['content_hash'] : '',
+                'assignment_unresolved_count' => isset($assignment['unresolved_items']) && is_array($assignment['unresolved_items'])
+                    ? count($assignment['unresolved_items'])
+                    : 0,
                 'stage_budget' => DBVC_CC_V2_Contracts::get_ai_stage_budget(DBVC_CC_V2_Contracts::AI_STAGE_RECOMMENDATION_FINALIZATION),
             ],
         ];
@@ -128,15 +138,15 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
     }
 
     /**
-     * @param array<string, mixed> $mapping_index_artifact
+     * @param array<string, mixed> $assignment
      * @param array<string, array<string, mixed>> $transform_lookup
      * @return array<int, array<string, mixed>>
      */
-    private function build_recommendations(array $mapping_index_artifact, array $transform_lookup)
+    private function build_recommendations(array $assignment, array $transform_lookup)
     {
         $recommendations = [];
-        $content_items = isset($mapping_index_artifact['content_items']) && is_array($mapping_index_artifact['content_items'])
-            ? $mapping_index_artifact['content_items']
+        $content_items = isset($assignment['selected_items']) && is_array($assignment['selected_items'])
+            ? $assignment['selected_items']
             : [];
 
         foreach ($content_items as $content_item) {
@@ -144,8 +154,8 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 continue;
             }
 
-            $candidate = isset($content_item['target_candidates'][0]) && is_array($content_item['target_candidates'][0])
-                ? $content_item['target_candidates'][0]
+            $candidate = isset($content_item['selected_candidate']) && is_array($content_item['selected_candidate'])
+                ? $content_item['selected_candidate']
                 : [];
             if (empty($candidate['target_ref'])) {
                 continue;
@@ -157,11 +167,19 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 ? $transform_lookup[$this->build_lookup_key($source_refs, $target_ref)]
                 : [];
             $confidence = isset($candidate['confidence']) ? (float) $candidate['confidence'] : 0.0;
+            $selection = isset($content_item['selection']) && is_array($content_item['selection']) ? $content_item['selection'] : [];
             $requires_review = $confidence < (float) DBVC_CC_V2_Contracts::get_automation_settings()['autoAcceptMinConfidence']
-                || ! empty($transform['warnings']);
+                || (! empty($selection['default_decision']) && (string) $selection['default_decision'] === 'unresolved')
+                || ! empty($selection['reason_codes'])
+                || ! empty($transform['warnings'])
+                || (
+                    isset($transform['value_contract_validation']['status'])
+                    && sanitize_key((string) $transform['value_contract_validation']['status']) === 'blocked'
+                );
 
             $recommendations[] = [
                 'recommendation_id' => 'rec_' . str_pad((string) (count($recommendations) + 1), 3, '0', STR_PAD_LEFT),
+                'item_id' => isset($content_item['item_id']) ? (string) $content_item['item_id'] : '',
                 'source_refs' => $source_refs,
                 'target_ref' => $target_ref,
                 'target_family' => $this->infer_target_family($target_ref),
@@ -172,9 +190,17 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'source_evidence' => isset($content_item['value_preview']) ? (string) $content_item['value_preview'] : '',
                 'target_evidence' => ! empty($transform['preview_value']) ? $transform['preview_value'] : $target_ref,
                 'requires_review' => $requires_review,
+                'default_decision' => ! empty($selection['default_decision']) ? (string) $selection['default_decision'] : 'approve',
                 'candidate_group' => isset($content_item['candidate_group']) ? (string) $content_item['candidate_group'] : '',
                 'context_tag' => isset($content_item['context_tag']) ? (string) $content_item['context_tag'] : '',
                 'pattern_key' => isset($candidate['pattern_key']) ? (string) $candidate['pattern_key'] : '',
+                'selection' => $selection,
+                'transform_status' => isset($transform['transform_status']) ? sanitize_key((string) $transform['transform_status']) : '',
+                'transform_warnings' => isset($transform['warnings']) && is_array($transform['warnings']) ? array_values($transform['warnings']) : [],
+                'value_contract' => isset($transform['value_contract']) && is_array($transform['value_contract']) ? $transform['value_contract'] : [],
+                'value_contract_validation' => isset($transform['value_contract_validation']) && is_array($transform['value_contract_validation'])
+                    ? $transform['value_contract_validation']
+                    : [],
             ];
         }
 
@@ -224,10 +250,20 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'rationale' => isset($candidate['reason']) ? str_replace('_', ' ', (string) $candidate['reason']) : '',
                 'source_evidence' => isset($media_item['normalized_url']) ? (string) $media_item['normalized_url'] : '',
                 'target_evidence' => ! empty($transform['preview_value']) ? $transform['preview_value'] : $target_ref,
-                'requires_review' => ! empty($transform['warnings']),
+                'requires_review' => ! empty($transform['warnings'])
+                    || (
+                        isset($transform['value_contract_validation']['status'])
+                        && sanitize_key((string) $transform['value_contract_validation']['status']) === 'blocked'
+                    ),
                 'media_kind' => isset($media_item['media_kind']) ? (string) $media_item['media_kind'] : '',
                 'source_section_id' => isset($media_item['source_section_id']) ? (string) $media_item['source_section_id'] : '',
                 'role_candidates' => isset($media_item['role_candidates']) && is_array($media_item['role_candidates']) ? array_values($media_item['role_candidates']) : [],
+                'transform_status' => isset($transform['transform_status']) ? sanitize_key((string) $transform['transform_status']) : '',
+                'transform_warnings' => isset($transform['warnings']) && is_array($transform['warnings']) ? array_values($transform['warnings']) : [],
+                'value_contract' => isset($transform['value_contract']) && is_array($transform['value_contract']) ? $transform['value_contract'] : [],
+                'value_contract_validation' => isset($transform['value_contract_validation']) && is_array($transform['value_contract_validation'])
+                    ? $transform['value_contract_validation']
+                    : [],
             ];
         }
 
@@ -235,14 +271,14 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
     }
 
     /**
-     * @param array<string, mixed> $mapping_index_artifact
+     * @param array<string, mixed> $assignment
      * @param array<string, mixed> $media_candidates_artifact
      * @return array<int, array<string, mixed>>
      */
-    private function build_unresolved_items(array $mapping_index_artifact, array $media_candidates_artifact)
+    private function build_unresolved_items(array $assignment, array $media_candidates_artifact)
     {
-        $unresolved = isset($mapping_index_artifact['unresolved_items']) && is_array($mapping_index_artifact['unresolved_items'])
-            ? array_values($mapping_index_artifact['unresolved_items'])
+        $unresolved = isset($assignment['unresolved_items']) && is_array($assignment['unresolved_items'])
+            ? array_values($assignment['unresolved_items'])
             : [];
 
         $media_items = isset($media_candidates_artifact['media_items']) && is_array($media_candidates_artifact['media_items'])
@@ -258,6 +294,8 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
                 'item_type' => 'media',
                 'source_refs' => isset($media_item['source_refs']) && is_array($media_item['source_refs']) ? array_values($media_item['source_refs']) : [],
                 'reason' => 'no_media_target_candidates',
+                'unresolved_class' => 'missing_media_slot',
+                'reason_codes' => ['no_media_target_candidates'],
             ];
         }
 
@@ -346,6 +384,20 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
         );
         if ($needs_manual_review) {
             $reason_codes[] = 'low_confidence_recommendations';
+        }
+
+        $has_ambiguous_recommendations = ! empty(
+            array_filter(
+                $recommendations,
+                static function ($recommendation) {
+                    return is_array($recommendation)
+                        && isset($recommendation['default_decision'])
+                        && (string) $recommendation['default_decision'] === 'unresolved';
+                }
+            )
+        );
+        if ($has_ambiguous_recommendations) {
+            $reason_codes[] = 'ambiguous_recommendations';
         }
 
         $primary_confidence = isset($primary['confidence']) ? (float) $primary['confidence'] : 0.0;

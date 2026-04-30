@@ -1,0 +1,454 @@
+.dbvc-ve-statusbar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9998;
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+  color: #0f172a;
+  font: 500 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dbvc-ve-statusbar[data-state="ready"] {
+  border-color: #99f6e4;
+}
+
+.dbvc-ve-statusbar[data-state="empty"] {
+  border-color: #fde68a;
+}
+
+.dbvc-ve-statusbar[data-state="error"] {
+  border-color: #fca5a5;
+}
+
+.dbvc-ve-statusbar__title {
+  font-weight: 700;
+}
+
+.dbvc-ve-statusbar__meta {
+  margin-top: 2px;
+  color: #0f766e;
+  font-size: 12px;
+}
+
+.dbvc-ve-statusbar__message {
+  margin-top: 6px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.dbvc-ve-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 108px;
+  z-index: 9999;
+  width: min(380px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.18);
+  color: #0f172a;
+  font: 500 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dbvc-ve-panel[data-state="saved"] {
+  border-color: #99f6e4;
+}
+
+.dbvc-ve-panel[data-state="inspect"] {
+  border-color: #94a3b8;
+}
+
+.dbvc-ve-panel[data-state="error"] {
+  border-color: #fca5a5;
+}
+
+.dbvc-ve-panel[data-scope="shared_entity"] {
+  border-color: #fcd34d;
+}
+
+.dbvc-ve-panel[data-scope="related_entity"] {
+  border-color: #fb7185;
+}
+
+.dbvc-ve-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dbvc-ve-panel__eyebrow {
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dbvc-ve-panel__title {
+  margin: 2px 0 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.dbvc-ve-panel__close {
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dbvc-ve-panel__meta {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.dbvc-ve-panel__notice {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.dbvc-ve-panel__notice-block {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.dbvc-ve-panel__notice-block.is-warning {
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.dbvc-ve-panel__notice-block.is-muted {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.dbvc-ve-panel__ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+}
+
+.dbvc-ve-panel__ack input {
+  margin-top: 2px;
+}
+
+.dbvc-ve-panel__body {
+  margin-top: 14px;
+}
+
+.dbvc-ve-panel__field-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.dbvc-ve-panel__field-wrap {
+  min-height: 110px;
+}
+
+.dbvc-ve-panel__stack {
+  display: grid;
+  gap: 10px;
+}
+
+.dbvc-ve-panel__placeholder {
+  padding: 12px 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.dbvc-ve-panel__preview {
+  min-height: 160px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #0f172a;
+  font: 12px/1.5 SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.dbvc-ve-panel__media-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #475569;
+  overflow: hidden;
+}
+
+.dbvc-ve-panel__media-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: 10px;
+}
+
+.dbvc-ve-panel__media-meta {
+  color: #475569;
+  font-size: 12px;
+}
+
+.dbvc-ve-panel__gallery-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dbvc-ve-panel__gallery-item {
+  margin: 0;
+  padding: 0;
+  aspect-ratio: 1 / 1;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.dbvc-ve-panel__gallery-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dbvc-ve-panel__input {
+  width: 100%;
+  min-height: 46px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+textarea.dbvc-ve-panel__input {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.dbvc-ve-panel__select {
+  appearance: none;
+}
+
+.dbvc-ve-panel__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dbvc-ve-panel__toolbar-button {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  color: #0f172a;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dbvc-ve-panel__toolbar-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dbvc-ve-panel__richtext {
+  min-height: 180px;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  box-sizing: border-box;
+  overflow: auto;
+}
+
+.dbvc-ve-panel__richtext:focus {
+  outline: 2px solid rgba(15, 118, 110, 0.28);
+  outline-offset: 2px;
+}
+
+.dbvc-ve-panel__wysiwyg-host {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.dbvc-ve-panel__wysiwyg-host.is-disabled {
+  opacity: 0.68;
+  pointer-events: none;
+}
+
+.dbvc-ve-panel__wysiwyg-host .wp-editor-wrap {
+  border: 0;
+}
+
+.dbvc-ve-panel__wysiwyg-host .wp-editor-tools,
+.dbvc-ve-panel__wysiwyg-host .quicktags-toolbar {
+  background: #f8fafc;
+}
+
+.dbvc-ve-panel__wysiwyg-host .wp-switch-editor {
+  border-radius: 10px 10px 0 0;
+}
+
+.dbvc-ve-panel__wysiwyg-host .wp-editor-container,
+.dbvc-ve-panel__wysiwyg-host .mce-tinymce {
+  border: 0 !important;
+}
+
+.dbvc-ve-panel__wysiwyg-host textarea.wp-editor-area {
+  min-height: 220px;
+  box-sizing: border-box;
+}
+
+.dbvc-ve-panel__option-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dbvc-ve-panel__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.dbvc-ve-panel__option input {
+  margin: 0;
+}
+
+.dbvc-ve-panel__status {
+  min-height: 20px;
+  margin-top: 12px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.dbvc-ve-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.dbvc-ve-panel__button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dbvc-ve-panel__button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dbvc-ve-panel__button--secondary {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.dbvc-ve-panel__button--primary {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.dbvc-ve-target {
+  outline: 2px dashed #0f766e;
+  outline-offset: 3px;
+}
+
+body.dbvc-ve-active [data-dbvc-ve].dbvc-ve-target {
+  overflow: visible !important;
+}
+
+.dbvc-ve-target.is-active {
+  outline-style: solid;
+}
+
+.dbvc-ve-target.is-shared {
+  outline-color: #f59e0b;
+}
+
+.dbvc-ve-target.is-related {
+  outline-color: #f43f5e;
+}
+
+.dbvc-ve-target.is-readonly {
+  outline-style: dotted;
+}
+
+.dbvc-ve-badge-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  pointer-events: none;
+}
+
+.dbvc-ve-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  background: #0f172a;
+  color: #ffffff;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.2);
+  pointer-events: auto;
+  opacity: 0;
+}
+
+.dbvc-ve-badge--shared {
+  background: #b45309;
+}
+
+.dbvc-ve-badge--related {
+  background: #be123c;
+}
+
+.dbvc-ve-badge--readonly {
+  background: #475569;
+}

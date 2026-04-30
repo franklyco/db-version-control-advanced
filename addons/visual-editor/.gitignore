@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+**/.DS_Store
+
+# Local temp / working artifacts
+temp/
+tmp/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env / secrets
+.env
+.env.*
+
+# Build / coverage
+node_modules/
+dist/
+coverage/

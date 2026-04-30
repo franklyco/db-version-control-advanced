@@ -81,6 +81,7 @@ final class DBVC_Bricks_Portability_Normalizer
             'objects' => [],
             'metadata_rows' => [],
             'warnings' => [],
+            'verification' => [],
             'transport' => [
                 'shape' => 'singleton',
                 'path' => [],
@@ -91,12 +92,17 @@ final class DBVC_Bricks_Portability_Normalizer
         $primary_raw = $primary_option !== '' && array_key_exists($primary_option, $option_values)
             ? $option_values[$primary_option]
             : null;
+        $normalized['verification'] = DBVC_Bricks_Portability_Domain_Verifier::verify_domain_payload($domain_definition, $option_values, $source);
+        $normalized['warnings'] = self::merge_warning_lists(
+            $normalized['warnings'],
+            (array) ($normalized['verification']['warnings'] ?? [])
+        );
 
         if ($mode === 'collection') {
             $collection = self::extract_collection($primary_raw, $domain_key);
             $normalized['objects'] = $collection['objects'];
             $normalized['transport'] = $collection['transport'];
-            $normalized['warnings'] = array_merge($normalized['warnings'], $collection['warnings']);
+            $normalized['warnings'] = self::merge_warning_lists($normalized['warnings'], $collection['warnings']);
         } else {
             $root_normalized = self::normalize_value($primary_raw, $domain_key, $domain_key === 'breakpoints');
             $normalized['objects'][] = [
@@ -110,8 +116,10 @@ final class DBVC_Bricks_Portability_Normalizer
                 'references' => [
                     'css_variables' => DBVC_Bricks_Portability_Utils::extract_css_variable_tokens($root_normalized),
                     'class_names' => [],
+                    'category_values' => [],
+                    'category_option_name' => '',
                 ],
-                'warnings' => [],
+                'warnings' => self::merge_warning_lists([], (array) ($normalized['verification']['warnings'] ?? [])),
                 'raw' => $primary_raw,
                 'normalized' => $root_normalized,
                 'source_index' => 0,
@@ -159,6 +167,38 @@ final class DBVC_Bricks_Portability_Normalizer
         ]);
 
         return $normalized;
+    }
+
+    /**
+     * @param mixed $raw
+     * @param string $domain_key
+     * @return array<int, string>
+     */
+    public static function extract_category_reference_values($raw, $domain_key)
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        if (! in_array($domain_key, ['global_classes', 'global_variables'], true)) {
+            return [];
+        }
+
+        $references = [];
+        self::walk_for_category_references($raw, $references);
+        $references = array_values(array_unique(array_filter($references)));
+        sort($references, SORT_STRING);
+        return $references;
+    }
+
+    /**
+     * @param mixed $raw
+     * @return array<int, string>
+     */
+    public static function extract_category_lookup_values($raw)
+    {
+        $values = [];
+        self::walk_for_category_lookup_values($raw, $values);
+        $values = array_values(array_unique(array_filter($values)));
+        sort($values, SORT_STRING);
+        return $values;
     }
 
     /**
@@ -285,13 +325,14 @@ final class DBVC_Bricks_Portability_Normalizer
         $object_id = self::pick_object_id($raw, $domain_key, $map_key, $index);
         $display_name = self::pick_display_name($raw, $domain_key, $object_id, $map_key, $index);
         $class_refs = self::extract_class_references($raw);
+        $category_refs = self::extract_category_reference_values($raw, $domain_key);
 
         $match_keys = [
-            'id' => self::pick_first_value($raw, ['id', '_id', 'uuid', 'uid', 'key']),
-            'name' => self::pick_first_value($raw, ['name', 'label', 'title']),
-            'slug' => self::pick_first_value($raw, ['slug', 'handle', 'token']),
-            'token' => self::pick_first_value($raw, ['token', 'name', 'slug']),
-            'selector' => self::pick_first_value($raw, ['selector', 'name']),
+            'id' => self::pick_first_value($raw, self::get_id_candidates($domain_key)),
+            'name' => self::pick_first_value($raw, self::get_name_candidates($domain_key)),
+            'slug' => self::pick_first_value($raw, self::get_slug_candidates($domain_key)),
+            'token' => self::pick_first_value($raw, self::get_token_candidates($domain_key)),
+            'selector' => self::pick_first_value($raw, self::get_selector_candidates($domain_key)),
             'map_key' => $map_key,
         ];
 
@@ -316,6 +357,8 @@ final class DBVC_Bricks_Portability_Normalizer
             'references' => [
                 'css_variables' => DBVC_Bricks_Portability_Utils::extract_css_variable_tokens($raw),
                 'class_names' => $class_refs,
+                'category_values' => $category_refs,
+                'category_option_name' => self::get_category_option_name($domain_key),
             ],
             'warnings' => $warnings,
             'raw' => $raw,
@@ -412,11 +455,7 @@ final class DBVC_Bricks_Portability_Normalizer
      */
     private static function pick_object_id($raw, $domain_key, $map_key, $index)
     {
-        $candidates = ['id', '_id', 'uuid', 'uid', 'key', 'slug', 'token'];
-        if ($domain_key === 'pseudo_classes') {
-            array_unshift($candidates, 'selector');
-        }
-        $value = self::pick_first_value($raw, $candidates);
+        $value = self::pick_first_value($raw, self::get_id_candidates($domain_key));
         if ($value !== '') {
             return $value;
         }
@@ -436,11 +475,7 @@ final class DBVC_Bricks_Portability_Normalizer
      */
     private static function pick_display_name($raw, $domain_key, $object_id, $map_key, $index)
     {
-        $candidates = ['name', 'label', 'title', 'slug', 'token'];
-        if ($domain_key === 'pseudo_classes') {
-            array_unshift($candidates, 'selector');
-        }
-        $value = self::pick_first_value($raw, $candidates);
+        $value = self::pick_first_value($raw, self::get_name_candidates($domain_key));
         if ($value !== '') {
             return $value;
         }
@@ -464,17 +499,136 @@ final class DBVC_Bricks_Portability_Normalizer
             return is_scalar($raw) ? DBVC_Bricks_Portability_Utils::normalize_string($raw) : '';
         }
 
-        foreach ($candidates as $key) {
-            if (! array_key_exists($key, $raw)) {
-                continue;
-            }
-            $value = $raw[$key];
+        foreach ($candidates as $candidate) {
+            $value = self::read_candidate_value($raw, $candidate);
             if (is_scalar($value) && trim((string) $value) !== '') {
                 return DBVC_Bricks_Portability_Utils::normalize_string($value);
             }
         }
 
         return '';
+    }
+
+    /**
+     * @param string $domain_key
+     * @return array<int, string>
+     */
+    private static function get_id_candidates($domain_key)
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        if ($domain_key === 'pseudo_classes') {
+            return ['selector', 'id', '_id', 'uuid', 'uid', 'key', 'slug', 'token'];
+        }
+        if ($domain_key === 'components') {
+            return ['id', '_id', 'uuid', 'uid', 'key', 'slug', 'token', 'elements.0.id', 'elements.0.name'];
+        }
+        return ['id', '_id', 'uuid', 'uid', 'key', 'slug', 'token'];
+    }
+
+    /**
+     * @param string $domain_key
+     * @return array<int, string>
+     */
+    private static function get_name_candidates($domain_key)
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        if ($domain_key === 'pseudo_classes') {
+            return ['selector', 'name', 'label', 'title', 'slug', 'token'];
+        }
+        if ($domain_key === 'components') {
+            return ['label', 'name', 'title', 'elements.0.label', 'elements.0.name', 'settings.label', 'slug', 'token'];
+        }
+        return ['name', 'label', 'title', 'slug', 'token'];
+    }
+
+    /**
+     * @param string $domain_key
+     * @return array<int, string>
+     */
+    private static function get_slug_candidates($domain_key)
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        if ($domain_key === 'components') {
+            return ['slug', 'handle', 'token', 'id', 'uid', 'uuid', 'elements.0.name'];
+        }
+        return ['slug', 'handle', 'token'];
+    }
+
+    /**
+     * @param string $domain_key
+     * @return array<int, string>
+     */
+    private static function get_token_candidates($domain_key)
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        if ($domain_key === 'global_variables') {
+            return ['token', 'name', 'slug'];
+        }
+        if ($domain_key === 'components') {
+            return ['token', 'slug', 'name', 'elements.0.name', 'elements.0.label'];
+        }
+        return ['token', 'name', 'slug'];
+    }
+
+    /**
+     * @param string $domain_key
+     * @return array<int, string>
+     */
+    private static function get_selector_candidates($domain_key)
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        if ($domain_key === 'pseudo_classes') {
+            return ['selector', 'name', 'label'];
+        }
+        return ['selector', 'name'];
+    }
+
+    /**
+     * @param array<string, mixed> $raw
+     * @param string $candidate
+     * @return mixed
+     */
+    private static function read_candidate_value(array $raw, $candidate)
+    {
+        $candidate = (string) $candidate;
+        if ($candidate === '') {
+            return null;
+        }
+
+        if (strpos($candidate, '.') === false) {
+            return array_key_exists($candidate, $raw) ? $raw[$candidate] : null;
+        }
+
+        return self::read_path($raw, $candidate);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param string $path
+     * @return mixed
+     */
+    private static function read_path(array $payload, $path)
+    {
+        $value = $payload;
+        foreach (explode('.', (string) $path) as $part) {
+            if (! is_array($value)) {
+                return null;
+            }
+            if (ctype_digit($part)) {
+                $index = (int) $part;
+                if (! array_key_exists($index, $value)) {
+                    return null;
+                }
+                $value = $value[$index];
+                continue;
+            }
+            if (! array_key_exists($part, $value)) {
+                return null;
+            }
+            $value = $value[$part];
+        }
+
+        return $value;
     }
 
     /**
@@ -521,6 +675,143 @@ final class DBVC_Bricks_Portability_Normalizer
                 if ($token !== '') {
                     $references[] = $token;
                 }
+            }
+        }
+    }
+
+    /**
+     * @param array<int, string> $warnings
+     * @param array<int, string> $next
+     * @return array<int, string>
+     */
+    private static function merge_warning_lists(array $warnings, array $next)
+    {
+        return array_values(array_unique(array_map('sanitize_text_field', array_merge($warnings, $next))));
+    }
+
+    /**
+     * @param string $domain_key
+     * @return string
+     */
+    private static function get_category_option_name($domain_key)
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        if ($domain_key === 'global_classes') {
+            return 'bricks_global_classes_categories';
+        }
+        if ($domain_key === 'global_variables') {
+            return 'bricks_global_variables_categories';
+        }
+        return '';
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<int, string> $references
+     * @param string $key
+     * @return void
+     */
+    private static function walk_for_category_references($value, array &$references, $key = '')
+    {
+        $key = sanitize_key((string) $key);
+        if (is_array($value)) {
+            foreach ($value as $child_key => $child_value) {
+                if (is_string($child_key) && strpos(strtolower($child_key), 'categor') !== false) {
+                    self::collect_category_reference_values($child_value, $references);
+                }
+                self::walk_for_category_references($child_value, $references, (string) $child_key);
+            }
+            return;
+        }
+
+        if ($key !== '' && strpos($key, 'categor') !== false && is_scalar($value)) {
+            $clean = DBVC_Bricks_Portability_Utils::normalize_string($value);
+            if ($clean !== '') {
+                $references[] = $clean;
+            }
+        }
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<int, string> $references
+     * @return void
+     */
+    private static function collect_category_reference_values($value, array &$references)
+    {
+        if (is_array($value)) {
+            if (DBVC_Bricks_Portability_Utils::is_assoc($value)) {
+                foreach (['id', 'name', 'slug', 'label', 'title', 'value', 'category', 'key'] as $candidate) {
+                    if (! array_key_exists($candidate, $value)) {
+                        continue;
+                    }
+                    $clean = DBVC_Bricks_Portability_Utils::normalize_string($value[$candidate]);
+                    if ($clean !== '') {
+                        $references[] = $clean;
+                    }
+                }
+            } else {
+                foreach ($value as $item) {
+                    self::collect_category_reference_values($item, $references);
+                }
+            }
+            return;
+        }
+
+        if (! is_scalar($value)) {
+            return;
+        }
+
+        $string = trim((string) $value);
+        if ($string === '') {
+            return;
+        }
+
+        foreach (preg_split('/\s*,\s*/', $string) as $token) {
+            $token = DBVC_Bricks_Portability_Utils::normalize_string($token);
+            if ($token !== '') {
+                $references[] = $token;
+            }
+        }
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<int, string> $values
+     * @return void
+     */
+    private static function walk_for_category_lookup_values($value, array &$values)
+    {
+        if (is_scalar($value)) {
+            $clean = DBVC_Bricks_Portability_Utils::normalize_string($value);
+            if ($clean !== '') {
+                $values[] = $clean;
+            }
+            return;
+        }
+
+        if (is_array($value)) {
+            if (DBVC_Bricks_Portability_Utils::is_assoc($value)) {
+                $matched = false;
+                foreach (['id', 'name', 'slug', 'label', 'title', 'key'] as $candidate) {
+                    if (! array_key_exists($candidate, $value)) {
+                        continue;
+                    }
+                    $clean = DBVC_Bricks_Portability_Utils::normalize_string($value[$candidate]);
+                    if ($clean === '') {
+                        continue;
+                    }
+                    $values[] = $clean;
+                    $matched = true;
+                }
+
+                if ($matched) {
+                    return;
+                }
+            }
+
+            foreach ($value as $child) {
+                self::walk_for_category_lookup_values($child, $values);
             }
         }
     }

@@ -67,7 +67,7 @@ Archive files (completed phases/history):
 ## 2) Phase 19D: Signed Envelope Transport (Client Pull)
 
 ### Entry criteria
-- Phase 19A implementation complete (`P19A-T0..T2 DONE`) and live drill currently blocked by mothership->client reachability constraints.
+- Phase 19A implementation complete (`P19A-T0..T2 DONE`); historical reachability constraints were resolved by Phase 19D transport, and the rerun gate passed on 2026-03-08.
 
 ### Tasks / Sub-tasks
 - `P19D-T1` Envelope contract + storage

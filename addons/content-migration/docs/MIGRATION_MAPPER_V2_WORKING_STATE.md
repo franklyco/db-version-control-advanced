@@ -10,9 +10,9 @@ Use it when resuming implementation after a pause instead of rereading the full 
 
 - Branch: `codex/content-addon-v2`
 - Active phase: `Phase 32`
-- Active task: `P32-T1`
-- Current seam: Phase 31 is now closed by decision. Rollback-specific historical execute QA is not needed now on `dbvc-codexchanges.local`, so the next open slice is to audit the closed historical-fidelity stream and choose the next real V2 product or release-readiness seam without broadening LocalWP scope. Do not touch any other LocalWP site, database, directory, shared LocalWP infrastructure, or the LocalWP app.
-- Latest landed focus: `P27-T1`, `P27-T2`, `P27-T3`, `P28-T1`, `P28-T2`, `P28-T3`, `P29-T1`, `P29-T2`, `P29-T3`, `P30-T1`, `P30-T2`, `P30-T3`, `P31-T1`, `P31-T2`, and `P31-T3` are now landed. Historical package browser validation now reaches real execute mutation on `dbvc-codexchanges.local`, resolved conflicts no longer keep package preflight blocked after saved reviewer decisions collapse them, and rollback-specific follow-up is now explicitly deferred by decision.
+- Active task: `FC-07`
+- Current seam: Vertical Field Context mapping accuracy remains the active V2 product seam. The provider baseline, target-catalog enrichment, candidate trace propagation, compact reviewer visibility pass, chain-aware target slot graph, nested ACF ancestry preservation, deterministic eligibility filters, benchmark-driven section semantics, structured heading or body or CTA source-unit splitting, utility-navigation suppression, page-aware deterministic selection, unresolved bias, transform-side `value_contract` enforcement, package/readiness blocking for definite contract violations, slot-graph provider-drift blocking, benchmark rollups, benchmark-backed release thresholds, truthful preservation of provider `missing` status, runtime ACF purpose fallback for provider-empty catalogs, semantic slot-role inference for `wysiwyg` hero fields, same-runtime provider criteria correction, post-object exclusion of option-page and taxonomy slots, raw sort-score candidate ordering, unresolved-frontier preservation in recommendation payloads, ACF `link` slot-role correction, section-body scoring against nested hero card or popup branches, page-description separation from hero section claims, structural competition groups for non-repeatable sibling slots, typed unresolved classes that survive review and QA, the new persisted `routing-artifact.v1` evidence layer, route-intent normalization from slug-safe page paths, route-intent expansion into slot-pattern hints, and slot-graph classification for process and pricing sections are landed. The next open slice is measured benchmark coverage across additional real Vertical pages plus residual conversion-page ambiguity reduction, followed by final package-preview policy hardening tracked in `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`. Do not touch any other LocalWP site, database, directory, shared LocalWP infrastructure, the LocalWP app, or the Vertical theme repo itself.
+- Latest landed focus: `P27-T1`, `P27-T2`, `P27-T3`, `P28-T1`, `P28-T2`, `P28-T3`, `P29-T1`, `P29-T2`, `P29-T3`, `P30-T1`, `P30-T2`, `P30-T3`, `P31-T1`, `P31-T2`, and `P31-T3` remain landed from the historical-fidelity stream. For the new field-context stream, the landed baseline is: provider bootstrap, normalized provider metadata and indexes, target-catalog field-context embedding, candidate field-context trace, reviewer visibility surfaces, `_schema/dbvc_cc_target_slot_graph.v1.json`, nested ACF chain projection, bounded candidate pools, object-scope filtering, section-family filtering, clone-projection write filtering in the mapping index, benchmark-calibrated section source-unit extraction, utility-navigation section skipping, deterministic recommendation assignment, unresolved bias in transform and review, transform-level `value_contract_validation`, package QA blocking for invalid URL or reference-shape writes plus slot-graph provider-drift blocking, benchmark-summary rollups in readiness/package QA, and benchmark-gate thresholds driven by quality score plus reviewed ambiguity plus manual override plus rerun counts.
 
 ## Phase Snapshot
 
@@ -136,7 +136,30 @@ What is already true:
 What is still open:
 
 - the LocalWP site's custom `/login` page still renders a front-end login form even for an authenticated admin, so browser QA should keep using direct V2 admin routes instead of depending on the admin-menu path
-- the next open tranche slice is now `P32-T1`, focused on auditing the closed historical-fidelity stream and nominating the next real V2 tranche
+- the next open tranche slice is now measured benchmark coverage against `ccv2_flourishweb-co_20260421T223255Z_0cc20e` and follow-on package-preview hardening now that benchmark-backed release thresholds are landed
+- the landed implementation targets in the redesign are `FC-01` context chain and slot graph, `FC-03` deterministic eligibility and candidate-pool rebuild, `FC-04` deterministic selection and unresolved bias, and the active `FC-06` slices for degraded-provider QA warnings plus transform-side contract blocking
+- `_schema/dbvc_cc_target_slot_graph.v1.json` now persists chain-aware slot projections and indexes by `target_ref`, `key_path`, `name_path`, group plus ACF key, object type, section family, and slot role
+- the mapping index now consumes the slot graph to exclude service-only groups from page runs, exclude blocked clone projections from direct-write candidates, and prefer structured section-family slots over broad core fallbacks when those slots exist
+- benchmark tuning against `ccv2_flourishweb-co_20260421T223255Z_0cc20e` now drives section semantics so utility or navigation fragments like Home `/` skip links do not enter hero matching, while structured sections split into headline, body, CTA label, and CTA URL source units before Field Context candidate scoring
+- recommendation finalization and target transforms now run through a shared deterministic assignment service instead of blindly trusting candidate `0`, and ambiguous section items now default to `unresolved`
+- URL QA now carries additive Field Context readiness signals for missing or degraded provider state and for recommendations that were manually kept despite ambiguous deterministic selection evidence
+- target transforms now load the same slot graph used during mapping so ACF slots carry additive `value_contract` and `value_contract_validation` metadata into review and package QA
+- target transforms now block definite contract violations such as text landing in URL or reference-only fields, while package QA raises `field_value_contract_blocked` and `field_value_contract_warnings` inside the existing readiness surface instead of building a parallel QA screen
+- URL QA now compares recommendation-carried provider metadata against the current slot graph and blocks readiness with `field_context_provider_drift` when `source_hash`, `schema_version`, `contract_version`, or `site_fingerprint` no longer match
+- provider-empty Vertical catalogs now stay truthfully `missing` in DBVC artifacts instead of collapsing to `available`, while the enriched target catalog and slot graph can still backfill `vf_field_context` purpose text from the current ACF runtime arrays
+- slot graph projections now infer `headline`/`subheadline`/`cta_label` from semantic field names before generic `wysiwyg` or `textarea` fallback, so real Vertical fields like `hero_h1` do not drop into `rich_text` role buckets just because the stored field type is `wysiwyg`
+- same-runtime Vertical catalog lookups now use empty provider criteria for site-wide target schema builds, which restores a fresh provider-backed catalog on `dbvc-codexchanges.local` instead of incorrectly returning `missing` through `domain`-scoped ACF queries
+- page and CPT mappings now exclude option-page and taxonomy-only slots at the eligibility layer, so Home `/` no longer leaks into `site_settings_group` banner fields during hero matching
+- candidate ordering now keeps an internal raw sort score even when the visible confidence rounds to `0.99`, and unresolved recommendations preserve the raw frontier target instead of surfacing a coherence-shifted fallback
+- ACF `link` fields now classify as `link` or `cta_url` slots, section-body scoring now penalizes nested hero card or popup branches for main hero body units, and page-description metadata scoring now avoids claiming `hero` section slots before real hero section content is evaluated
+- run readiness and package QA now expose a compact benchmark rollup for every page report, including unresolved, ambiguous, transform-blocked, and provider-drift counts; the current Flourish benchmark run shows Home `/` as the dominant high-risk page with 61 unresolved items and 32 ambiguous recommendations
+- benchmark release gating is now enforced inside existing page QA, readiness, and package surfaces: pages block when quality score falls to `69` or below, reviewed ambiguous selections reach `3` or more, manual overrides reach `5` or more, or reruns reach `3` or more; they remain benchmark-review until quality score recovers above `84` and reviewed ambiguity, manual overrides, and reruns each return to `0`
+- real LocalWP acceptance reruns against `ccv2_flourishweb-co_20260421T223255Z_0cc20e` now show Home `/` with a fresh provider-backed catalog end to end; `rec_003 -> hero_h1` and `rec_004 -> hero_description` both land as deterministic `approve` recommendations, and the review payload now hydrates compact Field Context evidence from the slot graph even when the raw recommendation artifact omits it
+- routing is now persisted as additive page-level artifact evidence through `*.routing-artifact.v1.json`, and mapping consumes that route summary opportunistically instead of inferring object and page intent ad hoc from classification alone
+- live benchmark reruns now prove the next accuracy seam is narrower than before: `/our-process` now normalizes to `page_intent = process`, `/pricing` stays `pricing`, and both pages now reach real ACF targets instead of collapsing almost entirely into `core:post_title` / `core:post_content`; `/get-started` still remains mostly generic, so conversion-page section routing and slot discoverability are the next benchmark-driven focus
+- structural competition groups and typed unresolved classes are now part of the live slot-graph and review/QA path; the next accuracy slice should prioritize labeled benchmark truth fixtures before adding heavier semantic retrieval or embeddings
+- use the provider payload as runtime semantic truth and use Vertical `acf-json/field-groups/*.json` only for topology, coverage, and benchmark reference
+- keep `key_path` opaque, keep `value_contract` authoritative for shape, and keep `clone_context` authoritative for clone restrictions
 - sandboxed CLI Playwright still dies on this machine when Chromium launches under the Codex shell sandbox, and the same bare Chromium launch now reproduces that split directly: sandboxed launch exits with `SIGTRAP`, while the identical headless launch succeeds unsandboxed
 - treat that split as a Codex shell sandbox browser-launch boundary, not as a V2 spec-level regression; use unsandboxed repo Playwright scripts when browser launch is required
 - `dbvc-codexchanges.local` still keeps real execute guardrail-blocked for this historical fixture flow, so the approved destructive execute recorded zero import runs and left rollback cleanup as a no-op
@@ -148,6 +171,8 @@ What is still open:
 These were the last known green validation anchors for the active implementation branch:
 
 ```bash
+vendor/bin/phpunit --filter ContentCollectorV2Phase32Test
+git diff --check
 vendor/bin/phpunit --filter "ContentCollectorV2Phase(19|20)Test"
 vendor/bin/phpunit --filter "ContentCollectorV2Phase(19|22)Test"
 vendor/bin/phpunit --filter ContentCollectorV2Phase21Test
@@ -235,11 +260,14 @@ Read these first when resuming:
 3. `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 4. `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 5. `addons/content-migration/docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`
+6. `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
+7. `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
 
 Suggested resume prompt:
 
 ```text
-Resume V2 from codex/content-addon-v2. Read WORKING_STATE, DECISIONS, ROUTE_ARTIFACT_LEDGER, CRAWL_REUSE_AUDIT, and IMPLEMENTATION_GUIDE only. Continue Phase 24 from P24-T1 and keep the next tranche limited to browser validation for historical overview, readiness, and package fidelity after same-URL rerun or replay chains.
+Resume V2 from codex/content-addon-v2. Read WORKING_STATE, DECISIONS, ROUTE_ARTIFACT_LEDGER, CRAWL_REUSE_AUDIT, IMPLEMENTATION_GUIDE, VERTICAL_FIELD_CONTEXT_PLAN, and VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE. Continue the Vertical Field Context mapping-accuracy seam from FC-04 and keep the next tranche limited to deterministic recommendation selection, unresolved bias, and reviewer-visible ambiguity framing inside the existing V2 runtime.
+Resume V2 from codex/content-addon-v2. Read WORKING_STATE, DECISIONS, ROUTE_ARTIFACT_LEDGER, CRAWL_REUSE_AUDIT, IMPLEMENTATION_GUIDE, VERTICAL_FIELD_CONTEXT_PLAN, and VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE. Continue the Vertical Field Context mapping-accuracy seam from FC-07 and keep the next tranche limited to measured benchmark coverage across additional Vertical pages plus residual non-home ambiguity reduction now that provider freshness, option-page exclusion, raw-score ordering, and the Home hero acceptance rerun are landed, then finish package-preview policy hardening inside the existing V2 runtime.
 ```
 
 ## Update Rule

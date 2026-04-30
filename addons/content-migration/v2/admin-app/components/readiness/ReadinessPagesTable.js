@@ -9,6 +9,37 @@ export default function ReadinessPagesTable( {
 	onItemAction,
 	onOpenDrawer,
 } ) {
+	const renderBenchmarkSignals = ( item ) => {
+		const stats =
+			item &&
+			typeof item.stats === 'object' &&
+			! Array.isArray( item.stats )
+				? item.stats
+				: {};
+		const unresolvedCount = stats.unresolvedCount ?? 0;
+		const ambiguousCount =
+			stats.fieldContextAmbiguousRecommendationCount ?? 0;
+		const transformBlockedCount = stats.transformBlockedCount ?? 0;
+		const providerDriftCount = stats.fieldContextProviderDriftCount ?? 0;
+
+		return (
+			<>
+				{ unresolvedCount > 0 ? (
+					<span>Unresolved: { unresolvedCount }</span>
+				) : null }
+				{ ambiguousCount > 0 ? (
+					<span>Ambiguous: { ambiguousCount }</span>
+				) : null }
+				{ transformBlockedCount > 0 ? (
+					<span>Transform blocks: { transformBlockedCount }</span>
+				) : null }
+				{ providerDriftCount > 0 ? (
+					<span>Provider drift: { providerDriftCount }</span>
+				) : null }
+			</>
+		);
+	};
+
 	return (
 		<div
 			className="dbvc-cc-v2-table-wrap"
@@ -57,6 +88,7 @@ export default function ReadinessPagesTable( {
 											Warnings:{ ' ' }
 											{ item.warnings?.length ?? 0 }
 										</span>
+										{ renderBenchmarkSignals( item ) }
 									</div>
 								</td>
 								<td>

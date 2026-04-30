@@ -57,6 +57,26 @@ final class DBVC_Bricks_Portability_Rest_Controller
 
         register_rest_route(
             'dbvc/v1/bricks',
+            '/portability/sessions/(?P<session_id>[^/]+)/draft',
+            [
+                'methods' => \WP_REST_Server::CREATABLE,
+                'callback' => [self::class, 'post_session_draft'],
+                'permission_callback' => [DBVC_Bricks_Addon::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
+            '/portability/sessions/(?P<session_id>[^/]+)/refresh',
+            [
+                'methods' => \WP_REST_Server::CREATABLE,
+                'callback' => [self::class, 'post_session_refresh'],
+                'permission_callback' => [DBVC_Bricks_Addon::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1/bricks',
             '/portability/apply',
             [
                 'methods' => \WP_REST_Server::CREATABLE,
@@ -168,6 +188,59 @@ final class DBVC_Bricks_Portability_Rest_Controller
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
+    public static function post_session_draft(\WP_REST_Request $request)
+    {
+        $replay = self::require_idempotency($request, 'portability_draft');
+        if ($replay instanceof \WP_REST_Response || $replay instanceof \WP_Error) {
+            return $replay;
+        }
+
+        $session_id = sanitize_key((string) $request->get_param('session_id'));
+        if ($session_id === '') {
+            return new \WP_Error('dbvc_bricks_portability_session_missing', __('Bricks portability draft save requires a review session.', 'dbvc'), ['status' => 400]);
+        }
+
+        $payload = $request->get_json_params();
+        $decisions = isset($payload['decisions']) && is_array($payload['decisions']) ? $payload['decisions'] : [];
+        $manual_row_ids = isset($payload['manual_decisions']) && is_array($payload['manual_decisions']) ? $payload['manual_decisions'] : [];
+        $result = DBVC_Bricks_Portability_Package_Service::save_session_draft($session_id, $decisions, $manual_row_ids);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        self::store_idempotency($replay, $result);
+        return rest_ensure_response($result);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function post_session_refresh(\WP_REST_Request $request)
+    {
+        $replay = self::require_idempotency($request, 'portability_refresh');
+        if ($replay instanceof \WP_REST_Response || $replay instanceof \WP_Error) {
+            return $replay;
+        }
+
+        $session_id = sanitize_key((string) $request->get_param('session_id'));
+        if ($session_id === '') {
+            return new \WP_Error('dbvc_bricks_portability_session_missing', __('Bricks portability refresh requires a review session.', 'dbvc'), ['status' => 400]);
+        }
+
+        $result = DBVC_Bricks_Portability_Package_Service::refresh_session($session_id);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        self::store_idempotency($replay, $result);
+        return rest_ensure_response($result);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
     public static function post_apply(\WP_REST_Request $request)
     {
         $replay = self::require_idempotency($request, 'portability_apply');
@@ -187,7 +260,8 @@ final class DBVC_Bricks_Portability_Rest_Controller
         }
 
         $decisions = isset($payload['decisions']) && is_array($payload['decisions']) ? $payload['decisions'] : [];
-        $result = DBVC_Bricks_Portability_Apply_Service::apply_session($session_id, $decisions);
+        $manual_row_ids = isset($payload['manual_decisions']) && is_array($payload['manual_decisions']) ? $payload['manual_decisions'] : [];
+        $result = DBVC_Bricks_Portability_Apply_Service::apply_session($session_id, $decisions, $manual_row_ids);
         if (is_wp_error($result)) {
             return $result;
         }

@@ -1190,6 +1190,17 @@ Current tranche notes:
 - `2026-04-06`: Phase 32 begins only after Phase 31 closes by decision.
 - `2026-04-06`: Historical route, review, readiness, package, and execute-route fidelity are now closed on `dbvc-codexchanges.local`.
 - `2026-04-06`: The next logical work is to choose the next real V2 product seam instead of extending rollback-specific QA on the current LocalWP target.
+- `2026-04-21`: `P32-T4-S3` is now landed. Target transforms validate slot-graph `value_contract` data before package readiness, recommendations carry that validation forward, and URL QA blocks definite contract violations such as invalid URL writes or text landing in reference-only fields.
+- `2026-04-21`: Provider-drift blocking is now landed inside the existing URL QA flow. Readiness compares recommendation-carried provider metadata to the current slot graph and blocks when `source_hash`, `schema_version`, `contract_version`, or `site_fingerprint` drift.
+- `2026-04-21`: Benchmark rollups are now landed in run readiness and package QA. The existing readiness route and package QA artifact now summarize unresolved, ambiguous, transform-blocked, and provider-drift counts per page so benchmark pressure points stay visible without a second QA route.
+- `2026-04-21`: `P32-T4-S4` is now landed. The shared benchmark gate now raises review or blocking issues inside the existing URL QA, readiness, and package flows based on quality score, reviewed ambiguity count, manual overrides, and rerun count, and the package workspace now surfaces benchmark status without adding a new screen.
+- `2026-04-21`: Provider truthfulness and runtime ACF fallback are now landed for the Vertical Field Context seam. DBVC preserves provider `missing` status instead of collapsing it to `available`, backfills `vf_field_context` purpose text from the current ACF runtime when the provider catalog is empty, and infers semantic slot roles like `hero_h1 -> headline` before generic `wysiwyg` fallback. The live `ccv2_flourishweb-co_20260421T223255Z_0cc20e` Home `/` rerun now includes the local `hero_h1` slot in `map_003`, so the next open seam is ambiguity reduction rather than missing context ingestion.
+- `2026-04-22`: Same-runtime provider criteria correction is now landed. V2 target schema builds no longer pass crawl-domain strings into the Vertical provider, so `dbvc-codexchanges.local` now rebuilds against a fresh provider-backed catalog and slot graph instead of collapsing to `missing` through invalid ACF criteria.
+- `2026-04-22`: Post-object eligibility now excludes option-page and taxonomy-only slots, which removes `site_settings_group` banner fields from page hero matching on the live Flourish Home `/` rerun.
+- `2026-04-22`: Candidate ordering now preserves an internal raw sort score beyond the rounded `0.99` display value, and unresolved recommendations now preserve the raw frontier target instead of surfacing a coherence-shifted fallback. The live Home `/` rerun now surfaces `hero_description` for `rec_004` while still marking the item unresolved because the low-margin ambiguity remains.
+- `2026-04-22`: The next ambiguity tranche is now landed on the live `ccv2_flourishweb-co_20260421T223255Z_0cc20e` Home `/` rerun. ACF `link` fields no longer enter section-body candidate pools, direct hero-description scoring now beats nested hero card or popup descriptions, page-description metadata no longer claims `hero` section fields ahead of real section units, and the review payload now hydrates compact Field Context evidence from the slot graph. Home `/` now lands `rec_003 -> hero_h1` and `rec_004 -> hero_description` as deterministic `approve` recommendations under a fresh provider-backed catalog.
+- `2026-04-22`: The next mapping-quality slice should stay additive to the current V2 runtime. Do not treat the remaining work as a greenfield rewrite. The structural gap list is now partially landed: routing now persists as a page-scoped artifact, slot projections expose structural competition groups for non-repeatable sibling slots, and unresolved items now carry typed classes with stable reason codes. The remaining open requirement is labeled benchmark fixtures that measure real precision instead of only exception counts.
+- `2026-04-22`: Benchmark-driven route tuning is now partially landed. Slug-safe route normalization now recovers `page_intent = process` for `/our-process` and `page_intent = conversion` for `/get-started`, broad route scopes can now defer to a more specific page intent during section matching, route-intent expansion now emits `process`, `step`, `service`, and pricing-family pattern keys, and slot projections now classify `process_section.process_steps.step_name` as a repeatable `headline` in the `process` section family. Live reruns against `ccv2_flourishweb-co_20260421T223255Z_0cc20e` now show `/our-process` and `/pricing` reaching real ACF targets, while `/get-started` remains the next open conversion-page benchmark seam.
 
 ## Granular Implementation Checklist
 
@@ -1628,12 +1639,24 @@ Phase 19 notes:
 
 ### Phase 32 Task Matrix
 
-- `[OPEN]` `P32-T1` Audit the closed historical-fidelity stream and nominate the next real V2 tranche.
-- `[OPEN]` `P32-T1-S1` Separate product/runtime gaps from environment-only backlog items such as agent-session transport problems or sandboxed Playwright launch failures.
-- `[OPEN]` `P32-T2` Define the next delivery boundary without reopening rollback-specific QA by default.
-- `[OPEN]` `P32-T2-S1` Keep `dbvc-codexchanges.local` as the approved current LocalWP scope unless the user explicitly broadens it.
-- `[OPEN]` `P32-T3` Record the next recommended seam or explicitly park the historical-fidelity stream as complete.
-- `[OPEN]` `P32-T3-S1` Do not create a new destructive execute target or rollback-specific tranche unless the user directly asks for it.
+- `[CLOSED]` `P32-T1` Re-anchor the next real V2 tranche on Vertical Field Context mapping accuracy.
+- `[CLOSED]` `P32-T1-S1` Separate product/runtime gaps from environment-only backlog items such as agent-session transport problems or sandboxed Playwright launch failures.
+- `[CLOSED]` `P32-T2` Land the chain-aware target slot graph and deterministic eligibility layer without reopening rollback-specific QA.
+- `[CLOSED]` `P32-T2-S1` Keep `dbvc-codexchanges.local` as the approved current LocalWP scope unless the user explicitly broadens it.
+- `[CLOSED]` `P32-T3` Replace greedy first-candidate finalization with deterministic assignment, unresolved bias, and reviewer-visible ambiguity framing inside the existing V2 runtime.
+- `[CLOSED]` `P32-T3-S1` Do not create a new destructive execute target or rollback-specific tranche unless the user directly asks for it.
+- `[CLOSED]` `P32-T4` Extend package and readiness gating so degraded Field Context coverage and reviewed ambiguity remain visible after deterministic selection.
+- `[CLOSED]` `P32-T4-S1` Keep the gating work inside the current V2 readiness and package surfaces instead of building a new reviewer or QA screen.
+- `[CLOSED]` `P32-T4-S2` Use benchmark-driven section semantics to suppress utility navigation fragments and split structured sections into role-specific source units before Field Context matching.
+- `[CLOSED]` `P32-T4-S3` Enforce transform-side `value_contract` behavior before claiming client-ready Field Context package automation.
+- `[CLOSED]` `P32-T4-S4` Add benchmark-based release thresholds now that benchmark rollups, transform-side contracts, and provider-drift checks are landed.
+- `[CLOSED]` `P32-T5` Formalize the strongest missing structural mapping signals inside the current V2 pipeline before adding heavier retrieval.
+- `[CLOSED]` `P32-T5-S1` Extend the slot graph and deterministic assignment with structural competition groups so non-repeatable sibling slots compete explicitly instead of only through soft scoring.
+- `[CLOSED]` `P32-T5-S2` Replace generic unresolved buckets with typed unresolved classes that stay visible through review, readiness, and benchmark reporting.
+- `[CLOSED]` `P32-T5-S3` Persist routing as a first-class page artifact with `primary_route` and `section_routes` so mapping can consume stable object and page-intent evidence without introducing a second routing subsystem.
+- `[OPEN]` `P32-T6` Use measured Vertical benchmark pages to reduce remaining low-margin ambiguity now that routing evidence, competition groups, and typed unresolved classes are landed.
+- `[OPEN]` `P32-T6-S1` Build labeled expected field/group matches for Home `/`, `/our-process`, `/pricing`, and `/get-started` on the Flourish benchmark run.
+- `[OPEN]` `P32-T6-S2` Tune only against measured benchmark deltas, not anecdotal wins on one page, before broadening release claims.
 
 ## Reuse Strategy
 

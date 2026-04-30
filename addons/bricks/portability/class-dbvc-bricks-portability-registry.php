@@ -34,7 +34,7 @@ final class DBVC_Bricks_Portability_Registry
             'bricks_global_classes_user' => self::option_item('global_classes', 'Bricks Global Classes User', 'backup_only'),
             'bricks_global_classes_trash' => self::option_item('global_classes', 'Bricks Global Classes Trash', 'backup_only'),
             'bricks_global_elements' => self::option_item('', 'Bricks Global Elements', 'needs_verification', [
-                'notes' => 'May overlap with components. Do not treat as canonical until verified against live Bricks storage.',
+                'notes' => 'Legacy predecessor to bricks_components. Newer Bricks versions can convert legacy global elements, but MVP portability stays anchored to bricks_components until live rules are verified.',
             ]),
             'bricks_pinned_elements' => self::option_item('', 'Bricks Pinned Elements', 'ignore_mvp'),
             'bricks_font_face_rules' => self::option_item('', 'Bricks Font Face Rules', 'needs_verification', [

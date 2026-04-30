@@ -22,6 +22,11 @@ Read these first when continuing active implementation work:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 
+When the active seam touches Vertical Field Context or mapping accuracy, read next:
+
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
+
 These are the shortest path to:
 
 - the current phase anchor
@@ -131,6 +136,9 @@ These are useful for:
   - `MIGRATION_MAPPER_V2_CONTRACTS.md`
 - Current crawl reuse boundary and landed run-start model:
   - `MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
+- Vertical field-context mapping-accuracy redesign:
+  - `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
+  - `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
 - Journey logging model:
   - `MIGRATION_MAPPER_V2_DOMAIN_JOURNEY.md`
 - Package output contract:
@@ -165,6 +173,12 @@ When one of these changes, update the others if needed:
   - update `DOMAIN_JOURNEY`
   - update `PACKAGE_SPEC` if package-facing
 
+- If the Vertical Field Context mapping model, chain contract, or phased delivery order changes:
+  - update `VERTICAL_FIELD_CONTEXT_PLAN`
+  - update `VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE`
+  - update `WORKING_STATE`
+  - update `CONTRACTS` if artifact payloads changed
+
 - If package outputs or readiness rules change:
   - update `PACKAGE_SPEC`
   - update `OVERVIEW`
@@ -180,6 +194,8 @@ When one of these changes, update the others if needed:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
 - `addons/content-migration/docs/CONTENT_COLLECTOR_PIPELINE_SWIMLANE.md`

@@ -9,6 +9,7 @@ export const READINESS_FILTERS = [
 const REVIEW_CODES = new Set( [
 	'target_conflicts',
 	'unresolved_items',
+	'field_context_ambiguous_recommendations',
 	'stale_decisions',
 	'missing_target_object',
 	'blocked_resolution',
@@ -20,21 +21,32 @@ const QA_CODES = new Set( [
 	'missing_page_context',
 	'missing_mapping_recommendations',
 	'missing_target_transform',
+	'field_context_provider_missing',
+	'field_context_provider_degraded',
+	'field_context_provider_warnings',
 	'schema_fingerprint_missing',
 	'rerun_history_present',
 ] );
 
 const PACKAGE_CODES = new Set( [ 'empty_package_record' ] );
+PACKAGE_CODES.add( 'benchmark_release_gate_blocked' );
+PACKAGE_CODES.add( 'benchmark_release_gate_warning' );
 
 const PRIMARY_CODE_ORDER = [
 	'target_conflicts',
 	'unresolved_items',
+	'field_context_ambiguous_recommendations',
 	'stale_decisions',
 	'manual_review_pending',
 	'manual_overrides_present',
 	'missing_target_object',
 	'blocked_resolution',
+	'benchmark_release_gate_blocked',
+	'benchmark_release_gate_warning',
 	'empty_package_record',
+	'field_context_provider_missing',
+	'field_context_provider_degraded',
+	'field_context_provider_warnings',
 	'missing_mapping_recommendations',
 	'missing_target_transform',
 	'missing_page_context',
@@ -87,6 +99,12 @@ export const resolveReadinessIssueAction = ( item = {} ) => {
 				'unresolved',
 				'mapping'
 			);
+		case 'field_context_ambiguous_recommendations':
+			return makeExceptionsAction(
+				'Review ambiguous mappings',
+				'review',
+				'mapping'
+			);
 		case 'stale_decisions':
 			return makeExceptionsAction( 'Review stale', 'stale', 'mapping' );
 		case 'manual_review_pending':
@@ -105,12 +123,19 @@ export const resolveReadinessIssueAction = ( item = {} ) => {
 				'blocked',
 				'mapping'
 			);
+		case 'benchmark_release_gate_blocked':
+		case 'benchmark_release_gate_warning':
+			return makeReadinessAction( 'Inspect benchmark gate' );
 		case 'empty_package_record':
 			return makeReadinessAction( 'Inspect package blocker' );
 		case 'missing_mapping_recommendations':
 		case 'missing_target_transform':
 		case 'missing_page_context':
 			return makeReadinessAction( 'Inspect QA blocker' );
+		case 'field_context_provider_missing':
+		case 'field_context_provider_degraded':
+		case 'field_context_provider_warnings':
+			return makeReadinessAction( 'Inspect Field Context audit' );
 		case 'rerun_history_present':
 			return makeReadinessAction( 'Inspect rerun history' );
 		case 'schema_fingerprint_missing':

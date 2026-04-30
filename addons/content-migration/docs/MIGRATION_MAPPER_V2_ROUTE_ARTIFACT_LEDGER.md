@@ -104,8 +104,9 @@ This file is intentionally short. The authoritative contract detail still lives 
 - `_inventory/domain-url-inventory.v1.json`
 - `_learning/domain-pattern-memory.v1.json`
 - `_packages/package-builds.v1.json`
-- `_inventory/dbvc_cc_target_object_inventory.v1.json`
-- `_inventory/dbvc_cc_target_field_catalog.v2.json`
+- `_schema/dbvc_cc_target_object_inventory.v1.json`
+- `_schema/dbvc_cc_target_field_catalog.v2.json`
+- `_schema/dbvc_cc_target_slot_graph.v1.json`
 
 ### Per-page artifacts
 
@@ -116,6 +117,7 @@ This file is intentionally short. The authoritative contract detail still lives 
 - `{slug}.ingestion-package.v2.json`
 - `{slug}.context-creation.v1.json`
 - `{slug}.initial-classification.v1.json`
+- `{slug}.routing-artifact.v1.json`
 - `{slug}.mapping-index.v1.json`
 - `{slug}.target-transform.v1.json`
 - `{slug}.mapping-recommendations.v2.json`
@@ -151,7 +153,7 @@ This file is intentionally short. The authoritative contract detail still lives 
 
 ## Current Runtime Note
 
-The currently defined implementation-guide phases are now closed through `Phase 22`, with `Phase 23` focused on browser validation for historical review fidelity after same-domain same-URL replay or rerun chains.
+The currently defined implementation-guide phases are now closed through `Phase 31`, with `Phase 32` focused on Vertical Field Context mapping accuracy.
 
 The route surface now includes run-start, selected-run monitoring, recent activity, enriched review payloads, explicit single-item review controls in the inspector, stale reset affordances, route-level unsaved-change safeguards, readiness blocker shortcuts, package dry-run, preflight approval, and execute bridging under the V2 namespace.
 
@@ -165,4 +167,4 @@ The exceptions workspace now layers low-risk bulk review on top of the existing 
 
 The package surface now exposes confirmation-guarded preflight or execute controls, signed artifact download actions, and in-app drill-ins for manifest, summary, QA, records, and media before execute.
 
-The current open guide slice is `P23-T1`. The runtime now applies the same run-scoped page artifact rule across overview, readiness, package, exceptions, review payloads, historical decision saves, and historical rerun writes, and the next tranche should validate those operator-facing browser paths rather than adding new review surfaces.
+The current open guide slice is `P32-T6`. The runtime now includes the chain-aware `_schema/dbvc_cc_target_slot_graph.v1.json` artifact, the persisted per-page `{slug}.routing-artifact.v1.json` route-evidence artifact, nested ACF ancestry for Field Context lookups, deterministic object-scope plus writability filtering in the mapping index before candidate scoring, structural competition-group pressure for non-repeatable sibling slots, and typed unresolved classes instead of one generic unresolved bucket. The next tranche should measure benchmark truth against real Vertical pages before expanding new retrieval or review surfaces.

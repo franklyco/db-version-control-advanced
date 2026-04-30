@@ -297,32 +297,12 @@ final class DBVC_CC_V2_Context_Creation_Service
      */
     private function infer_context_tag($index, $label, array $sample_text, array $signals)
     {
-        $haystack = strtolower(trim($label . ' ' . implode(' ', $sample_text)));
-        if ($index === 0 && $haystack !== '') {
-            return 'hero';
-        }
-
-        if (preg_match('/\b(contact|call|book|schedule|quote|request)\b/', $haystack)) {
-            return 'contact';
-        }
-
-        if (preg_match('/\b(about|team|story|mission|values|history)\b/', $haystack)) {
-            return 'about';
-        }
-
-        if (preg_match('/\b(service|services|solution|offering|capability)\b/', $haystack)) {
-            return 'services';
-        }
-
-        if (preg_match('/\b(product|platform|feature|pricing|plan)\b/', $haystack)) {
-            return 'product';
-        }
-
-        if (! empty($signals['cta_keyword_hits'])) {
-            return 'conversion';
-        }
-
-        return 'general';
+        return DBVC_CC_V2_Section_Semantics_Service::get_instance()->infer_context_tag(
+            (int) $index,
+            (string) $label,
+            $sample_text,
+            $signals
+        );
     }
 
     /**

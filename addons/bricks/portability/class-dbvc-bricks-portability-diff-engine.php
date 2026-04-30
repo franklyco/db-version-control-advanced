@@ -56,11 +56,11 @@ final class DBVC_Bricks_Portability_Diff_Engine
         $rows = [];
 
         if (($definition['mode'] ?? '') === 'singleton') {
-            $rows[] = self::diff_singleton_row($definition, $source_domain, $target_domain, $target_lookup);
+            $rows[] = self::diff_singleton_row($definition, $source_domain, $target_domain, $source_lookup, $target_lookup);
         } else {
             $rows = array_merge(
                 $rows,
-                self::diff_collection_rows($definition, $source_domain, $target_domain, $target_lookup)
+                self::diff_collection_rows($definition, $source_domain, $target_domain, $source_lookup, $target_lookup)
             );
         }
 
@@ -85,14 +85,20 @@ final class DBVC_Bricks_Portability_Diff_Engine
      * @param array<string, mixed> $definition
      * @param array<string, mixed> $source_domain
      * @param array<string, mixed> $target_domain
+     * @param array<string, mixed> $source_lookup
      * @param array<string, mixed> $target_lookup
      * @return array<string, mixed>
      */
-    private static function diff_singleton_row(array $definition, array $source_domain, array $target_domain, array $target_lookup)
+    private static function diff_singleton_row(array $definition, array $source_domain, array $target_domain, array $source_lookup, array $target_lookup)
     {
         $domain_key = sanitize_key((string) ($definition['domain_key'] ?? ''));
         $source_object = isset($source_domain['objects'][0]) && is_array($source_domain['objects'][0]) ? $source_domain['objects'][0] : null;
         $target_object = isset($target_domain['objects'][0]) && is_array($target_domain['objects'][0]) ? $target_domain['objects'][0] : null;
+        $reference_analysis = self::analyze_references(
+            is_array($source_object) ? (array) ($source_object['references'] ?? []) : [],
+            $source_lookup,
+            $target_lookup
+        );
 
         $source_normalized = is_array($source_object) ? ($source_object['normalized'] ?? null) : null;
         $target_normalized = is_array($target_object) ? ($target_object['normalized'] ?? null) : null;
@@ -106,9 +112,9 @@ final class DBVC_Bricks_Portability_Diff_Engine
         if (! empty($definition['high_risk'])) {
             $warnings[] = 'This domain is high risk and should be reviewed carefully before apply.';
         }
-        if ($domain_key === 'breakpoints') {
-            $warnings[] = 'Breakpoints storage should be verified against the active Bricks runtime before rollout.';
-        }
+        $warnings = array_merge($warnings, (array) ($source_domain['warnings'] ?? []), (array) ($target_domain['warnings'] ?? []));
+        $warnings = array_merge($warnings, self::build_reference_warnings($reference_analysis));
+        $warnings = array_values(array_unique(array_map('sanitize_text_field', $warnings)));
 
         return [
             'row_id' => $domain_key . '::root',
@@ -125,7 +131,14 @@ final class DBVC_Bricks_Portability_Diff_Engine
             'available_actions' => self::actions_for_row($domain_key, $status, 'domain'),
             'source' => is_array($source_object) ? $source_object : null,
             'target' => is_array($target_object) ? $target_object : null,
-            'references' => self::build_references(is_array($source_object) ? ($source_object['references'] ?? []) : [], $target_lookup),
+            'verification' => [
+                'source' => isset($source_domain['verification']) && is_array($source_domain['verification']) ? $source_domain['verification'] : [],
+                'target' => isset($target_domain['verification']) && is_array($target_domain['verification']) ? $target_domain['verification'] : [],
+            ],
+            'references' => self::build_references(
+                is_array($source_object) ? (array) ($source_object['references'] ?? []) : [],
+                $reference_analysis
+            ),
         ];
     }
 
@@ -133,10 +146,11 @@ final class DBVC_Bricks_Portability_Diff_Engine
      * @param array<string, mixed> $definition
      * @param array<string, mixed> $source_domain
      * @param array<string, mixed> $target_domain
+     * @param array<string, mixed> $source_lookup
      * @param array<string, mixed> $target_lookup
      * @return array<int, array<string, mixed>>
      */
-    private static function diff_collection_rows(array $definition, array $source_domain, array $target_domain, array $target_lookup)
+    private static function diff_collection_rows(array $definition, array $source_domain, array $target_domain, array $source_lookup, array $target_lookup)
     {
         $domain_key = sanitize_key((string) ($definition['domain_key'] ?? ''));
         $source_objects = isset($source_domain['objects']) && is_array($source_domain['objects']) ? $source_domain['objects'] : [];
@@ -160,6 +174,7 @@ final class DBVC_Bricks_Portability_Diff_Engine
                 }
             }
 
+            $reference_analysis = self::analyze_references((array) ($source_object['references'] ?? []), $source_lookup, $target_lookup);
             if (! is_array($match) || ! isset($match['target_index'])) {
                 $rows[] = [
                     'row_id' => $domain_key . '::source::' . sanitize_key((string) ($source_object['source_key'] ?? '')),
@@ -170,7 +185,7 @@ final class DBVC_Bricks_Portability_Diff_Engine
                     'object_id' => sanitize_text_field((string) ($source_object['object_id'] ?? '')),
                     'match_status' => 'unmatched',
                     'status' => 'new_in_source',
-                    'warnings' => self::build_reference_warnings($source_object, $target_lookup),
+                    'warnings' => self::build_reference_warnings($reference_analysis),
                     'path_summary' => [
                         'changed' => [],
                         'added' => [],
@@ -180,7 +195,7 @@ final class DBVC_Bricks_Portability_Diff_Engine
                     'available_actions' => self::actions_for_row($domain_key, 'new_in_source', 'object'),
                     'source' => $source_object,
                     'target' => null,
-                    'references' => self::build_references((array) ($source_object['references'] ?? []), $target_lookup),
+                    'references' => self::build_references((array) ($source_object['references'] ?? []), $reference_analysis),
                 ];
                 continue;
             }
@@ -191,10 +206,7 @@ final class DBVC_Bricks_Portability_Diff_Engine
 
             $status = self::classify_matched_status($source_object, $target_object, (string) ($match['matched_by'] ?? ''));
             $path_summary = DBVC_Bricks_Portability_Utils::diff_paths($target_object['normalized'] ?? null, $source_object['normalized'] ?? null);
-            $warnings = array_merge(
-                (array) ($source_object['warnings'] ?? []),
-                self::build_reference_warnings($source_object, $target_lookup)
-            );
+            $warnings = array_merge((array) ($source_object['warnings'] ?? []), self::build_reference_warnings($reference_analysis));
 
             $rows[] = [
                 'row_id' => $domain_key . '::match::' . sanitize_key((string) ($source_object['source_key'] ?? '')),
@@ -211,7 +223,7 @@ final class DBVC_Bricks_Portability_Diff_Engine
                 'available_actions' => self::actions_for_row($domain_key, $status, 'object'),
                 'source' => $source_object,
                 'target' => $target_object,
-                'references' => self::build_references((array) ($source_object['references'] ?? []), $target_lookup),
+                'references' => self::build_references((array) ($source_object['references'] ?? []), $reference_analysis),
             ];
         }
 
@@ -219,6 +231,8 @@ final class DBVC_Bricks_Portability_Diff_Engine
             if (! is_array($target_object) || isset($matched_targets[$target_index])) {
                 continue;
             }
+
+            $reference_analysis = self::analyze_references((array) ($target_object['references'] ?? []), $source_lookup, $target_lookup);
 
             $rows[] = [
                 'row_id' => $domain_key . '::target::' . sanitize_key((string) ($target_object['source_key'] ?? ('target-' . $target_index))),
@@ -239,7 +253,7 @@ final class DBVC_Bricks_Portability_Diff_Engine
                 'available_actions' => self::actions_for_row($domain_key, 'missing_from_source', 'object'),
                 'source' => null,
                 'target' => $target_object,
-                'references' => self::build_references((array) ($target_object['references'] ?? []), $target_lookup),
+                'references' => self::build_references((array) ($target_object['references'] ?? []), $reference_analysis),
             ];
         }
 
@@ -284,7 +298,20 @@ final class DBVC_Bricks_Portability_Diff_Engine
             'references' => [
                 'css_variables' => [],
                 'class_names' => [],
+                'category_values' => [],
+                'category_option_name' => '',
                 'missing_dependencies' => [],
+                'css_variable_dependencies' => [
+                    'missing_on_current_supplied_by_incoming' => [],
+                    'missing_on_both' => [],
+                    'possibly_external' => [],
+                ],
+                'category_dependencies' => [
+                    'option_name' => '',
+                    'missing_on_current_supplied_by_incoming' => [],
+                    'missing_on_both' => [],
+                ],
+                'class_dependencies_missing_on_current' => [],
             ],
         ];
     }
@@ -554,11 +581,28 @@ final class DBVC_Bricks_Portability_Diff_Engine
         $lookup = [
             'css_variables' => [],
             'class_names' => [],
+            'category_values' => [
+                'bricks_global_classes_categories' => [],
+                'bricks_global_variables_categories' => [],
+            ],
+            'metadata_present' => [
+                'bricks_global_classes_categories' => false,
+                'bricks_global_variables_categories' => false,
+            ],
+            'domains_present' => [
+                'global_variables' => false,
+                'global_classes' => false,
+            ],
         ];
 
         foreach ($domains as $domain_key => $domain) {
             if (! is_array($domain)) {
                 continue;
+            }
+            if ($domain_key === 'global_variables') {
+                $lookup['domains_present']['global_variables'] = true;
+            } elseif ($domain_key === 'global_classes') {
+                $lookup['domains_present']['global_classes'] = true;
             }
             foreach ((array) ($domain['objects'] ?? []) as $object) {
                 if (! is_array($object)) {
@@ -569,7 +613,9 @@ final class DBVC_Bricks_Portability_Diff_Engine
                     foreach (['token', 'name', 'slug'] as $key) {
                         $value = sanitize_text_field((string) ($match_keys[$key] ?? ''));
                         if ($value !== '') {
-                            $lookup['css_variables'][$value] = true;
+                            foreach (self::get_css_variable_lookup_keys($value) as $lookup_key) {
+                                $lookup['css_variables'][$lookup_key] = true;
+                            }
                         }
                     }
                 }
@@ -582,6 +628,21 @@ final class DBVC_Bricks_Portability_Diff_Engine
                     }
                 }
             }
+            foreach ((array) ($domain['metadata_rows'] ?? []) as $meta_row) {
+                if (! is_array($meta_row)) {
+                    continue;
+                }
+                $option_name = sanitize_key((string) ($meta_row['option_name'] ?? ''));
+                if ($option_name === '' || ! isset($lookup['category_values'][$option_name])) {
+                    continue;
+                }
+                $lookup['metadata_present'][$option_name] = true;
+                foreach (DBVC_Bricks_Portability_Normalizer::extract_category_lookup_values($meta_row['raw'] ?? null) as $value) {
+                    foreach (self::get_category_lookup_keys($value) as $lookup_key) {
+                        $lookup['category_values'][$option_name][$lookup_key] = true;
+                    }
+                }
+            }
         }
 
         return $lookup;
@@ -589,25 +650,122 @@ final class DBVC_Bricks_Portability_Diff_Engine
 
     /**
      * @param array<string, mixed> $references
+     * @param array<string, mixed> $source_lookup
      * @param array<string, mixed> $target_lookup
+     * @return array<string, mixed>
+     */
+    private static function analyze_references(array $references, array $source_lookup, array $target_lookup)
+    {
+        $analysis = [
+            'css_variable_dependencies' => [
+                'missing_on_current_supplied_by_incoming' => [],
+                'missing_on_both' => [],
+                'possibly_external' => [],
+            ],
+            'category_dependencies' => [
+                'option_name' => sanitize_key((string) ($references['category_option_name'] ?? '')),
+                'missing_on_current_supplied_by_incoming' => [],
+                'missing_on_both' => [],
+            ],
+            'class_dependencies_missing_on_current' => [],
+        ];
+
+        $source_has_global_variables = ! empty($source_lookup['domains_present']['global_variables']);
+        foreach (DBVC_Bricks_Portability_Utils::sanitize_string_list($references['css_variables'] ?? []) as $token) {
+            $token = sanitize_text_field((string) $token);
+            if ($token === '' || self::lookup_contains($target_lookup, 'css_variables', $token)) {
+                continue;
+            }
+            if (self::lookup_contains($source_lookup, 'css_variables', $token)) {
+                $analysis['css_variable_dependencies']['missing_on_current_supplied_by_incoming'][] = $token;
+                continue;
+            }
+            if ($source_has_global_variables) {
+                $analysis['css_variable_dependencies']['missing_on_both'][] = $token;
+                continue;
+            }
+            $analysis['css_variable_dependencies']['possibly_external'][] = $token;
+        }
+
+        foreach (DBVC_Bricks_Portability_Utils::sanitize_string_list($references['class_names'] ?? []) as $class_name) {
+            $class_name = sanitize_text_field((string) $class_name);
+            if ($class_name === '' || self::lookup_contains($target_lookup, 'class_names', $class_name)) {
+                continue;
+            }
+            $analysis['class_dependencies_missing_on_current'][] = $class_name;
+        }
+
+        $category_option_name = sanitize_key((string) ($analysis['category_dependencies']['option_name'] ?? ''));
+        $source_has_category_metadata = $category_option_name !== '' && ! empty($source_lookup['metadata_present'][$category_option_name]);
+        foreach (DBVC_Bricks_Portability_Utils::sanitize_string_list($references['category_values'] ?? []) as $category_value) {
+            $category_value = sanitize_text_field((string) $category_value);
+            if ($category_value === '' || self::lookup_contains_category($target_lookup, $category_option_name, $category_value)) {
+                continue;
+            }
+            if (self::lookup_contains_category($source_lookup, $category_option_name, $category_value)) {
+                $analysis['category_dependencies']['missing_on_current_supplied_by_incoming'][] = $category_value;
+                continue;
+            }
+            if ($source_has_category_metadata) {
+                $analysis['category_dependencies']['missing_on_both'][] = $category_value;
+            }
+        }
+
+        foreach ($analysis['css_variable_dependencies'] as $bucket => $tokens) {
+            $tokens = array_values(array_unique(array_map('sanitize_text_field', (array) $tokens)));
+            sort($tokens, SORT_STRING);
+            $analysis['css_variable_dependencies'][$bucket] = $tokens;
+        }
+        $analysis['class_dependencies_missing_on_current'] = array_values(array_unique(array_map('sanitize_text_field', (array) $analysis['class_dependencies_missing_on_current'])));
+        sort($analysis['class_dependencies_missing_on_current'], SORT_STRING);
+        foreach (['missing_on_current_supplied_by_incoming', 'missing_on_both'] as $bucket) {
+            $tokens = array_values(array_unique(array_map('sanitize_text_field', (array) ($analysis['category_dependencies'][$bucket] ?? []))));
+            sort($tokens, SORT_STRING);
+            $analysis['category_dependencies'][$bucket] = $tokens;
+        }
+
+        return $analysis;
+    }
+
+    /**
+     * @param array<string, mixed> $analysis
      * @return array<int, string>
      */
-    private static function build_reference_warnings(array $references, array $target_lookup)
+    private static function build_reference_warnings(array $analysis)
     {
         $warnings = [];
-        foreach ((array) ($references['css_variables'] ?? []) as $token) {
-            $token = sanitize_text_field((string) $token);
-            if ($token === '' || isset($target_lookup['css_variables'][$token])) {
-                continue;
-            }
-            $warnings[] = 'Missing CSS variable dependency on target: ' . $token;
+        $css_dependencies = isset($analysis['css_variable_dependencies']) && is_array($analysis['css_variable_dependencies'])
+            ? $analysis['css_variable_dependencies']
+            : [];
+
+        foreach ((array) ($css_dependencies['missing_on_current_supplied_by_incoming'] ?? []) as $token) {
+            $warnings[] = 'Missing CSS variable on Current Site but supplied by Incoming Package: ' . sanitize_text_field((string) $token);
         }
-        foreach ((array) ($references['class_names'] ?? []) as $class_name) {
-            $class_name = sanitize_text_field((string) $class_name);
-            if ($class_name === '' || isset($target_lookup['class_names'][$class_name])) {
-                continue;
-            }
-            $warnings[] = 'Missing class dependency on target: ' . $class_name;
+        foreach ((array) ($css_dependencies['missing_on_both'] ?? []) as $token) {
+            $warnings[] = 'Missing CSS variable on both Current Site and Incoming Package: ' . sanitize_text_field((string) $token);
+        }
+        foreach ((array) ($css_dependencies['possibly_external'] ?? []) as $token) {
+            $warnings[] = 'CSS variable may be external or outside Bricks portability scope: ' . sanitize_text_field((string) $token);
+        }
+        $category_dependencies = isset($analysis['category_dependencies']) && is_array($analysis['category_dependencies'])
+            ? $analysis['category_dependencies']
+            : [];
+        foreach ((array) ($category_dependencies['missing_on_current_supplied_by_incoming'] ?? []) as $category_value) {
+            $warnings[] = sprintf(
+                'Missing %s on Current Site but supplied by Incoming Package: %s',
+                self::get_category_option_label((string) ($category_dependencies['option_name'] ?? '')),
+                sanitize_text_field((string) $category_value)
+            );
+        }
+        foreach ((array) ($category_dependencies['missing_on_both'] ?? []) as $category_value) {
+            $warnings[] = sprintf(
+                'Missing %s on both Current Site and Incoming Package: %s',
+                self::get_category_option_label((string) ($category_dependencies['option_name'] ?? '')),
+                sanitize_text_field((string) $category_value)
+            );
+        }
+        foreach ((array) ($analysis['class_dependencies_missing_on_current'] ?? []) as $class_name) {
+            $warnings[] = 'Missing class dependency on Current Site: ' . sanitize_text_field((string) $class_name);
         }
 
         return $warnings;
@@ -615,20 +773,139 @@ final class DBVC_Bricks_Portability_Diff_Engine
 
     /**
      * @param array<string, mixed> $references
-     * @param array<string, mixed> $target_lookup
+     * @param array<string, mixed> $analysis
      * @return array<string, mixed>
      */
-    private static function build_references(array $references, array $target_lookup)
+    private static function build_references(array $references, array $analysis)
     {
-        $missing = [];
-        foreach (self::build_reference_warnings($references, $target_lookup) as $warning) {
-            $missing[] = $warning;
+        return [
+            'css_variables' => DBVC_Bricks_Portability_Utils::sanitize_string_list($references['css_variables'] ?? []),
+            'class_names' => DBVC_Bricks_Portability_Utils::sanitize_string_list($references['class_names'] ?? []),
+            'category_values' => DBVC_Bricks_Portability_Utils::sanitize_string_list($references['category_values'] ?? []),
+            'category_option_name' => sanitize_key((string) ($references['category_option_name'] ?? '')),
+            'missing_dependencies' => self::build_reference_warnings($analysis),
+            'css_variable_dependencies' => isset($analysis['css_variable_dependencies']) && is_array($analysis['css_variable_dependencies'])
+                ? $analysis['css_variable_dependencies']
+                : [
+                    'missing_on_current_supplied_by_incoming' => [],
+                    'missing_on_both' => [],
+                    'possibly_external' => [],
+                ],
+            'category_dependencies' => isset($analysis['category_dependencies']) && is_array($analysis['category_dependencies'])
+                ? $analysis['category_dependencies']
+                : [
+                    'option_name' => '',
+                    'missing_on_current_supplied_by_incoming' => [],
+                    'missing_on_both' => [],
+                ],
+            'class_dependencies_missing_on_current' => array_values((array) ($analysis['class_dependencies_missing_on_current'] ?? [])),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $lookup
+     * @param string $type
+     * @param string $value
+     * @return bool
+     */
+    private static function lookup_contains(array $lookup, $type, $value)
+    {
+        $type = sanitize_key((string) $type);
+        $value = sanitize_text_field((string) $value);
+        if ($type === '' || $value === '' || empty($lookup[$type]) || ! is_array($lookup[$type])) {
+            return false;
         }
 
-        return [
-            'css_variables' => array_values((array) ($references['css_variables'] ?? [])),
-            'class_names' => array_values((array) ($references['class_names'] ?? [])),
-            'missing_dependencies' => $missing,
-        ];
+        $keys = $type === 'css_variables' ? self::get_css_variable_lookup_keys($value) : [$value];
+        foreach ($keys as $key) {
+            if (isset($lookup[$type][$key])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param string $token
+     * @return array<int, string>
+     */
+    private static function get_css_variable_lookup_keys($token)
+    {
+        $token = sanitize_text_field((string) $token);
+        if ($token === '') {
+            return [];
+        }
+
+        $trimmed = ltrim($token, '-');
+        $keys = [$token];
+        if ($trimmed !== '') {
+            $keys[] = $trimmed;
+            $keys[] = '--' . $trimmed;
+        }
+
+        $keys = array_values(array_unique(array_map('sanitize_text_field', $keys)));
+        sort($keys, SORT_STRING);
+        return $keys;
+    }
+
+    /**
+     * @param array<string, mixed> $lookup
+     * @param string $option_name
+     * @param string $value
+     * @return bool
+     */
+    private static function lookup_contains_category(array $lookup, $option_name, $value)
+    {
+        $option_name = sanitize_key((string) $option_name);
+        $value = sanitize_text_field((string) $value);
+        if ($option_name === '' || $value === '' || empty($lookup['category_values'][$option_name]) || ! is_array($lookup['category_values'][$option_name])) {
+            return false;
+        }
+
+        foreach (self::get_category_lookup_keys($value) as $lookup_key) {
+            if (isset($lookup['category_values'][$option_name][$lookup_key])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param string $value
+     * @return array<int, string>
+     */
+    private static function get_category_lookup_keys($value)
+    {
+        $value = sanitize_text_field((string) $value);
+        if ($value === '') {
+            return [];
+        }
+
+        $normalized = strtolower(trim($value));
+        $keys = array_values(array_unique(array_filter([
+            $value,
+            $normalized,
+            sanitize_title($value),
+        ])));
+        sort($keys, SORT_STRING);
+        return $keys;
+    }
+
+    /**
+     * @param string $option_name
+     * @return string
+     */
+    private static function get_category_option_label($option_name)
+    {
+        $option_name = sanitize_key((string) $option_name);
+        if ($option_name === 'bricks_global_classes_categories') {
+            return 'class category';
+        }
+        if ($option_name === 'bricks_global_variables_categories') {
+            return 'variable category';
+        }
+        return 'category';
     }
 }
