@@ -122,6 +122,30 @@ Repeater-backed descriptors use the same contract with row metadata added to `so
 }
 ```
 
+Nested group descendants can add explicit ancestry to that same `source` payload when Bricks exposes `parent_group_names`, for example:
+
+```json
+{
+  "source": {
+    "type": "acf_flexible_subfield",
+    "field_name": "settings_flexible_controls_styles_color_a",
+    "field_selector": "settings_flexible_controls_styles_color_a",
+    "leaf_field_name": "color_a",
+    "leaf_field_key": "field_67241d00bc38d",
+    "field_key": "field_67241d00bc38d",
+    "field_type": "text",
+    "container_type": "flexible_content",
+    "parent_field_name": "settings_flexible_controls",
+    "parent_field_key": "field_67241b70bc38a",
+    "row_index": 0,
+    "layout_key": "layout_67241b3fbc389",
+    "layout_name": "styles_block",
+    "group_path": ["styles"],
+    "is_nested_group": true
+  }
+}
+```
+
 Direct flexible-content descendants now use the same descriptor contract shape with layout metadata added to `source`, for example:
 
 ```json
@@ -215,10 +239,47 @@ Flexible row identity is formalized in the same `path` contract, for example:
 }
 ```
 
+When a supported repeater/flexible descendant also belongs to nested ACF groups, `path.groupPath` and extra `group` segments carry that ancestry explicitly, for example:
+
+```json
+{
+  "path": {
+    "containerType": "flexible_content",
+    "rootFieldName": "settings_flexible_controls",
+    "fieldName": "settings_flexible_controls_styles_color_a",
+    "rowIndex": 0,
+    "layoutKey": "layout_67241b3fbc389",
+    "layoutName": "styles_block",
+    "groupPath": ["styles"],
+    "segments": [
+      {
+        "type": "flexible_content",
+        "fieldName": "settings_flexible_controls",
+        "fieldKey": "field_67241b70bc38a",
+        "index": 0,
+        "layoutKey": "layout_67241b3fbc389",
+        "layoutName": "styles_block"
+      },
+      {
+        "type": "group",
+        "fieldName": "styles"
+      },
+      {
+        "type": "field",
+        "fieldName": "settings_flexible_controls_styles_color_a",
+        "fieldKey": "field_67241d00bc38d"
+      }
+    ],
+    "summary": "flexible:settings_flexible_controls / row:1 / layout:styles_block / group:styles / field:settings_flexible_controls_styles_color_a"
+  }
+}
+```
+
 In the current slice:
 - `flexible_layout` is writable only for text-like, WYSIWYG, choice, link, and image flexible descendants on the current post owner
 - `loop_owned_flexible_layout` is writable only for text-like, WYSIWYG, choice, link, and image flexible descendants on the concrete related post currently rendered by the loop
 - `shared_flexible_layout` remains inspect-only
+- live `source_group` and `sync_group` identity for nested group descendants must include `group_path` plus leaf selector identity so same leaf names under different group roots do not collide
 
 `scope` values currently used:
 - `current_entity`

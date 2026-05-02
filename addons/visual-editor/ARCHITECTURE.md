@@ -16,6 +16,7 @@ Responsibilities:
 - signed toggle / nonce
 - enable or disable runtime instrumentation
 - enqueue overlay assets only when active
+- block frontend runtime entirely for Bricks builder/edit/iframe requests and defensive builder-style preview query contexts
 
 ### 2. Context layer
 Determines the effective entity context for the request.
@@ -36,6 +37,7 @@ Current slice supports singular frontend entry points only. Within that page req
 - concrete queried post, term, and user loop owners when Bricks exposes a stable loop object
 - current-post and related-post ACF repeater row descendants when Bricks exposes a stable row index and parent loop owner
 - direct ACF flexible-content descendants when Bricks exposes a stable row index, parent flexible field, and layout identity
+- nested ACF group descendants inside otherwise-supported repeater/flexible rows when Bricks exposes stable `parent_group_names` ancestry
 
 Writable loop-row ownership remains intentionally narrow:
 - direct safe ACF fields on concrete queried post, term, and user owners
@@ -191,6 +193,8 @@ Planned runtime refinement:
 - Each new supported field type needs a documented resolver
 - Structured fields can expose only a matched display projection to the live DOM update path
 - Repeater row descriptors must carry parent field + row identity so source and sync groups stay row-scoped
+- Nested ACF group descendants must preserve top-first group ancestry in descriptor `source` and `path` metadata so row-level resolvers can traverse and mutate the correct grouped sub-structure instead of guessing from flattened names
+- Nested ACF group descendants must also feed that ancestry plus their leaf selector identity into live source/sync grouping so same-named grouped subfields do not cross-sync after save
 - Descriptor V2 metadata should keep page, owner, loop, path, and mutation-contract identity explicit rather than inferring them from loose source strings later
 - Save eligibility for advanced sources should be determined from explicit mutation contracts such as `direct_field`, `repeater_row`, `shared_field`, `loop_owned_field`, and `loop_owned_repeater_row`, not from scope checks alone
 - Do not add durable DB tables just to cache request-time tokens or descriptor sessions

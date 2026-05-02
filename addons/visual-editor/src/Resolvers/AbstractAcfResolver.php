@@ -140,6 +140,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function getFieldIdentifier(EditableDescriptor $descriptor)
     {
+        $field_selector = isset($descriptor->source['field_selector']) ? sanitize_key((string) $descriptor->source['field_selector']) : '';
+        if ($field_selector !== '') {
+            return $field_selector;
+        }
+
         $field_name = $this->getFieldName($descriptor);
 
         if ($field_name !== '') {
@@ -174,6 +179,54 @@ abstract class AbstractAcfResolver implements ResolverInterface
     protected function getFieldType(EditableDescriptor $descriptor)
     {
         return isset($descriptor->source['field_type']) ? sanitize_key((string) $descriptor->source['field_type']) : '';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    protected function getLeafFieldName(EditableDescriptor $descriptor)
+    {
+        if (isset($descriptor->source['leaf_field_name']) && (string) $descriptor->source['leaf_field_name'] !== '') {
+            return sanitize_key((string) $descriptor->source['leaf_field_name']);
+        }
+
+        return $this->getFieldName($descriptor);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    protected function getLeafFieldKey(EditableDescriptor $descriptor)
+    {
+        if (isset($descriptor->source['leaf_field_key']) && (string) $descriptor->source['leaf_field_key'] !== '') {
+            return sanitize_key((string) $descriptor->source['leaf_field_key']);
+        }
+
+        return $this->getFieldKey($descriptor);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<int, string>
+     */
+    protected function getGroupPath(EditableDescriptor $descriptor)
+    {
+        if (empty($descriptor->source['group_path']) || ! is_array($descriptor->source['group_path'])) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                array_map(
+                    static function ($value) {
+                        return sanitize_key((string) $value);
+                    },
+                    $descriptor->source['group_path']
+                )
+            )
+        );
     }
 
     /**
@@ -276,18 +329,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         $row = $rows[$row_index];
-        $field_key = $this->getFieldKey($descriptor);
-        $field_name = $this->getFieldName($descriptor);
-
-        if ($field_key !== '' && array_key_exists($field_key, $row)) {
-            return $row[$field_key];
-        }
-
-        if ($field_name !== '' && array_key_exists($field_name, $row)) {
-            return $row[$field_name];
-        }
-
-        return '';
+        return $this->extractRowFieldValue($row, $descriptor);
     }
 
     /**
@@ -319,7 +361,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         $row = is_array($rows[$row_index]) ? $rows[$row_index] : [];
-        $rows[$row_index] = $this->replaceRepeaterRowValue($row, $descriptor, $value);
+        $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
 
         if (! function_exists('update_field')) {
             return [
@@ -372,18 +414,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
             return '';
         }
 
-        $field_key = $this->getFieldKey($descriptor);
-        $field_name = $this->getFieldName($descriptor);
-
-        if ($field_key !== '' && array_key_exists($field_key, $row)) {
-            return $row[$field_key];
-        }
-
-        if ($field_name !== '' && array_key_exists($field_name, $row)) {
-            return $row[$field_name];
-        }
-
-        return '';
+        return $this->extractRowFieldValue($row, $descriptor);
     }
 
     /**
@@ -423,7 +454,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
             ];
         }
 
-        $rows[$row_index] = $this->replaceRepeaterRowValue($row, $descriptor, $value);
+        $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
 
         if (! function_exists('update_field')) {
             return [
@@ -563,32 +594,111 @@ abstract class AbstractAcfResolver implements ResolverInterface
      * @param mixed                $value
      * @return array<string, mixed>
      */
-    private function replaceRepeaterRowValue(array $row, EditableDescriptor $descriptor, $value)
+    private function extractRowFieldValue(array $row, EditableDescriptor $descriptor)
     {
-        $field_key = $this->getFieldKey($descriptor);
-        $field_name = $this->getFieldName($descriptor);
-        $updated = false;
+        $container = $this->resolveGroupedRowContainer($row, $descriptor);
+        $field_keys = $this->resolveRowFieldKeys($descriptor);
 
-        if ($field_key !== '' && array_key_exists($field_key, $row)) {
-            $row[$field_key] = $value;
-            $updated = true;
+        foreach ($field_keys as $field_key) {
+            if (array_key_exists($field_key, $container)) {
+                return $container[$field_key];
+            }
         }
 
-        if ($field_name !== '' && array_key_exists($field_name, $row)) {
-            $row[$field_name] = $value;
-            $updated = true;
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @param mixed                $value
+     * @return array<string, mixed>
+     */
+    private function replaceRowFieldValue(array $row, EditableDescriptor $descriptor, $value)
+    {
+        $container =& $this->resolveGroupedRowContainerReference($row, $descriptor);
+        $field_keys = $this->resolveRowFieldKeys($descriptor);
+        $updated = false;
+
+        foreach ($field_keys as $field_key) {
+            if (array_key_exists($field_key, $container)) {
+                $container[$field_key] = $value;
+                $updated = true;
+            }
         }
 
         if (! $updated) {
-            if ($field_key !== '') {
-                $row[$field_key] = $value;
-            }
-
-            if ($field_name !== '') {
-                $row[$field_name] = $value;
+            foreach ($field_keys as $field_key) {
+                if ($field_key !== '') {
+                    $container[$field_key] = $value;
+                }
             }
         }
 
         return $row;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<int, string>
+     */
+    private function resolveRowFieldKeys(EditableDescriptor $descriptor)
+    {
+        return array_values(
+            array_filter(
+                array_unique(
+                    [
+                        $this->getLeafFieldKey($descriptor),
+                        $this->getLeafFieldName($descriptor),
+                        $this->getFieldKey($descriptor),
+                        $this->getFieldName($descriptor),
+                    ]
+                )
+            )
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function resolveGroupedRowContainer(array $row, EditableDescriptor $descriptor)
+    {
+        $container = $row;
+
+        foreach ($this->getGroupPath($descriptor) as $segment) {
+            if ($segment === '' || ! isset($container[$segment]) || ! is_array($container[$segment])) {
+                return [];
+            }
+
+            $container = $container[$segment];
+        }
+
+        return is_array($container) ? $container : [];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function &resolveGroupedRowContainerReference(array &$row, EditableDescriptor $descriptor)
+    {
+        $container =& $row;
+
+        foreach ($this->getGroupPath($descriptor) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+
+            if (! isset($container[$segment]) || ! is_array($container[$segment])) {
+                $container[$segment] = [];
+            }
+
+            $container =& $container[$segment];
+        }
+
+        return $container;
     }
 }

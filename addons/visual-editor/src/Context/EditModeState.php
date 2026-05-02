@@ -21,10 +21,16 @@ final class EditModeState
      */
     private $page_context;
 
-    public function __construct(CapabilityManager $capabilities, PageContextResolver $page_context)
+    /**
+     * @var FrontendRuntimeGuard
+     */
+    private $runtime_guard;
+
+    public function __construct(CapabilityManager $capabilities, PageContextResolver $page_context, ?FrontendRuntimeGuard $runtime_guard = null)
     {
         $this->capabilities = $capabilities;
         $this->page_context = $page_context;
+        $this->runtime_guard = $runtime_guard instanceof FrontendRuntimeGuard ? $runtime_guard : new FrontendRuntimeGuard();
     }
 
     /**
@@ -49,6 +55,10 @@ final class EditModeState
     public function handleToggleRequest()
     {
         if (! isset($_GET[self::TOGGLE_QUERY_ARG])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+            return;
+        }
+
+        if ($this->runtime_guard->isBuilderRequest()) {
             return;
         }
 
@@ -92,7 +102,7 @@ final class EditModeState
             return false;
         }
 
-        if (is_admin() || ! $this->page_context->isSupported()) {
+        if (! $this->runtime_guard->shouldRunFrontend() || ! $this->page_context->isSupported()) {
             return false;
         }
 
@@ -126,7 +136,7 @@ final class EditModeState
      */
     public function canRenderToggle()
     {
-        if (is_admin() || ! $this->capabilities->canUseVisualEditor()) {
+        if (! $this->runtime_guard->shouldRunFrontend() || ! $this->capabilities->canUseVisualEditor()) {
             return false;
         }
 

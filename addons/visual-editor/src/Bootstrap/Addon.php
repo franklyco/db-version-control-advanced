@@ -9,6 +9,7 @@ use Dbvc\VisualEditor\Bricks\HookRegistrar;
 use Dbvc\VisualEditor\Bricks\LoopContextResolver;
 use Dbvc\VisualEditor\Cache\CacheInvalidator;
 use Dbvc\VisualEditor\Context\EditModeState;
+use Dbvc\VisualEditor\Context\FrontendRuntimeGuard;
 use Dbvc\VisualEditor\Context\PageContextResolver;
 use Dbvc\VisualEditor\Journal\ChangeJournalRecorder;
 use Dbvc\VisualEditor\Journal\ChangeJournalStore;
@@ -69,9 +70,10 @@ final class Addon
 
         $capabilities = new CapabilityManager();
         $page_context = new PageContextResolver();
+        $runtime_guard = new FrontendRuntimeGuard();
         $loops = new LoopContextResolver();
         $summaries = new DescriptorSummaryBuilder();
-        $this->edit_mode = new EditModeState($capabilities, $page_context);
+        $this->edit_mode = new EditModeState($capabilities, $page_context, $runtime_guard);
         $this->registry = new EditableRegistry($page_context);
         $resolvers = new ResolverRegistry(null, $loops);
         $validator = new ValidationService();

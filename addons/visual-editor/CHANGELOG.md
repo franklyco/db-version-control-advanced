@@ -66,3 +66,10 @@
 - Relaxed flexible layout-name inference so Bricks flexible query loops that use shortened child tags like `acf_flexible_layouts_*` against fuller loop object types such as `acf_core_sections_flexible_layouts` can still resolve editable flexible descendants safely
 - Fixed a Bricks link-setting inspector warning path where array-valued `settings.link` data was being coerced into a string during render-time candidate inspection
 - Broadened loop-owner entity mapping so Bricks custom query-editor loops that surface real `WP_Post` objects or CPT slugs such as `benefit` can still resolve queried-post ACF fields as editable related owners
+- Added nested ACF group ancestry to descriptor source/path metadata and taught repeater/flexible row reads and writes to traverse that ancestry before touching the leaf field value
+- Added nested-group ancestry plus leaf-selector identity to live source/sync grouping so same-named grouped descendants do not cross-update each other after save
+- Changed the Visual Editor panel UX so it stays closed by default, opens from badge clicks, closes on outside click, and can be drag-positioned for the current browser session
+- Excluded WordPress Media Library modal interactions from the outside-click panel-close rule so choosing replacement media does not collapse the Visual Editor panel
+- Re-clamp the dragged panel position after open/load/save state changes so a taller panel snaps upward instead of falling below the viewport
+- Constrained the panel to viewport height with internal scrolling so tall states stay usable in-frame without forcing oversized off-screen overflow
+- Added a shared frontend runtime guard so Visual Editor assets, toggles, and Bricks instrumentation do not run inside Bricks builder/edit/iframe requests or common builder preview query contexts

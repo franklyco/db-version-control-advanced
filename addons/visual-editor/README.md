@@ -13,6 +13,7 @@ Current status:
 - Add-ons screen can enable/disable the runtime
 - authorized users can toggle frontend Visual Editor mode from the admin bar
 - frontend assets load only in edit mode on supported singular views
+- frontend runtime, assets, and Bricks instrumentation are now explicitly blocked inside Bricks Builder edit/main/iframe requests and common builder-style preview query contexts
 - supported Bricks direct single-tag text bindings receive lightweight DOM tokens
 - exact Bricks dynamic-data args on those single-tag bindings are preserved for resolver context
 - mismatched rendered nodes are filtered back out during Bricks element render verification
@@ -33,6 +34,8 @@ Current status:
 - related-post loop saves now require explicit acknowledgement and update the related post shown in the loop rather than the current page post
 - direct safe ACF fields rendered from Bricks query loops with a concrete post, term, or user owner can now save against that loop owner instead of being forced into inspect-only mode
 - direct Bricks ACF flexible-content descendants can now surface with stable row + layout metadata, and current/related post text-like, WYSIWYG, choice, link, and image flexible subfields can now save through the new flexible contract path while other flexible descendants remain inspect-only
+- nested ACF group descendants now contribute their ancestry plus leaf selector identity to the live source/sync group hashes so same-named grouped leaf fields do not cross-update each other after save
+- nested ACF group ancestry is now preserved in descriptor path metadata so repeater/flexible row descendants can carry explicit group segments instead of flattening every nested source into a loose field name
 - the restricted Site Settings `universal_cta_options` global-link group is intentionally kept read-only in Visual Editor and must still be edited from the ACF Site Settings options page
 - the overlay panel supports text, textarea, WordPress-backed Visual/Code WYSIWYG editing, single select, checkbox group, structured link inputs, and Media Library-backed image selection
 - structured choice and link fields now reuse the render-verified visible projection when updating the page in place
@@ -50,6 +53,7 @@ Current status:
 - Visual Editor saves now write to dedicated journal tables (`dbvc_ve_change_sets`, `dbvc_ve_change_items`) so future loop-owned and flexible-content mutation paths have durable per-path history and rollback-oriented write scaffolding
 - save requests now run through an explicit mutation-contract layer so supported current, shared, repeater-row, and loop-owned save paths are formalized instead of relying only on loose scope checks
 - the panel source-details block now surfaces the resolved save-contract label/detail alongside the dynamic source summary
+- the editor panel is now closed by default, opens from the active shared badge, closes on outside click, and can be dragged to a different screen position that persists for the current browser session
 - empty text-like targets can now surface a pulsing placeholder treatment when the resolved display value is empty, while image targets use a narrow overflow override instead of a broad theme-overriding rule
 - advanced exact-tag ACF sources that are not yet save-capable now surface as inspect-only markers instead of being silently dropped
 - generic Bricks query-loop rows with a concrete post owner can now surface inspect-only `post_title`, `post_excerpt`, and direct ACF field descriptors with explicit non-current-owner context
@@ -91,6 +95,7 @@ This addon now lives inside the DBVC repo at:
 - safe direct ACF field support where the loop owner is a concrete queried post, term, or user
 - safe Bricks ACF repeater row support where the row index is stable and the owner resolves to the current post or a concrete related post
 - narrow writable support for direct Bricks ACF flexible-content text-like, WYSIWYG, choice, link, and image descendants on current/related post owners, with inspect-only surfacing for other stable flexible descendants
+- nested-group descendants inside supported repeater/flexible rows now preserve their Bricks ACF group ancestry in the descriptor path and row mutation layer
 - inspect-only surfacing for exact single-tag advanced ACF fields and generic concrete-owner query-loop rows that are not yet in the save allowlist
 - Bricks instrumentation via render hooks
 - overlay side panel with field-type-aware controls

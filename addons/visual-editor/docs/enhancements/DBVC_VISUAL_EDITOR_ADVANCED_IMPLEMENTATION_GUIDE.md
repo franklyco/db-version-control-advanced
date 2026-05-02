@@ -236,6 +236,7 @@ Current status:
 - direct safe ACF fields on concrete queried post, term, and user loop owners are now writable through the explicit loop-owned contract layer
 - direct flexible descendants with stable row + layout identity now surface with stable path metadata
 - current/related post flexible text-like, WYSIWYG, choice, link, and image descendants are now writable through the flexible contract layer
+- nested ACF group ancestry is now preserved through descriptor metadata, row traversal, and live sync identity so grouped descendants can be resumed from a stable contract baseline
 - flexible gallery plus non-post/shared flexible descendants are still pending
 
 ### Immediate next implementation order
@@ -305,3 +306,12 @@ Require all of the following before enabling save:
 6. Add journal tables and DBVC schema migration hooks for advanced write history before flexible rows, repeater row reordering, relationship collection mutation, or rollback-aware multi-step saves.
 7. Expand repeater/flexible structured descendants.
 8. Add relationship collection mutation UI last.
+
+## Current Pause Note
+
+Advanced grouped/flexible follow-up is intentionally paused after the recent contract work and live marker verification.
+
+Resume from here:
+1. run live save smoke tests for nested grouped descendants inside supported repeater/flexible/related-owner paths
+2. verify grouped descendants do not cross-sync after save on real pages
+3. only then widen non-post/shared flexible descendants and collection-safe structured paths

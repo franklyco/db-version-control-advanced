@@ -661,12 +661,16 @@ final class ElementInstrumentationService
                     'type' => isset($source['type']) ? (string) $source['type'] : '',
                     'field_name' => isset($source['field_name']) ? (string) $source['field_name'] : '',
                     'field_key' => isset($source['field_key']) ? (string) $source['field_key'] : '',
+                    'field_selector' => isset($source['field_selector']) ? (string) $source['field_selector'] : '',
+                    'leaf_field_name' => isset($source['leaf_field_name']) ? (string) $source['leaf_field_name'] : '',
+                    'leaf_field_key' => isset($source['leaf_field_key']) ? (string) $source['leaf_field_key'] : '',
                     'container_type' => isset($source['container_type']) ? (string) $source['container_type'] : '',
                     'parent_field_name' => isset($source['parent_field_name']) ? (string) $source['parent_field_name'] : '',
                     'parent_field_key' => isset($source['parent_field_key']) ? (string) $source['parent_field_key'] : '',
                     'row_index' => isset($source['row_index']) ? (string) $source['row_index'] : '',
                     'layout_key' => isset($source['layout_key']) ? (string) $source['layout_key'] : '',
                     'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
+                    'group_path' => isset($source['group_path']) && is_array($source['group_path']) ? array_values($source['group_path']) : [],
                 ],
             ]
         );
@@ -695,12 +699,16 @@ final class ElementInstrumentationService
                     'expression' => isset($source['expression']) ? (string) $source['expression'] : '',
                     'field_name' => isset($source['field_name']) ? (string) $source['field_name'] : '',
                     'field_key' => isset($source['field_key']) ? (string) $source['field_key'] : '',
+                    'field_selector' => isset($source['field_selector']) ? (string) $source['field_selector'] : '',
+                    'leaf_field_name' => isset($source['leaf_field_name']) ? (string) $source['leaf_field_name'] : '',
+                    'leaf_field_key' => isset($source['leaf_field_key']) ? (string) $source['leaf_field_key'] : '',
                     'container_type' => isset($source['container_type']) ? (string) $source['container_type'] : '',
                     'parent_field_name' => isset($source['parent_field_name']) ? (string) $source['parent_field_name'] : '',
                     'parent_field_key' => isset($source['parent_field_key']) ? (string) $source['parent_field_key'] : '',
                     'row_index' => isset($source['row_index']) ? (string) $source['row_index'] : '',
                     'layout_key' => isset($source['layout_key']) ? (string) $source['layout_key'] : '',
                     'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
+                    'group_path' => isset($source['group_path']) && is_array($source['group_path']) ? array_values($source['group_path']) : [],
                 ],
                 'render' => [
                     'context' => (string) $render_context,
@@ -931,6 +939,18 @@ final class ElementInstrumentationService
         $parent_field_key = isset($source['parent_field_key']) ? sanitize_key((string) $source['parent_field_key']) : '';
         $layout_key = isset($source['layout_key']) ? sanitize_key((string) $source['layout_key']) : '';
         $layout_name = isset($source['layout_name']) ? sanitize_key((string) $source['layout_name']) : '';
+        $group_path = isset($source['group_path']) && is_array($source['group_path'])
+            ? array_values(
+                array_filter(
+                    array_map(
+                        static function ($value) {
+                            return sanitize_key((string) $value);
+                        },
+                        $source['group_path']
+                    )
+                )
+            )
+            : [];
         $row_index = isset($source['row_index']) && $source['row_index'] !== null && $source['row_index'] !== ''
             ? absint($source['row_index'])
             : null;
@@ -967,6 +987,17 @@ final class ElementInstrumentationService
             $summary[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
         }
 
+        foreach ($group_path as $group_name) {
+            $segments[] = [
+                'type' => 'group',
+                'fieldName' => $group_name,
+            ];
+        }
+
+        if (! empty($group_path)) {
+            $summary[] = 'group:' . implode('>', $group_path);
+        }
+
         if ($field_name !== '') {
             $segments[] = [
                 'type' => 'field',
@@ -985,6 +1016,7 @@ final class ElementInstrumentationService
             'rowIndex' => $row_index,
             'layoutKey' => $layout_key,
             'layoutName' => $layout_name,
+            'groupPath' => $group_path,
             'isNested' => $container_type !== '',
             'segments' => $segments,
             'summary' => implode(' / ', $summary),

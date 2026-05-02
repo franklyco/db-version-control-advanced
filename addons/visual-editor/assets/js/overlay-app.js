@@ -19,11 +19,58 @@
     prefetchToken: '',
     touchSelectionToken: '',
     touchSuppressToken: '',
-    touchClickSuppressUntil: 0
+    touchClickSuppressUntil: 0,
+    panelOpen: false,
+    panelPosition: null,
+    panelDrag: null
   };
+
+  const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
 
   function strings() {
     return (window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.strings) || {};
+  }
+
+  function loadStoredPanelPosition() {
+    try {
+      const raw = window.sessionStorage.getItem(PANEL_POSITION_STORAGE_KEY);
+
+      if (!raw) {
+        return null;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+
+      const left = Number(parsed.left);
+      const top = Number(parsed.top);
+
+      if (!Number.isFinite(left) || !Number.isFinite(top)) {
+        return null;
+      }
+
+      return {
+        left,
+        top
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function persistPanelPosition(position) {
+    if (!position || !Number.isFinite(position.left) || !Number.isFinite(position.top)) {
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(PANEL_POSITION_STORAGE_KEY, JSON.stringify({
+        left: position.left,
+        top: position.top
+      }));
+    } catch (error) {}
   }
 
   function supportsWpMedia() {
@@ -828,13 +875,21 @@
 
     state.badgeEventsBound = true;
 
-    window.addEventListener('resize', scheduleBadgeLayout);
+    window.addEventListener('resize', function () {
+      if (state.panelPosition) {
+        applyPanelPosition(ensureEditorPanel());
+      }
+
+      scheduleBadgeLayout();
+      schedulePanelViewportClamp();
+    });
     window.addEventListener('scroll', scheduleBadgeLayout, true);
     document.addEventListener('mouseover', handleMarkerMouseOver, true);
     document.addEventListener('mouseout', handleMarkerMouseOut, true);
     document.addEventListener('focusin', handleMarkerFocusIn, true);
     document.addEventListener('focusout', handleMarkerFocusOut, true);
     document.addEventListener('pointerup', handleMarkerPointerUp, true);
+    document.addEventListener('pointerdown', handlePanelOutsidePointerDown, true);
     document.addEventListener('click', handleMarkerClick, true);
     document.addEventListener('keydown', handleBadgeKeydown, true);
   }
@@ -976,6 +1031,11 @@
 
   function handleBadgeKeydown(event) {
     if (event.key !== 'Escape') {
+      return;
+    }
+
+    if (state.panelOpen) {
+      closeEditorPanel();
       return;
     }
 
@@ -1163,15 +1223,188 @@
     message.textContent = statePatch.message || '';
   }
 
+  function clampPanelPosition(position, panel) {
+    const panelWidth = panel ? panel.offsetWidth || panel.getBoundingClientRect().width || 380 : 380;
+    const panelHeight = panel ? panel.offsetHeight || panel.getBoundingClientRect().height || 320 : 320;
+    const maxLeft = Math.max(8, window.innerWidth - panelWidth - 8);
+    const maxTop = Math.max(8, window.innerHeight - panelHeight - 8);
+    const requestedLeft = Number(position.left) || 8;
+    const requestedTop = Number(position.top) || 8;
+
+    return {
+      left: Math.min(Math.max(8, requestedLeft), maxLeft),
+      top: requestedTop > maxTop
+        ? maxTop
+        : Math.max(8, requestedTop)
+    };
+  }
+
+  function applyPanelPosition(panel) {
+    if (!panel || !state.panelPosition) {
+      return;
+    }
+
+    const clamped = clampPanelPosition(state.panelPosition, panel);
+
+    state.panelPosition = clamped;
+    panel.style.left = `${clamped.left}px`;
+    panel.style.top = `${clamped.top}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+
+  function ensurePanelInViewport() {
+    if (!state.panelOpen || !state.panelPosition) {
+      return;
+    }
+
+    const panel = ensureEditorPanel();
+    const clamped = clampPanelPosition(state.panelPosition, panel);
+
+    if (clamped.left !== state.panelPosition.left || clamped.top !== state.panelPosition.top) {
+      state.panelPosition = clamped;
+      applyPanelPosition(panel);
+      persistPanelPosition(clamped);
+    }
+  }
+
+  function schedulePanelViewportClamp() {
+    if (!state.panelOpen || !state.panelPosition) {
+      return;
+    }
+
+    window.requestAnimationFrame(function () {
+      ensurePanelInViewport();
+    });
+  }
+
+  function setPanelOpen(isOpen) {
+    const panel = ensureEditorPanel();
+
+    state.panelOpen = Boolean(isOpen);
+    panel.hidden = !state.panelOpen;
+    panel.setAttribute('aria-hidden', state.panelOpen ? 'false' : 'true');
+    panel.dataset.open = state.panelOpen ? '1' : '0';
+
+    if (state.panelOpen) {
+      applyPanelPosition(panel);
+      schedulePanelViewportClamp();
+    }
+  }
+
+  function isPanelElement(target) {
+    const panel = document.querySelector('.dbvc-ve-panel');
+
+    return Boolean(panel && target && (panel === target || panel.contains(target)));
+  }
+
+  function isWpMediaModalElement(target) {
+    if (!target || typeof target.closest !== 'function') {
+      return false;
+    }
+
+    return Boolean(
+      target.closest('.media-modal')
+      || target.closest('.media-modal-backdrop')
+      || target.closest('.media-frame')
+    );
+  }
+
+  function shouldIgnorePanelDragTarget(target) {
+    if (!target) {
+      return false;
+    }
+
+    return Boolean(target.closest('button, input, select, textarea, label, summary, details, a'));
+  }
+
+  function handlePanelDragMove(event) {
+    if (!state.panelDrag) {
+      return;
+    }
+
+    const panel = ensureEditorPanel();
+    const nextPosition = clampPanelPosition({
+      left: event.clientX - state.panelDrag.offsetX,
+      top: event.clientY - state.panelDrag.offsetY
+    }, panel);
+
+    state.panelPosition = nextPosition;
+    applyPanelPosition(panel);
+  }
+
+  function endPanelDrag() {
+    if (!state.panelDrag) {
+      return;
+    }
+
+    persistPanelPosition(state.panelPosition);
+    document.body.classList.remove('dbvc-ve-panel-dragging');
+    window.removeEventListener('pointermove', handlePanelDragMove, true);
+    window.removeEventListener('pointerup', endPanelDrag, true);
+    window.removeEventListener('pointercancel', endPanelDrag, true);
+    state.panelDrag = null;
+  }
+
+  function startPanelDrag(event) {
+    const panel = ensureEditorPanel();
+
+    if (!state.panelOpen || event.button !== 0 || shouldIgnorePanelDragTarget(event.target)) {
+      return;
+    }
+
+    const rect = panel.getBoundingClientRect();
+
+    event.preventDefault();
+
+    state.panelDrag = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top
+    };
+
+    state.panelPosition = {
+      left: rect.left,
+      top: rect.top
+    };
+
+    applyPanelPosition(panel);
+    document.body.classList.add('dbvc-ve-panel-dragging');
+    window.addEventListener('pointermove', handlePanelDragMove, true);
+    window.addEventListener('pointerup', endPanelDrag, true);
+    window.addEventListener('pointercancel', endPanelDrag, true);
+  }
+
+  function handlePanelOutsidePointerDown(event) {
+    if (!state.panelOpen || state.panelDrag) {
+      return;
+    }
+
+    if (isPanelElement(event.target) || isBadgeElement(event.target) || isWpMediaModalElement(event.target)) {
+      return;
+    }
+
+    closeEditorPanel();
+  }
+
   function ensureEditorPanel() {
     let panel = document.querySelector('.dbvc-ve-panel');
 
     if (panel) {
+      if (!state.panelPosition) {
+        state.panelPosition = loadStoredPanelPosition();
+      }
       return panel;
+    }
+
+    if (!state.panelPosition) {
+      state.panelPosition = loadStoredPanelPosition();
     }
 
     panel = document.createElement('aside');
     panel.className = 'dbvc-ve-panel';
+    panel.hidden = true;
+    panel.setAttribute('aria-hidden', 'true');
+    panel.dataset.open = '0';
     panel.innerHTML = [
       '<div class="dbvc-ve-panel__header">',
       '  <div>',
@@ -1198,9 +1431,11 @@
     panel.querySelector('[data-action="close"]').addEventListener('click', closeEditorPanel);
     panel.querySelector('.dbvc-ve-panel__close').addEventListener('click', closeEditorPanel);
     panel.querySelector('[data-action="save"]').addEventListener('click', handleSave);
+    panel.querySelector('.dbvc-ve-panel__header').addEventListener('pointerdown', startPanelDrag);
 
     document.body.appendChild(panel);
 
+    applyPanelPosition(panel);
     renderIdlePanel();
 
     return panel;
@@ -1261,6 +1496,7 @@
 
   function closeEditorPanel() {
     renderIdlePanel();
+    setPanelOpen(false);
   }
 
   function destroyActiveController() {
@@ -2334,6 +2570,7 @@
     }
 
     scheduleBadgeLayout();
+    schedulePanelViewportClamp();
 
     if (canEdit) {
       controller.focus();
@@ -2506,6 +2743,7 @@
     const panelNodes = getPanelNodes();
     const cached = getCachedDescriptorPayload(token);
 
+    setPanelOpen(true);
     destroyActiveController();
     state.activeController = null;
     panelNodes.panel.dataset.state = 'loading';
@@ -2519,6 +2757,7 @@
     panelNodes.fieldWrap.firstChild.textContent = strings().panelLoading || 'Loading field details…';
     panelNodes.status.textContent = '';
     panelNodes.saveButton.disabled = true;
+    schedulePanelViewportClamp();
 
     state.activeNode = node;
     state.activeDescriptor = null;
@@ -2545,6 +2784,7 @@
     } catch (error) {
       panelNodes.panel.dataset.state = 'error';
       panelNodes.status.textContent = error && error.message ? error.message : (strings().descriptorMissing || 'Descriptor not found.');
+      schedulePanelViewportClamp();
       window.console.error(error);
     }
   }
@@ -2566,6 +2806,7 @@
       panelNodes.status.textContent = state.activeAcknowledgementType === 'related'
         ? resolveRelatedRequiredText(entityType)
         : resolveSharedRequiredText(entityType);
+      schedulePanelViewportClamp();
       return;
     }
 
@@ -2594,6 +2835,7 @@
       panelNodes.status.textContent = saveSummaryMessage
         || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.'));
       updateSaveButtonState(panelNodes, true);
+      schedulePanelViewportClamp();
       updateStatusBar({
         kind: 'ready',
         count: getMarkerCount(),
@@ -2602,6 +2844,7 @@
     } catch (error) {
       panelNodes.panel.dataset.state = 'error';
       panelNodes.status.textContent = error && error.message ? error.message : (strings().saveFailed || 'Save failed.');
+      schedulePanelViewportClamp();
 
       if (state.activeController) {
         state.activeController.setDisabled(false);

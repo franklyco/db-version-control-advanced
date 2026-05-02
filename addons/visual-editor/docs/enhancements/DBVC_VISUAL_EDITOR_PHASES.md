@@ -30,6 +30,7 @@
 - flexible content scalar subfield editing
 - image/media support
 - structured repeater/flexible subfields
+- draggable, closable session-persistent overlay panel UX
 - revision restore UX
 - grouped change queue / review mode
 - runtime profiling and performance instrumentation
@@ -43,3 +44,14 @@
 - approval workflows
 - usage analytics
 - exportable change sets / diffs
+
+## Current Hold Context
+- The next paused advanced-data follow-up is nested ACF group and deeper flexible/repeater descendant save verification, not marker discovery.
+- Recent implemented state before the hold:
+  - live FrameworkFLO browser probing confirmed related-owner VE markers are present on previously failing elements such as `.brxe-ozyswq` and `.brxe-zecvno`
+  - nested ACF group ancestry now participates in descriptor `source` / `path` metadata
+  - repeater/flexible row reads and writes now traverse nested group ancestry before touching the leaf field
+  - live `source_group` / `sync_group` hashing now includes nested group ancestry plus leaf selector identity so same-named grouped descendants do not cross-update after save
+- Resume point after the current panel UX slice:
+  - live-save smoke test nested grouped descendants inside supported repeater/flexible/related-owner paths
+  - widen non-post/shared flexible descendants only after those grouped save paths are proven stable

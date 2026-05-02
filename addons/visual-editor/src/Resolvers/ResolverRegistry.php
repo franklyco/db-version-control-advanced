@@ -260,6 +260,11 @@ final class ResolverRegistry
             : (! empty($flexible['supported']) && isset($flexible['row_index']) ? absint($flexible['row_index']) : null);
         $layout_key = ! empty($flexible['supported']) ? sanitize_key((string) ($flexible['layout_key'] ?? '')) : '';
         $layout_name = ! empty($flexible['supported']) ? sanitize_key((string) ($flexible['layout_name'] ?? '')) : '';
+        $tag_object = isset($resolved['tag_object']) && is_array($resolved['tag_object']) ? $resolved['tag_object'] : [];
+        $leaf_field_name = isset($tag_object['field']['name']) ? sanitize_key((string) $tag_object['field']['name']) : $field_name;
+        $leaf_field_key = isset($tag_object['field']['key']) ? sanitize_key((string) $tag_object['field']['key']) : $field_key;
+        $group_path = $this->normalizeNestedGroupPath($tag_object, $parent_field_name);
+        $field_selector = $this->resolveAcfFieldSelector($tag_object, $field_name);
         $label = isset($field['label']) && (string) $field['label'] !== ''
             ? sanitize_text_field((string) $field['label'])
             : ucwords(str_replace('_', ' ', $field_name));
@@ -288,6 +293,9 @@ final class ResolverRegistry
                 'expression_args' => isset($resolved['tag_args']) && is_array($resolved['tag_args']) ? $resolved['tag_args'] : [],
                 'field_name' => $field_name,
                 'field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'leaf_field_name' => $leaf_field_name,
+                'leaf_field_key' => $leaf_field_key,
                 'field_type' => $field_type,
                 'return_format' => $return_format,
                 'media_size' => isset($candidate['media_size']) ? sanitize_key((string) $candidate['media_size']) : '',
@@ -300,6 +308,8 @@ final class ResolverRegistry
                 'row_index' => $row_index,
                 'layout_key' => $layout_key,
                 'layout_name' => $layout_name,
+                'group_path' => $group_path,
+                'is_nested_group' => ! empty($group_path),
             ],
             'resolver' => [
                 'name' => $resolver_name,
@@ -983,5 +993,49 @@ final class ResolverRegistry
         }
 
         return false;
+    }
+
+    /**
+     * @param array<string, mixed> $tag_object
+     * @return array<int, string>
+     */
+    private function normalizeNestedGroupPath(array $tag_object, $container_root = '')
+    {
+        if (empty($tag_object['nested_group']) || empty($tag_object['parent_group_names']) || ! is_array($tag_object['parent_group_names'])) {
+            return [];
+        }
+
+        $group_path = array_values(
+            array_filter(
+                array_map(
+                    static function ($value) {
+                        return sanitize_key((string) $value);
+                    },
+                    array_reverse($tag_object['parent_group_names'])
+                )
+            )
+        );
+
+        $container_root = sanitize_key((string) $container_root);
+        if ($container_root !== '' && ! empty($group_path) && $group_path[0] === $container_root) {
+            array_shift($group_path);
+        }
+
+        return array_values(array_unique($group_path));
+    }
+
+    /**
+     * @param array<string, mixed> $tag_object
+     * @param string               $fallback
+     * @return string
+     */
+    private function resolveAcfFieldSelector(array $tag_object, $fallback)
+    {
+        $tag_name = isset($tag_object['name']) ? (string) $tag_object['name'] : '';
+        if ($tag_name !== '' && preg_match('/^\{acf_(.+)\}$/', $tag_name, $matches)) {
+            return sanitize_key((string) $matches[1]);
+        }
+
+        return sanitize_key((string) $fallback);
     }
 }

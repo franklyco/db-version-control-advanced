@@ -46,6 +46,18 @@ final class DescriptorSummaryBuilder
         $parent_field_name = isset($path['rootFieldName']) ? sanitize_key((string) $path['rootFieldName']) : (isset($source['parent_field_name']) ? sanitize_key((string) $source['parent_field_name']) : '');
         $layout_name = isset($path['layoutName']) ? sanitize_key((string) $path['layoutName']) : (isset($source['layout_name']) ? sanitize_key((string) $source['layout_name']) : '');
         $layout_key = isset($path['layoutKey']) ? sanitize_key((string) $path['layoutKey']) : (isset($source['layout_key']) ? sanitize_key((string) $source['layout_key']) : '');
+        $group_path = isset($path['groupPath']) && is_array($path['groupPath'])
+            ? array_values(
+                array_filter(
+                    array_map(
+                        static function ($value) {
+                            return sanitize_key((string) $value);
+                        },
+                        $path['groupPath']
+                    )
+                )
+            )
+            : (isset($source['group_path']) && is_array($source['group_path']) ? array_values(array_filter(array_map('sanitize_key', $source['group_path']))) : []);
         $expression = isset($source['expression']) ? sanitize_text_field((string) $source['expression']) : '';
         $parts = array_values(array_filter([$type, $field_name]));
 
@@ -60,6 +72,10 @@ final class DescriptorSummaryBuilder
 
         if ($layout_name !== '' || $layout_key !== '') {
             $parts[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
+        }
+
+        if (! empty($group_path)) {
+            $parts[] = 'group:' . implode('>', $group_path);
         }
 
         $entity_type = isset($entity['type']) ? sanitize_key((string) $entity['type']) : '';

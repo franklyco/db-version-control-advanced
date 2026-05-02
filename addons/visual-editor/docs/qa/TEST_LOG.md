@@ -10,6 +10,8 @@
 - Simple save flow works without reloading the page.
 - The in-page editor panel works in place of the browser prompt.
 - Guarded structured-field updates and recent Bricks link slices were reported working by the user.
+- Live authenticated browser probing against `https://frameworkflo-live.local/vertical/dentists/` confirmed visible VE tokens on previously failing related-owner elements such as `.brxe-ozyswq` and `.brxe-zecvno`.
+- Panel follow-up was intentionally paused after the recent grouped/flexible contract work so the next resume point is live save verification for nested grouped descendants, not more marker discovery.
 
 ### Pending targeted smoke tests
 - Bricks button and Bricks link elements backed by current-post ACF fields.
@@ -24,6 +26,7 @@
 - Current-post and related-post flexible text-like/WYSIWYG/choice/link/image descendants should save against the targeted flexible row only.
 - Flexible descendants in Bricks loops where the loop object type is a fuller ACF path such as `acf_core_sections_flexible_layouts` but the rendered child tags are shortened to `acf_flexible_layouts_*` should still surface and resolve as editable when otherwise supported.
 - Direct ACF fields inside Bricks custom query-editor post loops should still surface and resolve as editable when Bricks exposes a real `WP_Post` object or a CPT slug such as `benefit` instead of the literal loop type `post`.
+- Nested ACF group descendants with the same leaf field names under different group roots should not cross-sync after save now that `group_path` and leaf selector identity participate in `source_group` / `sync_group` hashing.
 - Flexible gallery descendants should remain inspect-only until a collection-safe mutation path exists.
 - `universal_cta_options` / Site Settings global-link fields must remain read-only in Visual Editor and must not save through the overlay.
 - Unsupported generic loop/query shapes should stay unmarked or honestly locked.
