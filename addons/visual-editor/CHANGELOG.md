@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a status-bar editor link that defaults to the current frontend entity and switches to the active field owner while a panel target is open, then falls back again when the panel closes
 - Renamed the dropped scaffold package to `addons/visual-editor/` and aligned docs to the repo path
 - Added repo-adapted bootstrap facade `DBVC_Visual_Editor_Addon` and DBVC core loading integration
 - Added Add-ons screen settings integration for enabling/disabling the Visual Editor runtime
@@ -83,3 +84,11 @@
 - Prevented repeated native loop descriptors from collapsing into one token when Bricks reuses the same loop signature for a later repeated row; duplicate seeds now get per-request occurrence suffixes so the later row can survive into verification and session persistence
 - Fixed native ACF repeater row owner mapping so bare numeric loop indices like `3` no longer resolve as fake related posts when a real WordPress post with that ID exists; current-post repeater rows without an image now keep their `current` scope and survive final render verification
 - Promoted native Bricks ACF loop provenance into descriptor source/path/mutation metadata and panel/save-contract summaries so native repeater, relationship, and post-object loop paths are distinguishable from older generic loop-owned handling
+- Added parent native loop ancestry to nested native ACF loop descriptors so paths like `relationship -> repeater` and `post_object -> repeater/flexible` now carry both the owner loop and the inner loop in signatures, source summaries, and save-contract detail
+- Extended native ACF query-root classification so real taxonomy fields such as `acf_treatments_section_treatments_terms` are treated as concrete-owner native taxonomy loops instead of generic unknown roots
+- Hardened image render verification so direct image and background-image descriptors can survive safe host-alias and resized-variant differences by matching media identity from normalized upload paths instead of only exact URL strings; this is aimed at Bricks term-loop image fields where the rendered `<img src>` and resolver URL can differ by domain alias or generated size suffix
+- Aligned the frontend panel mismatch gate with the PHP media verifier so direct image and background-image fields no longer show a false “saving is disabled because the resolved backend value does not match the rendered page value yet” warning when the only difference is a host alias or WordPress size suffix
+- Widened stable flexible-content row mutation to shared non-current post owners as well, so text-like, WYSIWYG, choice, link, image, and gallery descendants now use the same explicit `shared_flexible_layout` contract across shared post/term/user/option owners instead of leaving shared post flexible rows inspect-only
+- Canonicalized native flexible descendant layout identity from the actual raw ACF row payload before subfield matching so Bricks duplicate tags like `acf_flexible_layouts_dynamic_section_image` can still resolve and remain editable when the real rendered row is `standard_section`; this keeps markers alive through final render on `/our-process/` for `ivqecf` / `xhcpsg` instead of trusting the incoming Bricks layout alias blindly
+- Enabled ordered Media Library gallery replacement for direct Bricks gallery collections backed by ACF `gallery` fields, including stable repeater-row and flexible-row descendants, and added a conservative post-save page reload so Bricks can rebuild gallery markup instead of relying on brittle partial DOM patching
+- Promoted grouped key ancestry into the formal descriptor path contract so nested group descendants now carry both `groupPath` and `groupKeyPath`, plus keyed `group` path segments, instead of leaving raw ACF group-key identity only on the source metadata layer

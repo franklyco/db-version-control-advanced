@@ -815,7 +815,7 @@ final class DBVC_Admin_App
             ? 'ai_blocked'
             : 'ai_review';
 
-        $redirect_url = 'admin.php?page=dbvc-export&dbvc_upload=' . rawurlencode($state) . '#dbvc-import-upload';
+        $redirect_url = 'admin.php?page=dbvc-export&dbvc_upload=' . rawurlencode($state) . '#dbvc-ai-review-workbench';
 
         return [
             'mode' => 'ai_package',

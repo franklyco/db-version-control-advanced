@@ -74,6 +74,9 @@ final class DBVC_AI_Tools_Page
         $selected_shape_mode = $has_saved_tool_settings && ! empty($tool_settings['shape_mode'])
             ? (string) $tool_settings['shape_mode']
             : (string) ($generation['shape_mode'] ?? '');
+        $selected_package_profile = $has_saved_tool_settings && ! empty($tool_settings['package_profile'])
+            ? (string) $tool_settings['package_profile']
+            : (string) ($generation['package_profile'] ?? \Dbvc\AiPackage\Settings::DEFAULT_PACKAGE_PROFILE);
         $selected_value_style = $has_saved_tool_settings && ! empty($tool_settings['value_style'])
             ? (string) $tool_settings['value_style']
             : (string) ($generation['value_style'] ?? '');
@@ -223,6 +226,15 @@ final class DBVC_AI_Tools_Page
                         <tr>
                             <th scope="row"><?php esc_html_e('Generation defaults', 'dbvc'); ?></th>
                             <td>
+                                <label for="dbvc-ai-package-profile"><strong><?php esc_html_e('Package profile', 'dbvc'); ?></strong></label><br />
+                                <select id="dbvc-ai-package-profile" name="dbvc_ai_generate[package_profile]">
+                                    <?php foreach ((array) \Dbvc\AiPackage\Settings::get_package_profile_options() as $value => $label) : ?>
+                                        <option value="<?php echo esc_attr($value); ?>" <?php selected($selected_package_profile, $value); ?>><?php echo esc_html($label); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <br /><small class="description"><?php esc_html_e('Compact AI Chat is the default. It minimizes root docs and sample-file sprawl for browser-based LLM sessions. Full Reference keeps the richer package for deeper review workflows.', 'dbvc'); ?></small>
+                                <br /><br />
+
                                 <label for="dbvc-ai-shape-mode"><strong><?php esc_html_e('Shape mode', 'dbvc'); ?></strong></label><br />
                                 <select id="dbvc-ai-shape-mode" name="dbvc_ai_generate[shape_mode]">
                                     <?php foreach ((array) \Dbvc\AiPackage\Settings::get_shape_mode_options() as $value => $label) : ?>
@@ -254,21 +266,26 @@ final class DBVC_AI_Tools_Page
                         <tr>
                             <th scope="row"><?php esc_html_e('Included docs', 'dbvc'); ?></th>
                             <td>
-                                <fieldset>
-                                    <?php
-                                    $doc_rows = [];
-                                    foreach ((array) \Dbvc\AiPackage\Settings::get_included_doc_options() as $doc_key => $doc_label) {
-                                        $doc_rows[] = [
-                                            'value' => (string) $doc_key,
-                                            'checked' => in_array($doc_key, $included_docs, true),
-                                            'label' => (string) $doc_label,
-                                        ];
-                                    }
+                                <?php if ($selected_package_profile === 'compact_ai_chat') : ?>
+                                    <p><strong><?php esc_html_e('Compact profile preset', 'dbvc'); ?></strong></p>
+                                    <p class="description"><?php esc_html_e('Compact mode emits a single merged root guide and removes the heavier top-level doc set by default. Switch to Full Reference to control the richer root docs directly.', 'dbvc'); ?></p>
+                                <?php else : ?>
+                                    <fieldset>
+                                        <?php
+                                        $doc_rows = [];
+                                        foreach ((array) \Dbvc\AiPackage\Settings::get_included_doc_options() as $doc_key => $doc_label) {
+                                            $doc_rows[] = [
+                                                'value' => (string) $doc_key,
+                                                'checked' => in_array($doc_key, $included_docs, true),
+                                                'label' => (string) $doc_label,
+                                            ];
+                                        }
 
-                                    self::render_checkbox_table('included-docs', 'dbvc_ai_generate[included_docs][]', $doc_rows);
-                                    ?>
-                                </fieldset>
-                                <p class="description"><?php esc_html_e('Per-sample markdown guidance is always included. These toggles control the top-level agent/operator docs in the package root.', 'dbvc'); ?></p>
+                                        self::render_checkbox_table('included-docs', 'dbvc_ai_generate[included_docs][]', $doc_rows);
+                                        ?>
+                                    </fieldset>
+                                    <p class="description"><?php esc_html_e('These toggles control the richer top-level agent/operator docs in the package root. Compact mode replaces them with a merged guide instead.', 'dbvc'); ?></p>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <tr>
@@ -445,6 +462,7 @@ final class DBVC_AI_Tools_Page
             ? wp_unslash($_POST['dbvc_ai_generate'])
             : [];
 
+        $package_profile = isset($raw['package_profile']) ? sanitize_key((string) $raw['package_profile']) : '';
         $shape_mode = isset($raw['shape_mode']) ? sanitize_key((string) $raw['shape_mode']) : '';
         $value_style = isset($raw['value_style']) ? sanitize_key((string) $raw['value_style']) : '';
         $variant_set = isset($raw['variant_set']) ? sanitize_key((string) $raw['variant_set']) : '';
@@ -453,6 +471,7 @@ final class DBVC_AI_Tools_Page
         return [
             'post_types' => self::sanitize_string_array(isset($raw['post_types']) && is_array($raw['post_types']) ? $raw['post_types'] : []),
             'taxonomies' => self::sanitize_string_array(isset($raw['taxonomies']) && is_array($raw['taxonomies']) ? $raw['taxonomies'] : []),
+            'package_profile' => $package_profile,
             'shape_mode' => $shape_mode,
             'value_style' => $value_style,
             'variant_set' => $variant_set,

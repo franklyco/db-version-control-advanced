@@ -13,6 +13,7 @@ final class Settings
     public const DEFAULT_OBSERVED_SCAN_CAP = 20;
     public const MIN_OBSERVED_SCAN_CAP = 1;
     public const MAX_OBSERVED_SCAN_CAP = 100;
+    public const DEFAULT_PACKAGE_PROFILE = 'compact_ai_chat';
     public const DEFAULT_PROVIDER_KEY = 'openai';
     public const DEFAULT_PROVIDER_LABEL = 'OpenAI';
     public const DEFAULT_MODEL_ID = 'gpt-5.4';
@@ -35,6 +36,7 @@ final class Settings
         return [
             'schema_version' => self::SETTINGS_VERSION,
             'generation'     => [
+                'package_profile'   => self::DEFAULT_PACKAGE_PROFILE,
                 'shape_mode'        => 'conservative',
                 'value_style'       => 'blank',
                 'variant_set'       => 'single',
@@ -132,6 +134,17 @@ final class Settings
         return [
             'blank' => __('Blank', 'dbvc'),
             'dummy' => __('Dummy', 'dbvc'),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function get_package_profile_options(): array
+    {
+        return [
+            'compact_ai_chat' => __('Compact AI Chat', 'dbvc'),
+            'full_reference'  => __('Full Reference', 'dbvc'),
         ];
     }
 
@@ -252,6 +265,11 @@ final class Settings
             $included_docs = (array) ($defaults['generation']['included_docs'] ?? []);
         }
 
+        $package_profile = isset($generation['package_profile']) ? sanitize_key((string) wp_unslash($generation['package_profile'])) : '';
+        if (! array_key_exists($package_profile, self::get_package_profile_options())) {
+            $package_profile = (string) ($defaults['generation']['package_profile'] ?? self::DEFAULT_PACKAGE_PROFILE);
+        }
+
         $shape_mode = isset($generation['shape_mode']) ? sanitize_key((string) wp_unslash($generation['shape_mode'])) : '';
         if (! array_key_exists($shape_mode, self::get_shape_mode_options())) {
             $shape_mode = (string) $defaults['generation']['shape_mode'];
@@ -324,6 +342,7 @@ final class Settings
         return [
             'schema_version' => self::SETTINGS_VERSION,
             'generation'     => [
+                'package_profile'   => $package_profile,
                 'shape_mode'        => $shape_mode,
                 'value_style'       => $value_style,
                 'variant_set'       => $variant_set,

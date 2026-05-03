@@ -52,9 +52,10 @@ Supports:
 
 ### `acf_gallery`
 Supports:
-- inspect-only thumbnail preview for top-level ACF gallery fields rendered by Bricks gallery controls
-- inspect-only thumbnail preview for stable ACF repeater-row gallery descendants
-- inspect-only thumbnail preview for stable direct ACF flexible-content row descendants
+- ordered Media Library gallery replacement for top-level ACF gallery fields rendered by Bricks gallery controls
+- the same ordered gallery replacement path for stable ACF repeater-row gallery descendants
+- the same ordered gallery replacement path for stable direct ACF flexible-content row descendants
+- page reload after save so Bricks can rebuild gallery markup cleanly instead of relying on brittle partial DOM patching
 
 ### `unsupported`
 Fallback classifier for:

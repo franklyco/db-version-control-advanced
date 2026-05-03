@@ -519,18 +519,9 @@ final class AcfFieldContextResolver
         if ($parent_type === 'flexible_content' && $parent_name !== '' && $parent_key !== '') {
             $parent_selector = $this->resolveNativeQueryFieldSelector($native_query, $parent_name, $parent_key);
             $layout_name = $this->inferFlexibleLayoutName($tag, $parent_name, $subfield_name);
-            $supported = ! empty($loop_context['active'])
-                && $row_index !== null
-                && $layout_key !== ''
-                && $layout_name !== ''
-                && (
-                    $this->queryObjectTypeMatchesFlexible($query_object_type, $parent_name, $layout_name)
-                    || $this->nativeQueryMatchesFlexibleContainer($native_query, $parent_name, $parent_key, $layout_name, $layout_key)
-                );
-
-            return [
+            $context = [
                 'active' => true,
-                'supported' => $supported,
+                'supported' => false,
                 'parent_field_name' => $parent_name,
                 'parent_field_key' => $parent_key,
                 'parent_field_selector' => $parent_selector,
@@ -542,6 +533,19 @@ final class AcfFieldContextResolver
                 'subfield_name' => $subfield_name,
                 'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
             ];
+
+            $context = $this->canonicalizeFlexibleContextFromRow($context, $acf_object_id);
+            $context['supported'] = ! empty($loop_context['active'])
+                && $row_index !== null
+                && ! empty($context['layout_key'])
+                && ! empty($context['layout_name'])
+                && (
+                    $this->queryObjectTypeMatchesFlexible($query_object_type, $parent_name, (string) $context['layout_name'])
+                    || $this->nativeQueryMatchesFlexibleContainer($native_query, $parent_name, $parent_key, (string) $context['layout_name'], (string) $context['layout_key'])
+                )
+                && $this->containerSupportsTagField($tag_object, $context, $acf_object_id);
+
+            return $context;
         }
 
         if ($parent_type !== 'group' || ($native_query['kind'] ?? '') !== 'flexible_content') {
@@ -566,11 +570,58 @@ final class AcfFieldContextResolver
             'subfield_name' => $subfield_name,
             'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
         ];
+        $context = $this->canonicalizeFlexibleContextFromRow($context, $acf_object_id);
         $context['supported'] = ! empty($loop_context['active'])
             && $row_index !== null
-            && $layout_key !== ''
-            && $layout_name !== ''
+            && ! empty($context['layout_key'])
+            && ! empty($context['layout_name'])
             && $this->containerSupportsTagField($tag_object, $context, $acf_object_id);
+
+        return $context;
+    }
+
+    /**
+     * Reconcile flexible descendants against the actual row layout.
+     *
+     * Bricks can emit a duplicate flexible child tag keyed to the wrong layout
+     * alias even though the rendered element belongs to a different active row
+     * layout. The raw flexible row is the safer source of truth for layout
+     * identity, so canonicalize the descriptor context before field matching.
+     *
+     * @param array<string, mixed> $context
+     * @param mixed                $acf_object_id
+     * @return array<string, mixed>
+     */
+    private function canonicalizeFlexibleContextFromRow(array $context, $acf_object_id)
+    {
+        if (($context['parent_field_type'] ?? '') !== 'flexible_content') {
+            return $context;
+        }
+
+        if ($acf_object_id === '' || ! isset($context['row_index']) || ! is_numeric($context['row_index'])) {
+            return $context;
+        }
+
+        $container_field = $this->resolveContainerFieldDefinition($context, $acf_object_id);
+        if (empty($container_field)) {
+            return $context;
+        }
+
+        $rows = $this->loadRawContainerRows($context, $acf_object_id);
+        $row_index = absint($context['row_index']);
+        $row = isset($rows[$row_index]) && is_array($rows[$row_index]) ? $rows[$row_index] : [];
+        $layout_name = isset($row['acf_fc_layout']) ? sanitize_key((string) $row['acf_fc_layout']) : '';
+
+        if ($layout_name === '') {
+            return $context;
+        }
+
+        $context['layout_name'] = $layout_name;
+
+        $layout_key = $this->resolveFlexibleLayoutKeyByName($container_field, $layout_name);
+        if ($layout_key !== '') {
+            $context['layout_key'] = $layout_key;
+        }
 
         return $context;
     }
@@ -806,6 +857,66 @@ final class AcfFieldContextResolver
             return ! empty($layout['sub_fields']) && is_array($layout['sub_fields'])
                 ? $layout['sub_fields']
                 : [];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $container_field
+     * @param string               $layout_name
+     * @return string
+     */
+    private function resolveFlexibleLayoutKeyByName(array $container_field, $layout_name)
+    {
+        $layout_name = sanitize_key((string) $layout_name);
+        if ($layout_name === '' || empty($container_field['layouts']) || ! is_array($container_field['layouts'])) {
+            return '';
+        }
+
+        foreach ($container_field['layouts'] as $layout) {
+            if (! is_array($layout)) {
+                continue;
+            }
+
+            if (sanitize_key((string) ($layout['name'] ?? '')) !== $layout_name) {
+                continue;
+            }
+
+            return sanitize_key((string) ($layout['key'] ?? ''));
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $container_context
+     * @param mixed                $acf_object_id
+     * @return array<int, array<string, mixed>>
+     */
+    private function loadRawContainerRows(array $container_context, $acf_object_id)
+    {
+        if (! function_exists('get_field')) {
+            return [];
+        }
+
+        $identifiers = array_values(
+            array_filter(
+                array_unique(
+                    [
+                        isset($container_context['parent_field_selector']) ? sanitize_key((string) $container_context['parent_field_selector']) : '',
+                        isset($container_context['parent_field_name']) ? sanitize_key((string) $container_context['parent_field_name']) : '',
+                        isset($container_context['parent_field_key']) ? sanitize_key((string) $container_context['parent_field_key']) : '',
+                    ]
+                )
+            )
+        );
+
+        foreach ($identifiers as $identifier) {
+            $rows = get_field($identifier, $acf_object_id, false);
+            if (is_array($rows) && ! empty($rows)) {
+                return $rows;
+            }
         }
 
         return [];

@@ -46,12 +46,22 @@ final class LoopContextResolver
             ? \Bricks\Query::get_parent_loop_id()
             : false;
         $parent_context = $parent_loop_id ? $this->buildLoopContext((string) $parent_loop_id) : [];
+        if (! empty($parent_context)) {
+            $parent_owner = isset($parent_context['owner_entity']) && is_array($parent_context['owner_entity']) ? $parent_context['owner_entity'] : [];
+            $parent_context['native_acf_query'] = $this->native_acf_queries->resolve(
+                isset($parent_context['query_object_type']) ? (string) $parent_context['query_object_type'] : '',
+                $parent_owner
+            );
+        }
         $effective_owner = ! empty($context['owner_entity'])
             ? $context['owner_entity']
             : (isset($parent_context['owner_entity']) && is_array($parent_context['owner_entity']) ? $parent_context['owner_entity'] : []);
 
         $context['effective_owner_entity'] = $effective_owner;
         $context['parent'] = $parent_context;
+        $context['parent_native_acf_query'] = isset($parent_context['native_acf_query']) && is_array($parent_context['native_acf_query'])
+            ? $parent_context['native_acf_query']
+            : [];
         $context['native_acf_query'] = $this->native_acf_queries->resolve(
             isset($context['query_object_type']) ? (string) $context['query_object_type'] : '',
             $effective_owner
@@ -192,6 +202,7 @@ final class LoopContextResolver
             'supports_loop_owned_editing' => $this->supportsLoopOwnedEditing($context),
             'supports_related_post_editing' => $this->supportsRelatedPostEditing($context),
             'native_acf_query' => $this->exportNativeAcfQuery(isset($context['native_acf_query']) && is_array($context['native_acf_query']) ? $context['native_acf_query'] : []),
+            'parent_native_acf_query' => $this->exportNativeAcfQuery(isset($context['parent_native_acf_query']) && is_array($context['parent_native_acf_query']) ? $context['parent_native_acf_query'] : []),
             'parent_query_object_type' => isset($context['parent']['query_object_type']) ? sanitize_key((string) $context['parent']['query_object_type']) : '',
             'parent_loop_object_type' => isset($context['parent']['loop_object_type']) ? sanitize_key((string) $context['parent']['loop_object_type']) : '',
             'parent_loop_object_id' => isset($context['parent']['loop_object_id']) ? absint($context['parent']['loop_object_id']) : 0,
@@ -238,6 +249,8 @@ final class LoopContextResolver
                 sanitize_text_field((string) ($context['loop_index'] ?? '')),
                 sanitize_text_field((string) ($parent_context['query_element_id'] ?? '')),
                 sanitize_key((string) ($parent_context['query_object_type'] ?? '')),
+                sanitize_key((string) ($parent_context['native_acf_query']['selector'] ?? '')),
+                sanitize_key((string) ($parent_context['native_acf_query']['kind'] ?? '')),
                 sanitize_key((string) ($parent_context['loop_object_type'] ?? '')),
                 (string) absint($parent_context['loop_object_id'] ?? 0),
                 sanitize_text_field((string) ($parent_context['loop_index'] ?? '')),

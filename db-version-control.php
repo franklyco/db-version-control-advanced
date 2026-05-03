@@ -87,6 +87,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/ObservedShapeService.ph
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SchemaDiscoveryService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SiteFingerprintService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/RulesService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/CompactSchemaBuilder.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/OpenAiModelCatalogService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/TemplateBuilder.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SampleDocBuilder.php';

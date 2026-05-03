@@ -40,6 +40,21 @@
   font-size: 12px;
 }
 
+.dbvc-ve-statusbar__links {
+  margin-top: 6px;
+}
+
+.dbvc-ve-statusbar__link {
+  color: #0f766e;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.dbvc-ve-statusbar__link:hover,
+.dbvc-ve-statusbar__link:focus {
+  text-decoration: underline;
+}
+
 .dbvc-ve-statusbar__message {
   margin-top: 6px;
   color: #334155;

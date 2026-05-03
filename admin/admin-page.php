@@ -2182,6 +2182,11 @@ function dbvc_render_export_page()
                 $ai_cancel_url = ($ai_intake_id !== '' && class_exists('DBVC_AI_Intake_Controller'))
                   ? DBVC_AI_Intake_Controller::get_cancel_url($ai_intake_id)
                   : '';
+                $ai_override_context = class_exists('\Dbvc\AiPackage\SubmissionPackageValidator')
+                  ? \Dbvc\AiPackage\SubmissionPackageValidator::get_override_context($ai_upload_report)
+                  : [];
+                $ai_can_override_blocked = $ai_report_status === 'blocked' && ! empty($ai_override_context['can_override_import_block']);
+                $ai_requires_fingerprint_override = ! empty($ai_override_context['requires_fingerprint_override']);
               ?>
                 <div class="<?php echo esc_attr($ai_report_notice_class); ?> dbvc-ai-review-panel" style="margin-top:1em;">
                   <p><strong><?php echo esc_html($ai_report_title); ?></strong></p>
@@ -2244,6 +2249,19 @@ function dbvc_render_export_page()
                       );
                       ?>
                     </p>
+                  <?php endif; ?>
+                  <?php if ($ai_can_override_blocked) : ?>
+                    <div class="notice notice-warning inline">
+                      <p>
+                        <?php
+                        echo esc_html(
+                          $ai_requires_fingerprint_override
+                            ? __('This package is blocked by a site fingerprint mismatch. You can override that safeguard and continue only if you intentionally want to import AI output authored from a different site sample package.', 'dbvc')
+                            : __('This blocked AI intake can be imported only through an explicit operator override.', 'dbvc')
+                        );
+                        ?>
+                      </p>
+                    </div>
                   <?php endif; ?>
                   <?php if (! empty($ai_import_result)) : ?>
                     <div class="notice notice-info inline">
@@ -2416,8 +2434,16 @@ function dbvc_render_export_page()
                       <?php endif; ?>
                     </div>
                   <?php endif; ?>
-                  <?php if ($ai_report_status !== 'blocked' && $ai_import_url !== '') : ?>
+                  <?php if (($ai_report_status !== 'blocked' || $ai_can_override_blocked) && $ai_import_url !== '') : ?>
                     <form method="post" action="<?php echo esc_url($ai_import_url); ?>" class="dbvc-ai-review-panel__import-form">
+                      <?php if ($ai_can_override_blocked) : ?>
+                        <div class="dbvc-option-chip-grid" style="margin-bottom:0.75rem;">
+                          <label class="dbvc-option-chip">
+                            <input type="checkbox" name="dbvc_ai_confirm_override_blocked" value="1" />
+                            <span class="dbvc-option-chip__text"><?php esc_html_e('I understand the site fingerprint mismatch and want to override it for this import.', 'dbvc'); ?></span>
+                          </label>
+                        </div>
+                      <?php endif; ?>
                       <?php if ($ai_report_status === 'valid_with_warnings' && ! empty($ai_report_counts['warnings']) && $ai_warning_policy === 'confirm') : ?>
                         <div class="dbvc-option-chip-grid" style="margin-bottom:0.75rem;">
                           <label class="dbvc-option-chip">
@@ -2427,7 +2453,9 @@ function dbvc_render_export_page()
                         </div>
                       <?php endif; ?>
                       <div class="dbvc-ai-review-panel__actions">
-                        <button type="submit" class="button button-primary"><?php esc_html_e('Import Translated Package', 'dbvc'); ?></button>
+                        <button type="submit" class="button button-primary">
+                          <?php echo esc_html($ai_can_override_blocked ? __('Override and Import Translated Package', 'dbvc') : __('Import Translated Package', 'dbvc')); ?>
+                        </button>
                         <?php if ($ai_cancel_url !== '') : ?>
                           <a class="button button-secondary" href="<?php echo esc_url($ai_cancel_url); ?>"><?php esc_html_e('Cancel AI Intake', 'dbvc'); ?></a>
                         <?php endif; ?>
@@ -2763,6 +2791,9 @@ function dbvc_render_export_page()
                 } elseif ('ai_confirm_required' === $state) {
                   $class = 'notice-warning';
                   $msg   = __('Confirm the remaining AI intake warnings before importing this package.', 'dbvc');
+                } elseif ('ai_override_required' === $state) {
+                  $class = 'notice-warning';
+                  $msg   = __('Confirm the AI intake override before importing this blocked package.', 'dbvc');
                 } elseif ('ai_cancelled' === $state) {
                   $class = 'notice-info';
                   $msg   = __('AI package intake was cancelled and cleared from the review surface.', 'dbvc');
@@ -3628,6 +3659,7 @@ document.addEventListener('DOMContentLoaded', function () {
         $ai_guidance_settings = isset($ai_package_settings['guidance']) && is_array($ai_package_settings['guidance']) ? $ai_package_settings['guidance'] : [];
         $ai_provider_settings = isset($ai_package_settings['providers']) && is_array($ai_package_settings['providers']) ? $ai_package_settings['providers'] : [];
         $ai_included_docs = isset($ai_generation_settings['included_docs']) && is_array($ai_generation_settings['included_docs']) ? $ai_generation_settings['included_docs'] : [];
+        $ai_package_profile_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_package_profile_options() : [];
         $ai_shape_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_shape_mode_options() : [];
         $ai_value_style_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_value_style_options() : [];
         $ai_variant_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_variant_set_options() : [];
@@ -3650,6 +3682,18 @@ document.addEventListener('DOMContentLoaded', function () {
         <p class="description"><?php esc_html_e('Set default AI package generation preferences, intake validation defaults, reusable operator guidance, and the default OpenAI service configuration for future AI-assisted workflows.', 'dbvc'); ?></p>
 
         <h3><?php esc_html_e('Package Generation Defaults', 'dbvc'); ?></h3>
+        <p>
+          <label for="dbvc-ai-generation-package-profile"><strong><?php esc_html_e('Default package profile', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-generation-package-profile" name="dbvc_ai_settings[generation][package_profile]">
+            <?php foreach ($ai_package_profile_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_generation_settings['package_profile'] ?? \Dbvc\AiPackage\Settings::DEFAULT_PACKAGE_PROFILE), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <br><small class="description"><?php esc_html_e('Compact AI Chat is recommended for browser-based LLM sessions. Full Reference keeps the larger doc set for deeper review workflows.', 'dbvc'); ?></small>
+        </p>
+
         <p>
           <label for="dbvc-ai-generation-shape-mode"><strong><?php esc_html_e('Default shape mode', 'dbvc'); ?></strong></label><br>
           <select id="dbvc-ai-generation-shape-mode" name="dbvc_ai_settings[generation][shape_mode]">
@@ -3699,6 +3743,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         <fieldset style="margin:1rem 0;">
           <legend><strong><?php esc_html_e('Default included top-level docs', 'dbvc'); ?></strong></legend>
+          <p class="description" style="margin:0 0 0.75rem 0;"><?php esc_html_e('These selections apply to the Full Reference profile. Compact AI Chat uses a reduced merged guide instead of the full root doc set.', 'dbvc'); ?></p>
           <?php foreach ($ai_doc_options as $doc_key => $doc_label) : ?>
             <label style="display:block;margin:0 0 0.35rem 0;">
               <input
@@ -4804,6 +4849,17 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
       </div>
     </div>
   </div><!-- .wrap -->
+  <div id="dbvc-ai-review-workbench" class="dbvc-ai-review-workbench" hidden>
+    <div class="dbvc-ai-review-workbench__header">
+      <div class="dbvc-ai-review-workbench__eyebrow">
+        <span class="dbvc-badge dbvc-badge--reviewed"><?php esc_html_e('AI Intake Review', 'dbvc'); ?></span>
+        <span class="dbvc-ai-review-workbench__eyebrow-note"><?php esc_html_e('Retained package report', 'dbvc'); ?></span>
+      </div>
+      <h2><?php esc_html_e('AI Package Intake Review', 'dbvc'); ?></h2>
+      <p><?php esc_html_e('Review blocked or warning-state AI package results, inspect retained artifacts, and continue import only when explicitly allowed.', 'dbvc'); ?></p>
+    </div>
+    <div id="dbvc-ai-review-workbench-slot"></div>
+  </div>
   <div id="dbvc-admin-app-root"></div>
 
   <style>
@@ -4871,7 +4927,16 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     .dbvc-option-chip--compact { flex:0 0 auto; max-width:none; min-width:0; }
     .dbvc-option-chip input { margin:2px 0 0; }
     .dbvc-option-chip__text { display:block; line-height:1.35; }
-    .dbvc-ai-review-panel { padding:1rem 1.25rem; }
+    .dbvc-ai-review-workbench { margin:24px 0 28px; padding:20px 22px; border:1px solid #dcdcde; border-radius:14px; background:linear-gradient(135deg, rgba(34, 113, 177, 0.08), rgba(255, 255, 255, 0) 45%), linear-gradient(180deg, #ffffff, #f7fbff); box-shadow:0 10px 24px rgba(15, 23, 42, 0.05); }
+    .dbvc-ai-review-workbench[hidden] { display:none !important; }
+    .dbvc-ai-review-workbench__header { margin:0 0 16px; }
+    .dbvc-ai-review-workbench__eyebrow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    .dbvc-ai-review-workbench__eyebrow-note { font-size:12px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:#646970; }
+    .dbvc-ai-review-workbench__header h2 { margin:0 0 6px; }
+    .dbvc-ai-review-workbench__header p { margin:0; color:#50575e; max-width:900px; }
+    .dbvc-ai-review-panel { padding:1rem 1.25rem; border:1px solid #dcdcde; border-radius:12px; background:#fff; box-shadow:0 4px 14px rgba(15, 23, 42, 0.04); }
+    .dbvc-ai-review-panel.is-blocked { border-color:rgba(214, 54, 56, 0.24); background:linear-gradient(180deg, #fff8f8, #ffffff 40%); }
+    .dbvc-ai-review-panel.is-review { border-color:rgba(34, 113, 177, 0.22); background:linear-gradient(180deg, #f7fbff, #ffffff 42%); }
     .dbvc-ai-review-panel__actions { display:flex; flex-wrap:wrap; gap:0.5rem; margin:0.75rem 0 1rem; }
     .dbvc-ai-review-panel__import-form { margin:0.5rem 0 1rem; }
     .dbvc-ai-review-panel__table-wrap { overflow:auto; margin:0.5rem 0 1rem; }
@@ -5085,6 +5150,41 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
       window.addEventListener('hashchange', function() {
         activateFromHash(window.location.hash);
       });
+
+      function relocateAiReviewPanel() {
+        const workbench = document.getElementById('dbvc-ai-review-workbench');
+        const slot = document.getElementById('dbvc-ai-review-workbench-slot');
+        if (!workbench || !slot) {
+          return;
+        }
+
+        const panels = Array.from(document.querySelectorAll('#dbvc-import-upload > .dbvc-ai-review-panel'));
+        if (!panels.length) {
+          workbench.hidden = true;
+          return;
+        }
+
+        slot.innerHTML = '';
+        panels.forEach(function(panel) {
+          if (panel.classList.contains('notice-error')) {
+            panel.classList.add('is-blocked');
+          } else {
+            panel.classList.add('is-review');
+          }
+
+          panel.classList.remove('notice', 'notice-error', 'notice-info', 'updated', 'error');
+          panel.style.marginTop = '0';
+          slot.appendChild(panel);
+        });
+
+        workbench.hidden = false;
+
+        if (window.location.hash === '#dbvc-ai-review-workbench' || window.location.hash === '#dbvc-import-upload') {
+          workbench.scrollIntoView({ block: 'start', behavior: 'auto' });
+        }
+      }
+
+      relocateAiReviewPanel();
     })();
 
     jQuery(function($) {

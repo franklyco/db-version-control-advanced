@@ -438,8 +438,16 @@ class DBVC_Sync_Posts
             return rtrim($absolute_path, DIRECTORY_SEPARATOR);
         }
 
-        // Fallback if path isn't set — optional
-        return plugin_dir_path(DBVC_PLUGIN_FILE) . 'sync';
+        if (defined('DBVC_PLUGIN_PATH') && DBVC_PLUGIN_PATH !== '') {
+            return rtrim(wp_normalize_path(DBVC_PLUGIN_PATH . 'sync'), DIRECTORY_SEPARATOR);
+        }
+
+        if (defined('DBVC_PLUGIN_FILE') && DBVC_PLUGIN_FILE !== '') {
+            return rtrim(wp_normalize_path(plugin_dir_path(DBVC_PLUGIN_FILE) . 'sync'), DIRECTORY_SEPARATOR);
+        }
+
+        // Final fallback for constrained runtimes such as PHPUnit bootstrap.
+        return rtrim(wp_normalize_path(dirname(__DIR__) . '/sync'), DIRECTORY_SEPARATOR);
     }
 
     /**

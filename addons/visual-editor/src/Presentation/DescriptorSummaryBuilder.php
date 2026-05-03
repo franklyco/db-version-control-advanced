@@ -48,6 +48,8 @@ final class DescriptorSummaryBuilder
         $layout_key = isset($path['layoutKey']) ? sanitize_key((string) $path['layoutKey']) : (isset($source['layout_key']) ? sanitize_key((string) $source['layout_key']) : '');
         $native_query_kind = isset($path['nativeQueryKind']) ? sanitize_key((string) $path['nativeQueryKind']) : (isset($source['native_query_kind']) ? sanitize_key((string) $source['native_query_kind']) : '');
         $native_query_selector = isset($path['nativeQuerySelector']) ? sanitize_key((string) $path['nativeQuerySelector']) : (isset($source['native_query_selector']) ? sanitize_key((string) $source['native_query_selector']) : '');
+        $parent_native_query_kind = isset($path['parentNativeQueryKind']) ? sanitize_key((string) $path['parentNativeQueryKind']) : (isset($source['parent_native_query_kind']) ? sanitize_key((string) $source['parent_native_query_kind']) : '');
+        $parent_native_query_selector = isset($path['parentNativeQuerySelector']) ? sanitize_key((string) $path['parentNativeQuerySelector']) : (isset($source['parent_native_query_selector']) ? sanitize_key((string) $source['parent_native_query_selector']) : '');
         $group_path = isset($path['groupPath']) && is_array($path['groupPath'])
             ? array_values(
                 array_filter(
@@ -60,6 +62,18 @@ final class DescriptorSummaryBuilder
                 )
             )
             : (isset($source['group_path']) && is_array($source['group_path']) ? array_values(array_filter(array_map('sanitize_key', $source['group_path']))) : []);
+        $group_key_path = isset($path['groupKeyPath']) && is_array($path['groupKeyPath'])
+            ? array_values(
+                array_filter(
+                    array_map(
+                        static function ($value) {
+                            return sanitize_key((string) $value);
+                        },
+                        $path['groupKeyPath']
+                    )
+                )
+            )
+            : (isset($source['group_key_path']) && is_array($source['group_key_path']) ? array_values(array_filter(array_map('sanitize_key', $source['group_key_path']))) : []);
         $expression = isset($source['expression']) ? sanitize_text_field((string) $source['expression']) : '';
         $parts = array_values(array_filter([$type, $field_name]));
 
@@ -76,12 +90,28 @@ final class DescriptorSummaryBuilder
             $parts[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
         }
 
+        if ($parent_native_query_kind !== '' || $parent_native_query_selector !== '') {
+            $parts[] = 'parent-native:' . ($parent_native_query_kind !== '' ? $parent_native_query_kind : 'query') . ($parent_native_query_selector !== '' ? ':' . $parent_native_query_selector : '');
+        }
+
         if ($native_query_kind !== '' || $native_query_selector !== '') {
             $parts[] = 'native:' . ($native_query_kind !== '' ? $native_query_kind : 'query') . ($native_query_selector !== '' ? ':' . $native_query_selector : '');
         }
 
-        if (! empty($group_path)) {
-            $parts[] = 'group:' . implode('>', $group_path);
+        $group_depth = max(count($group_path), count($group_key_path));
+        $group_summary_path = [];
+
+        for ($index = 0; $index < $group_depth; $index++) {
+            $group_name = isset($group_path[$index]) ? $group_path[$index] : '';
+            $group_key = isset($group_key_path[$index]) ? $group_key_path[$index] : '';
+
+            if ($group_name !== '' || $group_key !== '') {
+                $group_summary_path[] = $group_name !== '' ? $group_name : $group_key;
+            }
+        }
+
+        if (! empty($group_summary_path)) {
+            $parts[] = 'group:' . implode('>', $group_summary_path);
         }
 
         $entity_type = isset($entity['type']) ? sanitize_key((string) $entity['type']) : '';

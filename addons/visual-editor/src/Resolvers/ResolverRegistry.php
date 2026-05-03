@@ -266,6 +266,7 @@ final class ResolverRegistry
         $tag_object = isset($resolved['tag_object']) && is_array($resolved['tag_object']) ? $resolved['tag_object'] : [];
         $loop = isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [];
         $native_query = isset($loop['native_acf_query']) && is_array($loop['native_acf_query']) ? $loop['native_acf_query'] : [];
+        $parent_native_query = isset($loop['parent_native_acf_query']) && is_array($loop['parent_native_acf_query']) ? $loop['parent_native_acf_query'] : [];
         $leaf_field_name = isset($tag_object['field']['name']) ? sanitize_key((string) $tag_object['field']['name']) : $field_name;
         $leaf_field_key = isset($tag_object['field']['key']) ? sanitize_key((string) $tag_object['field']['key']) : $field_key;
         $group_path = $this->normalizeNestedGroupPath($tag_object, $parent_field_name);
@@ -325,6 +326,12 @@ final class ResolverRegistry
                 'native_query_object_type' => isset($native_query['objectType']) ? sanitize_key((string) $native_query['objectType']) : '',
                 'native_query_field_name' => isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '',
                 'native_query_field_type' => isset($native_query['fieldType']) ? sanitize_key((string) $native_query['fieldType']) : '',
+                'parent_native_query_active' => ! empty($parent_native_query['active']),
+                'parent_native_query_kind' => isset($parent_native_query['kind']) ? sanitize_key((string) $parent_native_query['kind']) : '',
+                'parent_native_query_selector' => isset($parent_native_query['selector']) ? sanitize_key((string) $parent_native_query['selector']) : '',
+                'parent_native_query_object_type' => isset($parent_native_query['objectType']) ? sanitize_key((string) $parent_native_query['objectType']) : '',
+                'parent_native_query_field_name' => isset($parent_native_query['fieldName']) ? sanitize_key((string) $parent_native_query['fieldName']) : '',
+                'parent_native_query_field_type' => isset($parent_native_query['fieldType']) ? sanitize_key((string) $parent_native_query['fieldType']) : '',
             ],
             'resolver' => [
                 'name' => $resolver_name,
@@ -443,7 +450,7 @@ final class ResolverRegistry
     private function resolveReadonlyAcfInputType($field_type, $allow_multiple, $render_context = '')
     {
         if ($field_type === 'gallery') {
-            return 'media_gallery_preview';
+            return 'media_gallery_reference';
         }
 
         if ($field_type === 'image') {
@@ -563,6 +570,8 @@ final class ResolverRegistry
             $warnings[] = __('This field resolves to a shared taxonomy term target rather than the current post. Saving here affects any view using that term field.', 'dbvc');
         } elseif ($entity_type === 'user') {
             $warnings[] = __('This field resolves to a shared user profile target rather than the current post. Saving here affects any view using that user field.', 'dbvc');
+        } elseif ($entity_type === 'post' && ($resolved['scope'] ?? '') === 'shared_entity') {
+            $warnings[] = __('This field resolves to a shared non-current post target rather than the current page. Saving here updates that shared post anywhere this field is reused.', 'dbvc');
         }
 
         $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
@@ -649,12 +658,10 @@ final class ResolverRegistry
             } else {
                 $warnings[] = __('This field belongs to a non-current post rendered by a Bricks query loop. It is surfaced here for inspection only until that loop-owned mutation path has a dedicated save contract.', 'dbvc');
             }
-        } elseif ($reason === 'flexible_non_post_owner') {
-            $warnings[] = __('This flexible-content subfield belongs to a non-post owner. Flexible mutation is currently limited to current and related post owners only.', 'dbvc');
         } elseif ($reason === 'flexible_shared_post_owner') {
             $warnings[] = __('This flexible-content subfield belongs to a shared non-current post outside the current loop-owned slice. It is surfaced here for inspection only until that post-owner contract is enabled.', 'dbvc');
         } elseif ($reason === 'flexible_pending') {
-            $warnings[] = __('This flexible-content subfield is surfaced here for inspection only. Flexible mutation is currently limited to text-like, WYSIWYG, choice, link, and image subfields with stable post-owned row identity.', 'dbvc');
+            $warnings[] = __('This flexible-content subfield is surfaced here for inspection only. Flexible mutation is currently limited to text-like, WYSIWYG, choice, link, and image subfields with stable row identity.', 'dbvc');
         } elseif ($reason === 'gallery_collection') {
             $warnings[] = __('This gallery field is surfaced here for inspection only. Multi-image collection editing needs a dedicated mutation and rollback contract before it can be saved safely.', 'dbvc');
         } elseif ($reason === 'image_projection') {
@@ -693,17 +700,7 @@ final class ResolverRegistry
 
         if (! empty($flexible['supported'])) {
             $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
-            $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
-            $scope = isset($resolved['scope']) ? (string) $resolved['scope'] : 'current_entity';
             $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
-
-            if ($entity_type !== 'post') {
-                return 'flexible_non_post_owner';
-            }
-
-            if ($scope === 'shared_entity') {
-                return 'flexible_shared_post_owner';
-            }
 
             if (! $this->isEditableFlexibleFieldType($field_type)) {
                 return 'flexible_pending';
@@ -716,7 +713,7 @@ final class ResolverRegistry
         }
 
         $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
-        if ($field_type === 'gallery') {
+        if ($field_type === 'gallery' && $render_context !== 'gallery_collection') {
             return 'gallery_collection';
         }
 
@@ -756,7 +753,7 @@ final class ResolverRegistry
     {
         return in_array(
             $field_type,
-            ['text', 'textarea', 'url', 'email', 'number', 'range', 'wysiwyg', 'checkbox', 'select', 'radio', 'button_group', 'link', 'image'],
+            ['text', 'textarea', 'url', 'email', 'number', 'range', 'wysiwyg', 'checkbox', 'select', 'radio', 'button_group', 'link', 'image', 'gallery'],
             true
         );
     }

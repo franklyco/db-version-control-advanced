@@ -17,6 +17,7 @@ final class MutationContractService
         $target = $this->resolveMutationString($descriptor, 'target', 'field');
         $render_context = $this->resolveMutationString($descriptor, 'renderContext', '');
         $native_loop_kind = $this->resolveMutationString($descriptor, 'nativeLoopKind', '');
+        $parent_native_loop_kind = $this->resolveMutationString($descriptor, 'parentNativeLoopKind', '');
         $requires_ack = $this->requiresAcknowledgement($descriptor);
         $ack_type = $this->resolveAcknowledgementType($descriptor);
         $writable = $this->isWritable($descriptor);
@@ -27,11 +28,12 @@ final class MutationContractService
             'target' => $target,
             'renderContext' => $render_context,
             'nativeLoopKind' => $native_loop_kind,
+            'parentNativeLoopKind' => $parent_native_loop_kind,
             'writable' => $writable,
             'requiresAcknowledgement' => $requires_ack,
             'acknowledgementType' => $ack_type,
             'label' => $this->resolveContractLabel($contract),
-            'detail' => $this->resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind),
+            'detail' => $this->resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind, $parent_native_loop_kind),
         ];
     }
 
@@ -55,6 +57,7 @@ final class MutationContractService
                 'loop_owned_field',
                 'loop_owned_repeater_row',
                 'loop_owned_flexible_layout',
+                'shared_flexible_layout',
             ],
             true
         );
@@ -239,7 +242,7 @@ final class MutationContractService
      * @param string $render_context
      * @return string
      */
-    private function resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind = '')
+    private function resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind = '', $parent_native_loop_kind = '')
     {
         $parts = [$this->resolveContractLabel($contract)];
 
@@ -257,6 +260,10 @@ final class MutationContractService
 
         if ($native_loop_kind !== '') {
             $parts[] = 'native ' . str_replace('_', ' ', sanitize_key((string) $native_loop_kind)) . ' loop';
+        }
+
+        if ($parent_native_loop_kind !== '') {
+            $parts[] = 'parent native ' . str_replace('_', ' ', sanitize_key((string) $parent_native_loop_kind)) . ' loop';
         }
 
         return implode(' / ', $parts);

@@ -238,9 +238,9 @@ Current status:
 - native Bricks ACF repeater loops have now been hardened against several real-world provider/runtime failure classes, including shortened parent aliases, duplicate child keys, nested group descendants, repeated-loop seed collapse, and fake related-owner classification from bare numeric row indices
 - direct safe ACF fields on concrete queried post, term, and user loop owners are now writable through the explicit loop-owned contract layer
 - direct flexible descendants with stable row + layout identity now surface with stable path metadata
-- current/related post flexible text-like, WYSIWYG, choice, link, and image descendants are now writable through the flexible contract layer
+- flexible text-like, WYSIWYG, choice, link, and image descendants are now writable through the flexible contract layer for current owners, loop-owned related owners, and shared term/user/option owners
 - nested ACF group ancestry is now preserved through descriptor metadata, row traversal, and live sync identity so grouped descendants can be resumed from a stable contract baseline
-- flexible gallery plus non-post/shared flexible descendants are still pending
+- ordered gallery replacement is now enabled for direct Bricks gallery collections, including stable repeater and flexible row descendants, and the same safe flexible field set is now widened across shared post/term/user/option owners through the explicit `shared_flexible_layout` contract
 
 ### Immediate next implementation order
 
@@ -250,7 +250,8 @@ Recommended next sequence:
 1. formalize Descriptor V2 owner/page/loop/path/mutation metadata
 2. add durable Visual Editor change-set journaling
 3. introduce dedicated save-contract metadata for loop-owned sources
-4. keep native Bricks ACF loop provenance explicit and smoke the remaining relationship/post-object cases on real pages
+4. keep native Bricks ACF loop provenance explicit and smoke the remaining relationship/post-object/taxonomy cases on real pages
+   - include parent native loop ancestry for nested paths like `relationship -> repeater` so descriptors, signatures, and save-contract summaries do not collapse everything down to the inner loop alone
 5. expand inspect-only flexible/query-loop coverage where ownership is stable
 6. enable writable flexible scalar descendants only after the above are in place
 
@@ -320,7 +321,8 @@ Resume from here:
 0. current active slice before resuming the grouped-save smoke:
    - formalize Bricks native ACF query-loop metadata for repeater, relationship, and post-object `query.objectType` values
    - harden loop owner/path resolution for native ACF relationship and post-object loops
+   - keep canonical flexible row/layout identity upstream by reconciling duplicate Bricks layout aliases against the actual raw row `acf_fc_layout` before subfield matching
 1. run live save smoke tests for nested grouped descendants inside supported repeater/flexible/related-owner paths
    - direct grouped ACF leaves now preserve parent group ancestry and prefer selector-based writes, so the next verification target is live save behavior rather than descriptor discovery
 2. verify grouped descendants do not cross-sync after save on real pages
-3. only then widen non-post/shared flexible descendants and collection-safe structured paths
+3. only then widen any remaining collection-safe structured paths

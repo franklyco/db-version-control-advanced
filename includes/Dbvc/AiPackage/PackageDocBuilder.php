@@ -15,6 +15,13 @@ final class PackageDocBuilder
      */
     public static function build_root_docs(array $context, array $included_docs): array
     {
+        $package_profile = isset($context['package_profile']) ? sanitize_key((string) $context['package_profile']) : Settings::DEFAULT_PACKAGE_PROFILE;
+        if ($package_profile === 'compact_ai_chat') {
+            return [
+                'START_HERE.md' => self::build_start_here($context),
+            ];
+        }
+
         $included_docs = array_values(array_unique(array_filter(array_map('sanitize_key', $included_docs))));
         $docs = [];
 
@@ -42,6 +49,66 @@ final class PackageDocBuilder
         }
 
         return $docs;
+    }
+
+    /**
+     * @param array<string,mixed> $context
+     * @return string
+     */
+    private static function build_start_here(array $context): string
+    {
+        $selection = self::get_selection($context);
+        $post_types = ! empty($selection['post_types']) ? implode('`, `', array_map('strval', $selection['post_types'])) : 'none';
+        $taxonomies = ! empty($selection['taxonomies']) ? implode('`, `', array_map('strval', $selection['taxonomies'])) : 'none';
+
+        $lines = [
+            '# START HERE',
+            '',
+            'This DBVC sample package is optimized for browser-based AI chat sessions.',
+            '',
+            '## What This Package Contains',
+            '',
+            '- Canonical DBVC-shaped sample JSON for the selected object types.',
+            '- One compact machine-readable schema file.',
+            '- The current site fingerprint that the returned package should target.',
+            '',
+            '## Current Scope',
+            '',
+            '- Post types: `' . $post_types . '`',
+            '- Taxonomies: `' . $taxonomies . '`',
+            '- Site fingerprint: `' . self::get_site_fingerprint($context) . '`',
+            '',
+            '## Required Return Layout',
+            '',
+            '```text',
+            'dbvc-ai-manifest.json',
+            'entities/posts/{post_type}/{slug}.json',
+            'entities/terms/{taxonomy}/{slug}.json',
+            '```',
+            '',
+            'Optional return files:',
+            '',
+            '- `docs/NOTES.md`',
+            '- `reports/generation-summary.md`',
+            '',
+            '## Authoring Rules',
+            '',
+            '- Mirror the sample JSON field names exactly.',
+            '- Use `ID: 0` or `term_id: 0` for net-new entities.',
+            '- Only include `vf_object_uid` when the update target is already known.',
+            '- Prefer slug-based references instead of numeric IDs.',
+            '- Do not invent DBVC bookkeeping fields or ACF underscore reference keys.',
+            '- Keep unsupported complex/media ACF fields empty in v1.',
+            '',
+            '## Workflow',
+            '',
+            '1. Read `SCHEMA_COMPACT.json` and the sample JSON for the object type you are authoring.',
+            '2. Draft the returned entity JSON using the canonical sample structure.',
+            '3. Return only the package contents DBVC needs for import.',
+            '',
+        ];
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -175,6 +242,7 @@ final class PackageDocBuilder
             '- Prefer slug-based references instead of numeric IDs.',
             '- Do not invent DBVC bookkeeping fields, history hashes, or ACF underscore keys.',
             '- Keep unsupported complex ACF families empty unless the sample JSON and sibling docs explicitly show a supported structure.',
+            '- Optional notes or generation summaries may be included, but DBVC only requires the manifest and entity JSON files.',
             '',
             'Current selected scope:',
             '- Post types: ' . $post_types,
@@ -205,9 +273,12 @@ final class PackageDocBuilder
             'dbvc-ai-manifest.json',
             'entities/posts/{post_type}/{entity-slug}.json',
             'entities/terms/{taxonomy}/{term-slug}.json',
-            'docs/NOTES.md',
-            'reports/generation-summary.md',
             '```',
+            '',
+            'Optional tolerated files:',
+            '',
+            '- `docs/NOTES.md`',
+            '- `reports/generation-summary.md`',
             '',
             '## Manifest Minimum',
             '',

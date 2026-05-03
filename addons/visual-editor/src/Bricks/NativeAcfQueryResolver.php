@@ -44,7 +44,7 @@ final class NativeAcfQueryResolver
             'fieldKey' => $field_key,
             'fieldType' => $field_type,
             'kind' => $this->mapFieldTypeToLoopKind($field_type),
-            'supportsConcreteOwner' => in_array($field_type, ['relationship', 'post_object'], true),
+            'supportsConcreteOwner' => in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true),
             'isRepeaterLike' => in_array($field_type, ['repeater', 'flexible_content'], true),
         ];
     }
@@ -206,6 +206,8 @@ final class NativeAcfQueryResolver
                 return 'relationship';
             case 'post_object':
                 return 'post_object';
+            case 'taxonomy':
+                return 'taxonomy';
             case 'flexible_content':
                 return 'flexible_content';
             default:

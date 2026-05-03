@@ -427,6 +427,68 @@ final class ElementInstrumentationService
     }
 
     /**
+     * @param string             $left
+     * @param string             $right
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function valuesMatchForDescriptor($left, $right, EditableDescriptor $descriptor)
+    {
+        if ($this->valuesMatch($left, $right)) {
+            return true;
+        }
+
+        $context = isset($descriptor->render['context']) ? (string) $descriptor->render['context'] : 'text';
+        if (! in_array($context, ['image_src', 'background_image'], true)) {
+            return false;
+        }
+
+        return $this->mediaValuesMatch($left, $right);
+    }
+
+    /**
+     * @param string $left
+     * @param string $right
+     * @return bool
+     */
+    private function mediaValuesMatch($left, $right)
+    {
+        $left_key = $this->normalizeMediaComparableValue($left);
+        $right_key = $this->normalizeMediaComparableValue($right);
+
+        return $left_key !== ''
+            && $right_key !== ''
+            && $left_key === $right_key;
+    }
+
+    /**
+     * @param string $value
+     * @return string
+     */
+    private function normalizeMediaComparableValue($value)
+    {
+        $value = $this->normalizeComparableValue($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $path = wp_parse_url($value, PHP_URL_PATH);
+        if (! is_string($path) || $path === '') {
+            $path = $value;
+        }
+
+        $path = rawurldecode((string) $path);
+        $path = preg_replace('/-\d+x\d+(?=\.[a-zA-Z0-9]+$)/', '', $path);
+        $path = is_string($path) ? trim($path) : '';
+
+        if ($path === '') {
+            return '';
+        }
+
+        return strtolower(ltrim($path, '/'));
+    }
+
+    /**
      * @param object             $resolver
      * @param EditableDescriptor $descriptor
      * @param mixed              $raw_value
@@ -472,7 +534,7 @@ final class ElementInstrumentationService
                 $fallback = $payload;
             }
 
-            if ($this->valuesMatch($rendered_text, $text)) {
+            if ($this->valuesMatchForDescriptor($rendered_text, $text, $descriptor)) {
                 return $payload;
             }
         }
@@ -515,7 +577,7 @@ final class ElementInstrumentationService
         $display_mode = isset($display_payload['mode']) ? (string) $display_payload['mode'] : $resolver->getDisplayMode($descriptor);
         $rebound = null;
 
-        if ($descriptor->status === 'editable' && ! $this->valuesMatch($rendered_value, $resolved_value)) {
+        if ($descriptor->status === 'editable' && ! $this->valuesMatchForDescriptor($rendered_value, $resolved_value, $descriptor)) {
             $rebound = $this->attemptUniqueRowRebind($resolver, $descriptor, $rendered_value);
 
             if (is_array($rebound)) {
@@ -535,7 +597,7 @@ final class ElementInstrumentationService
         $descriptor->render['display_key'] = $display_key;
         $descriptor->render['display_mode'] = $display_mode;
         $descriptor->render['render_verified'] = true;
-        $descriptor->render['value_match'] = $this->valuesMatch($rendered_value, $resolved_value);
+        $descriptor->render['value_match'] = $this->valuesMatchForDescriptor($rendered_value, $resolved_value, $descriptor);
 
         if ($descriptor->status === 'editable' && ! $descriptor->render['value_match']) {
             $descriptor->status = 'unsupported';
@@ -1062,6 +1124,9 @@ final class ElementInstrumentationService
         $native_query_kind = isset($source['native_query_kind']) ? sanitize_key((string) $source['native_query_kind']) : '';
         $native_query_selector = isset($source['native_query_selector']) ? sanitize_key((string) $source['native_query_selector']) : '';
         $native_query_object_type = isset($source['native_query_object_type']) ? sanitize_key((string) $source['native_query_object_type']) : '';
+        $parent_native_query_kind = isset($source['parent_native_query_kind']) ? sanitize_key((string) $source['parent_native_query_kind']) : '';
+        $parent_native_query_selector = isset($source['parent_native_query_selector']) ? sanitize_key((string) $source['parent_native_query_selector']) : '';
+        $parent_native_query_object_type = isset($source['parent_native_query_object_type']) ? sanitize_key((string) $source['parent_native_query_object_type']) : '';
         $group_path = isset($source['group_path']) && is_array($source['group_path'])
             ? array_values(
                 array_filter(
@@ -1070,6 +1135,18 @@ final class ElementInstrumentationService
                             return sanitize_key((string) $value);
                         },
                         $source['group_path']
+                    )
+                )
+            )
+            : [];
+        $group_key_path = isset($source['group_key_path']) && is_array($source['group_key_path'])
+            ? array_values(
+                array_filter(
+                    array_map(
+                        static function ($value) {
+                            return sanitize_key((string) $value);
+                        },
+                        $source['group_key_path']
                     )
                 )
             )
@@ -1100,6 +1177,29 @@ final class ElementInstrumentationService
                 'layoutName' => $layout_name,
             ];
             $summary[] = 'flexible:' . $root_field_name;
+        }
+
+        if ($parent_native_query_kind !== '' || $parent_native_query_selector !== '' || $parent_native_query_object_type !== '') {
+            $segments[] = [
+                'type' => 'parent_native_acf_query',
+                'kind' => $parent_native_query_kind,
+                'selector' => $parent_native_query_selector,
+                'objectType' => $parent_native_query_object_type,
+            ];
+
+            $parent_native_summary = 'parent-native:';
+
+            if ($parent_native_query_kind !== '') {
+                $parent_native_summary .= $parent_native_query_kind;
+            }
+
+            if ($parent_native_query_selector !== '') {
+                $parent_native_summary .= ($parent_native_query_kind !== '' ? ':' : '') . $parent_native_query_selector;
+            }
+
+            if ($parent_native_summary !== 'parent-native:') {
+                $summary[] = $parent_native_summary;
+            }
         }
 
         if ($native_query_kind !== '' || $native_query_selector !== '' || $native_query_object_type !== '') {
@@ -1133,15 +1233,26 @@ final class ElementInstrumentationService
             $summary[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
         }
 
-        foreach ($group_path as $group_name) {
+        $group_depth = max(count($group_path), count($group_key_path));
+        $group_summary_path = [];
+
+        for ($index = 0; $index < $group_depth; $index++) {
+            $group_name = isset($group_path[$index]) ? $group_path[$index] : '';
+            $group_key = isset($group_key_path[$index]) ? $group_key_path[$index] : '';
+
             $segments[] = [
                 'type' => 'group',
                 'fieldName' => $group_name,
+                'fieldKey' => $group_key,
             ];
+
+            if ($group_name !== '' || $group_key !== '') {
+                $group_summary_path[] = $group_name !== '' ? $group_name : $group_key;
+            }
         }
 
-        if (! empty($group_path)) {
-            $summary[] = 'group:' . implode('>', $group_path);
+        if (! empty($group_summary_path)) {
+            $summary[] = 'group:' . implode('>', $group_summary_path);
         }
 
         if ($field_name !== '') {
@@ -1163,9 +1274,13 @@ final class ElementInstrumentationService
             'layoutKey' => $layout_key,
             'layoutName' => $layout_name,
             'groupPath' => $group_path,
+            'groupKeyPath' => $group_key_path,
             'nativeQueryKind' => $native_query_kind,
             'nativeQuerySelector' => $native_query_selector,
             'nativeQueryObjectType' => $native_query_object_type,
+            'parentNativeQueryKind' => $parent_native_query_kind,
+            'parentNativeQuerySelector' => $parent_native_query_selector,
+            'parentNativeQueryObjectType' => $parent_native_query_object_type,
             'isNested' => $container_type !== '',
             'segments' => $segments,
             'summary' => implode(' / ', $summary),
@@ -1186,6 +1301,7 @@ final class ElementInstrumentationService
         $field_type = isset($source['field_type']) ? sanitize_key((string) $source['field_type']) : '';
         $container_type = isset($path_descriptor['containerType']) ? sanitize_key((string) $path_descriptor['containerType']) : '';
         $native_loop_kind = isset($source['native_query_kind']) ? sanitize_key((string) $source['native_query_kind']) : '';
+        $parent_native_loop_kind = isset($source['parent_native_query_kind']) ? sanitize_key((string) $source['parent_native_query_kind']) : '';
         $kind = 'scalar';
 
         if (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
@@ -1237,6 +1353,7 @@ final class ElementInstrumentationService
             'contract' => $contract,
             'renderContext' => sanitize_key((string) $render_context),
             'nativeLoopKind' => $native_loop_kind,
+            'parentNativeLoopKind' => $parent_native_loop_kind,
             'loopOwned' => ! empty($loop_context['active']) && $scope === 'related_entity',
             'requiresJournal' => $target !== 'field' || $kind !== 'scalar' || $scope !== 'current_entity',
             'status' => sanitize_key((string) $status),

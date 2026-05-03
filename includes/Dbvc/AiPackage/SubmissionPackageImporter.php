@@ -29,7 +29,13 @@ final class SubmissionPackageImporter
         }
 
         $status = isset($report['status']) ? (string) $report['status'] : 'blocked';
-        if ($status === 'blocked') {
+        $override_context = isset($report['override_context']) && is_array($report['override_context'])
+            ? $report['override_context']
+            : (class_exists('\Dbvc\AiPackage\SubmissionPackageValidator')
+                ? SubmissionPackageValidator::get_override_context($report)
+                : []);
+        $allow_override_blocked = ! empty($args['allow_override_blocked']) && ! empty($override_context['can_override_import_block']);
+        if ($status === 'blocked' && ! $allow_override_blocked) {
             return new \WP_Error('dbvc_ai_import_blocked', __('Blocked AI packages cannot be imported.', 'dbvc'));
         }
 
@@ -99,6 +105,8 @@ final class SubmissionPackageImporter
                 'package_schema_version' => isset($report['package_schema_version']) ? (int) $report['package_schema_version'] : 0,
                 'intended_operation' => isset($report['intended_operation']) ? (string) $report['intended_operation'] : '',
                 'counts' => isset($report['counts']) && is_array($report['counts']) ? $report['counts'] : [],
+                'override_context' => $override_context,
+                'override_applied' => ! empty($report['override_applied']) ? $report['override_applied'] : [],
             ],
         ];
 
@@ -107,10 +115,15 @@ final class SubmissionPackageImporter
                 return new \WP_Error('dbvc_ai_import_posts_unavailable', __('DBVC post importer is unavailable.', 'dbvc'));
             }
 
-            $post_import_result = \DBVC_Sync_Posts::import_selected_post_files($post_files, false, [
-                'source' => 'ai_translated_package',
-                'allow_outside_sync' => true,
-            ]);
+            $legacy_import_option_state = self::enable_ai_post_creation_options();
+            try {
+                $post_import_result = \DBVC_Sync_Posts::import_selected_post_files($post_files, false, [
+                    'source' => 'ai_translated_package',
+                    'allow_outside_sync' => true,
+                ]);
+            } finally {
+                self::restore_ai_post_creation_options($legacy_import_option_state);
+            }
             if (! is_array($post_import_result)) {
                 return new \WP_Error('dbvc_ai_import_posts_failed', __('AI post import did not return a valid result.', 'dbvc'));
             }
@@ -228,6 +241,49 @@ final class SubmissionPackageImporter
 
         if (! empty($result['artifact_errors'])) {
             $result['status'] = $result['status'] === 'completed' ? 'completed_with_warnings' : $result['status'];
+        }
+    }
+
+    /**
+     * Temporarily enable post creation for the governed AI intake flow without
+     * leaving legacy import settings changed after the request completes.
+     *
+     * @return array<string,mixed>
+     */
+    private static function enable_ai_post_creation_options(): array
+    {
+        $sentinel = new \stdClass();
+        $allow_new_posts = get_option('dbvc_allow_new_posts', $sentinel);
+        $whitelist = get_option('dbvc_new_post_types_whitelist', $sentinel);
+
+        update_option('dbvc_allow_new_posts', '1');
+        update_option('dbvc_new_post_types_whitelist', []);
+
+        return [
+            'allow_new_posts' => $allow_new_posts,
+            'whitelist' => $whitelist,
+            'sentinel' => $sentinel,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $state
+     * @return void
+     */
+    private static function restore_ai_post_creation_options(array $state): void
+    {
+        $sentinel = $state['sentinel'] ?? null;
+
+        if (($state['allow_new_posts'] ?? $sentinel) === $sentinel) {
+            delete_option('dbvc_allow_new_posts');
+        } else {
+            update_option('dbvc_allow_new_posts', $state['allow_new_posts']);
+        }
+
+        if (($state['whitelist'] ?? $sentinel) === $sentinel) {
+            delete_option('dbvc_new_post_types_whitelist');
+        } else {
+            update_option('dbvc_new_post_types_whitelist', $state['whitelist']);
         }
     }
 }

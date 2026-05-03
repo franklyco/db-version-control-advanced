@@ -97,11 +97,29 @@ final class AcfGalleryResolver extends AbstractAcfResolver
      */
     public function validate(EditableDescriptor $descriptor, $value)
     {
-        unset($descriptor, $value);
+        unset($descriptor);
+
+        $ids = $this->normalizeSubmittedIds($value);
+
+        foreach ($ids as $id) {
+            if ($id <= 0) {
+                return [
+                    'ok' => false,
+                    'message' => __('This gallery field expects Media Library image attachments.', 'dbvc'),
+                ];
+            }
+
+            if (! wp_attachment_is_image($id)) {
+                return [
+                    'ok' => false,
+                    'message' => __('One or more selected gallery items are not valid image attachments.', 'dbvc'),
+                ];
+            }
+        }
 
         return [
-            'ok' => false,
-            'message' => __('This gallery field is inspectable only.', 'dbvc'),
+            'ok' => true,
+            'message' => '',
         ];
     }
 
@@ -114,7 +132,7 @@ final class AcfGalleryResolver extends AbstractAcfResolver
     {
         unset($descriptor);
 
-        return $value;
+        return $this->normalizeSubmittedIds($value);
     }
 
     /**
@@ -124,11 +142,76 @@ final class AcfGalleryResolver extends AbstractAcfResolver
      */
     public function save(EditableDescriptor $descriptor, $value)
     {
-        unset($descriptor, $value);
+        $ids = $this->normalizeSubmittedIds($value);
+
+        foreach ($ids as $id) {
+            if (! wp_attachment_is_image($id)) {
+                return [
+                    'ok' => false,
+                    'message' => __('One or more selected gallery items are not valid image attachments.', 'dbvc'),
+                ];
+            }
+        }
+
+        $result = $this->writeAcfValue($descriptor, $ids);
+        if (empty($result['ok'])) {
+            return $result;
+        }
 
         return [
-            'ok' => false,
-            'message' => __('This gallery field is inspectable only.', 'dbvc'),
+            'ok' => true,
+            'value' => $this->getValue($descriptor),
         ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function normalizeSubmittedIds($value)
+    {
+        $items = [];
+
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        if (is_numeric($value)) {
+            $items = [$value];
+        } elseif (is_array($value) && isset($value['attachmentIds']) && is_array($value['attachmentIds'])) {
+            $items = $value['attachmentIds'];
+        } elseif (is_array($value) && isset($value['ids']) && is_array($value['ids'])) {
+            $items = $value['ids'];
+        } elseif (is_array($value) && isset($value['items']) && is_array($value['items'])) {
+            $items = $value['items'];
+        } elseif (is_array($value)) {
+            $items = $value;
+        } else {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($items as $item) {
+            $id = 0;
+
+            if (is_numeric($item)) {
+                $id = absint($item);
+            } elseif (is_array($item) && isset($item['ID'])) {
+                $id = absint($item['ID']);
+            } elseif (is_array($item) && isset($item['id'])) {
+                $id = absint($item['id']);
+            } elseif (is_object($item) && isset($item->ID)) {
+                $id = absint($item->ID);
+            }
+
+            if ($id <= 0 || in_array($id, $normalized, true)) {
+                continue;
+            }
+
+            $normalized[] = $id;
+        }
+
+        return array_values($normalized);
     }
 }

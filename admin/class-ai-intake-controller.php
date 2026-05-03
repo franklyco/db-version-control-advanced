@@ -162,9 +162,19 @@ final class DBVC_AI_Intake_Controller
         $status = isset($report['status']) ? (string) $report['status'] : 'blocked';
         $has_warnings = ! empty($report['counts']['warnings']);
         $confirmed = ! empty($_REQUEST['dbvc_ai_confirm_warnings']);
+        $override_context = class_exists('\Dbvc\AiPackage\SubmissionPackageValidator')
+            ? \Dbvc\AiPackage\SubmissionPackageValidator::get_override_context($report)
+            : [];
+        $can_override_blocked = $status === 'blocked' && ! empty($override_context['can_override_import_block']);
+        $override_confirmed = ! empty($_REQUEST['dbvc_ai_confirm_override_blocked']);
 
-        if ($status === 'blocked') {
+        if ($status === 'blocked' && ! $can_override_blocked) {
             wp_safe_redirect(add_query_arg('dbvc_upload', 'ai_blocked', wp_get_referer()));
+            exit;
+        }
+
+        if ($status === 'blocked' && $can_override_blocked && ! $override_confirmed) {
+            wp_safe_redirect(add_query_arg('dbvc_upload', 'ai_override_required', wp_get_referer()));
             exit;
         }
 
@@ -178,7 +188,17 @@ final class DBVC_AI_Intake_Controller
             exit;
         }
 
-        $import_result = \Dbvc\AiPackage\SubmissionPackageImporter::import_intake($intake_id, $report, []);
+        if ($can_override_blocked && $override_confirmed) {
+            $report['override_applied'] = [
+                'site_fingerprint_mismatch' => ! empty($override_context['requires_fingerprint_override']),
+                'approved_at' => current_time('mysql'),
+                'approved_by' => get_current_user_id(),
+            ];
+        }
+
+        $import_result = \Dbvc\AiPackage\SubmissionPackageImporter::import_intake($intake_id, $report, [
+            'allow_override_blocked' => $can_override_blocked && $override_confirmed,
+        ]);
         if (is_wp_error($import_result)) {
             $report['import_result'] = [
                 'status' => 'error',

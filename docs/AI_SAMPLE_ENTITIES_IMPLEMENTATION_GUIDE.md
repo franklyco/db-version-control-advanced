@@ -1,8 +1,42 @@
 # AI Sample Entities + AI Package Intake Implementation Guide
 
-Last updated: 2026-04-09  
+Last updated: 2026-05-03  
 Current phase: `P9`  
 Status legend: `OPEN` | `WIP` | `CLOSED` | `DEFERRED`
+
+## Current Resume Context
+
+Use this section as the first re-entry point in a new Codex session.
+
+- Branch at last documented update: `codex/ai-sample-entities-implementation`
+- Current HEAD at last documented update: `ff21de0`
+- The worktree is dirty with many unrelated Visual Editor and Bricks changes. Do not use broad git cleanup or revert commands. Isolate edits to AI package files unless the task explicitly broadens scope.
+- The core AI package workflow is implemented locally:
+  - `DBVC Export > Tools > Download Sample Entities`
+  - `Configure > AI + Integrations`
+  - AI upload detection, validation, translation, import, retained reports, and review UI
+- The compact sample-package reduction work is partially implemented and now active as the default generation profile:
+  - `compact_ai_chat` is the default profile
+  - compact packages now emit `START_HERE.md`, `SCHEMA_COMPACT.json`, and one sample `.json` per selected object type
+  - compact packages do not emit sibling sample markdown docs
+  - full-reference packages still exist and no longer duplicate template JSON inside sibling markdown docs
+- Relevant implementation files for the compact profile work:
+  - [includes/Dbvc/AiPackage/Settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/Settings.php)
+  - [includes/class-master-settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/class-master-settings.php)
+  - [admin/class-ai-tools-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-ai-tools-page.php)
+  - [admin/admin-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php)
+  - [includes/Dbvc/AiPackage/CompactSchemaBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/CompactSchemaBuilder.php)
+  - [includes/Dbvc/AiPackage/SamplePackageBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SamplePackageBuilder.php)
+  - [includes/Dbvc/AiPackage/PackageDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/PackageDocBuilder.php)
+  - [includes/Dbvc/AiPackage/SampleDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SampleDocBuilder.php)
+- Validation already run against the current local state:
+  - `php -l` passed on the touched AI package PHP files
+  - [scripts/check-wp-runtime-authoring-smoke.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/scripts/check-wp-runtime-authoring-smoke.php) passed with `compact-authoring-smoke-ok`
+  - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `9 tests, 81 assertions`
+- Highest-priority next work:
+  - finish trimming `SCHEMA_COMPACT.json` so it carries only high-signal authoring context
+  - add package-size/file-count metrics to the Tools page before generation
+  - add browser-level QA with a real compact package in ChatGPT or Claude
 
 ## Current Intentionally Unfinished Items
 
@@ -29,13 +63,14 @@ The finished workflow should feel like:
 - AI returns a stricter DBVC AI package ZIP
 - user uploads the ZIP into DBVC
 - DBVC shows an AI-specific validation and preflight review surface
-- DBVC imports only when the package is valid or explicitly confirmed with warnings
+- DBVC imports only when the package is valid, explicitly confirmed with warnings, or explicitly override-approved for narrowly governed blocked cases
 
 ## Foundation Reference
 
 This guide implements the decisions locked in:
 
 - [AI_PACKAGE_FOUNDATION_SPEC.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/AI_PACKAGE_FOUNDATION_SPEC.md)
+- [AI_SAMPLE_PACKAGE_COMPACT_PROFILE_PLAN.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/AI_SAMPLE_PACKAGE_COMPACT_PROFILE_PLAN.md)
 
 That foundation spec remains the source of truth for:
 
@@ -47,6 +82,14 @@ That foundation spec remains the source of truth for:
 - ACF discovery strategy
 - validation states
 - staging, cleanup, and version rules
+
+The compact-profile plan is the source of truth for:
+
+- package-size reduction strategy
+- compact vs full-reference generation profiles
+- root-doc consolidation
+- compact schema artifact design
+- minimal return-package documentation
 
 ## Must-Preserve Constraints
 
@@ -998,6 +1041,12 @@ AI package uploads get a dedicated UI surface for review, warnings, blocked issu
   - [x] Add optional `View Dry-Run Artifacts`.
   - [x] Protect all state-mutating actions with capability checks and nonces.
 
+- [x] Add governed override UX for narrowly overridable blocked states.
+  - [x] First-pass override scope is limited to `site_fingerprint_mismatch`.
+  - [x] Require explicit operator confirmation before import is allowed.
+  - [x] Persist override-applied audit metadata in retained import artifacts.
+  - [x] Keep non-overridable blocked packages non-importable.
+
 - [x] Add required-confirmation UX for `valid_with_warnings` when settings require confirmation.
   - [x] Make the confirmation language explicit about what warnings remain unresolved.
 
@@ -1037,6 +1086,7 @@ AI package uploads get a dedicated UI surface for review, warnings, blocked issu
 - [x] AI uploads show a dedicated preflight review surface.
 - [x] Warnings and blocked issues are grouped and readable.
 - [x] Operators can confirm warning-state packages explicitly.
+- [x] Operators can explicitly override the allowed blocked fingerprint-mismatch case.
 - [x] Report download works.
 - [x] Retained import artifact downloads work.
 - [x] Blocked packages cannot bypass the review surface into import.
@@ -1242,7 +1292,7 @@ This work should only begin after the local sample-generation and AI intake/impo
 
 These items should be revisited as real implementation details surface:
 
-- whether `site fingerprint mismatch` remains hard-block-only forever or gains an explicit admin override later
+- whether the first-pass `site_fingerprint_mismatch` override should remain the only overridable blocked state or expand later
 - whether deferred media-centric ACF field types such as `image`, `file`, and `gallery` should `block` or `warn_and_strip` when non-empty values are submitted in v1
 - whether plain slug strings should be tolerated in more contexts or whether structured slug refs remain mandatory everywhere
 - whether large sample package generation needs async execution in the first release

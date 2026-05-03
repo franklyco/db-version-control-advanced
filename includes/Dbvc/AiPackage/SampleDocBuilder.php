@@ -19,7 +19,6 @@ final class SampleDocBuilder
     public static function build_sample_doc(string $entity_kind, string $object_key, array $variant_payload): string
     {
         $context = isset($variant_payload['context']) && is_array($variant_payload['context']) ? $variant_payload['context'] : [];
-        $template = isset($variant_payload['template']) && is_array($variant_payload['template']) ? $variant_payload['template'] : [];
         $settings = Settings::get_all_settings();
         $guidance = isset($settings['guidance']) && is_array($settings['guidance']) ? $settings['guidance'] : [];
         $global_rules = isset($settings['rules']['global']) && is_array($settings['rules']['global']) ? $settings['rules']['global'] : [];
@@ -161,13 +160,6 @@ final class SampleDocBuilder
                 $lines[] = '';
             }
         }
-
-        $lines[] = '## Template snapshot';
-        $lines[] = '';
-        $lines[] = '```json';
-        $lines[] = (string) wp_json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        $lines[] = '```';
-        $lines[] = '';
 
         return implode("\n", $lines);
     }

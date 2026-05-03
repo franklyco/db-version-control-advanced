@@ -239,7 +239,7 @@ Flexible row identity is formalized in the same `path` contract, for example:
 }
 ```
 
-When a supported repeater/flexible descendant also belongs to nested ACF groups, `path.groupPath` and extra `group` segments carry that ancestry explicitly, for example:
+When a supported repeater/flexible descendant also belongs to nested ACF groups, `path.groupPath`, `path.groupKeyPath`, and extra `group` segments carry that ancestry explicitly, for example:
 
 ```json
 {
@@ -251,6 +251,7 @@ When a supported repeater/flexible descendant also belongs to nested ACF groups,
     "layoutKey": "layout_67241b3fbc389",
     "layoutName": "styles_block",
     "groupPath": ["styles"],
+    "groupKeyPath": ["field_67241bf0bc38b"],
     "segments": [
       {
         "type": "flexible_content",
@@ -262,7 +263,8 @@ When a supported repeater/flexible descendant also belongs to nested ACF groups,
       },
       {
         "type": "group",
-        "fieldName": "styles"
+        "fieldName": "styles",
+        "fieldKey": "field_67241bf0bc38b"
       },
       {
         "type": "field",
@@ -278,7 +280,7 @@ When a supported repeater/flexible descendant also belongs to nested ACF groups,
 In the current slice:
 - `flexible_layout` is writable only for text-like, WYSIWYG, choice, link, and image flexible descendants on the current post owner
 - `loop_owned_flexible_layout` is writable only for text-like, WYSIWYG, choice, link, and image flexible descendants on the concrete related post currently rendered by the loop
-- `shared_flexible_layout` remains inspect-only
+- `flexible_layout`, `loop_owned_flexible_layout`, and `shared_flexible_layout` now also cover gallery descendants when Bricks is rendering a direct gallery collection, and the shared contract now applies consistently across shared post/term/user/option owners
 - live `source_group` and `sync_group` identity for nested group descendants must include `group_path` plus leaf selector identity so same leaf names under different group roots do not collide
 
 `scope` values currently used:
@@ -322,6 +324,12 @@ Image fields may submit an object with:
 - `url`
 
 `attachmentId` is the canonical save target for image fields. A pasted local Media Library URL is only used as a fallback lookup when no attachment ID is supplied. This same attachment-aware contract now applies to both direct ACF image fields and direct WordPress `{featured_image}` bindings rendered by Bricks as an image or background image source.
+
+Gallery fields may submit:
+- an ordered array of attachment IDs
+- or an object with `attachmentIds`, `ids`, or `items`
+
+In the current slice, gallery saves normalize to an ordered unique list of local Media Library image attachment IDs and replace the full collection value in one write.
 
 In the current slice, the backend only accepts image changes that resolve to an existing local Media Library attachment, and the normalized image value returned after save includes image-specific render metadata such as:
 - `attachmentId`

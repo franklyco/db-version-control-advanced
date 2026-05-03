@@ -63,6 +63,7 @@ final class AssetLoader
 
         $base_url = plugin_dir_url($this->bootstrap_file);
         $session_id = $this->registry->getSessionId();
+        $page_context = $this->page_context->resolve();
         $style_version = $this->resolveAssetVersion('assets/css/overlay.css');
         $api_version = $this->resolveAssetVersion('assets/js/api-client.js');
         $overlay_version = $this->resolveAssetVersion('assets/js/overlay-app.js');
@@ -115,7 +116,8 @@ final class AssetLoader
                 'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor')),
                 'nonce' => wp_create_nonce('wp_rest'),
                 'sessionId' => $session_id,
-                'pageContext' => $this->page_context->resolve(),
+                'pageContext' => $page_context,
+                'currentEditLink' => $this->buildCurrentEditLink($page_context),
                 'supportsWpEditor' => function_exists('wp_enqueue_editor') && (wp_script_is('wp-editor', 'enqueued') || wp_script_is('wp-editor', 'done') || wp_script_is('wp-editor', 'to_do')),
                 'supportsWpMedia' => function_exists('wp_enqueue_media') && wp_script_is('media-editor', 'enqueued'),
                 'strings' => [
@@ -183,6 +185,12 @@ final class AssetLoader
                     'panelMediaFrameButton' => __('Use this image', 'dbvc'),
                     'panelGallerySingle' => __('1 gallery image', 'dbvc'),
                     'panelGalleryCount' => __('gallery images', 'dbvc'),
+                    'panelGalleryChoose' => __('Choose gallery images', 'dbvc'),
+                    'panelGalleryReplace' => __('Replace gallery selection', 'dbvc'),
+                    'panelGalleryClear' => __('Clear gallery', 'dbvc'),
+                    'panelGalleryFrameTitle' => __('Select gallery images', 'dbvc'),
+                    'panelGalleryFrameButton' => __('Use selected images', 'dbvc'),
+                    'panelGalleryReloading' => __('Gallery saved. Reloading page…', 'dbvc'),
                     'panelNoMedia' => __('No media is currently set.', 'dbvc'),
                     'panelRenderedValue' => __('Rendered value', 'dbvc'),
                     'panelResolvedValue' => __('Resolved source value', 'dbvc'),
@@ -233,6 +241,11 @@ final class AssetLoader
                     'badgeSharedUser' => __('Shared User', 'dbvc'),
                     'badgeSharedOption' => __('Shared Option', 'dbvc'),
                     'badgeSharedGeneric' => __('Shared Item', 'dbvc'),
+                    'statusbarEditEntity' => __('Edit', 'dbvc'),
+                    'statusbarEditCurrentPage' => __('Edit current page', 'dbvc'),
+                    'statusbarEditCurrentPost' => __('Edit current post', 'dbvc'),
+                    'statusbarEditCurrentTerm' => __('Edit current term', 'dbvc'),
+                    'statusbarEditCurrentItem' => __('Edit current item', 'dbvc'),
                     'descriptorMissing' => __('Descriptor not found.', 'dbvc'),
                     'sessionMissing' => __('Visual Editor session not found for this page.', 'dbvc'),
                     'notEditable' => __('This field is not editable in the current MVP slice.', 'dbvc'),
@@ -241,6 +254,44 @@ final class AssetLoader
                 ],
             ]
         );
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @return array<string, string>
+     */
+    private function buildCurrentEditLink(array $page_context)
+    {
+        $entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
+        $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $post_type = isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '';
+        $taxonomy = isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '';
+
+        if ($entity_type === 'post' && $entity_id > 0) {
+            $url = get_edit_post_link($entity_id, '');
+
+            if (is_string($url) && $url !== '') {
+                return [
+                    'url' => esc_url_raw($url),
+                    'label' => $post_type === 'page'
+                        ? __('Edit current page', 'dbvc')
+                        : ($post_type === 'post' ? __('Edit current post', 'dbvc') : __('Edit current item', 'dbvc')),
+                ];
+            }
+        }
+
+        if ($entity_type === 'term' && $entity_id > 0 && $taxonomy !== '') {
+            $url = get_edit_term_link($entity_id, $taxonomy, '');
+
+            if (is_string($url) && $url !== '' && ! is_wp_error($url)) {
+                return [
+                    'url' => esc_url_raw($url),
+                    'label' => __('Edit current term', 'dbvc'),
+                ];
+            }
+        }
+
+        return [];
     }
 
     /**
