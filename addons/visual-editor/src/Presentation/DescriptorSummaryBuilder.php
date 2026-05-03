@@ -46,6 +46,8 @@ final class DescriptorSummaryBuilder
         $parent_field_name = isset($path['rootFieldName']) ? sanitize_key((string) $path['rootFieldName']) : (isset($source['parent_field_name']) ? sanitize_key((string) $source['parent_field_name']) : '');
         $layout_name = isset($path['layoutName']) ? sanitize_key((string) $path['layoutName']) : (isset($source['layout_name']) ? sanitize_key((string) $source['layout_name']) : '');
         $layout_key = isset($path['layoutKey']) ? sanitize_key((string) $path['layoutKey']) : (isset($source['layout_key']) ? sanitize_key((string) $source['layout_key']) : '');
+        $native_query_kind = isset($path['nativeQueryKind']) ? sanitize_key((string) $path['nativeQueryKind']) : (isset($source['native_query_kind']) ? sanitize_key((string) $source['native_query_kind']) : '');
+        $native_query_selector = isset($path['nativeQuerySelector']) ? sanitize_key((string) $path['nativeQuerySelector']) : (isset($source['native_query_selector']) ? sanitize_key((string) $source['native_query_selector']) : '');
         $group_path = isset($path['groupPath']) && is_array($path['groupPath'])
             ? array_values(
                 array_filter(
@@ -72,6 +74,10 @@ final class DescriptorSummaryBuilder
 
         if ($layout_name !== '' || $layout_key !== '') {
             $parts[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
+        }
+
+        if ($native_query_kind !== '' || $native_query_selector !== '') {
+            $parts[] = 'native:' . ($native_query_kind !== '' ? $native_query_kind : 'query') . ($native_query_selector !== '' ? ':' . $native_query_selector : '');
         }
 
         if (! empty($group_path)) {

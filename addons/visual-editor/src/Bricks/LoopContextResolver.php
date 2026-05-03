@@ -5,6 +5,18 @@ namespace Dbvc\VisualEditor\Bricks;
 final class LoopContextResolver
 {
     /**
+     * @var NativeAcfQueryResolver
+     */
+    private $native_acf_queries;
+
+    public function __construct(?NativeAcfQueryResolver $native_acf_queries = null)
+    {
+        $this->native_acf_queries = $native_acf_queries instanceof NativeAcfQueryResolver
+            ? $native_acf_queries
+            : new NativeAcfQueryResolver();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function resolve()
@@ -40,6 +52,10 @@ final class LoopContextResolver
 
         $context['effective_owner_entity'] = $effective_owner;
         $context['parent'] = $parent_context;
+        $context['native_acf_query'] = $this->native_acf_queries->resolve(
+            isset($context['query_object_type']) ? (string) $context['query_object_type'] : '',
+            $effective_owner
+        );
         $context['signature'] = $this->buildSignature($context, $parent_context);
 
         return $context;
@@ -74,7 +90,7 @@ final class LoopContextResolver
         $loop_object = method_exists('\\Bricks\\Query', 'get_loop_object')
             ? \Bricks\Query::get_loop_object($query_id)
             : null;
-        $owner_entity = $this->mapLoopObjectToEntity($loop_object_type, $loop_object_id, $loop_object);
+        $owner_entity = $this->mapLoopObjectToEntity($loop_object_type, $loop_object_id, $loop_object, $query_object_type);
 
         return [
             'active' => true,
@@ -175,6 +191,7 @@ final class LoopContextResolver
             'has_concrete_post_owner' => $this->hasConcretePostOwner($context),
             'supports_loop_owned_editing' => $this->supportsLoopOwnedEditing($context),
             'supports_related_post_editing' => $this->supportsRelatedPostEditing($context),
+            'native_acf_query' => $this->exportNativeAcfQuery(isset($context['native_acf_query']) && is_array($context['native_acf_query']) ? $context['native_acf_query'] : []),
             'parent_query_object_type' => isset($context['parent']['query_object_type']) ? sanitize_key((string) $context['parent']['query_object_type']) : '',
             'parent_loop_object_type' => isset($context['parent']['loop_object_type']) ? sanitize_key((string) $context['parent']['loop_object_type']) : '',
             'parent_loop_object_id' => isset($context['parent']['loop_object_id']) ? absint($context['parent']['loop_object_id']) : 0,
@@ -214,6 +231,8 @@ final class LoopContextResolver
                 sanitize_text_field((string) ($context['query_id'] ?? '')),
                 sanitize_text_field((string) ($context['query_element_id'] ?? '')),
                 sanitize_key((string) ($context['query_object_type'] ?? '')),
+                sanitize_key((string) ($context['native_acf_query']['selector'] ?? '')),
+                sanitize_key((string) ($context['native_acf_query']['kind'] ?? '')),
                 sanitize_key((string) ($context['loop_object_type'] ?? '')),
                 (string) absint($context['loop_object_id'] ?? 0),
                 sanitize_text_field((string) ($context['loop_index'] ?? '')),
@@ -234,9 +253,19 @@ final class LoopContextResolver
      * @param mixed  $loop_object
      * @return array<string, mixed>
      */
-    private function mapLoopObjectToEntity($loop_object_type, $loop_object_id, $loop_object)
+    private function mapLoopObjectToEntity($loop_object_type, $loop_object_id, $loop_object, $query_object_type = '')
     {
         $loop_object_type = sanitize_key((string) $loop_object_type);
+        $query_object_type = sanitize_key((string) $query_object_type);
+        $native_acf_query = $this->native_acf_queries->resolve($query_object_type, []);
+        $is_native_repeater_like = ! empty($native_acf_query['isRepeaterLike']);
+        $supports_native_concrete_owner = ! empty($native_acf_query['supportsConcreteOwner']);
+
+        if (is_array($loop_object)) {
+            $loop_object_id = $loop_object_id > 0
+                ? $loop_object_id
+                : absint($loop_object['ID'] ?? $loop_object['id'] ?? $loop_object['post_id'] ?? $loop_object['term_id'] ?? $loop_object['user_id'] ?? 0);
+        }
 
         if ($loop_object instanceof \WP_Post) {
             $loop_object_id = $loop_object_id > 0 ? $loop_object_id : absint($loop_object->ID);
@@ -252,12 +281,57 @@ final class LoopContextResolver
 
         if (
             $loop_object_id > 0
+            && is_array($loop_object)
+            && (isset($loop_object['term_id']) || isset($loop_object['taxonomy']))
+        ) {
+            $taxonomy = sanitize_key((string) ($loop_object['taxonomy'] ?? $loop_object_type));
+
+            if ($taxonomy !== '' && taxonomy_exists($taxonomy)) {
+                return [
+                    'type' => 'term',
+                    'id' => $loop_object_id,
+                    'subtype' => $taxonomy,
+                    'taxonomy' => $taxonomy,
+                    'acf_object_id' => $taxonomy . '_' . $loop_object_id,
+                ];
+            }
+        }
+
+        if (
+            $loop_object_id > 0
+            && is_array($loop_object)
+            && (isset($loop_object['user_id']) || isset($loop_object['user_login']) || $loop_object_type === 'user')
+        ) {
+            return [
+                'type' => 'user',
+                'id' => $loop_object_id,
+                'subtype' => 'user',
+                'acf_object_id' => 'user_' . $loop_object_id,
+            ];
+        }
+
+        if (
+            $loop_object_id > 0
             && (
                 $loop_object instanceof \WP_Post
+                || (is_array($loop_object) && (isset($loop_object['post_type']) || isset($loop_object['post_status']) || isset($loop_object['post_title'])))
                 || $loop_object_type === 'post'
                 || ($loop_object_type !== '' && post_type_exists($loop_object_type))
-                || get_post_type($loop_object_id)
             )
+        ) {
+            return [
+                'type' => 'post',
+                'id' => $loop_object_id,
+                'subtype' => (string) get_post_type($loop_object_id),
+                'acf_object_id' => $loop_object_id,
+            ];
+        }
+
+        if (
+            $loop_object_id > 0
+            && $supports_native_concrete_owner
+            && ! $is_native_repeater_like
+            && get_post_type($loop_object_id)
         ) {
             return [
                 'type' => 'post',
@@ -315,5 +389,32 @@ final class LoopContextResolver
         }
 
         return '';
+    }
+
+    /**
+     * @param array<string, mixed> $native_query
+     * @return array<string, mixed>
+     */
+    private function exportNativeAcfQuery(array $native_query)
+    {
+        if (empty($native_query['active'])) {
+            return [];
+        }
+
+        return [
+            'active' => true,
+            'source' => isset($native_query['source']) ? sanitize_key((string) $native_query['source']) : '',
+            'objectType' => isset($native_query['objectType']) ? sanitize_key((string) $native_query['objectType']) : '',
+            'selector' => isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '',
+            'fieldName' => isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '',
+            'fieldKey' => isset($native_query['fieldKey']) ? sanitize_key((string) $native_query['fieldKey']) : '',
+            'fieldType' => isset($native_query['fieldType']) ? sanitize_key((string) $native_query['fieldType']) : '',
+            'kind' => isset($native_query['kind']) ? sanitize_key((string) $native_query['kind']) : '',
+            'path' => isset($native_query['path']) && is_array($native_query['path'])
+                ? array_values(array_filter(array_map('sanitize_key', $native_query['path'])))
+                : [],
+            'supportsConcreteOwner' => ! empty($native_query['supportsConcreteOwner']),
+            'isRepeaterLike' => ! empty($native_query['isRepeaterLike']),
+        ];
     }
 }

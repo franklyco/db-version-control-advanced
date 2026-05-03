@@ -50,9 +50,11 @@ final class AcfFieldContextResolver
         }
 
         $loop_context = $this->loops->resolve();
+        $acf_object_id = $provider->get_object_id($field_for_context, $page_post_id);
+        $acf_object_id = $this->maybeOverrideAcfObjectIdForLoopContext($acf_object_id, $loop_context);
         $tag = isset($tag_data['tag']) ? (string) $tag_data['tag'] : '';
-        $repeater_context = $this->buildRepeaterContext($tag_object, $loop_context);
-        $flexible_context = $this->buildFlexibleContext($tag_object, $tag, $loop_context);
+        $repeater_context = $this->buildRepeaterContext($tag_object, $loop_context, $acf_object_id);
+        $flexible_context = $this->buildFlexibleContext($tag_object, $tag, $loop_context, $acf_object_id);
 
         if (! empty($loop_context['active']) && ! $this->supportsLoopContext($loop_context, $repeater_context, $flexible_context)) {
             return [
@@ -61,8 +63,6 @@ final class AcfFieldContextResolver
             ];
         }
 
-        $acf_object_id = $provider->get_object_id($field_for_context, $page_post_id);
-        $acf_object_id = $this->maybeOverrideAcfObjectIdForLoopContext($acf_object_id, $loop_context);
         $entity = $this->mapAcfObjectIdToEntity($acf_object_id, $page_post_id);
         if (empty($entity)) {
             return [
@@ -92,6 +92,17 @@ final class AcfFieldContextResolver
                 'ok' => false,
                 'message' => __('The ACF field definition could not be loaded.', 'dbvc'),
             ];
+        }
+
+        $tag_object = $this->rebindContainerScopedTagField(
+            $tag_object,
+            $repeater_context,
+            $flexible_context,
+            $acf_object_id
+        );
+
+        if (! empty($tag_object['field']) && is_array($tag_object['field'])) {
+            $field = $tag_object['field'];
         }
 
         $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
@@ -215,6 +226,56 @@ final class AcfFieldContextResolver
         }
 
         return $field;
+    }
+
+    /**
+     * @param array<string, mixed> $tag_object
+     * @param array<string, mixed> $repeater_context
+     * @param array<string, mixed> $flexible_context
+     * @param mixed                $acf_object_id
+     * @return array<string, mixed>
+     */
+    private function rebindContainerScopedTagField(array $tag_object, array $repeater_context, array $flexible_context, $acf_object_id)
+    {
+        if (! function_exists('get_field_object')) {
+            return $tag_object;
+        }
+
+        $container_context = ! empty($repeater_context['supported'])
+            ? $repeater_context
+            : (! empty($flexible_context['supported']) ? $flexible_context : []);
+
+        if (empty($container_context)) {
+            return $tag_object;
+        }
+
+        $container_field = $this->resolveContainerFieldDefinition($container_context, $acf_object_id);
+        if (empty($container_field)) {
+            return $tag_object;
+        }
+
+        $leaf_name = isset($tag_object['field']['name']) ? sanitize_key((string) $tag_object['field']['name']) : '';
+        $leaf_key = isset($tag_object['field']['key']) ? sanitize_key((string) $tag_object['field']['key']) : '';
+        $container_root = isset($container_context['parent_field_name']) ? sanitize_key((string) $container_context['parent_field_name']) : '';
+        $group_path = $this->normalizeTagGroupPath($tag_object, $container_root);
+        $resolved_field = $this->findContainerSubFieldDefinition($container_field, $container_context, $leaf_name, $leaf_key, $group_path);
+
+        if (empty($resolved_field)) {
+            return $tag_object;
+        }
+
+        $existing_field = isset($tag_object['field']) && is_array($tag_object['field']) ? $tag_object['field'] : [];
+        $tag_object['field'] = array_merge($existing_field, $resolved_field);
+
+        if (! empty($repeater_context['parent_field_key'])) {
+            $tag_object['field']['parent_repeater'] = sanitize_key((string) $repeater_context['parent_field_key']);
+        }
+
+        if (! empty($flexible_context['layout_key'])) {
+            $tag_object['field']['parent_layout'] = sanitize_key((string) $flexible_context['layout_key']);
+        }
+
+        return $tag_object;
     }
 
     /**
@@ -364,7 +425,7 @@ final class AcfFieldContextResolver
      * @param array<string, mixed> $loop_context
      * @return array<string, mixed>
      */
-    private function buildRepeaterContext(array $tag_object, array $loop_context)
+    private function buildRepeaterContext(array $tag_object, array $loop_context, $acf_object_id = '')
     {
         $field = isset($tag_object['field']) && is_array($tag_object['field']) ? $tag_object['field'] : [];
         $parent = isset($tag_object['parent']) && is_array($tag_object['parent']) ? $tag_object['parent'] : [];
@@ -372,35 +433,64 @@ final class AcfFieldContextResolver
         $parent_name = isset($parent['name']) ? sanitize_key((string) $parent['name']) : '';
         $parent_repeater_key = sanitize_key((string) ($field['parent_repeater'] ?? ''));
 
-        if ($parent_type !== 'repeater') {
-            return [];
-        }
-
-        $parent_key = isset($parent['key']) ? sanitize_key((string) $parent['key']) : $parent_repeater_key;
-
         $row_index = null;
         if (isset($loop_context['loop_index']) && is_numeric($loop_context['loop_index'])) {
             $row_index = absint($loop_context['loop_index']);
         }
 
         $query_object_type = isset($loop_context['query_object_type']) ? sanitize_key((string) $loop_context['query_object_type']) : '';
-        $supported = ! empty($loop_context['active'])
-            && $parent_name !== ''
-            && $parent_key !== ''
-            && $row_index !== null
-            && $this->queryObjectTypeMatchesContainer($query_object_type, $parent_name);
+        $native_query = isset($loop_context['native_acf_query']) && is_array($loop_context['native_acf_query']) ? $loop_context['native_acf_query'] : [];
 
-        return [
+        if ($parent_type === 'repeater') {
+            $parent_key = isset($parent['key']) ? sanitize_key((string) $parent['key']) : $parent_repeater_key;
+            $parent_selector = $this->resolveNativeQueryFieldSelector($native_query, $parent_name, $parent_key);
+            $supported = ! empty($loop_context['active'])
+                && $parent_name !== ''
+                && $parent_key !== ''
+                && $row_index !== null
+                && (
+                    $this->queryObjectTypeMatchesContainer($query_object_type, $parent_name)
+                    || $this->nativeQueryMatchesRepeaterContainer($native_query, $parent_name, $parent_key)
+                );
+
+            return [
+                'active' => true,
+                'supported' => $supported,
+                'parent_field_name' => $parent_name,
+                'parent_field_key' => $parent_key,
+                'parent_field_selector' => $parent_selector,
+                'parent_field_type' => 'repeater',
+                'row_index' => $row_index,
+                'query_object_type' => $query_object_type,
+                'subfield_name' => isset($field['name']) ? sanitize_key((string) $field['name']) : '',
+                'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
+            ];
+        }
+
+        if ($parent_type !== 'group' || ($native_query['kind'] ?? '') !== 'repeater') {
+            return [];
+        }
+
+        $parent_key = isset($native_query['fieldKey']) ? sanitize_key((string) $native_query['fieldKey']) : '';
+        $parent_selector = isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '';
+        $resolved_parent_name = isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '';
+        $context = [
             'active' => true,
-            'supported' => $supported,
-            'parent_field_name' => $parent_name,
+            'supported' => false,
+            'parent_field_name' => $resolved_parent_name !== '' ? $resolved_parent_name : $parent_name,
             'parent_field_key' => $parent_key,
+            'parent_field_selector' => $parent_selector !== '' ? $parent_selector : $resolved_parent_name,
             'parent_field_type' => 'repeater',
             'row_index' => $row_index,
             'query_object_type' => $query_object_type,
             'subfield_name' => isset($field['name']) ? sanitize_key((string) $field['name']) : '',
             'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
         ];
+        $context['supported'] = ! empty($loop_context['active'])
+            && $row_index !== null
+            && $this->containerSupportsTagField($tag_object, $context, $acf_object_id);
+
+        return $context;
     }
 
     /**
@@ -409,7 +499,7 @@ final class AcfFieldContextResolver
      * @param array<string, mixed> $loop_context
      * @return array<string, mixed>
      */
-    private function buildFlexibleContext(array $tag_object, $tag, array $loop_context)
+    private function buildFlexibleContext(array $tag_object, $tag, array $loop_context, $acf_object_id = '')
     {
         $field = isset($tag_object['field']) && is_array($tag_object['field']) ? $tag_object['field'] : [];
         $parent = isset($tag_object['parent']) && is_array($tag_object['parent']) ? $tag_object['parent'] : [];
@@ -418,29 +508,56 @@ final class AcfFieldContextResolver
         $parent_key = isset($parent['key']) ? sanitize_key((string) $parent['key']) : '';
         $layout_key = isset($field['parent_layout']) ? sanitize_key((string) $field['parent_layout']) : '';
 
-        if ($parent_type !== 'flexible_content' || $parent_name === '' || $parent_key === '') {
-            return [];
-        }
-
         $row_index = null;
         if (isset($loop_context['loop_index']) && is_numeric($loop_context['loop_index'])) {
             $row_index = absint($loop_context['loop_index']);
         }
 
         $query_object_type = isset($loop_context['query_object_type']) ? sanitize_key((string) $loop_context['query_object_type']) : '';
+        $native_query = isset($loop_context['native_acf_query']) && is_array($loop_context['native_acf_query']) ? $loop_context['native_acf_query'] : [];
         $subfield_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
-        $layout_name = $this->inferFlexibleLayoutName($tag, $parent_name, $subfield_name);
-        $supported = ! empty($loop_context['active'])
-            && $row_index !== null
-            && $layout_key !== ''
-            && $layout_name !== ''
-            && $this->queryObjectTypeMatchesFlexible($query_object_type, $parent_name, $layout_name);
+        if ($parent_type === 'flexible_content' && $parent_name !== '' && $parent_key !== '') {
+            $parent_selector = $this->resolveNativeQueryFieldSelector($native_query, $parent_name, $parent_key);
+            $layout_name = $this->inferFlexibleLayoutName($tag, $parent_name, $subfield_name);
+            $supported = ! empty($loop_context['active'])
+                && $row_index !== null
+                && $layout_key !== ''
+                && $layout_name !== ''
+                && (
+                    $this->queryObjectTypeMatchesFlexible($query_object_type, $parent_name, $layout_name)
+                    || $this->nativeQueryMatchesFlexibleContainer($native_query, $parent_name, $parent_key, $layout_name, $layout_key)
+                );
 
-        return [
+            return [
+                'active' => true,
+                'supported' => $supported,
+                'parent_field_name' => $parent_name,
+                'parent_field_key' => $parent_key,
+                'parent_field_selector' => $parent_selector,
+                'parent_field_type' => 'flexible_content',
+                'row_index' => $row_index,
+                'query_object_type' => $query_object_type,
+                'layout_key' => $layout_key,
+                'layout_name' => $layout_name,
+                'subfield_name' => $subfield_name,
+                'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
+            ];
+        }
+
+        if ($parent_type !== 'group' || ($native_query['kind'] ?? '') !== 'flexible_content') {
+            return [];
+        }
+
+        $resolved_parent_name = isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '';
+        $resolved_parent_key = isset($native_query['fieldKey']) ? sanitize_key((string) $native_query['fieldKey']) : '';
+        $parent_selector = isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '';
+        $layout_name = $this->inferFlexibleLayoutName($tag, $resolved_parent_name !== '' ? $resolved_parent_name : $parent_name, $subfield_name);
+        $context = [
             'active' => true,
-            'supported' => $supported,
-            'parent_field_name' => $parent_name,
-            'parent_field_key' => $parent_key,
+            'supported' => false,
+            'parent_field_name' => $resolved_parent_name !== '' ? $resolved_parent_name : $parent_name,
+            'parent_field_key' => $resolved_parent_key,
+            'parent_field_selector' => $parent_selector !== '' ? $parent_selector : $resolved_parent_name,
             'parent_field_type' => 'flexible_content',
             'row_index' => $row_index,
             'query_object_type' => $query_object_type,
@@ -449,6 +566,39 @@ final class AcfFieldContextResolver
             'subfield_name' => $subfield_name,
             'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
         ];
+        $context['supported'] = ! empty($loop_context['active'])
+            && $row_index !== null
+            && $layout_key !== ''
+            && $layout_name !== ''
+            && $this->containerSupportsTagField($tag_object, $context, $acf_object_id);
+
+        return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $tag_object
+     * @param array<string, mixed> $container_context
+     * @param mixed                $acf_object_id
+     * @return bool
+     */
+    private function containerSupportsTagField(array $tag_object, array $container_context, $acf_object_id)
+    {
+        if ($acf_object_id === '') {
+            return false;
+        }
+
+        $container_field = $this->resolveContainerFieldDefinition($container_context, $acf_object_id);
+        if (empty($container_field)) {
+            return false;
+        }
+
+        $leaf_name = isset($tag_object['field']['name']) ? sanitize_key((string) $tag_object['field']['name']) : '';
+        $leaf_key = isset($tag_object['field']['key']) ? sanitize_key((string) $tag_object['field']['key']) : '';
+        $container_root = isset($container_context['parent_field_name']) ? sanitize_key((string) $container_context['parent_field_name']) : '';
+        $group_path = $this->normalizeTagGroupPath($tag_object, $container_root);
+        $resolved_field = $this->findContainerSubFieldDefinition($container_field, $container_context, $leaf_name, $leaf_key, $group_path);
+
+        return ! empty($resolved_field);
     }
 
     /**
@@ -503,14 +653,14 @@ final class AcfFieldContextResolver
     private function buildLoopContextErrorMessage(array $repeater_context, array $flexible_context = [])
     {
         if (! empty($repeater_context)) {
-            return __('Only Bricks ACF repeater rows with a stable row index and a matching repeater query context are surfaced in the current Visual Editor slice.', 'dbvc');
+            return __('Only Bricks ACF repeater rows with a stable row index and a matching native repeater query context are surfaced in the current Visual Editor slice.', 'dbvc');
         }
 
         if (! empty($flexible_context)) {
-            return __('Only Bricks ACF flexible-content rows with a stable row index, layout identity, and matching flexible query context are surfaced in the current Visual Editor slice.', 'dbvc');
+            return __('Only Bricks ACF flexible-content rows with a stable row index, layout identity, and matching native flexible query context are surfaced in the current Visual Editor slice.', 'dbvc');
         }
 
-        return __('Only Bricks query loops with a concrete post, term, or user owner are surfaced in the current Visual Editor slice.', 'dbvc');
+        return __('Only Bricks native ACF relationship, post-object, taxonomy, or other query loops with a concrete post, term, or user owner are surfaced in the current Visual Editor slice.', 'dbvc');
     }
 
     /**
@@ -556,6 +706,191 @@ final class AcfFieldContextResolver
     }
 
     /**
+     * @param array<string, mixed> $container_context
+     * @param mixed                $acf_object_id
+     * @return array<string, mixed>
+     */
+    private function resolveContainerFieldDefinition(array $container_context, $acf_object_id)
+    {
+        $identifiers = array_values(
+            array_filter(
+                array_unique(
+                    [
+                        isset($container_context['parent_field_selector']) ? sanitize_key((string) $container_context['parent_field_selector']) : '',
+                        isset($container_context['parent_field_name']) ? sanitize_key((string) $container_context['parent_field_name']) : '',
+                        isset($container_context['parent_field_key']) ? sanitize_key((string) $container_context['parent_field_key']) : '',
+                    ]
+                )
+            )
+        );
+
+        foreach ($identifiers as $identifier) {
+            $field = get_field_object($identifier, $acf_object_id, false, false);
+            if (is_array($field) && ! empty($field)) {
+                return $field;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $container_field
+     * @param array<string, mixed> $container_context
+     * @param string               $leaf_name
+     * @param string               $leaf_key
+     * @param array<int, string>   $group_path
+     * @return array<string, mixed>
+     */
+    private function findContainerSubFieldDefinition(array $container_field, array $container_context, $leaf_name, $leaf_key, array $group_path = [])
+    {
+        $fields = [];
+        $container_type = isset($container_context['parent_field_type']) ? sanitize_key((string) $container_context['parent_field_type']) : '';
+
+        if ($container_type === 'flexible_content') {
+            $fields = $this->resolveFlexibleLayoutSubFields($container_field, $container_context);
+        } elseif (! empty($container_field['sub_fields']) && is_array($container_field['sub_fields'])) {
+            $fields = $container_field['sub_fields'];
+        }
+
+        if (empty($fields)) {
+            return [];
+        }
+
+        foreach ($group_path as $segment) {
+            $group_field = $this->findSubFieldMatch($fields, sanitize_key((string) $segment), '');
+            if (empty($group_field) || sanitize_key((string) ($group_field['type'] ?? '')) !== 'group') {
+                return [];
+            }
+
+            $fields = ! empty($group_field['sub_fields']) && is_array($group_field['sub_fields'])
+                ? $group_field['sub_fields']
+                : [];
+
+            if (empty($fields)) {
+                return [];
+            }
+        }
+
+        return $this->findSubFieldMatch($fields, $leaf_name, $leaf_key);
+    }
+
+    /**
+     * @param array<string, mixed> $container_field
+     * @param array<string, mixed> $container_context
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveFlexibleLayoutSubFields(array $container_field, array $container_context)
+    {
+        if (empty($container_field['layouts']) || ! is_array($container_field['layouts'])) {
+            return [];
+        }
+
+        $layout_key = isset($container_context['layout_key']) ? sanitize_key((string) $container_context['layout_key']) : '';
+        $layout_name = isset($container_context['layout_name']) ? sanitize_key((string) $container_context['layout_name']) : '';
+
+        foreach ($container_field['layouts'] as $layout) {
+            if (! is_array($layout)) {
+                continue;
+            }
+
+            $candidate_key = isset($layout['key']) ? sanitize_key((string) $layout['key']) : '';
+            $candidate_name = isset($layout['name']) ? sanitize_key((string) $layout['name']) : '';
+            $matches_layout = ($layout_key !== '' && $candidate_key === $layout_key)
+                || ($layout_name !== '' && $candidate_name === $layout_name);
+
+            if (! $matches_layout) {
+                continue;
+            }
+
+            return ! empty($layout['sub_fields']) && is_array($layout['sub_fields'])
+                ? $layout['sub_fields']
+                : [];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $fields
+     * @param string                           $field_name
+     * @param string                           $field_key
+     * @return array<string, mixed>
+     */
+    private function findSubFieldMatch(array $fields, $field_name, $field_key = '')
+    {
+        $field_name = sanitize_key((string) $field_name);
+        $field_key = sanitize_key((string) $field_key);
+
+        if ($field_key !== '') {
+            foreach ($fields as $field) {
+                if (! is_array($field)) {
+                    continue;
+                }
+
+                if (sanitize_key((string) ($field['key'] ?? '')) === $field_key) {
+                    return $field;
+                }
+            }
+        }
+
+        if ($field_name !== '') {
+            foreach ($fields as $field) {
+                if (! is_array($field)) {
+                    continue;
+                }
+
+                if (sanitize_key((string) ($field['name'] ?? '')) === $field_name) {
+                    return $field;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $tag_object
+     * @param string               $container_root
+     * @return array<int, string>
+     */
+    private function normalizeTagGroupPath(array $tag_object, $container_root = '')
+    {
+        $group_path = [];
+
+        if (! empty($tag_object['parent_group_names']) && is_array($tag_object['parent_group_names'])) {
+            $group_path = array_values(
+                array_filter(
+                    array_map(
+                        static function ($value) {
+                            return sanitize_key((string) $value);
+                        },
+                        array_reverse($tag_object['parent_group_names'])
+                    )
+                )
+            );
+        }
+
+        if (empty($group_path)
+            && ! empty($tag_object['parent'])
+            && is_array($tag_object['parent'])
+            && sanitize_key((string) ($tag_object['parent']['type'] ?? '')) === 'group'
+        ) {
+            $parent_group_name = sanitize_key((string) ($tag_object['parent']['name'] ?? ''));
+            if ($parent_group_name !== '') {
+                $group_path[] = $parent_group_name;
+            }
+        }
+
+        $container_root = sanitize_key((string) $container_root);
+        if ($container_root !== '' && ! empty($group_path) && $group_path[0] === $container_root) {
+            array_shift($group_path);
+        }
+
+        return array_values(array_unique($group_path));
+    }
+
+    /**
      * @param string $parent_name
      * @return array<int, string>
      */
@@ -585,5 +920,96 @@ final class AcfFieldContextResolver
         });
 
         return $candidates;
+    }
+
+    /**
+     * @param array<string, mixed> $native_query
+     * @param string               $parent_name
+     * @param string               $parent_key
+     * @return bool
+     */
+    private function nativeQueryMatchesRepeaterContainer(array $native_query, $parent_name, $parent_key = '')
+    {
+        if (($native_query['kind'] ?? '') !== 'repeater') {
+            return false;
+        }
+
+        return $this->nativeQueryMatchesField($native_query, $parent_name, $parent_key);
+    }
+
+    /**
+     * @param array<string, mixed> $native_query
+     * @param string               $parent_name
+     * @param string               $parent_key
+     * @param string               $layout_name
+     * @param string               $layout_key
+     * @return bool
+     */
+    private function nativeQueryMatchesFlexibleContainer(array $native_query, $parent_name, $parent_key = '', $layout_name = '', $layout_key = '')
+    {
+        if (($native_query['kind'] ?? '') !== 'flexible_content') {
+            return false;
+        }
+
+        if (! $this->nativeQueryMatchesField($native_query, $parent_name, $parent_key)) {
+            return false;
+        }
+
+        $path = isset($native_query['path']) && is_array($native_query['path'])
+            ? array_values(array_filter(array_map('sanitize_key', $native_query['path'])))
+            : [];
+        $layout_name = sanitize_key((string) $layout_name);
+        $layout_key = sanitize_key((string) $layout_key);
+
+        if ($layout_name === '' && $layout_key === '') {
+            return true;
+        }
+
+        return in_array($layout_name, $path, true) || in_array($layout_key, $path, true);
+    }
+
+    /**
+     * @param array<string, mixed> $native_query
+     * @param string               $field_name
+     * @param string               $field_key
+     * @return bool
+     */
+    private function nativeQueryMatchesField(array $native_query, $field_name, $field_key = '')
+    {
+        $field_name = sanitize_key((string) $field_name);
+        $field_key = sanitize_key((string) $field_key);
+        $selector = isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '';
+        $native_field_name = isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '';
+        $native_field_key = isset($native_query['fieldKey']) ? sanitize_key((string) $native_query['fieldKey']) : '';
+        $path = isset($native_query['path']) && is_array($native_query['path'])
+            ? array_values(array_filter(array_map('sanitize_key', $native_query['path'])))
+            : [];
+
+        if ($field_name !== '' && ($field_name === $native_field_name || in_array($field_name, $path, true))) {
+            return true;
+        }
+
+        if ($field_key !== '' && $field_key === $native_field_key) {
+            return true;
+        }
+
+        return $field_name !== '' && $selector !== '' && $this->queryObjectTypeMatchesContainer('acf_' . $selector, $field_name);
+    }
+
+    /**
+     * @param array<string, mixed> $native_query
+     * @param string               $field_name
+     * @param string               $field_key
+     * @return string
+     */
+    private function resolveNativeQueryFieldSelector(array $native_query, $field_name, $field_key = '')
+    {
+        if (! $this->nativeQueryMatchesField($native_query, $field_name, $field_key)) {
+            return sanitize_key((string) $field_name);
+        }
+
+        $selector = isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '';
+
+        return $selector !== '' ? $selector : sanitize_key((string) $field_name);
     }
 }

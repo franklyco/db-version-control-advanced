@@ -83,6 +83,10 @@ This owns generation defaults, validation defaults, user-authored notes/rules, a
 
 When DBVC detects `dbvc-ai-manifest.json` in an uploaded archive, it should route that upload into an AI-specific intake flow rather than the generic upload success/fail path.
 
+Compatibility note:
+
+- the intake detector may also accept legacy manifest aliases such as `manifest.json` or `manifest.md` with warnings, but generated/sample documentation should continue using the canonical filename
+
 ### 4. AI preflight review surface
 
 AI package uploads must surface a dedicated review UI that shows:

@@ -69,6 +69,7 @@ dbvc_cc_guard_no_source_runtime_imports('bootstrap_preload');
 
 require_once DBVC_PLUGIN_PATH . 'includes/class-database.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-options-groups.php';
+require_once DBVC_PLUGIN_PATH . 'includes/class-master-settings.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php';

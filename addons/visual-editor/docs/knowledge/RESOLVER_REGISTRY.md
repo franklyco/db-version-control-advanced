@@ -82,3 +82,5 @@ Fallback classifier for:
 - Do not add flexible write contracts or relationship collection resolvers until nested path identity is stable.
 - Do not add multi-step resolvers until durable change journaling exists.
 - Related/query-loop ownership must be resolved before any nested resolver is allowed to save.
+
+For the current patch-to-function map around native ACF loop hardening, grouped row traversal, and verification-time row rebinding, see [NATIVE_ACF_LOOP_HARDENING_MAP.md](./NATIVE_ACF_LOOP_HARDENING_MAP.md).

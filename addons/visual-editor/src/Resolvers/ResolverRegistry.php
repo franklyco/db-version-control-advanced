@@ -255,15 +255,21 @@ final class ResolverRegistry
         $parent_field_key = ! empty($repeater['supported'])
             ? sanitize_key((string) ($repeater['parent_field_key'] ?? ''))
             : (! empty($flexible['supported']) ? sanitize_key((string) ($flexible['parent_field_key'] ?? '')) : '');
+        $parent_field_selector = ! empty($repeater['supported'])
+            ? sanitize_key((string) ($repeater['parent_field_selector'] ?? ''))
+            : (! empty($flexible['supported']) ? sanitize_key((string) ($flexible['parent_field_selector'] ?? '')) : '');
         $row_index = ! empty($repeater['supported'])
             ? (isset($repeater['row_index']) ? absint($repeater['row_index']) : null)
             : (! empty($flexible['supported']) && isset($flexible['row_index']) ? absint($flexible['row_index']) : null);
         $layout_key = ! empty($flexible['supported']) ? sanitize_key((string) ($flexible['layout_key'] ?? '')) : '';
         $layout_name = ! empty($flexible['supported']) ? sanitize_key((string) ($flexible['layout_name'] ?? '')) : '';
         $tag_object = isset($resolved['tag_object']) && is_array($resolved['tag_object']) ? $resolved['tag_object'] : [];
+        $loop = isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [];
+        $native_query = isset($loop['native_acf_query']) && is_array($loop['native_acf_query']) ? $loop['native_acf_query'] : [];
         $leaf_field_name = isset($tag_object['field']['name']) ? sanitize_key((string) $tag_object['field']['name']) : $field_name;
         $leaf_field_key = isset($tag_object['field']['key']) ? sanitize_key((string) $tag_object['field']['key']) : $field_key;
         $group_path = $this->normalizeNestedGroupPath($tag_object, $parent_field_name);
+        $group_key_path = $this->normalizeNestedGroupKeyPath($tag_object, $parent_field_key);
         $field_selector = $this->resolveAcfFieldSelector($tag_object, $field_name);
         $label = isset($field['label']) && (string) $field['label'] !== ''
             ? sanitize_text_field((string) $field['label'])
@@ -286,7 +292,7 @@ final class ResolverRegistry
             'status' => $status,
             'scope' => isset($resolved['scope']) ? (string) $resolved['scope'] : 'current_entity',
             'entity' => isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [],
-            'loop' => isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [],
+            'loop' => $loop,
             'source' => [
                 'type' => $source_type,
                 'expression' => isset($candidate['expression']) ? (string) $candidate['expression'] : '',
@@ -305,11 +311,20 @@ final class ResolverRegistry
                 'container_type' => $container_type,
                 'parent_field_name' => $parent_field_name,
                 'parent_field_key' => $parent_field_key,
+                'parent_field_selector' => $parent_field_selector,
                 'row_index' => $row_index,
                 'layout_key' => $layout_key,
                 'layout_name' => $layout_name,
                 'group_path' => $group_path,
+                'group_key_path' => $group_key_path,
                 'is_nested_group' => ! empty($group_path),
+                'is_grouped_field' => ! empty($group_path),
+                'native_query_active' => ! empty($native_query['active']),
+                'native_query_kind' => isset($native_query['kind']) ? sanitize_key((string) $native_query['kind']) : '',
+                'native_query_selector' => isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '',
+                'native_query_object_type' => isset($native_query['objectType']) ? sanitize_key((string) $native_query['objectType']) : '',
+                'native_query_field_name' => isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '',
+                'native_query_field_type' => isset($native_query['fieldType']) ? sanitize_key((string) $native_query['fieldType']) : '',
             ],
             'resolver' => [
                 'name' => $resolver_name,
@@ -1001,20 +1016,30 @@ final class ResolverRegistry
      */
     private function normalizeNestedGroupPath(array $tag_object, $container_root = '')
     {
-        if (empty($tag_object['nested_group']) || empty($tag_object['parent_group_names']) || ! is_array($tag_object['parent_group_names'])) {
-            return [];
+        $group_path = [];
+
+        if (! empty($tag_object['parent_group_names']) && is_array($tag_object['parent_group_names'])) {
+            $group_path = array_values(
+                array_filter(
+                    array_map(
+                        static function ($value) {
+                            return sanitize_key((string) $value);
+                        },
+                        array_reverse($tag_object['parent_group_names'])
+                    )
+                )
+            );
         }
 
-        $group_path = array_values(
-            array_filter(
-                array_map(
-                    static function ($value) {
-                        return sanitize_key((string) $value);
-                    },
-                    array_reverse($tag_object['parent_group_names'])
-                )
-            )
-        );
+        if (empty($group_path)
+            && ! empty($tag_object['parent'])
+            && is_array($tag_object['parent'])
+            && sanitize_key((string) ($tag_object['parent']['type'] ?? '')) === 'group') {
+            $parent_group_name = sanitize_key((string) ($tag_object['parent']['name'] ?? ''));
+            if ($parent_group_name !== '') {
+                $group_path[] = $parent_group_name;
+            }
+        }
 
         $container_root = sanitize_key((string) $container_root);
         if ($container_root !== '' && ! empty($group_path) && $group_path[0] === $container_root) {
@@ -1022,6 +1047,45 @@ final class ResolverRegistry
         }
 
         return array_values(array_unique($group_path));
+    }
+
+    /**
+     * @param array<string, mixed> $tag_object
+     * @return array<int, string>
+     */
+    private function normalizeNestedGroupKeyPath(array $tag_object, $container_root_key = '')
+    {
+        $group_key_path = [];
+
+        if (! empty($tag_object['parent_group_keys']) && is_array($tag_object['parent_group_keys'])) {
+            $group_key_path = array_values(
+                array_filter(
+                    array_map(
+                        static function ($value) {
+                            return sanitize_key((string) $value);
+                        },
+                        array_reverse($tag_object['parent_group_keys'])
+                    )
+                )
+            );
+        }
+
+        if (empty($group_key_path)
+            && ! empty($tag_object['parent'])
+            && is_array($tag_object['parent'])
+            && sanitize_key((string) ($tag_object['parent']['type'] ?? '')) === 'group') {
+            $parent_group_key = sanitize_key((string) ($tag_object['parent']['key'] ?? ''));
+            if ($parent_group_key !== '') {
+                $group_key_path[] = $parent_group_key;
+            }
+        }
+
+        $container_root_key = sanitize_key((string) $container_root_key);
+        if ($container_root_key !== '' && ! empty($group_key_path) && $group_key_path[0] === $container_root_key) {
+            array_shift($group_key_path);
+        }
+
+        return array_values(array_unique($group_key_path));
     }
 
     /**

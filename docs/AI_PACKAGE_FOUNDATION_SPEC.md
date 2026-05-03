@@ -179,6 +179,11 @@ Both package types should use the same root manifest filename:
 
 The archive root should contain the manifest directly. Intake may tolerate a single wrapper directory for compatibility with common ZIP tools, but the canonical layout is root-first.
 
+Compatibility note for v1:
+
+- intake may accept legacy aliases such as `manifest.json` or `manifest.md` with warnings
+- canonical generated and documented packages should still use `dbvc-ai-manifest.json`
+
 Manifest versioning should be independent from DBVC proposal schema versions.
 
 Recommended top-level manifest keys:

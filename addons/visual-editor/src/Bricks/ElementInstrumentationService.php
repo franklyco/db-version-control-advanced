@@ -42,6 +42,11 @@ final class ElementInstrumentationService
     private $instrumented = [];
 
     /**
+     * @var array<string, int>
+     */
+    private $seed_occurrences = [];
+
+    /**
      * @var array<string, EditableDescriptor>
      */
     private $descriptors = [];
@@ -105,7 +110,7 @@ final class ElementInstrumentationService
             return $attributes;
         }
 
-        $seed = $this->buildSeed($element, $inspection, $loop_context);
+        $seed = $this->dedupeSeed($this->buildSeed($element, $inspection, $loop_context));
         $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
         $this->instrumented[$seed] = $token;
         $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
@@ -285,6 +290,27 @@ final class ElementInstrumentationService
         ];
 
         return implode('|', $seed_parts);
+    }
+
+    /**
+     * When Bricks reuses a native loop signature for a later repeated row, avoid collapsing
+     * the later descriptor into the earlier token. The first occurrence keeps the canonical
+     * seed; later repeats get a stable occurrence suffix for this render pass.
+     *
+     * @param string $seed
+     * @return string
+     */
+    private function dedupeSeed($seed)
+    {
+        $seed = (string) $seed;
+        $count = isset($this->seed_occurrences[$seed]) ? (int) $this->seed_occurrences[$seed] + 1 : 1;
+        $this->seed_occurrences[$seed] = $count;
+
+        if ($count <= 1) {
+            return $seed;
+        }
+
+        return $seed . '#dup:' . $count;
     }
 
     /**
@@ -487,6 +513,20 @@ final class ElementInstrumentationService
         $resolved_value = isset($display_payload['text']) ? (string) $display_payload['text'] : '';
         $display_key = isset($display_payload['key']) ? (string) $display_payload['key'] : 'default';
         $display_mode = isset($display_payload['mode']) ? (string) $display_payload['mode'] : $resolver->getDisplayMode($descriptor);
+        $rebound = null;
+
+        if ($descriptor->status === 'editable' && ! $this->valuesMatch($rendered_value, $resolved_value)) {
+            $rebound = $this->attemptUniqueRowRebind($resolver, $descriptor, $rendered_value);
+
+            if (is_array($rebound)) {
+                $this->applyRowDescriptorRebind($descriptor, (int) $rebound['index']);
+                $raw_value = $rebound['raw_value'];
+                $display_payload = $rebound['display_payload'];
+                $resolved_value = isset($display_payload['text']) ? (string) $display_payload['text'] : '';
+                $display_key = isset($display_payload['key']) ? (string) $display_payload['key'] : 'default';
+                $display_mode = isset($display_payload['mode']) ? (string) $display_payload['mode'] : $resolver->getDisplayMode($descriptor);
+            }
+        }
 
         $descriptor->render['rendered_value'] = $rendered_value;
         $descriptor->render['resolved_value'] = $resolved_value;
@@ -505,6 +545,15 @@ final class ElementInstrumentationService
             return $this->stripMarkerAttributesForToken($element_html, $descriptor->token);
         }
 
+        if (is_array($rebound)) {
+            $element_html = $this->replaceMarkerAttributeForToken(
+                $element_html,
+                $descriptor->token,
+                'data-dbvc-ve-source-group',
+                isset($descriptor->render['source_group']) ? (string) $descriptor->render['source_group'] : ''
+            );
+        }
+
         $descriptor->render['sync_group'] = $this->buildSyncGroup(
             $descriptor->entity,
             $descriptor->source,
@@ -513,6 +562,77 @@ final class ElementInstrumentationService
         );
 
         return $this->replaceMarkerAttributeForToken($element_html, $descriptor->token, 'data-dbvc-ve-group', $descriptor->render['sync_group']);
+    }
+
+    /**
+     * @param object             $resolver
+     * @param EditableDescriptor $descriptor
+     * @param string             $rendered_value
+     * @return array<string, mixed>|null
+     */
+    private function attemptUniqueRowRebind($resolver, EditableDescriptor $descriptor, $rendered_value)
+    {
+        $source_type = isset($descriptor->source['type']) ? (string) $descriptor->source['type'] : '';
+        if (! in_array($source_type, ['acf_repeater_subfield', 'acf_flexible_subfield'], true)) {
+            return null;
+        }
+
+        if (! is_object($resolver) || ! method_exists($resolver, 'getRowCandidateValues')) {
+            return null;
+        }
+
+        $candidates = $resolver->getRowCandidateValues($descriptor);
+        if (! is_array($candidates) || empty($candidates)) {
+            return null;
+        }
+
+        $matches = [];
+
+        foreach ($candidates as $candidate) {
+            if (! is_array($candidate) || ! isset($candidate['index']) || ! is_numeric($candidate['index'])) {
+                continue;
+            }
+
+            $candidate_display = $this->resolveDisplayPayload(
+                $resolver,
+                $descriptor,
+                isset($candidate['value']) ? $candidate['value'] : '',
+                $rendered_value
+            );
+            $candidate_text = isset($candidate_display['text']) ? (string) $candidate_display['text'] : '';
+
+            if (! $this->valuesMatch($rendered_value, $candidate_text)) {
+                continue;
+            }
+
+            $matches[] = [
+                'index' => absint($candidate['index']),
+                'raw_value' => isset($candidate['value']) ? $candidate['value'] : '',
+                'display_payload' => $candidate_display,
+            ];
+        }
+
+        return count($matches) === 1 ? $matches[0] : null;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param int                $row_index
+     * @return void
+     */
+    private function applyRowDescriptorRebind(EditableDescriptor $descriptor, $row_index)
+    {
+        $descriptor->source['row_index'] = absint($row_index);
+        $descriptor->path = $this->buildPathDescriptor($descriptor->source);
+        $descriptor->mutation = $this->buildMutationDescriptor(
+            $descriptor->source,
+            isset($descriptor->render['context']) ? (string) $descriptor->render['context'] : 'text',
+            $descriptor->scope,
+            $descriptor->status,
+            $descriptor->path,
+            is_array($descriptor->loop) ? $descriptor->loop : []
+        );
+        $descriptor->render['source_group'] = $this->buildSourceGroup($descriptor->entity, $descriptor->source);
     }
 
     /**
@@ -939,6 +1059,9 @@ final class ElementInstrumentationService
         $parent_field_key = isset($source['parent_field_key']) ? sanitize_key((string) $source['parent_field_key']) : '';
         $layout_key = isset($source['layout_key']) ? sanitize_key((string) $source['layout_key']) : '';
         $layout_name = isset($source['layout_name']) ? sanitize_key((string) $source['layout_name']) : '';
+        $native_query_kind = isset($source['native_query_kind']) ? sanitize_key((string) $source['native_query_kind']) : '';
+        $native_query_selector = isset($source['native_query_selector']) ? sanitize_key((string) $source['native_query_selector']) : '';
+        $native_query_object_type = isset($source['native_query_object_type']) ? sanitize_key((string) $source['native_query_object_type']) : '';
         $group_path = isset($source['group_path']) && is_array($source['group_path'])
             ? array_values(
                 array_filter(
@@ -979,6 +1102,29 @@ final class ElementInstrumentationService
             $summary[] = 'flexible:' . $root_field_name;
         }
 
+        if ($native_query_kind !== '' || $native_query_selector !== '' || $native_query_object_type !== '') {
+            $segments[] = [
+                'type' => 'native_acf_query',
+                'kind' => $native_query_kind,
+                'selector' => $native_query_selector,
+                'objectType' => $native_query_object_type,
+            ];
+
+            $native_summary = 'native:';
+
+            if ($native_query_kind !== '') {
+                $native_summary .= $native_query_kind;
+            }
+
+            if ($native_query_selector !== '') {
+                $native_summary .= ($native_query_kind !== '' ? ':' : '') . $native_query_selector;
+            }
+
+            if ($native_summary !== 'native:') {
+                $summary[] = $native_summary;
+            }
+        }
+
         if ($row_index !== null) {
             $summary[] = 'row:' . ($row_index + 1);
         }
@@ -1017,6 +1163,9 @@ final class ElementInstrumentationService
             'layoutKey' => $layout_key,
             'layoutName' => $layout_name,
             'groupPath' => $group_path,
+            'nativeQueryKind' => $native_query_kind,
+            'nativeQuerySelector' => $native_query_selector,
+            'nativeQueryObjectType' => $native_query_object_type,
             'isNested' => $container_type !== '',
             'segments' => $segments,
             'summary' => implode(' / ', $summary),
@@ -1036,6 +1185,7 @@ final class ElementInstrumentationService
     {
         $field_type = isset($source['field_type']) ? sanitize_key((string) $source['field_type']) : '';
         $container_type = isset($path_descriptor['containerType']) ? sanitize_key((string) $path_descriptor['containerType']) : '';
+        $native_loop_kind = isset($source['native_query_kind']) ? sanitize_key((string) $source['native_query_kind']) : '';
         $kind = 'scalar';
 
         if (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
@@ -1086,6 +1236,7 @@ final class ElementInstrumentationService
             'target' => $target,
             'contract' => $contract,
             'renderContext' => sanitize_key((string) $render_context),
+            'nativeLoopKind' => $native_loop_kind,
             'loopOwned' => ! empty($loop_context['active']) && $scope === 'related_entity',
             'requiresJournal' => $target !== 'field' || $kind !== 'scalar' || $scope !== 'current_entity',
             'status' => sanitize_key((string) $status),

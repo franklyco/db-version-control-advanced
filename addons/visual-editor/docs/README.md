@@ -14,6 +14,7 @@
 - `knowledge/HOOK_USAGE_STRATEGY.md`
 - `knowledge/DATA_CONTRACTS.md`
 - `knowledge/RESOLVER_REGISTRY.md`
+- `knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md`
 
 ### Standards
 - `standards/VISUAL_EDITOR_GUARDRAILS.md`

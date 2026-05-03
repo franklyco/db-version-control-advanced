@@ -35,6 +35,7 @@ Current slice supports singular frontend entry points only. Within that page req
 - ACF user target
 - ACF taxonomy term target
 - concrete queried post, term, and user loop owners when Bricks exposes a stable loop object
+- native Bricks ACF query-loop roots derived from `query.objectType` values such as repeater, relationship, and post-object loops
 - current-post and related-post ACF repeater row descendants when Bricks exposes a stable row index and parent loop owner
 - direct ACF flexible-content descendants when Bricks exposes a stable row index, parent flexible field, and layout identity
 - nested ACF group descendants inside otherwise-supported repeater/flexible rows when Bricks exposes stable `parent_group_names` ancestry
@@ -72,6 +73,7 @@ Current candidate rule:
 - exact single dynamic-data tag in deterministic repeater-style Bricks anchor payloads such as `items[index].link`, `icons[index].link`, or `linkCustom[index].link`
 - exact single dynamic-data tag in direct ACF flexible-content descendants when Bricks exposes the parent flexible field and layout key
 - for loop-row text/link/media candidates, editable saves currently allow direct safe ACF fields on concrete queried post, term, and user owners plus Bricks ACF repeater rows with stable current-post or related-post row identity
+- native Bricks ACF query-loop metadata now classifies `query.objectType` roots such as `acf_process_section_process_steps`, `acf_related_faq_groups`, and `acf_office_manager` so loop owner/path handling can be widened intentionally by field type
 - flexible descendants with stable row + layout identity may surface as editable or inspect-only descriptors depending on field type and owner support
 - generic exact-tag loop-row candidates with no concrete owner may still surface as inspect-only descriptors
 - no mixed literal text around the tag

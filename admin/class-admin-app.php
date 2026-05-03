@@ -713,12 +713,19 @@ final class DBVC_Admin_App
         }
 
         $zip_path = $handled['file'];
+        $original_name = sanitize_file_name((string) ($file['name'] ?? basename($zip_path)));
         $preferred_id = self::sanitize_proposal_id($request->get_param('proposal_id'));
         $overwrite = $request->get_param('overwrite');
         if (function_exists('rest_sanitize_boolean')) {
             $overwrite = rest_sanitize_boolean($overwrite);
         } else {
             $overwrite = in_array($overwrite, [true, 1, '1', 'true', 'on'], true);
+        }
+
+        $ai_result = self::maybe_stage_ai_package_upload($zip_path, $original_name);
+        if (is_array($ai_result)) {
+            @unlink($zip_path);
+            return new \WP_REST_Response($ai_result);
         }
 
         $result = self::import_proposal_from_zip($zip_path, [
@@ -733,6 +740,94 @@ final class DBVC_Admin_App
         }
 
         return new \WP_REST_Response($result);
+    }
+
+    /**
+     * Detect AI submission packages uploaded through the proposal uploader and route
+     * them into the classic AI intake review flow instead of registering them as proposals.
+     *
+     * @param string $zip_path
+     * @param string $original_name
+     * @return array<string,mixed>|null
+     */
+    private static function maybe_stage_ai_package_upload(string $zip_path, string $original_name): ?array
+    {
+        if (
+            ! class_exists('\Dbvc\AiPackage\SubmissionPackageDetector')
+            || ! class_exists('\Dbvc\AiPackage\SubmissionPackageValidator')
+        ) {
+            return null;
+        }
+
+        $inspection = \Dbvc\AiPackage\SubmissionPackageDetector::inspect_uploaded_zip($zip_path);
+        if (! is_array($inspection) || empty($inspection['detected'])) {
+            return null;
+        }
+
+        delete_option('dbvc_sync_upload_report');
+        delete_option('dbvc_ai_upload_report');
+
+        $ai_report = \Dbvc\AiPackage\SubmissionPackageValidator::intake_uploaded_zip([
+            'name'     => $original_name !== '' ? $original_name : basename($zip_path),
+            'tmp_name' => $zip_path,
+            'type'     => 'application/zip',
+            'error'    => 0,
+            'size'     => file_exists($zip_path) ? (int) filesize($zip_path) : 0,
+        ]);
+
+        if (is_wp_error($ai_report)) {
+            $ai_report = [
+                'mode' => 'ai_package',
+                'generated_at' => current_time('mysql'),
+                'status' => 'blocked',
+                'package_type' => '',
+                'package_schema_version' => null,
+                'counts' => [
+                    'post_entities' => 0,
+                    'term_entities' => 0,
+                    'issues' => 1,
+                    'warnings' => 0,
+                    'blocked' => 1,
+                ],
+                'issues' => [
+                    [
+                        'severity' => 'error',
+                        'code' => 'intake_failed',
+                        'message' => $ai_report->get_error_message(),
+                        'path' => '',
+                    ],
+                ],
+                'entities' => [],
+                'artifacts' => [
+                    'source_archive' => '',
+                    'extracted_root' => '',
+                    'validation_report' => '',
+                    'validation_summary' => '',
+                    'translation_manifest' => null,
+                    'translated_sync_root' => null,
+                ],
+            ];
+        }
+
+        update_option('dbvc_ai_upload_report', $ai_report, false);
+
+        $state = (($ai_report['status'] ?? 'blocked') === 'blocked')
+            ? 'ai_blocked'
+            : 'ai_review';
+
+        $redirect_url = 'admin.php?page=dbvc-export&dbvc_upload=' . rawurlencode($state) . '#dbvc-import-upload';
+
+        return [
+            'mode' => 'ai_package',
+            'status' => $state,
+            'redirect_url' => $redirect_url,
+            'intake_id' => (string) ($ai_report['intake_id'] ?? ''),
+            'report_status' => (string) ($ai_report['status'] ?? 'blocked'),
+            'counts' => is_array($ai_report['counts'] ?? null) ? $ai_report['counts'] : [],
+            'message' => $state === 'ai_blocked'
+                ? __('AI package intake was blocked. Opening the retained review report.', 'dbvc')
+                : __('AI package staged for intake review. Opening the review screen.', 'dbvc'),
+        ];
     }
 
     /**

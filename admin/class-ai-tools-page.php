@@ -36,6 +36,10 @@ final class DBVC_AI_Tools_Page
         $settings = class_exists('\Dbvc\AiPackage\Settings')
             ? \Dbvc\AiPackage\Settings::get_all_settings()
             : [];
+        $tool_settings = class_exists('DBVC_Master_Settings')
+            ? DBVC_Master_Settings::get_download_sample_entities_settings()
+            : [];
+        $has_saved_tool_settings = ! empty($tool_settings['last_saved_at']);
         $storage = class_exists('\Dbvc\AiPackage\Storage')
             ? \Dbvc\AiPackage\Storage::ensure_base_roots()
             : new WP_Error('dbvc_ai_storage_unavailable', __('AI package storage service unavailable.', 'dbvc'));
@@ -49,8 +53,8 @@ final class DBVC_AI_Tools_Page
             ? \Dbvc\AiPackage\SiteFingerprintService::build_from_schema_bundle($schema_bundle)
             : [];
 
-        $selected_post_types = (array) get_option('dbvc_post_types', []);
-        $selected_taxonomies = function_exists('dbvc_get_selected_taxonomies')
+        $default_selected_post_types = (array) get_option('dbvc_post_types', []);
+        $default_selected_taxonomies = function_exists('dbvc_get_selected_taxonomies')
             ? dbvc_get_selected_taxonomies()
             : (array) get_option('dbvc_taxonomies', []);
         $available_post_types = function_exists('dbvc_get_available_post_types')
@@ -61,7 +65,27 @@ final class DBVC_AI_Tools_Page
             : [];
 
         $generation = isset($settings['generation']) && is_array($settings['generation']) ? $settings['generation'] : [];
-        $included_docs = isset($generation['included_docs']) && is_array($generation['included_docs']) ? $generation['included_docs'] : [];
+        $selected_post_types = $has_saved_tool_settings && isset($tool_settings['post_types']) && is_array($tool_settings['post_types'])
+            ? $tool_settings['post_types']
+            : $default_selected_post_types;
+        $selected_taxonomies = $has_saved_tool_settings && isset($tool_settings['taxonomies']) && is_array($tool_settings['taxonomies'])
+            ? $tool_settings['taxonomies']
+            : $default_selected_taxonomies;
+        $selected_shape_mode = $has_saved_tool_settings && ! empty($tool_settings['shape_mode'])
+            ? (string) $tool_settings['shape_mode']
+            : (string) ($generation['shape_mode'] ?? '');
+        $selected_value_style = $has_saved_tool_settings && ! empty($tool_settings['value_style'])
+            ? (string) $tool_settings['value_style']
+            : (string) ($generation['value_style'] ?? '');
+        $selected_variant_set = $has_saved_tool_settings && ! empty($tool_settings['variant_set'])
+            ? (string) $tool_settings['variant_set']
+            : (string) ($generation['variant_set'] ?? '');
+        $selected_observed_scan_cap = $has_saved_tool_settings && ! empty($tool_settings['observed_scan_cap'])
+            ? (int) $tool_settings['observed_scan_cap']
+            : (int) ($generation['observed_scan_cap'] ?? 0);
+        $included_docs = $has_saved_tool_settings && isset($tool_settings['included_docs']) && is_array($tool_settings['included_docs'])
+            ? $tool_settings['included_docs']
+            : (isset($generation['included_docs']) && is_array($generation['included_docs']) ? $generation['included_docs'] : []);
         $schema_stats = isset($schema_bundle['stats']) && is_array($schema_bundle['stats']) ? $schema_bundle['stats'] : [];
         $schema_sources = isset($schema_bundle['sources']['acf']) && is_array($schema_bundle['sources']['acf']) ? $schema_bundle['sources']['acf'] : [];
         $template_variants = isset($template_bundle['variants']) && is_array($template_bundle['variants']) ? $template_bundle['variants'] : [];
@@ -80,28 +104,32 @@ final class DBVC_AI_Tools_Page
         <div class="wrap">
             <style>
                 .dbvc-ai-option-grid {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 0.5rem 0.75rem;
+                    max-width: 1040px;
+                    width: 100%;
+                }
+                .dbvc-ai-option-table-wrap {
                     max-width: 1040px;
                 }
-                .dbvc-ai-option-chip {
-                    display: inline-flex;
-                    align-items: flex-start;
-                    gap: 0.5rem;
-                    flex: 0 1 280px;
-                    max-width: 320px;
-                    padding: 0.55rem 0.75rem;
-                    border: 1px solid #dcdcde;
-                    border-radius: 4px;
-                    background: #fff;
-                    box-sizing: border-box;
+                .dbvc-ai-option-table-toolbar {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.4rem;
+                    margin: 0 0 0.75rem;
                 }
-                .dbvc-ai-option-chip input {
-                    margin: 2px 0 0;
-                    flex: 0 0 auto;
+                .dbvc-ai-option-table-toolbar .button-link {
+                    padding: 0;
                 }
-                .dbvc-ai-option-chip__text {
+                .dbvc-ai-option-table-toolbar__divider {
+                    color: #646970;
+                }
+                .dbvc-ai-option-grid .check-column {
+                    width: 2.5rem;
+                }
+                .dbvc-ai-option-grid td,
+                .dbvc-ai-option-grid th {
+                    vertical-align: middle;
+                }
+                .dbvc-ai-option-row-label {
                     display: block;
                     line-height: 1.35;
                 }
@@ -152,11 +180,18 @@ final class DBVC_AI_Tools_Page
                                     <p><?php esc_html_e('No post types available.', 'dbvc'); ?></p>
                                 <?php else : ?>
                                     <fieldset>
-                                        <div class="dbvc-ai-option-grid">
-                                            <?php foreach ($available_post_types as $post_type => $post_type_object) : ?>
-                                                <?php self::render_checkbox_chip('dbvc_ai_generate[post_types][]', (string) $post_type, in_array($post_type, $selected_post_types, true), $post_type_object->label . ' (' . $post_type . ')'); ?>
-                                            <?php endforeach; ?>
-                                        </div>
+                                        <?php
+                                        $post_type_rows = [];
+                                        foreach ($available_post_types as $post_type => $post_type_object) {
+                                            $post_type_rows[] = [
+                                                'value' => (string) $post_type,
+                                                'checked' => in_array($post_type, $selected_post_types, true),
+                                                'label' => $post_type_object->label . ' (' . $post_type . ')',
+                                            ];
+                                        }
+
+                                        self::render_checkbox_table('post-types', 'dbvc_ai_generate[post_types][]', $post_type_rows);
+                                        ?>
                                     </fieldset>
                                 <?php endif; ?>
                                 <p class="description"><?php esc_html_e('Use the current DBVC export selections as defaults, then override them per package as needed.', 'dbvc'); ?></p>
@@ -169,11 +204,18 @@ final class DBVC_AI_Tools_Page
                                     <p><?php esc_html_e('No taxonomies available.', 'dbvc'); ?></p>
                                 <?php else : ?>
                                     <fieldset>
-                                        <div class="dbvc-ai-option-grid">
-                                            <?php foreach ($available_taxonomies as $taxonomy => $taxonomy_object) : ?>
-                                                <?php self::render_checkbox_chip('dbvc_ai_generate[taxonomies][]', (string) $taxonomy, in_array($taxonomy, $selected_taxonomies, true), $taxonomy_object->labels->name . ' (' . $taxonomy . ')'); ?>
-                                            <?php endforeach; ?>
-                                        </div>
+                                        <?php
+                                        $taxonomy_rows = [];
+                                        foreach ($available_taxonomies as $taxonomy => $taxonomy_object) {
+                                            $taxonomy_rows[] = [
+                                                'value' => (string) $taxonomy,
+                                                'checked' => in_array($taxonomy, $selected_taxonomies, true),
+                                                'label' => $taxonomy_object->labels->name . ' (' . $taxonomy . ')',
+                                            ];
+                                        }
+
+                                        self::render_checkbox_table('taxonomies', 'dbvc_ai_generate[taxonomies][]', $taxonomy_rows);
+                                        ?>
                                     </fieldset>
                                 <?php endif; ?>
                             </td>
@@ -184,7 +226,7 @@ final class DBVC_AI_Tools_Page
                                 <label for="dbvc-ai-shape-mode"><strong><?php esc_html_e('Shape mode', 'dbvc'); ?></strong></label><br />
                                 <select id="dbvc-ai-shape-mode" name="dbvc_ai_generate[shape_mode]">
                                     <?php foreach ((array) \Dbvc\AiPackage\Settings::get_shape_mode_options() as $value => $label) : ?>
-                                        <option value="<?php echo esc_attr($value); ?>" <?php selected((string) ($generation['shape_mode'] ?? ''), $value); ?>><?php echo esc_html($label); ?></option>
+                                        <option value="<?php echo esc_attr($value); ?>" <?php selected($selected_shape_mode, $value); ?>><?php echo esc_html($label); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                                 <br /><br />
@@ -192,7 +234,7 @@ final class DBVC_AI_Tools_Page
                                 <label for="dbvc-ai-value-style"><strong><?php esc_html_e('Value style', 'dbvc'); ?></strong></label><br />
                                 <select id="dbvc-ai-value-style" name="dbvc_ai_generate[value_style]">
                                     <?php foreach ((array) \Dbvc\AiPackage\Settings::get_value_style_options() as $value => $label) : ?>
-                                        <option value="<?php echo esc_attr($value); ?>" <?php selected((string) ($generation['value_style'] ?? ''), $value); ?>><?php echo esc_html($label); ?></option>
+                                        <option value="<?php echo esc_attr($value); ?>" <?php selected($selected_value_style, $value); ?>><?php echo esc_html($label); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                                 <br /><br />
@@ -200,24 +242,31 @@ final class DBVC_AI_Tools_Page
                                 <label for="dbvc-ai-variant-set"><strong><?php esc_html_e('Variant set', 'dbvc'); ?></strong></label><br />
                                 <select id="dbvc-ai-variant-set" name="dbvc_ai_generate[variant_set]">
                                     <?php foreach ((array) \Dbvc\AiPackage\Settings::get_variant_set_options() as $value => $label) : ?>
-                                        <option value="<?php echo esc_attr($value); ?>" <?php selected((string) ($generation['variant_set'] ?? ''), $value); ?>><?php echo esc_html($label); ?></option>
+                                        <option value="<?php echo esc_attr($value); ?>" <?php selected($selected_variant_set, $value); ?>><?php echo esc_html($label); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                                 <br /><br />
 
                                 <label for="dbvc-ai-observed-scan-cap"><strong><?php esc_html_e('Observed-shape scan cap', 'dbvc'); ?></strong></label><br />
-                                <input id="dbvc-ai-observed-scan-cap" name="dbvc_ai_generate[observed_scan_cap]" type="number" min="<?php echo esc_attr((string) \Dbvc\AiPackage\Settings::MIN_OBSERVED_SCAN_CAP); ?>" max="<?php echo esc_attr((string) \Dbvc\AiPackage\Settings::MAX_OBSERVED_SCAN_CAP); ?>" value="<?php echo esc_attr((string) ($generation['observed_scan_cap'] ?? '')); ?>" class="small-text" />
+                                <input id="dbvc-ai-observed-scan-cap" name="dbvc_ai_generate[observed_scan_cap]" type="number" min="<?php echo esc_attr((string) \Dbvc\AiPackage\Settings::MIN_OBSERVED_SCAN_CAP); ?>" max="<?php echo esc_attr((string) \Dbvc\AiPackage\Settings::MAX_OBSERVED_SCAN_CAP); ?>" value="<?php echo esc_attr((string) $selected_observed_scan_cap); ?>" class="small-text" />
                             </td>
                         </tr>
                         <tr>
                             <th scope="row"><?php esc_html_e('Included docs', 'dbvc'); ?></th>
                             <td>
                                 <fieldset>
-                                    <div class="dbvc-ai-option-grid">
-                                        <?php foreach ((array) \Dbvc\AiPackage\Settings::get_included_doc_options() as $doc_key => $doc_label) : ?>
-                                            <?php self::render_checkbox_chip('dbvc_ai_generate[included_docs][]', (string) $doc_key, in_array($doc_key, $included_docs, true), (string) $doc_label); ?>
-                                        <?php endforeach; ?>
-                                    </div>
+                                    <?php
+                                    $doc_rows = [];
+                                    foreach ((array) \Dbvc\AiPackage\Settings::get_included_doc_options() as $doc_key => $doc_label) {
+                                        $doc_rows[] = [
+                                            'value' => (string) $doc_key,
+                                            'checked' => in_array($doc_key, $included_docs, true),
+                                            'label' => (string) $doc_label,
+                                        ];
+                                    }
+
+                                    self::render_checkbox_table('included-docs', 'dbvc_ai_generate[included_docs][]', $doc_rows);
+                                    ?>
                                 </fieldset>
                                 <p class="description"><?php esc_html_e('Per-sample markdown guidance is always included. These toggles control the top-level agent/operator docs in the package root.', 'dbvc'); ?></p>
                             </td>
@@ -283,6 +332,29 @@ final class DBVC_AI_Tools_Page
 
                 <?php submit_button(__('Generate Sample Package', 'dbvc')); ?>
             </form>
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    var toggleButtons = document.querySelectorAll('.dbvc-ai-option-table-toggle');
+
+                    toggleButtons.forEach(function(button) {
+                        button.addEventListener('click', function(event) {
+                            event.preventDefault();
+
+                            var target = button.getAttribute('data-dbvc-target');
+                            var shouldCheck = button.getAttribute('data-dbvc-state') === 'checked';
+                            var container = target ? document.querySelector('[data-dbvc-option-table-target="' + target + '"]') : null;
+
+                            if (! container) {
+                                return;
+                            }
+
+                            container.querySelectorAll('input[type="checkbox"]').forEach(function(input) {
+                                input.checked = shouldCheck;
+                            });
+                        });
+                    });
+                });
+            </script>
         </div>
         <?php
     }
@@ -305,6 +377,9 @@ final class DBVC_AI_Tools_Page
         }
 
         $payload = self::get_generate_request_payload();
+        if (class_exists('DBVC_Master_Settings')) {
+            DBVC_Master_Settings::save_download_sample_entities_settings($payload);
+        }
         $result = \Dbvc\AiPackage\SamplePackageBuilder::build($payload);
 
         if (is_wp_error($result)) {
@@ -491,19 +566,56 @@ final class DBVC_AI_Tools_Page
     }
 
     /**
-     * @param string $name
-     * @param string $value
-     * @param bool   $checked
-     * @param string $label
+     * @param string                    $group_id
+     * @param string                    $name
+     * @param array<int,array<string,mixed>> $rows
      * @return void
      */
-    private static function render_checkbox_chip(string $name, string $value, bool $checked, string $label): void
+    private static function render_checkbox_table(string $group_id, string $name, array $rows): void
     {
+        $sanitized_group_id = sanitize_html_class($group_id);
         ?>
-        <label class="dbvc-ai-option-chip">
-            <input type="checkbox" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>" <?php checked($checked); ?> />
-            <span class="dbvc-ai-option-chip__text"><?php echo esc_html($label); ?></span>
-        </label>
+        <div class="dbvc-ai-option-table-wrap" data-dbvc-option-table-target="<?php echo esc_attr($group_id); ?>">
+            <div class="dbvc-ai-option-table-toolbar">
+                <button type="button" class="button-link dbvc-ai-option-table-toggle" data-dbvc-target="<?php echo esc_attr($group_id); ?>" data-dbvc-state="checked"><?php esc_html_e('Select All', 'dbvc'); ?></button>
+                <span class="dbvc-ai-option-table-toolbar__divider">|</span>
+                <button type="button" class="button-link dbvc-ai-option-table-toggle" data-dbvc-target="<?php echo esc_attr($group_id); ?>" data-dbvc-state="unchecked"><?php esc_html_e('Deselect All', 'dbvc'); ?></button>
+            </div>
+            <table class="widefat striped dbvc-ai-option-grid">
+                <thead>
+                    <tr>
+                        <th scope="col" class="check-column"><span class="screen-reader-text"><?php esc_html_e('Select', 'dbvc'); ?></span></th>
+                        <th scope="col"><?php esc_html_e('Item', 'dbvc'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($rows as $index => $row) : ?>
+                        <?php
+                        $row_id = sprintf(
+                            'dbvc-ai-option-%1$s-%2$d',
+                            $sanitized_group_id,
+                            (int) $index
+                        );
+                        ?>
+                        <tr>
+                            <td class="check-column">
+                                <input
+                                    id="<?php echo esc_attr($row_id); ?>"
+                                    type="checkbox"
+                                    name="<?php echo esc_attr($name); ?>"
+                                    value="<?php echo esc_attr((string) ($row['value'] ?? '')); ?>"
+                                    <?php checked(! empty($row['checked'])); ?> />
+                            </td>
+                            <td>
+                                <label class="dbvc-ai-option-row-label" for="<?php echo esc_attr($row_id); ?>">
+                                    <?php echo esc_html((string) ($row['label'] ?? '')); ?>
+                                </label>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
         <?php
     }
 }

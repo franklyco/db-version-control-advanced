@@ -33,6 +33,8 @@ Current status:
 - Bricks ACF `relationship` and `post_object` query loops can now mark safe related-post loop rows and surface that related-post ownership in the modal
 - related-post loop saves now require explicit acknowledgement and update the related post shown in the loop rather than the current page post
 - direct safe ACF fields rendered from Bricks query loops with a concrete post, term, or user owner can now save against that loop owner instead of being forced into inspect-only mode
+- native Bricks ACF query-loop roots are now classified from `query.objectType` metadata so repeater, relationship, and post-object loops can be widened intentionally without introducing DOM-guessing fallbacks
+- native Bricks ACF repeater loops are now hardened against shortened parent aliases, duplicate child keys, nested grouped row descendants, repeated-loop seed collapse, and fake related-owner classification from bare numeric loop indices
 - direct Bricks ACF flexible-content descendants can now surface with stable row + layout metadata, and current/related post text-like, WYSIWYG, choice, link, and image flexible subfields can now save through the new flexible contract path while other flexible descendants remain inspect-only
 - nested ACF group descendants now contribute their ancestry plus leaf selector identity to the live source/sync group hashes so same-named grouped leaf fields do not cross-update each other after save
 - nested ACF group ancestry is now preserved in descriptor path metadata so repeater/flexible row descendants can carry explicit group segments instead of flattening every nested source into a loose field name
@@ -53,6 +55,7 @@ Current status:
 - Visual Editor saves now write to dedicated journal tables (`dbvc_ve_change_sets`, `dbvc_ve_change_items`) so future loop-owned and flexible-content mutation paths have durable per-path history and rollback-oriented write scaffolding
 - save requests now run through an explicit mutation-contract layer so supported current, shared, repeater-row, and loop-owned save paths are formalized instead of relying only on loose scope checks
 - the panel source-details block now surfaces the resolved save-contract label/detail alongside the dynamic source summary
+- native Bricks ACF loop provenance now participates in descriptor source/path/mutation metadata so panel summaries and save-contract details can distinguish native repeater, relationship, and post-object origins
 - the editor panel is now closed by default, opens from the active shared badge, closes on outside click, and can be dragged to a different screen position that persists for the current browser session
 - empty text-like targets can now surface a pulsing placeholder treatment when the resolved display value is empty, while image targets use a narrow overflow override instead of a broad theme-overriding rule
 - advanced exact-tag ACF sources that are not yet save-capable now surface as inspect-only markers instead of being silently dropped
@@ -93,6 +96,7 @@ This addon now lives inside the DBVC repo at:
 - current singular page context, with explicit Bricks-resolved option/user/term ACF targets where safe
 - safe Bricks ACF `relationship` / `post_object` post-loop row support where the loop owner is a concrete related post
 - safe direct ACF field support where the loop owner is a concrete queried post, term, or user
+- native Bricks ACF query-loop metadata for repeater, relationship, and post-object `query.objectType` roots
 - safe Bricks ACF repeater row support where the row index is stable and the owner resolves to the current post or a concrete related post
 - narrow writable support for direct Bricks ACF flexible-content text-like, WYSIWYG, choice, link, and image descendants on current/related post owners, with inspect-only surfacing for other stable flexible descendants
 - nested-group descendants inside supported repeater/flexible rows now preserve their Bricks ACF group ancestry in the descriptor path and row mutation layer
@@ -146,6 +150,7 @@ This addon now lives inside the DBVC repo at:
 - `docs/handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md`
 - `docs/knowledge/HOOK_USAGE_STRATEGY.md`
 - `docs/knowledge/DATA_CONTRACTS.md`
+- `docs/knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_MVP.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md`

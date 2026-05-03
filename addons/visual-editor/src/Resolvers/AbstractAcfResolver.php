@@ -53,10 +53,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         $object_id = $this->getAcfObjectId($descriptor);
+        $field_identifier = $this->getFieldIdentifier($descriptor);
         $field_name = $this->getFieldName($descriptor);
         $field_key = $this->getFieldKey($descriptor);
 
-        if ($object_id === '' || ($field_name === '' && $field_key === '')) {
+        if ($object_id === '' || ($field_identifier === '' && $field_name === '' && $field_key === '')) {
             return [
                 'ok' => false,
                 'message' => __('ACF field context is missing.', 'dbvc'),
@@ -65,9 +66,18 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
         if (function_exists('update_field')) {
             $result = false;
+            $prefer_identifier = $this->shouldPreferFieldIdentifierWrite($descriptor, $field_identifier, $field_name);
 
-            if ($field_name !== '') {
+            if ($prefer_identifier && $field_identifier !== '') {
+                $result = update_field($field_identifier, $value, $object_id);
+            }
+
+            if ($result === false && $field_name !== '') {
                 $result = update_field($field_name, $value, $object_id);
+            }
+
+            if ($result === false && ! $prefer_identifier && $field_identifier !== '' && $field_identifier !== $field_name) {
+                $result = update_field($field_identifier, $value, $object_id);
             }
 
             $next_value = $this->getRawAcfValue($descriptor);
@@ -231,6 +241,41 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
     /**
      * @param EditableDescriptor $descriptor
+     * @return array<int, string>
+     */
+    protected function getGroupKeyPath(EditableDescriptor $descriptor)
+    {
+        if (empty($descriptor->source['group_key_path']) || ! is_array($descriptor->source['group_key_path'])) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                array_map(
+                    static function ($value) {
+                        return sanitize_key((string) $value);
+                    },
+                    $descriptor->source['group_key_path']
+                )
+            )
+        );
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    protected function isGroupedFieldSource(EditableDescriptor $descriptor)
+    {
+        if (! empty($this->getGroupPath($descriptor))) {
+            return true;
+        }
+
+        return ! empty($descriptor->source['is_grouped_field']);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
      * @return bool
      */
     protected function supportsAcfSource(EditableDescriptor $descriptor)
@@ -258,11 +303,35 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
     /**
      * @param EditableDescriptor $descriptor
+     * @param string             $field_identifier
+     * @param string             $field_name
+     * @return bool
+     */
+    private function shouldPreferFieldIdentifierWrite(EditableDescriptor $descriptor, $field_identifier, $field_name)
+    {
+        return $field_identifier !== ''
+            && $field_identifier !== $field_name
+            && $this->isGroupedFieldSource($descriptor)
+            && ! $this->isRepeaterSubfieldSource($descriptor)
+            && ! $this->isFlexibleSubfieldSource($descriptor);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
      * @return string
      */
     protected function getParentFieldName(EditableDescriptor $descriptor)
     {
         return isset($descriptor->source['parent_field_name']) ? sanitize_key((string) $descriptor->source['parent_field_name']) : '';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    protected function getParentFieldSelector(EditableDescriptor $descriptor)
+    {
+        return isset($descriptor->source['parent_field_selector']) ? sanitize_key((string) $descriptor->source['parent_field_selector']) : '';
     }
 
     /**
@@ -317,6 +386,54 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
     /**
      * @param EditableDescriptor $descriptor
+     * @return array<int, array<string, mixed>>
+     */
+    public function getRowCandidateValues(EditableDescriptor $descriptor)
+    {
+        $candidates = [];
+
+        if ($this->isRepeaterSubfieldSource($descriptor)) {
+            $rows = $this->getRawRepeaterRows($descriptor);
+
+            foreach ($rows as $index => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $candidates[] = [
+                    'index' => (int) $index,
+                    'value' => $this->extractRowFieldValue($row, $descriptor),
+                ];
+            }
+
+            return $candidates;
+        }
+
+        if ($this->isFlexibleSubfieldSource($descriptor)) {
+            $rows = $this->getRawFlexibleRows($descriptor);
+            $layout_name = $this->getFlexibleLayoutName($descriptor);
+
+            foreach ($rows as $index => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                if ($layout_name !== '' && isset($row['acf_fc_layout']) && sanitize_key((string) $row['acf_fc_layout']) !== $layout_name) {
+                    continue;
+                }
+
+                $candidates[] = [
+                    'index' => (int) $index,
+                    'value' => $this->extractRowFieldValue($row, $descriptor),
+                ];
+            }
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
      * @return mixed
      */
     private function getRawRepeaterSubfieldValue(EditableDescriptor $descriptor)
@@ -340,10 +457,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
     private function writeRepeaterSubfieldValue(EditableDescriptor $descriptor, $value)
     {
         $object_id = $this->getAcfObjectId($descriptor);
+        $parent_field_selector = $this->getParentFieldSelector($descriptor);
         $parent_field_name = $this->getParentFieldName($descriptor);
         $parent_field_key = $this->getParentFieldKey($descriptor);
 
-        if ($object_id === '' || ($parent_field_name === '' && $parent_field_key === '')) {
+        if ($object_id === '' || ($parent_field_selector === '' && $parent_field_name === '' && $parent_field_key === '')) {
             return [
                 'ok' => false,
                 'message' => __('Repeater field context is missing.', 'dbvc'),
@@ -372,7 +490,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
         $result = false;
 
-        if ($parent_field_name !== '') {
+        if ($parent_field_selector !== '') {
+            $result = update_field($parent_field_selector, $rows, $object_id);
+        }
+
+        if ($result === false && $parent_field_name !== '') {
             $result = update_field($parent_field_name, $rows, $object_id);
         }
 
@@ -425,10 +547,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
     private function writeFlexibleSubfieldValue(EditableDescriptor $descriptor, $value)
     {
         $object_id = $this->getAcfObjectId($descriptor);
+        $parent_field_selector = $this->getParentFieldSelector($descriptor);
         $parent_field_name = $this->getParentFieldName($descriptor);
         $parent_field_key = $this->getParentFieldKey($descriptor);
 
-        if ($object_id === '' || ($parent_field_name === '' && $parent_field_key === '')) {
+        if ($object_id === '' || ($parent_field_selector === '' && $parent_field_name === '' && $parent_field_key === '')) {
             return [
                 'ok' => false,
                 'message' => __('Flexible field context is missing.', 'dbvc'),
@@ -465,7 +588,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
         $result = false;
 
-        if ($parent_field_name !== '') {
+        if ($parent_field_selector !== '') {
+            $result = update_field($parent_field_selector, $rows, $object_id);
+        }
+
+        if ($result === false && $parent_field_name !== '') {
             $result = update_field($parent_field_name, $rows, $object_id);
         }
 
@@ -495,11 +622,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
     private function getRawRepeaterRows(EditableDescriptor $descriptor)
     {
         $object_id = $this->getAcfObjectId($descriptor);
-        $parent_identifier = $this->getParentFieldName($descriptor);
-
-        if ($parent_identifier === '') {
-            $parent_identifier = $this->getParentFieldKey($descriptor);
-        }
+        $parent_identifier = $this->resolveParentFieldReadIdentifier($descriptor);
 
         if ($object_id === '' || $parent_identifier === '') {
             return [];
@@ -521,11 +644,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
     private function getRawFlexibleRows(EditableDescriptor $descriptor)
     {
         $object_id = $this->getAcfObjectId($descriptor);
-        $parent_identifier = $this->getParentFieldName($descriptor);
-
-        if ($parent_identifier === '') {
-            $parent_identifier = $this->getParentFieldKey($descriptor);
-        }
+        $parent_identifier = $this->resolveParentFieldReadIdentifier($descriptor);
 
         if ($object_id === '' || $parent_identifier === '') {
             return [];
@@ -667,7 +786,15 @@ abstract class AbstractAcfResolver implements ResolverInterface
     {
         $container = $row;
 
-        foreach ($this->getGroupPath($descriptor) as $segment) {
+        $group_names = $this->getGroupPath($descriptor);
+        $group_keys = $this->getGroupKeyPath($descriptor);
+        $depth = max(count($group_names), count($group_keys));
+
+        for ($index = 0; $index < $depth; $index++) {
+            $group_name = isset($group_names[$index]) ? $group_names[$index] : '';
+            $group_key = isset($group_keys[$index]) ? $group_keys[$index] : '';
+            $segment = $this->resolveGroupedRowSegmentKey($container, $group_name, $group_key);
+
             if ($segment === '' || ! isset($container[$segment]) || ! is_array($container[$segment])) {
                 return [];
             }
@@ -687,7 +814,19 @@ abstract class AbstractAcfResolver implements ResolverInterface
     {
         $container =& $row;
 
-        foreach ($this->getGroupPath($descriptor) as $segment) {
+        $group_names = $this->getGroupPath($descriptor);
+        $group_keys = $this->getGroupKeyPath($descriptor);
+        $depth = max(count($group_names), count($group_keys));
+
+        for ($index = 0; $index < $depth; $index++) {
+            $group_name = isset($group_names[$index]) ? $group_names[$index] : '';
+            $group_key = isset($group_keys[$index]) ? $group_keys[$index] : '';
+            $segment = $this->resolveGroupedRowSegmentKey($container, $group_name, $group_key);
+
+            if ($segment === '') {
+                $segment = $group_key !== '' ? $group_key : $group_name;
+            }
+
             if ($segment === '') {
                 continue;
             }
@@ -700,5 +839,46 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         return $container;
+    }
+
+    /**
+     * @param array<string, mixed> $container
+     * @param string               $group_name
+     * @param string               $group_key
+     * @return string
+     */
+    private function resolveGroupedRowSegmentKey(array $container, $group_name, $group_key)
+    {
+        $group_name = sanitize_key((string) $group_name);
+        $group_key = sanitize_key((string) $group_key);
+
+        if ($group_key !== '' && isset($container[$group_key]) && is_array($container[$group_key])) {
+            return $group_key;
+        }
+
+        if ($group_name !== '' && isset($container[$group_name]) && is_array($container[$group_name])) {
+            return $group_name;
+        }
+
+        return '';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function resolveParentFieldReadIdentifier(EditableDescriptor $descriptor)
+    {
+        $selector = $this->getParentFieldSelector($descriptor);
+        if ($selector !== '') {
+            return $selector;
+        }
+
+        $field_name = $this->getParentFieldName($descriptor);
+        if ($field_name !== '') {
+            return $field_name;
+        }
+
+        return $this->getParentFieldKey($descriptor);
     }
 }
