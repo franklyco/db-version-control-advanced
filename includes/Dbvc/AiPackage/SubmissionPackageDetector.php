@@ -9,6 +9,25 @@ if (! defined('WPINC')) {
 final class SubmissionPackageDetector
 {
     /**
+     * Legacy compatibility aliases. Canonical packages should still use
+     * `dbvc-ai-manifest.json`, but intake can tolerate these names.
+     *
+     * @var array<int,string>
+     */
+    private const LEGACY_MANIFEST_FILENAMES = [
+        'manifest.json',
+        'manifest.md',
+    ];
+
+    /**
+     * @return array<int,string>
+     */
+    public static function get_supported_manifest_filenames(): array
+    {
+        return array_merge([SamplePackageBuilder::MANIFEST_FILENAME], self::LEGACY_MANIFEST_FILENAMES);
+    }
+
+    /**
      * @param string $zip_path
      * @return array<string,mixed>|false
      */
@@ -37,7 +56,8 @@ final class SubmissionPackageDetector
             }
 
             $entries[] = $normalized;
-            if (basename($normalized) !== SamplePackageBuilder::MANIFEST_FILENAME) {
+            $basename = basename($normalized);
+            if (! in_array($basename, self::get_supported_manifest_filenames(), true)) {
                 continue;
             }
 
@@ -52,6 +72,7 @@ final class SubmissionPackageDetector
 
             $manifest_candidates[] = [
                 'entry' => $normalized,
+                'basename' => $basename,
                 'wrapper_dir' => $directory,
             ];
         }
@@ -84,6 +105,8 @@ final class SubmissionPackageDetector
         return [
             'detected' => true,
             'manifest_entry' => $manifest_entry,
+            'manifest_basename' => (string) ($manifest_candidate['basename'] ?? ''),
+            'manifest_is_canonical' => ((string) ($manifest_candidate['basename'] ?? '')) === SamplePackageBuilder::MANIFEST_FILENAME,
             'wrapper_dir' => (string) $manifest_candidate['wrapper_dir'],
             'manifest_raw' => is_string($manifest_raw) ? $manifest_raw : '',
             'manifest' => is_array($manifest) ? $manifest : null,

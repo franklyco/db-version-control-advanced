@@ -11,6 +11,8 @@ final class SamplePackageBuilder
     public const PACKAGE_TYPE = 'dbvc_ai_sample_package';
     public const PACKAGE_SCHEMA_VERSION = 1;
     public const MANIFEST_FILENAME = 'dbvc-ai-manifest.json';
+    public const PACKAGE_PROFILE_COMPACT = 'compact_ai_chat';
+    public const PACKAGE_PROFILE_FULL = 'full_reference';
 
     /**
      * @param array<string,mixed> $args
@@ -68,13 +70,13 @@ final class SamplePackageBuilder
                 ? $schema_bundle['validation_rules']
                 : RulesService::build_validation_rules($schema_bundle);
 
-            $artifacts = self::write_schema_artifacts($workspace_path, $schema_bundle, $fingerprint, $validation_rules);
+            $artifacts = self::write_schema_artifacts($workspace_path, $build_args, $schema_bundle, $fingerprint, $validation_rules);
             if (\is_wp_error($artifacts)) {
                 self::cleanup_paths($workspace_path, $zip_path);
                 return $artifacts;
             }
 
-            $sample_artifacts = self::write_sample_artifacts($workspace_path, $template_bundle);
+            $sample_artifacts = self::write_sample_artifacts($workspace_path, $build_args, $template_bundle);
             if (\is_wp_error($sample_artifacts)) {
                 self::cleanup_paths($workspace_path, $zip_path);
                 return $sample_artifacts;
@@ -196,35 +198,59 @@ final class SamplePackageBuilder
     private static function normalize_build_args(array $args): array
     {
         $settings = Settings::get_all_settings();
+        $tool_settings = \class_exists('\DBVC_Master_Settings')
+            ? \DBVC_Master_Settings::get_download_sample_entities_settings()
+            : [];
+        $has_saved_tool_settings = ! empty($tool_settings['last_saved_at']);
         $generation = isset($settings['generation']) && is_array($settings['generation']) ? $settings['generation'] : [];
 
         $post_types = isset($args['post_types']) && is_array($args['post_types'])
             ? $args['post_types']
-            : (array) get_option('dbvc_post_types', []);
+            : ($has_saved_tool_settings
+                ? (isset($tool_settings['post_types']) && is_array($tool_settings['post_types']) ? $tool_settings['post_types'] : [])
+                : (array) get_option('dbvc_post_types', []));
         $taxonomies = isset($args['taxonomies']) && is_array($args['taxonomies'])
             ? $args['taxonomies']
-            : (function_exists('dbvc_get_selected_taxonomies') ? dbvc_get_selected_taxonomies() : (array) get_option('dbvc_taxonomies', []));
+            : ($has_saved_tool_settings
+                ? (isset($tool_settings['taxonomies']) && is_array($tool_settings['taxonomies']) ? $tool_settings['taxonomies'] : [])
+                : (function_exists('dbvc_get_selected_taxonomies') ? dbvc_get_selected_taxonomies() : (array) get_option('dbvc_taxonomies', [])));
 
         $shape_options = Settings::get_shape_mode_options();
+        $profile_options = Settings::get_package_profile_options();
         $value_options = Settings::get_value_style_options();
         $variant_options = Settings::get_variant_set_options();
 
-        $shape_mode = isset($args['shape_mode']) ? sanitize_key((string) $args['shape_mode']) : sanitize_key((string) ($generation['shape_mode'] ?? 'conservative'));
+        $package_profile = isset($args['package_profile'])
+            ? sanitize_key((string) $args['package_profile'])
+            : sanitize_key((string) (($has_saved_tool_settings && ! empty($tool_settings['package_profile'])) ? $tool_settings['package_profile'] : ($generation['package_profile'] ?? self::PACKAGE_PROFILE_COMPACT)));
+        if (! isset($profile_options[$package_profile])) {
+            $package_profile = self::PACKAGE_PROFILE_COMPACT;
+        }
+
+        $shape_mode = isset($args['shape_mode'])
+            ? sanitize_key((string) $args['shape_mode'])
+            : sanitize_key((string) (($has_saved_tool_settings && ! empty($tool_settings['shape_mode'])) ? $tool_settings['shape_mode'] : ($generation['shape_mode'] ?? 'conservative')));
         if (! isset($shape_options[$shape_mode])) {
             $shape_mode = 'conservative';
         }
 
-        $value_style = isset($args['value_style']) ? sanitize_key((string) $args['value_style']) : sanitize_key((string) ($generation['value_style'] ?? 'blank'));
+        $value_style = isset($args['value_style'])
+            ? sanitize_key((string) $args['value_style'])
+            : sanitize_key((string) (($has_saved_tool_settings && ! empty($tool_settings['value_style'])) ? $tool_settings['value_style'] : ($generation['value_style'] ?? 'blank')));
         if (! isset($value_options[$value_style])) {
             $value_style = 'blank';
         }
 
-        $variant_set = isset($args['variant_set']) ? sanitize_key((string) $args['variant_set']) : sanitize_key((string) ($generation['variant_set'] ?? 'single'));
+        $variant_set = isset($args['variant_set'])
+            ? sanitize_key((string) $args['variant_set'])
+            : sanitize_key((string) (($has_saved_tool_settings && ! empty($tool_settings['variant_set'])) ? $tool_settings['variant_set'] : ($generation['variant_set'] ?? 'single')));
         if (! isset($variant_options[$variant_set])) {
             $variant_set = 'single';
         }
 
-        $observed_scan_cap = isset($args['observed_scan_cap']) ? absint($args['observed_scan_cap']) : (int) ($generation['observed_scan_cap'] ?? Settings::DEFAULT_OBSERVED_SCAN_CAP);
+        $observed_scan_cap = isset($args['observed_scan_cap'])
+            ? absint($args['observed_scan_cap'])
+            : (int) (($has_saved_tool_settings && ! empty($tool_settings['observed_scan_cap'])) ? $tool_settings['observed_scan_cap'] : ($generation['observed_scan_cap'] ?? Settings::DEFAULT_OBSERVED_SCAN_CAP));
         if ($observed_scan_cap < Settings::MIN_OBSERVED_SCAN_CAP) {
             $observed_scan_cap = Settings::MIN_OBSERVED_SCAN_CAP;
         } elseif ($observed_scan_cap > Settings::MAX_OBSERVED_SCAN_CAP) {
@@ -233,12 +259,15 @@ final class SamplePackageBuilder
 
         $included_docs = isset($args['included_docs']) && is_array($args['included_docs'])
             ? array_map('sanitize_key', $args['included_docs'])
-            : (isset($generation['included_docs']) && is_array($generation['included_docs']) ? $generation['included_docs'] : array_keys(Settings::get_included_doc_options()));
+            : (($has_saved_tool_settings && isset($tool_settings['included_docs']) && is_array($tool_settings['included_docs']))
+                ? $tool_settings['included_docs']
+                : (isset($generation['included_docs']) && is_array($generation['included_docs']) ? $generation['included_docs'] : array_keys(Settings::get_included_doc_options())));
         $included_docs = array_values(array_intersect($included_docs, array_keys(Settings::get_included_doc_options())));
 
         return [
             'post_types' => self::normalize_string_list($post_types),
             'taxonomies' => self::normalize_string_list($taxonomies),
+            'package_profile' => $package_profile,
             'shape_mode' => $shape_mode,
             'value_style' => $value_style,
             'variant_set' => $variant_set,
@@ -249,25 +278,35 @@ final class SamplePackageBuilder
 
     /**
      * @param string              $workspace_path
+     * @param array<string,mixed> $build_args
      * @param array<string,mixed> $schema_bundle
      * @param array<string,mixed> $fingerprint
      * @param array<string,mixed> $validation_rules
      * @return array<string,mixed>|\WP_Error
      */
-    private static function write_schema_artifacts(string $workspace_path, array $schema_bundle, array $fingerprint, array $validation_rules)
+    private static function write_schema_artifacts(string $workspace_path, array $build_args, array $schema_bundle, array $fingerprint, array $validation_rules)
     {
-        $artifacts = [
-            'schema/object-inventory.json' => $schema_bundle['object_inventory'] ?? [],
-            'schema/field-catalog.json' => $schema_bundle['field_catalog'] ?? [],
-            'schema/validation-rules.json' => $validation_rules,
-            'schema/site-fingerprint.json' => $fingerprint,
-        ];
+        $package_profile = isset($build_args['package_profile']) ? sanitize_key((string) $build_args['package_profile']) : self::PACKAGE_PROFILE_COMPACT;
+        if ($package_profile === self::PACKAGE_PROFILE_COMPACT) {
+            $artifacts = [
+                'SCHEMA_COMPACT.json' => class_exists(__NAMESPACE__ . '\\CompactSchemaBuilder')
+                    ? CompactSchemaBuilder::build($schema_bundle, $fingerprint, $validation_rules)
+                    : [],
+            ];
+        } else {
+            $artifacts = [
+                'schema/object-inventory.json' => $schema_bundle['object_inventory'] ?? [],
+                'schema/field-catalog.json' => $schema_bundle['field_catalog'] ?? [],
+                'schema/validation-rules.json' => $validation_rules,
+                'schema/site-fingerprint.json' => $fingerprint,
+            ];
 
-        if (
-            (isset($schema_bundle['shape_mode']) && $schema_bundle['shape_mode'] === 'observed_shape')
-            || ! empty($schema_bundle['observed_shape'])
-        ) {
-            $artifacts['schema/observed-shape.json'] = $schema_bundle['observed_shape'] ?? [];
+            if (
+                (isset($schema_bundle['shape_mode']) && $schema_bundle['shape_mode'] === 'observed_shape')
+                || ! empty($schema_bundle['observed_shape'])
+            ) {
+                $artifacts['schema/observed-shape.json'] = $schema_bundle['observed_shape'] ?? [];
+            }
         }
 
         $written = [];
@@ -288,18 +327,36 @@ final class SamplePackageBuilder
 
     /**
      * @param string              $workspace_path
+     * @param array<string,mixed> $build_args
      * @param array<string,mixed> $template_bundle
      * @return array<string,mixed>|\WP_Error
      */
-    private static function write_sample_artifacts(string $workspace_path, array $template_bundle)
+    private static function write_sample_artifacts(string $workspace_path, array $build_args, array $template_bundle)
     {
         $paths = [
             'json' => [],
             'markdown' => [],
         ];
+        $package_profile = isset($build_args['package_profile']) ? sanitize_key((string) $build_args['package_profile']) : self::PACKAGE_PROFILE_COMPACT;
 
         foreach ((array) ($template_bundle['post_types'] ?? []) as $post_type => $template_set) {
             if (! is_array($template_set) || empty($template_set['variants']) || ! is_array($template_set['variants'])) {
+                continue;
+            }
+
+            if ($package_profile === self::PACKAGE_PROFILE_COMPACT) {
+                $variant_payload = self::resolve_primary_variant_payload($template_set);
+                if (! is_array($variant_payload)) {
+                    continue;
+                }
+
+                $json_path = 'samples/posts/' . sanitize_key((string) $post_type) . '.json';
+                $json_result = self::write_json_file($workspace_path, $json_path, $variant_payload['template'] ?? []);
+                if (\is_wp_error($json_result)) {
+                    return $json_result;
+                }
+
+                $paths['json'][] = $json_path;
                 continue;
             }
 
@@ -336,6 +393,22 @@ final class SamplePackageBuilder
                 continue;
             }
 
+            if ($package_profile === self::PACKAGE_PROFILE_COMPACT) {
+                $variant_payload = self::resolve_primary_variant_payload($template_set);
+                if (! is_array($variant_payload)) {
+                    continue;
+                }
+
+                $json_path = 'samples/terms/' . sanitize_key((string) $taxonomy) . '.json';
+                $json_result = self::write_json_file($workspace_path, $json_path, $variant_payload['template'] ?? []);
+                if (\is_wp_error($json_result)) {
+                    return $json_result;
+                }
+
+                $paths['json'][] = $json_path;
+                continue;
+            }
+
             foreach ($template_set['variants'] as $variant => $variant_payload) {
                 if (! is_array($variant_payload)) {
                     continue;
@@ -369,6 +442,28 @@ final class SamplePackageBuilder
             'sample_json_files' => count($paths['json']),
             'sample_markdown_files' => count($paths['markdown']),
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $template_set
+     * @return array<string,mixed>|null
+     */
+    private static function resolve_primary_variant_payload(array $template_set): ?array
+    {
+        $variants = isset($template_set['variants']) && is_array($template_set['variants']) ? $template_set['variants'] : [];
+        foreach (['single', 'typical', 'minimal', 'maximal'] as $preferred_variant) {
+            if (isset($variants[$preferred_variant]) && is_array($variants[$preferred_variant])) {
+                return $variants[$preferred_variant];
+            }
+        }
+
+        foreach ($variants as $variant_payload) {
+            if (is_array($variant_payload)) {
+                return $variant_payload;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -428,7 +523,7 @@ final class SamplePackageBuilder
                 continue;
             }
 
-            $fingerprint_key = preg_replace('/[^a-z0-9_]+/i', '_', str_replace(['schema/', '.json'], '', $relative_path));
+            $fingerprint_key = self::build_artifact_manifest_key((string) $relative_path);
             $artifact_fingerprints[(string) $fingerprint_key] = (string) ($artifact['sha256'] ?? '');
             $artifact_paths[(string) $fingerprint_key] = (string) ($artifact['path'] ?? $relative_path);
         }
@@ -446,6 +541,7 @@ final class SamplePackageBuilder
             ],
             'site_fingerprint' => isset($fingerprint['site_fingerprint']) ? (string) $fingerprint['site_fingerprint'] : '',
             'generation' => [
+                'package_profile' => $build_args['package_profile'],
                 'shape_mode' => $build_args['shape_mode'],
                 'value_style' => $build_args['value_style'],
                 'variant_set' => $build_args['variant_set'],
@@ -491,6 +587,7 @@ final class SamplePackageBuilder
                 'post_types' => $build_args['post_types'],
                 'taxonomies' => $build_args['taxonomies'],
             ],
+            'package_profile' => $build_args['package_profile'],
             'variants' => isset($template_bundle['variants']) && is_array($template_bundle['variants']) ? $template_bundle['variants'] : ['single'],
             'site_origin' => [
                 'home_url' => isset($fingerprint['origin']['home_url']) ? (string) $fingerprint['origin']['home_url'] : trailingslashit(home_url('/')),
@@ -688,6 +785,20 @@ final class SamplePackageBuilder
         }
 
         return 'sample-' . sanitize_key($variant);
+    }
+
+    /**
+     * @param string $relative_path
+     * @return string
+     */
+    private static function build_artifact_manifest_key(string $relative_path): string
+    {
+        $normalized = wp_normalize_path($relative_path);
+        if ($normalized === 'SCHEMA_COMPACT.json') {
+            return 'schema_compact';
+        }
+
+        return (string) preg_replace('/[^a-z0-9_]+/i', '_', str_replace(['schema/', '.json'], '', $normalized));
     }
 
     /**

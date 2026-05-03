@@ -1,0 +1,33 @@
+{
+  "package_version": 1,
+  "generator": {
+    "plugin": "DBVC",
+    "addon": "Bricks",
+    "feature": "Portability & Drift Manager",
+    "version": "0.1.0"
+  },
+  "created_at_gmt": "2026-04-22T16:30:00Z",
+  "source_site": {
+    "home_url": "https://site-a.example",
+    "blog_id": 1,
+    "wp_version": "6.x",
+    "php_version": "8.2",
+    "dbvc_version": "x.y.z",
+    "bricks_version": "x.y.z",
+    "theme": "Bricks"
+  },
+  "selected_domains": [
+    "global_settings",
+    "color_palette",
+    "global_classes",
+    "global_variables",
+    "pseudo_classes",
+    "theme_styles",
+    "components",
+    "breakpoints"
+  ],
+  "compatibility": {
+    "min_dbvc_version": "x.y.z",
+    "min_bricks_version": "x.y.z"
+  }
+}

@@ -537,7 +537,7 @@ final class SubmissionPackageTranslator
     private static function validate_operation_intent(array $manifest, string $intent, string $path): array
     {
         $issues = [];
-        $operation = isset($manifest['intended_operation']) ? (string) $manifest['intended_operation'] : '';
+        $operation = self::normalize_manifest_operation(isset($manifest['intended_operation']) ? (string) $manifest['intended_operation'] : '');
 
         if ($operation === 'create_only' && $intent === 'update') {
             $issues[] = self::build_issue('error', 'operation_intent_mismatch', __('The AI package is marked create-only but contains an update-intent entity.', 'dbvc'), $path);
@@ -546,6 +546,25 @@ final class SubmissionPackageTranslator
         }
 
         return $issues;
+    }
+
+    /**
+     * @param string $operation
+     * @return string
+     */
+    private static function normalize_manifest_operation(string $operation): string
+    {
+        $operation = sanitize_key($operation);
+        $aliases = [
+            'create' => 'create_only',
+            'update' => 'update_only',
+            'create_update' => 'create_or_update',
+            'createandupdate' => 'create_or_update',
+            'create_and_update' => 'create_or_update',
+            'mixed' => 'create_or_update',
+        ];
+
+        return isset($aliases[$operation]) ? $aliases[$operation] : $operation;
     }
 
     /**

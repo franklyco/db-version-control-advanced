@@ -450,6 +450,16 @@
                     }
                     return s.json();
                   })(f ? "fixtures/upload" : "proposals/upload", s);
+                  if (!f && e?.mode === "ai_package" && e?.redirect_url) {
+                    d(e?.message || `Opening AI intake review for ${t.name}`);
+                    const targetUrl = new URL(e.redirect_url, window.location.href).toString();
+                    if (window.location.href === targetUrl) {
+                      window.location.reload();
+                    } else {
+                      window.location.assign(targetUrl);
+                    }
+                    return;
+                  }
                   const l = f ? "Saved dev fixture" : "Uploaded";
                   d(`${l} ${t.name}`), f || "function" != typeof n || n(e.proposal_id, e);
                 } catch (e) {
