@@ -494,6 +494,108 @@ final class DBVC_Bricks_Packages
     }
 
     /**
+     * Verify that a just-published remote package is readable on the mothership.
+     *
+     * @param string $mothership_url
+     * @param string $username
+     * @param string $app_password
+     * @param string $package_id
+     * @return array<string, mixed>
+     */
+    private static function verify_remote_package_visibility($mothership_url, $username, $app_password, $package_id)
+    {
+        $mothership_url = untrailingslashit((string) $mothership_url);
+        $package_id = sanitize_text_field((string) $package_id);
+        $probe_url = $mothership_url . '/wp-json/dbvc/v1/bricks/packages/' . rawurlencode($package_id);
+
+        if ($mothership_url === '' || $package_id === '') {
+            return [
+                'ok' => false,
+                'status' => 400,
+                'package_id' => $package_id,
+                'probe_url' => $probe_url,
+                'error_code' => 'dbvc_bricks_publish_remote_verify_invalid_input',
+                'message' => 'Mothership visibility verification requires mothership URL and package ID.',
+            ];
+        }
+
+        $basic = base64_encode((string) $username . ':' . (string) $app_password);
+        $response = wp_remote_get($probe_url, [
+            'timeout' => max(5, DBVC_Bricks_Addon::get_int_setting('dbvc_bricks_http_timeout', 30)),
+            'sslverify' => DBVC_Bricks_Addon::get_bool_setting('dbvc_bricks_tls_verify', true),
+            'headers' => [
+                'Authorization' => 'Basic ' . $basic,
+                'Accept' => 'application/json',
+                'Cache-Control' => 'no-cache',
+                'Pragma' => 'no-cache',
+                'X-DBVC-Correlation-ID' => 'dbvc-verify-' . substr(wp_hash($package_id . '|' . gmdate('c')), 0, 10),
+            ],
+        ]);
+
+        if (is_wp_error($response)) {
+            return [
+                'ok' => false,
+                'status' => 502,
+                'package_id' => $package_id,
+                'probe_url' => $probe_url,
+                'error_code' => 'dbvc_bricks_publish_remote_verify_http_error',
+                'message' => (string) $response->get_error_message(),
+            ];
+        }
+
+        $status = (int) wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode((string) $body, true);
+        if (! is_array($data)) {
+            $data = ['raw' => (string) $body];
+        }
+
+        if ($status < 200 || $status >= 300) {
+            $message = '';
+            if (isset($data['message']) && is_string($data['message'])) {
+                $message = sanitize_text_field($data['message']);
+            } elseif (isset($data['code']) && is_string($data['code'])) {
+                $message = sanitize_text_field($data['code']);
+            }
+            if ($message === '') {
+                $message = 'Mothership package verification failed.';
+            }
+
+            return [
+                'ok' => false,
+                'status' => $status > 0 ? $status : 500,
+                'package_id' => $package_id,
+                'probe_url' => $probe_url,
+                'error_code' => 'dbvc_bricks_publish_remote_verify_failed',
+                'message' => $message,
+            ];
+        }
+
+        $manifest = isset($data['manifest']) && is_array($data['manifest']) ? $data['manifest'] : [];
+        if (empty($manifest)) {
+            return [
+                'ok' => false,
+                'status' => $status,
+                'package_id' => $package_id,
+                'probe_url' => $probe_url,
+                'error_code' => 'dbvc_bricks_publish_remote_verify_invalid_response',
+                'message' => 'Mothership verification response did not include a package manifest.',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'status' => $status,
+            'package_id' => sanitize_text_field((string) ($manifest['package_id'] ?? $package_id)),
+            'probe_url' => $probe_url,
+            'channel' => sanitize_key((string) ($manifest['channel'] ?? '')),
+            'artifact_count' => max(0, (int) ($manifest['artifact_count'] ?? 0)),
+            'receipt_id' => sanitize_text_field((string) ($manifest['receipt_id'] ?? '')),
+            'updated_at' => self::sanitize_timestamp((string) ($manifest['updated_at'] ?? '')),
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
@@ -1598,6 +1700,13 @@ final class DBVC_Bricks_Packages
             'package_id' => (string) ($package['package_id'] ?? ''),
             'channel_force_audit' => $forced_audit,
         ];
+        $remote_package_id = sanitize_text_field((string) ($data['package_id'] ?? ($package['package_id'] ?? '')));
+        $result['remote_package_visibility'] = self::verify_remote_package_visibility(
+            $mothership_url,
+            $username,
+            $app_password,
+            $remote_package_id
+        );
         DBVC_Bricks_Idempotency::put('packages_publish_remote', $idempotency_key, $result);
         return rest_ensure_response($result);
     }
