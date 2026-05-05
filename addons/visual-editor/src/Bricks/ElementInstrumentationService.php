@@ -860,6 +860,7 @@ final class ElementInstrumentationService
                     'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
                     'group_path' => isset($source['group_path']) && is_array($source['group_path']) ? array_values($source['group_path']) : [],
                     'nested_repeater_path' => isset($source['nested_repeater_path']) && is_array($source['nested_repeater_path']) ? array_values($source['nested_repeater_path']) : [],
+                    'native_query_ancestry' => $this->normalizeNativeQueryAncestryForHash(isset($source['native_query_ancestry']) && is_array($source['native_query_ancestry']) ? $source['native_query_ancestry'] : []),
                 ],
             ]
         );
@@ -899,6 +900,7 @@ final class ElementInstrumentationService
                     'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
                     'group_path' => isset($source['group_path']) && is_array($source['group_path']) ? array_values($source['group_path']) : [],
                     'nested_repeater_path' => isset($source['nested_repeater_path']) && is_array($source['nested_repeater_path']) ? array_values($source['nested_repeater_path']) : [],
+                    'native_query_ancestry' => $this->normalizeNativeQueryAncestryForHash(isset($source['native_query_ancestry']) && is_array($source['native_query_ancestry']) ? $source['native_query_ancestry'] : []),
                 ],
                 'render' => [
                     'context' => (string) $render_context,
@@ -1135,6 +1137,7 @@ final class ElementInstrumentationService
         $parent_native_query_kind = isset($source['parent_native_query_kind']) ? sanitize_key((string) $source['parent_native_query_kind']) : '';
         $parent_native_query_selector = isset($source['parent_native_query_selector']) ? sanitize_key((string) $source['parent_native_query_selector']) : '';
         $parent_native_query_object_type = isset($source['parent_native_query_object_type']) ? sanitize_key((string) $source['parent_native_query_object_type']) : '';
+        $native_query_ancestry = $this->normalizeNativeQueryAncestry(isset($source['native_query_ancestry']) && is_array($source['native_query_ancestry']) ? $source['native_query_ancestry'] : []);
         $group_path = isset($source['group_path']) && is_array($source['group_path'])
             ? array_values(
                 array_filter(
@@ -1247,7 +1250,38 @@ final class ElementInstrumentationService
             }
         }
 
-        if ($parent_native_query_kind !== '' || $parent_native_query_selector !== '' || $parent_native_query_object_type !== '') {
+        $native_ancestry_summary = [];
+
+        foreach ($native_query_ancestry as $ancestor_native_query) {
+            $ancestor_kind = isset($ancestor_native_query['kind']) ? sanitize_key((string) $ancestor_native_query['kind']) : '';
+            $ancestor_selector = isset($ancestor_native_query['selector']) ? sanitize_key((string) $ancestor_native_query['selector']) : '';
+            $ancestor_object_type = isset($ancestor_native_query['objectType']) ? sanitize_key((string) $ancestor_native_query['objectType']) : '';
+            $ancestor_loop_index = isset($ancestor_native_query['loopIndex']) ? sanitize_text_field((string) $ancestor_native_query['loopIndex']) : '';
+
+            $segments[] = [
+                'type' => 'native_acf_query_ancestor',
+                'kind' => $ancestor_kind,
+                'selector' => $ancestor_selector,
+                'objectType' => $ancestor_object_type,
+                'loopIndex' => $ancestor_loop_index,
+            ];
+
+            $ancestor_summary = $ancestor_kind !== '' ? $ancestor_kind : 'query';
+            if ($ancestor_selector !== '') {
+                $ancestor_summary .= ':' . $ancestor_selector;
+            }
+            if ($ancestor_loop_index !== '' && is_numeric($ancestor_loop_index)) {
+                $ancestor_summary .= '@' . (absint($ancestor_loop_index) + 1);
+            }
+
+            $native_ancestry_summary[] = $ancestor_summary;
+        }
+
+        if (! empty($native_ancestry_summary)) {
+            $summary[] = 'native-chain:' . implode('>', $native_ancestry_summary);
+        }
+
+        if (empty($native_query_ancestry) && ($parent_native_query_kind !== '' || $parent_native_query_selector !== '' || $parent_native_query_object_type !== '')) {
             $segments[] = [
                 'type' => 'parent_native_acf_query',
                 'kind' => $parent_native_query_kind,
@@ -1346,6 +1380,7 @@ final class ElementInstrumentationService
             'parentNativeQueryKind' => $parent_native_query_kind,
             'parentNativeQuerySelector' => $parent_native_query_selector,
             'parentNativeQueryObjectType' => $parent_native_query_object_type,
+            'nativeQueryAncestry' => $native_query_ancestry,
             'isNested' => $container_type !== '',
             'segments' => $segments,
             'summary' => implode(' / ', $summary),
@@ -1367,6 +1402,7 @@ final class ElementInstrumentationService
         $container_type = isset($path_descriptor['containerType']) ? sanitize_key((string) $path_descriptor['containerType']) : '';
         $native_loop_kind = isset($source['native_query_kind']) ? sanitize_key((string) $source['native_query_kind']) : '';
         $parent_native_loop_kind = isset($source['parent_native_query_kind']) ? sanitize_key((string) $source['parent_native_query_kind']) : '';
+        $native_loop_ancestry = $this->buildNativeQueryAncestryLabels(isset($path_descriptor['nativeQueryAncestry']) && is_array($path_descriptor['nativeQueryAncestry']) ? $path_descriptor['nativeQueryAncestry'] : []);
         $kind = 'scalar';
 
         if (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
@@ -1419,9 +1455,100 @@ final class ElementInstrumentationService
             'renderContext' => sanitize_key((string) $render_context),
             'nativeLoopKind' => $native_loop_kind,
             'parentNativeLoopKind' => $parent_native_loop_kind,
+            'nativeLoopAncestry' => $native_loop_ancestry,
             'loopOwned' => ! empty($loop_context['active']) && $scope === 'related_entity',
             'requiresJournal' => $target !== 'field' || $kind !== 'scalar' || $scope !== 'current_entity',
             'status' => sanitize_key((string) $status),
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $ancestry
+     * @return array<int, array<string, string>>
+     */
+    private function normalizeNativeQueryAncestry(array $ancestry)
+    {
+        return array_values(
+            array_filter(
+                array_map(
+                    static function ($item) {
+                        if (! is_array($item) || empty($item['active'])) {
+                            return null;
+                        }
+
+                        $kind = isset($item['kind']) ? sanitize_key((string) $item['kind']) : '';
+                        $selector = isset($item['selector']) ? sanitize_key((string) $item['selector']) : '';
+                        $object_type = isset($item['objectType']) ? sanitize_key((string) $item['objectType']) : '';
+                        $field_name = isset($item['fieldName']) ? sanitize_key((string) $item['fieldName']) : '';
+                        $field_key = isset($item['fieldKey']) ? sanitize_key((string) $item['fieldKey']) : '';
+                        $field_type = isset($item['fieldType']) ? sanitize_key((string) $item['fieldType']) : '';
+                        $loop_index = isset($item['loopIndex']) ? sanitize_text_field((string) $item['loopIndex']) : '';
+
+                        if ($kind === '' && $selector === '' && $object_type === '' && $field_name === '' && $field_key === '' && $field_type === '') {
+                            return null;
+                        }
+
+                        return [
+                            'kind' => $kind,
+                            'selector' => $selector,
+                            'objectType' => $object_type,
+                            'fieldName' => $field_name,
+                            'fieldKey' => $field_key,
+                            'fieldType' => $field_type,
+                            'loopIndex' => $loop_index,
+                        ];
+                    },
+                    $ancestry
+                )
+            )
+        );
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $ancestry
+     * @return array<int, array<string, string>>
+     */
+    private function normalizeNativeQueryAncestryForHash(array $ancestry)
+    {
+        return array_values(
+            array_map(
+                static function ($item) {
+                    return [
+                        'kind' => isset($item['kind']) ? sanitize_key((string) $item['kind']) : '',
+                        'selector' => isset($item['selector']) ? sanitize_key((string) $item['selector']) : '',
+                        'objectType' => isset($item['objectType']) ? sanitize_key((string) $item['objectType']) : '',
+                        'loopIndex' => isset($item['loopIndex']) ? sanitize_text_field((string) $item['loopIndex']) : '',
+                    ];
+                },
+                $this->normalizeNativeQueryAncestry($ancestry)
+            )
+        );
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $ancestry
+     * @return array<int, string>
+     */
+    private function buildNativeQueryAncestryLabels(array $ancestry)
+    {
+        $labels = [];
+
+        foreach ($this->normalizeNativeQueryAncestry($ancestry) as $item) {
+            $kind = isset($item['kind']) ? sanitize_key((string) $item['kind']) : '';
+            $selector = isset($item['selector']) ? sanitize_key((string) $item['selector']) : '';
+            $loop_index = isset($item['loopIndex']) ? sanitize_text_field((string) $item['loopIndex']) : '';
+
+            $label = $kind !== '' ? $kind : 'query';
+            if ($selector !== '') {
+                $label .= ':' . $selector;
+            }
+            if ($loop_index !== '' && is_numeric($loop_index)) {
+                $label .= '@' . (absint($loop_index) + 1);
+            }
+
+            $labels[] = $label;
+        }
+
+        return array_values(array_filter($labels));
     }
 }

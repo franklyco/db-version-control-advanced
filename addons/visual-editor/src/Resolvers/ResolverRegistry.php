@@ -267,6 +267,9 @@ final class ResolverRegistry
         $loop = isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [];
         $native_query = isset($loop['native_acf_query']) && is_array($loop['native_acf_query']) ? $loop['native_acf_query'] : [];
         $parent_native_query = isset($loop['parent_native_acf_query']) && is_array($loop['parent_native_acf_query']) ? $loop['parent_native_acf_query'] : [];
+        $native_query_ancestry = isset($loop['native_acf_query_ancestry']) && is_array($loop['native_acf_query_ancestry'])
+            ? $this->normalizeNativeQueryAncestry($loop['native_acf_query_ancestry'])
+            : [];
         $leaf_field_name = isset($tag_object['field']['name']) ? sanitize_key((string) $tag_object['field']['name']) : $field_name;
         $leaf_field_key = isset($tag_object['field']['key']) ? sanitize_key((string) $tag_object['field']['key']) : $field_key;
         $group_path = $this->normalizeNestedGroupPath($tag_object, $parent_field_name);
@@ -336,6 +339,7 @@ final class ResolverRegistry
                 'parent_native_query_object_type' => isset($parent_native_query['objectType']) ? sanitize_key((string) $parent_native_query['objectType']) : '',
                 'parent_native_query_field_name' => isset($parent_native_query['fieldName']) ? sanitize_key((string) $parent_native_query['fieldName']) : '',
                 'parent_native_query_field_type' => isset($parent_native_query['fieldType']) ? sanitize_key((string) $parent_native_query['fieldType']) : '',
+                'native_query_ancestry' => $native_query_ancestry,
             ],
             'resolver' => [
                 'name' => $resolver_name,
@@ -873,6 +877,51 @@ final class ResolverRegistry
         }
 
         return false;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $ancestry
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeNativeQueryAncestry(array $ancestry)
+    {
+        return array_values(
+            array_filter(
+                array_map(
+                    static function ($item) {
+                        if (! is_array($item) || empty($item['active'])) {
+                            return null;
+                        }
+
+                        $kind = isset($item['kind']) ? sanitize_key((string) $item['kind']) : '';
+                        $selector = isset($item['selector']) ? sanitize_key((string) $item['selector']) : '';
+                        $object_type = isset($item['objectType']) ? sanitize_key((string) $item['objectType']) : '';
+                        $field_name = isset($item['fieldName']) ? sanitize_key((string) $item['fieldName']) : '';
+                        $field_key = isset($item['fieldKey']) ? sanitize_key((string) $item['fieldKey']) : '';
+                        $field_type = isset($item['fieldType']) ? sanitize_key((string) $item['fieldType']) : '';
+                        $loop_index = isset($item['loopIndex']) ? sanitize_text_field((string) $item['loopIndex']) : '';
+
+                        if ($kind === '' && $selector === '' && $object_type === '' && $field_name === '' && $field_key === '' && $field_type === '') {
+                            return null;
+                        }
+
+                        return [
+                            'active' => true,
+                            'kind' => $kind,
+                            'selector' => $selector,
+                            'objectType' => $object_type,
+                            'fieldName' => $field_name,
+                            'fieldKey' => $field_key,
+                            'fieldType' => $field_type,
+                            'queryId' => isset($item['queryId']) ? sanitize_text_field((string) $item['queryId']) : '',
+                            'queryElementId' => isset($item['queryElementId']) ? sanitize_text_field((string) $item['queryElementId']) : '',
+                            'loopIndex' => $loop_index,
+                        ];
+                    },
+                    $ancestry
+                )
+            )
+        );
     }
 
     /**

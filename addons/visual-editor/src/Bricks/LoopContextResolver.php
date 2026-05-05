@@ -52,6 +52,7 @@ final class LoopContextResolver
             ? $parent_context['native_acf_query']
             : [];
         $context['ancestors'] = $this->collectAncestorContexts($looping_query_ids, $contexts, $query_id);
+        $context['native_acf_query_ancestry'] = $this->buildNativeAcfQueryAncestry($context);
         $context['signature'] = $this->buildSignature($context);
 
         return $context;
@@ -192,6 +193,7 @@ final class LoopContextResolver
             'effective_owner_subtype' => isset($context['effective_owner_entity']['subtype']) ? sanitize_key((string) $context['effective_owner_entity']['subtype']) : '',
             'native_acf_query' => $this->exportNativeAcfQuery(isset($context['native_acf_query']) && is_array($context['native_acf_query']) ? $context['native_acf_query'] : []),
             'parent_native_acf_query' => $this->exportNativeAcfQuery(isset($context['parent_native_acf_query']) && is_array($context['parent_native_acf_query']) ? $context['parent_native_acf_query'] : []),
+            'native_acf_query_ancestry' => $this->exportNativeAcfQueryAncestry($context),
             'parent_query_object_type' => isset($context['parent']['query_object_type']) ? sanitize_key((string) $context['parent']['query_object_type']) : '',
             'parent_loop_object_type' => isset($context['parent']['loop_object_type']) ? sanitize_key((string) $context['parent']['loop_object_type']) : '',
             'parent_loop_object_id' => isset($context['parent']['loop_object_id']) ? absint($context['parent']['loop_object_id']) : 0,
@@ -528,5 +530,79 @@ final class LoopContextResolver
             'supportsConcreteOwner' => ! empty($native_query['supportsConcreteOwner']),
             'isRepeaterLike' => ! empty($native_query['isRepeaterLike']),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildNativeAcfQueryAncestry(array $context)
+    {
+        $ancestors = isset($context['ancestors']) && is_array($context['ancestors']) ? $context['ancestors'] : [];
+        if (empty($ancestors)) {
+            return [];
+        }
+
+        $lineage = [];
+
+        foreach (array_reverse($ancestors) as $ancestor) {
+            if (! is_array($ancestor) || empty($ancestor)) {
+                continue;
+            }
+
+            $native_query = isset($ancestor['native_acf_query']) && is_array($ancestor['native_acf_query'])
+                ? $ancestor['native_acf_query']
+                : [];
+            if (empty($native_query['active'])) {
+                continue;
+            }
+
+            $exported = $this->exportNativeAcfQuery($native_query);
+            if (empty($exported)) {
+                continue;
+            }
+
+            $exported['queryId'] = isset($ancestor['query_id']) ? sanitize_text_field((string) $ancestor['query_id']) : '';
+            $exported['queryElementId'] = isset($ancestor['query_element_id']) ? sanitize_text_field((string) $ancestor['query_element_id']) : '';
+            $exported['loopIndex'] = isset($ancestor['loop_index']) ? $this->normalizeScalar($ancestor['loop_index']) : '';
+            $lineage[] = $exported;
+        }
+
+        return $lineage;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<int, array<string, mixed>>
+     */
+    private function exportNativeAcfQueryAncestry(array $context)
+    {
+        $lineage = isset($context['native_acf_query_ancestry']) && is_array($context['native_acf_query_ancestry'])
+            ? $context['native_acf_query_ancestry']
+            : $this->buildNativeAcfQueryAncestry($context);
+
+        return array_values(
+            array_filter(
+                array_map(
+                    function ($item) {
+                        if (! is_array($item) || empty($item['active'])) {
+                            return null;
+                        }
+
+                        $exported = $this->exportNativeAcfQuery($item);
+                        if (empty($exported)) {
+                            return null;
+                        }
+
+                        $exported['queryId'] = isset($item['queryId']) ? sanitize_text_field((string) $item['queryId']) : '';
+                        $exported['queryElementId'] = isset($item['queryElementId']) ? sanitize_text_field((string) $item['queryElementId']) : '';
+                        $exported['loopIndex'] = isset($item['loopIndex']) ? $this->normalizeScalar($item['loopIndex']) : '';
+
+                        return $exported;
+                    },
+                    $lineage
+                )
+            )
+        );
     }
 }

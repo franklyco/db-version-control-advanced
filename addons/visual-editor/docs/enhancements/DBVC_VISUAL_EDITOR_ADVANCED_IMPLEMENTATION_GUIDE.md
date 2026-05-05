@@ -256,6 +256,9 @@ Recommended next sequence:
 5. expand inspect-only flexible/query-loop coverage where ownership is stable
 6. enable writable flexible scalar descendants only after the above are in place
 
+For the concrete scenario matrix and later mutation roadmap, use:
+- [DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md](./DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md)
+
 Reason:
 - repeater row writes already proved the narrow nested-path pattern
 - the native repeater slice has now also proved the failure-class hardening path for real Bricks provider/runtime drift
@@ -320,9 +323,11 @@ Advanced grouped/flexible follow-up is intentionally paused after the recent con
 
 Resume from here:
 0. current active slice before resuming the grouped-save smoke:
-   - formalize Bricks native ACF query-loop metadata for repeater, relationship, and post-object `query.objectType` values
-   - harden loop owner/path resolution for native ACF relationship and post-object loops
-   - keep canonical flexible row/layout identity upstream by reconciling duplicate Bricks layout aliases against the actual raw row `acf_fc_layout` before subfield matching
+   - widen from the hardened native repeater slice into native `relationship -> repeater` and `relationship -> flexible` descendants first
+   - then widen to native `post_object -> repeater` and `post_object -> flexible` descendants
+   - keep native loop provenance and parent native ancestry first-class throughout descriptor/source/path/mutation summaries
+   - treat native taxonomy nested descendants as inspect-first until real-site validation proves writable stability
+   - leave relationship collection editing and repeater/flexible row insert-remove-reorder in the later collection-mutation branch
 1. run live save smoke tests for nested grouped descendants inside supported repeater/flexible/related-owner paths
    - direct grouped ACF leaves now preserve parent group ancestry and prefer selector-based writes, so the next verification target is live save behavior rather than descriptor discovery
 2. verify grouped descendants do not cross-sync after save on real pages
