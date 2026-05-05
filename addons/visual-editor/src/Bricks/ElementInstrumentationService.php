@@ -329,9 +329,15 @@ final class ElementInstrumentationService
         $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
         $loop_object_id = isset($loop_context['loop_object_id']) ? absint($loop_context['loop_object_id']) : 0;
         $parent_loop_object_id = isset($loop_context['parent_loop_object_id']) ? absint($loop_context['parent_loop_object_id']) : 0;
+        $effective_owner_type = isset($loop_context['effective_owner_type']) ? sanitize_key((string) $loop_context['effective_owner_type']) : '';
+        $effective_owner_id = isset($loop_context['effective_owner_id']) ? absint($loop_context['effective_owner_id']) : 0;
 
         return $entity_id > 0
-            && ($entity_id === $loop_object_id || $entity_id === $parent_loop_object_id);
+            && (
+                ($effective_owner_type === 'post' && $entity_id === $effective_owner_id)
+                || $entity_id === $loop_object_id
+                || $entity_id === $parent_loop_object_id
+            );
     }
 
     /**
@@ -853,6 +859,7 @@ final class ElementInstrumentationService
                     'layout_key' => isset($source['layout_key']) ? (string) $source['layout_key'] : '',
                     'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
                     'group_path' => isset($source['group_path']) && is_array($source['group_path']) ? array_values($source['group_path']) : [],
+                    'nested_repeater_path' => isset($source['nested_repeater_path']) && is_array($source['nested_repeater_path']) ? array_values($source['nested_repeater_path']) : [],
                 ],
             ]
         );
@@ -891,6 +898,7 @@ final class ElementInstrumentationService
                     'layout_key' => isset($source['layout_key']) ? (string) $source['layout_key'] : '',
                     'layout_name' => isset($source['layout_name']) ? (string) $source['layout_name'] : '',
                     'group_path' => isset($source['group_path']) && is_array($source['group_path']) ? array_values($source['group_path']) : [],
+                    'nested_repeater_path' => isset($source['nested_repeater_path']) && is_array($source['nested_repeater_path']) ? array_values($source['nested_repeater_path']) : [],
                 ],
                 'render' => [
                     'context' => (string) $render_context,
@@ -1151,6 +1159,38 @@ final class ElementInstrumentationService
                 )
             )
             : [];
+        $nested_repeater_path = isset($source['nested_repeater_path']) && is_array($source['nested_repeater_path'])
+            ? array_values(
+                array_filter(
+                    array_map(
+                        static function ($segment) {
+                            if (! is_array($segment)) {
+                                return null;
+                            }
+
+                            $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+                            $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+                            $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+                            $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                                ? absint($segment['row_index'])
+                                : null;
+
+                            if ($field_name === '' && $field_key === '' && $field_selector === '') {
+                                return null;
+                            }
+
+                            return [
+                                'fieldName' => $field_name,
+                                'fieldKey' => $field_key,
+                                'fieldSelector' => $field_selector,
+                                'rowIndex' => $row_index,
+                            ];
+                        },
+                        $source['nested_repeater_path']
+                    )
+                )
+            )
+            : [];
         $row_index = isset($source['row_index']) && $source['row_index'] !== null && $source['row_index'] !== ''
             ? absint($source['row_index'])
             : null;
@@ -1167,6 +1207,9 @@ final class ElementInstrumentationService
                 'index' => $row_index,
             ];
             $summary[] = 'repeater:' . $root_field_name;
+            if ($row_index !== null) {
+                $summary[] = 'row:' . ($row_index + 1);
+            }
         } elseif ($container_type === 'flexible_content' && $root_field_name !== '') {
             $segments[] = [
                 'type' => 'flexible_content',
@@ -1177,6 +1220,31 @@ final class ElementInstrumentationService
                 'layoutName' => $layout_name,
             ];
             $summary[] = 'flexible:' . $root_field_name;
+            if ($row_index !== null) {
+                $summary[] = 'row:' . ($row_index + 1);
+            }
+        }
+
+        foreach ($nested_repeater_path as $nested_segment) {
+            $nested_field_name = isset($nested_segment['fieldName']) ? sanitize_key((string) $nested_segment['fieldName']) : '';
+            $nested_field_key = isset($nested_segment['fieldKey']) ? sanitize_key((string) $nested_segment['fieldKey']) : '';
+            $nested_row_index = array_key_exists('rowIndex', $nested_segment) ? $nested_segment['rowIndex'] : null;
+
+            $segments[] = [
+                'type' => 'repeater',
+                'fieldName' => $nested_field_name,
+                'fieldKey' => $nested_field_key,
+                'fieldSelector' => isset($nested_segment['fieldSelector']) ? sanitize_key((string) $nested_segment['fieldSelector']) : '',
+                'index' => $nested_row_index,
+            ];
+
+            if ($nested_field_name !== '' || $nested_field_key !== '') {
+                $summary[] = 'repeater:' . ($nested_field_name !== '' ? $nested_field_name : $nested_field_key);
+            }
+
+            if ($nested_row_index !== null) {
+                $summary[] = 'row:' . ($nested_row_index + 1);
+            }
         }
 
         if ($parent_native_query_kind !== '' || $parent_native_query_selector !== '' || $parent_native_query_object_type !== '') {
@@ -1225,10 +1293,6 @@ final class ElementInstrumentationService
             }
         }
 
-        if ($row_index !== null) {
-            $summary[] = 'row:' . ($row_index + 1);
-        }
-
         if ($layout_name !== '' || $layout_key !== '') {
             $summary[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
         }
@@ -1275,6 +1339,7 @@ final class ElementInstrumentationService
             'layoutName' => $layout_name,
             'groupPath' => $group_path,
             'groupKeyPath' => $group_key_path,
+            'nestedRepeaterPath' => $nested_repeater_path,
             'nativeQueryKind' => $native_query_kind,
             'nativeQuerySelector' => $native_query_selector,
             'nativeQueryObjectType' => $native_query_object_type,

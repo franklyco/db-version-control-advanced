@@ -74,6 +74,54 @@ final class DescriptorSummaryBuilder
                 )
             )
             : (isset($source['group_key_path']) && is_array($source['group_key_path']) ? array_values(array_filter(array_map('sanitize_key', $source['group_key_path']))) : []);
+        $nested_repeater_path = isset($path['nestedRepeaterPath']) && is_array($path['nestedRepeaterPath'])
+            ? array_values(
+                array_filter(
+                    array_map(
+                        static function ($segment) {
+                            if (! is_array($segment)) {
+                                return null;
+                            }
+
+                            $field_name = isset($segment['fieldName']) ? sanitize_key((string) $segment['fieldName']) : (isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '');
+                            $field_key = isset($segment['fieldKey']) ? sanitize_key((string) $segment['fieldKey']) : (isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '');
+                            $row_index = isset($segment['rowIndex']) && $segment['rowIndex'] !== null && is_numeric($segment['rowIndex'])
+                                ? absint($segment['rowIndex'])
+                                : (isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index']) ? absint($segment['row_index']) : null);
+
+                            if ($field_name === '' && $field_key === '') {
+                                return null;
+                            }
+
+                            return [
+                                'fieldName' => $field_name,
+                                'fieldKey' => $field_key,
+                                'rowIndex' => $row_index,
+                            ];
+                        },
+                        $path['nestedRepeaterPath']
+                    )
+                )
+            )
+            : (isset($source['nested_repeater_path']) && is_array($source['nested_repeater_path']) ? array_values(array_filter(array_map(static function ($segment) {
+                if (! is_array($segment)) {
+                    return null;
+                }
+
+                $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+                $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+                $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index']) ? absint($segment['row_index']) : null;
+
+                if ($field_name === '' && $field_key === '') {
+                    return null;
+                }
+
+                return [
+                    'fieldName' => $field_name,
+                    'fieldKey' => $field_key,
+                    'rowIndex' => $row_index,
+                ];
+            }, $source['nested_repeater_path']))) : []);
         $expression = isset($source['expression']) ? sanitize_text_field((string) $source['expression']) : '';
         $parts = array_values(array_filter([$type, $field_name]));
 
@@ -88,6 +136,20 @@ final class DescriptorSummaryBuilder
 
         if ($layout_name !== '' || $layout_key !== '') {
             $parts[] = 'layout:' . ($layout_name !== '' ? $layout_name : $layout_key);
+        }
+
+        foreach ($nested_repeater_path as $nested_segment) {
+            $nested_name = isset($nested_segment['fieldName']) ? sanitize_key((string) $nested_segment['fieldName']) : '';
+            $nested_key = isset($nested_segment['fieldKey']) ? sanitize_key((string) $nested_segment['fieldKey']) : '';
+            $nested_row_index = array_key_exists('rowIndex', $nested_segment) ? $nested_segment['rowIndex'] : null;
+
+            if ($nested_name !== '' || $nested_key !== '') {
+                $parts[] = 'repeater:' . ($nested_name !== '' ? $nested_name : $nested_key);
+            }
+
+            if ($nested_row_index !== null) {
+                $parts[] = 'row:' . ($nested_row_index + 1);
+            }
         }
 
         if ($parent_native_query_kind !== '' || $parent_native_query_selector !== '') {

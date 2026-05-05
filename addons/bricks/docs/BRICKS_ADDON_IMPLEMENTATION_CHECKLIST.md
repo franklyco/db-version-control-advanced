@@ -219,6 +219,7 @@ Archive files (completed phases/history):
 - `P19C-T2` Final validation and closure
   - `P19C-T2-S1` Run full network drill (shared rules distribution + protected variant visibility) across mothership/clientA/clientB.
   - `P19C-T2-S2` Capture commands, timestamps, receipts, diagnostics traces, and UI evidence.
+    - Repo helper available for non-mutating runtime snapshots on each participating site: `php scripts/check-bricks-phase19-evidence.php --limit=10 --output=/tmp/p19c/<timestamp>_<site>.json` (mothership accepts optional `--distribution_id=...`, `--site_uid=...`, `--state=...`, `--include_hidden=1` filters).
   - `P19C-T2-S3` Update tracker statuses to `DONE` and write Phase 19 completion note.
 
 ### Required tests

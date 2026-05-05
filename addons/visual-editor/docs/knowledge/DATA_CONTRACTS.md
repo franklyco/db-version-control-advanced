@@ -122,6 +122,32 @@ Repeater-backed descriptors use the same contract with row metadata added to `so
 }
 ```
 
+Nested repeater descendants under a repeater root keep that same contract shape, but add explicit nested repeater row ancestry instead of pretending the innermost repeater is the root field, for example:
+
+```json
+{
+  "source": {
+    "type": "acf_repeater_subfield",
+    "field_name": "object",
+    "field_key": "field_66008b11459b4",
+    "field_selector": "_price_item_repeater_quantities_object",
+    "field_type": "text",
+    "container_type": "repeater",
+    "parent_field_name": "_price_item_repeater",
+    "parent_field_key": "field_65cdb31d98459",
+    "row_index": 0,
+    "nested_repeater_path": [
+      {
+        "field_name": "quantities",
+        "field_key": "field_66008aae459b2",
+        "field_selector": "_price_item_repeater_quantities",
+        "row_index": 1
+      }
+    ]
+  }
+}
+```
+
 Nested group descendants can add explicit ancestry to that same `source` payload when Bricks exposes `parent_group_names`, for example:
 
 ```json
@@ -196,6 +222,48 @@ The repeater row identity is also formalized in `path`, for example:
     "target": "row",
     "contract": "repeater_row",
     "requiresJournal": true
+  }
+}
+```
+
+When a repeater descendant lives inside another repeater row, `path.nestedRepeaterPath` and extra repeater segments preserve that inner row chain explicitly, for example:
+
+```json
+{
+  "path": {
+    "containerType": "repeater",
+    "rootFieldName": "_price_item_repeater",
+    "fieldName": "object",
+    "rowIndex": 0,
+    "nestedRepeaterPath": [
+      {
+        "fieldName": "quantities",
+        "fieldKey": "field_66008aae459b2",
+        "fieldSelector": "_price_item_repeater_quantities",
+        "rowIndex": 1
+      }
+    ],
+    "segments": [
+      {
+        "type": "repeater",
+        "fieldName": "_price_item_repeater",
+        "fieldKey": "field_65cdb31d98459",
+        "index": 0
+      },
+      {
+        "type": "repeater",
+        "fieldName": "quantities",
+        "fieldKey": "field_66008aae459b2",
+        "fieldSelector": "price_item_repeater_quantities",
+        "index": 1
+      },
+      {
+        "type": "field",
+        "fieldName": "object",
+        "fieldKey": "field_66008b11459b4"
+      }
+    ],
+    "summary": "repeater:_price_item_repeater / row:1 / repeater:quantities / row:2 / field:object"
   }
 }
 ```

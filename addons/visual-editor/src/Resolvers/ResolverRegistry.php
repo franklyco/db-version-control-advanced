@@ -271,6 +271,9 @@ final class ResolverRegistry
         $leaf_field_key = isset($tag_object['field']['key']) ? sanitize_key((string) $tag_object['field']['key']) : $field_key;
         $group_path = $this->normalizeNestedGroupPath($tag_object, $parent_field_name);
         $group_key_path = $this->normalizeNestedGroupKeyPath($tag_object, $parent_field_key);
+        $nested_repeater_path = ! empty($repeater['supported'])
+            ? $this->normalizeNestedRepeaterPath($repeater)
+            : [];
         $field_selector = $this->resolveAcfFieldSelector($tag_object, $field_name);
         $label = isset($field['label']) && (string) $field['label'] !== ''
             ? sanitize_text_field((string) $field['label'])
@@ -318,6 +321,7 @@ final class ResolverRegistry
                 'layout_name' => $layout_name,
                 'group_path' => $group_path,
                 'group_key_path' => $group_key_path,
+                'nested_repeater_path' => $nested_repeater_path,
                 'is_nested_group' => ! empty($group_path),
                 'is_grouped_field' => ! empty($group_path),
                 'native_query_active' => ! empty($native_query['active']),
@@ -1083,6 +1087,45 @@ final class ResolverRegistry
         }
 
         return array_values(array_unique($group_key_path));
+    }
+
+    /**
+     * @param array<string, mixed> $repeater_context
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeNestedRepeaterPath(array $repeater_context)
+    {
+        if (empty($repeater_context['nested_repeater_path']) || ! is_array($repeater_context['nested_repeater_path'])) {
+            return [];
+        }
+
+        $segments = [];
+
+        foreach ($repeater_context['nested_repeater_path'] as $segment) {
+            if (! is_array($segment)) {
+                continue;
+            }
+
+            $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+            $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+            $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+            $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                ? absint($segment['row_index'])
+                : null;
+
+            if ($field_name === '' && $field_key === '' && $field_selector === '') {
+                continue;
+            }
+
+            $segments[] = [
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'row_index' => $row_index,
+            ];
+        }
+
+        return $segments;
     }
 
     /**

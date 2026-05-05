@@ -54,6 +54,7 @@
   - duplicate child keys can be rebound against the real container definition
   - nested group descendants inside native repeater rows now inherit the repeater context correctly
   - row-four false negatives caused by fake concrete post owners from bare numeric loop indices are now fixed
+  - nested repeater-in-repeater descendants now canonicalize to the outer repeater root and carry explicit nested repeater row segments instead of flattening to the innermost repeater only
   - native flexible descendants now canonicalize against the actual row `acf_fc_layout` and layout key before subfield matching, which fixes duplicate Bricks layout aliases like `acf_flexible_layouts_dynamic_section_image` rendering inside real `standard_section` rows
   - native loop provenance now travels through descriptor source/path/mutation metadata so panel summaries and save-contract details can distinguish repeater vs relationship vs post-object vs taxonomy origins
   - nested native-loop descendants now also carry parent native loop ancestry so `relationship -> repeater`, `post_object -> repeater/flexible`, and similar nested native paths can be summarized and keyed explicitly instead of only showing the innermost loop

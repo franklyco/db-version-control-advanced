@@ -263,6 +263,45 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
     /**
      * @param EditableDescriptor $descriptor
+     * @return array<int, array<string, mixed>>
+     */
+    protected function getNestedRepeaterPath(EditableDescriptor $descriptor)
+    {
+        if (empty($descriptor->source['nested_repeater_path']) || ! is_array($descriptor->source['nested_repeater_path'])) {
+            return [];
+        }
+
+        $segments = [];
+
+        foreach ($descriptor->source['nested_repeater_path'] as $segment) {
+            if (! is_array($segment)) {
+                continue;
+            }
+
+            $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+            $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+            $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+            $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                ? absint($segment['row_index'])
+                : null;
+
+            if ($field_name === '' && $field_key === '' && $field_selector === '') {
+                continue;
+            }
+
+            $segments[] = [
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'row_index' => $row_index,
+            ];
+        }
+
+        return $segments;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
      * @return bool
      */
     protected function isGroupedFieldSource(EditableDescriptor $descriptor)
@@ -715,7 +754,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     private function extractRowFieldValue(array $row, EditableDescriptor $descriptor)
     {
-        $container = $this->resolveGroupedRowContainer($row, $descriptor);
+        $container = $this->resolveLeafRowContainer($row, $descriptor);
         $field_keys = $this->resolveRowFieldKeys($descriptor);
 
         foreach ($field_keys as $field_key) {
@@ -735,7 +774,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     private function replaceRowFieldValue(array $row, EditableDescriptor $descriptor, $value)
     {
-        $container =& $this->resolveGroupedRowContainerReference($row, $descriptor);
+        $container =& $this->resolveLeafRowContainerReference($row, $descriptor);
         $field_keys = $this->resolveRowFieldKeys($descriptor);
         $updated = false;
 
@@ -758,6 +797,31 @@ abstract class AbstractAcfResolver implements ResolverInterface
     }
 
     /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function resolveLeafRowContainer(array $row, EditableDescriptor $descriptor)
+    {
+        $leaf_row = $this->resolveNestedRepeaterRow($row, $descriptor);
+
+        return $this->resolveGroupedRowContainer($leaf_row, $descriptor);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function &resolveLeafRowContainerReference(array &$row, EditableDescriptor $descriptor)
+    {
+        $leaf_row =& $this->resolveNestedRepeaterRowReference($row, $descriptor);
+        $container =& $this->resolveGroupedRowContainerReference($leaf_row, $descriptor);
+
+        return $container;
+    }
+
+    /**
      * @param EditableDescriptor $descriptor
      * @return array<int, string>
      */
@@ -775,6 +839,147 @@ abstract class AbstractAcfResolver implements ResolverInterface
                 )
             )
         );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function resolveNestedRepeaterRow(array $row, EditableDescriptor $descriptor)
+    {
+        $container = $row;
+        $segments = $this->getNestedRepeaterPath($descriptor);
+
+        foreach ($segments as $segment) {
+            $segment_key = $this->resolveNestedRepeaterSegmentKey($container, $segment);
+            if ($segment_key === '' || ! isset($container[$segment_key]) || ! is_array($container[$segment_key])) {
+                return [];
+            }
+
+            $rows = array_values($container[$segment_key]);
+            $row_index = $this->resolveNestedRepeaterSegmentRowIndex($segment, $rows);
+            if ($row_index < 0 || ! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
+                return [];
+            }
+
+            $container = $rows[$row_index];
+        }
+
+        return is_array($container) ? $container : [];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function &resolveNestedRepeaterRowReference(array &$row, EditableDescriptor $descriptor)
+    {
+        $container =& $row;
+        $segments = $this->getNestedRepeaterPath($descriptor);
+
+        foreach ($segments as $segment) {
+            $segment_key = $this->resolveNestedRepeaterSegmentKey($container, $segment);
+            if ($segment_key === '') {
+                $segment_key = $this->fallbackNestedRepeaterSegmentKey($segment);
+            }
+
+            if ($segment_key === '') {
+                continue;
+            }
+
+            if (! isset($container[$segment_key]) || ! is_array($container[$segment_key])) {
+                $container[$segment_key] = [];
+            }
+
+            $container[$segment_key] = array_values($container[$segment_key]);
+            $rows =& $container[$segment_key];
+            $row_index = $this->resolveNestedRepeaterSegmentRowIndex($segment, $rows);
+
+            if ($row_index < 0) {
+                $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                    ? absint($segment['row_index'])
+                    : 0;
+            }
+
+            if (! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
+                $rows[$row_index] = [];
+            }
+
+            $container =& $rows[$row_index];
+        }
+
+        return $container;
+    }
+
+    /**
+     * @param array<string, mixed> $container
+     * @param array<string, mixed> $segment
+     * @return string
+     */
+    private function resolveNestedRepeaterSegmentKey(array $container, array $segment)
+    {
+        $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+        $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+        $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+
+        if ($field_key !== '' && isset($container[$field_key]) && is_array($container[$field_key])) {
+            return $field_key;
+        }
+
+        if ($field_name !== '' && isset($container[$field_name]) && is_array($container[$field_name])) {
+            return $field_name;
+        }
+
+        if ($field_selector !== '' && isset($container[$field_selector]) && is_array($container[$field_selector])) {
+            return $field_selector;
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $segment
+     * @return string
+     */
+    private function fallbackNestedRepeaterSegmentKey(array $segment)
+    {
+        $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+        if ($field_key !== '') {
+            return $field_key;
+        }
+
+        $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+        if ($field_name !== '') {
+            return $field_name;
+        }
+
+        return isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+    }
+
+    /**
+     * @param array<string, mixed> $segment
+     * @param array<int, mixed>    $rows
+     * @return int
+     */
+    private function resolveNestedRepeaterSegmentRowIndex(array $segment, array $rows)
+    {
+        if (! isset($segment['row_index']) || $segment['row_index'] === null || ! is_numeric($segment['row_index'])) {
+            return -1;
+        }
+
+        $requested_index = absint($segment['row_index']);
+
+        if (array_key_exists($requested_index, $rows)) {
+            return $requested_index;
+        }
+
+        if ($requested_index > 0 && array_key_exists($requested_index - 1, $rows)) {
+            return $requested_index - 1;
+        }
+
+        return -1;
     }
 
     /**

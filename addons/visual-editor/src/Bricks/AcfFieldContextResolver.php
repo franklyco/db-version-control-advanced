@@ -444,18 +444,16 @@ final class AcfFieldContextResolver
         if ($parent_type === 'repeater') {
             $parent_key = isset($parent['key']) ? sanitize_key((string) $parent['key']) : $parent_repeater_key;
             $parent_selector = $this->resolveNativeQueryFieldSelector($native_query, $parent_name, $parent_key);
-            $supported = ! empty($loop_context['active'])
+            $context = [
+                'active' => true,
+                'supported' => ! empty($loop_context['active'])
                 && $parent_name !== ''
                 && $parent_key !== ''
                 && $row_index !== null
                 && (
                     $this->queryObjectTypeMatchesContainer($query_object_type, $parent_name)
                     || $this->nativeQueryMatchesRepeaterContainer($native_query, $parent_name, $parent_key)
-                );
-
-            return [
-                'active' => true,
-                'supported' => $supported,
+                ),
                 'parent_field_name' => $parent_name,
                 'parent_field_key' => $parent_key,
                 'parent_field_selector' => $parent_selector,
@@ -464,7 +462,10 @@ final class AcfFieldContextResolver
                 'query_object_type' => $query_object_type,
                 'subfield_name' => isset($field['name']) ? sanitize_key((string) $field['name']) : '',
                 'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
+                'nested_repeater_path' => [],
             ];
+
+            return $this->canonicalizeNestedRepeaterContext($context, $tag_object, $loop_context, $acf_object_id);
         }
 
         if ($parent_type !== 'group' || ($native_query['kind'] ?? '') !== 'repeater') {
@@ -485,12 +486,112 @@ final class AcfFieldContextResolver
             'query_object_type' => $query_object_type,
             'subfield_name' => isset($field['name']) ? sanitize_key((string) $field['name']) : '',
             'subfield_key' => isset($field['key']) ? sanitize_key((string) $field['key']) : '',
+            'nested_repeater_path' => [],
         ];
         $context['supported'] = ! empty($loop_context['active'])
             && $row_index !== null
             && $this->containerSupportsTagField($tag_object, $context, $acf_object_id);
 
+        return $this->canonicalizeNestedRepeaterContext($context, $tag_object, $loop_context, $acf_object_id);
+    }
+
+    /**
+     * Canonicalize nested native repeater loops back to the outer repeater root so
+     * the descriptor reads and writes against the actual stored ACF row tree.
+     *
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $tag_object
+     * @param array<string, mixed> $loop_context
+     * @param mixed                $acf_object_id
+     * @return array<string, mixed>
+     */
+    private function canonicalizeNestedRepeaterContext(array $context, array $tag_object, array $loop_context, $acf_object_id)
+    {
+        if (($context['parent_field_type'] ?? '') !== 'repeater' || empty($loop_context['active'])) {
+            return $context;
+        }
+
+        $repeater_chain = $this->buildNativeRepeaterLoopChain($loop_context);
+        if (empty($repeater_chain)) {
+            return $context;
+        }
+
+        $root_segment = $repeater_chain[0];
+        $nested_segments = [];
+
+        foreach (array_slice($repeater_chain, 1) as $segment) {
+            $nested_segments[] = [
+                'field_name' => isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '',
+                'field_key' => isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '',
+                'field_selector' => isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '',
+                'row_index' => isset($segment['row_index']) && $segment['row_index'] !== null ? absint($segment['row_index']) : null,
+            ];
+        }
+
+        $context['parent_field_name'] = isset($root_segment['field_name']) ? sanitize_key((string) $root_segment['field_name']) : (string) ($context['parent_field_name'] ?? '');
+        $context['parent_field_key'] = isset($root_segment['field_key']) ? sanitize_key((string) $root_segment['field_key']) : (string) ($context['parent_field_key'] ?? '');
+        $context['parent_field_selector'] = isset($root_segment['field_selector']) ? sanitize_key((string) $root_segment['field_selector']) : (string) ($context['parent_field_selector'] ?? '');
+        $context['row_index'] = isset($root_segment['row_index']) && $root_segment['row_index'] !== null
+            ? absint($root_segment['row_index'])
+            : (isset($context['row_index']) && $context['row_index'] !== null ? absint($context['row_index']) : null);
+        $context['nested_repeater_path'] = $nested_segments;
+        $context['supported'] = ! empty($loop_context['active'])
+            && $context['row_index'] !== null
+            && $this->nestedRepeaterSegmentsHaveStableIndexes($nested_segments)
+            && $this->containerSupportsTagField($tag_object, $context, $acf_object_id);
+
         return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $loop_context
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildNativeRepeaterLoopChain(array $loop_context)
+    {
+        $contexts = [];
+
+        if (! empty($loop_context['ancestors']) && is_array($loop_context['ancestors'])) {
+            foreach (array_reverse($loop_context['ancestors']) as $ancestor_context) {
+                if (is_array($ancestor_context) && ! empty($ancestor_context)) {
+                    $contexts[] = $ancestor_context;
+                }
+            }
+        }
+
+        $contexts[] = $loop_context;
+        $segments = [];
+
+        foreach ($contexts as $context) {
+            $native_query = isset($context['native_acf_query']) && is_array($context['native_acf_query']) ? $context['native_acf_query'] : [];
+            if (($native_query['kind'] ?? '') !== 'repeater') {
+                continue;
+            }
+
+            $segments[] = [
+                'field_name' => isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '',
+                'field_key' => isset($native_query['fieldKey']) ? sanitize_key((string) $native_query['fieldKey']) : '',
+                'field_selector' => isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '',
+                'row_index' => isset($context['loop_index']) && is_numeric($context['loop_index']) ? absint($context['loop_index']) : null,
+            ];
+        }
+
+        return $segments;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $segments
+     * @return bool
+     */
+    private function nestedRepeaterSegmentsHaveStableIndexes(array $segments)
+    {
+        foreach ($segments as $segment) {
+            if (! isset($segment['row_index']) || $segment['row_index'] === null || ! is_numeric($segment['row_index'])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -797,6 +898,7 @@ final class AcfFieldContextResolver
     {
         $fields = [];
         $container_type = isset($container_context['parent_field_type']) ? sanitize_key((string) $container_context['parent_field_type']) : '';
+        $nested_repeater_path = $this->normalizeNestedRepeaterPath($container_context);
 
         if ($container_type === 'flexible_content') {
             $fields = $this->resolveFlexibleLayoutSubFields($container_field, $container_context);
@@ -806,6 +908,24 @@ final class AcfFieldContextResolver
 
         if (empty($fields)) {
             return [];
+        }
+
+        foreach ($nested_repeater_path as $segment) {
+            $segment_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+            $segment_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+            $repeater_field = $this->findSubFieldMatch($fields, $segment_name, $segment_key);
+
+            if (empty($repeater_field) || sanitize_key((string) ($repeater_field['type'] ?? '')) !== 'repeater') {
+                return [];
+            }
+
+            $fields = ! empty($repeater_field['sub_fields']) && is_array($repeater_field['sub_fields'])
+                ? $repeater_field['sub_fields']
+                : [];
+
+            if (empty($fields)) {
+                return [];
+            }
         }
 
         foreach ($group_path as $segment) {
@@ -824,6 +944,45 @@ final class AcfFieldContextResolver
         }
 
         return $this->findSubFieldMatch($fields, $leaf_name, $leaf_key);
+    }
+
+    /**
+     * @param array<string, mixed> $container_context
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeNestedRepeaterPath(array $container_context)
+    {
+        if (empty($container_context['nested_repeater_path']) || ! is_array($container_context['nested_repeater_path'])) {
+            return [];
+        }
+
+        $segments = [];
+
+        foreach ($container_context['nested_repeater_path'] as $segment) {
+            if (! is_array($segment)) {
+                continue;
+            }
+
+            $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+            $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+            $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+            $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                ? absint($segment['row_index'])
+                : null;
+
+            if ($field_name === '' && $field_key === '' && $field_selector === '') {
+                continue;
+            }
+
+            $segments[] = [
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'row_index' => $row_index,
+            ];
+        }
+
+        return $segments;
     }
 
     /**

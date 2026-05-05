@@ -51,7 +51,7 @@ Initial inspect-only repeater field types:
 
 - flexible content writes
 - multi-row repeater insert/remove/reorder
-- nested repeater-in-repeater writes
+- nested repeater-in-flexible and deeper collection-chain writes beyond the now-supported repeater-root repeater-in-repeater slice
 - relationship collection editing inside repeater rows
 - gallery collection writes inside repeater rows
 - generic non-ACF Bricks builder-owned loop state mutation

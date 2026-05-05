@@ -236,6 +236,7 @@ Add writable paths for:
 Current status:
 - a narrow repeater-row descendant slice is now implemented for stable Bricks ACF repeater loops on current-post and related-post owners
 - native Bricks ACF repeater loops have now been hardened against several real-world provider/runtime failure classes, including shortened parent aliases, duplicate child keys, nested group descendants, repeated-loop seed collapse, and fake related-owner classification from bare numeric row indices
+- native Bricks ACF repeater-in-repeater descendants under a repeater root now carry canonical nested repeater row ancestry back to the outer stored repeater field, instead of attempting to treat the innermost repeater loop like a top-level editable root
 - direct safe ACF fields on concrete queried post, term, and user loop owners are now writable through the explicit loop-owned contract layer
 - direct flexible descendants with stable row + layout identity now surface with stable path metadata
 - flexible text-like, WYSIWYG, choice, link, and image descendants are now writable through the flexible contract layer for current owners, loop-owned related owners, and shared term/user/option owners
