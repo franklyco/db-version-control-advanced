@@ -18,6 +18,7 @@ final class MutationContractService
         $render_context = $this->resolveMutationString($descriptor, 'renderContext', '');
         $native_loop_kind = $this->resolveMutationString($descriptor, 'nativeLoopKind', '');
         $parent_native_loop_kind = $this->resolveMutationString($descriptor, 'parentNativeLoopKind', '');
+        $native_loop_ancestry = $this->resolveMutationList($descriptor, 'nativeLoopAncestry');
         $requires_ack = $this->requiresAcknowledgement($descriptor);
         $ack_type = $this->resolveAcknowledgementType($descriptor);
         $writable = $this->isWritable($descriptor);
@@ -29,11 +30,12 @@ final class MutationContractService
             'renderContext' => $render_context,
             'nativeLoopKind' => $native_loop_kind,
             'parentNativeLoopKind' => $parent_native_loop_kind,
+            'nativeLoopAncestry' => $native_loop_ancestry,
             'writable' => $writable,
             'requiresAcknowledgement' => $requires_ack,
             'acknowledgementType' => $ack_type,
             'label' => $this->resolveContractLabel($contract),
-            'detail' => $this->resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind, $parent_native_loop_kind),
+            'detail' => $this->resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind, $parent_native_loop_kind, $native_loop_ancestry),
         ];
     }
 
@@ -207,6 +209,29 @@ final class MutationContractService
     }
 
     /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $key
+     * @return array<int, string>
+     */
+    private function resolveMutationList(EditableDescriptor $descriptor, $key)
+    {
+        if (! isset($descriptor->mutation[$key]) || ! is_array($descriptor->mutation[$key])) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                array_map(
+                    static function ($value) {
+                        return is_scalar($value) ? sanitize_text_field((string) $value) : '';
+                    },
+                    $descriptor->mutation[$key]
+                )
+            )
+        );
+    }
+
+    /**
      * @param string $contract
      * @return string
      */
@@ -242,7 +267,7 @@ final class MutationContractService
      * @param string $render_context
      * @return string
      */
-    private function resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind = '', $parent_native_loop_kind = '')
+    private function resolveContractDetail($contract, $kind, $target, $render_context, $native_loop_kind = '', $parent_native_loop_kind = '', array $native_loop_ancestry = [])
     {
         $parts = [$this->resolveContractLabel($contract)];
 
@@ -264,6 +289,15 @@ final class MutationContractService
 
         if ($parent_native_loop_kind !== '') {
             $parts[] = 'parent native ' . str_replace('_', ' ', sanitize_key((string) $parent_native_loop_kind)) . ' loop';
+        }
+
+        if (! empty($native_loop_ancestry)) {
+            $parts[] = 'native ancestry ' . implode(' > ', array_map(
+                static function ($value) {
+                    return sanitize_text_field((string) $value);
+                },
+                $native_loop_ancestry
+            ));
         }
 
         return implode(' / ', $parts);

@@ -50,6 +50,11 @@ final class DescriptorSummaryBuilder
         $native_query_selector = isset($path['nativeQuerySelector']) ? sanitize_key((string) $path['nativeQuerySelector']) : (isset($source['native_query_selector']) ? sanitize_key((string) $source['native_query_selector']) : '');
         $parent_native_query_kind = isset($path['parentNativeQueryKind']) ? sanitize_key((string) $path['parentNativeQueryKind']) : (isset($source['parent_native_query_kind']) ? sanitize_key((string) $source['parent_native_query_kind']) : '');
         $parent_native_query_selector = isset($path['parentNativeQuerySelector']) ? sanitize_key((string) $path['parentNativeQuerySelector']) : (isset($source['parent_native_query_selector']) ? sanitize_key((string) $source['parent_native_query_selector']) : '');
+        $native_query_ancestry = $this->normalizeNativeQueryAncestry(
+            isset($path['nativeQueryAncestry']) && is_array($path['nativeQueryAncestry'])
+                ? $path['nativeQueryAncestry']
+                : (isset($source['native_query_ancestry']) && is_array($source['native_query_ancestry']) ? $source['native_query_ancestry'] : [])
+        );
         $group_path = isset($path['groupPath']) && is_array($path['groupPath'])
             ? array_values(
                 array_filter(
@@ -152,7 +157,26 @@ final class DescriptorSummaryBuilder
             }
         }
 
-        if ($parent_native_query_kind !== '' || $parent_native_query_selector !== '') {
+        if (! empty($native_query_ancestry)) {
+            $parts[] = 'native-chain:' . implode('>', array_map(
+                static function ($item) {
+                    $kind = isset($item['kind']) ? sanitize_key((string) $item['kind']) : '';
+                    $selector = isset($item['selector']) ? sanitize_key((string) $item['selector']) : '';
+                    $loop_index = isset($item['loopIndex']) ? sanitize_text_field((string) $item['loopIndex']) : '';
+
+                    $label = $kind !== '' ? $kind : 'query';
+                    if ($selector !== '') {
+                        $label .= ':' . $selector;
+                    }
+                    if ($loop_index !== '' && is_numeric($loop_index)) {
+                        $label .= '@' . (absint($loop_index) + 1);
+                    }
+
+                    return $label;
+                },
+                $native_query_ancestry
+            ));
+        } elseif ($parent_native_query_kind !== '' || $parent_native_query_selector !== '') {
             $parts[] = 'parent-native:' . ($parent_native_query_kind !== '' ? $parent_native_query_kind : 'query') . ($parent_native_query_selector !== '' ? ':' . $parent_native_query_selector : '');
         }
 
@@ -190,6 +214,42 @@ final class DescriptorSummaryBuilder
             'expression' => $expression,
             'summary' => implode(' / ', $parts),
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $ancestry
+     * @return array<int, array<string, string>>
+     */
+    private function normalizeNativeQueryAncestry(array $ancestry)
+    {
+        return array_values(
+            array_filter(
+                array_map(
+                    static function ($item) {
+                        if (! is_array($item)) {
+                            return null;
+                        }
+
+                        $kind = isset($item['kind']) ? sanitize_key((string) $item['kind']) : '';
+                        $selector = isset($item['selector']) ? sanitize_key((string) $item['selector']) : '';
+                        $object_type = isset($item['objectType']) ? sanitize_key((string) $item['objectType']) : '';
+                        $loop_index = isset($item['loopIndex']) ? sanitize_text_field((string) $item['loopIndex']) : '';
+
+                        if ($kind === '' && $selector === '' && $object_type === '') {
+                            return null;
+                        }
+
+                        return [
+                            'kind' => $kind,
+                            'selector' => $selector,
+                            'objectType' => $object_type,
+                            'loopIndex' => $loop_index,
+                        ];
+                    },
+                    $ancestry
+                )
+            )
+        );
     }
 
     /**

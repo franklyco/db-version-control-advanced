@@ -7,6 +7,7 @@ if (! defined('WPINC')) {
 final class DBVC_Bricks_Packages
 {
     public const OPTION_PACKAGES = 'dbvc_bricks_packages';
+    public const OPTION_PACKAGE_PREFIX = 'dbvc_bricks_package_';
     public const REMOTE_PACKAGE_MAX_BYTES = 5242880;
     public const STATUS_DRAFT = 'DRAFT';
     public const STATUS_PUBLISHED = 'PUBLISHED';
@@ -20,8 +21,27 @@ final class DBVC_Bricks_Packages
      */
     public static function get_packages()
     {
-        $packages = get_option(self::OPTION_PACKAGES, []);
-        return is_array($packages) ? $packages : [];
+        $stored = get_option(self::OPTION_PACKAGES, []);
+        if (! is_array($stored)) {
+            return [];
+        }
+
+        $packages = [];
+        foreach ($stored as $package_id => $package) {
+            if (! is_array($package)) {
+                continue;
+            }
+
+            $entry = self::build_package_catalog_entry($package, (string) $package_id);
+            $resolved_package_id = sanitize_text_field((string) ($entry['package_id'] ?? $package_id));
+            if ($resolved_package_id === '') {
+                continue;
+            }
+
+            $packages[$resolved_package_id] = $entry;
+        }
+
+        return $packages;
     }
 
     /**
@@ -30,10 +50,49 @@ final class DBVC_Bricks_Packages
      */
     public static function get_package($package_id)
     {
-        $packages = self::get_packages();
+        $package_id = sanitize_text_field((string) $package_id);
+        if ($package_id === '') {
+            return null;
+        }
+
+        $stored = get_option(self::get_package_option_name($package_id), null);
+        if (is_array($stored)) {
+            return self::normalize_stored_package_record($stored, $package_id);
+        }
+
+        $packages = get_option(self::OPTION_PACKAGES, []);
+        if (! is_array($packages)) {
+            return null;
+        }
+
         return isset($packages[$package_id]) && is_array($packages[$package_id])
-            ? $packages[$package_id]
+            ? self::normalize_stored_package_record($packages[$package_id], $package_id)
             : null;
+    }
+
+    /**
+     * @param string $package_id
+     * @return string
+     */
+    private static function get_package_option_name($package_id)
+    {
+        $package_id = sanitize_key((string) $package_id);
+        return self::OPTION_PACKAGE_PREFIX . substr($package_id, 0, 160);
+    }
+
+    /**
+     * @param array<string, mixed> $package
+     * @param string $fallback_package_id
+     * @return array<string, mixed>
+     */
+    private static function normalize_stored_package_record(array $package, $fallback_package_id = '')
+    {
+        $package_id = sanitize_text_field((string) ($package['package_id'] ?? $fallback_package_id));
+        if ($package_id !== '') {
+            $package['package_id'] = $package_id;
+        }
+
+        return $package;
     }
 
     /**
@@ -163,7 +222,50 @@ final class DBVC_Bricks_Packages
             $item = self::augment_package_metadata($item);
             return self::annotate_package_with_protected_variants($item, false);
         }, $items));
+        usort($items, static function ($a, $b) {
+            if (! is_array($a) && ! is_array($b)) {
+                return 0;
+            }
+            if (! is_array($a)) {
+                return 1;
+            }
+            if (! is_array($b)) {
+                return -1;
+            }
+
+            $a_updated = self::package_list_timestamp($a, ['updated_at', 'created_at']);
+            $b_updated = self::package_list_timestamp($b, ['updated_at', 'created_at']);
+            if ($a_updated !== $b_updated) {
+                return $b_updated <=> $a_updated;
+            }
+
+            $a_created = self::package_list_timestamp($a, ['created_at']);
+            $b_created = self::package_list_timestamp($b, ['created_at']);
+            if ($a_created !== $b_created) {
+                return $b_created <=> $a_created;
+            }
+
+            return strcmp((string) ($b['package_id'] ?? ''), (string) ($a['package_id'] ?? ''));
+        });
         return array_slice($items, 0, $limit);
+    }
+
+    /**
+     * @param array<string, mixed> $package
+     * @param array<int, string> $keys
+     * @return int
+     */
+    private static function package_list_timestamp(array $package, array $keys)
+    {
+        foreach ($keys as $key) {
+            $value = (string) ($package[$key] ?? '');
+            $timestamp = strtotime($value);
+            if ($timestamp !== false) {
+                return (int) $timestamp;
+            }
+        }
+
+        return 0;
     }
 
     /**
@@ -250,7 +352,17 @@ final class DBVC_Bricks_Packages
             }
             return $b_ts <=> $a_ts;
         });
-        return is_array($eligible[0]) ? $eligible[0] : null;
+        if (! is_array($eligible[0])) {
+            return null;
+        }
+
+        $package_id = sanitize_text_field((string) ($eligible[0]['package_id'] ?? ''));
+        if ($package_id === '') {
+            return $eligible[0];
+        }
+
+        $full = self::get_package($package_id);
+        return is_array($full) ? $full : $eligible[0];
     }
 
     /**
@@ -601,6 +713,190 @@ final class DBVC_Bricks_Packages
     }
 
     /**
+     * @param array<string, mixed> $package
+     * @param string $fallback_package_id
+     * @return array<string, mixed>
+     */
+    private static function build_package_catalog_entry(array $package, $fallback_package_id = '')
+    {
+        $package = self::normalize_stored_package_record($package, $fallback_package_id);
+
+        $source_site = isset($package['source_site']) && is_array($package['source_site']) ? $package['source_site'] : [];
+        $targeting = isset($package['targeting']) && is_array($package['targeting']) ? $package['targeting'] : [];
+        $target_mode = sanitize_key((string) ($targeting['mode'] ?? 'all'));
+        if (! in_array($target_mode, ['all', 'selected'], true)) {
+            $target_mode = 'all';
+        }
+        $target_site_uids = [];
+        foreach ((array) ($targeting['site_uids'] ?? []) as $site_uid) {
+            $site_uid = sanitize_key((string) $site_uid);
+            if ($site_uid !== '' && ! in_array($site_uid, $target_site_uids, true)) {
+                $target_site_uids[] = $site_uid;
+            }
+        }
+
+        $entry = [
+            'package_id' => sanitize_text_field((string) ($package['package_id'] ?? $fallback_package_id)),
+            'schema_version' => sanitize_text_field((string) ($package['schema_version'] ?? '')),
+            'parse_mode' => sanitize_key((string) ($package['parse_mode'] ?? 'strict')),
+            'version' => sanitize_text_field((string) ($package['version'] ?? '')),
+            'channel' => sanitize_key((string) ($package['channel'] ?? 'stable')),
+            'status' => sanitize_text_field((string) ($package['status'] ?? self::STATUS_PUBLISHED)),
+            'source_site' => [
+                'site_uid' => sanitize_key((string) ($source_site['site_uid'] ?? '')),
+                'base_url' => esc_url_raw((string) ($source_site['base_url'] ?? '')),
+            ],
+            'artifacts' => self::build_package_catalog_artifacts((array) ($package['artifacts'] ?? [])),
+            'artifact_count' => max(0, (int) ($package['artifact_count'] ?? count((array) ($package['artifacts'] ?? [])))),
+            'created_at' => self::sanitize_timestamp((string) ($package['created_at'] ?? '')),
+            'updated_at' => self::sanitize_timestamp((string) ($package['updated_at'] ?? '')),
+            'digest' => sanitize_text_field((string) ($package['digest'] ?? '')),
+            'targeting' => [
+                'mode' => $target_mode,
+                'site_uids' => $target_mode === 'selected' ? $target_site_uids : [],
+            ],
+            'receipt_id' => sanitize_text_field((string) ($package['receipt_id'] ?? '')),
+            'published_by' => max(0, (int) ($package['published_by'] ?? 0)),
+        ];
+
+        foreach (['delivery_timeline', 'acks', 'delivery_transport', 'channel_force_audit'] as $key) {
+            if (isset($package[$key]) && is_array($package[$key])) {
+                $entry[$key] = $package[$key];
+            }
+        }
+        foreach (['visibility_reason', 'source_site_domain'] as $key) {
+            if (isset($package[$key]) && is_scalar($package[$key])) {
+                $entry[$key] = sanitize_text_field((string) $package[$key]);
+            }
+        }
+        if (isset($package['protected_variant_summary']) && is_array($package['protected_variant_summary'])) {
+            $entry['protected_variant_summary'] = self::sanitize_protected_variant_summary($package['protected_variant_summary']);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * @param array<int, mixed> $artifacts
+     * @return array<int, array<string, mixed>>
+     */
+    private static function build_package_catalog_artifacts(array $artifacts)
+    {
+        $rows = [];
+        foreach ($artifacts as $artifact) {
+            if (! is_array($artifact)) {
+                continue;
+            }
+
+            $artifact_uid = sanitize_text_field((string) ($artifact['artifact_uid'] ?? ''));
+            if ($artifact_uid === '') {
+                continue;
+            }
+
+            $row = [
+                'artifact_uid' => $artifact_uid,
+                'artifact_type' => sanitize_key((string) ($artifact['artifact_type'] ?? '')),
+                'hash' => sanitize_text_field((string) ($artifact['hash'] ?? '')),
+            ];
+            if (isset($artifact['protected_variant']) && is_array($artifact['protected_variant'])) {
+                $lookup = self::sanitize_protected_variant_lookup([
+                    $artifact_uid => $artifact['protected_variant'],
+                ]);
+                if (isset($lookup[$artifact_uid])) {
+                    $row['protected_variant'] = $lookup[$artifact_uid];
+                }
+            }
+
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Persist one package into split local storage and verify both the full manifest
+     * and lightweight catalog entry are readable afterward.
+     *
+     * @param array<string, mixed> $package
+     * @param array<string, mixed> $context
+     * @return true|\WP_Error
+     */
+    private static function persist_package(array $package, array $context = [])
+    {
+        global $wpdb;
+
+        $package = self::normalize_stored_package_record($package);
+        $package_id = sanitize_text_field((string) ($package['package_id'] ?? ''));
+        if ($package_id === '') {
+            return new \WP_Error('dbvc_bricks_package_persist_failed', 'Package could not be persisted to local storage.', [
+                'status' => 500,
+                'package_id' => '',
+            ]);
+        }
+
+        $stored_catalog = get_option(self::OPTION_PACKAGES, []);
+        $catalog = [];
+        if (is_array($stored_catalog)) {
+            foreach ($stored_catalog as $existing_package_id => $existing_package) {
+                if (! is_array($existing_package)) {
+                    continue;
+                }
+
+                $existing_package = self::normalize_stored_package_record($existing_package, (string) $existing_package_id);
+                $existing_package_id = sanitize_text_field((string) ($existing_package['package_id'] ?? $existing_package_id));
+                if ($existing_package_id === '') {
+                    continue;
+                }
+
+                $existing_option_name = self::get_package_option_name($existing_package_id);
+                $existing_stored_full = get_option($existing_option_name, null);
+                if (! is_array($existing_stored_full)) {
+                    update_option($existing_option_name, $existing_package, false);
+                }
+
+                $catalog[$existing_package_id] = self::build_package_catalog_entry($existing_package, $existing_package_id);
+            }
+        }
+        $catalog[$package_id] = self::build_package_catalog_entry($package, $package_id);
+
+        $package_option_name = self::get_package_option_name($package_id);
+        update_option($package_option_name, $package, false);
+        update_option(self::OPTION_PACKAGES, $catalog, false);
+
+        $stored_package = get_option($package_option_name, null);
+        $stored_catalog = get_option(self::OPTION_PACKAGES, []);
+        if (
+            is_array($stored_package)
+            && is_array($stored_catalog)
+            && isset($stored_catalog[$package_id])
+            && is_array($stored_catalog[$package_id])
+        ) {
+            return true;
+        }
+
+        $error_data = [
+            'status' => 500,
+            'package_id' => $package_id,
+            'package_option_name' => $package_option_name,
+            'catalog_entry_present' => is_array($stored_catalog) && isset($stored_catalog[$package_id]),
+        ];
+        foreach (['artifact_count', 'package_bytes', 'channel'] as $key) {
+            if (array_key_exists($key, $context)) {
+                $error_data[$key] = $context[$key];
+            }
+        }
+        if ($wpdb instanceof wpdb && $wpdb->last_error !== '') {
+            $error_data['db_error'] = sanitize_text_field((string) $wpdb->last_error);
+        }
+
+        return new \WP_Error(
+            'dbvc_bricks_package_persist_failed',
+            'Package could not be persisted to local storage.',
+            $error_data
+        );
+    }
+
+    /**
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
@@ -636,9 +932,14 @@ final class DBVC_Bricks_Packages
             'receipt_id' => (string) $package['receipt_id'],
         ]);
 
-        $packages = self::get_packages();
-        $packages[(string) $package['package_id']] = $package;
-        update_option(self::OPTION_PACKAGES, $packages);
+        $persist = self::persist_package($package, [
+            'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+            'package_bytes' => strlen((string) wp_json_encode($package)),
+            'channel' => (string) ($package['channel'] ?? ''),
+        ]);
+        if (is_wp_error($persist)) {
+            return $persist;
+        }
 
         $response = [
             'ok' => true,
@@ -707,9 +1008,14 @@ final class DBVC_Bricks_Packages
             'receipt_id' => (string) $package['receipt_id'],
         ]);
 
-        $packages = self::get_packages();
-        $packages[(string) $package['package_id']] = $package;
-        update_option(self::OPTION_PACKAGES, $packages);
+        $persist = self::persist_package($package, [
+            'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+            'package_bytes' => strlen((string) wp_json_encode($package)),
+            'channel' => (string) ($package['channel'] ?? ''),
+        ]);
+        if (is_wp_error($persist)) {
+            return $persist;
+        }
 
         $response = [
             'ok' => true,
@@ -739,15 +1045,15 @@ final class DBVC_Bricks_Packages
         }
 
         $package_id = sanitize_text_field((string) $request->get_param('package_id'));
-        $packages = self::get_packages();
-        if (! isset($packages[$package_id]) || ! is_array($packages[$package_id])) {
+        $package = self::get_package($package_id);
+        if (! is_array($package)) {
             return new \WP_Error('dbvc_bricks_package_not_found', 'Package not found.', ['status' => 404]);
         }
         $target_channel = sanitize_key((string) $request->get_param('channel'));
         if (! in_array($target_channel, ['canary', 'beta', 'stable'], true)) {
             return new \WP_Error('dbvc_bricks_channel_invalid', 'Invalid channel.', ['status' => 400]);
         }
-        $current_channel = sanitize_key((string) ($packages[$package_id]['channel'] ?? ''));
+        $current_channel = sanitize_key((string) ($package['channel'] ?? ''));
         $channel_order = [
             'canary' => 1,
             'beta' => 2,
@@ -763,12 +1069,19 @@ final class DBVC_Bricks_Packages
             return new \WP_Error('dbvc_bricks_stable_promotion_confirmation_required', 'Stable promotion requires confirm_stable_promotion=true.', ['status' => 400]);
         }
 
-        $packages[$package_id]['channel'] = $target_channel;
-        $packages[$package_id]['updated_at'] = gmdate('c');
-        $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'eligible', [
+        $package['channel'] = $target_channel;
+        $package['updated_at'] = gmdate('c');
+        $package = self::append_timeline_event($package, 'eligible', [
             'promoted_to' => $target_channel,
         ]);
-        update_option(self::OPTION_PACKAGES, $packages);
+        $persist = self::persist_package($package, [
+            'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+            'package_bytes' => strlen((string) wp_json_encode($package)),
+            'channel' => (string) ($package['channel'] ?? ''),
+        ]);
+        if (is_wp_error($persist)) {
+            return $persist;
+        }
 
         $response = [
             'ok' => true,
@@ -795,20 +1108,27 @@ final class DBVC_Bricks_Packages
         }
 
         $package_id = sanitize_text_field((string) $request->get_param('package_id'));
-        $packages = self::get_packages();
-        if (! isset($packages[$package_id]) || ! is_array($packages[$package_id])) {
+        $package = self::get_package($package_id);
+        if (! is_array($package)) {
             return new \WP_Error('dbvc_bricks_package_not_found', 'Package not found.', ['status' => 404]);
         }
         if (! rest_sanitize_boolean($request->get_param('confirm_revoke'))) {
             return new \WP_Error('dbvc_bricks_revoke_confirmation_required', 'Revoke requires confirm_revoke=true.', ['status' => 400]);
         }
 
-        $packages[$package_id]['status'] = self::STATUS_REVOKED;
-        $packages[$package_id]['updated_at'] = gmdate('c');
-        $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'failed', [
+        $package['status'] = self::STATUS_REVOKED;
+        $package['updated_at'] = gmdate('c');
+        $package = self::append_timeline_event($package, 'failed', [
             'reason' => 'revoked',
         ]);
-        update_option(self::OPTION_PACKAGES, $packages);
+        $persist = self::persist_package($package, [
+            'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+            'package_bytes' => strlen((string) wp_json_encode($package)),
+            'channel' => (string) ($package['channel'] ?? ''),
+        ]);
+        if (is_wp_error($persist)) {
+            return $persist;
+        }
 
         $response = [
             'ok' => true,
@@ -826,8 +1146,8 @@ final class DBVC_Bricks_Packages
     public static function rest_ack(\WP_REST_Request $request)
     {
         $package_id = sanitize_text_field((string) $request->get_param('package_id'));
-        $packages = self::get_packages();
-        if (! isset($packages[$package_id]) || ! is_array($packages[$package_id])) {
+        $package = self::get_package($package_id);
+        if (! is_array($package)) {
             return new \WP_Error('dbvc_bricks_package_not_found', 'Package not found.', ['status' => 404]);
         }
         $params = $request->get_json_params();
@@ -836,35 +1156,42 @@ final class DBVC_Bricks_Packages
         }
         $site_uid = sanitize_key((string) ($params['site_uid'] ?? ''));
         $state = sanitize_key((string) ($params['state'] ?? 'received'));
-        $receipt_id = sanitize_text_field((string) ($params['receipt_id'] ?? ($packages[$package_id]['receipt_id'] ?? '')));
+        $receipt_id = sanitize_text_field((string) ($params['receipt_id'] ?? ($package['receipt_id'] ?? '')));
         if (! in_array($state, ['received', 'pulled', 'applied', 'failed', 'skipped'], true)) {
             $state = 'received';
         }
 
-        if (! isset($packages[$package_id]['acks']) || ! is_array($packages[$package_id]['acks'])) {
-            $packages[$package_id]['acks'] = [];
+        if (! isset($package['acks']) || ! is_array($package['acks'])) {
+            $package['acks'] = [];
         }
-        $packages[$package_id]['acks'][] = [
+        $package['acks'][] = [
             'site_uid' => $site_uid,
             'state' => $state,
             'at' => gmdate('c'),
             'actor_id' => get_current_user_id(),
             'receipt_id' => $receipt_id,
         ];
-        $packages[$package_id] = self::append_timeline_event($packages[$package_id], $state === 'received' ? 'received' : $state, [
+        $package = self::append_timeline_event($package, $state === 'received' ? 'received' : $state, [
             'site_uid' => $site_uid,
             'receipt_id' => $receipt_id,
         ]);
         if (in_array($state, ['applied', 'failed'], true)) {
-            $packages[$package_id] = self::update_transport_state(
-                $packages[$package_id],
+            $package = self::update_transport_state(
+                $package,
                 'apply',
                 $state === 'applied',
                 $state === 'failed' ? 'apply_failed' : ''
             );
         }
-        $packages[$package_id]['updated_at'] = gmdate('c');
-        update_option(self::OPTION_PACKAGES, $packages);
+        $package['updated_at'] = gmdate('c');
+        $persist = self::persist_package($package, [
+            'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+            'package_bytes' => strlen((string) wp_json_encode($package)),
+            'channel' => (string) ($package['channel'] ?? ''),
+        ]);
+        if (is_wp_error($persist)) {
+            return $persist;
+        }
 
         return rest_ensure_response([
             'ok' => true,
@@ -931,56 +1258,66 @@ final class DBVC_Bricks_Packages
         $latest = self::annotate_package_with_protected_variants($latest, true);
 
         $apply = DBVC_Bricks_Apply::apply_package($latest, [], ['dry_run' => true, 'allow_destructive' => false]);
-        $packages = self::get_packages();
-        if (! isset($packages[$package_id]) || ! is_array($packages[$package_id])) {
-            $packages[$package_id] = $latest;
+        $stored_package = self::get_package($package_id);
+        if (! is_array($stored_package)) {
+            $stored_package = $latest;
         } else {
-            $packages[$package_id] = array_merge($packages[$package_id], $latest);
+            $stored_package = array_merge($stored_package, $latest);
         }
 
         if (is_wp_error($apply)) {
-            if (isset($packages[$package_id]) && is_array($packages[$package_id])) {
-                $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'failed', [
-                    'site_uid' => $site_uid,
-                    'operation' => 'pull_latest',
-                    'error_code' => (string) $apply->get_error_code(),
-                ]);
-                $packages[$package_id] = self::update_transport_state(
-                    $packages[$package_id],
-                    'pull_latest',
-                    false,
-                    (string) $apply->get_error_code()
-                );
-                $packages[$package_id]['updated_at'] = gmdate('c');
-                update_option(self::OPTION_PACKAGES, $packages);
+            $stored_package = self::append_timeline_event($stored_package, 'failed', [
+                'site_uid' => $site_uid,
+                'operation' => 'pull_latest',
+                'error_code' => (string) $apply->get_error_code(),
+            ]);
+            $stored_package = self::update_transport_state(
+                $stored_package,
+                'pull_latest',
+                false,
+                (string) $apply->get_error_code()
+            );
+            $stored_package['updated_at'] = gmdate('c');
+            $persist = self::persist_package($stored_package, [
+                'artifact_count' => (int) ($stored_package['artifact_count'] ?? 0),
+                'package_bytes' => strlen((string) wp_json_encode($stored_package)),
+                'channel' => (string) ($stored_package['channel'] ?? ''),
+            ]);
+            if (is_wp_error($persist)) {
+                return $persist;
             }
             return $apply;
         }
 
-        if (isset($packages[$package_id]) && is_array($packages[$package_id])) {
-            $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'eligible', [
-                'site_uid' => $site_uid,
-                'channel' => $channel,
-            ]);
-            if (! isset($packages[$package_id]['acks']) || ! is_array($packages[$package_id]['acks'])) {
-                $packages[$package_id]['acks'] = [];
-            }
-            $packages[$package_id]['acks'][] = [
-                'site_uid' => $site_uid,
-                'state' => 'pulled',
-                'at' => gmdate('c'),
-                'actor_id' => get_current_user_id(),
-                'receipt_id' => (string) ($packages[$package_id]['receipt_id'] ?? ''),
-            ];
-            $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'pulled', [
-                'site_uid' => $site_uid,
-                'receipt_id' => (string) ($packages[$package_id]['receipt_id'] ?? ''),
-            ]);
-            $packages[$package_id] = self::update_transport_state($packages[$package_id], 'pull_latest', true);
-            $packages[$package_id]['updated_at'] = gmdate('c');
-            update_option(self::OPTION_PACKAGES, $packages);
-            $latest = $packages[$package_id];
+        $stored_package = self::append_timeline_event($stored_package, 'eligible', [
+            'site_uid' => $site_uid,
+            'channel' => $channel,
+        ]);
+        if (! isset($stored_package['acks']) || ! is_array($stored_package['acks'])) {
+            $stored_package['acks'] = [];
         }
+        $stored_package['acks'][] = [
+            'site_uid' => $site_uid,
+            'state' => 'pulled',
+            'at' => gmdate('c'),
+            'actor_id' => get_current_user_id(),
+            'receipt_id' => (string) ($stored_package['receipt_id'] ?? ''),
+        ];
+        $stored_package = self::append_timeline_event($stored_package, 'pulled', [
+            'site_uid' => $site_uid,
+            'receipt_id' => (string) ($stored_package['receipt_id'] ?? ''),
+        ]);
+        $stored_package = self::update_transport_state($stored_package, 'pull_latest', true);
+        $stored_package['updated_at'] = gmdate('c');
+        $persist = self::persist_package($stored_package, [
+            'artifact_count' => (int) ($stored_package['artifact_count'] ?? 0),
+            'package_bytes' => strlen((string) wp_json_encode($stored_package)),
+            'channel' => (string) ($stored_package['channel'] ?? ''),
+        ]);
+        if (is_wp_error($persist)) {
+            return $persist;
+        }
+        $latest = $stored_package;
 
         $remote_ack = [
             'ok' => true,
@@ -1124,21 +1461,27 @@ final class DBVC_Bricks_Packages
             if ($first_error !== '') {
                 $message .= ' ' . $first_error;
             }
-            $packages = self::get_packages();
             $package_id = (string) ($package['package_id'] ?? '');
-            if ($package_id !== '' && isset($packages[$package_id]) && is_array($packages[$package_id])) {
-                $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'failed', [
+            if ($package_id !== '') {
+                $package = self::append_timeline_event($package, 'failed', [
                     'operation' => 'publish_remote',
                     'error_code' => $first_error,
                 ]);
-                $packages[$package_id] = self::update_transport_state(
-                    $packages[$package_id],
+                $package = self::update_transport_state(
+                    $package,
                     'publish_remote',
                     false,
                     $first_error !== '' ? $first_error : 'dbvc_bricks_publish_remote_preflight_failed'
                 );
-                $packages[$package_id]['updated_at'] = gmdate('c');
-                update_option(self::OPTION_PACKAGES, $packages);
+                $package['updated_at'] = gmdate('c');
+                $persist = self::persist_package($package, [
+                    'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                    'package_bytes' => strlen((string) wp_json_encode($package)),
+                    'channel' => (string) ($package['channel'] ?? ''),
+                ]);
+                if (is_wp_error($persist)) {
+                    return $persist;
+                }
             }
             return new \WP_Error('dbvc_bricks_publish_remote_preflight_failed', $message, [
                 'status' => 400,
@@ -1174,16 +1517,22 @@ final class DBVC_Bricks_Packages
         ]);
 
         if (is_wp_error($response)) {
-            $packages = self::get_packages();
             $package_id = (string) ($package['package_id'] ?? '');
-            if ($package_id !== '' && isset($packages[$package_id]) && is_array($packages[$package_id])) {
-                $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'failed', [
+            if ($package_id !== '') {
+                $package = self::append_timeline_event($package, 'failed', [
                     'operation' => 'publish_remote',
                     'error_code' => 'dbvc_bricks_publish_remote_http_error',
                 ]);
-                $packages[$package_id] = self::update_transport_state($packages[$package_id], 'publish_remote', false, 'dbvc_bricks_publish_remote_http_error');
-                $packages[$package_id]['updated_at'] = gmdate('c');
-                update_option(self::OPTION_PACKAGES, $packages);
+                $package = self::update_transport_state($package, 'publish_remote', false, 'dbvc_bricks_publish_remote_http_error');
+                $package['updated_at'] = gmdate('c');
+                $persist = self::persist_package($package, [
+                    'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                    'package_bytes' => strlen((string) wp_json_encode($package)),
+                    'channel' => (string) ($package['channel'] ?? ''),
+                ]);
+                if (is_wp_error($persist)) {
+                    return $persist;
+                }
             }
             return new \WP_Error('dbvc_bricks_publish_remote_http_error', $response->get_error_message(), ['status' => 502]);
         }
@@ -1194,16 +1543,22 @@ final class DBVC_Bricks_Packages
             $data = ['raw' => (string) $body];
         }
         if ($status < 200 || $status >= 300) {
-            $packages = self::get_packages();
             $package_id = (string) ($package['package_id'] ?? '');
-            if ($package_id !== '' && isset($packages[$package_id]) && is_array($packages[$package_id])) {
-                $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'failed', [
+            if ($package_id !== '') {
+                $package = self::append_timeline_event($package, 'failed', [
                     'operation' => 'publish_remote',
                     'status' => $status,
                 ]);
-                $packages[$package_id] = self::update_transport_state($packages[$package_id], 'publish_remote', false, 'dbvc_bricks_publish_remote_failed');
-                $packages[$package_id]['updated_at'] = gmdate('c');
-                update_option(self::OPTION_PACKAGES, $packages);
+                $package = self::update_transport_state($package, 'publish_remote', false, 'dbvc_bricks_publish_remote_failed');
+                $package['updated_at'] = gmdate('c');
+                $persist = self::persist_package($package, [
+                    'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                    'package_bytes' => strlen((string) wp_json_encode($package)),
+                    'channel' => (string) ($package['channel'] ?? ''),
+                ]);
+                if (is_wp_error($persist)) {
+                    return $persist;
+                }
             }
             return new \WP_Error('dbvc_bricks_publish_remote_failed', (string) ($data['message'] ?? 'Remote publish failed.'), [
                 'status' => $status,
@@ -1212,21 +1567,27 @@ final class DBVC_Bricks_Packages
             ]);
         }
 
-        $packages = self::get_packages();
         $package_id = (string) ($package['package_id'] ?? '');
-        if ($package_id !== '' && isset($packages[$package_id]) && is_array($packages[$package_id])) {
-            $packages[$package_id] = self::append_timeline_event($packages[$package_id], 'sent', [
+        if ($package_id !== '') {
+            $package = self::append_timeline_event($package, 'sent', [
                 'operation' => 'publish_remote',
                 'target_mode' => (string) ($targeting['mode'] ?? 'all'),
                 'response_status' => $status,
             ]);
-            $packages[$package_id] = self::update_transport_state($packages[$package_id], 'publish_remote', true);
+            $package = self::update_transport_state($package, 'publish_remote', true);
             if (! empty($forced_audit['channel_forced'])) {
-                $packages[$package_id]['channel_force_audit'] = $forced_audit;
-                $packages[$package_id]['channel'] = (string) $forced_audit['forced_to'];
+                $package['channel_force_audit'] = $forced_audit;
+                $package['channel'] = (string) $forced_audit['forced_to'];
             }
-            $packages[$package_id]['updated_at'] = gmdate('c');
-            update_option(self::OPTION_PACKAGES, $packages);
+            $package['updated_at'] = gmdate('c');
+            $persist = self::persist_package($package, [
+                'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                'package_bytes' => strlen((string) wp_json_encode($package)),
+                'channel' => (string) ($package['channel'] ?? ''),
+            ]);
+            if (is_wp_error($persist)) {
+                return $persist;
+            }
         }
 
         $result = [
