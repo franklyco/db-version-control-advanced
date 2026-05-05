@@ -124,6 +124,16 @@ require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-protected-variants.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-onboarding.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-auth.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-command-queue.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-utils.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-registry.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-storage.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-normalizer.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-diff-engine.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-package-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-backup-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-apply-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-rest-controller.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability.php';
 $dbvc_cc_addon_bootstrap = DBVC_PLUGIN_PATH . 'addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php';
 if (file_exists($dbvc_cc_addon_bootstrap)) {
 	require_once $dbvc_cc_addon_bootstrap;
@@ -131,6 +141,7 @@ if (file_exists($dbvc_cc_addon_bootstrap)) {
 DBVC_Admin_App::init();
 DBVC_Entity_Editor_App::init();
 DBVC_Bricks_Addon::bootstrap();
+DBVC_Bricks_Portability::bootstrap();
 \Dbvc\AiPackage\OpenAiModelCatalogService::init();
 if (class_exists('DBVC_CC_Addon_Bootstrap')) {
 	DBVC_CC_Addon_Bootstrap::bootstrap();
