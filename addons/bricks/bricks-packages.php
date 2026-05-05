@@ -7,7 +7,9 @@ if (! defined('WPINC')) {
 final class DBVC_Bricks_Packages
 {
     public const OPTION_PACKAGES = 'dbvc_bricks_packages';
+    public const OPTION_PACKAGE_CATALOG = 'dbvc_bricks_package_catalog';
     public const OPTION_PACKAGE_PREFIX = 'dbvc_bricks_package_';
+    public const OPTION_PUBLISH_RUNS = 'dbvc_bricks_publish_remote_runs';
     public const REMOTE_PACKAGE_MAX_BYTES = 5242880;
     public const STATUS_DRAFT = 'DRAFT';
     public const STATUS_PUBLISHED = 'PUBLISHED';
@@ -15,13 +17,15 @@ final class DBVC_Bricks_Packages
     public const STATUS_REVOKED = 'REVOKED';
     public const RETRY_BASE_SECONDS = 300;
     public const RETRY_MAX_ATTEMPTS = 5;
+    public const PUBLISH_RUNS_DEFAULT_LIMIT = 20;
+    public const PUBLISH_RUNS_MAX_ITEMS = 50;
 
     /**
      * @return array<string, array<string, mixed>>
      */
     public static function get_packages()
     {
-        $stored = get_option(self::OPTION_PACKAGES, []);
+        $stored = self::get_catalog_store();
         if (! is_array($stored)) {
             return [];
         }
@@ -71,6 +75,24 @@ final class DBVC_Bricks_Packages
     }
 
     /**
+     * @return array<string, array<string, mixed>>
+     */
+    private static function get_catalog_store()
+    {
+        $primary = get_option(self::OPTION_PACKAGES, []);
+        if (! is_array($primary)) {
+            $primary = [];
+        }
+
+        if (! self::primary_store_requires_secondary_catalog($primary)) {
+            return $primary;
+        }
+
+        $secondary = get_option(self::OPTION_PACKAGE_CATALOG, []);
+        return (is_array($secondary) && ! empty($secondary)) ? $secondary : $primary;
+    }
+
+    /**
      * @param string $package_id
      * @return string
      */
@@ -78,6 +100,191 @@ final class DBVC_Bricks_Packages
     {
         $package_id = sanitize_key((string) $package_id);
         return self::OPTION_PACKAGE_PREFIX . substr($package_id, 0, 160);
+    }
+
+    /**
+     * @param array<string, mixed> $packages
+     * @return bool
+     */
+    private static function primary_store_requires_secondary_catalog(array $packages)
+    {
+        foreach ($packages as $package) {
+            if (! is_array($package)) {
+                continue;
+            }
+
+            if (self::package_entry_contains_full_manifest($package)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $package
+     * @return bool
+     */
+    private static function package_entry_contains_full_manifest(array $package)
+    {
+        if (! empty($package['payload_index']) && is_array($package['payload_index'])) {
+            return true;
+        }
+
+        $artifacts = isset($package['artifacts']) && is_array($package['artifacts']) ? $package['artifacts'] : [];
+        foreach ($artifacts as $artifact) {
+            if (! is_array($artifact)) {
+                continue;
+            }
+            if (array_key_exists('payload', $artifact) || array_key_exists('entity_id', $artifact)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param int $limit
+     * @return array<int, array<string, mixed>>
+     */
+    public static function get_publish_runs($limit = self::PUBLISH_RUNS_DEFAULT_LIMIT)
+    {
+        $rows = get_option(self::OPTION_PUBLISH_RUNS, []);
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $items[] = self::sanitize_publish_run_entry($row);
+        }
+
+        usort($items, static function ($a, $b) {
+            if (! is_array($a) && ! is_array($b)) {
+                return 0;
+            }
+            if (! is_array($a)) {
+                return 1;
+            }
+            if (! is_array($b)) {
+                return -1;
+            }
+
+            $a_at = (string) ($a['created_at'] ?? '');
+            $b_at = (string) ($b['created_at'] ?? '');
+            if ($a_at !== $b_at) {
+                return strcmp($b_at, $a_at);
+            }
+
+            return strcmp((string) ($b['run_id'] ?? ''), (string) ($a['run_id'] ?? ''));
+        });
+
+        $limit = max(1, (int) $limit);
+        return array_slice($items, 0, $limit);
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     * @return void
+     */
+    private static function record_publish_run(array $entry)
+    {
+        $rows = get_option(self::OPTION_PUBLISH_RUNS, []);
+        if (! is_array($rows)) {
+            $rows = [];
+        }
+
+        array_unshift($rows, self::sanitize_publish_run_entry($entry));
+        if (count($rows) > self::PUBLISH_RUNS_MAX_ITEMS) {
+            $rows = array_slice($rows, 0, self::PUBLISH_RUNS_MAX_ITEMS);
+        }
+
+        update_option(self::OPTION_PUBLISH_RUNS, array_values($rows), false);
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     * @return array<string, mixed>
+     */
+    private static function sanitize_publish_run_entry(array $entry)
+    {
+        $targeting = isset($entry['targeting']) && is_array($entry['targeting']) ? $entry['targeting'] : [];
+        $target_mode = sanitize_key((string) ($targeting['mode'] ?? 'all'));
+        if (! in_array($target_mode, ['all', 'selected'], true)) {
+            $target_mode = 'all';
+        }
+        $site_uids = [];
+        foreach ((array) ($targeting['site_uids'] ?? []) as $site_uid) {
+            $site_uid = sanitize_key((string) $site_uid);
+            if ($site_uid !== '' && ! in_array($site_uid, $site_uids, true)) {
+                $site_uids[] = $site_uid;
+            }
+        }
+
+        $result = sanitize_key((string) ($entry['result'] ?? 'failed'));
+        if (! in_array($result, ['success', 'failed'], true)) {
+            $result = 'failed';
+        }
+
+        return [
+            'run_id' => sanitize_key((string) ($entry['run_id'] ?? '')),
+            'idempotency_key' => sanitize_text_field((string) ($entry['idempotency_key'] ?? '')),
+            'correlation_id' => sanitize_text_field((string) ($entry['correlation_id'] ?? '')),
+            'created_at' => self::sanitize_timestamp((string) ($entry['created_at'] ?? gmdate('c'))),
+            'actor_id' => max(0, (int) ($entry['actor_id'] ?? 0)),
+            'site_uid' => sanitize_key((string) ($entry['site_uid'] ?? '')),
+            'package_id' => sanitize_text_field((string) ($entry['package_id'] ?? '')),
+            'channel' => sanitize_key((string) ($entry['channel'] ?? '')),
+            'artifact_count' => max(0, (int) ($entry['artifact_count'] ?? 0)),
+            'package_bytes' => max(0, (int) ($entry['package_bytes'] ?? 0)),
+            'targeting' => [
+                'mode' => $target_mode,
+                'site_uids' => $target_mode === 'selected' ? array_values($site_uids) : [],
+            ],
+            'remote_url' => esc_url_raw((string) ($entry['remote_url'] ?? '')),
+            'result' => $result,
+            'http_status' => max(0, (int) ($entry['http_status'] ?? 0)),
+            'error_code' => sanitize_key((string) ($entry['error_code'] ?? '')),
+            'message' => sanitize_textarea_field((string) ($entry['message'] ?? '')),
+            'receipt_id' => sanitize_text_field((string) ($entry['receipt_id'] ?? '')),
+            'response' => self::sanitize_publish_run_payload($entry['response'] ?? []),
+            'remote_package_visibility' => self::sanitize_publish_run_payload($entry['remote_package_visibility'] ?? []),
+            'preflight' => self::sanitize_publish_run_payload($entry['preflight'] ?? []),
+            'channel_force_audit' => self::sanitize_publish_run_payload($entry['channel_force_audit'] ?? []),
+        ];
+    }
+
+    /**
+     * @param mixed $payload
+     * @return mixed
+     */
+    private static function sanitize_publish_run_payload($payload)
+    {
+        if (
+            class_exists('DBVC_Bricks_Addon')
+            && method_exists('DBVC_Bricks_Addon', 'sanitize_diagnostics_payload')
+        ) {
+            return DBVC_Bricks_Addon::sanitize_diagnostics_payload($payload);
+        }
+
+        if (is_array($payload)) {
+            $clean = [];
+            foreach ($payload as $key => $value) {
+                $clean_key = is_string($key) ? sanitize_key($key) : (int) $key;
+                $clean[$clean_key] = self::sanitize_publish_run_payload($value);
+            }
+            return $clean;
+        }
+
+        if (is_bool($payload) || is_int($payload) || is_float($payload) || $payload === null) {
+            return $payload;
+        }
+
+        return sanitize_text_field((string) $payload);
     }
 
     /**
@@ -771,6 +978,21 @@ final class DBVC_Bricks_Packages
 
     /**
      * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public static function rest_publish_runs(\WP_REST_Request $request)
+    {
+        $limit = max(1, (int) $request->get_param('limit'));
+        $items = self::get_publish_runs($limit);
+
+        return rest_ensure_response([
+            'items' => $items,
+            'limit' => $limit,
+        ]);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
     public static function rest_get(\WP_REST_Request $request)
@@ -936,37 +1158,44 @@ final class DBVC_Bricks_Packages
             ]);
         }
 
-        $stored_catalog = get_option(self::OPTION_PACKAGES, []);
+        $primary_store = get_option(self::OPTION_PACKAGES, []);
+        if (! is_array($primary_store)) {
+            $primary_store = [];
+        }
+        $secondary_catalog = get_option(self::OPTION_PACKAGE_CATALOG, []);
+        if (! is_array($secondary_catalog)) {
+            $secondary_catalog = [];
+        }
+        $catalog_source = self::primary_store_requires_secondary_catalog($primary_store)
+            ? (! empty($secondary_catalog) ? $secondary_catalog : $primary_store)
+            : $primary_store;
         $catalog = [];
-        if (is_array($stored_catalog)) {
-            foreach ($stored_catalog as $existing_package_id => $existing_package) {
-                if (! is_array($existing_package)) {
-                    continue;
-                }
-
-                $existing_package = self::normalize_stored_package_record($existing_package, (string) $existing_package_id);
-                $existing_package_id = sanitize_text_field((string) ($existing_package['package_id'] ?? $existing_package_id));
-                if ($existing_package_id === '') {
-                    continue;
-                }
-
-                $existing_option_name = self::get_package_option_name($existing_package_id);
-                $existing_stored_full = get_option($existing_option_name, null);
-                if (! is_array($existing_stored_full)) {
-                    update_option($existing_option_name, $existing_package, false);
-                }
-
-                $catalog[$existing_package_id] = self::build_package_catalog_entry($existing_package, $existing_package_id);
+        foreach ($catalog_source as $existing_package_id => $existing_package) {
+            if (! is_array($existing_package)) {
+                continue;
             }
+
+            $existing_package = self::normalize_stored_package_record($existing_package, (string) $existing_package_id);
+            $existing_package_id = sanitize_text_field((string) ($existing_package['package_id'] ?? $existing_package_id));
+            if ($existing_package_id === '') {
+                continue;
+            }
+
+            $catalog[$existing_package_id] = self::build_package_catalog_entry($existing_package, $existing_package_id);
         }
         $catalog[$package_id] = self::build_package_catalog_entry($package, $package_id);
 
         $package_option_name = self::get_package_option_name($package_id);
         update_option($package_option_name, $package, false);
-        update_option(self::OPTION_PACKAGES, $catalog, false);
+        update_option(self::OPTION_PACKAGE_CATALOG, $catalog, false);
+        if (! self::primary_store_requires_secondary_catalog($primary_store)) {
+            update_option(self::OPTION_PACKAGES, $catalog, false);
+        }
 
         $stored_package = get_option($package_option_name, null);
-        $stored_catalog = get_option(self::OPTION_PACKAGES, []);
+        $stored_catalog = self::primary_store_requires_secondary_catalog($primary_store)
+            ? get_option(self::OPTION_PACKAGE_CATALOG, [])
+            : get_option(self::OPTION_PACKAGES, []);
         if (
             is_array($stored_package)
             && is_array($stored_catalog)
@@ -981,6 +1210,9 @@ final class DBVC_Bricks_Packages
             'package_id' => $package_id,
             'package_option_name' => $package_option_name,
             'catalog_entry_present' => is_array($stored_catalog) && isset($stored_catalog[$package_id]),
+            'catalog_store' => self::primary_store_requires_secondary_catalog($primary_store)
+                ? self::OPTION_PACKAGE_CATALOG
+                : self::OPTION_PACKAGES,
         ];
         foreach (['artifact_count', 'package_bytes', 'channel'] as $key) {
             if (array_key_exists($key, $context)) {
@@ -1473,22 +1705,62 @@ final class DBVC_Bricks_Packages
             return rest_ensure_response($existing['response']);
         }
 
+        $site_uid = DBVC_Bricks_Addon::get_setting('dbvc_bricks_site_uid', '');
+        if ($site_uid === '') {
+            $site_uid = 'site_' . get_current_blog_id();
+        }
+        $correlation_id = sanitize_text_field((string) $request->get_header('X-DBVC-Correlation-ID'));
+        $publish_run_base = [
+            'run_id' => 'pubrun_' . substr(wp_hash($idempotency_key . '|' . microtime(true)), 0, 12),
+            'idempotency_key' => $idempotency_key,
+            'correlation_id' => $correlation_id,
+            'created_at' => gmdate('c'),
+            'actor_id' => get_current_user_id(),
+            'site_uid' => sanitize_key($site_uid),
+            'package_id' => '',
+            'channel' => '',
+            'artifact_count' => 0,
+            'package_bytes' => 0,
+            'targeting' => ['mode' => 'all', 'site_uids' => []],
+            'remote_url' => '',
+            'result' => 'failed',
+            'http_status' => 0,
+            'error_code' => '',
+            'message' => '',
+            'receipt_id' => '',
+            'response' => [],
+            'remote_package_visibility' => [],
+            'preflight' => [],
+            'channel_force_audit' => [],
+        ];
+        $record_publish_failure = static function ($error_code, $message, array $context = []) use (&$publish_run_base) {
+            self::record_publish_run(array_merge($publish_run_base, $context, [
+                'result' => 'failed',
+                'error_code' => sanitize_key((string) $error_code),
+                'message' => (string) $message,
+            ]));
+        };
+
         $role = DBVC_Bricks_Addon::get_role_mode();
         if ($role !== 'client') {
+            $record_publish_failure('dbvc_bricks_publish_remote_role_invalid', 'Remote publish is client-only.');
             return new \WP_Error('dbvc_bricks_publish_remote_role_invalid', 'Remote publish is client-only.', ['status' => 400]);
         }
         $auth_method = DBVC_Bricks_Addon::get_setting('dbvc_bricks_auth_method', 'hmac');
         if ($auth_method !== 'wp_app_password') {
+            $record_publish_failure('dbvc_bricks_publish_remote_auth_invalid', 'Remote publish currently requires wp_app_password auth method.');
             return new \WP_Error('dbvc_bricks_publish_remote_auth_invalid', 'Remote publish currently requires wp_app_password auth method.', ['status' => 400]);
         }
 
         $mothership_url = untrailingslashit(DBVC_Bricks_Addon::get_setting('dbvc_bricks_mothership_url', ''));
         if ($mothership_url === '') {
+            $record_publish_failure('dbvc_bricks_publish_remote_url_required', 'Mothership Base URL is required.');
             return new \WP_Error('dbvc_bricks_publish_remote_url_required', 'Mothership Base URL is required.', ['status' => 400]);
         }
         $username = DBVC_Bricks_Addon::get_setting('dbvc_bricks_api_key_id', '');
         $app_password = DBVC_Bricks_Addon::get_setting('dbvc_bricks_api_secret', '');
         if ($username === '' || $app_password === '') {
+            $record_publish_failure('dbvc_bricks_publish_remote_credentials_required', 'API Key ID and API Secret are required for wp_app_password.');
             return new \WP_Error('dbvc_bricks_publish_remote_credentials_required', 'API Key ID and API Secret are required for wp_app_password.', ['status' => 400]);
         }
 
@@ -1504,22 +1776,28 @@ final class DBVC_Bricks_Packages
             }
         }
         if (empty($package_payload)) {
+            $record_publish_failure('dbvc_bricks_publish_remote_package_required', 'package payload or package_id is required.');
             return new \WP_Error('dbvc_bricks_publish_remote_package_required', 'package payload or package_id is required.', ['status' => 400]);
         }
         $targeting_payload = isset($params['targeting']) && is_array($params['targeting']) ? $params['targeting'] : ['mode' => 'all', 'site_uids' => []];
         $targeting = self::normalize_targeting($targeting_payload);
         if (is_wp_error($targeting)) {
+            $record_publish_failure((string) $targeting->get_error_code(), (string) $targeting->get_error_message(), [
+                'targeting' => $targeting_payload,
+            ]);
             return $targeting;
         }
 
         $package = self::normalize_package($package_payload);
         $package = self::annotate_package_with_protected_variants($package, true);
-        $site_uid = DBVC_Bricks_Addon::get_setting('dbvc_bricks_site_uid', '');
-        if ($site_uid === '') {
-            $site_uid = 'site_' . get_current_blog_id();
-        }
         $package['source_site']['site_uid'] = sanitize_key($site_uid);
         $package['source_site']['base_url'] = untrailingslashit(home_url('/'));
+        $package_bytes = strlen((string) wp_json_encode($package));
+        $publish_run_base['package_id'] = (string) ($package['package_id'] ?? '');
+        $publish_run_base['channel'] = (string) ($package['channel'] ?? '');
+        $publish_run_base['artifact_count'] = (int) ($package['artifact_count'] ?? 0);
+        $publish_run_base['package_bytes'] = $package_bytes;
+        $publish_run_base['targeting'] = $targeting;
         $forced_channel = DBVC_Bricks_Addon::get_enum_setting(
             'dbvc_bricks_client_force_channel',
             ['none', 'canary', 'beta', 'stable'],
@@ -1538,6 +1816,17 @@ final class DBVC_Bricks_Packages
                 && DBVC_Bricks_Addon::get_bool_setting('dbvc_bricks_force_stable_confirm', true)
                 && ! rest_sanitize_boolean($request->get_param('confirm_force_stable'))
             ) {
+                $record_publish_failure(
+                    'dbvc_bricks_force_stable_confirmation_required',
+                    'Stable force-channel requires confirm_force_stable=true.',
+                    [
+                        'package_id' => (string) ($package['package_id'] ?? ''),
+                        'channel' => (string) ($package['channel'] ?? ''),
+                        'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                        'package_bytes' => $package_bytes,
+                        'targeting' => $targeting,
+                    ]
+                );
                 return new \WP_Error(
                     'dbvc_bricks_force_stable_confirmation_required',
                     'Stable force-channel requires confirm_force_stable=true.',
@@ -1554,8 +1843,16 @@ final class DBVC_Bricks_Packages
             $package['channel'] = $forced_channel;
             $package['channel_force_audit'] = $forced_audit;
         }
+        $publish_run_base['channel'] = (string) ($package['channel'] ?? '');
+        $publish_run_base['package_bytes'] = strlen((string) wp_json_encode($package));
+        $publish_run_base['channel_force_audit'] = $forced_audit;
 
         $preflight = self::build_publish_preflight($package);
+        $publish_run_base['preflight'] = [
+            'ok' => empty($preflight['errors']),
+            'errors' => isset($preflight['errors']) && is_array($preflight['errors']) ? array_values($preflight['errors']) : [],
+            'warnings' => isset($preflight['warnings']) && is_array($preflight['warnings']) ? array_values($preflight['warnings']) : [],
+        ];
         $is_dry_run = ! empty($params['dry_run']) || ! empty($params['preflight_only']);
         if (! empty($preflight['errors'])) {
             $message = 'Publish preflight failed.';
@@ -1585,6 +1882,15 @@ final class DBVC_Bricks_Packages
                     return $persist;
                 }
             }
+            $record_publish_failure('dbvc_bricks_publish_remote_preflight_failed', $message, [
+                'package_id' => (string) ($package['package_id'] ?? ''),
+                'channel' => (string) ($package['channel'] ?? ''),
+                'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                'package_bytes' => strlen((string) wp_json_encode($package)),
+                'targeting' => $targeting,
+                'preflight' => $publish_run_base['preflight'],
+                'channel_force_audit' => $forced_audit,
+            ]);
             return new \WP_Error('dbvc_bricks_publish_remote_preflight_failed', $message, [
                 'status' => 400,
                 'preflight' => $preflight,
@@ -1602,6 +1908,7 @@ final class DBVC_Bricks_Packages
         }
 
         $remote_url = $mothership_url . '/wp-json/dbvc/v1/bricks/packages';
+        $publish_run_base['remote_url'] = $remote_url;
         $basic = base64_encode($username . ':' . $app_password);
         $response = wp_remote_post($remote_url, [
             'timeout' => max(5, DBVC_Bricks_Addon::get_int_setting('dbvc_bricks_http_timeout', 30)),
@@ -1636,6 +1943,16 @@ final class DBVC_Bricks_Packages
                     return $persist;
                 }
             }
+            $record_publish_failure('dbvc_bricks_publish_remote_http_error', (string) $response->get_error_message(), [
+                'package_id' => (string) ($package['package_id'] ?? ''),
+                'channel' => (string) ($package['channel'] ?? ''),
+                'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                'package_bytes' => strlen((string) wp_json_encode($package)),
+                'targeting' => $targeting,
+                'remote_url' => $remote_url,
+                'preflight' => $publish_run_base['preflight'],
+                'channel_force_audit' => $forced_audit,
+            ]);
             return new \WP_Error('dbvc_bricks_publish_remote_http_error', $response->get_error_message(), ['status' => 502]);
         }
         $status = (int) wp_remote_retrieve_response_code($response);
@@ -1662,6 +1979,18 @@ final class DBVC_Bricks_Packages
                     return $persist;
                 }
             }
+            $record_publish_failure('dbvc_bricks_publish_remote_failed', (string) ($data['message'] ?? 'Remote publish failed.'), [
+                'package_id' => (string) ($package['package_id'] ?? ''),
+                'channel' => (string) ($package['channel'] ?? ''),
+                'artifact_count' => (int) ($package['artifact_count'] ?? 0),
+                'package_bytes' => strlen((string) wp_json_encode($package)),
+                'targeting' => $targeting,
+                'remote_url' => $remote_url,
+                'http_status' => $status,
+                'response' => $data,
+                'preflight' => $publish_run_base['preflight'],
+                'channel_force_audit' => $forced_audit,
+            ]);
             return new \WP_Error('dbvc_bricks_publish_remote_failed', (string) ($data['message'] ?? 'Remote publish failed.'), [
                 'status' => $status,
                 'response' => $data,
@@ -1707,6 +2036,16 @@ final class DBVC_Bricks_Packages
             $app_password,
             $remote_package_id
         );
+        self::record_publish_run(array_merge($publish_run_base, [
+            'result' => 'success',
+            'http_status' => $status,
+            'message' => (string) ($data['message'] ?? 'Package published to mothership.'),
+            'receipt_id' => sanitize_text_field((string) ($data['receipt_id'] ?? '')),
+            'response' => $data,
+            'remote_package_visibility' => $result['remote_package_visibility'],
+            'preflight' => $publish_run_base['preflight'],
+            'channel_force_audit' => $forced_audit,
+        ]));
         DBVC_Bricks_Idempotency::put('packages_publish_remote', $idempotency_key, $result);
         return rest_ensure_response($result);
     }
