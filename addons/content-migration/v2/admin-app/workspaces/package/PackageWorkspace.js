@@ -33,6 +33,10 @@ export default function PackageWorkspace( {
 		error,
 	} = usePackageSurface( route.runId, route.packageId, refreshToken );
 	const activePackageId = selectedPackageId || route.packageId || '';
+	const benchmarkSummary =
+		readiness && typeof readiness.benchmarkSummary === 'object'
+			? readiness.benchmarkSummary
+			: {};
 	const {
 		data: dryRunSurface,
 		isLoading: isDryRunLoading,
@@ -204,6 +208,16 @@ export default function PackageWorkspace( {
 							<strong>
 								{ readiness?.summary?.readyPages ?? 0 }
 							</strong>
+						</article>
+						<article className="dbvc-cc-v2-placeholder-card">
+							<p className="dbvc-cc-v2-eyebrow">Benchmark gate</p>
+							<strong>
+								{ benchmarkSummary?.status || 'unknown' }
+							</strong>
+							<p className="dbvc-cc-v2-table__meta">
+								High-risk pages:{ ' ' }
+								{ benchmarkSummary?.highRiskPageCount ?? 0 }
+							</p>
 						</article>
 					</div>
 

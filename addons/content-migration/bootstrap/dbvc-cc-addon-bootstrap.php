@@ -8,7 +8,10 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-contrac
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-helpers.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-module-interface.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-service-container.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-field-context-provider-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/shared/dbvc-cc-field-context-chain-builder.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-contracts.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-section-semantics-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/shared/dbvc-cc-v2-page-artifact-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-configure-addon-settings.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/admin/dbvc-cc-v2-app-loader.php';
@@ -30,7 +33,11 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/extraction/dbvc-cc-
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/extraction/dbvc-cc-v2-structured-extraction-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-v2-context-creation-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-v2-initial-classification-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-v2-routing-artifact-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/mapping/dbvc-cc-v2-section-content-item-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/mapping/dbvc-cc-v2-mapping-index-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/mapping/dbvc-cc-v2-target-eligibility-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/mapping/dbvc-cc-v2-mapping-assignment-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/media/dbvc-cc-v2-media-candidate-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/patterns/dbvc-cc-v2-pattern-learning-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/transform/dbvc-cc-v2-target-transform-service.php';
@@ -39,6 +46,7 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/ai-context/dbvc-cc-
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/capture/dbvc-cc-v2-capture-orchestrator-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-object-inventory-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-target-slot-graph-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-schema-presentation-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/schema/dbvc-cc-v2-schema-sync-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-rest-controller.php';
@@ -48,6 +56,7 @@ require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/review/dbvc-cc-v2-r
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/review/dbvc-cc-v2-review-rest-controller.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/review/dbvc-cc-v2-review-module.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-selection-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-benchmark-gate-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-url-qa-report-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-qa-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/content-migration/v2/package/dbvc-cc-v2-package-artifact-service.php';

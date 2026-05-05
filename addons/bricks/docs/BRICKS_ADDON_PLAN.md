@@ -1,7 +1,7 @@
 # BRICKS Add-on Plan (DBVC)
 
 Date: 2026-02-12  
-Scope: Discovery/update planning only (no implementation)
+Scope: Discovery/update planning reference. Implementation has advanced beyond this document; use the tracker/checklist for active phase status.
 
 ## 0) Field Matrix Source of Truth
 
@@ -11,6 +11,13 @@ Concrete add-on fields, validation rules, option keys, artifact registry, and mi
 - `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
 
 Implementation should follow that matrix as the configuration contract.
+
+Current execution note (2026-04-27):
+- `P19A` is `DONE`.
+- `P19D` is `DONE`.
+- `P19B` is `DONE`.
+- `P19C` is `IN_PROGRESS`.
+- The only remaining active Phase 19 work is `P19C-T2` (live drill + evidence + closure).
 
 ## 1) Proposed Folder Structure (aligned to DBVC conventions)
 
@@ -454,18 +461,18 @@ Registry strategy:
   - performance baseline for large option payloads,
   - regression fixture pack for known noisy fields.
 
-## 11) Phase 19 Active Breakdown (Next)
+## 11) Phase 19 Breakdown (Historical Plan + Current Resume Note)
 
-Primary objectives:
+Original Phase 19 objectives:
 - Define shared mask/ignore rules once on mothership and distribute to connected sites (`all` or `selected`).
 - Add client-managed `Protected Artifact Variants` workflow with dedicated Bricks tab.
 - Add mothership visibility across client protected variants with direct navigation helpers.
 
-Execution split:
-- `Phase 19A`: shared rules profile contract, persistence, distribution transport, signed client apply.
-- `Phase 19D`: client-initiated signed command envelope transport (queue, pull, ack, retry/dead-letter) to remove mothership->client DNS dependency.
-- `Phase 19B`: client protected variant model + `Protected Artifacts` tab workflows.
-- `Phase 19C`: mothership protected-variant visibility + full cross-site drill and closure evidence.
+Execution split and current state:
+- `Phase 19A`: shared rules profile contract, persistence, distribution transport, signed client apply. Current state: `DONE`.
+- `Phase 19D`: client-initiated signed command envelope transport (queue, pull, ack, retry/dead-letter) to remove mothership->client DNS dependency. Current state: `DONE`.
+- `Phase 19B`: client protected variant model + `Protected Artifacts` tab workflows. Current state: `DONE`.
+- `Phase 19C`: mothership protected-variant visibility + full cross-site drill and closure evidence. Current state: `IN_PROGRESS`; `P19C-T1 DONE`, `P19C-T2` remaining.
 
 Planned architecture direction:
 - Reuse connected-sites registry and signed command scaffolding for distribution transport.
@@ -529,11 +536,8 @@ Migration approach:
 - Add transport mode setting: `direct_push` (legacy) vs `client_pull_envelope` (new default when ready).
 - Shared-rules distribution endpoint should enqueue envelopes when mode=`client_pull_envelope`.
 
-Validation gate:
-- Re-run `P19A-TEST-05` only after Phase 19D transport is implemented and enabled in staging.
-- Pass criteria: all/selected targeting succeeds without mothership direct DNS reachability to client hostnames.
-
-Tracking source of truth:
+Validation gate outcome:
+- `P19A-TEST-05` rerun passed on 2026-03-08 after Phase 19D transport was implemented and enabled; see the tracker for detailed evidence.
 
 ## 12) Backlog Additions for Next Implementation Phase
 
@@ -555,6 +559,9 @@ Tracking source of truth:
   - periodically send package updates to mothership,
   - flag submissions for review and merge into Golden artifacts.
 - Detailed end-to-end flow mapping remains a follow-up design task with explicit state and timing rules.
+
+## 13) Tracking Source of Truth
+
 - Active phases and statuses: `addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
 - Active execution checklist: `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
 - Historical completed phases: `addons/bricks/docs/archive/BRICKS_ADDON_PROGRESS_TRACKER_ARCHIVE_P1_P18.md`

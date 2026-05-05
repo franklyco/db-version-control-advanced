@@ -661,6 +661,11 @@
     color: var(--dbvc-cc-v2-muted);
 }
 
+.dbvc-cc-v2-chip--warning {
+    background: #f8e2cc;
+    color: #7a451d;
+}
+
 .dbvc-cc-v2-table-wrap {
     overflow-x: auto;
 }
@@ -1080,8 +1085,21 @@ p.dbvc-cc-v2-target-presentation__context {
     grid-column: 1 / -1;
 }
 
+.dbvc-cc-v2-decision-card__section--full {
+    grid-column: 1 / -1;
+}
+
 .dbvc-cc-v2-decision-card__section p {
     margin: 0;
+}
+
+.dbvc-cc-v2-compact-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
+.dbvc-cc-v2-compact-list li {
+    margin: 0 0 4px;
 }
 
 .dbvc-cc-v2-decision-card__control.is-active {

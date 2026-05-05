@@ -2,369 +2,484 @@
 
 ## Goal
 
-Replace the normal Content Migration V2 mapping context source for Vertical ACF targets with Vertical's resolved field-context service payload while keeping DBVC's existing catalog and migration artifacts stable enough for incremental rollout.
+Implement the Vertical Field Context mapping-accuracy redesign inside the existing Content Migration V2 runtime without creating a parallel mapper, review flow, or package system.
 
-This guide is for the future implementation tranche. It is not an implementation patch.
+This guide complements `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`.
 
-## Step 1 - Add Provider Abstraction
+Use the plan doc for phase status and tranche ordering.
 
-Create a shared provider interface with a small contract that matches DBVC's needs rather than exposing every Vertical implementation detail.
+Use this guide for implementation rules, file ownership, and delivery boundaries.
 
-Suggested interface:
+## Non-Negotiable Rules
 
-```php
-interface DBVC_CC_Field_Context_Provider_Interface {
-    public function is_available(): bool;
-    public function get_catalog( array $criteria = array(), string $profile = 'mapping' ): array;
-    public function get_group( string $group_identifier, array $criteria = array(), string $profile = 'mapping' ): array;
-    public function get_entry( string $key_path, array $criteria = array(), string $profile = 'mapping' ): array;
-    public function get_object_field( int $post_id, $field_selector, string $profile = 'full' ): array;
-    public function get_status( array $criteria = array() ): array;
-}
-```
+1. Keep Vertical's provider payload as the runtime semantic source of truth when it is available.
+2. When the provider catalog is `missing` or `unavailable`, preserve that status truthfully and only use the current WordPress ACF runtime arrays as a purpose-only fallback for the enriched target catalog and slot graph.
+3. Use Vertical `acf-json/field-groups/*.json` only for topology reference, coverage checks, benchmarks, and drift diagnostics.
+4. Treat `key_path` as opaque. Never parse it to infer hierarchy or clone ownership.
+5. Use `value_contract` for shape, write behavior, and reference behavior.
+6. Use `location` and normalized `object_context` for object compatibility.
+7. Use `clone_context` for clone provenance and publish-policy warnings.
+8. Prefer `unresolved` over a weak automatic mapping.
+9. Reuse the current V2 artifacts and inspector or package surfaces where practical.
+10. Preserve field type, field name, group name, and branch-path metadata in the slot graph and review evidence.
+11. Do not infer real frontend component or template names unless Vertical exposes explicit metadata for them.
+12. Do not edit or depend on changes inside the Vertical theme repo for this DBVC tranche.
+13. Do not start Object Type Context work inside this slice.
 
-Implementation notes:
+## Landed Baseline To Reuse
 
-- Use DBVC's `DBVC_CC_*` class/file prefix in code unless a broader plugin convention says otherwise.
-- Add `DBVC_CC_Field_Context_Provider_Local`, `DBVC_CC_Field_Context_Provider_Remote`, `DBVC_CC_Field_Context_Normalizer`, and `DBVC_CC_Field_Context_Match_Scorer` as first-slice helpers.
-- Use a service wrapper to choose local same-runtime first when Vertical helper functions exist.
-- Fall back to remote REST only when configured and authenticated.
-- Return a normalized unavailable result when neither provider is available.
-- Do not silently switch to raw theme ACF JSON traversal.
-- Keep the fallback to DBVC's existing ACF runtime catalog explicit and visible in artifact metadata.
+The redesign should build on these already-landed DBVC pieces:
 
-## Step 2 - Implement Local Provider
+- `DBVC_CC_Field_Context_Provider_Service` is bootstrapped
+- provider normalization already carries:
+  - provider and catalog metadata
+  - `location -> object_context`
+  - `value_contract`
+  - `clone_context`
+  - warnings and diagnostics
+  - `entries_by_key_path`
+  - `entries_by_name_path`
+  - `entries_by_group_and_acf_key`
+- the V2 target field catalog already embeds field-context data at the provider, group, and field levels
+- mapping candidates already carry additive field-context evidence
+- review payloads and inspector UI already expose compact field-context evidence
+- provider-empty catalogs now remain truthfully `missing` while the enriched target catalog and slot graph may backfill purpose text from runtime ACF field/group metadata
+- semantic slot-role inference now keeps name-driven roles like `headline` and `cta_label` ahead of generic `wysiwyg`/`textarea` fallback
 
-Local mode should call Vertical's helper wrappers directly:
+The next work should extend those contracts, not duplicate them.
 
-- Catalog: `vf_field_context_get_service_catalog_payload( $criteria, $profile )`
-- Group: `vf_field_context_get_service_group_payload( $group_identifier, $criteria, $profile )`
-- Entry by key path: `vf_field_context_get_service_entry_payload( $key_path, $criteria, $profile )`
-- Object field: `vf_field_context_get_service_object_field_payload( $post_id, $field_selector, $profile )`
-- Direct object field context: `vf_field_context_get_entry_for_post_field( $post_id, $field_selector )`
+## Core Runtime Model
 
-Guardrails:
+### Source unit
 
-- Check `function_exists()` before calling helper functions.
-- Validate `provider.name`, `contract_version`, and expected envelope keys.
-- Default catalog/group/profile calls to `mapping`.
-- Use `full` only for focused reviewer details or object-field inspection where the payload size is justified.
+A source unit is the smallest meaningful content item DBVC should map.
 
-## Step 3 - Implement Remote Provider
+Minimum fields:
 
-Remote mode should use:
+- `unit_id`
+- `section_id`
+- `section_family`
+- `unit_role`
+- `text_summary`
+- `heading_context`
+- `sibling_index`
+- `media_hints`
+- `cta_hints`
+- source provenance references
 
-- `GET /wp-json/vertical-framework/v1/field-context`
+### Target slot
 
-Supported query concepts:
+A target slot is a write-eligible target projection derived from the current target field catalog.
 
-- `post_id`
-- `profile`
-- `group`
-- `key_path`
-- `name_path`
+Minimum fields:
+
+- `target_ref`
+- `group_key`
+- `group_name`
 - `acf_key`
 - `acf_name`
+- `acf_label`
+- `type`
+- `container_type`
+- `key_path`
+- `branch_name_path`
+- `branch_label_path`
+- `context_chain[]`
+- `chain_purpose_text`
+- `section_family`
+- `slot_role`
+- `object_context`
+- `value_contract`
+- `writable`
+- `clone_context`
+- `provider_trace`
+- `competition_group`
 
-Remote guardrails:
+### Candidate
 
-- Respect the one-selector-per-request rule.
-- Do not attempt remote `field_selector` calls because they are same-runtime only.
-- Prefer scoped catalog/group requests and local DBVC normalization/cache over per-field REST loops.
-- Use `If-None-Match` when a cached `source_hash` or ETag is available.
-- Treat `304` as cache-valid, not as a provider failure.
-- Map `400`, `401/403`, `404`, transport errors, and malformed envelopes into structured DBVC provider errors.
-- Do not rely on `409` or `503` until Vertical implements those error modes.
-- Keep remote provider degradation additive and warning-oriented until REST auth, retry/backoff, batch lookup, and richer error semantics are stable.
+A candidate is an eligible pairing between a source unit and a target slot.
 
-## Step 4 - Normalize Provider Envelopes
+Minimum fields:
 
-Add a normalizer that accepts Vertical service payloads and returns a DBVC-internal shape that can be embedded in target catalog, mapping, recommendation, review, and package artifacts.
+- `source_unit_id`
+- `target_ref`
+- deterministic eligibility results
+- score components
+- semantic evidence when available
+- ambiguity and warning flags
+- enough trace for reviewer and QA explanation
 
-Recommended top-level normalized block:
+## Context Chain Contract
+
+Every slot should expose a `context_chain[]` ordered from highest-level context to lowest-level field context.
+
+Recommended shape:
 
 ```json
-{
-  "field_context_provider": {
-    "transport": "local",
-    "provider": "vertical-field-context",
-    "contract_version": 1,
-    "catalog_status": "fresh",
-    "source_hash": "example",
-    "cache_layer": "runtime",
-    "cache_version": "example",
-    "matched_by": "catalog"
-  }
-}
-```
-
-Recommended group block:
-
-```json
-{
-  "key_path": "provider-canonical-key-path",
-  "name_path": "provider-canonical-name-path",
-  "location": [],
-  "object_context": {
-    "post_types": [],
-    "taxonomies": [],
-    "options_pages": [],
-    "unknown_rules": []
+[
+  {
+    "level": "group",
+    "key_path": "group_...",
+    "name_path": "core_group",
+    "label": "Core",
+    "purpose": "...",
+    "type": "group"
   },
-  "resolved_purpose": "",
-  "status_meta": {},
-  "coverage": {},
-  "resolved_from": "default"
-}
-```
-
-Recommended field block:
-
-```json
-{
-  "target_ref": "acf:group_key:field_key",
-  "key_path": "provider-canonical-key-path",
-  "name_path": "provider-canonical-name-path",
-  "parent_key_path": "provider-canonical-parent-key-path",
-  "parent_name_path": "provider-canonical-parent-name-path",
-  "group_key": "group_key",
-  "group_name": "group_name",
-  "acf_key": "field_key",
-  "acf_name": "field_name",
-  "scope": "field",
-  "type": "text",
-  "container_type": "",
-  "branch_chain": [],
-  "context": {},
-  "default_context": {},
-  "resolved_purpose": "",
-  "default_purpose": "",
-  "status_meta": {},
-  "has_override": false,
-  "resolved_from": "default",
-  "matched_by": "key_path"
-}
-```
-
-Normalizer rules:
-
-- Treat `key_path` as opaque canonical provider data. Do not synthesize or parse separators, and compare only exact strings.
-- Use explicit fields such as `name_path`, `parent_key_path`, `parent_name_path`, `group_key`, `group_name`, `acf_key`, `acf_name`, `scope`, `type`, and `container_type` for hierarchy and display.
-- Preserve raw `location` as provided and add a DBVC-normalized `object_context` helper block.
-- Preserve unknown fields where they are useful for reviewer diagnostics, but keep artifact additions additive.
-- Add explicit diagnostic reason codes for lower-confidence matches and provider degradation.
-
-## Step 5 - Enrich Target Field Catalog
-
-Update `DBVC_CC_V2_Target_Field_Catalog_Service` first.
-
-Implementation shape:
-
-1. Build the existing catalog through the current service.
-2. Ask the field-context provider for a `mapping` profile catalog.
-3. Normalize the provider payload.
-4. Merge field-context evidence into the V2 target field catalog artifact.
-5. Preserve a top-level provider status block even when the provider is unavailable.
-6. Keep existing target refs stable for current downstream consumers.
-
-When provider data is available:
-
-- Add group-level `field_context` blocks to ACF groups.
-- Add field-level `field_context` blocks to ACF fields or a parallel lookup keyed by target ref.
-- Add normalized object compatibility derived from group `location`.
-- Treat `core_group` style page/vertical post type rules and `services_group` service CPT rules as object compatibility examples, not hardcoded group names.
-- Store provider metadata in the catalog bundle.
-
-When provider data is unavailable:
-
-- Keep existing DBVC behavior.
-- Add `field_context_provider.status = "unavailable"` or equivalent.
-- Add a clear reason such as `missing_local_helpers`, `remote_not_configured`, `remote_auth_failed`, or `contract_mismatch`.
-
-## Step 6 - Update Candidate Matching And Scoring
-
-Update `DBVC_CC_V2_Mapping_Index_Service` to use the enriched catalog.
-
-Add `DBVC_CC_Field_Context_Match_Scorer` so scoring rules are testable outside the mapping index service and reusable by AI mapping or reviewer QA.
-
-Recommended matching precedence:
-
-1. `key_path`
-2. Scoped `acf_key`
-3. `name_path`
-4. `acf_name` with group/branch/object disambiguation
-5. `acf_name` alone as low-confidence fallback
-
-Recommended scoring adjustments:
-
-- Exact `key_path` match: boost and record `matched_by = key_path`.
-- Exact scoped `acf_key` match: boost and record `matched_by = acf_key`.
-- `name_path` match: smaller boost and record `matched_by = name_path`.
-- `acf_name` fallback: lower confidence, require review when duplicated or branch context is weak.
-- Group `location` object match: boost candidates whose location matches the source target object class.
-- Group `location` object mismatch: lower confidence or block automated acceptance when the ACF candidate is otherwise weak.
-- Branch/section purpose alignment: boost when source section/context tags align with ancestor branch purpose or branch family.
-- Field purpose alignment: boost only after object and branch compatibility are acceptable.
-- `status_meta.status = legacy_only`: lower confidence and warn.
-- `status_meta.status = missing`: lower confidence and require review when context is needed.
-- `resolved_from = legacy`: lower confidence.
-- `resolved_from = override` or `local`: allow normal semantic confidence when the purpose is complete.
-- Remote provider unavailable or incomplete: warn/degrade, but avoid hard-blocking broad automation until remote mode is hardened.
-
-Artifact trace to attach to candidates:
-
-```json
-{
-  "field_context": {
-    "provider": "vertical-field-context",
-    "contract_version": 1,
-    "source_hash": "example",
-    "matched_by": "acf_key",
-    "resolved_from": "override",
-    "status": "complete",
-    "object_compatible": true,
-    "branch_context_used": true,
-    "warnings": []
+  {
+    "level": "container",
+    "key_path": "...",
+    "name_path": "hero_section",
+    "label": "Hero Section",
+    "purpose": "...",
+    "type": "group"
+  },
+  {
+    "level": "field",
+    "key_path": "...",
+    "name_path": "hero_h1",
+    "label": "Hero H1",
+    "purpose": "Primary hero headline that states the page's core promise, offer, or outcome.",
+    "type": "text"
   }
-}
+]
 ```
 
-## Step 7 - Propagate Recommendation Trace
+Rules:
 
-Update `DBVC_CC_V2_Recommendation_Finalizer_Service`.
+- preserve provider ancestry as-is where available
+- fill missing display metadata from the enriched target catalog only when needed
+- never reconstruct hierarchy by splitting `key_path`
+- expose a flattened `chain_purpose_text` summary for ranking and review display
 
-Requirements:
+## Frontend Surface Metadata Rule
 
-- Copy field-context trace from selected candidates into `mapping-recommendations.v2.json`.
-- Preserve enough context for reviewer QA without requiring another provider lookup.
-- Mark recommendations as requiring review when context degradation crosses the scoring threshold.
-- Keep generated AI suggestions separate from provider-resolved context.
+DBVC should capture ACF structural branch identity now.
 
-Recommended additional fields:
+That means preserving:
 
-- `field_context.provider`
-- `field_context.contract_version`
-- `field_context.source_hash`
-- `field_context.matched_by`
-- `field_context.resolved_from`
-- `field_context.status_meta`
-- `field_context.group_purpose`
-- `field_context.branch_purpose`
-- `field_context.field_purpose`
-- `field_context.object_context`
-- `field_context.warnings`
+- `group_name`
+- `branch_name_path`
+- `branch_label_path`
+- field name and field type
 
-## Step 8 - Enrich Schema Presentation And Reviewer QA
+DBVC should not claim a real frontend-rendered component, template part, or section implementation unless Vertical exposes that explicitly.
 
-Update `DBVC_CC_V2_Schema_Presentation_Service` so reviewers can see field-context labels and reasons in the existing workflow.
+Allowed future additive fields if Vertical provides them:
 
-Recommended presentation additions:
+- `frontend_surface`
+- `render_component`
+- `template_part`
+- `section_slug`
 
-- Group purpose.
-- Branch purpose or ancestor chain summary.
-- Field purpose.
-- Object compatibility summary from group `location`.
-- Context status such as complete, override, legacy-only, or missing.
-- `matched_by` evidence.
+Until then, structural branch names are the supported context signal.
 
-Update `DBVC_CC_V2_Recommendation_Review_Service` so review payloads include concise diagnostics beside the current field recommendation display.
+## Object Applicability Rule
 
-Do not add a new complex UI initially. Reuse existing inspector/detail surfaces and expose data in a compact field-context block.
+Object applicability must be enforced before semantic scoring.
 
-## Step 9 - Add Package And Readiness Safety Checks
+Examples:
 
-Update package and QA services after recommendation trace is available.
+- `services_group` should not enter a `page` candidate pool
+- page-only groups should not enter a `service` candidate pool
+- taxonomy or options groups should only enter matching scope pools
 
-Recommended checks:
+This rule must be based on provider `location` normalized into `object_context`.
 
-- Provider missing after a previous run used a provider source hash.
-- Provider source hash changed since recommendations were generated.
-- Catalog status stale, partial, or missing.
-- Candidate matched only by duplicated `acf_name`.
-- Group `location` mismatch for the target object type.
-- Field context status missing or legacy-only where semantic context was required for confidence.
-- Remote provider contract mismatch.
+## Section Family And Slot Role Rules
 
-Recommended severity:
+Section-family and role modeling should stay compact and deterministic.
 
-- Blocker: object type mismatch with no stronger exact evidence.
-- Blocker: provider contract mismatch when recommendations depend on provider context.
-- Warning: provider source hash changed.
-- Warning: legacy-only context.
-- Warning: `acf_name` fallback.
-- Warning: missing branch context when the same field name repeats across branches.
+Recommended families:
 
-## Step 10 - Validation Plan
+- `hero`
+- `intro`
+- `content`
+- `features`
+- `services`
+- `testimonials`
+- `faq`
+- `cta`
+- `media`
+- `contact`
+- `seo_or_meta`
+- `unknown`
 
-Fixture tests:
+Recommended roles:
 
-- Copy representative Vertical example payloads into DBVC-owned test fixtures.
-- Test catalog summary normalization.
-- Test group mapping normalization.
-- Test full post-field normalization.
-- Test `400`, `401`, `403`, and `404` provider error normalization.
-- Add or update fixtures with group `location` once Vertical refreshes examples.
-- Add duplicate `acf_name` fixture coverage across groups and branches.
-- Add branch-context fixture coverage for parent paths and resolved branch purpose.
+- `headline`
+- `subheadline`
+- `body`
+- `rich_text`
+- `cta_label`
+- `cta_url`
+- `image`
+- `image_alt`
+- `video`
+- `quote`
+- `stat`
+- `list`
+- `eyebrow`
+- `meta`
+- `unknown`
 
-Recommended Vertical fixture requests:
+These should be internal DBVC helpers, not brittle field-name constants.
 
-- `provider-group-mapping-page.json`
-- `provider-group-mapping-service.json`
-- `provider-group-summary-location.json`
-- `provider-entry-branch-context-full.json`
-- `provider-duplicate-acf-name.json`
-- `provider-remote-error-401.json`
-- `provider-remote-error-403.json`
-- `provider-remote-error-404.json`
-- `provider-remote-error-400-field-selector-without-post-id.json`
-- `provider-batch-planned-shape.json`, marked non-implemented.
+## Deterministic Eligibility Rules
 
-Scoring tests:
+Deterministic eligibility runs before semantic or AI scoring.
 
-- Exact `key_path` beats same `acf_name`.
-- Exact `acf_key` beats duplicated `acf_name`.
-- `acf_name` fallback requires review.
-- Branch context boosts a repeated shared field name only under the matching branch.
-- `legacy_only` lowers confidence.
-- `missing` context prevents automation when the match depends on semantic context.
-- Group `location` post type mismatch lowers confidence or blocks acceptance.
+Hard exclusions:
 
-Runtime probes:
+- object mismatch
+- `writable = false`
+- blocked clone projections
+- impossible value-shape mismatch
+- impossible reference-kind mismatch
 
-- Run local provider probe only inside the allowed `dbvc-codexchanges.local` environment when the provider is installed there.
-- Run remote REST probe only when external provider access is enabled and authentication is configured.
-- Probe `mapping` catalog, focused group, focused entry, and object-field lookup in local mode.
-- Probe ETag/304 behavior in remote mode when available.
+Strong penalties or review-only outcomes:
 
-Suggested validation commands for the implementation tranche:
+- degraded provider status
+- `legacy_only`
+- `missing`
+- ambiguous duplicate-name fallback
+- weak or conflicting section-family alignment
 
-```bash
-vendor/bin/phpunit --filter ContentCollectorV2VerticalFieldContextTest
-vendor/bin/phpunit
-npm run build
-```
+## Context Index And Cache Rule
 
-Use existing DBVC runtime smoke scripts only after the adapter is implemented and loaded.
+Yes, DBVC should maintain a context index and cache.
 
-## Vertical Questions And Fixture Requests Before Coding
+Recommended order:
 
-- Refresh `provider-group-mapping.json` and `provider-catalog-summary.json` so current examples include group `location`.
-- Confirm all docs and fixtures present `key_path` as an opaque provider ID, not a parseable hierarchy string.
-- Should `mapping` profile include enough ancestor or branch data for DBVC to avoid `full` profile calls in normal catalog builds?
-- Is a batch lookup endpoint planned soon enough to avoid remote per-field loops?
-- What is the intended stable authentication mechanism for DBVC remote mode?
-- Should provider payload include explicit object-context normalization for options pages and taxonomy rules, or should DBVC own that normalization from raw ACF `location`?
+1. request-scope in-memory cache
+2. artifact-backed slot graph cache
+3. optional derived analytics index
+4. custom DB table only if profiling proves it is necessary
 
-## Rollout Recommendation
+Recommended artifact-backed cache output:
 
-Ship this behind an additive V2 field-context provider service:
+- `_inventory/dbvc_cc_target_slot_graph.v1.json`
 
-1. Land provider abstraction and normalizer tests.
-2. Enrich V2 target field catalog while preserving existing refs and fallback behavior.
-3. Add mapping index scoring with trace output.
-4. Add recommendation, review, and package QA trace propagation.
-5. Add minimal reviewer diagnostics in existing UI surfaces.
-6. Make provider degradation visible before using it to block automation broadly.
+Recommended lookup indexes:
 
-Keep raw Vertical theme ACF JSON out of DBVC's normal runtime path.
+- by `target_ref`
+- by `key_path`
+- by `name_path`
+- by `group_and_acf_key`
+- by `object_type`
+- by `section_family`
+- by `slot_role`
+
+Recommended cache identity:
+
+- `site_fingerprint`
+- `source_hash`
+- `schema_version`
+- `contract_version`
+
+If a custom table is added later, treat it as a derived acceleration layer only. It must be rebuildable from provider and catalog data and must never become the semantic source of truth.
+
+## Selection Rules
+
+The final recommendation stage must not choose `target_candidates[0]` without a global selection pass.
+
+Required behavior:
+
+- keep top-K eligible candidates for each source unit
+- compare confidence margins
+- reward page-level coherence across the same branch when justified
+- penalize already-claimed structural competition groups for non-repeatable sibling slots
+- penalize duplicate collisions and cross-group drift
+- choose `unresolved` when the evidence gap is too small
+
+Required unresolved metadata:
+
+- `unresolved_class`
+- `reason_codes[]`
+
+Recommended initial unresolved classes:
+
+- `missing_page_level_slot`
+- `missing_section_family_slot`
+- `missing_eligible_slot`
+- `ambiguous_sibling_slots`
+- `duplicate_target_collision`
+- `low_mapping_evidence`
+- `missing_media_slot`
+
+## File Ownership
+
+### Schema and field-context layer
+
+Primary ownership:
+
+- `addons/content-migration/shared/dbvc-cc-field-context-provider-service.php`
+- `addons/content-migration/shared/dbvc-cc-field-context-match-scorer.php`
+- `addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php`
+
+Recommended additions:
+
+- `addons/content-migration/shared/dbvc-cc-field-context-chain-builder.php`
+- `addons/content-migration/v2/schema/dbvc-cc-v2-target-slot-graph-service.php`
+
+Responsibilities:
+
+- normalize provider payloads
+- derive context chains
+- derive slot graph projections from the current catalog
+- preserve field type, field name, group name, and branch-path metadata
+- maintain rebuildable artifact-backed slot indexes
+- preserve provider audit metadata
+
+### Mapping layer
+
+Primary ownership:
+
+- `addons/content-migration/v2/mapping/dbvc-cc-v2-mapping-index-service.php`
+- `addons/content-migration/v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php`
+
+Recommended additions:
+
+- `addons/content-migration/v2/shared/dbvc-cc-v2-section-semantics-service.php`
+- `addons/content-migration/v2/mapping/dbvc-cc-v2-section-content-item-service.php`
+- `addons/content-migration/v2/mapping/dbvc-cc-v2-target-eligibility-service.php`
+- `addons/content-migration/v2/mapping/dbvc-cc-v2-mapping-assignment-service.php`
+- `addons/content-migration/v2/mapping/dbvc-cc-v2-semantic-reranker-service.php`
+
+Responsibilities:
+
+- source unit creation
+- deterministic eligibility filtering
+- bounded candidate pool creation
+- score composition
+- page-level selection
+
+### Review and inspector layer
+
+Primary ownership:
+
+- `addons/content-migration/v2/review/dbvc-cc-v2-recommendation-review-service.php`
+- `addons/content-migration/v2/admin-app/components/inspectors/InspectorMappingTab.js`
+- `addons/content-migration/v2/admin-app/components/inspectors/InspectorAuditTab.js`
+- `addons/content-migration/v2/admin-app/components/inspectors/RecommendationDecisionCard.js`
+- `addons/content-migration/v2/admin-app/components/inspectors/targetPresentation.js`
+
+Responsibilities:
+
+- surface chain path and ambiguity reasoning
+- show provider drift and degraded-context warnings
+- keep review evidence concise and inspectable
+
+### Package and QA layer
+
+Primary ownership:
+
+- `addons/content-migration/v2/package/dbvc-cc-v2-url-qa-report-service.php`
+- `addons/content-migration/v2/package/dbvc-cc-v2-package-qa-service.php`
+- `addons/content-migration/v2/package/dbvc-cc-v2-package-build-service.php`
+
+Responsibilities:
+
+- enforce field-context-based blockers and warnings
+- keep package readiness aligned with mapping quality
+- stop invalid shapes from reaching import packaging
+
+## Tranche Order
+
+### Tranche A - Chain And Eligibility
+
+Deliver:
+
+- `context_chain[]`
+- slot graph projections
+- deterministic eligibility filtering
+- candidate pool rebuild
+
+Current state:
+
+- landed: chain-aware slot graph artifact, nested ACF ancestry preservation, object-scope filtering, clone-projection write filtering, section-family-aware slot preference, and bounded candidate pools inside `dbvc-cc-v2-mapping-index-service.php`
+- landed: benchmark-driven section semantics now suppress utility/navigation fragments and split structured sections into deterministic heading/body/CTA source units before Field Context candidate scoring
+- landed: deterministic final selection metadata now survives into transform, review, and inspector surfaces via shared assignment output
+- landed: provider-missing catalogs now keep truthful status while runtime ACF field/group arrays backfill purpose text into the enriched target catalog and slot graph without fabricating provider identity
+- landed: `hero_h1`-style `wysiwyg` fields now stay in semantic `headline` role buckets instead of dropping to `rich_text`
+
+Stop here only if:
+
+- invalid groups are no longer flooding candidates
+- hero and similar section-family collisions drop materially
+
+### Tranche B - Deterministic Selection
+
+Deliver:
+
+- top-K retention
+- page-aware assignment
+- unresolved bias
+- better duplicate collision handling
+
+Stop here only if:
+
+- finalization no longer relies on first-candidate wins
+- wrong auto-maps are reduced before semantic reranking exists
+
+Current state:
+
+- landed: `DBVC_CC_V2_Mapping_Assignment_Service` now replaces greedy field-content finalization with page-aware deterministic assignment
+- landed: ambiguous section selections default to `unresolved`, carry reason codes plus alternatives, and show reviewer-visible ambiguity framing in the existing inspector
+- still open: media selection is still simpler than field-content selection and source units are still broader section blobs
+
+### Tranche C - Source Modeling And Semantic Reranking
+
+Deliver:
+
+- source unit modeling where section blobs are still too coarse
+- bounded semantic reranking across eligible candidates only
+
+Stop here only if:
+
+- semantic improvements are measurable on benchmarks
+- the reranker is not reviving ineligible targets
+
+### Tranche D - QA, Readiness, And Release Gate
+
+Deliver:
+
+- field-context QA issues
+- package readiness gates
+- benchmark reporting
+- reviewer ambiguity UX polish
+
+Stop here only if:
+
+- benchmark thresholds are defined
+- release-readiness is based on measured precision and override rate
+
+Current state:
+
+- landed: URL QA now emits additive Field Context warnings for degraded provider coverage, provider diagnostics, and reviewed ambiguous recommendations
+- landed: target transforms now validate slot-graph `value_contract` data, block definite invalid URL or reference-shape writes, and surface additive `value_contract_validation` metadata into recommendations and package QA
+- landed: URL QA now compares recommendation-carried provider metadata against the current slot graph and blocks readiness when provider/schema fingerprints drift
+- landed: run readiness and package QA now expose compact benchmark rollups for unresolved, ambiguous, transform-blocked, and provider-drift counts per page
+- landed: benchmark-backed release thresholds now evaluate quality score, reviewed ambiguity, manual overrides, and rerun counts inside the existing URL QA, readiness, package QA, and package workspace surfaces
+- latest live acceptance result: rerunning Home `/` from `ccv2_flourishweb-co_20260421T223255Z_0cc20e` now keeps provider status `missing` but restores the real local `hero_h1` slot to `map_003`; the remaining seam is ambiguity reduction on low-margin hero/body collisions
+
+## Benchmark Rule
+
+Create and maintain a benchmark set of real Vertical pages before treating this system as production-ready for new client sites.
+
+Track at minimum:
+
+- group-level precision
+- field-level precision
+- unresolved quality
+- reviewer override rate
+- package-blocker rate caused by degraded context
+
+Benchmark work should start in parallel with early deterministic tranches, not after them.
+
+## Out Of Scope
+
+- Object Type Context
+- changes to Vertical theme code or docs outside DBVC repo work
+- raw ACF JSON semantic parsing at runtime
+- a new standalone mapping UI outside the current V2 inspector and readiness flows
+- direct calls into Vertical publish or rollback flows

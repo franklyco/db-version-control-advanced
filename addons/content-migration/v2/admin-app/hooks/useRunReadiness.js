@@ -5,6 +5,7 @@ import { request } from '../api/client';
 const INITIAL_STATE = {
 	readinessStatus: '',
 	summary: {},
+	benchmarkSummary: {},
 	blockingIssues: [],
 	warnings: [],
 	pageReports: [],
@@ -44,6 +45,11 @@ export default function useRunReadiness( runId, refreshToken = 0 ) {
 					summary:
 						payload.summary && typeof payload.summary === 'object'
 							? payload.summary
+							: {},
+					benchmarkSummary:
+						payload.benchmarkSummary &&
+						typeof payload.benchmarkSummary === 'object'
+							? payload.benchmarkSummary
 							: {},
 					blockingIssues: Array.isArray( payload.blockingIssues )
 						? payload.blockingIssues

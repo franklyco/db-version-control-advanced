@@ -46,9 +46,11 @@ final class DBVC_CC_V2_Contracts
     public const STORAGE_PACKAGE_BUILDS_FILE = 'package-builds.v1.json';
     public const STORAGE_TARGET_OBJECT_INVENTORY_FILE = 'dbvc_cc_target_object_inventory.v1.json';
     public const STORAGE_TARGET_FIELD_CATALOG_FILE = 'dbvc_cc_target_field_catalog.v2.json';
+    public const STORAGE_TARGET_SLOT_GRAPH_FILE = 'dbvc_cc_target_slot_graph.v1.json';
     public const STORAGE_SOURCE_NORMALIZATION_SUFFIX = '.source-normalization.v1.json';
     public const STORAGE_CONTEXT_CREATION_SUFFIX = '.context-creation.v1.json';
     public const STORAGE_INITIAL_CLASSIFICATION_SUFFIX = '.initial-classification.v1.json';
+    public const STORAGE_ROUTING_ARTIFACT_SUFFIX = '.routing-artifact.v1.json';
     public const STORAGE_MAPPING_INDEX_SUFFIX = '.mapping-index.v1.json';
     public const STORAGE_TARGET_TRANSFORM_SUFFIX = '.target-transform.v1.json';
     public const STORAGE_MAPPING_RECOMMENDATIONS_SUFFIX = '.mapping-recommendations.v2.json';

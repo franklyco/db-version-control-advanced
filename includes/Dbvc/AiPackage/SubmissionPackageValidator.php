@@ -13,6 +13,20 @@ final class SubmissionPackageValidator
     private const PACKAGE_SCHEMA_VERSION = 1;
     private const MAX_ARCHIVE_ENTRIES = 5000;
     private const MAX_UNCOMPRESSED_BYTES = 52428800;
+    private const OVERRIDABLE_ERROR_CODES = [
+        'site_fingerprint_mismatch',
+    ];
+
+    /**
+     * @param array<string,mixed> $report
+     * @return array<string,mixed>
+     */
+    public static function get_override_context(array $report): array
+    {
+        $issues = isset($report['issues']) && is_array($report['issues']) ? $report['issues'] : [];
+
+        return self::build_override_context($issues);
+    }
 
     /**
      * @param array<string,mixed> $uploaded_file
@@ -132,7 +146,36 @@ final class SubmissionPackageValidator
             } else {
                 $package_type = isset($manifest['package_type']) ? (string) $manifest['package_type'] : '';
                 $package_schema_version = isset($manifest['package_schema_version']) ? (int) $manifest['package_schema_version'] : null;
-                $intended_operation = isset($manifest['intended_operation']) ? sanitize_key((string) $manifest['intended_operation']) : '';
+                $manifest_basename = isset($inspection['manifest_basename']) ? (string) $inspection['manifest_basename'] : '';
+                if ($manifest_basename !== '' && $manifest_basename !== SamplePackageBuilder::MANIFEST_FILENAME) {
+                    $issues[] = self::build_issue(
+                        'warning',
+                        'manifest_filename_legacy',
+                        sprintf(
+                            __('The AI package manifest filename `%s` was accepted through a legacy compatibility alias. Future packages should use `dbvc-ai-manifest.json`.', 'dbvc'),
+                            $manifest_basename
+                        ),
+                        (string) ($inspection['manifest_entry'] ?? '')
+                    );
+                }
+
+                $operation_result = self::normalize_intended_operation(
+                    isset($manifest['intended_operation']) ? (string) $manifest['intended_operation'] : ''
+                );
+                $intended_operation = (string) $operation_result['value'];
+                $manifest['intended_operation'] = $intended_operation;
+                if (! empty($operation_result['is_alias'])) {
+                    $issues[] = self::build_issue(
+                        'warning',
+                        'operation_legacy_alias',
+                        sprintf(
+                            __('The AI package `intended_operation` value `%1$s` was accepted as legacy shorthand and normalized to `%2$s`.', 'dbvc'),
+                            (string) ($operation_result['input'] ?? ''),
+                            $intended_operation
+                        ),
+                        (string) ($inspection['manifest_entry'] ?? '')
+                    );
+                }
 
                 if ($package_type === self::PACKAGE_TYPE_SAMPLE) {
                     $issues[] = self::build_issue('blocked', 'wrong_package_type', __('This archive is a DBVC AI sample package and cannot be imported. Upload a returned AI submission package instead.', 'dbvc'), (string) ($inspection['manifest_entry'] ?? ''));
@@ -153,7 +196,7 @@ final class SubmissionPackageValidator
                     $issues[] = self::build_issue('blocked', 'site_fingerprint_mismatch', __('The AI package was generated for a different site fingerprint.', 'dbvc'), (string) ($inspection['manifest_entry'] ?? ''));
                 }
 
-                if (! in_array($intended_operation, ['create_or_update', 'create_only', 'update_only'], true)) {
+                if (! self::is_supported_intended_operation($intended_operation)) {
                     $issues[] = self::build_issue('blocked', 'operation_invalid', __('The AI package intended operation is invalid.', 'dbvc'), (string) ($inspection['manifest_entry'] ?? ''));
                 }
             }
@@ -188,7 +231,16 @@ final class SubmissionPackageValidator
             $issues[] = self::build_issue('blocked', 'content_root_missing', __('The normalized AI package content root could not be found after extraction.', 'dbvc'), $content_root_relative);
         }
 
-        if ($content_root_path !== '' && is_dir($content_root_path) && self::resolve_status($issues) !== 'blocked' && class_exists('\Dbvc\AiPackage\SubmissionPackageTranslator')) {
+        $pre_translation_override_context = self::build_override_context($issues);
+        if (
+            $content_root_path !== ''
+            && is_dir($content_root_path)
+            && (
+                self::resolve_status($issues) !== 'blocked'
+                || ! empty($pre_translation_override_context['can_override_import_block'])
+            )
+            && class_exists('\Dbvc\AiPackage\SubmissionPackageTranslator')
+        ) {
             $translation_result = SubmissionPackageTranslator::translate([
                 'workspace_path' => $directories['workspace'],
                 'content_root_path' => $content_root_path,
@@ -223,6 +275,7 @@ final class SubmissionPackageValidator
         }
 
         $status = self::resolve_status($issues);
+        $override_context = self::build_override_context($issues);
         $counts = [
             'post_entities' => self::count_entities_by_kind($entities, 'post'),
             'term_entities' => self::count_entities_by_kind($entities, 'term'),
@@ -258,6 +311,7 @@ final class SubmissionPackageValidator
             'site_fingerprint' => $current_fingerprint,
             'manifest' => is_array($manifest) ? $manifest : null,
             'counts' => $counts,
+            'override_context' => $override_context,
             'issues' => $issues,
             'entities' => $entities,
             'workspace_path' => $workspace_path,
@@ -294,9 +348,6 @@ final class SubmissionPackageValidator
                 continue;
             }
 
-            $entry_count++;
-            $total_bytes += isset($stat['size']) ? (int) $stat['size'] : 0;
-
             if (
                 strpos($normalized, '../') !== false
                 || strpos($normalized, '..\\') !== false
@@ -304,6 +355,13 @@ final class SubmissionPackageValidator
             ) {
                 $issues[] = self::build_issue('blocked', 'archive_entry_unsafe', __('The AI archive contains an unsafe path entry.', 'dbvc'), $name);
             }
+
+            if (self::is_ignorable_archive_path($normalized)) {
+                continue;
+            }
+
+            $entry_count++;
+            $total_bytes += isset($stat['size']) ? (int) $stat['size'] : 0;
         }
 
         if ($entry_count > self::MAX_ARCHIVE_ENTRIES) {
@@ -350,6 +408,10 @@ final class SubmissionPackageValidator
 
             $absolute_path = wp_normalize_path($item->getPathname());
             $relative_path = ltrim(str_replace(trailingslashit($content_root), '', $absolute_path), '/');
+            if (self::is_ignorable_archive_path($relative_path)) {
+                continue;
+            }
+
             if (strtolower(pathinfo($absolute_path, PATHINFO_EXTENSION)) !== 'json') {
                 $issues[] = self::build_issue('error', 'entity_extension_invalid', __('Entity files inside `entities/` must use the `.json` extension.', 'dbvc'), $relative_path);
                 continue;
@@ -434,7 +496,15 @@ final class SubmissionPackageValidator
             'entities',
             'docs',
             'reports',
+            '.htaccess',
+            'index.php',
         ];
+        if (class_exists('\Dbvc\AiPackage\SubmissionPackageDetector') && method_exists('\Dbvc\AiPackage\SubmissionPackageDetector', 'get_supported_manifest_filenames')) {
+            $allowed_roots = array_values(array_unique(array_merge(
+                $allowed_roots,
+                (array) SubmissionPackageDetector::get_supported_manifest_filenames()
+            )));
+        }
         $entries = @scandir($content_root);
         if (! is_array($entries)) {
             return $issues;
@@ -442,6 +512,10 @@ final class SubmissionPackageValidator
 
         foreach ($entries as $entry) {
             if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+
+            if (self::is_ignorable_archive_path($entry)) {
                 continue;
             }
 
@@ -691,6 +765,107 @@ final class SubmissionPackageValidator
         return IssueService::build($severity, $code, $message, $path, [
             'stage' => 'validation',
         ]);
+    }
+
+    /**
+     * @param string $value
+     * @return array{value:string,input:string,is_alias:bool}
+     */
+    private static function normalize_intended_operation(string $value): array
+    {
+        $input = sanitize_key($value);
+        $normalized = $input;
+        $is_alias = false;
+
+        $aliases = [
+            'create' => 'create_only',
+            'update' => 'update_only',
+            'create_update' => 'create_or_update',
+            'createandupdate' => 'create_or_update',
+            'create_and_update' => 'create_or_update',
+            'mixed' => 'create_or_update',
+        ];
+
+        if (isset($aliases[$input])) {
+            $normalized = $aliases[$input];
+            $is_alias = true;
+        }
+
+        return [
+            'value' => $normalized,
+            'input' => $input,
+            'is_alias' => $is_alias,
+        ];
+    }
+
+    /**
+     * @param string $value
+     * @return bool
+     */
+    private static function is_supported_intended_operation(string $value): bool
+    {
+        return in_array($value, ['create_or_update', 'create_only', 'update_only'], true);
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $issues
+     * @return array<string,mixed>
+     */
+    private static function build_override_context(array $issues): array
+    {
+        $blocking_error_codes = [];
+        foreach ($issues as $issue) {
+            if (! is_array($issue) || ($issue['severity'] ?? '') !== 'error') {
+                continue;
+            }
+
+            $code = isset($issue['code']) ? sanitize_key((string) $issue['code']) : '';
+            if ($code === '') {
+                continue;
+            }
+
+            $blocking_error_codes[$code] = true;
+        }
+
+        $blocking_error_codes = array_keys($blocking_error_codes);
+        $overridable_error_codes = array_values(array_intersect($blocking_error_codes, self::OVERRIDABLE_ERROR_CODES));
+        $non_overridable_error_codes = array_values(array_diff($blocking_error_codes, self::OVERRIDABLE_ERROR_CODES));
+
+        return [
+            'blocking_error_codes' => $blocking_error_codes,
+            'overridable_error_codes' => $overridable_error_codes,
+            'non_overridable_error_codes' => $non_overridable_error_codes,
+            'requires_fingerprint_override' => in_array('site_fingerprint_mismatch', $overridable_error_codes, true),
+            'can_override_import_block' => ! empty($overridable_error_codes) && empty($non_overridable_error_codes),
+        ];
+    }
+
+    /**
+     * Ignore common archive metadata generated by Finder/macOS so these files
+     * do not block or pollute otherwise valid AI submission packages.
+     *
+     * @param string $path
+     * @return bool
+     */
+    private static function is_ignorable_archive_path(string $path): bool
+    {
+        $normalized = trim(str_replace('\\', '/', $path), '/');
+        if ($normalized === '') {
+            return false;
+        }
+
+        $segments = array_filter(explode('/', $normalized), 'strlen');
+        foreach ($segments as $segment) {
+            if ($segment === '__MACOSX' || $segment === '.DS_Store') {
+                return true;
+            }
+
+            if (strpos($segment, '._') === 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

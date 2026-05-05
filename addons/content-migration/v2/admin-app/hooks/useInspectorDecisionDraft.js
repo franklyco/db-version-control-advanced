@@ -118,14 +118,25 @@ const buildDecisionItems = ( recommendations, decisions, conflicts, kind ) => {
 			);
 			const conflict = conflictIndex.get( recommendationId ) || null;
 			const override = overrides.get( recommendationId ) || null;
+			let state = savedState;
+
+			if ( ! state ) {
+				state = conflict ? DECISION_UNRESOLVED : DECISION_APPROVE;
+			}
+
+			if (
+				! savedState &&
+				! conflict &&
+				recommendation?.default_decision === DECISION_UNRESOLVED
+			) {
+				state = DECISION_UNRESOLVED;
+			}
 
 			return {
 				recommendationId,
 				kind,
 				recommendation,
-				state:
-					savedState ||
-					( conflict ? DECISION_UNRESOLVED : DECISION_APPROVE ),
+				state,
 				savedState,
 				overrideTarget: override?.override_target || '',
 				isConflicted: Boolean( conflict ),

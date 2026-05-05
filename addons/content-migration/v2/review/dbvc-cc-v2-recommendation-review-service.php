@@ -12,6 +12,16 @@ final class DBVC_CC_V2_Recommendation_Review_Service
     private static $instance = null;
 
     /**
+     * @var array<string, array<string, array<string, mixed>>>
+     */
+    private $slot_lookup_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $slot_graph_provider_cache = [];
+
+    /**
      * @return DBVC_CC_V2_Recommendation_Review_Service
      */
     public static function get_instance()
@@ -59,6 +69,12 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             $domain,
             isset($recommendations['recommendations']) && is_array($recommendations['recommendations'])
                 ? $recommendations['recommendations']
+                : []
+        );
+        $unresolved_items = $this->decorate_unresolved_items(
+            $domain,
+            isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
+                ? $recommendations['unresolved_items']
                 : []
         );
         $media_recommendations = $this->decorate_recommendations(
@@ -136,9 +152,7 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'counts' => [
                     'recommendations' => count($field_recommendations),
                     'mediaRecommendations' => count($media_recommendations),
-                    'unresolved' => isset($recommendations['unresolved_items']) && is_array($recommendations['unresolved_items'])
-                        ? count($recommendations['unresolved_items'])
-                        : 0,
+                    'unresolved' => count($unresolved_items),
                     'conflicts' => count($conflicts),
                 ],
                 'currentTargetObject' => $current_target_object,
@@ -150,7 +164,7 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'candidateTargetObjects' => $candidate_target_objects,
                 'fieldRecommendations' => $field_recommendations,
                 'mediaRecommendations' => $media_recommendations,
-                'unresolvedItems' => isset($recommendations['unresolved_items']) ? $recommendations['unresolved_items'] : [],
+                'unresolvedItems' => $unresolved_items,
                 'conflicts' => $conflicts,
                 'review' => isset($recommendations['review']) ? $recommendations['review'] : [],
             ],
@@ -168,12 +182,13 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'source' => $this->build_source_evidence($review_context),
                 'context' => $this->build_context_evidence($review_context),
                 'mapping' => $this->build_mapping_evidence(
+                    $domain,
                     $review_context,
                     $field_recommendations,
                     $media_recommendations,
                     $conflicts
                 ),
-                'audit' => $this->build_audit_evidence($review_context, $decision_status, $artifact_relatives),
+                'audit' => $this->build_audit_evidence($domain, $review_context, $decision_status, $artifact_relatives),
             ],
             'actions' => [
                 'rerunStages' => DBVC_CC_V2_Contracts::get_supported_ai_stages(),
@@ -405,6 +420,28 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             $loaded[$key] = $artifact;
         }
 
+        $loaded['routing_artifact'] = $this->read_json_file(isset($artifact_paths['routing_artifact']) ? $artifact_paths['routing_artifact'] : '');
+        if (! is_array($loaded['routing_artifact'])) {
+            $artifact_relatives = isset($page_context['artifact_relatives']) && is_array($page_context['artifact_relatives']) ? $page_context['artifact_relatives'] : [];
+            $loaded['routing_artifact'] = DBVC_CC_V2_Routing_Artifact_Service::get_instance()->build_artifact(
+                $page_context,
+                isset($loaded['context_creation']) && is_array($loaded['context_creation']) ? $loaded['context_creation'] : [],
+                isset($loaded['initial_classification']) && is_array($loaded['initial_classification']) ? $loaded['initial_classification'] : [],
+                [
+                    'input_artifacts' => array_values(
+                        array_filter(
+                            [
+                                isset($artifact_relatives['context_creation']) ? (string) $artifact_relatives['context_creation'] : '',
+                                isset($artifact_relatives['initial_classification']) ? (string) $artifact_relatives['initial_classification'] : '',
+                            ]
+                        )
+                    ),
+                    'context_ref' => isset($artifact_relatives['context_creation']) ? (string) $artifact_relatives['context_creation'] : '',
+                    'classification_ref' => isset($artifact_relatives['initial_classification']) ? (string) $artifact_relatives['initial_classification'] : '',
+                ]
+            );
+        }
+
         $loaded['mapping_decisions'] = $this->read_json_file(isset($artifact_paths['mapping_decisions']) ? $artifact_paths['mapping_decisions'] : '');
         $loaded['media_decisions'] = $this->read_json_file(isset($artifact_paths['media_decisions']) ? $artifact_paths['media_decisions'] : '');
 
@@ -545,6 +582,9 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 'taxonomyHints' => isset($classification['taxonomy_hints']) ? $classification['taxonomy_hints'] : [],
                 'review' => isset($classification['review']) ? $classification['review'] : [],
             ],
+            'routing' => isset($review_context['routing_artifact']) && is_array($review_context['routing_artifact'])
+                ? $review_context['routing_artifact']
+                : [],
         ];
     }
 
@@ -552,18 +592,19 @@ final class DBVC_CC_V2_Recommendation_Review_Service
      * @param array<string, mixed> $review_context
      * @return array<string, mixed>
      */
-    private function build_mapping_evidence(array $review_context, array $field_recommendations, array $media_recommendations, array $conflicts)
+    private function build_mapping_evidence($domain, array $review_context, array $field_recommendations, array $media_recommendations, array $conflicts)
     {
         $mapping_index = $review_context['mapping_index'];
         $media_candidates = $review_context['media_candidates'];
         $target_transform = $review_context['target_transform'];
+        $recommendation_artifact = $review_context['mapping_recommendations'];
 
         return [
             'contentItems' => isset($mapping_index['content_items']) && is_array($mapping_index['content_items'])
                 ? array_values($mapping_index['content_items'])
                 : [],
-            'unresolvedItems' => isset($mapping_index['unresolved_items']) && is_array($mapping_index['unresolved_items'])
-                ? array_values($mapping_index['unresolved_items'])
+            'unresolvedItems' => isset($recommendation_artifact['unresolved_items']) && is_array($recommendation_artifact['unresolved_items'])
+                ? array_values($recommendation_artifact['unresolved_items'])
                 : [],
             'mediaCandidates' => isset($media_candidates['media_items']) && is_array($media_candidates['media_items'])
                 ? array_values($media_candidates['media_items'])
@@ -574,6 +615,7 @@ final class DBVC_CC_V2_Recommendation_Review_Service
             'resolutionPreview' => isset($target_transform['resolution_preview']) && is_array($target_transform['resolution_preview'])
                 ? $target_transform['resolution_preview']
                 : [],
+            'fieldContextProvider' => $this->load_slot_graph_provider($domain),
             'recommendations' => $field_recommendations,
             'mediaRecommendations' => $media_recommendations,
             'conflicts' => $conflicts,
@@ -586,14 +628,16 @@ final class DBVC_CC_V2_Recommendation_Review_Service
      * @param array<string, mixed> $artifact_relatives
      * @return array<string, mixed>
      */
-    private function build_audit_evidence(array $review_context, $decision_status, array $artifact_relatives)
+    private function build_audit_evidence($domain, array $review_context, $decision_status, array $artifact_relatives)
     {
         return [
             'decisionStatus' => $decision_status,
             'artifactRefs' => $artifact_relatives,
+            'fieldContextProvider' => $this->load_slot_graph_provider($domain),
             'trace' => [
                 'contextCreation' => isset($review_context['context_creation']['trace']) ? $review_context['context_creation']['trace'] : [],
                 'classification' => isset($review_context['initial_classification']['trace']) ? $review_context['initial_classification']['trace'] : [],
+                'routing' => isset($review_context['routing_artifact']['trace']) ? $review_context['routing_artifact']['trace'] : [],
                 'recommendations' => isset($review_context['mapping_recommendations']['trace']) ? $review_context['mapping_recommendations']['trace'] : [],
             ],
         ];
@@ -672,6 +716,8 @@ final class DBVC_CC_V2_Recommendation_Review_Service
     private function decorate_recommendations($domain, array $recommendations)
     {
         $schema_presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance();
+        $slot_lookup = $this->load_slot_lookup($domain);
+        $provider = $this->load_slot_graph_provider($domain);
         $decorated = [];
 
         foreach ($recommendations as $recommendation) {
@@ -683,10 +729,294 @@ final class DBVC_CC_V2_Recommendation_Review_Service
                 $domain,
                 isset($recommendation['target_ref']) ? (string) $recommendation['target_ref'] : ''
             );
+            if (isset($recommendation['selection']) && is_array($recommendation['selection'])) {
+                $recommendation['selection'] = $this->decorate_selection_payload(
+                    $domain,
+                    $recommendation['selection'],
+                    $slot_lookup,
+                    $provider
+                );
+            }
+            $recommendation['field_context_compact'] = $this->resolve_field_context_compact(
+                isset($recommendation['field_context_compact']) && is_array($recommendation['field_context_compact']) ? $recommendation['field_context_compact'] : [],
+                isset($recommendation['target_ref']) ? (string) $recommendation['target_ref'] : '',
+                $slot_lookup,
+                $provider
+            );
             $decorated[] = $recommendation;
         }
 
         return $decorated;
+    }
+
+    /**
+     * @param string                           $domain
+     * @param array<int, array<string, mixed>> $unresolved_items
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorate_unresolved_items($domain, array $unresolved_items)
+    {
+        $schema_presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance();
+        $slot_lookup = $this->load_slot_lookup($domain);
+        $provider = $this->load_slot_graph_provider($domain);
+        $decorated = [];
+
+        foreach ($unresolved_items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            if (! empty($item['selected_target_ref'])) {
+                $item['selectedTargetPresentation'] = $schema_presentation->resolve_target_ref(
+                    $domain,
+                    (string) $item['selected_target_ref']
+                );
+            }
+
+            if (isset($item['selection']) && is_array($item['selection'])) {
+                $item['selection'] = $this->decorate_selection_payload($domain, $item['selection'], $slot_lookup, $provider);
+            }
+
+            if (! empty($item['selected_target_ref'])) {
+                $item['selectedTargetFieldContextCompact'] = $this->resolve_field_context_compact(
+                    isset($item['selectedTargetFieldContextCompact']) && is_array($item['selectedTargetFieldContextCompact'])
+                        ? $item['selectedTargetFieldContextCompact']
+                        : [],
+                    (string) $item['selected_target_ref'],
+                    $slot_lookup,
+                    $provider
+                );
+            }
+
+            $item['unresolved_class'] = isset($item['unresolved_class'])
+                ? sanitize_key((string) $item['unresolved_class'])
+                : '';
+            $item['unresolvedClassLabel'] = $this->describe_unresolved_class($item['unresolved_class']);
+            $item['reason_codes'] = isset($item['reason_codes']) && is_array($item['reason_codes'])
+                ? array_values(array_map('sanitize_key', $item['reason_codes']))
+                : [];
+
+            $decorated[] = $item;
+        }
+
+        return $decorated;
+    }
+
+    /**
+     * @param string               $domain
+     * @param array<string, mixed> $selection
+     * @return array<string, mixed>
+     */
+    private function decorate_selection_payload($domain, array $selection, array $slot_lookup = [], array $provider = [])
+    {
+        $schema_presentation = DBVC_CC_V2_Schema_Presentation_Service::get_instance();
+        $alternatives = isset($selection['alternatives']) && is_array($selection['alternatives'])
+            ? $selection['alternatives']
+            : [];
+
+        foreach ($alternatives as $index => $alternative) {
+            if (! is_array($alternative) || empty($alternative['target_ref'])) {
+                continue;
+            }
+
+            $alternatives[$index]['targetPresentation'] = $schema_presentation->resolve_target_ref(
+                $domain,
+                (string) $alternative['target_ref']
+            );
+            $alternatives[$index]['field_context_compact'] = $this->resolve_field_context_compact(
+                isset($alternative['field_context_compact']) && is_array($alternative['field_context_compact'])
+                    ? $alternative['field_context_compact']
+                    : [],
+                (string) $alternative['target_ref'],
+                $slot_lookup,
+                $provider
+            );
+        }
+
+        $selection['alternatives'] = array_values($alternatives);
+        $selection['unresolved_class'] = isset($selection['unresolved_class'])
+            ? sanitize_key((string) $selection['unresolved_class'])
+            : '';
+        $selection['unresolvedClassLabel'] = $this->describe_unresolved_class(
+            isset($selection['unresolved_class']) ? (string) $selection['unresolved_class'] : ''
+        );
+        return $selection;
+    }
+
+    /**
+     * @param array<string, mixed>                 $existing
+     * @param string                               $target_ref
+     * @param array<string, array<string, mixed>> $slot_lookup
+     * @param array<string, mixed>                 $provider
+     * @return array<string, mixed>
+     */
+    private function resolve_field_context_compact(array $existing, $target_ref, array $slot_lookup, array $provider)
+    {
+        if (! empty($existing)) {
+            return $existing;
+        }
+
+        $target_ref = sanitize_text_field((string) $target_ref);
+        if ($target_ref === '' || ! isset($slot_lookup[$target_ref]) || ! is_array($slot_lookup[$target_ref])) {
+            return [];
+        }
+
+        return $this->build_field_context_compact($slot_lookup[$target_ref], $provider);
+    }
+
+    /**
+     * @param array<string, mixed> $slot
+     * @param array<string, mixed> $provider
+     * @return array<string, mixed>
+     */
+    private function build_field_context_compact(array $slot, array $provider)
+    {
+        $provider_trace = isset($slot['provider_trace']) && is_array($slot['provider_trace']) ? $slot['provider_trace'] : [];
+        $clone_context = isset($slot['clone_context']) && is_array($slot['clone_context']) ? $slot['clone_context'] : [];
+        $value_contract = isset($slot['value_contract']) && is_array($slot['value_contract']) ? $slot['value_contract'] : [];
+        $warnings = isset($provider_trace['warnings']) && is_array($provider_trace['warnings']) ? array_values($provider_trace['warnings']) : [];
+
+        if (! empty($clone_context['is_clone_projected'])) {
+            $warnings[] = ! empty($clone_context['is_directly_writable'])
+                ? 'clone_projected'
+                : 'clone_projected_read_only';
+        }
+
+        return [
+            'provider_status' => isset($provider_trace['status']) && $provider_trace['status'] !== ''
+                ? sanitize_key((string) $provider_trace['status'])
+                : (isset($provider['status']) ? sanitize_key((string) $provider['status']) : ''),
+            'field_label' => isset($slot['acf_label']) ? sanitize_text_field((string) $slot['acf_label']) : '',
+            'field_name' => isset($slot['acf_name']) ? sanitize_key((string) $slot['acf_name']) : '',
+            'field_type' => isset($slot['type']) ? sanitize_key((string) $slot['type']) : '',
+            'group_label' => isset($slot['group_label']) ? sanitize_text_field((string) $slot['group_label']) : '',
+            'group_name' => isset($slot['group_name']) ? sanitize_key((string) $slot['group_name']) : '',
+            'branch_name_path' => isset($slot['branch_name_path']) && is_array($slot['branch_name_path']) ? array_values($slot['branch_name_path']) : [],
+            'branch_label_path' => isset($slot['branch_label_path']) && is_array($slot['branch_label_path']) ? array_values($slot['branch_label_path']) : [],
+            'section_family' => isset($slot['section_family']) ? sanitize_key((string) $slot['section_family']) : '',
+            'slot_role' => isset($slot['slot_role']) ? sanitize_key((string) $slot['slot_role']) : '',
+            'competition_group' => isset($slot['competition_group']) ? sanitize_text_field((string) $slot['competition_group']) : '',
+            'group_purpose' => $this->extract_context_chain_purpose($slot, 'group'),
+            'field_purpose' => $this->extract_context_chain_purpose($slot, 'field'),
+            'value_shape' => isset($value_contract['value_shape']) ? sanitize_key((string) $value_contract['value_shape']) : '',
+            'content_type' => isset($value_contract['content_type']) ? sanitize_key((string) $value_contract['content_type']) : '',
+            'writable' => ! empty($slot['writable']),
+            'clone_projected' => ! empty($clone_context['is_clone_projected']),
+            'source_hash' => isset($provider_trace['source_hash']) && $provider_trace['source_hash'] !== ''
+                ? sanitize_text_field((string) $provider_trace['source_hash'])
+                : (isset($provider['source_hash']) ? sanitize_text_field((string) $provider['source_hash']) : ''),
+            'contract_version' => isset($provider_trace['contract_version']) && $provider_trace['contract_version'] !== ''
+                ? sanitize_text_field((string) $provider_trace['contract_version'])
+                : (isset($provider['contract_version']) ? sanitize_text_field((string) $provider['contract_version']) : ''),
+            'schema_version' => isset($provider_trace['schema_version']) && $provider_trace['schema_version'] !== ''
+                ? sanitize_text_field((string) $provider_trace['schema_version'])
+                : (isset($provider['schema_version']) ? sanitize_text_field((string) $provider['schema_version']) : ''),
+            'site_fingerprint' => isset($provider_trace['site_fingerprint']) && $provider_trace['site_fingerprint'] !== ''
+                ? sanitize_text_field((string) $provider_trace['site_fingerprint'])
+                : (isset($provider['site_fingerprint']) ? sanitize_text_field((string) $provider['site_fingerprint']) : ''),
+            'warnings' => array_values(array_unique(array_filter(array_map('strval', $warnings)))),
+        ];
+    }
+
+    /**
+     * @param string $unresolved_class
+     * @return string
+     */
+    private function describe_unresolved_class($unresolved_class)
+    {
+        $unresolved_class = sanitize_key((string) $unresolved_class);
+        $labels = [
+            'missing_page_level_slot' => 'Missing page-level slot',
+            'missing_section_family_slot' => 'Missing section-family slot',
+            'missing_eligible_slot' => 'Missing eligible slot',
+            'ambiguous_sibling_slots' => 'Ambiguous sibling slots',
+            'duplicate_target_collision' => 'Duplicate target collision',
+            'low_mapping_evidence' => 'Low mapping evidence',
+            'missing_media_slot' => 'Missing media slot',
+        ];
+
+        return isset($labels[$unresolved_class]) ? $labels[$unresolved_class] : '';
+    }
+
+    /**
+     * @param array<string, mixed> $slot
+     * @param string               $level
+     * @return string
+     */
+    private function extract_context_chain_purpose(array $slot, $level)
+    {
+        $chain = isset($slot['context_chain']) && is_array($slot['context_chain']) ? $slot['context_chain'] : [];
+        foreach ($chain as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            if (sanitize_key((string) ($item['level'] ?? '')) !== sanitize_key((string) $level)) {
+                continue;
+            }
+
+            if (! empty($item['purpose'])) {
+                return sanitize_text_field((string) $item['purpose']);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param string $domain
+     * @return array<string, array<string, mixed>>
+     */
+    private function load_slot_lookup($domain)
+    {
+        $domain = sanitize_text_field((string) $domain);
+        if ($domain === '') {
+            return [];
+        }
+
+        if (isset($this->slot_lookup_cache[$domain]) && is_array($this->slot_lookup_cache[$domain])) {
+            return $this->slot_lookup_cache[$domain];
+        }
+
+        $graph = DBVC_CC_V2_Target_Slot_Graph_Service::get_instance()->get_graph($domain, true);
+        if (is_wp_error($graph)) {
+            $this->slot_lookup_cache[$domain] = [];
+            return [];
+        }
+
+        $slot_graph = isset($graph['slot_graph']) && is_array($graph['slot_graph']) ? $graph['slot_graph'] : [];
+        $this->slot_lookup_cache[$domain] = isset($slot_graph['slots']) && is_array($slot_graph['slots']) ? $slot_graph['slots'] : [];
+
+        return $this->slot_lookup_cache[$domain];
+    }
+
+    /**
+     * @param string $domain
+     * @return array<string, mixed>
+     */
+    private function load_slot_graph_provider($domain)
+    {
+        $domain = sanitize_text_field((string) $domain);
+        if ($domain === '') {
+            return [];
+        }
+
+        if (isset($this->slot_graph_provider_cache[$domain]) && is_array($this->slot_graph_provider_cache[$domain])) {
+            return $this->slot_graph_provider_cache[$domain];
+        }
+
+        $graph = DBVC_CC_V2_Target_Slot_Graph_Service::get_instance()->get_graph($domain, true);
+        if (is_wp_error($graph)) {
+            $this->slot_graph_provider_cache[$domain] = [];
+            return [];
+        }
+
+        $slot_graph = isset($graph['slot_graph']) && is_array($graph['slot_graph']) ? $graph['slot_graph'] : [];
+        $this->slot_graph_provider_cache[$domain] = isset($slot_graph['field_context_provider']) && is_array($slot_graph['field_context_provider'])
+            ? $slot_graph['field_context_provider']
+            : [];
+
+        return $this->slot_graph_provider_cache[$domain];
     }
 
     /**

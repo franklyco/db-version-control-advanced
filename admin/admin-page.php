@@ -109,6 +109,30 @@ function dbvc_render_export_page()
   }
   $addon_bricks_enabled = $addon_bricks_settings['dbvc_addon_bricks_enabled'] ?? get_option('dbvc_addon_bricks_enabled', '0');
   $addon_bricks_visibility = $addon_bricks_settings['dbvc_addon_bricks_visibility'] ?? get_option('dbvc_addon_bricks_visibility', 'configure_and_submenu');
+  $addon_visual_editor_settings = [];
+  $addon_visual_editor_groups = [];
+  $addon_visual_editor_field_meta = [];
+  if (class_exists('DBVC_Visual_Editor_Addon')) {
+    DBVC_Visual_Editor_Addon::ensure_defaults();
+    $addon_visual_editor_settings = DBVC_Visual_Editor_Addon::get_all_settings();
+    $addon_visual_editor_groups = DBVC_Visual_Editor_Addon::get_settings_groups();
+    $addon_visual_editor_field_meta = DBVC_Visual_Editor_Addon::get_field_meta();
+  }
+  $addon_visual_editor_enabled = $addon_visual_editor_settings[DBVC_Visual_Editor_Addon::OPTION_ENABLED] ?? get_option('dbvc_addon_visual_editor_enabled', '0');
+  $addons_subtabs = [
+    'dbvc-addon-content-collector' => [
+      'label' => esc_html__('Content Collector', 'dbvc'),
+      'description' => esc_html__('Configure the collector runtime, runtime version, and V2 automation policy defaults.', 'dbvc'),
+    ],
+    'dbvc-addon-bricks' => [
+      'label' => esc_html__('Bricks', 'dbvc'),
+      'description' => esc_html__('Manage the Bricks transport, governance, drift, and proposal settings footprint.', 'dbvc'),
+    ],
+    'dbvc-addon-visual-editor' => [
+      'label' => esc_html__('Visual Editor', 'dbvc'),
+      'description' => esc_html__('Control the frontend inspection and guarded edit runtime for supported Bricks pages.', 'dbvc'),
+    ],
+  ];
   $ai_package_settings = [];
   if (class_exists('\Dbvc\AiPackage\Settings')) {
     $ai_package_settings = \Dbvc\AiPackage\Settings::get_all_settings();
@@ -150,6 +174,7 @@ function dbvc_render_export_page()
   $active_export_subtab = 'dbvc-export-full';
   $active_config_subtab = 'dbvc-config-post-types';
   $active_import_defaults_subtab = 'dbvc-config-import-settings';
+  $active_addons_subtab = 'dbvc-addon-content-collector';
   $backup_feedback      = ['success' => [], 'error' => []];
   $selected_backup      = isset($_GET['dbvc_backup']) ? sanitize_text_field(wp_unslash($_GET['dbvc_backup'])) : '';
   $selected_backup_page = isset($_GET['dbvc_backup_page']) ? max(1, absint($_GET['dbvc_backup_page'])) : 1;
@@ -435,6 +460,12 @@ function dbvc_render_export_page()
         $active_import_defaults_subtab = $requested_subtab;
       }
     }
+    if (isset($_POST['dbvc_addons_subtab'])) {
+      $requested_addons_subtab = sanitize_text_field(wp_unslash($_POST['dbvc_addons_subtab']));
+      if (isset($addons_subtabs[$requested_addons_subtab])) {
+        $active_addons_subtab = $requested_addons_subtab;
+      }
+    }
 
     // --- Post Types ---
     $new_post_types = [];
@@ -640,14 +671,26 @@ function dbvc_render_export_page()
         foreach ((array) ($save_result['errors'] ?? []) as $save_error) {
           $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
         }
-        if (empty($config_feedback['addons']['error'])) {
-          $config_feedback['addons']['success'][] = esc_html__('Add-on settings saved.', 'dbvc');
-        }
         $addon_bricks_settings = DBVC_Bricks_Addon::get_all_settings();
         $addon_bricks_enabled = $addon_bricks_settings['dbvc_addon_bricks_enabled'] ?? '0';
         $addon_bricks_visibility = $addon_bricks_settings['dbvc_addon_bricks_visibility'] ?? 'configure_and_submenu';
       } else {
         $config_feedback['addons']['error'][] = esc_html__('Bricks add-on module unavailable.', 'dbvc');
+      }
+
+      if (class_exists('DBVC_Visual_Editor_Addon')) {
+        $visual_editor_save_result = DBVC_Visual_Editor_Addon::save_settings((array) $_POST);
+        foreach ((array) ($visual_editor_save_result['errors'] ?? []) as $save_error) {
+          $config_feedback['addons']['error'][] = sanitize_text_field((string) $save_error);
+        }
+        $addon_visual_editor_settings = DBVC_Visual_Editor_Addon::get_all_settings();
+        $addon_visual_editor_enabled = $addon_visual_editor_settings[DBVC_Visual_Editor_Addon::OPTION_ENABLED] ?? '0';
+      } else {
+        $config_feedback['addons']['error'][] = esc_html__('Visual Editor add-on module unavailable.', 'dbvc');
+      }
+
+      if (empty($config_feedback['addons']['error'])) {
+        $config_feedback['addons']['success'][] = esc_html__('Add-on settings saved.', 'dbvc');
       }
     }
 
@@ -1568,6 +1611,94 @@ function dbvc_render_export_page()
     }
     echo '</div>';
   };
+  $render_addon_field = static function ($field_key, array $field_meta, $field_value) {
+    $field_key = (string) $field_key;
+    $field_label = isset($field_meta['label']) ? (string) $field_meta['label'] : $field_key;
+    $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
+    $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
+    $input_type = isset($field_meta['input']) ? (string) $field_meta['input'] : 'text';
+    $field_value = (string) $field_value;
+
+    if ($input_type === 'checkbox') {
+      ?>
+      <p>
+        <label>
+          <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
+          <?php echo esc_html($field_label); ?>
+        </label>
+        <?php if ($field_help !== '') : ?>
+          <br><small class="description"><?php echo esc_html($field_help); ?></small>
+        <?php endif; ?>
+      </p>
+      <?php
+      return;
+    }
+
+    if ($input_type === 'select') {
+      ?>
+      <p>
+        <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
+        <select id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>">
+          <?php foreach ((array) ($field_meta['options'] ?? []) as $option_value => $option_label) : ?>
+            <option value="<?php echo esc_attr((string) $option_value); ?>" <?php selected($field_value, (string) $option_value); ?>>
+              <?php echo esc_html((string) $option_label); ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+        <?php if ($field_help !== '') : ?>
+          <br><small class="description"><?php echo esc_html($field_help); ?></small>
+        <?php endif; ?>
+      </p>
+      <?php
+      return;
+    }
+
+    if ($input_type === 'textarea') {
+      ?>
+      <p>
+        <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
+        <textarea id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" rows="<?php echo esc_attr((string) ($field_meta['rows'] ?? '3')); ?>" style="width:100%;"><?php echo esc_textarea($field_value); ?></textarea>
+        <?php if ($field_help !== '') : ?>
+          <br><small class="description"><?php echo esc_html($field_help); ?></small>
+        <?php endif; ?>
+      </p>
+      <?php
+      return;
+    }
+
+    $html_type = in_array($input_type, ['number', 'url', 'password'], true) ? $input_type : 'text';
+    $input_class = $html_type === 'number' ? 'small-text' : 'regular-text';
+    ?>
+    <p>
+      <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
+      <input
+        type="<?php echo esc_attr($html_type); ?>"
+        id="<?php echo esc_attr($field_id); ?>"
+        name="<?php echo esc_attr($field_key); ?>"
+        value="<?php echo esc_attr($field_value); ?>"
+        class="<?php echo esc_attr($input_class); ?>"
+        <?php if (isset($field_meta['min'])) : ?>min="<?php echo esc_attr((string) $field_meta['min']); ?>"<?php endif; ?>
+        <?php if (isset($field_meta['max'])) : ?>max="<?php echo esc_attr((string) $field_meta['max']); ?>"<?php endif; ?>
+        <?php if (isset($field_meta['step'])) : ?>step="<?php echo esc_attr((string) $field_meta['step']); ?>"<?php endif; ?>
+      />
+      <?php if ($field_help !== '') : ?>
+        <br><small class="description"><?php echo esc_html($field_help); ?></small>
+      <?php endif; ?>
+    </p>
+    <?php
+  };
+  $render_addon_fields_group = static function (array $field_keys, array $field_meta_index, array $settings) use ($render_addon_field) {
+    foreach ($field_keys as $field_key) {
+      $field_key = (string) $field_key;
+      if (! isset($field_meta_index[$field_key])) {
+        continue;
+      }
+
+      $field_meta = $field_meta_index[$field_key];
+      $field_value = isset($settings[$field_key]) ? (string) $settings[$field_key] : '';
+      $render_addon_field($field_key, $field_meta, $field_value);
+    }
+  };
 
   $logs_feedback = [
     'success' => [],
@@ -1697,6 +1828,27 @@ function dbvc_render_export_page()
     && DBVC_Media_Sync::is_preview_enabled()
   ) {
     $media_preview_data = DBVC_Media_Sync::preview_manifest_media($selected_backup_record['manifest'] ?? [], 20);
+  }
+
+  $has_upload_redirect_state = isset($_GET['dbvc_upload']) && sanitize_key(wp_unslash($_GET['dbvc_upload'])) !== '';
+  $has_upload_report_dismiss = (
+    (isset($_GET['dbvc_sync_report']) && sanitize_key(wp_unslash($_GET['dbvc_sync_report'])) === 'dismiss')
+    || (isset($_GET['dbvc_ai_report']) && sanitize_key(wp_unslash($_GET['dbvc_ai_report'])) === 'dismiss')
+  );
+  $has_retained_upload_report = false;
+
+  if (! $has_upload_redirect_state && ! $has_upload_report_dismiss && $active_main_tab === 'tab-import' && $active_import_subtab === 'dbvc-import-content') {
+    $retained_sync_report = get_option('dbvc_sync_upload_report');
+    $retained_ai_report   = get_option('dbvc_ai_upload_report');
+    $has_retained_upload_report = is_array($retained_sync_report) || is_array($retained_ai_report);
+  }
+
+  if (
+    $active_main_tab === 'tab-import'
+    && $active_import_subtab === 'dbvc-import-content'
+    && ($has_upload_redirect_state || $has_upload_report_dismiss || $has_retained_upload_report)
+  ) {
+    $active_import_subtab = 'dbvc-import-upload';
   }
 
 ?>
@@ -1964,6 +2116,7 @@ function dbvc_render_export_page()
               if (isset($_GET['dbvc_ai_report']) && $_GET['dbvc_ai_report'] === 'dismiss') {
                 delete_option('dbvc_ai_upload_report');
               }
+              $upload_state = isset($_GET['dbvc_upload']) ? sanitize_key(wp_unslash($_GET['dbvc_upload'])) : '';
               $ai_upload_report = get_option('dbvc_ai_upload_report');
               if (is_array($ai_upload_report) && (($ai_upload_report['mode'] ?? '') === 'ai_package')) :
                 $ai_report_counts = isset($ai_upload_report['counts']) && is_array($ai_upload_report['counts'])
@@ -2029,6 +2182,11 @@ function dbvc_render_export_page()
                 $ai_cancel_url = ($ai_intake_id !== '' && class_exists('DBVC_AI_Intake_Controller'))
                   ? DBVC_AI_Intake_Controller::get_cancel_url($ai_intake_id)
                   : '';
+                $ai_override_context = class_exists('\Dbvc\AiPackage\SubmissionPackageValidator')
+                  ? \Dbvc\AiPackage\SubmissionPackageValidator::get_override_context($ai_upload_report)
+                  : [];
+                $ai_can_override_blocked = $ai_report_status === 'blocked' && ! empty($ai_override_context['can_override_import_block']);
+                $ai_requires_fingerprint_override = ! empty($ai_override_context['requires_fingerprint_override']);
               ?>
                 <div class="<?php echo esc_attr($ai_report_notice_class); ?> dbvc-ai-review-panel" style="margin-top:1em;">
                   <p><strong><?php echo esc_html($ai_report_title); ?></strong></p>
@@ -2091,6 +2249,19 @@ function dbvc_render_export_page()
                       );
                       ?>
                     </p>
+                  <?php endif; ?>
+                  <?php if ($ai_can_override_blocked) : ?>
+                    <div class="notice notice-warning inline">
+                      <p>
+                        <?php
+                        echo esc_html(
+                          $ai_requires_fingerprint_override
+                            ? __('This package is blocked by a site fingerprint mismatch. You can override that safeguard and continue only if you intentionally want to import AI output authored from a different site sample package.', 'dbvc')
+                            : __('This blocked AI intake can be imported only through an explicit operator override.', 'dbvc')
+                        );
+                        ?>
+                      </p>
+                    </div>
                   <?php endif; ?>
                   <?php if (! empty($ai_import_result)) : ?>
                     <div class="notice notice-info inline">
@@ -2263,8 +2434,16 @@ function dbvc_render_export_page()
                       <?php endif; ?>
                     </div>
                   <?php endif; ?>
-                  <?php if ($ai_report_status !== 'blocked' && $ai_import_url !== '') : ?>
+                  <?php if (($ai_report_status !== 'blocked' || $ai_can_override_blocked) && $ai_import_url !== '') : ?>
                     <form method="post" action="<?php echo esc_url($ai_import_url); ?>" class="dbvc-ai-review-panel__import-form">
+                      <?php if ($ai_can_override_blocked) : ?>
+                        <div class="dbvc-option-chip-grid" style="margin-bottom:0.75rem;">
+                          <label class="dbvc-option-chip">
+                            <input type="checkbox" name="dbvc_ai_confirm_override_blocked" value="1" />
+                            <span class="dbvc-option-chip__text"><?php esc_html_e('I understand the site fingerprint mismatch and want to override it for this import.', 'dbvc'); ?></span>
+                          </label>
+                        </div>
+                      <?php endif; ?>
                       <?php if ($ai_report_status === 'valid_with_warnings' && ! empty($ai_report_counts['warnings']) && $ai_warning_policy === 'confirm') : ?>
                         <div class="dbvc-option-chip-grid" style="margin-bottom:0.75rem;">
                           <label class="dbvc-option-chip">
@@ -2274,7 +2453,9 @@ function dbvc_render_export_page()
                         </div>
                       <?php endif; ?>
                       <div class="dbvc-ai-review-panel__actions">
-                        <button type="submit" class="button button-primary"><?php esc_html_e('Import Translated Package', 'dbvc'); ?></button>
+                        <button type="submit" class="button button-primary">
+                          <?php echo esc_html($ai_can_override_blocked ? __('Override and Import Translated Package', 'dbvc') : __('Import Translated Package', 'dbvc')); ?>
+                        </button>
                         <?php if ($ai_cancel_url !== '') : ?>
                           <a class="button button-secondary" href="<?php echo esc_url($ai_cancel_url); ?>"><?php esc_html_e('Cancel AI Intake', 'dbvc'); ?></a>
                         <?php endif; ?>
@@ -2487,6 +2668,11 @@ function dbvc_render_export_page()
                   <?php endif; ?>
                   <p><a href="<?php echo esc_url(add_query_arg('dbvc_ai_report', 'dismiss', wp_get_referer())); ?>"><?php esc_html_e('Dismiss AI intake report', 'dbvc'); ?></a></p>
                 </div>
+              <?php elseif (in_array($upload_state, ['ai_review', 'ai_blocked', 'ai_imported', 'ai_confirm_required', 'ai_import_failed', 'ai_import_missing'], true)) : ?>
+                <div class="notice notice-error dbvc-ai-review-panel" style="margin-top:1em;">
+                  <p><strong><?php esc_html_e('AI intake report unavailable', 'dbvc'); ?></strong></p>
+                  <p><?php esc_html_e('The upload request returned an AI intake state, but no retained AI report is currently available to render. Re-upload the package to regenerate the intake report. If this repeats, check the DBVC upload log for staging errors.', 'dbvc'); ?></p>
+                </div>
               <?php endif; ?>
 
               <?php
@@ -2605,6 +2791,9 @@ function dbvc_render_export_page()
                 } elseif ('ai_confirm_required' === $state) {
                   $class = 'notice-warning';
                   $msg   = __('Confirm the remaining AI intake warnings before importing this package.', 'dbvc');
+                } elseif ('ai_override_required' === $state) {
+                  $class = 'notice-warning';
+                  $msg   = __('Confirm the AI intake override before importing this blocked package.', 'dbvc');
                 } elseif ('ai_cancelled' === $state) {
                   $class = 'notice-info';
                   $msg   = __('AI package intake was cancelled and cleared from the review surface.', 'dbvc');
@@ -3051,6 +3240,7 @@ document.addEventListener('DOMContentLoaded', function () {
   <form method="post" id="dbvc-config-form">
     <?php wp_nonce_field('dbvc_config_save_action', 'dbvc_config_nonce'); ?>
     <input type="hidden" name="dbvc_import_defaults_subtab" id="dbvc-import-defaults-subtab" value="<?php echo esc_attr($active_import_defaults_subtab); ?>" />
+    <input type="hidden" name="dbvc_addons_subtab" id="dbvc-addons-subtab" value="<?php echo esc_attr($active_addons_subtab); ?>" />
     <div class="dbvc-subtabs" data-dbvc-subtabs>
       <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Configure subsections', 'dbvc'); ?>">
 <?php foreach ($config_subtabs as $panel_id => $label) :
@@ -3469,6 +3659,7 @@ document.addEventListener('DOMContentLoaded', function () {
         $ai_guidance_settings = isset($ai_package_settings['guidance']) && is_array($ai_package_settings['guidance']) ? $ai_package_settings['guidance'] : [];
         $ai_provider_settings = isset($ai_package_settings['providers']) && is_array($ai_package_settings['providers']) ? $ai_package_settings['providers'] : [];
         $ai_included_docs = isset($ai_generation_settings['included_docs']) && is_array($ai_generation_settings['included_docs']) ? $ai_generation_settings['included_docs'] : [];
+        $ai_package_profile_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_package_profile_options() : [];
         $ai_shape_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_shape_mode_options() : [];
         $ai_value_style_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_value_style_options() : [];
         $ai_variant_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_variant_set_options() : [];
@@ -3491,6 +3682,18 @@ document.addEventListener('DOMContentLoaded', function () {
         <p class="description"><?php esc_html_e('Set default AI package generation preferences, intake validation defaults, reusable operator guidance, and the default OpenAI service configuration for future AI-assisted workflows.', 'dbvc'); ?></p>
 
         <h3><?php esc_html_e('Package Generation Defaults', 'dbvc'); ?></h3>
+        <p>
+          <label for="dbvc-ai-generation-package-profile"><strong><?php esc_html_e('Default package profile', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-generation-package-profile" name="dbvc_ai_settings[generation][package_profile]">
+            <?php foreach ($ai_package_profile_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_generation_settings['package_profile'] ?? \Dbvc\AiPackage\Settings::DEFAULT_PACKAGE_PROFILE), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <br><small class="description"><?php esc_html_e('Compact AI Chat is recommended for browser-based LLM sessions. Full Reference keeps the larger doc set for deeper review workflows.', 'dbvc'); ?></small>
+        </p>
+
         <p>
           <label for="dbvc-ai-generation-shape-mode"><strong><?php esc_html_e('Default shape mode', 'dbvc'); ?></strong></label><br>
           <select id="dbvc-ai-generation-shape-mode" name="dbvc_ai_settings[generation][shape_mode]">
@@ -3540,6 +3743,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         <fieldset style="margin:1rem 0;">
           <legend><strong><?php esc_html_e('Default included top-level docs', 'dbvc'); ?></strong></legend>
+          <p class="description" style="margin:0 0 0.75rem 0;"><?php esc_html_e('These selections apply to the Full Reference profile. Compact AI Chat uses a reduced merged guide instead of the full root doc set.', 'dbvc'); ?></p>
           <?php foreach ($ai_doc_options as $doc_key => $doc_label) : ?>
             <label style="display:block;margin:0 0 0.35rem 0;">
               <input
@@ -3709,178 +3913,98 @@ document.addEventListener('DOMContentLoaded', function () {
       <section id="dbvc-config-addons" class="dbvc-subtab-panel<?php echo $active_config_subtab === 'dbvc-config-addons' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-addons" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-addons" <?php echo $active_config_subtab === 'dbvc-config-addons' ? '' : 'hidden'; ?>>
         <?php $render_config_feedback($config_feedback['addons']); ?>
         <h2><?php esc_html_e('Add-ons', 'dbvc'); ?></h2>
-        <p class="description"><?php esc_html_e('Enable add-ons, select runtime versions, and keep advanced addon policies server-rendered in one place.', 'dbvc'); ?></p>
+        <p class="description"><?php esc_html_e('Each add-on now has its own settings workspace under this panel. The save path stays unified, but the UI is segmented by addon.', 'dbvc'); ?></p>
 
-        <?php if (! empty($addon_content_collector_groups) && ! empty($addon_content_collector_field_meta)) : ?>
-          <h3><?php esc_html_e('Content Collector', 'dbvc'); ?></h3>
-          <?php
-          $content_activation_group = $addon_content_collector_groups['activation']['fields'] ?? [];
-          $content_automation_group = $addon_content_collector_groups['automation']['fields'] ?? [];
-          ?>
+        <div class="dbvc-subtabs dbvc-subtabs--horizontal dbvc-addon-subtabs" data-dbvc-subtabs data-dbvc-subtabs-value-target="dbvc_addons_subtab">
+          <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Add-on settings', 'dbvc'); ?>">
+            <?php foreach ($addons_subtabs as $panel_id => $panel_meta) : ?>
+              <?php
+              $button_id = 'dbvc-nav-' . $panel_id;
+              $is_active = ($active_addons_subtab === $panel_id);
+              ?>
+              <button
+                type="button"
+                id="<?php echo esc_attr($button_id); ?>"
+                class="dbvc-subtabs-nav__item<?php echo $is_active ? ' is-active' : ''; ?>"
+                data-dbvc-subtab="<?php echo esc_attr($panel_id); ?>"
+                role="tab"
+                aria-controls="<?php echo esc_attr($panel_id); ?>"
+                aria-selected="<?php echo $is_active ? 'true' : 'false'; ?>">
+                <?php echo esc_html((string) ($panel_meta['label'] ?? $panel_id)); ?>
+              </button>
+            <?php endforeach; ?>
+          </nav>
 
-          <?php foreach ((array) $content_activation_group as $field_key) : ?>
-            <?php
-            $field_key = (string) $field_key;
-            if (! isset($addon_content_collector_field_meta[$field_key])) {
-              continue;
-            }
+          <div class="dbvc-subtabs-panels">
+            <section id="dbvc-addon-content-collector" class="dbvc-subtab-panel<?php echo $active_addons_subtab === 'dbvc-addon-content-collector' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-addon-content-collector" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-addon-content-collector" <?php echo $active_addons_subtab === 'dbvc-addon-content-collector' ? '' : 'hidden'; ?>>
+              <div class="dbvc-addon-panel">
+                <p class="description"><?php echo esc_html((string) ($addons_subtabs['dbvc-addon-content-collector']['description'] ?? '')); ?></p>
+                <?php if (! empty($addon_content_collector_groups) && ! empty($addon_content_collector_field_meta)) : ?>
+                  <?php $content_activation_group = (array) ($addon_content_collector_groups['activation']['fields'] ?? []); ?>
+                  <?php $content_automation_group = (array) ($addon_content_collector_groups['automation']['fields'] ?? []); ?>
 
-            $field_meta = $addon_content_collector_field_meta[$field_key];
-            $field_value = isset($addon_content_collector_settings[$field_key]) ? (string) $addon_content_collector_settings[$field_key] : '';
-            $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
-            $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
-            ?>
+                  <article class="dbvc-addon-group">
+                    <h3><?php echo esc_html((string) ($addon_content_collector_groups['activation']['label'] ?? __('Activation', 'dbvc'))); ?></h3>
+                    <?php $render_addon_fields_group($content_activation_group, $addon_content_collector_field_meta, $addon_content_collector_settings); ?>
+                  </article>
 
-            <?php if (($field_meta['input'] ?? 'text') === 'checkbox') : ?>
-              <p>
-                <label>
-                  <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
-                  <?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?>
-                </label>
-                <?php if ($field_help !== '') : ?>
-                  <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                  <details class="dbvc-addon-advanced-group dbvc-addon-group" <?php echo $addon_content_collector_runtime === DBVC_CC_V2_Contracts::RUNTIME_V2 ? 'open' : ''; ?>>
+                    <summary><strong><?php echo esc_html((string) ($addon_content_collector_groups['automation']['label'] ?? __('Advanced V2 Automation', 'dbvc'))); ?></strong></summary>
+                    <p class="description"><?php esc_html_e('These policy defaults are global, but learned patterns and decisions stay isolated per source domain.', 'dbvc'); ?></p>
+                    <?php $render_addon_fields_group($content_automation_group, $addon_content_collector_field_meta, $addon_content_collector_settings); ?>
+                  </details>
+                <?php else : ?>
+                  <p><?php esc_html_e('Content Collector add-on settings metadata unavailable.', 'dbvc'); ?></p>
                 <?php endif; ?>
-              </p>
-            <?php else : ?>
-              <p>
-                <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?></strong></label><br>
-                <select id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>">
-                  <?php foreach ((array) ($field_meta['options'] ?? []) as $option_value => $option_label) : ?>
-                    <option value="<?php echo esc_attr((string) $option_value); ?>" <?php selected($field_value, (string) $option_value); ?>>
-                      <?php echo esc_html((string) $option_label); ?>
-                    </option>
+              </div>
+            </section>
+
+            <section id="dbvc-addon-bricks" class="dbvc-subtab-panel<?php echo $active_addons_subtab === 'dbvc-addon-bricks' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-addon-bricks" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-addon-bricks" <?php echo $active_addons_subtab === 'dbvc-addon-bricks' ? '' : 'hidden'; ?>>
+              <div class="dbvc-addon-panel">
+                <p class="description"><?php echo esc_html((string) ($addons_subtabs['dbvc-addon-bricks']['description'] ?? '')); ?></p>
+                <?php if (! empty($addon_bricks_groups) && ! empty($addon_bricks_field_meta)) : ?>
+                  <?php foreach ($addon_bricks_groups as $group) : ?>
+                    <?php
+                    $group_label = isset($group['label']) ? (string) $group['label'] : '';
+                    $group_fields = isset($group['fields']) && is_array($group['fields']) ? $group['fields'] : [];
+                    ?>
+                    <article class="dbvc-addon-group">
+                      <?php if ($group_label !== '') : ?>
+                        <h3><?php echo esc_html($group_label); ?></h3>
+                      <?php endif; ?>
+                      <?php $render_addon_fields_group($group_fields, $addon_bricks_field_meta, $addon_bricks_settings); ?>
+                    </article>
                   <?php endforeach; ?>
-                </select>
-                <?php if ($field_help !== '') : ?>
-                  <br><small class="description"><?php echo esc_html($field_help); ?></small>
+                <?php else : ?>
+                  <p><?php esc_html_e('Bricks add-on settings metadata unavailable.', 'dbvc'); ?></p>
                 <?php endif; ?>
-              </p>
-            <?php endif; ?>
-          <?php endforeach; ?>
+              </div>
+            </section>
 
-          <details class="dbvc-addon-advanced-group" <?php echo $addon_content_collector_runtime === DBVC_CC_V2_Contracts::RUNTIME_V2 ? 'open' : ''; ?>>
-            <summary><strong><?php esc_html_e('Advanced V2 Automation Settings', 'dbvc'); ?></strong></summary>
-            <p class="description"><?php esc_html_e('These policy defaults are global, but learned patterns and decisions stay isolated per source domain.', 'dbvc'); ?></p>
-
-            <?php foreach ((array) $content_automation_group as $field_key) : ?>
-              <?php
-              $field_key = (string) $field_key;
-              if (! isset($addon_content_collector_field_meta[$field_key])) {
-                continue;
-              }
-
-              $field_meta = $addon_content_collector_field_meta[$field_key];
-              $field_value = isset($addon_content_collector_settings[$field_key]) ? (string) $addon_content_collector_settings[$field_key] : '';
-              $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
-              $field_input = isset($field_meta['input']) ? (string) $field_meta['input'] : 'text';
-              $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
-              ?>
-
-              <?php if ($field_input === 'checkbox') : ?>
-                <p>
-                  <label>
-                    <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
-                    <?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?>
-                  </label>
-                  <?php if ($field_help !== '') : ?>
-                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
-                  <?php endif; ?>
-                </p>
-              <?php else : ?>
-                <p>
-                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html((string) ($field_meta['label'] ?? $field_key)); ?></strong></label><br>
-                  <input
-                    type="number"
-                    id="<?php echo esc_attr($field_id); ?>"
-                    name="<?php echo esc_attr($field_key); ?>"
-                    value="<?php echo esc_attr($field_value); ?>"
-                    min="<?php echo esc_attr((string) ($field_meta['min'] ?? '0')); ?>"
-                    max="<?php echo esc_attr((string) ($field_meta['max'] ?? '1')); ?>"
-                    step="<?php echo esc_attr((string) ($field_meta['step'] ?? '0.01')); ?>"
-                    class="small-text"
-                  />
-                  <?php if ($field_help !== '') : ?>
-                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
-                  <?php endif; ?>
-                </p>
-              <?php endif; ?>
-            <?php endforeach; ?>
-          </details>
-        <?php else : ?>
-          <p><?php esc_html_e('Content Collector add-on settings metadata unavailable.', 'dbvc'); ?></p>
-        <?php endif; ?>
-
-        <?php if (! empty($addon_bricks_groups) && ! empty($addon_bricks_field_meta)) : ?>
-          <h3><?php esc_html_e('Bricks Add-on', 'dbvc'); ?></h3>
-          <?php foreach ($addon_bricks_groups as $group) : ?>
-            <?php
-            $group_label = isset($group['label']) ? (string) $group['label'] : '';
-            $group_fields = isset($group['fields']) && is_array($group['fields']) ? $group['fields'] : [];
-            ?>
-            <?php if ($group_label !== '') : ?>
-              <h4><?php echo esc_html($group_label); ?></h4>
-            <?php endif; ?>
-            <?php foreach ($group_fields as $field_key) : ?>
-              <?php
-              $field_key = (string) $field_key;
-              if (! isset($addon_bricks_field_meta[$field_key])) {
-                continue;
-              }
-              $field_meta = $addon_bricks_field_meta[$field_key];
-              $input_type = isset($field_meta['input']) ? (string) $field_meta['input'] : 'text';
-              $field_label = isset($field_meta['label']) ? (string) $field_meta['label'] : $field_key;
-              $field_help = isset($field_meta['help']) ? (string) $field_meta['help'] : '';
-              $field_value = isset($addon_bricks_settings[$field_key]) ? (string) $addon_bricks_settings[$field_key] : '';
-              $field_id = 'dbvc-field-' . sanitize_html_class($field_key);
-              ?>
-
-              <?php if ($input_type === 'checkbox') : ?>
-                <p>
-                  <label>
-                    <input type="checkbox" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="1" <?php checked($field_value, '1'); ?> />
-                    <?php echo esc_html($field_label); ?>
-                  </label>
-                  <?php if ($field_help !== '') : ?>
-                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
-                  <?php endif; ?>
-                </p>
-              <?php elseif ($input_type === 'select') : ?>
-                <p>
-                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
-                  <select id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>">
-                    <?php foreach ((array) ($field_meta['options'] ?? []) as $option_value => $option_label) : ?>
-                      <option value="<?php echo esc_attr((string) $option_value); ?>" <?php selected($field_value, (string) $option_value); ?>>
-                        <?php echo esc_html((string) $option_label); ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                  <?php if ($field_help !== '') : ?>
-                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
-                  <?php endif; ?>
-                </p>
-              <?php elseif ($input_type === 'textarea') : ?>
-                <p>
-                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
-                  <textarea id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" rows="3" style="width:100%;"><?php echo esc_textarea($field_value); ?></textarea>
-                  <?php if ($field_help !== '') : ?>
-                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
-                  <?php endif; ?>
-                </p>
-              <?php else : ?>
-                <?php $html_type = $input_type === 'number' || $input_type === 'url' || $input_type === 'password' ? $input_type : 'text'; ?>
-                <p>
-                  <label for="<?php echo esc_attr($field_id); ?>"><strong><?php echo esc_html($field_label); ?></strong></label><br>
-                  <input type="<?php echo esc_attr($html_type); ?>" id="<?php echo esc_attr($field_id); ?>" name="<?php echo esc_attr($field_key); ?>" value="<?php echo esc_attr($field_value); ?>" class="regular-text" />
-                  <?php if ($field_help !== '') : ?>
-                    <br><small class="description"><?php echo esc_html($field_help); ?></small>
-                  <?php endif; ?>
-                </p>
-              <?php endif; ?>
-            <?php endforeach; ?>
-          <?php endforeach; ?>
-        <?php else : ?>
-          <p><?php esc_html_e('Bricks add-on settings metadata unavailable.', 'dbvc'); ?></p>
-        <?php endif; ?>
+            <section id="dbvc-addon-visual-editor" class="dbvc-subtab-panel<?php echo $active_addons_subtab === 'dbvc-addon-visual-editor' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-addon-visual-editor" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-addon-visual-editor" <?php echo $active_addons_subtab === 'dbvc-addon-visual-editor' ? '' : 'hidden'; ?>>
+              <div class="dbvc-addon-panel">
+                <p class="description"><?php echo esc_html((string) ($addons_subtabs['dbvc-addon-visual-editor']['description'] ?? '')); ?></p>
+                <?php if (! empty($addon_visual_editor_groups) && ! empty($addon_visual_editor_field_meta)) : ?>
+                  <?php foreach ($addon_visual_editor_groups as $group) : ?>
+                    <?php
+                    $group_label = isset($group['label']) ? (string) $group['label'] : '';
+                    $group_fields = isset($group['fields']) && is_array($group['fields']) ? $group['fields'] : [];
+                    ?>
+                    <article class="dbvc-addon-group">
+                      <?php if ($group_label !== '') : ?>
+                        <h3><?php echo esc_html($group_label); ?></h3>
+                      <?php endif; ?>
+                      <?php $render_addon_fields_group($group_fields, $addon_visual_editor_field_meta, $addon_visual_editor_settings); ?>
+                    </article>
+                  <?php endforeach; ?>
+                  <p><small class="description"><?php echo esc_html($addon_visual_editor_enabled === '1' ? __('Enabled. Authorized users can toggle frontend edit mode from the admin bar on supported singular Bricks pages.', 'dbvc') : __('Disabled. No frontend markers, overlay assets, or Visual Editor REST runtime will load.', 'dbvc')); ?></small></p>
+                <?php else : ?>
+                  <p><?php esc_html_e('Visual Editor add-on settings metadata unavailable.', 'dbvc'); ?></p>
+                <?php endif; ?>
+              </div>
+            </section>
+          </div>
+        </div>
 
         <?php submit_button(__('Save Add-ons', 'dbvc'), 'secondary', 'dbvc_config_save[addons]', false); ?>
       </section>
@@ -4725,6 +4849,17 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
       </div>
     </div>
   </div><!-- .wrap -->
+  <div id="dbvc-ai-review-workbench" class="dbvc-ai-review-workbench" hidden>
+    <div class="dbvc-ai-review-workbench__header">
+      <div class="dbvc-ai-review-workbench__eyebrow">
+        <span class="dbvc-badge dbvc-badge--reviewed"><?php esc_html_e('AI Intake Review', 'dbvc'); ?></span>
+        <span class="dbvc-ai-review-workbench__eyebrow-note"><?php esc_html_e('Retained package report', 'dbvc'); ?></span>
+      </div>
+      <h2><?php esc_html_e('AI Package Intake Review', 'dbvc'); ?></h2>
+      <p><?php esc_html_e('Review blocked or warning-state AI package results, inspect retained artifacts, and continue import only when explicitly allowed.', 'dbvc'); ?></p>
+    </div>
+    <div id="dbvc-ai-review-workbench-slot"></div>
+  </div>
   <div id="dbvc-admin-app-root"></div>
 
   <style>
@@ -4747,6 +4882,10 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     .dbvc-subtabs--horizontal { flex-direction:column; }
     .dbvc-subtabs--horizontal .dbvc-subtabs-nav { flex:0 0 auto; flex-direction:row; flex-wrap:wrap; gap:0.5rem; width:100%; }
     .dbvc-subtabs--horizontal .dbvc-subtabs-nav__item { flex:0 0 auto; }
+    .dbvc-addon-panel { display:flex; flex-direction:column; gap:1rem; }
+    .dbvc-addon-group { margin:0; padding:1rem 1.25rem; border:1px solid #dcdcde; border-radius:6px; background:#fff; }
+    .dbvc-addon-group h3 { margin-top:0; }
+    .dbvc-addon-advanced-group summary { cursor:pointer; }
     .dbvc-config-feedback { margin:0 0 1rem; }
     .dbvc-config-feedback .notice { margin:0 0 .75rem; }
     .dbvc-tools-panel form { margin-bottom:2rem; }
@@ -4788,7 +4927,16 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     .dbvc-option-chip--compact { flex:0 0 auto; max-width:none; min-width:0; }
     .dbvc-option-chip input { margin:2px 0 0; }
     .dbvc-option-chip__text { display:block; line-height:1.35; }
-    .dbvc-ai-review-panel { padding:1rem 1.25rem; }
+    .dbvc-ai-review-workbench { margin:24px 0 28px; padding:20px 22px; border:1px solid #dcdcde; border-radius:14px; background:linear-gradient(135deg, rgba(34, 113, 177, 0.08), rgba(255, 255, 255, 0) 45%), linear-gradient(180deg, #ffffff, #f7fbff); box-shadow:0 10px 24px rgba(15, 23, 42, 0.05); }
+    .dbvc-ai-review-workbench[hidden] { display:none !important; }
+    .dbvc-ai-review-workbench__header { margin:0 0 16px; }
+    .dbvc-ai-review-workbench__eyebrow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+    .dbvc-ai-review-workbench__eyebrow-note { font-size:12px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:#646970; }
+    .dbvc-ai-review-workbench__header h2 { margin:0 0 6px; }
+    .dbvc-ai-review-workbench__header p { margin:0; color:#50575e; max-width:900px; }
+    .dbvc-ai-review-panel { padding:1rem 1.25rem; border:1px solid #dcdcde; border-radius:12px; background:#fff; box-shadow:0 4px 14px rgba(15, 23, 42, 0.04); }
+    .dbvc-ai-review-panel.is-blocked { border-color:rgba(214, 54, 56, 0.24); background:linear-gradient(180deg, #fff8f8, #ffffff 40%); }
+    .dbvc-ai-review-panel.is-review { border-color:rgba(34, 113, 177, 0.22); background:linear-gradient(180deg, #f7fbff, #ffffff 42%); }
     .dbvc-ai-review-panel__actions { display:flex; flex-wrap:wrap; gap:0.5rem; margin:0.75rem 0 1rem; }
     .dbvc-ai-review-panel__import-form { margin:0.5rem 0 1rem; }
     .dbvc-ai-review-panel__table-wrap { overflow:auto; margin:0.5rem 0 1rem; }
@@ -5002,6 +5150,41 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
       window.addEventListener('hashchange', function() {
         activateFromHash(window.location.hash);
       });
+
+      function relocateAiReviewPanel() {
+        const workbench = document.getElementById('dbvc-ai-review-workbench');
+        const slot = document.getElementById('dbvc-ai-review-workbench-slot');
+        if (!workbench || !slot) {
+          return;
+        }
+
+        const panels = Array.from(document.querySelectorAll('#dbvc-import-upload > .dbvc-ai-review-panel'));
+        if (!panels.length) {
+          workbench.hidden = true;
+          return;
+        }
+
+        slot.innerHTML = '';
+        panels.forEach(function(panel) {
+          if (panel.classList.contains('notice-error')) {
+            panel.classList.add('is-blocked');
+          } else {
+            panel.classList.add('is-review');
+          }
+
+          panel.classList.remove('notice', 'notice-error', 'notice-info', 'updated', 'error');
+          panel.style.marginTop = '0';
+          slot.appendChild(panel);
+        });
+
+        workbench.hidden = false;
+
+        if (window.location.hash === '#dbvc-ai-review-workbench' || window.location.hash === '#dbvc-import-upload') {
+          workbench.scrollIntoView({ block: 'start', behavior: 'auto' });
+        }
+      }
+
+      relocateAiReviewPanel();
     })();
 
     jQuery(function($) {

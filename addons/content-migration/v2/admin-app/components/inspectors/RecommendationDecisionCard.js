@@ -84,6 +84,157 @@ const renderTargetMeta = ( recommendation ) => {
 	return null;
 };
 
+const renderSelectionEvidence = ( recommendation ) => {
+	const selection = recommendation?.selection || {};
+	if ( ! selection || ! Array.isArray( selection.alternatives ) ) {
+		return null;
+	}
+
+	const reasonCodes = Array.isArray( selection.reason_codes )
+		? selection.reason_codes.filter( Boolean )
+		: [];
+	const alternatives = selection.alternatives.slice( 0, 3 );
+	const marginText =
+		typeof selection.margin_to_next === 'number'
+			? `${ Math.round( selection.margin_to_next * 100 ) }% margin`
+			: '';
+	const candidateCount =
+		typeof selection.candidate_count === 'number'
+			? `${ selection.candidate_count } candidates`
+			: '';
+
+	return (
+		<div className="dbvc-cc-v2-decision-card__section dbvc-cc-v2-decision-card__section--full">
+			<p className="dbvc-cc-v2-eyebrow">Selection evidence</p>
+			<p>
+				{ selection.status === 'ambiguous'
+					? 'Selection stayed ambiguous and defaults to unresolved until a reviewer confirms it.'
+					: 'Selection was resolved deterministically from the bounded candidate pool.' }
+			</p>
+			{ reasonCodes.length ? (
+				<p className="dbvc-cc-v2-table__meta">
+					Signals:{ ' ' }
+					{ reasonCodes.map( formatReasonCode ).join( ' · ' ) }
+				</p>
+			) : null }
+			{ marginText || candidateCount ? (
+				<p className="dbvc-cc-v2-table__meta">
+					{ [ marginText, candidateCount ]
+						.filter( Boolean )
+						.join( ' · ' ) }
+				</p>
+			) : null }
+			{ alternatives.length > 1 ? (
+				<ul className="dbvc-cc-v2-compact-list">
+					{ alternatives.map( ( alternative ) => {
+						const adjustedConfidence =
+							typeof alternative.adjusted_confidence === 'number'
+								? `${ Math.round(
+										alternative.adjusted_confidence * 100
+								  ) }%`
+								: '';
+						const rawConfidence =
+							typeof alternative.confidence === 'number'
+								? `${ Math.round(
+										alternative.confidence * 100
+								  ) }% raw`
+								: '';
+
+						return (
+							<li
+								key={ `${ alternative.target_ref }-${
+									alternative.selected_rank || 'rank'
+								}` }
+							>
+								<strong>
+									{ getTargetLabel( alternative ) }
+								</strong>{ ' ' }
+								{ [ adjustedConfidence, rawConfidence ]
+									.filter( Boolean )
+									.join( ' · ' ) }
+							</li>
+						);
+					} ) }
+				</ul>
+			) : null }
+		</div>
+	);
+};
+
+const renderFieldContextEvidence = ( recommendation ) => {
+	const compact = recommendation?.field_context_compact || {};
+	if ( ! compact || typeof compact !== 'object' ) {
+		return null;
+	}
+
+	const warnings = Array.isArray( compact.warnings )
+		? compact.warnings.filter( Boolean )
+		: [];
+	const branchPath = Array.isArray( compact.branch_label_path )
+		? compact.branch_label_path.filter( Boolean ).join( ' > ' )
+		: '';
+	const providerBits = [
+		compact.provider_status ? `Provider ${ compact.provider_status }` : '',
+		compact.schema_version ? `Schema ${ compact.schema_version }` : '',
+		compact.contract_version
+			? `Contract ${ compact.contract_version }`
+			: '',
+	]
+		.filter( Boolean )
+		.join( ' · ' );
+	let writableLabel = '';
+	if ( typeof compact.writable === 'boolean' ) {
+		writableLabel = compact.writable ? 'Writable' : 'Read-only';
+	}
+	const shapeBits = [
+		compact.field_type || '',
+		compact.value_shape || compact.content_type || '',
+		writableLabel,
+		compact.clone_projected ? 'Clone projected' : '',
+	]
+		.filter( Boolean )
+		.join( ' · ' );
+
+	if (
+		! providerBits &&
+		! branchPath &&
+		! compact.field_purpose &&
+		! compact.group_purpose &&
+		! shapeBits &&
+		! warnings.length
+	) {
+		return null;
+	}
+
+	return (
+		<div className="dbvc-cc-v2-decision-card__section dbvc-cc-v2-decision-card__section--full">
+			<p className="dbvc-cc-v2-eyebrow">Field Context</p>
+			{ providerBits ? (
+				<p className="dbvc-cc-v2-table__meta">{ providerBits }</p>
+			) : null }
+			{ branchPath ? (
+				<p className="dbvc-cc-v2-table__meta">Branch: { branchPath }</p>
+			) : null }
+			{ compact.field_purpose ? <p>{ compact.field_purpose }</p> : null }
+			{ compact.group_purpose ? (
+				<p className="dbvc-cc-v2-table__meta">
+					Group purpose: { compact.group_purpose }
+				</p>
+			) : null }
+			{ shapeBits ? (
+				<p className="dbvc-cc-v2-table__meta">{ shapeBits }</p>
+			) : null }
+			{ warnings.length ? (
+				<ul className="dbvc-cc-v2-compact-list">
+					{ warnings.map( ( warning ) => (
+						<li key={ warning }>{ formatReasonCode( warning ) }</li>
+					) ) }
+				</ul>
+			) : null }
+		</div>
+	);
+};
+
 export default function RecommendationDecisionCard( {
 	item,
 	mode = 'read',
@@ -126,6 +277,11 @@ export default function RecommendationDecisionCard( {
 					{ item.isConflicted ? (
 						<span className="dbvc-cc-v2-chip dbvc-cc-v2-chip--muted">
 							Conflict
+						</span>
+					) : null }
+					{ recommendation?.selection?.status === 'ambiguous' ? (
+						<span className="dbvc-cc-v2-chip dbvc-cc-v2-chip--warning">
+							Ambiguous
 						</span>
 					) : null }
 					{ confidence ? (
@@ -177,6 +333,8 @@ export default function RecommendationDecisionCard( {
 						</p>
 					) : null }
 				</div>
+				{ renderFieldContextEvidence( recommendation ) }
+				{ renderSelectionEvidence( recommendation ) }
 			</div>
 
 			{ mode === 'edit' ? (

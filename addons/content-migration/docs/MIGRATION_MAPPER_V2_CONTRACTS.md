@@ -217,6 +217,7 @@ Recommended domain-level artifacts:
 - `_learning/domain-pattern-memory.v1.json`
 - `_schema/dbvc_cc_target_object_inventory.v1.json`
 - `_schema/dbvc_cc_target_field_catalog.v2.json`
+- `_schema/dbvc_cc_target_slot_graph.v1.json`
 - `_packages/package-builds.v1.json`
 
 ### URL-level artifacts
@@ -232,6 +233,7 @@ Recommended URL-level artifacts:
 - `{slug}.ingestion-package.v2.json`
 - `{slug}.context-creation.v1.json`
 - `{slug}.initial-classification.v1.json`
+- `{slug}.routing-artifact.v1.json`
 - `{slug}.mapping-index.v1.json`
 - `{slug}.target-transform.v1.json`
 - `{slug}.mapping-recommendations.v2.json`
@@ -471,7 +473,41 @@ Required top-level fields:
 - `taxonomy_hints[]`
 - `review`
 
-### 8. `*.mapping-index.v1.json`
+### 8. `*.routing-artifact.v1.json`
+
+Purpose:
+- persists additive routing evidence between classification and mapping
+
+Required top-level fields:
+- `artifact_schema_version`
+- `artifact_type` = `routing-artifact.v1`
+- `journey_id`
+- `page_id`
+- `source_url`
+- `generated_at`
+- `status`
+- `primary_route`
+- `section_routes[]`
+- `summary`
+- `review`
+
+Required `primary_route` fields:
+- `object_key`
+- `object_identity`
+- `page_intent`
+- `dominant_section_scopes[]`
+- `confidence`
+- `rationale[]`
+
+Required `section_routes[]` fields:
+- `route_id`
+- `section_id`
+- `source_refs`
+- `context_tag`
+- `section_scope`
+- `confidence`
+
+### 9. `*.mapping-index.v1.json`
 
 Purpose:
 - candidate matrix between structured content items and target schema fields
@@ -485,9 +521,18 @@ Required top-level fields:
 - `generated_at`
 - `catalog_fingerprint`
 - `classification_ref`
+- `routing_ref`
 - `content_items[]`
 - `unresolved_items[]`
 - `stats`
+
+Recommended additive top-level fields:
+- `field_context_provider`
+- `routing`
+
+Recommended additive `unresolved_items[]` fields:
+- `unresolved_class`
+- `reason_codes[]`
 
 Per-content-item fields:
 - `item_id`
@@ -498,7 +543,15 @@ Per-content-item fields:
 - `confidence_summary`
 - `notes`
 
-### 9. `*.target-transform.v1.json`
+Recommended additive per-content-item fields:
+- `section_id`
+- `content_role`
+
+Recommended additive stats fields:
+- `structured_section_item_count`
+- `skipped_section_count`
+
+### 10. `*.target-transform.v1.json`
 
 Purpose:
 - stores target-ready transformed values derived from the current mapping model
@@ -523,7 +576,17 @@ Per-transform-item fields:
 - `preview_value`
 - `warnings[]`
 
-### 10. `*.mapping-recommendations.v2.json`
+Recommended additive per-transform-item fields:
+- `selection`
+- `value_contract`
+- `value_contract_validation`
+
+Recommended additive trace fields:
+- `slot_graph_status`
+- `slot_graph_ref`
+- `slot_graph_fingerprint`
+
+### 11. `*.mapping-recommendations.v2.json`
 
 Purpose:
 - canonical reviewer-facing recommendation payload
@@ -545,6 +608,13 @@ Required top-level fields:
 - `review`
 - `trace`
 
+Recommended additive top-level fields:
+- `field_context_provider`
+
+Recommended additive `unresolved_items[]` fields:
+- `unresolved_class`
+- `reason_codes[]`
+
 Per-recommendation fields:
 - `recommendation_id`
 - `source_refs`
@@ -558,7 +628,15 @@ Per-recommendation fields:
 - `target_evidence`
 - `requires_review`
 
-### 11. `*.mapping-decisions.v2.json`
+Recommended additive per-recommendation fields:
+- `default_decision`
+- `selection`
+- `transform_status`
+- `transform_warnings`
+- `value_contract`
+- `value_contract_validation`
+
+### 12. `*.mapping-decisions.v2.json`
 
 Purpose:
 - reviewer decisions against the canonical recommendation payload
@@ -596,7 +674,7 @@ Allowed `selected_resolution_mode` values:
 - `blocked_needs_review`
 - `skip_out_of_scope`
 
-### 12. `*.media-candidates.v2.json`
+### 13. `*.media-candidates.v2.json`
 
 Purpose:
 - media inventory aligned to the V2 recommendation model
@@ -612,7 +690,7 @@ Required top-level fields:
 - `media_items[]`
 - `stats`
 
-### 13. `*.media-decisions.v2.json`
+### 14. `*.media-decisions.v2.json`
 
 Purpose:
 - reviewer media decisions aligned to the V2 recommendation flow
@@ -630,7 +708,7 @@ Required top-level fields:
 - `ignored[]`
 - `conflicts[]`
 
-### 14. `*.qa-report.v1.json`
+### 15. `*.qa-report.v1.json`
 
 Purpose:
 - URL-level QA validation summary before package assembly
@@ -646,6 +724,19 @@ Required top-level fields:
 - `blocking_issues[]`
 - `warnings[]`
 - `quality_score`
+
+Recommended additive top-level fields:
+- `fieldContextProvider`
+- `fieldContextProviderCurrent`
+- `fieldContextProviderDrift`
+- `fieldContextSelection`
+- `benchmarkGate`
+- `stats.fieldContextAmbiguousRecommendationCount`
+- `stats.fieldContextAmbiguousReviewedCount`
+- `stats.benchmarkGateStatus`
+- `stats.fieldContextProviderDriftCount`
+- `stats.transformBlockedCount`
+- `stats.transformWarningCount`
 
 Recommended `readiness_status` values:
 - `ready_for_import`
@@ -762,6 +853,9 @@ Required fields:
 - `warnings[]`
 - `quality_score`
 
+Recommended additive fields:
+- `benchmark_summary`
+
 Recommended `readiness_status` values:
 - `ready_for_import`
 - `needs_review`
@@ -778,6 +872,10 @@ Required fields:
 - `exception_count`
 - `auto_accepted_count`
 - `manual_override_count`
+
+Recommended additive fields:
+- `benchmark_status`
+- `benchmark_high_risk_page_count`
 
 ## Domain Journey Event Contract
 

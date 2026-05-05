@@ -122,6 +122,7 @@ final class DBVC_CC_V2_Domain_Journey_Service
             'package_builds_file' => trailingslashit($packages_dir) . DBVC_CC_V2_Contracts::STORAGE_PACKAGE_BUILDS_FILE,
             'target_object_inventory_file' => trailingslashit($schema_dir) . DBVC_CC_V2_Contracts::STORAGE_TARGET_OBJECT_INVENTORY_FILE,
             'target_field_catalog_file' => trailingslashit($schema_dir) . DBVC_CC_V2_Contracts::STORAGE_TARGET_FIELD_CATALOG_FILE,
+            'target_slot_graph_file' => trailingslashit($schema_dir) . DBVC_CC_V2_Contracts::STORAGE_TARGET_SLOT_GRAPH_FILE,
         ];
 
         foreach ($context as $path_key => $path) {

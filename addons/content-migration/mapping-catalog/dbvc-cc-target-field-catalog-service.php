@@ -482,30 +482,16 @@ final class DBVC_CC_Target_Field_Catalog_Service
             $field_catalog = [];
             if (is_array($group_fields)) {
                 foreach ($group_fields as $field) {
-                    if (! is_array($field)) {
-                        continue;
+                    if (is_array($field)) {
+                        $this->collect_acf_field_entries($field_catalog, $field, $group_key);
                     }
-
-                    $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
-                    if ($field_key === '') {
-                        continue;
-                    }
-
-                    $field_catalog[$field_key] = [
-                        'key' => $field_key,
-                        'name' => isset($field['name']) ? sanitize_key((string) $field['name']) : '',
-                        'label' => isset($field['label']) ? sanitize_text_field((string) $field['label']) : '',
-                        'type' => isset($field['type']) ? sanitize_key((string) $field['type']) : '',
-                        'required' => ! empty($field['required']),
-                        'parent' => isset($field['parent']) ? sanitize_key((string) $field['parent']) : '',
-                        'return_format' => isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : '',
-                    ];
                 }
                 ksort($field_catalog);
                 foreach ($field_catalog as $field_key => $field_entry) {
                     if (! is_array($field_entry)) {
                         continue;
                     }
+
                     $parent_key = isset($field_entry['parent']) ? sanitize_key((string) $field_entry['parent']) : '';
                     $field_catalog[$field_key]['parent_type'] = ($parent_key !== '' && isset($field_catalog[$parent_key]) && is_array($field_catalog[$parent_key]))
                         ? (isset($field_catalog[$parent_key]['type']) ? sanitize_key((string) $field_catalog[$parent_key]['type']) : '')
@@ -515,9 +501,12 @@ final class DBVC_CC_Target_Field_Catalog_Service
 
             $catalog_groups[$group_key] = [
                 'key' => $group_key,
+                'group_name' => isset($group['name']) ? sanitize_key((string) $group['name']) : sanitize_title((string) ($group['title'] ?? $group_key)),
                 'title' => isset($group['title']) ? sanitize_text_field((string) $group['title']) : '',
                 'position' => isset($group['position']) ? sanitize_key((string) $group['position']) : '',
                 'location' => isset($group['location']) && is_array($group['location']) ? $group['location'] : [],
+                'vf_field_context' => $this->sanitize_context_meta(isset($group['vf_field_context']) ? $group['vf_field_context'] : []),
+                'gardenai_field_purpose' => isset($group['gardenai_field_purpose']) ? sanitize_text_field((string) $group['gardenai_field_purpose']) : '',
                 'fields' => $field_catalog,
             ];
         }
@@ -527,6 +516,157 @@ final class DBVC_CC_Target_Field_Catalog_Service
             'available' => true,
             'groups' => $catalog_groups,
         ];
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $field_catalog
+     * @param array<string, mixed>                $field
+     * @param string                              $group_key
+     * @param array<int, string>                  $ancestor_field_keys
+     * @param array<int, string>                  $ancestor_name_path
+     * @param array<int, string>                  $ancestor_label_path
+     * @return void
+     */
+    private function collect_acf_field_entries(
+        array &$field_catalog,
+        array $field,
+        $group_key,
+        array $ancestor_field_keys = [],
+        array $ancestor_name_path = [],
+        array $ancestor_label_path = []
+    ) {
+        $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        if ($field_key === '') {
+            return;
+        }
+
+        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+        $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
+        $field_label = isset($field['label']) ? sanitize_text_field((string) $field['label']) : '';
+
+        $field_catalog[$field_key] = [
+            'key' => $field_key,
+            'group_key' => sanitize_key((string) $group_key),
+            'name' => $field_name,
+            'label' => $field_label,
+            'type' => $field_type,
+            'container_type' => $this->infer_acf_container_type($field),
+            'required' => ! empty($field['required']),
+            'parent' => isset($field['parent']) ? sanitize_key((string) $field['parent']) : '',
+            'return_format' => isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : '',
+            'ancestor_field_keys' => array_values($ancestor_field_keys),
+            'ancestor_name_path' => array_values($ancestor_name_path),
+            'ancestor_label_path' => array_values($ancestor_label_path),
+            'depth' => count($ancestor_field_keys),
+            'has_sub_fields' => ! empty($field['sub_fields']) && is_array($field['sub_fields']),
+            'vf_field_context' => $this->sanitize_context_meta(isset($field['vf_field_context']) ? $field['vf_field_context'] : []),
+            'gardenai_field_purpose' => isset($field['gardenai_field_purpose']) ? sanitize_text_field((string) $field['gardenai_field_purpose']) : '',
+        ];
+
+        $next_ancestor_field_keys = $ancestor_field_keys;
+        $next_ancestor_name_path = $ancestor_name_path;
+        $next_ancestor_label_path = $ancestor_label_path;
+
+        if ($field_name !== '' || $field_label !== '') {
+            $next_ancestor_field_keys[] = $field_key;
+            if ($field_name !== '') {
+                $next_ancestor_name_path[] = $field_name;
+            }
+            if ($field_label !== '') {
+                $next_ancestor_label_path[] = $field_label;
+            }
+        }
+
+        if (! empty($field['sub_fields']) && is_array($field['sub_fields'])) {
+            foreach ($field['sub_fields'] as $sub_field) {
+                if (is_array($sub_field)) {
+                    $this->collect_acf_field_entries(
+                        $field_catalog,
+                        $sub_field,
+                        $group_key,
+                        $next_ancestor_field_keys,
+                        $next_ancestor_name_path,
+                        $next_ancestor_label_path
+                    );
+                }
+            }
+        }
+
+        if (! empty($field['layouts']) && is_array($field['layouts'])) {
+            foreach ($field['layouts'] as $layout) {
+                if (! is_array($layout) || empty($layout['sub_fields']) || ! is_array($layout['sub_fields'])) {
+                    continue;
+                }
+
+                $layout_name = isset($layout['name']) ? sanitize_key((string) $layout['name']) : '';
+                $layout_label = isset($layout['label']) ? sanitize_text_field((string) $layout['label']) : '';
+                $layout_ancestor_name_path = $next_ancestor_name_path;
+                $layout_ancestor_label_path = $next_ancestor_label_path;
+                if ($layout_name !== '') {
+                    $layout_ancestor_name_path[] = $layout_name;
+                }
+                if ($layout_label !== '') {
+                    $layout_ancestor_label_path[] = $layout_label;
+                }
+
+                foreach ($layout['sub_fields'] as $sub_field) {
+                    if (is_array($sub_field)) {
+                        $this->collect_acf_field_entries(
+                            $field_catalog,
+                            $sub_field,
+                            $group_key,
+                            $next_ancestor_field_keys,
+                            $layout_ancestor_name_path,
+                            $layout_ancestor_label_path
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     * @return string
+     */
+    private function infer_acf_container_type(array $field)
+    {
+        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+
+        return in_array($field_type, ['group', 'repeater', 'flexible_content', 'clone'], true)
+            ? $field_type
+            : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<string, mixed>
+     */
+    private function sanitize_context_meta($value)
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $sanitized = [];
+        foreach ($value as $key => $item) {
+            $clean_key = is_string($key) ? sanitize_key($key) : (is_int($key) ? $key : null);
+            if ($clean_key === null) {
+                continue;
+            }
+
+            if (is_array($item)) {
+                $sanitized[$clean_key] = $this->sanitize_context_meta($item);
+            } elseif (is_bool($item)) {
+                $sanitized[$clean_key] = $item;
+            } elseif (is_numeric($item)) {
+                $sanitized[$clean_key] = $item + 0;
+            } elseif (is_scalar($item)) {
+                $sanitized[$clean_key] = sanitize_text_field((string) $item);
+            }
+        }
+
+        return $sanitized;
     }
 
     /**

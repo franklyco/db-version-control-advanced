@@ -37,6 +37,7 @@ export default function PackageDetailPanel( { packageDetail } ) {
 	const summary = packageDetail.summary || {};
 	const manifest = packageDetail.manifest || {};
 	const qaReport = packageDetail.qaReport || {};
+	const benchmarkSummary = qaReport?.benchmark_summary || {};
 
 	return (
 		<>
@@ -72,6 +73,13 @@ export default function PackageDetailPanel( { packageDetail } ) {
 				<article className="dbvc-cc-v2-placeholder-card">
 					<p className="dbvc-cc-v2-eyebrow">QA</p>
 					<p>Quality score: { qaReport.quality_score ?? 0 }</p>
+					<p>
+						Benchmark gate: { benchmarkSummary.status || 'unknown' }
+					</p>
+					<p>
+						High-risk pages:{ ' ' }
+						{ benchmarkSummary.highRiskPageCount ?? 0 }
+					</p>
 					<p>
 						Blockers:{ ' ' }
 						{ Array.isArray( qaReport.blocking_issues )

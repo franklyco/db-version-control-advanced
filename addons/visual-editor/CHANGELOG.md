@@ -1,0 +1,96 @@
+# Changelog
+
+## Unreleased
+
+- Added a status-bar editor link that defaults to the current frontend entity and switches to the active field owner while a panel target is open, then falls back again when the panel closes
+- Renamed the dropped scaffold package to `addons/visual-editor/` and aligned docs to the repo path
+- Added repo-adapted bootstrap facade `DBVC_Visual_Editor_Addon` and DBVC core loading integration
+- Added Add-ons screen settings integration for enabling/disabling the Visual Editor runtime
+- Added nonce-backed frontend edit mode toggle for authorized users on supported singular views
+- Added Bricks render-attribute instrumentation for direct supported dynamic text bindings
+- Added transient-backed descriptor session registry keyed to the current user and request session
+- Added authenticated REST session, descriptor inspection, and guarded save endpoints under `dbvc/v1/visual-editor/...`
+- Added initial resolver allowlist for direct post title and simple ACF text-like fields
+- Added audit logging and post-cache invalidation hooks for successful saves
+- Replaced browser prompt editing with an in-page overlay editor panel and in-place DOM updates after save
+- Added a client-side guard that disables saving when the resolved backend value does not match the rendered page text
+- Added a server-side Bricks render verification pass that removes mismatched markers before they reach the browser
+- Added direct `post_excerpt` support to the guarded MVP resolver allowlist
+- Added Bricks-backed ACF object-context resolution for current-post, options, user, and taxonomy-term targets on singular page requests
+- Expanded the guarded ACF allowlist to include `wysiwyg`, `checkbox`, `select`, `radio`, `button_group`, and `link`
+- Expanded the overlay panel with field-type-aware editors for rich text, checkbox groups, selects, and structured link values
+- Added resolver-aware display projection matching so structured fields can verify and update against the actual rendered text safely
+- Added shared-scope warnings for option, term, and user-backed ACF targets and option-cache invalidation hooks after save
+- Added server-enforced shared-scope acknowledgement before saving option, term, or user-backed targets
+- Added session-local sync groups so repeated markers for the same resolved field projection update together after save
+- Replaced the temporary WYSIWYG proof-of-life control with a real WordPress `wp.editor.initialize()` Visual/Code editor when frontend editor assets are available
+- Added authenticated session descriptor hydration and client-side caching so the modal can open fields without a second cold descriptor request in the common case
+- Broadened candidate detection to exact single-tag Bricks dynamic expressions with safe args, while still rejecting mixed literal content
+- Added safe Bricks top-level `link` control support for direct single-tag external ACF bindings, with render-verified `href` markers and in-place attribute updates after save
+- Tightened sync groups so repeated markers stay scoped to the matched render projection instead of cross-updating different projections of the same field
+- Added source-level projection syncing so structured field saves can refresh other matched projections of the same resolved field on the current page without a reload
+- Added support for image-style Bricks `link = url` payloads when the URL resolves from a direct single-tag external ACF binding
+- Added support for deterministic repeater-style Bricks link collections such as `list`, `social-icons`, and custom-link `image-gallery` anchors
+- Added permalink-based save support for current-entity ACF `post_object`, single-target `relationship`, and single-select `taxonomy` fields when rendered as direct link targets
+- Added a Bricks loop-context resolver for safe ACF `relationship` / `post_object` post-loop ownership detection
+- Added per-loop-row descriptor identity so repeated Bricks element UIDs can be marked safely across related-post loop rows
+- Added related-post loop modal context and acknowledgement copy so saves can explicitly target the loop owner rather than the current page
+- Kept the Site Settings `universal_cta_options` global-link group read-only in Visual Editor so those fields remain editable only from the ACF options page
+- Added inspect-only `readonly` descriptors so advanced exact-tag ACF sources and generic concrete-owner query-loop rows can surface in the overlay without enabling unsafe writes
+- Added a dedicated inspect-only ACF resolver and preview panel state for nested/object-style fields such as repeater-, relationship-, and flexible-like payloads that are not yet save-capable
+- Broadened loop context handling so concrete non-current post owners can be surfaced honestly in the modal even when the save path is still out of scope
+- Added related/shared/inspect marker treatments so non-current post and inspect-only sources remain visually distinct before interaction
+- Added direct Bricks image element support for single-tag ACF image fields, with rendered `src` verification, attachment-ID-first saving, local Media Library URL fallback resolution, and in-place refresh of responsive image attributes after save
+- Added direct Bricks `_background.image` support for single-tag ACF image fields, with rendered background-image verification and in-place background refresh after attachment-backed saves
+- Added inspect-only Bricks image-gallery surfacing for single-tag ACF gallery fields with thumbnail preview in the modal
+- Moved marker badges into a fixed overlay layer so theme `overflow: hidden` styles no longer clip the Visual Editor controls
+- Added narrow writable ACF repeater row support for stable Bricks repeater loops on current-post and related-post owners
+- Added repeater-aware source and sync grouping so saves no longer bleed across rows of the same repeater field
+- Added repeater row metadata to the modal source summary and a repo-specific repeater implementation plan doc
+- Kept unsupported scopes explicitly out of the MVP slice instead of guessing from rendered HTML
+- Added a repo-specific badge/hydration planning doc and updated the advanced/phase architecture docs around a shared active badge runtime, lazy descriptor hydration, and no runtime token-cache table by default
+- Replaced per-marker detached badges with one shared active badge controller and changed initial session bootstrap to public-map-only by default, with descriptor payloads fetched on demand and cached after first lookup
+- Added short-dwell active-marker descriptor prefetch, shared descriptor-request reuse, and first-tap/second-tap touch selection rules for the shared Visual Editor badge flow
+- Added direct WordPress `{featured_image}` support for Bricks image and `_background.image` controls, reusing the attachment-ID-first media modal and post thumbnail save contract instead of limiting image editing to ACF image fields only
+- Added lightweight owner-type badge refinement so the shared badge and source summary can distinguish `Related Post`, `Shared Term`, `Shared User`, and similar non-current owner labels from the session public map without eager descriptor hydration
+- Extended that owner-type refinement into panel acknowledgement copy, save-button labels, and locked-state messaging so shared term/user/option targets read consistently once the editor opens
+- Added entity-aware panel summaries so the editor can show the actual entity title/name, canonical frontend/backend editor links where available, and an expandable raw source-details block for the current dynamic binding
+- Added structured panel notice summaries so inspect-only and locked states can call out the exact entity and source field that remain outside the current save scope
+- Extracted descriptor/entity/source summary building into a shared presentation builder so save responses can reuse the same summaries for post-save panel and status-bar confirmations
+- Added a formal Descriptor V2 shape carrying explicit page, owner, loop, path, and mutation-contract metadata for advanced loop-owned and nested-field planning
+- Added dedicated Visual Editor journal tables and recorder services so saves can write durable change-set and change-item history without overloading transient descriptor sessions
+- Added an explicit mutation-contract service so supported current/shared/repeater/loop-owned save paths are enforced by contract rather than only by scope inference
+- Added save-contract details to the panel source-summary block and tightened `canEdit` so non-enabled contracts do not present as writable in the modal
+- Merged the latest frontend styling tweaks for related-scope badge color tokens, pulsing empty-field placeholders on text-like targets, and a narrow image overflow override instead of a broad target overflow rule
+- Broadened loop-owner handling so direct safe ACF fields on concrete queried post, term, and user owners can save through the explicit loop-owned contract path instead of being forced into inspect-only mode
+- Added stable direct flexible-content descendant support with row + layout descriptor metadata, resolver-backed value inspection, and narrow writable `flexible_layout` / `loop_owned_flexible_layout` contracts for current/related post text-like, WYSIWYG, choice, link, and image subfields
+- Relaxed flexible layout-name inference so Bricks flexible query loops that use shortened child tags like `acf_flexible_layouts_*` against fuller loop object types such as `acf_core_sections_flexible_layouts` can still resolve editable flexible descendants safely
+- Fixed a Bricks link-setting inspector warning path where array-valued `settings.link` data was being coerced into a string during render-time candidate inspection
+- Broadened loop-owner entity mapping so Bricks custom query-editor loops that surface real `WP_Post` objects or CPT slugs such as `benefit` can still resolve queried-post ACF fields as editable related owners
+- Added nested ACF group ancestry to descriptor source/path metadata and taught repeater/flexible row reads and writes to traverse that ancestry before touching the leaf field value
+- Added nested-group ancestry plus leaf-selector identity to live source/sync grouping so same-named grouped descendants do not cross-update each other after save
+- Changed the Visual Editor panel UX so it stays closed by default, opens from badge clicks, closes on outside click, and can be drag-positioned for the current browser session
+- Excluded WordPress Media Library modal interactions from the outside-click panel-close rule so choosing replacement media does not collapse the Visual Editor panel
+- Re-clamp the dragged panel position after open/load/save state changes so a taller panel snaps upward instead of falling below the viewport
+- Constrained the panel to viewport height with internal scrolling so tall states stay usable in-frame without forcing oversized off-screen overflow
+- Added a shared frontend runtime guard so Visual Editor assets, toggles, and Bricks instrumentation do not run inside Bricks builder/edit/iframe requests or common builder preview query contexts
+- Hardened direct grouped ACF field saves so group descendants such as `assortment_group_name` and deeper nested selectors keep their full selector ancestry in descriptor paths and prefer selector-based writes over ambiguous leaf-name writes
+- Added native Bricks ACF query-loop metadata for `query.objectType` values and hardened loop-object mapping so repeater, relationship, and post-object native ACF loops can be classified more reliably before field-level editing is widened further
+- Fixed native grouped repeater and flexible row roots so loop-row reads and writes can use the full native selector such as `process_section_process_steps` instead of the shorter duplicated child parent name such as `process_steps`, which was causing render verification to strip markers on page 24732 / `guzahf`
+- Rebound duplicate native ACF repeater child tags such as `acf_process_steps_step_name` and `acf_process_steps_step_description` against the actual container field definition so Bricks duplicate tag keys no longer strip valid markers on page 24732 when the real repeater rows are keyed under `process_section_process_steps`
+- Added nested-group repeater context inheritance for native ACF loops so grouped descendants such as `acf_step_duration_group_step_duration_value_1` are treated as repeater-row fields under the root `process_section_process_steps` container instead of falling back to unsupported plain-field classification
+- Added group key-path support to grouped repeater/flexible row traversal so nested group descendants can resolve and save against raw ACF row payloads keyed by field keys, not only by group names
+- Added a row-rebind verification fallback for repeater and flexible descendants so native ACF loop markers can survive final render verification when Bricks exposes the right field value on the page but the descriptor arrived with the wrong row index; the fallback now rebinds to one unique matching rendered row instead of stripping the marker outright
+- Prevented repeated native loop descriptors from collapsing into one token when Bricks reuses the same loop signature for a later repeated row; duplicate seeds now get per-request occurrence suffixes so the later row can survive into verification and session persistence
+- Fixed native ACF repeater row owner mapping so bare numeric loop indices like `3` no longer resolve as fake related posts when a real WordPress post with that ID exists; current-post repeater rows without an image now keep their `current` scope and survive final render verification
+- Promoted native Bricks ACF loop provenance into descriptor source/path/mutation metadata and panel/save-contract summaries so native repeater, relationship, and post-object loop paths are distinguishable from older generic loop-owned handling
+- Added parent native loop ancestry to nested native ACF loop descriptors so paths like `relationship -> repeater` and `post_object -> repeater/flexible` now carry both the owner loop and the inner loop in signatures, source summaries, and save-contract detail
+- Added canonical nested repeater ancestry for native repeater-in-repeater paths so inner loop descendants now resolve against the outer repeater root plus explicit nested repeater row segments, inherit the effective related/current owner through the full loop stack, and keep unique source/sync/path identity instead of flattening to the innermost repeater only
+- Extended native ACF query-root classification so real taxonomy fields such as `acf_treatments_section_treatments_terms` are treated as concrete-owner native taxonomy loops instead of generic unknown roots
+- Hardened image render verification so direct image and background-image descriptors can survive safe host-alias and resized-variant differences by matching media identity from normalized upload paths instead of only exact URL strings; this is aimed at Bricks term-loop image fields where the rendered `<img src>` and resolver URL can differ by domain alias or generated size suffix
+- Aligned the frontend panel mismatch gate with the PHP media verifier so direct image and background-image fields no longer show a false “saving is disabled because the resolved backend value does not match the rendered page value yet” warning when the only difference is a host alias or WordPress size suffix
+- Widened stable flexible-content row mutation to shared non-current post owners as well, so text-like, WYSIWYG, choice, link, image, and gallery descendants now use the same explicit `shared_flexible_layout` contract across shared post/term/user/option owners instead of leaving shared post flexible rows inspect-only
+- Canonicalized native flexible descendant layout identity from the actual raw ACF row payload before subfield matching so Bricks duplicate tags like `acf_flexible_layouts_dynamic_section_image` can still resolve and remain editable when the real rendered row is `standard_section`; this keeps markers alive through final render on `/our-process/` for `ivqecf` / `xhcpsg` instead of trusting the incoming Bricks layout alias blindly
+- Enabled ordered Media Library gallery replacement for direct Bricks gallery collections backed by ACF `gallery` fields, including stable repeater-row and flexible-row descendants, and added a conservative post-save page reload so Bricks can rebuild gallery markup instead of relying on brittle partial DOM patching
+- Promoted grouped key ancestry into the formal descriptor path contract so nested group descendants now carry both `groupPath` and `groupKeyPath`, plus keyed `group` path segments, instead of leaving raw ACF group-key identity only on the source metadata layer
+- Hardened native ACF inner repeater query-root resolution for inserted-template paths like the homepage pricing section, where Bricks emits trimmed nested object types such as `acf_price_item_repeater_quantities` even though the actual ACF root selector is `_price_item_repeater`; the native query resolver now walks owner-resolved root field objects down nested selector segments so inner loops inherit real field keys instead of staying `unknown`

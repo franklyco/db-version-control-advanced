@@ -1,120 +1,334 @@
 # AGENTS.md
 
-## Purpose
+## Mission
 
-Guidance for AI coding agents working in the DBVC plugin.
+You are working inside the DBVC plugin.
 
-DBVC should remain modular, readable, low-risk, and easy to expand. Follow existing patterns before introducing anything new.
+Current objective:
+Build the new **Bricks Portability & Drift Manager** feature inside the DBVC **Bricks add-on**.
 
-When a task touches the Content Collector addon, default focus to the V2 runtime and its active phased implementation unless the user explicitly asks for V1 or shared legacy behavior.
+This feature must let users:
 
-## Start Here
+- export selected Bricks Builder settings domains from Site A
+- package them into a portable zip
+- import that package into Site B
+- compare incoming data against current Site B Bricks settings
+- surface drift in a fast bulk-friendly review UI
+- approve actions per domain/object
+- apply approved changes safely
+- create backups before apply
+- rollback if needed
 
-Before making changes:
+Work in **Spartan Mode**:
+minimal waste, minimal drift, minimal assumptions, maximum clarity.
+
+---
+
+## Prime Directive
+
+Do not improvise architecture until you inspect the real DBVC codebase.
+
+Follow this order:
 
 1. Read this file first.
-2. If the task touches Content Collector, read the V2 resume pack in this order:
-   - `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
-   - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
-   - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
-   - `addons/content-migration/docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`
-3. Review `README.md`, `addons/content-migration/README.md`, and any additional docs directly relevant to the task.
-4. Inspect the nearest related module, class, loader, registry, UI, assets, and helper files.
-5. Follow existing DBVC naming, structure, and registration patterns.
+2. Read the Bricks portability docs in `docs/bricks-portability-drift-manager/`.
+3. Read root `README.md` and any DBVC Bricks add-on docs.
+4. Inspect the actual DBVC Bricks add-on structure before coding.
+5. Reuse existing DBVC patterns for loaders, modules, admin pages, assets, logging, storage, history, REST/ajax, registries, and services.
 
-If documentation and code differ, prioritize the current implementation pattern unless the task says otherwise.
+If docs and code differ, prefer the real code pattern unless the task explicitly says otherwise.
 
-## Content Collector V2 Rules
+---
 
-- Prefer implementing new Content Collector runtime work under `addons/content-migration/v2/`.
-- Use V1 code only when reusing shared infrastructure or building a thin bridge.
-- Preserve strict runtime gating:
-  - `disabled` => no Content Collector runtime surfaces
-  - `v1` => legacy runtime stays active
-  - `v2` => V2 runtime stays active and legacy reviewer surfaces stay dormant
-- Keep Add-ons configuration server-rendered.
-- Keep V2 operational surfaces modular and React-driven where already established.
-- Do not broaden scope across phases without an explicit request.
-- Use the active phase or task in `MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md` as the delivery boundary.
+## Current Focus
 
-## Rules
+Only work on the Bricks feature unless the task explicitly broadens scope.
 
-- Keep changes scoped to the task.
-- Avoid monolith files.
-- Prefer small focused classes, functions, components, and views.
-- Extend existing architecture instead of creating parallel systems.
-- Do not refactor unrelated areas without a clear reason.
-- Preserve backward compatibility unless the task allows breaking changes.
+Target feature name:
+
+**Bricks Portability & Drift Manager**
+
+Primary supported domains for MVP:
+
+- Bricks Settings
+- Bricks Color Palettes
+- Bricks Global Classes
+- Bricks Global CSS Variables
+- Bricks Pseudo Classes
+- Bricks Theme Styles
+- Bricks Components
+- Bricks Breakpoints Settings
+
+Known related option names to inspect and classify:
+
+- `bricks_global_settings`
+- `bricks_remote_templates`
+- `bricks_color_palette`
+- `bricks_breakpoints_last_generated`
+- `bricks_global_classes`
+- `bricks_global_pseudo_classes`
+- `bricks_panel_width`
+- `bricks_global_classes_changes`
+- `bricks_global_classes_locked`
+- `bricks_theme_styles`
+- `bricks_global_elements`
+- `bricks_pinned_elements`
+- `bricks_global_classes_categories`
+- `bricks_global_variables_categories`
+- `bricks_global_variables`
+- `bricks_global_classes_timestamp`
+- `bricks_global_classes_user`
+- `bricks_font_face_rules`
+- `bricks_global_classes_trash`
+- `bricks_components`
+- `bricks_icon_sets`
+- `bricks_custom_icons`
+
+Do not assume all of these are canonical import/export domains.
+Classify them first.
+
+---
+
+## Mandatory Product Shape
+
+This is **not** a blind import/export tool.
+
+It is a governed transfer system with:
+
+- export package builder
+- import package reader
+- normalization layer
+- drift detection
+- review workbench
+- apply engine
+- backup snapshot
+- rollback/revert history
+
+The review UX must be **table/workbench based**.
+
+Do not build a card-per-object decision UI.
+
+---
+
+## Operating Rules
+
+- Keep scope tight.
+- No monolith files.
+- No parallel architecture if DBVC already has a pattern.
+- Prefer small focused classes.
+- Prefer registries over hardcoded conditionals.
+- Prefer pure data transforms over tangled mutation logic.
+- Prefer one write per affected option set where practical.
+- No destructive delete-sync behavior in MVP unless explicitly requested.
+- No placeholder code presented as finished.
+- No unrelated refactors.
+
+---
+
+## Build Order
+
+Before writing implementation code, produce a concise checklist covering:
+
+1. best addon folder location
+2. existing Bricks add-on architecture to reuse
+3. admin screen placement
+4. existing service/module conventions
+5. existing logging/history/backup patterns
+6. existing REST/ajax patterns
+7. recommended file/class breakdown
+8. naming conflicts or architectural risks
+9. whether custom DB tables are needed for MVP
+10. which Bricks option names are truly canonical
+
+Then implement in phases:
+
+1. discovery + checklist
+2. domain registry + classification
+3. export package builder
+4. import reader + validator
+5. normalization + diff engine
+6. review workbench UI
+7. apply engine
+8. backup + rollback
+9. validation + notes
+
+---
+
+## Non-Negotiable Technical Rules
+
+### 1. Normalize before diffing
+Never compare raw option blobs if normalized structures can be compared instead.
+
+### 2. Match objects intentionally
+Matching must be domain-aware.
+
+Support cases like:
+
+- new object
+- changed values
+- changed properties
+- same object name, different ID
+- same ID, changed payload
+- missing on target
+- missing in package
+- category/relationship drift
+
+### 3. Snapshot before apply
+Always create a backup of affected option names before any mutation.
+
+### 4. Apply only approved changes
+Do not apply unreviewed drift decisions.
+
+### 5. Rebuild in memory first
+Assemble final payloads in memory, then write to options.
+
+### 6. Fail visibly
+Return clear success, warning, and failure messages.
+
+---
 
 ## WordPress Standards
 
 - Sanitize input.
 - Escape output.
-- Check capabilities.
-- Verify nonces where needed.
-- Keep admin features permission-aware.
+- Enforce capabilities.
+- Verify nonces.
+- Keep admin actions permission-aware.
+- Validate uploaded packages before reading/applying.
+- Treat zip contents as untrusted input.
 
-## Files and Structure
+---
 
-- Place new code in the most logical existing location.
-- Reuse existing helpers and services when possible.
-- Keep business logic, rendering, and asset loading separated where practical.
-- Use clear descriptive file and class names.
-- For Content Collector V2 contract or route changes, update the relevant V2 docs in the same tranche.
+## Data / Package Expectations
 
-## Docs to Maintain for V2
+Portable package should include:
 
-- `addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md`
-  - update at the end of each landed tranche
-- `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
-  - update only when a stable decision is actually locked
-- `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
-  - update when V2 routes, identifiers, or artifact families change
-- `addons/content-migration/docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`
-  - keep checklist and phase status aligned with implementation
+- manifest
+- plugin/tool version
+- source site metadata
+- selected domains
+- normalized export payloads
+- raw backup payloads only if intentionally needed
+- checksums where useful
 
-## Local Noise to Leave Alone
+Do not tie the package format too tightly to one brittle internal storage shape if a normalized contract can be used.
 
-Unless the user explicitly asks otherwise, do not stage or clean up these recurring local changes:
-
-- `.phpunit.result.cache`
-- `docs/ROADMAP.md`
-- `test-results/`
-
-## LocalWP Safety Boundary
-
-- Treat `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` and the `dbvc-codexchanges.local` site as the only allowed LocalWP environment for commands, browser QA, file writes, or destructive runtime mutations in this repo unless the user explicitly broadens scope.
-- Do not run commands that touch other LocalWP site directories, other LocalWP databases, shared LocalWP infrastructure, or the LocalWP desktop app itself.
-- For destructive browser or runtime QA, prefer disposable fixture data inside `dbvc-codexchanges.local` and keep command cwd/path scope pinned to `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges`.
-- If a requested action could affect another LocalWP site or the LocalWP app, stop and ask the user before proceeding.
+---
 
 ## UI Expectations
 
-Keep admin UI clean and intuitive.
+Keep the admin UI sharp and fast.
 
-Prefer progressive disclosure over clutter. Use expandable panels, drawers, tables, chips, toolbars, and modals when appropriate.
+Prefer:
+
+- toolbar
+- domain filters
+- summary counts
+- review tables
+- expandable detail rows
+- bulk action controls
+- per-row overrides
+- confirmation modal
+- post-apply result state
+- rollback access
+
+Avoid clutter.
+Prefer progressive disclosure.
+
+---
+
+## LocalWP Safety Boundary
+
+Treat `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges` and `dbvc-codexchanges.local` as the only allowed LocalWP environment unless the user explicitly expands scope.
+
+Do not touch:
+
+- other LocalWP sites
+- other LocalWP databases
+- shared LocalWP infrastructure
+- LocalWP app state
+
+Use disposable fixture data for destructive QA.
+
+---
+
+## Files and Structure
+
+Place code in the most logical existing DBVC Bricks add-on location.
+
+Separate concerns:
+
+- registry
+- normalizers
+- diff logic
+- package builder/reader
+- admin UI
+- apply handlers
+- backup/rollback
+- storage/history
+- assets
+
+Use clear names.
+Keep files small.
+Keep responsibilities narrow.
+
+---
+
+## Validation Standard
+
+Before reporting completion, validate:
+
+- export package generation
+- package upload + parse
+- drift detection by domain
+- bulk action behavior
+- per-row override behavior
+- apply path
+- backup creation
+- rollback path
+- permission checks
+- nonce checks
+- invalid package handling
+- partial failure behavior
+
+Do not claim tested unless actually tested.
+
+---
 
 ## When Finished
 
 Report back with:
 
-1. What changed
-2. Files touched
-3. Validation performed
-4. Any notable tradeoffs, blockers, or follow-ups
-5. Next steps
+1. what changed
+2. files touched
+3. validation performed
+4. tradeoffs / blockers / assumptions
+5. next steps
+
+---
 
 ## Avoid
 
-- Large single-file implementations
-- Unnecessary rewrites
-- Duplicate logic
-- Hidden side effects
-- Placeholder code presented as complete
-- Editing unrelated docs or modules without need
+- giant controller classes
+- hidden side effects
+- direct raw option mutation scattered everywhere
+- duplicate normalization logic
+- brittle one-off UI state handling
+- silent failure
+- unnecessary framework churn
+- expanding into unrelated DBVC modules
 
-## Repomix
+---
 
-- Repomix is a complement here, not a replacement for `AGENTS.md`, `README.md`, `handoff.md`, or the Content Collector V2 resume pack.
-- Repo config lives in `repomix.config.json`, `.repomixignore`, and `repomix-instruction.md`; upkeep notes live in `docs/repomix-preflight.md` and `docs/repomix-maintenance.md`.
-- Refresh the Repomix files when top-level structure, directive docs, or major noise folders change so packed context stays accurate and low-noise.
+## Spartan Reminder
+
+Be sharp.
+Be modular.
+Be reversible.
+Be honest.
+
+Inspect first.
+Classify first.
+Normalize first.
+Backup first.
+Then apply.

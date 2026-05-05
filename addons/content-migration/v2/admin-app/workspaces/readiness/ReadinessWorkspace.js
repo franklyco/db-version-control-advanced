@@ -21,6 +21,7 @@ export default function ReadinessWorkspace( {
 	const {
 		readinessStatus,
 		summary,
+		benchmarkSummary,
 		blockingIssues,
 		warnings,
 		pageReports,
@@ -110,6 +111,7 @@ export default function ReadinessWorkspace( {
 					<ReadinessSummaryCards
 						readinessStatus={ readinessStatus }
 						summary={ summary }
+						benchmarkSummary={ benchmarkSummary }
 						schemaFingerprint={ schemaFingerprint }
 					/>
 

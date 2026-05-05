@@ -7,8 +7,10 @@ const STATUS_LABELS = {
 export default function ReadinessSummaryCards( {
 	readinessStatus,
 	summary,
+	benchmarkSummary,
 	schemaFingerprint,
 } ) {
+	const benchmarkStatus = benchmarkSummary?.status || '';
 	const cards = [
 		{
 			label: 'Readiness',
@@ -21,6 +23,14 @@ export default function ReadinessSummaryCards( {
 		{
 			label: 'Ready pages',
 			value: summary.readyPages ?? 0,
+		},
+		{
+			label: 'Benchmark gate',
+			value: STATUS_LABELS[ benchmarkStatus ] || 'Unknown',
+		},
+		{
+			label: 'High-risk pages',
+			value: benchmarkSummary?.highRiskPageCount ?? 0,
 		},
 		{
 			label: 'Schema fingerprint',

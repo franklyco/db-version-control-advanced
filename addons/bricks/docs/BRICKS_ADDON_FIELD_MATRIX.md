@@ -1,13 +1,19 @@
 # DBVC Bricks Add-on Field Matrix
 
-Date: 2026-02-14  
-Status: Discovery/planning only (no implementation)
+Date: 2026-02-14 (planning baseline)  
+Status: Planning/reference baseline. Use `BRICKS_ADDON_PROGRESS_TRACKER.md` and `BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md` for active phase status and completion state.
 
 ## 1) Purpose
 
 This matrix defines the concrete UI/config fields for the DBVC Bricks Add-on, their option keys, validation rules, defaults, and engine touchpoints so implementation can stay deterministic and low-risk.
 
 Terminology: posts/terms are **Entities**.
+
+Current execution note (2026-04-27):
+- `P19A`, `P19D`, and `P19B` are complete.
+- `P19C-T1` is complete.
+- `P19C-T2` remains the active open implementation/validation item before Phase 19 closes.
+- Backlog candidates after Phase 19 closure remain `BL-PKG-TABLE-01` and `BL-SMARTMODE-01`.
 
 ## 2) Bricks Artifact Registry (MVP + next)
 
@@ -288,6 +294,12 @@ All endpoints:
   - include source site domain metadata in Packages table/detail for clear package-to-site mapping.
 
 ### 6.7 Fleet rules distribution + protected variants (Phase 19)
+- Status snapshot (2026-04-27):
+  - shared rules distribution foundation implemented (`P19A DONE`);
+  - signed envelope transport implemented (`P19D DONE`);
+  - client protected variants implemented (`P19B DONE`);
+  - mothership protected-variant visibility implemented (`P19C-T1 DONE`);
+  - remaining work is the live cross-site drill/evidence closure (`P19C-T2`).
 - Shared rules profile managed on mothership:
   - one canonical profile containing artifact/meta ignore+mask maps.
   - distribution target mode support (`all` and `selected` connected clients).

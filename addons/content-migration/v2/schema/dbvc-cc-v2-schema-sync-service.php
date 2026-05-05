@@ -148,12 +148,31 @@ final class DBVC_CC_V2_Schema_Sync_Service
         }
 
         $catalog_payload = isset($catalog_result['result']) && is_array($catalog_result['result']) ? $catalog_result['result'] : [];
+        $slot_graph_result = DBVC_CC_V2_Target_Slot_Graph_Service::get_instance()->build_graph($context['domain'], $force_rebuild);
+        if (is_wp_error($slot_graph_result)) {
+            $this->append_failure_event(
+                $context['domain'],
+                $journey_id,
+                DBVC_CC_V2_Contracts::STEP_TARGET_SCHEMA_SYNC_COMPLETED,
+                'Target schema sync completed',
+                $slot_graph_result,
+                $actor,
+                $trigger
+            );
+
+            return $slot_graph_result;
+        }
+
+        $slot_graph_payload = isset($slot_graph_result['slot_graph']) && is_array($slot_graph_result['slot_graph'])
+            ? $slot_graph_result['slot_graph']
+            : [];
         $schema_fingerprint = hash(
             'sha256',
             (string) wp_json_encode(
                 [
                     'inventory_fingerprint' => isset($inventory_payload['inventory_fingerprint']) ? (string) $inventory_payload['inventory_fingerprint'] : '',
                     'catalog_fingerprint' => isset($catalog_payload['catalog_fingerprint']) ? (string) $catalog_payload['catalog_fingerprint'] : '',
+                    'slot_graph_fingerprint' => isset($slot_graph_payload['slot_graph_fingerprint']) ? (string) $slot_graph_payload['slot_graph_fingerprint'] : '',
                 ],
                 JSON_UNESCAPED_SLASHES
             )
@@ -164,13 +183,16 @@ final class DBVC_CC_V2_Schema_Sync_Service
             $journey_id,
             DBVC_CC_V2_Contracts::STEP_TARGET_SCHEMA_SYNC_COMPLETED,
             'Target schema sync completed',
-            function () use ($inventory_payload, $catalog_payload, $schema_fingerprint) {
+            function () use ($inventory_payload, $catalog_payload, $slot_graph_result, $slot_graph_payload, $schema_fingerprint) {
                 $output_artifacts = [];
                 if (isset($inventory_payload['artifact_relative_path'])) {
                     $output_artifacts[] = (string) $inventory_payload['artifact_relative_path'];
                 }
                 if (isset($catalog_payload['artifact_relative_path'])) {
                     $output_artifacts[] = (string) $catalog_payload['artifact_relative_path'];
+                }
+                if (isset($slot_graph_result['artifact_relative_path'])) {
+                    $output_artifacts[] = (string) $slot_graph_result['artifact_relative_path'];
                 }
 
                 return [
@@ -182,6 +204,7 @@ final class DBVC_CC_V2_Schema_Sync_Service
                     'metadata' => [
                         'inventory_fingerprint' => isset($inventory_payload['inventory_fingerprint']) ? (string) $inventory_payload['inventory_fingerprint'] : '',
                         'catalog_fingerprint' => isset($catalog_payload['catalog_fingerprint']) ? (string) $catalog_payload['catalog_fingerprint'] : '',
+                        'slot_graph_fingerprint' => isset($slot_graph_payload['slot_graph_fingerprint']) ? (string) $slot_graph_payload['slot_graph_fingerprint'] : '',
                     ],
                 ];
             },
@@ -207,6 +230,7 @@ final class DBVC_CC_V2_Schema_Sync_Service
             'domain' => $context['domain'],
             'inventory' => $inventory_payload,
             'catalog' => $catalog_payload,
+            'slot_graph' => $slot_graph_payload,
             'latest' => $latest,
             'stage_summary' => $stage_summary,
             'schema_fingerprint' => $schema_fingerprint,

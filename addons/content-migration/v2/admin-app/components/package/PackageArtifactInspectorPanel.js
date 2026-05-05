@@ -213,7 +213,35 @@ const renderSummaryPreview = ( summary ) => (
 			</span>
 			<span>Blocking issues: { summary?.blocking_issue_count ?? 0 }</span>
 			<span>Warnings: { summary?.warning_count ?? 0 }</span>
+			<span>
+				Benchmark gate: { summary?.benchmark_status || 'unknown' }
+			</span>
+			<span>
+				Benchmark high-risk pages:{ ' ' }
+				{ summary?.benchmark_high_risk_page_count ?? 0 }
+			</span>
 		</div>
+	</div>
+);
+
+const renderBenchmarkSummary = ( benchmarkSummary = {} ) => (
+	<div className="dbvc-cc-v2-signal-stack">
+		<span>Gate status: { benchmarkSummary?.status || 'unknown' }</span>
+		<span>
+			High-risk pages: { benchmarkSummary?.highRiskPageCount ?? 0 }
+		</span>
+		<span>
+			Unresolved items: { benchmarkSummary?.totals?.unresolvedCount ?? 0 }
+		</span>
+		<span>
+			Ambiguous reviewed:{ ' ' }
+			{ benchmarkSummary?.totals?.ambiguousReviewedCount ?? 0 }
+		</span>
+		<span>
+			Manual overrides:{ ' ' }
+			{ benchmarkSummary?.totals?.manualOverrideCount ?? 0 }
+		</span>
+		<span>Reruns: { benchmarkSummary?.totals?.rerunCount ?? 0 }</span>
 	</div>
 );
 
@@ -260,6 +288,12 @@ export default function PackageArtifactInspectorPanel( {
 						{ renderIssueList(
 							qaReport?.warnings,
 							'No warnings were recorded for this package.'
+						) }
+					</div>
+					<div>
+						<h4>Benchmark gate</h4>
+						{ renderBenchmarkSummary(
+							qaReport?.benchmark_summary
 						) }
 					</div>
 				</div>

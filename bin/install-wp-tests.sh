@@ -14,6 +14,13 @@ DB_HOST=${4-localhost}
 WP_VERSION=${5-latest}
 WP_TESTS_DIR=${WP_TESTS_DIR-$(dirname "$0")/../tmp/wordpress-tests-lib}
 WP_CORE_DIR=${WP_CORE_DIR-$(dirname "$0")/../tmp/wordpress/}
+WP_TESTS_TABLE_PREFIX=${WP_TESTS_TABLE_PREFIX-wptests_}
+WP_TESTS_DOMAIN=${WP_TESTS_DOMAIN-dbvc-phpunit.local}
+WP_TESTS_EMAIL=${WP_TESTS_EMAIL-admin@dbvc-phpunit.local}
+WP_TESTS_TITLE=${WP_TESTS_TITLE-DBVC PHPUnit}
+WP_PHP_BINARY=${WP_PHP_BINARY-php}
+DBVC_WP_TESTS_ALLOW_UNSAFE=${DBVC_WP_TESTS_ALLOW_UNSAFE-0}
+PLUGIN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
 download() {
 	if command -v curl >/dev/null; then
@@ -26,9 +33,40 @@ download() {
 	fi
 }
 
+abort() {
+	echo "Error: $1" >&2
+	exit 1
+}
+
+detect_live_table_prefix() {
+	local wp_config_path
+	local prefix
+
+	wp_config_path="${PLUGIN_ROOT}/../../../wp-config.php"
+	if [ ! -f "$wp_config_path" ]; then
+		return 0
+	fi
+
+	prefix=$(sed -n "s/^[[:space:]]*\\\$table_prefix[[:space:]]*=[[:space:]]*'\\([^']*\\)'.*/\\1/p" "$wp_config_path" | head -n 1)
+	printf '%s' "$prefix"
+}
+
 if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASS" ]; then
 	echo "Usage: $0 <db-name> <db-user> <db-pass> [db-host] [wp-version]" >&2
 	exit 1
+fi
+
+if [ -z "$WP_TESTS_TABLE_PREFIX" ]; then
+	abort "WP_TESTS_TABLE_PREFIX must not be empty."
+fi
+
+if [ "$WP_TESTS_TABLE_PREFIX" = "wp_" ]; then
+	abort "WP_TESTS_TABLE_PREFIX must not use the live WordPress default prefix 'wp_'."
+fi
+
+LIVE_TABLE_PREFIX=$(detect_live_table_prefix)
+if [ -n "$LIVE_TABLE_PREFIX" ] && [ "$WP_TESTS_TABLE_PREFIX" = "$LIVE_TABLE_PREFIX" ] && [ "$DBVC_WP_TESTS_ALLOW_UNSAFE" != "1" ]; then
+	abort "WP_TESTS_TABLE_PREFIX matches the live site prefix '${LIVE_TABLE_PREFIX}'. Choose an isolated test prefix such as 'wptests_'."
 fi
 
 mkdir -p "$WP_CORE_DIR"
@@ -69,6 +107,11 @@ define( 'DB_PASSWORD', '${DB_PASS}' );
 define( 'DB_HOST', '${DB_HOST}' );
 define( 'WP_DB_NAME', '${DB_NAME}' );
 define( 'WP_DEBUG', true );
+define( 'WP_TESTS_DOMAIN', '${WP_TESTS_DOMAIN}' );
+define( 'WP_TESTS_EMAIL', '${WP_TESTS_EMAIL}' );
+define( 'WP_TESTS_TITLE', '${WP_TESTS_TITLE}' );
+define( 'WP_PHP_BINARY', '${WP_PHP_BINARY}' );
+\$table_prefix = '${WP_TESTS_TABLE_PREFIX}';
 define( 'ABSPATH', '${WP_CORE_DIR}' );
 EOF
 

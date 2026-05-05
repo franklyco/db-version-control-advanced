@@ -90,6 +90,9 @@ final class DBVC_CC_V2_Package_Artifact_Service
     public function build_package_qa_report(array $run_context, $package_id, array $readiness, array $included_reports)
     {
         $page_reports = isset($readiness['pageReports']) && is_array($readiness['pageReports']) ? $readiness['pageReports'] : [];
+        $benchmark_summary = isset($readiness['benchmarkSummary']) && is_array($readiness['benchmarkSummary'])
+            ? $readiness['benchmarkSummary']
+            : DBVC_CC_V2_Package_QA_Service::get_instance()->build_benchmark_summary($page_reports);
         $quality_scores = array_values(
             array_filter(
                 array_map(
@@ -113,6 +116,7 @@ final class DBVC_CC_V2_Package_Artifact_Service
             'blocking_issues' => isset($readiness['blockingIssues']) && is_array($readiness['blockingIssues']) ? array_values($readiness['blockingIssues']) : [],
             'warnings' => isset($readiness['warnings']) && is_array($readiness['warnings']) ? array_values($readiness['warnings']) : [],
             'quality_score' => ! empty($quality_scores) ? (int) round(array_sum($quality_scores) / count($quality_scores)) : 0,
+            'benchmark_summary' => $benchmark_summary,
             'included_pages' => array_values(
                 array_map(
                     static function ($report) {
@@ -151,6 +155,8 @@ final class DBVC_CC_V2_Package_Artifact_Service
             'media_item_count' => count($media_items),
             'blocking_issue_count' => isset($package_qa['blocking_issues']) && is_array($package_qa['blocking_issues']) ? count($package_qa['blocking_issues']) : 0,
             'warning_count' => isset($package_qa['warnings']) && is_array($package_qa['warnings']) ? count($package_qa['warnings']) : 0,
+            'benchmark_status' => isset($package_qa['benchmark_summary']['status']) ? (string) $package_qa['benchmark_summary']['status'] : '',
+            'benchmark_high_risk_page_count' => isset($package_qa['benchmark_summary']['highRiskPageCount']) ? (int) $package_qa['benchmark_summary']['highRiskPageCount'] : 0,
         ];
     }
 
