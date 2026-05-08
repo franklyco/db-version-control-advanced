@@ -66,7 +66,8 @@
   - live `source_group` / `sync_group` hashing now includes nested group ancestry plus leaf selector identity so same-named grouped descendants do not cross-update after save
   - direct grouped ACF fields now preserve parent group ancestry in descriptor paths and prefer selector-based writes over ambiguous leaf-name writes
   - the running code-map and consolidation reference for these native ACF loop fixes now lives in `docs/knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md`
-  - the ordered scenario matrix for the next native owner-loop, mixed-nesting, and later collection-mutation branches now lives in `docs/enhancements/DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md`
+- the ordered scenario matrix for the next native owner-loop, mixed-nesting, and later collection-mutation branches now lives in `docs/enhancements/DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md`
+- the dedicated narrow current-owner connected-items roadmap now lives in `docs/enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`
 - Resume point after the current panel UX slice:
   - current active slice:
   - start with native `relationship -> repeater` and `relationship -> flexible` descendants
@@ -79,7 +80,16 @@
   - current WIP/paused items on the user side:
     - shared non-current post flexible descendants through `shared_flexible_layout`
     - direct/repeater/flexible gallery collection replacement flow
+  - current active collection-editor slice:
+    - current-owner native ACF `relationship` query roots can now surface as `Edit Connected` container markers instead of only descendant field markers
+    - current-owner native ACF `post_object` query roots can now use that same connected-items container contract
+    - direct current-owner repeater-row and flexible-row `relationship` / `post_object` query roots now target that same connected-items contract in code when the active row path is stable
+    - reload-after-save reconciliation remains the intentional default for the whole collection-editor branch
+  - deferred within the collection-editor branch:
+    - shared or loop-owned connected-item collections
+    - taxonomy collection mutation
+    - true row insert/remove/reorder branches
 - paused slice to return to after the native loop work:
   - live-save smoke test nested grouped descendants inside supported repeater/flexible/related-owner paths
   - widen any remaining collection-safe structured paths only after those grouped save paths are proven stable
-  - defer relationship collection editing and repeater/flexible row insert-remove-reorder until after the native owner-loop and grouped-save branches are stable
+  - defer broader relationship collection editing and repeater/flexible row insert-remove-reorder until after the native owner-loop and grouped-save branches are stable

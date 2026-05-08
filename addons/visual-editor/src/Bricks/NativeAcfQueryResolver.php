@@ -50,6 +50,26 @@ final class NativeAcfQueryResolver
     }
 
     /**
+     * @param string               $query_object_type
+     * @param array<string, mixed> $owner_entity
+     * @return array<string, mixed>
+     */
+    public function resolveFieldDefinitionForQuery($query_object_type, array $owner_entity = [])
+    {
+        $query_object_type = sanitize_key((string) $query_object_type);
+        if ($query_object_type === '' || strpos($query_object_type, 'acf_') !== 0) {
+            return [];
+        }
+
+        $selector = sanitize_key(substr($query_object_type, 4));
+        if ($selector === '') {
+            return [];
+        }
+
+        return $this->resolveFieldDefinition($selector, $owner_entity);
+    }
+
+    /**
      * @param string               $selector
      * @param array<string, mixed> $owner_entity
      * @return array<string, mixed>

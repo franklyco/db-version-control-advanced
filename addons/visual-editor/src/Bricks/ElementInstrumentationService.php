@@ -72,12 +72,33 @@ final class ElementInstrumentationService
             return is_array($attributes) ? $attributes : [];
         }
 
+        $collection_inspection = $this->inspectCollectionLoopRoot($attributes, $key, $element);
+        if (! empty($collection_inspection['supported'])) {
+            return $this->instrumentInspection($attributes, $key, $element, $collection_inspection);
+        }
+
         $inspection = $this->inspector->inspectForAttribute($element, $key);
         if (empty($inspection['supported'])) {
             return $attributes;
         }
 
         if (! $this->shouldInstrumentAttributeGroup($attributes, $key, $inspection)) {
+            return $attributes;
+        }
+
+        return $this->instrumentInspection($attributes, $key, $element, $inspection);
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @param object               $element
+     * @param array<string, mixed> $inspection
+     * @return array<string, mixed>
+     */
+    private function instrumentInspection(array $attributes, $key, $element, array $inspection)
+    {
+        if (empty($inspection['supported'])) {
             return $attributes;
         }
 
@@ -270,6 +291,62 @@ final class ElementInstrumentationService
         if (isset($group['href']) || isset($group['src'])) {
             return false;
         }
+
+        return isset($group['class']) || isset($group['id']);
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectCollectionLoopRoot(array $attributes, $key, $element)
+    {
+        if (! $this->shouldInstrumentCollectionRootAttributeGroup($attributes, $key)) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $settings = isset($element->settings) && is_array($element->settings) ? $element->settings : [];
+        $has_loop = ! empty($settings['hasLoop']);
+        $query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $query_object_type = isset($query['objectType']) ? sanitize_key((string) $query['objectType']) : '';
+
+        if (! $has_loop || $query_object_type === '' || strpos($query_object_type, 'acf_') !== 0) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        return [
+            'supported' => true,
+            'source_type' => 'acf_collection_field',
+            'expression' => $query_object_type,
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => $query_object_type,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @return bool
+     */
+    private function shouldInstrumentCollectionRootAttributeGroup(array $attributes, $key)
+    {
+        if (! in_array($key, ['_root', 'root', 'wrapper'], true)) {
+            return false;
+        }
+
+        if (! isset($attributes[$key]) || ! is_array($attributes[$key])) {
+            return false;
+        }
+
+        $group = $attributes[$key];
 
         return isset($group['class']) || isset($group['id']);
     }
@@ -574,6 +651,19 @@ final class ElementInstrumentationService
             $this->dropDescriptorByToken($descriptor->token);
 
             return $this->stripMarkerAttributesForToken($element_html, $descriptor->token);
+        }
+
+        if (($descriptor->render['context'] ?? '') === 'query_collection') {
+            $descriptor->render['rendered_value'] = '';
+            $descriptor->render['resolved_value'] = '';
+            $descriptor->render['rendered_text'] = '';
+            $descriptor->render['resolved_text'] = '';
+            $descriptor->render['display_key'] = 'default';
+            $descriptor->render['display_mode'] = 'text';
+            $descriptor->render['render_verified'] = true;
+            $descriptor->render['value_match'] = true;
+
+            return $element_html;
         }
 
         $rendered_value = $this->extractComparableRenderValue($rendered_fragment, $descriptor);
@@ -1405,7 +1495,9 @@ final class ElementInstrumentationService
         $native_loop_ancestry = $this->buildNativeQueryAncestryLabels(isset($path_descriptor['nativeQueryAncestry']) && is_array($path_descriptor['nativeQueryAncestry']) ? $path_descriptor['nativeQueryAncestry'] : []);
         $kind = 'scalar';
 
-        if (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
+        if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true)) {
+            $kind = 'collection';
+        } elseif (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
             $kind = 'structured';
         } elseif ($field_type === 'gallery') {
             $kind = 'collection';
@@ -1427,6 +1519,10 @@ final class ElementInstrumentationService
             $contract = 'repeater_row';
         } elseif ($target === 'layout') {
             $contract = 'flexible_layout';
+        } elseif ($render_context === 'query_collection' && $field_type === 'relationship') {
+            $contract = 'relationship_collection';
+        } elseif ($render_context === 'query_collection' && $field_type === 'post_object') {
+            $contract = 'post_object_collection';
         }
 
         if (! empty($loop_context['active']) && $scope === 'related_entity') {

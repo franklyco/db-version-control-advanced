@@ -10,6 +10,7 @@ use Dbvc\VisualEditor\Registry\EditableRegistry;
 use Dbvc\VisualEditor\Resolvers\ResolverRegistry;
 use Dbvc\VisualEditor\Rest\DescriptorPayloadBuilder;
 use Dbvc\VisualEditor\Rest\Controllers\DescriptorController;
+use Dbvc\VisualEditor\Rest\Controllers\ReferenceSearchController;
 use Dbvc\VisualEditor\Rest\Controllers\SaveController;
 use Dbvc\VisualEditor\Rest\Controllers\SessionController;
 use Dbvc\VisualEditor\Save\MutationContractService;
@@ -96,6 +97,7 @@ final class Routes
 
         (new SessionController($this->registry, $this->edit_mode, $this->page_context, $this->capabilities, $payloads))->register();
         (new DescriptorController($this->registry, $payloads, $this->edit_mode, $this->capabilities))->register();
+        (new ReferenceSearchController($this->registry, $this->resolvers, $this->edit_mode, $this->capabilities))->register();
         (new SaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
     }
 }

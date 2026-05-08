@@ -22,6 +22,8 @@ If a repeater, flexible layout, relationship collection, or complex query-loop n
 
 For the recent native ACF loop hardening patches and the code-level consolidation map that should turn them into true universal handling, see [../knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md](../knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md).
 
+For the dedicated current-owner connected-items roadmap, see [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md).
+
 ## Design Decisions
 
 ### 1. Do not jump straight from unsupported to writable
@@ -258,6 +260,7 @@ Recommended next sequence:
 
 For the concrete scenario matrix and later mutation roadmap, use:
 - [DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md](./DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md)
+- [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md)
 
 Reason:
 - repeater row writes already proved the narrow nested-path pattern
@@ -274,11 +277,21 @@ Add writable paths for:
 
 ### Phase D: relationship collection controls
 
-Only after journaling exists:
-- single-item replace
-- append/remove
-- reorder
-- relation target validation
+Current status:
+- the narrow first slice is now moving into direct current-owner Bricks native ACF query roots for `relationship` and `post_object` fields
+- that slice uses a dedicated query-root descriptor family, `Edit Connected` badge treatment, and reload-after-save reconciliation instead of pretending collection mutation is just another scalar descendant write
+- that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, while mixed repeater/flexible nesting and broader shared/loop-owned collection roots remain deferred
+
+Near-term order:
+1. current-owner native `relationship` query roots
+2. current-owner native `post_object` query roots
+3. current-owner repeater/flexible row-owned relationship/post-object collections
+4. shared and loop-owned collection roots
+
+Still later:
+- append/remove/reorder from broader owner contexts
+- taxonomy collection mutation
+- custom query-editor collection sources
 
 ## Bricks Query Loop Strategy
 

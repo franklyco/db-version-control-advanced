@@ -35,6 +35,28 @@
       });
     },
 
+    searchReferences(sessionId, token, search) {
+      const params = new URLSearchParams();
+
+      if (typeof search === 'string' && search.trim()) {
+        params.set('search', search.trim());
+      }
+
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/reference-search/${encodeURIComponent(token)}?${params.toString()}`, {
+        headers: { 'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce }
+      }).then(async (response) => {
+        const data = await response.json().catch(function () {
+          return null;
+        });
+
+        if (response.ok) {
+          return data;
+        }
+
+        throw new Error((data && data.message) || `Visual Editor reference search failed (${response.status}).`);
+      });
+    },
+
     save(sessionId, token, value, acknowledgeSharedScope) {
       return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/save`, {
         method: 'POST',

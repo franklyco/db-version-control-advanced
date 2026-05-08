@@ -56,6 +56,8 @@ final class MutationContractService
                 'shared_field',
                 'repeater_row',
                 'flexible_layout',
+                'relationship_collection',
+                'post_object_collection',
                 'loop_owned_field',
                 'loop_owned_repeater_row',
                 'loop_owned_flexible_layout',
@@ -246,6 +248,10 @@ final class MutationContractService
                 return __('repeater row', 'dbvc');
             case 'flexible_layout':
                 return __('flexible layout row', 'dbvc');
+            case 'relationship_collection':
+                return __('relationship collection', 'dbvc');
+            case 'post_object_collection':
+                return __('post object collection', 'dbvc');
             case 'loop_owned_field':
                 return __('loop-owned field', 'dbvc');
             case 'loop_owned_repeater_row':

@@ -191,6 +191,36 @@ Direct flexible-content descendants now use the same descriptor contract shape w
 }
 ```
 
+Direct current-owner connected-item query roots now use a dedicated collection descriptor family, for example:
+
+```json
+{
+  "source": {
+    "type": "acf_collection_field",
+    "expression": "query.objectType:acf_related_faq_groups",
+    "field_name": "related_faq_groups",
+    "field_key": "field_66abc123",
+    "field_selector": "related_faq_groups",
+    "field_type": "relationship",
+    "reference_post_types": ["faq_group"],
+    "reference_multiple": true,
+    "reference_min": 0,
+    "reference_max": 0,
+    "native_query_kind": "relationship",
+    "native_query_selector": "related_faq_groups",
+    "native_query_object_type": "acf_related_faq_groups"
+  },
+  "mutation": {
+    "version": 2,
+    "kind": "collection",
+    "target": "field",
+    "contract": "relationship_collection",
+    "renderContext": "query_collection",
+    "requiresJournal": true
+  }
+}
+```
+
 The repeater row identity is also formalized in `path`, for example:
 
 ```json

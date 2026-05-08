@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Added a status-bar editor link that defaults to the current frontend entity and switches to the active field owner while a panel target is open, then falls back again when the panel closes
+- Widened the new `Edit Connected` collection-editor slice so direct current-owner repeater-row and flexible-row ACF `relationship` / `post_object` query roots can reuse the same connected-items panel and row-backed save path when the active row metadata is stable
+- Added a focused Playwright smoke harness for the connected-items panel at `tests/playwright/visual-editor-connected-items.spec.js`, gated behind the existing LocalWP admin env vars
 - Renamed the dropped scaffold package to `addons/visual-editor/` and aligned docs to the repo path
 - Added repo-adapted bootstrap facade `DBVC_Visual_Editor_Addon` and DBVC core loading integration
 - Added Add-ons screen settings integration for enabling/disabling the Visual Editor runtime
@@ -95,3 +97,4 @@
 - Promoted grouped key ancestry into the formal descriptor path contract so nested group descendants now carry both `groupPath` and `groupKeyPath`, plus keyed `group` path segments, instead of leaving raw ACF group-key identity only on the source metadata layer
 - Hardened native ACF inner repeater query-root resolution for inserted-template paths like the homepage pricing section, where Bricks emits trimmed nested object types such as `acf_price_item_repeater_quantities` even though the actual ACF root selector is `_price_item_repeater`; the native query resolver now walks owner-resolved root field objects down nested selector segments so inner loops inherit real field keys instead of staying `unknown`
 - Promoted full native-loop ancestor chains into exported loop metadata, descriptor source/path state, live source/sync grouping, source summaries, and mutation-contract detail so upcoming `relationship/post_object -> repeater/flexible` descendants are not limited to a single `parent_native_query` breadcrumb
+- Added the first current-owner connected-items editor slice for direct native Bricks ACF `relationship` and `post_object` query roots, including a dedicated `acf_collection_field` descriptor family, `Edit Connected` badge treatment, a reference-collection panel mode with ordered add/remove/reorder controls plus post search, a dedicated `acf_reference_collection` save resolver, a reference-search REST endpoint, and reload-after-save reconciliation instead of brittle partial loop DOM patching

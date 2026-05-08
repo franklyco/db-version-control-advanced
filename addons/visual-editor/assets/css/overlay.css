@@ -345,6 +345,82 @@ body.dbvc-ve-panel-dragging {
   object-fit: cover;
 }
 
+.dbvc-ve-panel__collection {
+  gap: 12px;
+}
+
+.dbvc-ve-panel__collection-label {
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dbvc-ve-panel__collection-selected,
+.dbvc-ve-panel__collection-results {
+  display: grid;
+  gap: 8px;
+}
+
+.dbvc-ve-panel__collection-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.dbvc-ve-panel__collection-row.is-selected {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+
+.dbvc-ve-panel__collection-text {
+  min-width: 0;
+}
+
+.dbvc-ve-panel__collection-title {
+  color: #0f172a;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.dbvc-ve-panel__collection-meta {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.dbvc-ve-panel__collection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.dbvc-ve-panel__collection-action {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 6px 8px;
+  background: #ffffff;
+  color: #0f172a;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dbvc-ve-panel__collection-action.is-remove {
+  color: #9f1239;
+}
+
+.dbvc-ve-panel__collection-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .dbvc-ve-panel__input {
   width: 100%;
   min-height: 46px;
@@ -579,4 +655,8 @@ body.dbvc-ve-active img[data-dbvc-ve].dbvc-ve-target {
 
 .dbvc-ve-badge--readonly {
   background: #475569;
+}
+
+.dbvc-ve-badge--connected {
+  background: #0f766e;
 }

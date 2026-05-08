@@ -9,6 +9,7 @@
 - `enhancements/DBVC_VISUAL_EDITOR_MVP.md`
 - `enhancements/DBVC_VISUAL_EDITOR_PHASES.md`
 - `enhancements/DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md`
+- `enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`
 
 ### Knowledge
 - `knowledge/BRICKS_RENDER_INSTRUMENTATION_MODEL.md`

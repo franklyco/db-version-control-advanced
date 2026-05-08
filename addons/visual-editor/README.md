@@ -23,6 +23,7 @@ Current status:
 - direct Bricks image elements backed by either a single-tag ACF image field or a direct WordPress `{featured_image}` binding can now surface a marker on the wrapper and switch to another existing Media Library attachment through an attachment-ID-first save contract, with local Media Library URL fallback resolution when needed
 - direct Bricks `_background.image` controls backed by a single-tag ACF image field can now reuse that same attachment-aware media workflow for rendered background images
 - direct Bricks image-gallery elements backed by a single-tag ACF gallery field can now surface an editable marker with thumbnail preview and ordered Media Library gallery replacement
+- direct Bricks native ACF `relationship` and `post_object` query roots on the current page owner can now surface a container-level `Edit Connected` marker with a dedicated connected-items panel mode and reload-after-save reconciliation
 - direct Bricks ACF repeater row subfields can now be marked and resolved through stable parent-repeater metadata plus Bricks loop index
 - current-post and related-post repeater row descendants can now reuse the existing safe field resolvers for text-like, WYSIWYG, choice, link, and image field types
 - descriptor state is kept server-side in a short-lived session registry
@@ -68,6 +69,7 @@ Current status:
 Still out of scope for this slice:
 - deeper grouped descendant save verification and structured descendants beyond the new gallery replacement flow
 - repeater row insert/remove/reorder and nested repeater/flexible collection mutation
+- broader shared, loop-owned, and nested relationship/post-object collection mutation beyond the new direct current-owner query-root collection slice
 - archive-wide editing flows and non-singular entry points
 - static non-ACF Bricks internal/taxonomy link settings that mutate builder configuration rather than a resolver-owned content field
 - generic non-ACF Bricks post-query loops without a concrete post owner and multi-value related-object editing beyond inspect-only surfacing
@@ -100,6 +102,7 @@ This addon now lives inside the DBVC repo at:
 - safe Bricks ACF `relationship` / `post_object` post-loop row support where the loop owner is a concrete related post
 - safe direct ACF field support where the loop owner is a concrete queried post, term, or user
 - native Bricks ACF query-loop metadata for repeater, relationship, post-object, and taxonomy `query.objectType` roots
+- direct current-owner native Bricks ACF `relationship` and `post_object` query-root collection editing with ordered add/remove/reorder and reload-after-save reconciliation, including direct current-owner repeater-row and flexible-row roots when the active row path is stable
 - safe Bricks ACF repeater row support where the row index is stable and the owner resolves to the current post or a concrete related post
 - writable support for direct Bricks ACF flexible-content text-like, WYSIWYG, choice, link, image, and gallery descendants on current owners, loop-owned related owners, and shared term/user/option owners, with inspect-only surfacing still reserved for the remaining unsupported flexible descendants
 - nested-group descendants inside supported repeater/flexible rows now preserve their Bricks ACF group ancestry in the descriptor path and row mutation layer
@@ -158,3 +161,4 @@ This addon now lives inside the DBVC repo at:
 - `docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_REPEATER_IMPLEMENTATION_PLAN.md`
+- `docs/enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`

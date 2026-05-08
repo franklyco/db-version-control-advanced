@@ -45,6 +45,8 @@ This means the next branch should build on the existing nested-path contract, no
 8. repeater row insert/remove/reorder
 9. flexible row insert/remove/reorder
 
+The narrow direct current-owner connected-items slice now has its own implementation track in [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md). This native-loop expansion plan remains the source of truth for descendant editing and the later broader collection-mutation branches.
+
 ## Scenario Matrix
 
 ### A. Native owner loop descendants to support next

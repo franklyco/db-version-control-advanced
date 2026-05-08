@@ -12,6 +12,14 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function getRawAcfValue(EditableDescriptor $descriptor)
     {
+        if ($this->isRepeaterCollectionSource($descriptor)) {
+            return $this->getRawRepeaterSubfieldValue($descriptor);
+        }
+
+        if ($this->isFlexibleCollectionSource($descriptor)) {
+            return $this->getRawFlexibleSubfieldValue($descriptor);
+        }
+
         if ($this->isRepeaterSubfieldSource($descriptor)) {
             return $this->getRawRepeaterSubfieldValue($descriptor);
         }
@@ -44,6 +52,14 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function writeAcfValue(EditableDescriptor $descriptor, $value)
     {
+        if ($this->isRepeaterCollectionSource($descriptor)) {
+            return $this->writeRepeaterSubfieldValue($descriptor, $value);
+        }
+
+        if ($this->isFlexibleCollectionSource($descriptor)) {
+            return $this->writeFlexibleSubfieldValue($descriptor, $value);
+        }
+
         if ($this->isRepeaterSubfieldSource($descriptor)) {
             return $this->writeRepeaterSubfieldValue($descriptor, $value);
         }
@@ -319,7 +335,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function supportsAcfSource(EditableDescriptor $descriptor)
     {
-        return in_array((string) ($descriptor->source['type'] ?? ''), ['acf_field', 'acf_repeater_subfield', 'acf_flexible_subfield'], true);
+        return in_array((string) ($descriptor->source['type'] ?? ''), ['acf_field', 'acf_repeater_subfield', 'acf_flexible_subfield', 'acf_collection_field'], true);
     }
 
     /**
@@ -338,6 +354,26 @@ abstract class AbstractAcfResolver implements ResolverInterface
     protected function isFlexibleSubfieldSource(EditableDescriptor $descriptor)
     {
         return ($descriptor->source['type'] ?? '') === 'acf_flexible_subfield';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    protected function isRepeaterCollectionSource(EditableDescriptor $descriptor)
+    {
+        return ($descriptor->source['type'] ?? '') === 'acf_collection_field'
+            && ($descriptor->source['container_type'] ?? '') === 'repeater';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    protected function isFlexibleCollectionSource(EditableDescriptor $descriptor)
+    {
+        return ($descriptor->source['type'] ?? '') === 'acf_collection_field'
+            && ($descriptor->source['container_type'] ?? '') === 'flexible_content';
     }
 
     /**
