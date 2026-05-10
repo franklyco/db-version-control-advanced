@@ -1515,18 +1515,32 @@ final class ElementInstrumentationService
         }
         $contract = 'direct_field';
 
-        if ($target === 'row') {
+        if ($render_context === 'query_collection' && $field_type === 'relationship') {
+            if (! empty($loop_context['active']) && $scope === 'related_entity') {
+                $contract = 'loop_owned_relationship_collection';
+            } elseif ($scope === 'shared_entity') {
+                $contract = 'shared_relationship_collection';
+            } else {
+                $contract = 'relationship_collection';
+            }
+        } elseif ($render_context === 'query_collection' && $field_type === 'post_object') {
+            if (! empty($loop_context['active']) && $scope === 'related_entity') {
+                $contract = 'loop_owned_post_object_collection';
+            } elseif ($scope === 'shared_entity') {
+                $contract = 'shared_post_object_collection';
+            } else {
+                $contract = 'post_object_collection';
+            }
+        } elseif ($target === 'row') {
             $contract = 'repeater_row';
         } elseif ($target === 'layout') {
             $contract = 'flexible_layout';
-        } elseif ($render_context === 'query_collection' && $field_type === 'relationship') {
-            $contract = 'relationship_collection';
-        } elseif ($render_context === 'query_collection' && $field_type === 'post_object') {
-            $contract = 'post_object_collection';
         }
 
         if (! empty($loop_context['active']) && $scope === 'related_entity') {
-            if ($target === 'row') {
+            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object'], true)) {
+                // collection contracts are already scope-specific above
+            } elseif ($target === 'row') {
                 $contract = 'loop_owned_repeater_row';
             } elseif ($target === 'layout') {
                 $contract = 'loop_owned_flexible_layout';
@@ -1534,7 +1548,9 @@ final class ElementInstrumentationService
                 $contract = 'loop_owned_field';
             }
         } elseif ($scope === 'shared_entity') {
-            if ($target === 'row') {
+            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object'], true)) {
+                // collection contracts are already scope-specific above
+            } elseif ($target === 'row') {
                 $contract = 'shared_repeater_row';
             } elseif ($target === 'layout') {
                 $contract = 'shared_flexible_layout';

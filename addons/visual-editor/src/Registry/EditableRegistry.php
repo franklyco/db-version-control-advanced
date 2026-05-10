@@ -7,7 +7,9 @@ use Dbvc\VisualEditor\Context\PageContextResolver;
 final class EditableRegistry
 {
     private const TRANSIENT_PREFIX = 'dbvc_visual_editor_session_';
-    private const SESSION_TTL = 900;
+    private const DEFAULT_SESSION_TTL = 28800;
+    private const MIN_SESSION_TTL = 300;
+    private const MAX_SESSION_TTL = 172800;
 
     /**
      * @var PageContextResolver
@@ -102,7 +104,7 @@ final class EditableRegistry
             'created_at' => time(),
         ];
 
-        set_transient($this->getTransientKey($this->session_id), $payload, self::SESSION_TTL);
+        set_transient($this->getTransientKey($this->session_id), $payload, $this->getSessionTtl());
     }
 
     /**
@@ -125,9 +127,27 @@ final class EditableRegistry
             return [];
         }
 
-        set_transient($this->getTransientKey($session_id), $payload, self::SESSION_TTL);
+        set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
 
         return $payload;
+    }
+
+    /**
+     * @return int
+     */
+    public function getSessionTtl()
+    {
+        $ttl = (int) apply_filters('dbvc_visual_editor_session_ttl', self::DEFAULT_SESSION_TTL);
+
+        if ($ttl < self::MIN_SESSION_TTL) {
+            return self::MIN_SESSION_TTL;
+        }
+
+        if ($ttl > self::MAX_SESSION_TTL) {
+            return self::MAX_SESSION_TTL;
+        }
+
+        return $ttl;
     }
 
     /**

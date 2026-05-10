@@ -23,7 +23,12 @@
     statusBarState: null,
     panelOpen: false,
     panelPosition: null,
-    panelDrag: null
+    panelDrag: null,
+    sessionKeepaliveTimer: 0,
+    sessionKeepaliveInFlight: null,
+    sessionKeepaliveBound: false,
+    sessionLastRefreshAt: 0,
+    sessionExpired: false
   };
 
   const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
@@ -134,6 +139,152 @@
       : '';
   }
 
+  function getSessionKeepaliveMs() {
+    const raw = window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.sessionKeepaliveMs;
+    const value = Number(raw);
+
+    if (!Number.isFinite(value) || value < 60000) {
+      return 240000;
+    }
+
+    return value;
+  }
+
+  function getSessionExpiredMessage() {
+    return strings().sessionExpired || 'Visual Editor session expired. Refresh the page to continue editing.';
+  }
+
+  function isSessionExpiredError(error) {
+    const message = error && error.message ? String(error.message).toLowerCase() : '';
+    const expired = getSessionExpiredMessage().toLowerCase();
+    const missing = (strings().sessionMissing || 'Visual Editor session not found for this page.').toLowerCase();
+
+    return Boolean(message) && (
+      message.indexOf(expired) !== -1
+      || message.indexOf(missing) !== -1
+      || message.indexOf('session expired') !== -1
+      || message.indexOf('session not found') !== -1
+    );
+  }
+
+  function syncSessionPayload(session) {
+    if (!session || !session.ok || !session.sessionId) {
+      return;
+    }
+
+    state.session = session;
+    state.sessionExpired = false;
+    state.sessionLastRefreshAt = Date.now();
+    cacheDescriptorHydrations(session.descriptorHydrations);
+  }
+
+  function handleExpiredSession(error) {
+    const message = error && error.message ? String(error.message) : getSessionExpiredMessage();
+    state.sessionExpired = true;
+    state.session = null;
+
+    updateStatusBar({
+      kind: 'error',
+      count: getMarkerCount(),
+      message
+    });
+
+    const panelNodes = getPanelNodes();
+    if (panelNodes && panelNodes.panel && state.panelOpen) {
+      panelNodes.panel.dataset.state = 'error';
+      panelNodes.status.textContent = message;
+      panelNodes.saveButton.disabled = true;
+      schedulePanelViewportClamp();
+    }
+  }
+
+  function refreshSession(options) {
+    const bootstrapSessionId = window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.sessionId
+      ? String(window.DBVCVisualEditorBootstrap.sessionId)
+      : '';
+
+    if (!bootstrapSessionId) {
+      return Promise.reject(new Error(getSessionExpiredMessage()));
+    }
+
+    if (state.sessionKeepaliveInFlight) {
+      return state.sessionKeepaliveInFlight;
+    }
+
+    state.sessionKeepaliveInFlight = window.DBVCVisualEditorApi.getSession(bootstrapSessionId)
+      .then(function (session) {
+        syncSessionPayload(session);
+        return session;
+      })
+      .catch(function (error) {
+        if (isSessionExpiredError(error)) {
+          handleExpiredSession(error);
+        } else if (!options || !options.silent) {
+          window.console.warn(error);
+        }
+
+        throw error;
+      })
+      .finally(function () {
+        state.sessionKeepaliveInFlight = null;
+      });
+
+    return state.sessionKeepaliveInFlight;
+  }
+
+  function bindSessionKeepaliveEvents() {
+    if (state.sessionKeepaliveBound) {
+      return;
+    }
+
+    state.sessionKeepaliveBound = true;
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && !state.sessionExpired) {
+        refreshSession({ silent: true }).catch(function () {});
+      }
+    });
+
+    window.addEventListener('focus', function () {
+      if (!state.sessionExpired) {
+        refreshSession({ silent: true }).catch(function () {});
+      }
+    });
+  }
+
+  function startSessionKeepalive() {
+    if (state.sessionKeepaliveTimer) {
+      window.clearInterval(state.sessionKeepaliveTimer);
+      state.sessionKeepaliveTimer = 0;
+    }
+
+    bindSessionKeepaliveEvents();
+
+    state.sessionKeepaliveTimer = window.setInterval(function () {
+      if (state.sessionExpired) {
+        return;
+      }
+
+      refreshSession({ silent: true }).catch(function () {});
+    }, getSessionKeepaliveMs());
+  }
+
+  function shouldRefreshSessionBeforeAction() {
+    if (state.sessionExpired) {
+      return false;
+    }
+
+    if (!state.session || !state.session.sessionId) {
+      return true;
+    }
+
+    if (!state.sessionLastRefreshAt) {
+      return true;
+    }
+
+    return Date.now() - state.sessionLastRefreshAt > 60000;
+  }
+
   function getSessionDescriptorSummary(token) {
     if (!token
       || !state.session
@@ -180,6 +331,13 @@
         cacheDescriptorPayload(result);
 
         return result;
+      })
+      .catch(function (error) {
+        if (isSessionExpiredError(error)) {
+          handleExpiredSession(error);
+        }
+
+        throw error;
       })
       .finally(function () {
         delete state.descriptorRequests[token];
@@ -3399,6 +3557,18 @@
     state.touchSelectionToken = token;
     clearDescriptorPrefetch();
 
+    if (shouldRefreshSessionBeforeAction()) {
+      try {
+        session = await refreshSession({ silent: true });
+      } catch (error) {
+        panelNodes.panel.dataset.state = 'error';
+        panelNodes.status.textContent = error && error.message ? error.message : getSessionExpiredMessage();
+        schedulePanelViewportClamp();
+        window.console.error(error);
+        return;
+      }
+    }
+
     if (cached && cached.ok && cached.descriptor) {
       cached.sourceMismatch = hasSourceMismatch(node, cached);
       cached.renderedValue = getNodeDisplayValue(node, cached.descriptor);
@@ -3414,6 +3584,10 @@
       state.activeDescriptor = result.descriptor;
       renderEditorPanel(result);
     } catch (error) {
+      if (isSessionExpiredError(error)) {
+        handleExpiredSession(error);
+      }
+
       panelNodes.panel.dataset.state = 'error';
       panelNodes.status.textContent = error && error.message ? error.message : (strings().descriptorMissing || 'Descriptor not found.');
       schedulePanelViewportClamp();
@@ -3448,6 +3622,10 @@
     state.activeController.setDisabled(true);
 
     try {
+      if (shouldRefreshSessionBeforeAction()) {
+        await refreshSession({ silent: true });
+      }
+
       const saveResult = await window.DBVCVisualEditorApi.save(state.session.sessionId, token, value, acknowledgeSharedScope);
       const syncGroup = getActiveSyncGroup();
       const sourceGroup = getActiveSourceGroup();
@@ -3489,6 +3667,10 @@
         }, 250);
       }
     } catch (error) {
+      if (isSessionExpiredError(error)) {
+        handleExpiredSession(error);
+      }
+
       panelNodes.panel.dataset.state = 'error';
       panelNodes.status.textContent = error && error.message ? error.message : (strings().saveFailed || 'Save failed.');
       schedulePanelViewportClamp();
@@ -3538,13 +3720,13 @@
       updateStatusBar({
         kind: 'error',
         count: markers.length,
-        message: strings().sessionUnavailable || 'Markers were found, but the descriptor session was unavailable for this request.'
+        message: strings().sessionUnavailable || strings().sessionExpired || 'Markers were found, but the descriptor session was unavailable for this request.'
       });
       return;
     }
 
-    state.session = session;
-    cacheDescriptorHydrations(session.descriptorHydrations);
+    syncSessionPayload(session);
+    startSessionKeepalive();
 
     if (state.previewNode) {
       scheduleDescriptorPrefetch(state.previewNode);

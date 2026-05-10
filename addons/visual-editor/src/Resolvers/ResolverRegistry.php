@@ -384,25 +384,28 @@ final class ResolverRegistry
         $query_object_type = isset($candidate['query_object_type']) ? sanitize_key((string) $candidate['query_object_type']) : '';
 
         if ($entity_type !== 'post' || $entity_id <= 0 || $query_object_type === '') {
-            return $this->buildUnsupported('Only current-post ACF connected-item query roots are enabled in this collection-editor slice.');
+            return $this->buildUnsupported('Only current-page post contexts are enabled in the current connected-items editor slice.');
         }
 
         $loop_context = $this->loops->resolve();
-        if (! empty($loop_context['active']) && ! $this->isCurrentOwnerCollectionLoopContext($loop_context, $entity_id)) {
-            return $this->buildUnsupported('Loop-owned connected-item collection editing is not enabled in the first current-owner collection-editor slice yet.');
+        $entity = $this->resolveCollectionFieldEntity($page_context, $loop_context);
+        $scope = $this->resolveCollectionFieldScope($entity, $entity_id, $loop_context);
+
+        if (empty($entity) || ($entity['type'] ?? '') !== 'post' || absint($entity['id'] ?? 0) <= 0) {
+            return $this->buildUnsupported('Only current-page and related-post connected-item collection roots are enabled in the current connected-items editor slice.');
         }
 
-        $entity = [
-            'type' => 'post',
-            'id' => $entity_id,
-            'subtype' => $post_type,
-            'acf_object_id' => $entity_id,
-        ];
+        if ($scope === 'related_entity' && ! $this->loops->supportsRelatedPostEditing($loop_context)) {
+            return $this->buildUnsupported('Loop-owned connected-item collection editing is only enabled for concrete related post owners in the current slice.');
+        }
+
         $native_query = $this->native_acf_queries->resolve($query_object_type, $entity);
         $field = $this->native_acf_queries->resolveFieldDefinitionForQuery($query_object_type, $entity);
 
         if (empty($native_query['active']) || empty($field)) {
-            return $this->buildUnsupported('The Bricks ACF query root could not be mapped back to a direct ACF relationship or post-object field.');
+            return $this->buildUnsupported($scope === 'related_entity'
+                ? 'The Bricks ACF query root could not be mapped back to a direct related-post ACF relationship or post-object field.'
+                : 'The Bricks ACF query root could not be mapped back to a direct ACF relationship or post-object field.');
         }
 
         $field_path = isset($native_query['path']) && is_array($native_query['path'])
@@ -466,7 +469,7 @@ final class ResolverRegistry
 
         return [
             'status' => 'editable',
-            'scope' => 'current_entity',
+            'scope' => $scope,
             'entity' => $entity,
             'loop' => $loop_export,
             'repeater' => $repeater_context,
@@ -523,7 +526,7 @@ final class ResolverRegistry
             'ui' => [
                 'label' => $label,
                 'input' => 'reference_collection',
-                'warning' => $this->buildCollectionFieldWarning($repeater_context, $flexible_context),
+                'warning' => $this->buildCollectionFieldWarning($scope, $loop_context, $repeater_context, $flexible_context),
                 'allowMultiple' => $allow_multiple,
                 'maxSelections' => $max,
             ],
@@ -557,11 +560,15 @@ final class ResolverRegistry
      * @param array<string, mixed> $flexible_context
      * @return string
      */
-    private function buildCollectionFieldWarning(array $repeater_context = [], array $flexible_context = [])
+    private function buildCollectionFieldWarning($scope = 'current_entity', array $loop_context = [], array $repeater_context = [], array $flexible_context = [])
     {
-        $warnings = [
-            __('This query loop is driven by an ACF connected-items field. Saving here updates the stored connected item list and reloads the page so Bricks can rebuild the loop markup cleanly.', 'dbvc'),
-        ];
+        $warnings = [];
+
+        if ($scope === 'related_entity' && $this->loops->supportsRelatedPostEditing($loop_context)) {
+            $warnings[] = __('This query loop is driven by a related post ACF connected-items field. Saving here updates that related post and reloads the page so Bricks can rebuild the loop markup cleanly.', 'dbvc');
+        } else {
+            $warnings[] = __('This query loop is driven by an ACF connected-items field. Saving here updates the stored connected item list and reloads the page so Bricks can rebuild the loop markup cleanly.', 'dbvc');
+        }
 
         if (! empty($repeater_context['supported'])) {
             $parent_field_name = isset($repeater_context['parent_field_name']) ? sanitize_key((string) $repeater_context['parent_field_name']) : '';
@@ -594,6 +601,50 @@ final class ResolverRegistry
         }
 
         return implode(' ', $warnings);
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @param array<string, mixed> $loop_context
+     * @return array<string, mixed>
+     */
+    private function resolveCollectionFieldEntity(array $page_context, array $loop_context)
+    {
+        if ($this->loops->supportsRelatedPostEditing($loop_context)) {
+            $owner = isset($loop_context['effective_owner_entity']) && is_array($loop_context['effective_owner_entity'])
+                ? $loop_context['effective_owner_entity']
+                : (isset($loop_context['owner_entity']) && is_array($loop_context['owner_entity']) ? $loop_context['owner_entity'] : []);
+
+            if (! empty($owner) && ($owner['type'] ?? '') === 'post' && absint($owner['id'] ?? 0) > 0) {
+                return $owner;
+            }
+        }
+
+        $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+
+        return [
+            'type' => 'post',
+            'id' => $entity_id,
+            'subtype' => isset($page_context['postType']) ? (string) $page_context['postType'] : '',
+            'acf_object_id' => $entity_id,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     * @param int                  $page_entity_id
+     * @param array<string, mixed> $loop_context
+     * @return string
+     */
+    private function resolveCollectionFieldScope(array $entity, $page_entity_id, array $loop_context)
+    {
+        $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
+
+        if ($entity_id > 0 && $entity_id === $page_entity_id) {
+            return 'current_entity';
+        }
+
+        return $this->loops->supportsRelatedPostEditing($loop_context) ? 'related_entity' : 'current_entity';
     }
 
     /**

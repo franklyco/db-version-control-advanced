@@ -3,6 +3,10 @@
 ## Unreleased
 
 - Added a status-bar editor link that defaults to the current frontend entity and switches to the active field owner while a panel target is open, then falls back again when the panel closes
+- Increased the default Visual Editor transient session lifetime and made it filterable, then added frontend keepalive/focus refresh so an open page does not lose descriptor access after the original short idle window.
+- Changed the session, descriptor, and save REST paths to return an explicit “session expired, refresh the page” message when the VE session is gone, and taught the panel/status bar to surface that state instead of only showing a generic missing-descriptor error.
+- Extended the connected-items editor again so concrete loop-owned related-post native ACF `relationship` / `post_object` query roots can now classify as editable collection roots instead of staying blocked behind the current-owner-only gate.
+- Updated the mutation builder and contract service so `query_collection` descriptors now keep collection-specific related/shared contract names, including `loop_owned_relationship_collection` and `loop_owned_post_object_collection`, instead of collapsing row-backed or related collection roots into scalar row/field contracts.
 - Extended the same `Edit Connected` ancestry path again so grouped current-owner row-owned native ACF `relationship` / `post_object` query roots can resolve the final nested collection container through canonical group ancestry instead of stopping at the parent repeater/flexible row
 - Extended the `Edit Connected` collection-editor slice so mixed current-owner `repeater -> flexible` and `flexible -> repeater` native ACF `relationship` / `post_object` query roots can now carry explicit container ancestry instead of being limited to direct repeater-row or direct flexible-row roots only
 - Updated the reference-collection resolver to prefer canonical leaf field identifiers when traversing nested collection ancestry, so the final write targets the real ACF collection field inside the resolved row container instead of reusing an outer root selector

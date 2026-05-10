@@ -26,7 +26,7 @@ Current status:
 - direct Bricks native ACF `relationship` and `post_object` query roots on the current page owner can now surface a container-level `Edit Connected` marker with a dedicated connected-items panel mode and reload-after-save reconciliation
 - direct Bricks ACF repeater row subfields can now be marked and resolved through stable parent-repeater metadata plus Bricks loop index
 - current-post and related-post repeater row descendants can now reuse the existing safe field resolvers for text-like, WYSIWYG, choice, link, and image field types
-- descriptor state is kept server-side in a short-lived session registry
+- descriptor state is kept server-side in a filterable transient session registry, now with a longer default lifetime plus client keepalive/focus refresh so an open editor session does not age out after only a few idle minutes
 - authenticated REST inspection and save endpoints are available for the MVP allowlist
 - ACF object context now resolves through Bricks provider logic for current-post, options, term, and user-backed fields on singular views
 - current-post ACF `post_object`, single-target `relationship`, and single-select `taxonomy` fields can now be edited through their rendered permalink when Bricks uses them as direct link targets
@@ -102,7 +102,7 @@ This addon now lives inside the DBVC repo at:
 - safe Bricks ACF `relationship` / `post_object` post-loop row support where the loop owner is a concrete related post
 - safe direct ACF field support where the loop owner is a concrete queried post, term, or user
 - native Bricks ACF query-loop metadata for repeater, relationship, post-object, and taxonomy `query.objectType` roots
-- direct current-owner native Bricks ACF `relationship` and `post_object` query-root collection editing with ordered add/remove/reorder and reload-after-save reconciliation, including direct current-owner repeater-row and flexible-row roots, mixed current-owner `repeater -> flexible` and `flexible -> repeater` roots, and grouped row-owned current-owner roots when the nested row/group ancestry is stable
+- direct native Bricks ACF `relationship` and `post_object` query-root collection editing with ordered add/remove/reorder and reload-after-save reconciliation for current owners, direct repeater-row and flexible-row roots, mixed current-owner `repeater -> flexible` and `flexible -> repeater` roots, grouped current-owner row-owned roots, and concrete loop-owned related-post roots with explicit acknowledgement
 - safe Bricks ACF repeater row support where the row index is stable and the owner resolves to the current post or a concrete related post
 - writable support for direct Bricks ACF flexible-content text-like, WYSIWYG, choice, link, image, and gallery descendants on current owners, loop-owned related owners, and shared term/user/option owners, with inspect-only surfacing still reserved for the remaining unsupported flexible descendants
 - nested-group descendants inside supported repeater/flexible rows now preserve their Bricks ACF group ancestry in the descriptor path and row mutation layer

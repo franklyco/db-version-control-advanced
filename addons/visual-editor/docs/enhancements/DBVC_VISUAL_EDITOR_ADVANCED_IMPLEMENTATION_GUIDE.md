@@ -24,6 +24,8 @@ For the recent native ACF loop hardening patches and the code-level consolidatio
 
 For the dedicated current-owner connected-items roadmap, see [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md).
 
+For the runtime badge, hydration, and bounded viewport-prefetch roadmap, see [DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md](./DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md).
+
 ## Design Decisions
 
 ### 1. Do not jump straight from unsupported to writable
@@ -75,6 +77,34 @@ Near-term runtime optimization should focus on:
 - on-demand descriptor hydration
 
 Those changes do not require new DB tables.
+
+### 6. Add bounded viewport-aware descriptor prefetch before any heavier caching
+
+If the next runtime optimization step is “make other visible fields feel faster while the editor is open,” do that by extending the current lightweight runtime model, not by reintroducing eager hydration.
+
+Recommended approach:
+- keep the current public-map-only session bootstrap
+- keep on-demand descriptor lookup as the only source of full field payloads
+- reuse the existing in-memory descriptor cache and in-flight request reuse
+- add a low-priority viewport-aware prefetch queue for visible uncached markers
+
+Guardrails:
+- no `hydrate=1` warmup for the whole page
+- no persistent runtime token/descriptor cache table
+- no broad hidden-container prefetch
+- no competing request storm while a save or collection mutation is in progress
+
+This should remain a runtime convenience layer, not a new source-of-truth path.
+
+### 7. Keep editing interactions higher priority than background prefetch
+
+Viewport prefetch is only worthwhile if it stays subordinate to explicit user actions.
+
+That means:
+- active-marker hover/focus/touch prefetch still has highest priority
+- opening a field should always be able to reuse or supersede the same in-flight descriptor request
+- background viewport work should pause or defer during save, reload-after-save states, and other expensive modal flows such as Media Library selection
+- the browser should only prefetch a small bounded set of nearby markers at a time
 
 ## Recommended Storage Shape
 
@@ -179,6 +209,34 @@ Recommended next-step UI model:
 
 This gives most of the inline feel without forcing a real button into every marked subtree.
 
+### Viewport-aware descriptor warmup
+
+Recommended next-step runtime behavior:
+- while the user is editing or inspecting one field, the browser may opportunistically prefetch full descriptors for other visible markers nearby
+- that warmup should be driven by viewport visibility, not by hydrating every token at bootstrap
+- the warmup queue should only touch markers that are already in the authenticated public descriptor map and are not already cached or in flight
+
+Recommended priority order:
+1. active marker selected by hover/focus/touch
+2. currently visible editable markers
+3. currently visible inspect-only markers
+4. near-viewport markers inside a small root margin
+
+Recommended mechanics:
+- `IntersectionObserver` over rendered VE markers
+- small root margin such as `200px` to `400px`
+- bounded concurrency such as `1` to `2` descriptor requests
+- idle-time pumping via `requestIdleCallback` with a timer fallback
+- per-cycle queue cap so long pages do not backfill everything at once
+
+Recommended pause conditions:
+- save request in progress
+- page reload pending after gallery or collection mutation
+- session expired
+- panel or Media Library flow is already under heavy interaction
+
+This should make nearby markers open faster without materially changing the current save/session architecture.
+
 ### Non-current-post badge
 
 Any item whose owner entity differs from the current page post should surface a visible badge in the overlay.
@@ -258,6 +316,17 @@ Recommended next sequence:
 5. expand inspect-only flexible/query-loop coverage where ownership is stable
 6. enable writable flexible scalar descendants only after the above are in place
 
+### Immediate runtime optimization order
+
+Treat viewport-aware prefetch as a separate bounded UX slice, not part of resolver expansion.
+
+Recommended sequence:
+1. keep current public-map bootstrap and active-marker dwell prefetch unchanged
+2. add `IntersectionObserver`-driven visible-marker collection
+3. add a bounded low-priority descriptor prefetch queue that reuses current cache and in-flight request logic
+4. pause that queue during save, reload, and heavy modal flows
+5. profile marker counts, descriptor request counts, and modal-open latency before considering any larger cache design
+
 For the concrete scenario matrix and later mutation roadmap, use:
 - [DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md](./DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md)
 - [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md)
@@ -280,7 +349,7 @@ Add writable paths for:
 Current status:
 - the narrow first slice is now moving into direct current-owner Bricks native ACF query roots for `relationship` and `post_object` fields
 - that slice uses a dedicated query-root descriptor family, `Edit Connected` badge treatment, and reload-after-save reconciliation instead of pretending collection mutation is just another scalar descendant write
-- that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, to mixed current-owner `repeater -> flexible` / `flexible -> repeater` collection roots when the nested row chain can be reduced to canonical container ancestry, and to grouped current-owner row-owned collection roots when the intermediate group ancestry can be proven from the native query path; broader shared/loop-owned collection roots remain deferred
+- that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, to mixed current-owner `repeater -> flexible` / `flexible -> repeater` collection roots when the nested row chain can be reduced to canonical container ancestry, to grouped current-owner row-owned collection roots when the intermediate group ancestry can be proven from the native query path, and to loop-owned related-post collection roots with dedicated collection contracts and acknowledgement flow; broader shared owners and loop-owned non-post collection roots remain deferred
 
 Near-term order:
 1. current-owner native `relationship` query roots

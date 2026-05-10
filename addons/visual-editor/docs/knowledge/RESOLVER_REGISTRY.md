@@ -64,6 +64,7 @@ Supports:
 - current-owner repeater-row and flexible-row query roots for those same ACF field types
 - mixed current-owner `repeater -> flexible` and `flexible -> repeater` query roots when the nested row ancestry is canonical
 - grouped current-owner row-owned query roots when the native query path can prove the intermediate group ancestry canonically
+- loop-owned related-post query roots for those same ACF field types when Bricks exposes a concrete related post owner
 - ordered add/remove/reorder of connected posts through one collection save
 - reload-after-save reconciliation so Bricks can rebuild loop markup from the updated collection
 
@@ -91,7 +92,7 @@ Fallback classifier for:
 - Direct flexible descendants can reuse the existing safe ACF resolvers for inspect/read behavior once row + layout identity is stable.
 - Current/related post flexible descendants can now reuse the existing choice, link, and image resolvers for writable direct-field mutation when the row + layout path is stable.
 - Do not add flexible write contracts or relationship collection resolvers until nested path identity is stable.
-- Keep the connected-items collection editor limited to current-owner query roots until shared owners, loop-owned collections, and broader grouped row-owned collection paths that still lack canonical ancestry have their own hardened contracts.
+- Keep the connected-items collection editor limited to current-owner query roots plus concrete related-post loop owners until shared owners, loop-owned non-post collections, and broader grouped row-owned collection paths that still lack canonical ancestry have their own hardened contracts.
 - Do not add multi-step resolvers until durable change journaling exists.
 - Related/query-loop ownership must be resolved before any nested resolver is allowed to save.
 

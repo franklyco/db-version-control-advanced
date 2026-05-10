@@ -221,6 +221,11 @@ Direct current-owner connected-item query roots now use a dedicated collection d
 }
 ```
 
+For the same `query_collection` family, the collection contract name is scope-aware:
+- current-owner roots: `relationship_collection` / `post_object_collection`
+- loop-owned related-post roots: `loop_owned_relationship_collection` / `loop_owned_post_object_collection`
+- shared-owner roots: reserved for later `shared_relationship_collection` / `shared_post_object_collection`
+
 Nested current-owner connected-item roots keep that same `acf_collection_field` family, but add explicit container ancestry when the query root lives under repeater/flexible row chains, for example:
 
 ```json

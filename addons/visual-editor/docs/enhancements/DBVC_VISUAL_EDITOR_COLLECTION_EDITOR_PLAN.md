@@ -137,11 +137,17 @@ Still deferred inside this phase:
 
 ### Phase 4. Shared and loop-owned collection roots
 
+- loop-owned related post owners for native ACF `relationship` / `post_object` query roots
 - shared post owners
 - shared term/user/option owners where meaningful
-- loop-owned related owners
 
-These require explicit acknowledgement and stronger owner messaging.
+The loop-owned related-post branch is now implemented in code for concrete related post owners.
+
+Still deferred inside this phase:
+- shared post owners
+- shared term/user/option owners
+- loop-owned non-post owners such as term/user/option roots
+- broader custom query-editor collection roots
 
 ### Phase 5. True collection mutation expansion
 

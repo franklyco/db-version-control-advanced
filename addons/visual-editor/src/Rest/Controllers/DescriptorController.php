@@ -4,6 +4,7 @@ namespace Dbvc\VisualEditor\Rest\Controllers;
 
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
+use Dbvc\VisualEditor\Registry\EditableDescriptor;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
 use Dbvc\VisualEditor\Rest\DescriptorPayloadBuilder;
 use WP_REST_Request;
@@ -95,7 +96,22 @@ final class DescriptorController
 
         $session_id = sanitize_key((string) $request['session_id']);
         $token = sanitize_key((string) $request['token']);
-        $descriptor = $this->registry->getDescriptorFromSession($session_id, $token);
+        $session = $this->registry->loadSession($session_id);
+
+        if (empty($session)) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => __('Visual Editor session expired. Refresh the page to continue editing.', 'dbvc'),
+                ],
+                404
+            );
+        }
+
+        $descriptors = isset($session['descriptors']) && is_array($session['descriptors']) ? $session['descriptors'] : [];
+        $descriptor = ($token !== '' && isset($descriptors[$token]) && is_array($descriptors[$token]))
+            ? EditableDescriptor::fromArray($descriptors[$token])
+            : null;
 
         if (! $descriptor) {
             return new WP_REST_Response(

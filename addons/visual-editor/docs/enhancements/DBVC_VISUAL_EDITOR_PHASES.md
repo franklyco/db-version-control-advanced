@@ -86,11 +86,23 @@
     - direct current-owner repeater-row and flexible-row `relationship` / `post_object` query roots now target that same connected-items contract in code when the active row path is stable
     - mixed current-owner `repeater -> flexible` and `flexible -> repeater` `relationship` / `post_object` query roots now carry explicit container ancestry in code so the connected-items editor can traverse canonical nested row paths instead of only direct row roots
     - grouped current-owner row-owned `relationship` / `post_object` query roots now also flow through that same contract when the native query path can prove the intermediate group ancestry canonically
+    - loop-owned related-post native ACF `relationship` / `post_object` query roots now also flow through the connected-items contract in code, with related-owner acknowledgement and collection-specific mutation contracts instead of falling back to generic loop-owned field messaging
     - reload-after-save reconciliation remains the intentional default for the whole collection-editor branch
-  - deferred within the collection-editor branch:
-    - shared or loop-owned connected-item collections
-    - taxonomy collection mutation
-    - true row insert/remove/reorder branches
+- session-lifecycle hardening:
+  - transient-backed VE sessions now default to a longer filterable TTL instead of the original short idle window
+  - the frontend now refreshes the active session on an interval plus focus/visibility return so an open unattended page does not silently lose descriptor access as quickly
+  - descriptor and save endpoints now return an explicit “session expired, refresh the page” message instead of a generic missing-descriptor failure when the session is gone
+- planned runtime UX optimization after the current session-lifecycle hardening:
+  - keep the current lightweight public-map bootstrap and active-marker dwell prefetch model
+  - add bounded viewport-aware descriptor warmup for nearby visible uncached markers
+  - drive that warmup from `IntersectionObserver` plus a small root margin, not from eager full-page hydration
+  - reuse the existing descriptor cache and in-flight request map so background warmup never diverges from explicit field-open behavior
+  - keep active field opens, saves, reload-after-save flows, and Media Library interactions higher priority than background warmup
+- deferred within the collection-editor branch:
+  - shared connected-item collections
+  - loop-owned non-post connected-item collections
+  - taxonomy collection mutation
+  - true row insert/remove/reorder branches
 - paused slice to return to after the native loop work:
   - live-save smoke test nested grouped descendants inside supported repeater/flexible/related-owner paths
   - widen any remaining collection-safe structured paths only after those grouped save paths are proven stable
