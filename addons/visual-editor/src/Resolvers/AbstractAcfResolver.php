@@ -713,6 +713,48 @@ abstract class AbstractAcfResolver implements ResolverInterface
     }
 
     /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @return mixed
+     */
+    protected function readValueFromRepeaterRows(array $rows, EditableDescriptor $descriptor)
+    {
+        $row_index = $this->resolveRepeaterRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
+            return '';
+        }
+
+        return $this->extractRowFieldValue($rows[$row_index], $descriptor);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @param mixed                            $value
+     * @return array<string, mixed>
+     */
+    protected function writeValueToRepeaterRows(array $rows, EditableDescriptor $descriptor, $value)
+    {
+        $row_index = $this->resolveRepeaterRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index])) {
+            return [
+                'ok' => false,
+                'message' => __('The repeater row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $row = is_array($rows[$row_index]) ? $rows[$row_index] : [];
+        $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
+
+        return [
+            'ok' => true,
+            'rows' => array_values($rows),
+        ];
+    }
+
+    /**
      * @param EditableDescriptor $descriptor
      * @return array<int, array<string, mixed>>
      */
@@ -732,6 +774,62 @@ abstract class AbstractAcfResolver implements ResolverInterface
         $rows = get_field($parent_identifier, $object_id, false);
 
         return is_array($rows) ? array_values($rows) : [];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @return mixed
+     */
+    protected function readValueFromFlexibleRows(array $rows, EditableDescriptor $descriptor)
+    {
+        $row_index = $this->resolveFlexibleRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
+            return '';
+        }
+
+        $row = $rows[$row_index];
+        $layout_name = $this->getFlexibleLayoutName($descriptor);
+        if ($layout_name !== '' && isset($row['acf_fc_layout']) && sanitize_key((string) $row['acf_fc_layout']) !== $layout_name) {
+            return '';
+        }
+
+        return $this->extractRowFieldValue($row, $descriptor);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @param mixed                            $value
+     * @return array<string, mixed>
+     */
+    protected function writeValueToFlexibleRows(array $rows, EditableDescriptor $descriptor, $value)
+    {
+        $row_index = $this->resolveFlexibleRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index])) {
+            return [
+                'ok' => false,
+                'message' => __('The flexible-content row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $row = is_array($rows[$row_index]) ? $rows[$row_index] : [];
+        $layout_name = $this->getFlexibleLayoutName($descriptor);
+        if ($layout_name !== '' && isset($row['acf_fc_layout']) && sanitize_key((string) $row['acf_fc_layout']) !== $layout_name) {
+            return [
+                'ok' => false,
+                'message' => __('The flexible-content layout did not match the expected row.', 'dbvc'),
+            ];
+        }
+
+        $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
+
+        return [
+            'ok' => true,
+            'rows' => array_values($rows),
+        ];
     }
 
     /**

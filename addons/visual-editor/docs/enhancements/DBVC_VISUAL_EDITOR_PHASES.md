@@ -84,6 +84,8 @@
     - current-owner native ACF `relationship` query roots can now surface as `Edit Connected` container markers instead of only descendant field markers
     - current-owner native ACF `post_object` query roots can now use that same connected-items container contract
     - direct current-owner repeater-row and flexible-row `relationship` / `post_object` query roots now target that same connected-items contract in code when the active row path is stable
+    - mixed current-owner `repeater -> flexible` and `flexible -> repeater` `relationship` / `post_object` query roots now carry explicit container ancestry in code so the connected-items editor can traverse canonical nested row paths instead of only direct row roots
+    - grouped current-owner row-owned `relationship` / `post_object` query roots now also flow through that same contract when the native query path can prove the intermediate group ancestry canonically
     - reload-after-save reconciliation remains the intentional default for the whole collection-editor branch
   - deferred within the collection-editor branch:
     - shared or loop-owned connected-item collections

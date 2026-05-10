@@ -221,6 +221,54 @@ Direct current-owner connected-item query roots now use a dedicated collection d
 }
 ```
 
+Nested current-owner connected-item roots keep that same `acf_collection_field` family, but add explicit container ancestry when the query root lives under repeater/flexible row chains, for example:
+
+```json
+{
+  "source": {
+    "type": "acf_collection_field",
+    "expression": "query.objectType:acf_related_services",
+    "field_name": "related_services",
+    "field_key": "field_66abc999",
+    "field_selector": "related_services",
+    "field_type": "relationship",
+    "container_type": "repeater",
+    "parent_field_name": "sections_repeater",
+    "parent_field_key": "field_66aaa111",
+    "parent_field_selector": "sections_repeater",
+    "row_index": 0,
+    "container_ancestry": [
+      {
+        "type": "repeater",
+        "field_name": "sections_repeater",
+        "field_key": "field_66aaa111",
+        "field_selector": "sections_repeater",
+        "row_index": 0
+      },
+      {
+        "type": "flexible_content",
+        "field_name": "layout_rows",
+        "field_key": "field_66aaa222",
+        "field_selector": "layout_rows",
+        "row_index": 1,
+        "layout_name": "services_block",
+        "layout_key": "layout_66aaa223"
+      }
+    ],
+    "group_path": ["settings"],
+    "group_key_path": ["field_66aaa224"]
+  },
+  "mutation": {
+    "version": 2,
+    "kind": "collection",
+    "target": "row",
+    "contract": "relationship_collection",
+    "renderContext": "query_collection",
+    "requiresJournal": true
+  }
+}
+```
+
 The repeater row identity is also formalized in `path`, for example:
 
 ```json

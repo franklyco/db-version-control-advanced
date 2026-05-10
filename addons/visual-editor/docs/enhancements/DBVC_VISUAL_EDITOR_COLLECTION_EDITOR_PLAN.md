@@ -44,8 +44,6 @@ This makes them a different mutation family from:
 - shared owners
 - taxonomy collections
 - custom Bricks `queryEditor` sources
-- repeater/flexible row-owned relationship collections
-- relationship collections nested inside flexible/repeater owners
 - live in-place DOM patching after save
 
 ## Descriptor Contract
@@ -122,12 +120,20 @@ Save should:
 - current-owner repeater-row relationship/post-object collections
 - current-owner flexible-row relationship/post-object collections
 
-This phase is now implemented in code for direct current-owner row roots where:
+This phase is now implemented in code for current-owner row roots where:
 - the active native loop path is stable
-- repeater chains do not cross a deferred flexible ancestor boundary
-- flexible rows do not cross a deferred repeater ancestor boundary
+- the nested container ancestry can be reduced to a canonical repeater/flexible row chain
+- the collection root can be tied back to one direct ACF `relationship` or `post_object` field
 
-Mixed repeater/flexible nesting and broader grouped row-owned collection roots remain deferred.
+That now includes:
+- direct repeater-row roots
+- direct flexible-row roots
+- mixed `repeater -> flexible` collection roots
+- mixed `flexible -> repeater` collection roots
+
+Still deferred inside this phase:
+- broader shared/loop-owned collection roots
+- grouped row-owned collection roots whose group ancestry still cannot be proven canonically from the native query path
 
 ### Phase 4. Shared and loop-owned collection roots
 

@@ -280,7 +280,7 @@ Add writable paths for:
 Current status:
 - the narrow first slice is now moving into direct current-owner Bricks native ACF query roots for `relationship` and `post_object` fields
 - that slice uses a dedicated query-root descriptor family, `Edit Connected` badge treatment, and reload-after-save reconciliation instead of pretending collection mutation is just another scalar descendant write
-- that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, while mixed repeater/flexible nesting and broader shared/loop-owned collection roots remain deferred
+- that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, to mixed current-owner `repeater -> flexible` / `flexible -> repeater` collection roots when the nested row chain can be reduced to canonical container ancestry, and to grouped current-owner row-owned collection roots when the intermediate group ancestry can be proven from the native query path; broader shared/loop-owned collection roots remain deferred
 
 Near-term order:
 1. current-owner native `relationship` query roots

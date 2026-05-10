@@ -102,7 +102,7 @@ This addon now lives inside the DBVC repo at:
 - safe Bricks ACF `relationship` / `post_object` post-loop row support where the loop owner is a concrete related post
 - safe direct ACF field support where the loop owner is a concrete queried post, term, or user
 - native Bricks ACF query-loop metadata for repeater, relationship, post-object, and taxonomy `query.objectType` roots
-- direct current-owner native Bricks ACF `relationship` and `post_object` query-root collection editing with ordered add/remove/reorder and reload-after-save reconciliation, including direct current-owner repeater-row and flexible-row roots when the active row path is stable
+- direct current-owner native Bricks ACF `relationship` and `post_object` query-root collection editing with ordered add/remove/reorder and reload-after-save reconciliation, including direct current-owner repeater-row and flexible-row roots, mixed current-owner `repeater -> flexible` and `flexible -> repeater` roots, and grouped row-owned current-owner roots when the nested row/group ancestry is stable
 - safe Bricks ACF repeater row support where the row index is stable and the owner resolves to the current post or a concrete related post
 - writable support for direct Bricks ACF flexible-content text-like, WYSIWYG, choice, link, image, and gallery descendants on current owners, loop-owned related owners, and shared term/user/option owners, with inspect-only surfacing still reserved for the remaining unsupported flexible descendants
 - nested-group descendants inside supported repeater/flexible rows now preserve their Bricks ACF group ancestry in the descriptor path and row mutation layer

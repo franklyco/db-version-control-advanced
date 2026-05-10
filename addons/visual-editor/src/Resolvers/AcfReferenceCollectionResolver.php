@@ -182,7 +182,7 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
      */
     public function save(EditableDescriptor $descriptor, $value)
     {
-        $result = $this->writeAcfValue($descriptor, $value);
+        $result = $this->writeCollectionValue($descriptor, $value);
         if (empty($result['ok'])) {
             return $result;
         }
@@ -244,7 +244,7 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
      */
     private function getSelectedReferenceIds(EditableDescriptor $descriptor)
     {
-        $raw_value = $this->getRawAcfValue($descriptor);
+        $raw_value = $this->getCollectionValue($descriptor);
         $ids = [];
 
         if (is_array($raw_value)) {
@@ -260,6 +260,554 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
                 array_map('absint', $ids)
             )
         );
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return mixed
+     */
+    private function getCollectionValue(EditableDescriptor $descriptor)
+    {
+        $ancestry = $this->getContainerAncestry($descriptor);
+        if (empty($ancestry)) {
+            return $this->getRawAcfValue($descriptor);
+        }
+
+        $resolved = $this->loadTargetContainerRows($descriptor, $ancestry);
+        if (empty($resolved['ok'])) {
+            return '';
+        }
+
+        $rows = isset($resolved['rows']) && is_array($resolved['rows']) ? $resolved['rows'] : [];
+        $container_type = $this->getContainerType($descriptor);
+
+        if ($container_type === 'repeater') {
+            return $this->readValueFromRepeaterRows($rows, $descriptor);
+        }
+
+        if ($container_type === 'flexible_content') {
+            return $this->readValueFromFlexibleRows($rows, $descriptor);
+        }
+
+        return $this->getRawAcfValue($descriptor);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param mixed              $value
+     * @return array<string, mixed>
+     */
+    private function writeCollectionValue(EditableDescriptor $descriptor, $value)
+    {
+        $ancestry = $this->getContainerAncestry($descriptor);
+        if (empty($ancestry)) {
+            return $this->writeAcfValue($descriptor, $value);
+        }
+
+        $resolved = $this->loadTargetContainerRows($descriptor, $ancestry);
+        if (empty($resolved['ok'])) {
+            return [
+                'ok' => false,
+                'message' => isset($resolved['message']) ? (string) $resolved['message'] : __('The nested collection container could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $rows = isset($resolved['rows']) && is_array($resolved['rows']) ? $resolved['rows'] : [];
+        $container_type = $this->getContainerType($descriptor);
+        $mutation = $container_type === 'flexible_content'
+            ? $this->writeValueToFlexibleRows($rows, $descriptor, $value)
+            : $this->writeValueToRepeaterRows($rows, $descriptor, $value);
+
+        if (empty($mutation['ok'])) {
+            return $mutation;
+        }
+
+        $updated_rows = isset($mutation['rows']) && is_array($mutation['rows']) ? $mutation['rows'] : [];
+        $write_result = $this->persistTargetContainerRows($descriptor, $ancestry, $updated_rows);
+        if (empty($write_result['ok'])) {
+            return $write_result;
+        }
+
+        return [
+            'ok' => true,
+            'value' => $this->getValue($descriptor),
+        ];
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function getContainerType(EditableDescriptor $descriptor)
+    {
+        return isset($descriptor->source['container_type'])
+            ? sanitize_key((string) $descriptor->source['container_type'])
+            : '';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<int, array<string, mixed>>
+     */
+    private function getContainerAncestry(EditableDescriptor $descriptor)
+    {
+        if (empty($descriptor->source['container_ancestry']) || ! is_array($descriptor->source['container_ancestry'])) {
+            return [];
+        }
+
+        $segments = [];
+
+        foreach ($descriptor->source['container_ancestry'] as $segment) {
+            if (! is_array($segment)) {
+                continue;
+            }
+
+            $type = isset($segment['type']) ? sanitize_key((string) $segment['type']) : '';
+            $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+            $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+            $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+            $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                ? absint($segment['row_index'])
+                : null;
+
+            if ($type === '' || $field_name === '' && $field_key === '' && $field_selector === '') {
+                continue;
+            }
+
+            $segments[] = [
+                'type' => $type,
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'row_index' => $row_index,
+                'layout_name' => isset($segment['layout_name']) ? sanitize_key((string) $segment['layout_name']) : '',
+                'layout_key' => isset($segment['layout_key']) ? sanitize_key((string) $segment['layout_key']) : '',
+            ];
+        }
+
+        return $segments;
+    }
+
+    /**
+     * @param EditableDescriptor               $descriptor
+     * @param array<int, array<string, mixed>> $ancestry
+     * @return array<string, mixed>
+     */
+    private function loadTargetContainerRows(EditableDescriptor $descriptor, array $ancestry)
+    {
+        $root = $this->loadAncestorRootRows($descriptor, $ancestry);
+        if (empty($root['ok'])) {
+            return $root;
+        }
+
+        $root_rows = isset($root['rows']) && is_array($root['rows']) ? $root['rows'] : [];
+        $container =& $root_rows;
+        $segment_count = count($ancestry);
+
+        for ($index = 0; $index < $segment_count; $index++) {
+            $segment = $ancestry[$index];
+            $selection = $this->selectSegmentRowReference($container, $segment);
+            if (empty($selection['ok'])) {
+                return $selection;
+            }
+
+            if ($index === $segment_count - 1) {
+                $target_container = $this->resolveNestedFieldContainer($selection['row'], $descriptor);
+                $target_key = $this->resolveNestedFieldKeyFromRow($target_container, $descriptor);
+                if ($target_key === '') {
+                    return [
+                        'ok' => false,
+                        'message' => __('The nested collection field could not be resolved from the parent row.', 'dbvc'),
+                    ];
+                }
+
+                $target_rows = isset($target_container[$target_key]) && is_array($target_container[$target_key])
+                    ? array_values($target_container[$target_key])
+                    : [];
+
+                return [
+                    'ok' => true,
+                    'rows' => $target_rows,
+                ];
+            }
+
+            $next_segment = $ancestry[$index + 1];
+            $next_key = $this->resolveContainerFieldKeyFromRow($selection['row'], $next_segment);
+            if ($next_key === '') {
+                return [
+                    'ok' => false,
+                    'message' => __('The nested collection ancestry could not be traversed safely.', 'dbvc'),
+                ];
+            }
+
+            $container = isset($selection['row'][$next_key]) && is_array($selection['row'][$next_key])
+                ? array_values($selection['row'][$next_key])
+                : [];
+        }
+
+        return [
+            'ok' => false,
+            'message' => __('The nested collection ancestry did not expose a writable target container.', 'dbvc'),
+        ];
+    }
+
+    /**
+     * @param EditableDescriptor               $descriptor
+     * @param array<int, array<string, mixed>> $ancestry
+     * @param array<int, array<string, mixed>> $updated_rows
+     * @return array<string, mixed>
+     */
+    private function persistTargetContainerRows(EditableDescriptor $descriptor, array $ancestry, array $updated_rows)
+    {
+        $root = $this->loadAncestorRootRows($descriptor, $ancestry);
+        if (empty($root['ok'])) {
+            return $root;
+        }
+
+        $root_rows = isset($root['rows']) && is_array($root['rows']) ? array_values($root['rows']) : [];
+        $container =& $root_rows;
+        $segment_count = count($ancestry);
+
+        for ($index = 0; $index < $segment_count; $index++) {
+            $segment = $ancestry[$index];
+            $selection = $this->selectSegmentRowReference($container, $segment, true);
+            if (empty($selection['ok'])) {
+                return $selection;
+            }
+
+            if ($index === $segment_count - 1) {
+                $target_container =& $this->resolveNestedFieldContainerReference($selection['row'], $descriptor);
+                $target_key = $this->resolveNestedFieldKeyFromRow($target_container, $descriptor, true);
+                if ($target_key === '') {
+                    return [
+                        'ok' => false,
+                        'message' => __('The nested collection field could not be resolved for save.', 'dbvc'),
+                    ];
+                }
+
+                $target_container[$target_key] = array_values($updated_rows);
+                break;
+            }
+
+            $next_segment = $ancestry[$index + 1];
+            $next_key = $this->resolveContainerFieldKeyFromRow($selection['row'], $next_segment, true);
+            if ($next_key === '') {
+                return [
+                    'ok' => false,
+                    'message' => __('The nested collection ancestry could not be traversed safely for save.', 'dbvc'),
+                ];
+            }
+
+            if (! isset($selection['row'][$next_key]) || ! is_array($selection['row'][$next_key])) {
+                $selection['row'][$next_key] = [];
+            }
+
+            $selection['row'][$next_key] = array_values($selection['row'][$next_key]);
+            $container =& $selection['row'][$next_key];
+        }
+
+        return $this->persistAncestorRootRows($descriptor, $ancestry[0], $root_rows);
+    }
+
+    /**
+     * @param EditableDescriptor               $descriptor
+     * @param array<int, array<string, mixed>> $ancestry
+     * @return array<string, mixed>
+     */
+    private function loadAncestorRootRows(EditableDescriptor $descriptor, array $ancestry)
+    {
+        if (empty($ancestry)) {
+            return [
+                'ok' => false,
+                'message' => __('The nested collection ancestry is missing.', 'dbvc'),
+            ];
+        }
+
+        $root_segment = $ancestry[0];
+        $object_id = $this->getAcfObjectId($descriptor);
+        $identifier = $this->resolveSegmentReadIdentifier($root_segment);
+
+        if ($object_id === '' || $identifier === '' || ! function_exists('get_field')) {
+            return [
+                'ok' => false,
+                'message' => __('The nested collection root field could not be loaded.', 'dbvc'),
+            ];
+        }
+
+        $rows = get_field($identifier, $object_id, false);
+
+        return [
+            'ok' => true,
+            'rows' => is_array($rows) ? array_values($rows) : [],
+        ];
+    }
+
+    /**
+     * @param EditableDescriptor         $descriptor
+     * @param array<string, mixed>       $root_segment
+     * @param array<int, array<string,mixed>> $rows
+     * @return array<string, mixed>
+     */
+    private function persistAncestorRootRows(EditableDescriptor $descriptor, array $root_segment, array $rows)
+    {
+        $object_id = $this->getAcfObjectId($descriptor);
+        $field_selector = isset($root_segment['field_selector']) ? sanitize_key((string) $root_segment['field_selector']) : '';
+        $field_name = isset($root_segment['field_name']) ? sanitize_key((string) $root_segment['field_name']) : '';
+        $field_key = isset($root_segment['field_key']) ? sanitize_key((string) $root_segment['field_key']) : '';
+
+        if ($object_id === '' || ($field_selector === '' && $field_name === '' && $field_key === '') || ! function_exists('update_field')) {
+            return [
+                'ok' => false,
+                'message' => __('The nested collection root field could not be saved.', 'dbvc'),
+            ];
+        }
+
+        $result = false;
+
+        if ($field_selector !== '') {
+            $result = update_field($field_selector, $rows, $object_id);
+        }
+
+        if ($result === false && $field_name !== '') {
+            $result = update_field($field_name, $rows, $object_id);
+        }
+
+        $next_value = $this->loadAncestorRootRows($descriptor, [$root_segment]);
+        $next_rows = ! empty($next_value['ok']) && isset($next_value['rows']) && is_array($next_value['rows']) ? $next_value['rows'] : [];
+
+        if ($result === false && $field_key !== '' && ! $this->valuesEqual($next_rows, array_values($rows))) {
+            $result = update_field($field_key, $rows, $object_id);
+            $next_value = $this->loadAncestorRootRows($descriptor, [$root_segment]);
+            $next_rows = ! empty($next_value['ok']) && isset($next_value['rows']) && is_array($next_value['rows']) ? $next_value['rows'] : [];
+        }
+
+        if ($result === false && ! $this->valuesEqual($next_rows, array_values($rows))) {
+            return [
+                'ok' => false,
+                'message' => __('The nested collection root field update did not succeed.', 'dbvc'),
+            ];
+        }
+
+        return [
+            'ok' => true,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<string, mixed>             $segment
+     * @param bool                             $create
+     * @return array<string, mixed>
+     */
+    private function selectSegmentRowReference(array &$rows, array $segment, $create = false)
+    {
+        $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+            ? absint($segment['row_index'])
+            : null;
+
+        if ($row_index === null) {
+            return [
+                'ok' => false,
+                'message' => __('A nested collection row index is missing.', 'dbvc'),
+            ];
+        }
+
+        if ($create && ! isset($rows[$row_index])) {
+            $rows[$row_index] = [];
+        }
+
+        if (! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
+            return [
+                'ok' => false,
+                'message' => __('A nested collection row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $row =& $rows[$row_index];
+        $type = isset($segment['type']) ? sanitize_key((string) $segment['type']) : '';
+        $layout_name = isset($segment['layout_name']) ? sanitize_key((string) $segment['layout_name']) : '';
+
+        if ($type === 'flexible_content' && $layout_name !== '') {
+            $current_layout = isset($row['acf_fc_layout']) ? sanitize_key((string) $row['acf_fc_layout']) : '';
+
+            if ($current_layout === '' && $create) {
+                $row['acf_fc_layout'] = $layout_name;
+            } elseif ($current_layout !== '' && $current_layout !== $layout_name) {
+                return [
+                    'ok' => false,
+                    'message' => __('A nested flexible layout did not match the expected row.', 'dbvc'),
+                ];
+            }
+        }
+
+        return [
+            'ok' => true,
+            'row' => &$row,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function resolveNestedFieldContainer(array $row, EditableDescriptor $descriptor)
+    {
+        $container = $row;
+        $group_names = $this->getGroupPath($descriptor);
+        $group_keys = $this->getGroupKeyPath($descriptor);
+        $depth = max(count($group_names), count($group_keys));
+
+        for ($index = 0; $index < $depth; $index++) {
+            $group_name = isset($group_names[$index]) ? $group_names[$index] : '';
+            $group_key = isset($group_keys[$index]) ? $group_keys[$index] : '';
+            $segment = $this->resolveGroupSegmentKey($container, $group_name, $group_key);
+
+            if ($segment === '' || ! isset($container[$segment]) || ! is_array($container[$segment])) {
+                return [];
+            }
+
+            $container = $container[$segment];
+        }
+
+        return is_array($container) ? $container : [];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function &resolveNestedFieldContainerReference(array &$row, EditableDescriptor $descriptor)
+    {
+        $container =& $row;
+        $group_names = $this->getGroupPath($descriptor);
+        $group_keys = $this->getGroupKeyPath($descriptor);
+        $depth = max(count($group_names), count($group_keys));
+
+        for ($index = 0; $index < $depth; $index++) {
+            $group_name = isset($group_names[$index]) ? $group_names[$index] : '';
+            $group_key = isset($group_keys[$index]) ? $group_keys[$index] : '';
+            $segment = $this->resolveGroupSegmentKey($container, $group_name, $group_key);
+
+            if ($segment === '') {
+                $segment = $group_key !== '' ? $group_key : $group_name;
+            }
+
+            if ($segment === '') {
+                continue;
+            }
+
+            if (! isset($container[$segment]) || ! is_array($container[$segment])) {
+                $container[$segment] = [];
+            }
+
+            $container =& $container[$segment];
+        }
+
+        return $container;
+    }
+
+    /**
+     * @param array<string, mixed> $container
+     * @param string               $group_name
+     * @param string               $group_key
+     * @return string
+     */
+    private function resolveGroupSegmentKey(array $container, $group_name, $group_key)
+    {
+        $group_name = sanitize_key((string) $group_name);
+        $group_key = sanitize_key((string) $group_key);
+
+        if ($group_key !== '' && isset($container[$group_key]) && is_array($container[$group_key])) {
+            return $group_key;
+        }
+
+        if ($group_name !== '' && isset($container[$group_name]) && is_array($container[$group_name])) {
+            return $group_name;
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $segment
+     * @param bool                 $create
+     * @return string
+     */
+    private function resolveContainerFieldKeyFromRow(array $row, array $segment, $create = false)
+    {
+        $candidates = array_values(
+            array_filter(
+                array_unique(
+                    [
+                        isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '',
+                        isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '',
+                        isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '',
+                    ]
+                )
+            )
+        );
+
+        foreach ($candidates as $candidate) {
+            if (isset($row[$candidate]) && is_array($row[$candidate])) {
+                return $candidate;
+            }
+        }
+
+        return $create && ! empty($candidates) ? $candidates[0] : '';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @param bool                 $create
+     * @return string
+     */
+    private function resolveNestedFieldKeyFromRow(array $row, EditableDescriptor $descriptor, $create = false)
+    {
+        $candidates = array_values(
+            array_filter(
+                array_unique(
+                    [
+                        isset($descriptor->source['field_key']) ? sanitize_key((string) $descriptor->source['field_key']) : '',
+                        isset($descriptor->source['field_name']) ? sanitize_key((string) $descriptor->source['field_name']) : '',
+                        isset($descriptor->source['field_selector']) ? sanitize_key((string) $descriptor->source['field_selector']) : '',
+                        isset($descriptor->source['parent_field_key']) ? sanitize_key((string) $descriptor->source['parent_field_key']) : '',
+                        isset($descriptor->source['parent_field_name']) ? sanitize_key((string) $descriptor->source['parent_field_name']) : '',
+                        isset($descriptor->source['parent_field_selector']) ? sanitize_key((string) $descriptor->source['parent_field_selector']) : '',
+                    ]
+                )
+            )
+        );
+
+        foreach ($candidates as $candidate) {
+            if (isset($row[$candidate]) && is_array($row[$candidate])) {
+                return $candidate;
+            }
+        }
+
+        return $create && ! empty($candidates) ? $candidates[0] : '';
+    }
+
+    /**
+     * @param array<string, mixed> $segment
+     * @return string
+     */
+    private function resolveSegmentReadIdentifier(array $segment)
+    {
+        $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+        if ($field_selector !== '') {
+            return $field_selector;
+        }
+
+        $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+        if ($field_name !== '') {
+            return $field_name;
+        }
+
+        return isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
     }
 
     /**

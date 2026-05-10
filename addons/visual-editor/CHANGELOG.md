@@ -3,6 +3,9 @@
 ## Unreleased
 
 - Added a status-bar editor link that defaults to the current frontend entity and switches to the active field owner while a panel target is open, then falls back again when the panel closes
+- Extended the same `Edit Connected` ancestry path again so grouped current-owner row-owned native ACF `relationship` / `post_object` query roots can resolve the final nested collection container through canonical group ancestry instead of stopping at the parent repeater/flexible row
+- Extended the `Edit Connected` collection-editor slice so mixed current-owner `repeater -> flexible` and `flexible -> repeater` native ACF `relationship` / `post_object` query roots can now carry explicit container ancestry instead of being limited to direct repeater-row or direct flexible-row roots only
+- Updated the reference-collection resolver to prefer canonical leaf field identifiers when traversing nested collection ancestry, so the final write targets the real ACF collection field inside the resolved row container instead of reusing an outer root selector
 - Widened the new `Edit Connected` collection-editor slice so direct current-owner repeater-row and flexible-row ACF `relationship` / `post_object` query roots can reuse the same connected-items panel and row-backed save path when the active row metadata is stable
 - Added a focused Playwright smoke harness for the connected-items panel at `tests/playwright/visual-editor-connected-items.spec.js`, gated behind the existing LocalWP admin env vars
 - Renamed the dropped scaffold package to `addons/visual-editor/` and aligned docs to the repo path

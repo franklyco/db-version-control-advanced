@@ -425,6 +425,7 @@ final class ResolverRegistry
                 'row_index' => null,
                 'layout_key' => '',
                 'layout_name' => '',
+                'container_ancestry' => [],
                 'group_path' => [],
                 'group_key_path' => [],
                 'nested_repeater_path' => [],
@@ -437,7 +438,7 @@ final class ResolverRegistry
             $collection_context = $this->resolveCurrentOwnerNestedCollectionContext($native_query, $field, $loop_context, $entity);
 
             if (empty($collection_context)) {
-                return $this->buildUnsupported('Nested current-owner relationship and post-object collections are only enabled for direct repeater-row and flexible-row roots in this slice. Mixed nesting and broader owner scopes stay deferred.');
+                return $this->buildUnsupported('Nested current-owner relationship and post-object collections are only enabled when the row and group ancestry can be resolved canonically in the current connected-items slice.');
             }
         }
 
@@ -495,6 +496,7 @@ final class ResolverRegistry
                     : null,
                 'layout_key' => isset($source_context['layout_key']) ? sanitize_key((string) $source_context['layout_key']) : '',
                 'layout_name' => isset($source_context['layout_name']) ? sanitize_key((string) $source_context['layout_name']) : '',
+                'container_ancestry' => isset($source_context['container_ancestry']) && is_array($source_context['container_ancestry']) ? array_values($source_context['container_ancestry']) : [],
                 'group_path' => isset($source_context['group_path']) && is_array($source_context['group_path']) ? $source_context['group_path'] : [],
                 'group_key_path' => isset($source_context['group_key_path']) && is_array($source_context['group_key_path']) ? $source_context['group_key_path'] : [],
                 'nested_repeater_path' => isset($source_context['nested_repeater_path']) && is_array($source_context['nested_repeater_path']) ? $source_context['nested_repeater_path'] : [],
@@ -1185,16 +1187,107 @@ final class ResolverRegistry
             return [];
         }
 
+        $container_chain = $this->buildCurrentOwnerCollectionContainerChain($loop_context, $entity);
+        if (! empty($container_chain) && count($container_chain) > 1) {
+            $collection_context = $this->buildCurrentOwnerNestedCollectionChainContext($container_chain, $loop_context, $field_path);
+
+            if (! empty($collection_context)) {
+                return $this->mergeCollectionGroupContext($collection_context, $field_path, $container_path, $entity);
+            }
+        }
+
         $container_kind = isset($container_query['kind']) ? sanitize_key((string) $container_query['kind']) : '';
         if ($container_kind === 'repeater') {
-            return $this->buildCurrentOwnerRepeaterCollectionContext($loop_context, $field_path);
+            $collection_context = $this->buildCurrentOwnerRepeaterCollectionContext($loop_context, $field_path);
+
+            return $this->mergeCollectionGroupContext($collection_context, $field_path, $container_path, $entity);
         }
 
         if ($container_kind === 'flexible_content') {
-            return $this->buildCurrentOwnerFlexibleCollectionContext($field, $loop_context, $entity, $field_path);
+            $collection_context = $this->buildCurrentOwnerFlexibleCollectionContext($field, $loop_context, $entity, $field_path);
+
+            return $this->mergeCollectionGroupContext($collection_context, $field_path, $container_path, $entity);
         }
 
         return [];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $container_chain
+     * @param array<string, mixed>             $loop_context
+     * @param array<int, string>               $field_path
+     * @return array<string, mixed>
+     */
+    private function buildCurrentOwnerNestedCollectionChainContext(array $container_chain, array $loop_context, array $field_path)
+    {
+        if (empty($container_chain)) {
+            return [];
+        }
+
+        $active_segment = $container_chain[count($container_chain) - 1];
+        $active_path = isset($active_segment['path']) && is_array($active_segment['path'])
+            ? $this->normalizeNativeQueryPath($active_segment['path'])
+            : [];
+
+        if (empty($active_path) || ! $this->pathStartsWith($field_path, $active_path)) {
+            return [];
+        }
+
+        $root_segment = $container_chain[0];
+        $root_type = isset($root_segment['type']) ? sanitize_key((string) $root_segment['type']) : '';
+        $root_field_name = isset($root_segment['field_name']) ? sanitize_key((string) $root_segment['field_name']) : '';
+        $root_field_key = isset($root_segment['field_key']) ? sanitize_key((string) $root_segment['field_key']) : '';
+        $root_field_selector = isset($root_segment['field_selector']) ? sanitize_key((string) $root_segment['field_selector']) : '';
+        $root_row_index = isset($root_segment['row_index']) && $root_segment['row_index'] !== null && is_numeric($root_segment['row_index'])
+            ? absint($root_segment['row_index'])
+            : null;
+        $root_layout_name = isset($root_segment['layout_name']) ? sanitize_key((string) $root_segment['layout_name']) : '';
+        $root_layout_key = isset($root_segment['layout_key']) ? sanitize_key((string) $root_segment['layout_key']) : '';
+
+        if ($root_type === '' || ($root_field_name === '' && $root_field_key === '' && $root_field_selector === '') || $root_row_index === null) {
+            return [];
+        }
+
+        $source = [
+            'container_type' => $root_type,
+            'parent_field_name' => $root_field_name,
+            'parent_field_key' => $root_field_key,
+            'parent_field_selector' => $root_field_selector,
+            'row_index' => $root_row_index,
+            'layout_key' => $root_type === 'flexible_content' ? $root_layout_key : '',
+            'layout_name' => $root_type === 'flexible_content' ? $root_layout_name : '',
+            'container_ancestry' => $this->normalizeCollectionContainerAncestry($container_chain),
+            'group_path' => [],
+            'group_key_path' => [],
+            'nested_repeater_path' => $this->buildCollectionNestedRepeaterPath($container_chain),
+            'is_nested_group' => false,
+            'is_grouped_field' => false,
+        ];
+
+        return [
+            'loop' => $this->loops->export($loop_context),
+            'repeater' => $root_type === 'repeater'
+                ? [
+                    'supported' => true,
+                    'parent_field_name' => $root_field_name,
+                    'parent_field_key' => $root_field_key,
+                    'parent_field_selector' => $root_field_selector,
+                    'row_index' => $root_row_index,
+                ]
+                : [],
+            'flexible' => $root_type === 'flexible_content'
+                ? [
+                    'supported' => true,
+                    'parent_field_name' => $root_field_name,
+                    'parent_field_key' => $root_field_key,
+                    'parent_field_selector' => $root_field_selector,
+                    'row_index' => $root_row_index,
+                    'layout_key' => $root_layout_key,
+                    'layout_name' => $root_layout_name,
+                ]
+                : [],
+            'source' => $source,
+        ];
     }
 
     /**
@@ -1266,6 +1359,7 @@ final class ResolverRegistry
                 'row_index' => $row_index,
                 'layout_key' => '',
                 'layout_name' => '',
+                'container_ancestry' => $this->normalizeCollectionContainerAncestry($repeater_chain),
                 'group_path' => [],
                 'group_key_path' => [],
                 'nested_repeater_path' => $nested_segments,
@@ -1337,6 +1431,17 @@ final class ResolverRegistry
                 'row_index' => $row_index,
                 'layout_key' => $layout_key,
                 'layout_name' => $layout_name,
+                'container_ancestry' => [
+                    [
+                        'type' => 'flexible_content',
+                        'field_name' => $parent_field_name,
+                        'field_key' => $parent_field_key,
+                        'field_selector' => $parent_field_selector,
+                        'row_index' => $row_index,
+                        'layout_key' => $layout_key,
+                        'layout_name' => $layout_name,
+                    ],
+                ],
                 'group_path' => [],
                 'group_key_path' => [],
                 'nested_repeater_path' => [],
@@ -1538,6 +1643,218 @@ final class ResolverRegistry
         }
 
         return '';
+    }
+
+    /**
+     * @param array<string, mixed> $loop_context
+     * @param array<string, mixed> $entity
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildCurrentOwnerCollectionContainerChain(array $loop_context, array $entity)
+    {
+        $contexts = [];
+
+        if (! empty($loop_context['ancestors']) && is_array($loop_context['ancestors'])) {
+            foreach (array_reverse($loop_context['ancestors']) as $ancestor_context) {
+                if (is_array($ancestor_context) && ! empty($ancestor_context)) {
+                    $contexts[] = $ancestor_context;
+                }
+            }
+        }
+
+        $contexts[] = $loop_context;
+        $segments = [];
+
+        foreach ($contexts as $context) {
+            $native_query = isset($context['native_acf_query']) && is_array($context['native_acf_query']) ? $context['native_acf_query'] : [];
+            $kind = isset($native_query['kind']) ? sanitize_key((string) $native_query['kind']) : '';
+
+            if (! in_array($kind, ['repeater', 'flexible_content'], true)) {
+                continue;
+            }
+
+            $field_name = isset($native_query['fieldName']) ? sanitize_key((string) $native_query['fieldName']) : '';
+            $field_key = isset($native_query['fieldKey']) ? sanitize_key((string) $native_query['fieldKey']) : '';
+            $field_selector = isset($native_query['selector']) ? sanitize_key((string) $native_query['selector']) : '';
+            $row_index = isset($context['loop_index']) && is_numeric($context['loop_index'])
+                ? absint($context['loop_index'])
+                : null;
+
+            if (($field_name === '' && $field_key === '' && $field_selector === '') || $row_index === null) {
+                return [];
+            }
+
+            $layout_context = $kind === 'flexible_content'
+                ? $this->resolveFlexibleCollectionLayoutContext($context, $entity)
+                : [];
+
+            $segments[] = [
+                'type' => $kind,
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_selector !== '' ? $field_selector : $field_name,
+                'row_index' => $row_index,
+                'layout_name' => isset($layout_context['layout_name']) ? sanitize_key((string) $layout_context['layout_name']) : '',
+                'layout_key' => isset($layout_context['layout_key']) ? sanitize_key((string) $layout_context['layout_key']) : '',
+                'path' => isset($native_query['path']) && is_array($native_query['path']) ? $native_query['path'] : [],
+            ];
+        }
+
+        return $segments;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $container_chain
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeCollectionContainerAncestry(array $container_chain)
+    {
+        return array_values(
+            array_filter(
+                array_map(
+                    static function ($segment) {
+                        if (! is_array($segment)) {
+                            return null;
+                        }
+
+                        $type = isset($segment['type']) ? sanitize_key((string) $segment['type']) : '';
+                        $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+                        $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+                        $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+                        $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                            ? absint($segment['row_index'])
+                            : null;
+
+                        if ($type === '' || ($field_name === '' && $field_key === '' && $field_selector === '') || $row_index === null) {
+                            return null;
+                        }
+
+                        return [
+                            'type' => $type,
+                            'field_name' => $field_name,
+                            'field_key' => $field_key,
+                            'field_selector' => $field_selector,
+                            'row_index' => $row_index,
+                            'layout_name' => isset($segment['layout_name']) ? sanitize_key((string) $segment['layout_name']) : '',
+                            'layout_key' => isset($segment['layout_key']) ? sanitize_key((string) $segment['layout_key']) : '',
+                        ];
+                    },
+                    $container_chain
+                )
+            )
+        );
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $container_chain
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildCollectionNestedRepeaterPath(array $container_chain)
+    {
+        if (count($container_chain) <= 1) {
+            return [];
+        }
+
+        $segments = [];
+
+        foreach (array_slice($container_chain, 1) as $segment) {
+            if (! is_array($segment) || sanitize_key((string) ($segment['type'] ?? '')) !== 'repeater') {
+                return [];
+            }
+
+            $field_name = isset($segment['field_name']) ? sanitize_key((string) $segment['field_name']) : '';
+            $field_key = isset($segment['field_key']) ? sanitize_key((string) $segment['field_key']) : '';
+            $field_selector = isset($segment['field_selector']) ? sanitize_key((string) $segment['field_selector']) : '';
+            $row_index = isset($segment['row_index']) && $segment['row_index'] !== null && is_numeric($segment['row_index'])
+                ? absint($segment['row_index'])
+                : null;
+
+            if ($field_name === '' && $field_key === '' && $field_selector === '') {
+                return [];
+            }
+
+            $segments[] = [
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'row_index' => $row_index,
+            ];
+        }
+
+        return $segments;
+    }
+
+    /**
+     * @param array<string, mixed> $collection_context
+     * @param array<int, string>   $field_path
+     * @param array<int, string>   $container_path
+     * @param array<string, mixed> $entity
+     * @return array<string, mixed>
+     */
+    private function mergeCollectionGroupContext(array $collection_context, array $field_path, array $container_path, array $entity)
+    {
+        if (empty($collection_context)) {
+            return [];
+        }
+
+        $group_context = $this->buildCollectionNestedGroupContext($field_path, $container_path, $entity);
+        if (empty($group_context)) {
+            return $collection_context;
+        }
+
+        $source = isset($collection_context['source']) && is_array($collection_context['source'])
+            ? $collection_context['source']
+            : [];
+
+        $collection_context['source'] = array_merge($source, $group_context);
+
+        return $collection_context;
+    }
+
+    /**
+     * @param array<int, string>   $field_path
+     * @param array<int, string>   $container_path
+     * @param array<string, mixed> $entity
+     * @return array<string, mixed>
+     */
+    private function buildCollectionNestedGroupContext(array $field_path, array $container_path, array $entity)
+    {
+        $group_depth = count($field_path) - count($container_path) - 1;
+        if ($group_depth <= 0) {
+            return [];
+        }
+
+        $group_path = array_values(array_slice($field_path, count($container_path), $group_depth));
+        if (empty($group_path)) {
+            return [];
+        }
+
+        $group_key_path = [];
+        $selector_segments = $container_path;
+
+        foreach ($group_path as $group_name) {
+            $selector_segments[] = sanitize_key((string) $group_name);
+            $group_field = $this->native_acf_queries->resolveFieldDefinitionForQuery('acf_' . implode('_', $selector_segments), $entity);
+            if (! is_array($group_field) || empty($group_field)) {
+                continue;
+            }
+
+            if (sanitize_key((string) ($group_field['type'] ?? '')) !== 'group') {
+                continue;
+            }
+
+            $group_key = isset($group_field['key']) ? sanitize_key((string) $group_field['key']) : '';
+            if ($group_key !== '') {
+                $group_key_path[] = $group_key;
+            }
+        }
+
+        return [
+            'group_path' => $group_path,
+            'group_key_path' => $group_key_path,
+            'is_nested_group' => ! empty($group_path),
+            'is_grouped_field' => ! empty($group_path),
+        ];
     }
 
     /**
