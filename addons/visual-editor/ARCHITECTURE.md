@@ -133,7 +133,7 @@ Frontend UI that:
 Current runtime refinement:
 - one shared active badge for hover/focus/touch selection instead of one badge per marker
 - public-map-only session bootstrap by default
-- on-demand descriptor hydration with in-memory request reuse and short-dwell active-marker prefetch
+- on-demand descriptor hydration with in-memory request reuse, short-dwell active-marker prefetch, and bounded low-priority viewport-aware warmup for nearby visible uncached markers
 
 ## Request flow
 
@@ -148,18 +148,19 @@ Current runtime refinement:
 9. Overlay JS renders one shared active badge in a dedicated fixed overlay layer so theme/container overflow rules cannot clip the control UI
 10. Initial session bootstrap returns the authenticated public descriptor map for the current page by default
 11. On interaction, JS fetches full descriptor payloads on demand, reuses the in-memory cache when available, and can prefetch the active marker after a short hover/focus dwell
-12. Save request posts token + value + nonce
-13. Non-current-entity targets such as shared options fields or related-post loop owners require explicit acknowledgement before the request is accepted
-14. Backend resolves descriptor and saves via resolver
-15. Backend records the save in the Visual Editor journal tables for durable per-path history
-16. Audit and cache invalidation run
-17. UI updates the marked node in place without reloading the page after a successful save
-18. Matching markers for the same resolved field projection are synced together on the current page
-19. Structured field saves can also fan out to other matched projections of the same resolved field on the current page by using a source-level group plus resolver display candidates
+12. While the editor is active, JS may also warm nearby visible uncached markers in the background through a bounded viewport-aware queue that reuses that same descriptor cache and in-flight request map
+13. Save request posts token + value + nonce
+14. Non-current-entity targets such as shared options fields or related-post loop owners require explicit acknowledgement before the request is accepted
+15. Backend resolves descriptor and saves via resolver
+16. Backend records the save in the Visual Editor journal tables for durable per-path history
+17. Audit and cache invalidation run
+18. UI updates the marked node in place without reloading the page after a successful save
+19. Matching markers for the same resolved field projection are synced together on the current page
+20. Structured field saves can also fan out to other matched projections of the same resolved field on the current page by using a source-level group plus resolver display candidates
 
 Planned runtime refinement:
-20. Tune dwell timing and prefetch policy after profiling on representative pages
-21. Refine mobile and tablet touch-selection UX if real-device testing shows ambiguity around first-tap vs second-tap behavior
+21. Tune dwell timing and viewport-prefetch policy after profiling on representative pages
+22. Refine mobile and tablet touch-selection UX if real-device testing shows ambiguity around first-tap vs second-tap behavior
 
 ## Non-goals for MVP
 

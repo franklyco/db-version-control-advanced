@@ -82,6 +82,10 @@ Those changes do not require new DB tables.
 
 If the next runtime optimization step is “make other visible fields feel faster while the editor is open,” do that by extending the current lightweight runtime model, not by reintroducing eager hydration.
 
+Current status:
+- implemented at a bounded baseline level in the frontend runtime
+- still subject to profiling/tuning rather than broader cache expansion
+
 Recommended approach:
 - keep the current public-map-only session bootstrap
 - keep on-demand descriptor lookup as the only source of full field payloads

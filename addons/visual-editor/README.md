@@ -47,7 +47,7 @@ Current status:
 - repeated markers for the same resolved field projection now update together on the current page after save
 - structured field saves can now refresh other matched projections of that same resolved field on the current page without a reload
 - the frontend runtime now uses one shared active badge for hover, focus, and touch selection instead of one detached badge per marker
-- initial session bootstrap now stays lightweight by default, while full descriptor payloads load on demand, cache after first lookup, and can prefetch after a short hover/focus dwell on the active marker
+- initial session bootstrap now stays lightweight by default, while full descriptor payloads load on demand, cache after first lookup, can prefetch after a short hover/focus dwell on the active marker, and can also warm nearby visible uncached markers through a bounded low-priority viewport-aware queue
 - shared-badge labels now distinguish lightweight owner types such as `Related Post`, `Shared Term`, and `Shared User` from the session public map without forcing eager descriptor hydration
 - panel acknowledgement copy, save-button labels, and locked-state messaging now reuse that same owner-type refinement for shared term, user, option, and post targets
 - the panel header now surfaces the actual entity title/name plus frontend/backend editor links when that entity has canonical URLs, and the field block now exposes a compact expandable source-details toggle with the raw dynamic source summary

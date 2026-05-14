@@ -8,6 +8,7 @@
 - Marker discovery, descriptor session bootstrap, and authenticated descriptor lookup work.
 - Shared badge runtime now uses one active badge with lightweight session bootstrap and on-demand descriptor loading.
 - Visual Editor sessions now default to a longer filterable server TTL and the frontend refreshes that session periodically plus on focus/visibility return; descriptor/save endpoints now return an explicit “session expired, refresh the page” message instead of a generic missing-descriptor error when the transient has aged out.
+- The frontend runtime now also has a bounded viewport-aware descriptor warmup path: an `IntersectionObserver` tracks nearby visible markers, background warmup reuses the same descriptor cache plus in-flight request map as explicit opens, and the queue pauses during save, reload-after-save, session-expired, and Media Library modal states instead of hydrating the whole page.
 - Simple save flow works without reloading the page.
 - The in-page editor panel works in place of the browser prompt.
 - Guarded structured-field updates and recent Bricks link slices were reported working by the user.

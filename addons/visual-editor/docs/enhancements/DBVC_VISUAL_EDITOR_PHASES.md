@@ -92,12 +92,12 @@
   - transient-backed VE sessions now default to a longer filterable TTL instead of the original short idle window
   - the frontend now refreshes the active session on an interval plus focus/visibility return so an open unattended page does not silently lose descriptor access as quickly
   - descriptor and save endpoints now return an explicit “session expired, refresh the page” message instead of a generic missing-descriptor failure when the session is gone
-- planned runtime UX optimization after the current session-lifecycle hardening:
+- runtime UX optimization after the current session-lifecycle hardening:
   - keep the current lightweight public-map bootstrap and active-marker dwell prefetch model
-  - add bounded viewport-aware descriptor warmup for nearby visible uncached markers
-  - drive that warmup from `IntersectionObserver` plus a small root margin, not from eager full-page hydration
-  - reuse the existing descriptor cache and in-flight request map so background warmup never diverges from explicit field-open behavior
-  - keep active field opens, saves, reload-after-save flows, and Media Library interactions higher priority than background warmup
+  - bounded viewport-aware descriptor warmup for nearby visible uncached markers is now implemented
+  - it is driven by `IntersectionObserver` plus a small root margin, not by eager full-page hydration
+  - it reuses the existing descriptor cache and in-flight request map so background warmup does not diverge from explicit field-open behavior
+  - active field opens, saves, reload-after-save flows, and Media Library interactions remain higher priority than background warmup
 - deferred within the collection-editor branch:
   - shared connected-item collections
   - loop-owned non-post connected-item collections

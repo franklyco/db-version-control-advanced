@@ -27,7 +27,6 @@ This resolves the biggest issues from the earlier eager model:
 
 Remaining follow-up areas are now narrower:
 - dwell timing and prefetch policy tuning
-- bounded viewport-aware descriptor warmup for nearby visible markers
 - real-device touch-selection polish
 - profiling before any deeper caching decisions
 
@@ -189,7 +188,7 @@ This keeps the UI responsive without hydrating everything up front.
 ### Slice 3b. Viewport-aware descriptor prefetch
 
 Status:
-- planned
+- implemented at a bounded baseline level
 
 Implement:
 - `IntersectionObserver` over `[data-dbvc-ve]` markers
@@ -216,6 +215,7 @@ Recommended runtime limits:
 - bounded queue budget per cycle
 - `requestIdleCallback` when available, with timer fallback
 - automatic pause on session-expired state
+- pause during save, reload-after-save, and WordPress Media Library modal flows
 
 ### Slice 4. Active-marker interaction rules
 

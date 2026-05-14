@@ -28,7 +28,16 @@
     sessionKeepaliveInFlight: null,
     sessionKeepaliveBound: false,
     sessionLastRefreshAt: 0,
-    sessionExpired: false
+    sessionExpired: false,
+    saveInFlight: false,
+    reloadPending: false,
+    mediaModalOpen: false,
+    viewportPrefetchObserver: null,
+    viewportPrefetchNodes: new Set(),
+    viewportPrefetchQueue: [],
+    viewportPrefetchIdleHandle: 0,
+    viewportPrefetchTimer: 0,
+    viewportPrefetchInFlight: 0
   };
 
   const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
@@ -139,6 +148,59 @@
       : '';
   }
 
+  function supportsViewportPrefetch() {
+    return Boolean(window.IntersectionObserver);
+  }
+
+  function getViewportPrefetchRootMargin() {
+    return '300px 0px 300px 0px';
+  }
+
+  function getViewportPrefetchConcurrency() {
+    return 2;
+  }
+
+  function getViewportPrefetchCycleBudget() {
+    return 4;
+  }
+
+  function clearViewportPrefetchSchedule() {
+    if (state.viewportPrefetchIdleHandle && typeof window.cancelIdleCallback === 'function') {
+      window.cancelIdleCallback(state.viewportPrefetchIdleHandle);
+    }
+
+    if (state.viewportPrefetchTimer) {
+      window.clearTimeout(state.viewportPrefetchTimer);
+    }
+
+    state.viewportPrefetchIdleHandle = 0;
+    state.viewportPrefetchTimer = 0;
+  }
+
+  function shouldPauseViewportPrefetch() {
+    if (!supportsViewportPrefetch()) {
+      return true;
+    }
+
+    if (state.sessionExpired || !state.session || !getSessionId()) {
+      return true;
+    }
+
+    if (document.visibilityState === 'hidden') {
+      return true;
+    }
+
+    if (!state.panelOpen && !state.previewNode) {
+      return true;
+    }
+
+    if (state.saveInFlight || state.reloadPending || state.mediaModalOpen) {
+      return true;
+    }
+
+    return false;
+  }
+
   function getSessionKeepaliveMs() {
     const raw = window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.sessionKeepaliveMs;
     const value = Number(raw);
@@ -176,12 +238,15 @@
     state.sessionExpired = false;
     state.sessionLastRefreshAt = Date.now();
     cacheDescriptorHydrations(session.descriptorHydrations);
+    scheduleViewportPrefetch();
   }
 
   function handleExpiredSession(error) {
     const message = error && error.message ? String(error.message) : getSessionExpiredMessage();
     state.sessionExpired = true;
     state.session = null;
+    clearViewportPrefetchSchedule();
+    state.viewportPrefetchQueue = [];
 
     updateStatusBar({
       kind: 'error',
@@ -307,6 +372,205 @@
     state.prefetchToken = '';
   }
 
+  function isViewportPrefetchCandidate(token) {
+    if (!token) {
+      return false;
+    }
+
+    if (!state.session || !state.session.descriptors || typeof state.session.descriptors !== 'object' || !state.session.descriptors[token]) {
+      return false;
+    }
+
+    if (getCachedDescriptorPayload(token) || state.descriptorRequests[token]) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function isNodeInsideViewport(node) {
+    if (!node || typeof node.getBoundingClientRect !== 'function') {
+      return false;
+    }
+
+    const rect = node.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+    return rect.bottom > 0
+      && rect.top < viewportHeight
+      && rect.right > 0
+      && rect.left < viewportWidth;
+  }
+
+  function getViewportPrefetchPriority(node, token) {
+    if (!node || !token) {
+      return null;
+    }
+
+    const summary = getSessionDescriptorSummary(token);
+    const editable = summary && summary.status === 'editable';
+    const visible = isNodeInsideViewport(node);
+    const rect = typeof node.getBoundingClientRect === 'function' ? node.getBoundingClientRect() : null;
+    const distance = rect ? Math.min(Math.abs(rect.top), Math.abs(rect.bottom - (window.innerHeight || 0))) : Number.MAX_SAFE_INTEGER;
+
+    return {
+      priority: visible ? (editable ? 1 : 2) : 3,
+      distance
+    };
+  }
+
+  function rebuildViewportPrefetchQueue() {
+    if (shouldPauseViewportPrefetch()) {
+      return [];
+    }
+
+    const bestByToken = new Map();
+
+    state.viewportPrefetchNodes.forEach(function (node) {
+      if (!node || !node.isConnected) {
+        state.viewportPrefetchNodes.delete(node);
+        return;
+      }
+
+      const token = getMarkerToken(node);
+      if (!isViewportPrefetchCandidate(token)) {
+        return;
+      }
+
+      const ranking = getViewportPrefetchPriority(node, token);
+      if (!ranking) {
+        return;
+      }
+
+      const existing = bestByToken.get(token);
+      if (!existing || ranking.priority < existing.priority || (ranking.priority === existing.priority && ranking.distance < existing.distance)) {
+        bestByToken.set(token, ranking);
+      }
+    });
+
+    return Array.from(bestByToken.entries())
+      .sort(function (left, right) {
+        if (left[1].priority !== right[1].priority) {
+          return left[1].priority - right[1].priority;
+        }
+
+        return left[1].distance - right[1].distance;
+      })
+      .map(function (entry) {
+        return entry[0];
+      });
+  }
+
+  function queueViewportPrefetch(token) {
+    const sessionId = getSessionId();
+    if (!sessionId || !isViewportPrefetchCandidate(token)) {
+      return;
+    }
+
+    state.viewportPrefetchInFlight += 1;
+
+    loadDescriptorPayload(sessionId, token)
+      .catch(function () {})
+      .finally(function () {
+        state.viewportPrefetchInFlight = Math.max(0, state.viewportPrefetchInFlight - 1);
+        scheduleViewportPrefetch();
+      });
+  }
+
+  function pumpViewportPrefetchQueue(deadline) {
+    state.viewportPrefetchIdleHandle = 0;
+    state.viewportPrefetchTimer = 0;
+
+    if (shouldPauseViewportPrefetch()) {
+      state.viewportPrefetchQueue = [];
+      return;
+    }
+
+    state.viewportPrefetchQueue = rebuildViewportPrefetchQueue();
+
+    if (!state.viewportPrefetchQueue.length) {
+      return;
+    }
+
+    let dispatched = 0;
+    while (state.viewportPrefetchInFlight < getViewportPrefetchConcurrency() && state.viewportPrefetchQueue.length && dispatched < getViewportPrefetchCycleBudget()) {
+      if (deadline && typeof deadline.timeRemaining === 'function' && dispatched > 0 && deadline.timeRemaining() <= 4) {
+        break;
+      }
+
+      const token = state.viewportPrefetchQueue.shift();
+      if (!isViewportPrefetchCandidate(token)) {
+        continue;
+      }
+
+      dispatched += 1;
+      queueViewportPrefetch(token);
+    }
+
+    if ((state.viewportPrefetchQueue.length || state.viewportPrefetchInFlight) && !shouldPauseViewportPrefetch()) {
+      scheduleViewportPrefetch();
+    }
+  }
+
+  function scheduleViewportPrefetch() {
+    if (shouldPauseViewportPrefetch()) {
+      clearViewportPrefetchSchedule();
+      state.viewportPrefetchQueue = [];
+      return;
+    }
+
+    if (state.viewportPrefetchIdleHandle || state.viewportPrefetchTimer) {
+      return;
+    }
+
+    if (typeof window.requestIdleCallback === 'function') {
+      state.viewportPrefetchIdleHandle = window.requestIdleCallback(function (deadline) {
+        pumpViewportPrefetchQueue(deadline);
+      }, { timeout: 400 });
+      return;
+    }
+
+    state.viewportPrefetchTimer = window.setTimeout(function () {
+      pumpViewportPrefetchQueue();
+    }, 120);
+  }
+
+  function startViewportPrefetch(markers) {
+    if (!supportsViewportPrefetch()) {
+      return;
+    }
+
+    if (state.viewportPrefetchObserver) {
+      state.viewportPrefetchObserver.disconnect();
+    }
+
+    state.viewportPrefetchNodes.clear();
+    state.viewportPrefetchQueue = [];
+
+    state.viewportPrefetchObserver = new window.IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          state.viewportPrefetchNodes.add(entry.target);
+        } else {
+          state.viewportPrefetchNodes.delete(entry.target);
+        }
+      });
+
+      scheduleViewportPrefetch();
+    }, {
+      root: null,
+      rootMargin: getViewportPrefetchRootMargin(),
+      threshold: 0
+    });
+
+    (Array.isArray(markers) ? markers : []).forEach(function (node) {
+      if (node && typeof state.viewportPrefetchObserver.observe === 'function') {
+        state.viewportPrefetchObserver.observe(node);
+      }
+    });
+  }
+
   function loadDescriptorPayload(sessionId, token) {
     const cached = getCachedDescriptorPayload(token);
 
@@ -370,6 +634,22 @@
 
       loadDescriptorPayload(sessionId, token).catch(function () {});
     }, 180);
+  }
+
+  function bindMediaFramePrefetchState(mediaFrame) {
+    if (!mediaFrame || typeof mediaFrame.on !== 'function') {
+      return;
+    }
+
+    mediaFrame.on('open', function () {
+      state.mediaModalOpen = true;
+      clearViewportPrefetchSchedule();
+    });
+
+    mediaFrame.on('close', function () {
+      state.mediaModalOpen = false;
+      scheduleViewportPrefetch();
+    });
   }
 
   function getDescriptorRenderContext(descriptor, node) {
@@ -1156,6 +1436,7 @@
 
       if (state.activeNode) {
         state.previewNode = null;
+        scheduleViewportPrefetch();
         scheduleBadgeLayout();
         return;
       }
@@ -1173,6 +1454,7 @@
 
       if (state.activeNode) {
         state.previewNode = null;
+        scheduleViewportPrefetch();
         scheduleBadgeLayout();
         return;
       }
@@ -1228,6 +1510,7 @@
       state.badgeHideTimeout = 0;
       state.previewNode = null;
       clearDescriptorPrefetch();
+      scheduleViewportPrefetch();
       scheduleBadgeLayout();
     }, 90);
   }
@@ -1252,6 +1535,7 @@
     } else {
       clearDescriptorPrefetch();
     }
+    scheduleViewportPrefetch();
     scheduleBadgeLayout();
   }
 
@@ -1364,6 +1648,7 @@
     clearBadgeHideTimeout();
     state.previewNode = null;
     clearDescriptorPrefetch();
+    scheduleViewportPrefetch();
     scheduleBadgeLayout();
   }
 
@@ -1646,6 +1931,8 @@
       applyPanelPosition(panel);
       schedulePanelViewportClamp();
     }
+
+    scheduleViewportPrefetch();
   }
 
   function isPanelElement(target) {
@@ -2433,6 +2720,7 @@
           },
           multiple: false
         });
+        bindMediaFramePrefetchState(mediaFrame);
 
         mediaFrame.on('select', function () {
           const attachment = mediaFrame.state().get('selection').first();
@@ -2644,6 +2932,7 @@
           },
           multiple: true
         });
+        bindMediaFramePrefetchState(mediaFrame);
 
         mediaFrame.on('select', function () {
           const selection = mediaFrame.state().get('selection');
@@ -3620,6 +3909,7 @@
     panelNodes.status.textContent = strings().panelSaving || 'Saving…';
     panelNodes.saveButton.disabled = true;
     state.activeController.setDisabled(true);
+    state.saveInFlight = true;
 
     try {
       if (shouldRefreshSessionBeforeAction()) {
@@ -3662,6 +3952,7 @@
       });
 
       if (shouldReloadAfterSave) {
+        state.reloadPending = true;
         window.setTimeout(function () {
           window.location.reload();
         }, 250);
@@ -3682,6 +3973,11 @@
       updateSaveButtonState(panelNodes, true);
 
       window.console.error(error);
+    } finally {
+      state.saveInFlight = false;
+      if (!state.reloadPending) {
+        scheduleViewportPrefetch();
+      }
     }
   }
 
@@ -3727,6 +4023,7 @@
 
     syncSessionPayload(session);
     startSessionKeepalive();
+    startViewportPrefetch(markers);
 
     if (state.previewNode) {
       scheduleDescriptorPrefetch(state.previewNode);
