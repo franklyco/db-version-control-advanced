@@ -21,6 +21,7 @@
 - inspect-only repeater/flexible/relationship-collection markers
 - shared active hover/focus badge controller
 - lazy session bootstrap with on-demand descriptor hydration
+- collapsible statusbar field index for reviewing marked fields
 
 ## Phase 3
 - descriptor V2 owner/page/path/loop/mutation metadata
@@ -39,11 +40,53 @@
 ## Phase 4
 - relationship collection editing
 - advanced query-loop owner coverage beyond the current safe related-post slice
+- CPT archive and taxonomy archive entry-point support, with direct queried-term ACF saves, direct option-backed archive saves, and native queried-term name/description saves enabled first
 - DBVC sync-awareness
 - field lock policies
 - approval workflows
 - usage analytics
 - exportable change sets / diffs
+
+## Archive Context Tranche
+- Dedicated plan: `DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md`.
+- Current runtime state: supported entry points with archive-aware descriptors. `PageContextResolver` supports public CPT archives, the posts archive, and taxonomy archives. Direct ACF fields owned by the queried taxonomy term can save when they are outside active archive query loops and outside repeater/flexible/collection contexts. Direct option-backed ACF fields on CPT and taxonomy archive pages can save through the existing shared-field acknowledgement path, including options-page field groups discovered from ACF location rules. Native `{term_name}` and `{term_description}` fields can save for the queried taxonomy archive term through the dedicated term resolver. Archive query-loop descendants now reuse existing concrete loop-owner save contracts when Bricks exposes a stable per-row post or term owner. Derived native tags such as `{post_url}`, `{term_url}`, `{term_id}`, and `{archive_title}` surface inspect-only where they can be resolved safely. Collection fields, galleries, and non-concrete archive loop owners remain inspect-only.
+- Verified template/source shape:
+  - CPT and taxonomy archive templates render option-backed ACF fields from options-page field groups such as `services-settings`, `features-settings`, and `treatments-settings`.
+  - taxonomy archives render current term data and term meta such as `term_name`, `term_description`, `core_tax_group_*`, and `vf_sa_group_*`.
+  - archive templates also include shared/global option fields and query-loop post/term rows; those must keep existing owner-specific badge and acknowledgement rules.
+- Recommended implementation order:
+  - archive-aware page context first: implemented
+  - surface render-verified archive markers inspect-only: implemented
+  - enable queried taxonomy term ACF field saves: initial direct-field slice implemented
+  - enable archive option-backed ACF field saves with explicit shared-option warnings: initial direct-field slice implemented and broadened to taxonomy archives
+  - add native term field support only through dedicated term resolvers: initial queried-term name/description slice implemented
+  - reuse existing concrete loop-owner support for archive query-loop descendants: initial post/ACF/term-field slice implemented
+  - surface derived native archive tags inspect-only: initial `post_url`, `term_url`, `term_id`, and `archive_title` slice implemented
+
+## Field Index UX Tranche
+- Dedicated plan: `DBVC_VISUAL_EDITOR_FIELD_INDEX_PLAN.md`.
+- Goal: add a collapsible nested list in `dbvc-ve-statusbar__meta` so users can review all marked fields on the current page without hovering every element.
+- Recommended shape: keep the statusbar compact by default, add a `Review fields` toggle, then render owner/source grouped rows with `Locate` and `Open` actions.
+- Data contract: extend the startup public map with shallow, safe index metadata. Do not use full descriptor hydration on page load and do not expose field values in the public map.
+- Initial grouping order:
+  - current entity fields
+  - related posts
+  - related terms
+  - shared options
+  - shared terms/users
+  - archive fields
+  - inspect-only / derived fields
+- Recommended first implementation slice:
+  - public-map `index` metadata
+  - client-side field index model
+  - collapsed/expanded statusbar UI
+  - `Locate` and `Open` marker actions
+- Deferred:
+  - search/filter
+  - lazy enriched source summaries
+  - virtualized list rendering
+  - persisted expanded group state
+  - bulk actions
 
 ## Current Hold Context
 - The next paused advanced-data follow-up is nested ACF group and deeper flexible/repeater descendant save verification, not marker discovery.

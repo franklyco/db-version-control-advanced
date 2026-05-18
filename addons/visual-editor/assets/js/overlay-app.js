@@ -2151,7 +2151,51 @@
     }
   }
 
+  function syncTextareaAutoHeight(field) {
+    if (!field) {
+      return;
+    }
+
+    field.style.height = 'auto';
+    field.style.height = `${Math.max(field.scrollHeight, 92)}px`;
+  }
+
+  function createTextLikeController(value) {
+    const field = document.createElement('textarea');
+
+    field.id = 'dbvc-ve-panel-input';
+    field.className = 'dbvc-ve-panel__input dbvc-ve-panel__input--textlike';
+    field.rows = 3;
+    field.value = value === null || typeof value === 'undefined' ? '' : String(value);
+    syncTextareaAutoHeight(field);
+    field.addEventListener('input', function () {
+      syncTextareaAutoHeight(field);
+    });
+
+    return {
+      element: field,
+      getValue() {
+        return field.value;
+      },
+      setValue(nextValue) {
+        field.value = nextValue === null || typeof nextValue === 'undefined' ? '' : String(nextValue);
+        syncTextareaAutoHeight(field);
+      },
+      focus() {
+        field.focus();
+        field.setSelectionRange(field.value.length, field.value.length);
+      },
+      setDisabled(disabled) {
+        field.disabled = Boolean(disabled);
+      }
+    };
+  }
+
   function createInputController(type, value) {
+    if ((type || 'text') === 'text') {
+      return createTextLikeController(value);
+    }
+
     const field = document.createElement('input');
 
     field.id = 'dbvc-ve-panel-input';

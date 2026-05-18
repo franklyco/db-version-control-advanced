@@ -21,14 +21,15 @@ final class AcfFieldContextResolver
      */
     public function resolve(array $candidate, array $page_context)
     {
-        $page_post_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
-        if ($page_post_id <= 0) {
+        if (empty($page_context['isSupported'])) {
             return [
                 'ok' => false,
                 'message' => __('Missing current entity context.', 'dbvc'),
             ];
         }
 
+        $page_post_id = $this->resolvePagePostId($page_context);
+        $context_object_id = $this->resolveProviderContextObjectId($page_context);
         $expression = isset($candidate['expression']) ? (string) $candidate['expression'] : '';
         $tag_data = $this->locateTag($expression);
         if (empty($tag_data)) {
@@ -50,7 +51,9 @@ final class AcfFieldContextResolver
         }
 
         $loop_context = $this->loops->resolve();
-        $acf_object_id = $provider->get_object_id($field_for_context, $page_post_id);
+        $acf_object_id = $provider->get_object_id($field_for_context, $context_object_id);
+        $acf_object_id = $this->normalizeArchiveOptionsAcfObjectId($acf_object_id, $field_for_context, $page_context);
+        $acf_object_id = $this->normalizeArchiveAcfObjectId($acf_object_id, $field_for_context, $page_context);
         $acf_object_id = $this->maybeOverrideAcfObjectIdForLoopContext($acf_object_id, $loop_context);
         $tag = isset($tag_data['tag']) ? (string) $tag_data['tag'] : '';
         $repeater_context = $this->buildRepeaterContext($tag_object, $loop_context, $acf_object_id);
@@ -123,11 +126,39 @@ final class AcfFieldContextResolver
             'field' => $field,
             'acf_object_id' => $acf_object_id,
             'entity' => $entity,
-            'scope' => $this->resolveScope($entity, $page_post_id, $loop_context),
+            'scope' => $this->resolveScope($entity, $page_context, $loop_context),
             'loop' => $this->loops->export($loop_context),
             'repeater' => $repeater_context,
             'flexible' => $flexible_context,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @return int
+     */
+    private function resolvePagePostId(array $page_context)
+    {
+        $entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
+
+        return $entity_type === 'post' && isset($page_context['entityId'])
+            ? absint($page_context['entityId'])
+            : 0;
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @return int
+     */
+    private function resolveProviderContextObjectId(array $page_context)
+    {
+        $entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
+
+        if (in_array($entity_type, ['post', 'term'], true) && isset($page_context['entityId'])) {
+            return absint($page_context['entityId']);
+        }
+
+        return 0;
     }
 
     /**
@@ -285,12 +316,15 @@ final class AcfFieldContextResolver
      */
     private function mapAcfObjectIdToEntity($acf_object_id, $page_post_id)
     {
-        if ($acf_object_id === 'option' || $acf_object_id === 'options') {
+        $options_context = $this->resolveOptionsObjectContext($acf_object_id);
+        if (! empty($options_context)) {
             return [
                 'type' => 'option',
                 'id' => 'option',
                 'subtype' => 'option',
-                'acf_object_id' => 'option',
+                'acf_object_id' => isset($options_context['acf_object_id']) ? (string) $options_context['acf_object_id'] : 'option',
+                'option_page_slug' => isset($options_context['option_page_slug']) ? sanitize_key((string) $options_context['option_page_slug']) : '',
+                'option_page_label' => isset($options_context['option_page_label']) ? sanitize_text_field((string) $options_context['option_page_label']) : '',
             ];
         }
 
@@ -309,6 +343,22 @@ final class AcfFieldContextResolver
         }
 
         $acf_object_id = (string) $acf_object_id;
+
+        if (preg_match('/^term_(\d+)$/', $acf_object_id, $matches)) {
+            $term_id = absint($matches[1]);
+            $term = $term_id > 0 ? get_term($term_id) : null;
+            if ($term && ! is_wp_error($term) && ! empty($term->taxonomy)) {
+                $taxonomy = sanitize_key((string) $term->taxonomy);
+
+                return [
+                    'type' => 'term',
+                    'id' => $term_id,
+                    'subtype' => $taxonomy,
+                    'taxonomy' => $taxonomy,
+                    'acf_object_id' => $acf_object_id,
+                ];
+            }
+        }
 
         if (preg_match('/^user_(\d+)$/', $acf_object_id, $matches)) {
             return [
@@ -335,6 +385,273 @@ final class AcfFieldContextResolver
         }
 
         return [];
+    }
+
+    /**
+     * @param mixed $acf_object_id
+     * @return array<string, string>
+     */
+    private function resolveOptionsObjectContext($acf_object_id)
+    {
+        if (! is_scalar($acf_object_id)) {
+            return [];
+        }
+
+        $raw_object_id = trim((string) $acf_object_id);
+        if ($raw_object_id === '') {
+            return [];
+        }
+
+        if ($raw_object_id === 'option' || $raw_object_id === 'options') {
+            return [
+                'acf_object_id' => $raw_object_id === 'options' ? 'options' : 'option',
+                'option_page_slug' => '',
+                'option_page_label' => '',
+            ];
+        }
+
+        $pages = $this->getAcfOptionsPages();
+        foreach ($pages as $slug => $page) {
+            if (! is_array($page)) {
+                continue;
+            }
+
+            $candidates = array_values(
+                array_unique(
+                    array_filter(
+                        [
+                            isset($page['post_id']) ? (string) $page['post_id'] : '',
+                            $slug !== '' ? 'options_' . $slug : '',
+                            $slug !== '' ? 'acf-options-' . $slug : '',
+                            $slug,
+                        ]
+                    )
+                )
+            );
+
+            if (in_array($raw_object_id, $candidates, true)) {
+                return [
+                    'acf_object_id' => $raw_object_id,
+                    'option_page_slug' => sanitize_key((string) $slug),
+                    'option_page_label' => $this->resolveOptionsPageLabel($slug, $page),
+                ];
+            }
+        }
+
+        if (strpos($raw_object_id, 'options_') === 0) {
+            $slug = sanitize_key(substr($raw_object_id, 8));
+            if ($slug !== '') {
+                return [
+                    'acf_object_id' => $raw_object_id,
+                    'option_page_slug' => $slug,
+                    'option_page_label' => ucwords(str_replace(['-', '_'], ' ', $slug)),
+                ];
+            }
+        }
+
+        if (strpos($raw_object_id, 'acf-options-') === 0) {
+            $slug = sanitize_key(substr($raw_object_id, 12));
+            if ($slug !== '') {
+                return [
+                    'acf_object_id' => $raw_object_id,
+                    'option_page_slug' => $slug,
+                    'option_page_label' => ucwords(str_replace(['-', '_'], ' ', $slug)),
+                ];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function getAcfOptionsPages()
+    {
+        if (! function_exists('acf_get_options_pages')) {
+            return [];
+        }
+
+        $pages_raw = acf_get_options_pages();
+        if (! is_array($pages_raw)) {
+            return [];
+        }
+
+        $pages = [];
+        foreach ($pages_raw as $page) {
+            if (! is_array($page)) {
+                continue;
+            }
+
+            $slug = '';
+            if (! empty($page['menu_slug'])) {
+                $slug = (string) $page['menu_slug'];
+            } elseif (! empty($page['slug'])) {
+                $slug = (string) $page['slug'];
+            }
+
+            $slug = preg_replace('/^acf-options-/', '', sanitize_key($slug));
+            if (! is_string($slug) || $slug === '') {
+                continue;
+            }
+
+            $pages[$slug] = $page;
+        }
+
+        return $pages;
+    }
+
+    /**
+     * @param string               $slug
+     * @param array<string, mixed> $page
+     * @return string
+     */
+    private function resolveOptionsPageLabel($slug, array $page)
+    {
+        if (! empty($page['menu_title'])) {
+            return sanitize_text_field((string) $page['menu_title']);
+        }
+
+        if (! empty($page['page_title'])) {
+            return sanitize_text_field((string) $page['page_title']);
+        }
+
+        return ucwords(str_replace(['-', '_'], ' ', sanitize_key((string) $slug)));
+    }
+
+    /**
+     * @param mixed                $acf_object_id
+     * @param array<string, mixed> $field_for_context
+     * @param array<string, mixed> $page_context
+     * @return mixed
+     */
+    private function normalizeArchiveAcfObjectId($acf_object_id, array $field_for_context, array $page_context)
+    {
+        if (empty($page_context['isTaxonomyArchive'])) {
+            return $acf_object_id;
+        }
+
+        $term_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $taxonomy = isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '';
+        if ($term_id <= 0 || $taxonomy === '' || ! $this->fieldHasBricksLocation($field_for_context, 'term')) {
+            return $acf_object_id;
+        }
+
+        if ((is_numeric($acf_object_id) && absint($acf_object_id) === $term_id) || absint($acf_object_id) === 0) {
+            return $taxonomy . '_' . $term_id;
+        }
+
+        return $acf_object_id;
+    }
+
+    /**
+     * @param mixed                $acf_object_id
+     * @param array<string, mixed> $field_for_context
+     * @param array<string, mixed> $page_context
+     * @return mixed
+     */
+    private function normalizeArchiveOptionsAcfObjectId($acf_object_id, array $field_for_context, array $page_context)
+    {
+        if (empty($page_context['isArchive']) || ! $this->fieldHasOptionsPageLocation($field_for_context)) {
+            return $acf_object_id;
+        }
+
+        if (! empty($this->resolveOptionsObjectContext($acf_object_id))) {
+            return $acf_object_id;
+        }
+
+        return 'option';
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     * @param string               $location
+     * @return bool
+     */
+    private function fieldHasBricksLocation(array $field, $location)
+    {
+        $location = sanitize_key((string) $location);
+        $locations = isset($field['_bricks_locations']) && is_array($field['_bricks_locations'])
+            ? $field['_bricks_locations']
+            : [];
+
+        foreach ($locations as $field_location) {
+            if (sanitize_key((string) $field_location) === $location) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     * @return bool
+     */
+    private function fieldHasOptionsPageLocation(array $field)
+    {
+        $group_key = $this->resolveAcfFieldGroupKey($field);
+        if ($group_key === '' || ! function_exists('acf_get_field_group')) {
+            return false;
+        }
+
+        $group = acf_get_field_group($group_key);
+        if (! is_array($group) || empty($group['location']) || ! is_array($group['location'])) {
+            return false;
+        }
+
+        foreach ($group['location'] as $rules) {
+            if (! is_array($rules)) {
+                continue;
+            }
+
+            foreach ($rules as $rule) {
+                if (! is_array($rule)) {
+                    continue;
+                }
+
+                $param = isset($rule['param']) ? sanitize_key((string) $rule['param']) : '';
+                $operator = isset($rule['operator']) ? (string) $rule['operator'] : '==';
+                $value = isset($rule['value']) ? sanitize_key((string) $rule['value']) : '';
+
+                if (in_array($param, ['options_page', 'options_page_key'], true) && in_array($operator, ['==', '==='], true) && $value !== '') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     * @return string
+     */
+    private function resolveAcfFieldGroupKey(array $field)
+    {
+        $parent = isset($field['parent']) ? sanitize_key((string) $field['parent']) : '';
+        $seen = [];
+
+        while ($parent !== '' && empty($seen[$parent])) {
+            $seen[$parent] = true;
+
+            if (strpos($parent, 'group_') === 0) {
+                return $parent;
+            }
+
+            if (! function_exists('acf_get_field')) {
+                break;
+            }
+
+            $parent_field = acf_get_field($parent);
+            if (! is_array($parent_field) || empty($parent_field['parent'])) {
+                break;
+            }
+
+            $parent = sanitize_key((string) $parent_field['parent']);
+        }
+
+        return '';
     }
 
     /**
@@ -379,16 +696,12 @@ final class AcfFieldContextResolver
 
     /**
      * @param array<string, mixed> $entity
-     * @param int                  $page_post_id
      * @param array<string, mixed> $loop_context
      * @return string
      */
-    private function resolveScope(array $entity, $page_post_id, array $loop_context)
+    private function resolveScope(array $entity, array $page_context, array $loop_context)
     {
-        $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
-        $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
-
-        if ($entity_type === 'post' && $entity_id === $page_post_id) {
+        if ($this->entityMatchesPageContext($entity, $page_context)) {
             return 'current_entity';
         }
 
@@ -397,6 +710,36 @@ final class AcfFieldContextResolver
         }
 
         return 'shared_entity';
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     * @param array<string, mixed> $page_context
+     * @return bool
+     */
+    private function entityMatchesPageContext(array $entity, array $page_context)
+    {
+        $entity_type = isset($entity['type']) ? sanitize_key((string) $entity['type']) : '';
+        $page_entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
+        $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
+        $page_entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+
+        if ($entity_type === '' || $entity_id <= 0 || $page_entity_type === '' || $page_entity_id <= 0) {
+            return false;
+        }
+
+        if ($entity_type !== $page_entity_type) {
+            return false;
+        }
+
+        if ($entity_type === 'term') {
+            $taxonomy = isset($entity['taxonomy']) ? sanitize_key((string) $entity['taxonomy']) : (isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '');
+            $page_taxonomy = isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '';
+
+            return $taxonomy !== '' && $taxonomy === $page_taxonomy && $entity_id === $page_entity_id;
+        }
+
+        return $entity_id === $page_entity_id;
     }
 
     /**

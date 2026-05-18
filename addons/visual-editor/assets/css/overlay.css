@@ -438,6 +438,12 @@ textarea.dbvc-ve-panel__input {
   resize: vertical;
 }
 
+textarea.dbvc-ve-panel__input--textlike {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 .dbvc-ve-panel__select {
   appearance: none;
 }

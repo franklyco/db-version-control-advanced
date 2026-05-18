@@ -18,6 +18,10 @@ final class DescriptorSummaryBuilder
         $subtype = isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '';
         $type_label = $this->resolveEntityTypeLabel($entity_type, $subtype);
         $title = $this->resolveEntityTitle($entity_type, $entity_id, $subtype);
+        $backend_link = $this->buildBackendEntityLink($entity_type, $entity_id, $subtype, $type_label);
+        if ($backend_link === null && $entity_type === 'option') {
+            $backend_link = $this->buildOptionsPageBackendLink($descriptor, $type_label);
+        }
 
         return [
             'type' => $entity_type,
@@ -26,7 +30,7 @@ final class DescriptorSummaryBuilder
             'typeLabel' => $type_label,
             'title' => $title,
             'frontendLink' => $this->buildFrontendEntityLink($entity_type, $entity_id, $subtype, $type_label),
-            'backendLink' => $this->buildBackendEntityLink($entity_type, $entity_id, $subtype, $type_label),
+            'backendLink' => $backend_link,
         ];
     }
 
@@ -41,6 +45,11 @@ final class DescriptorSummaryBuilder
         $label = isset($descriptor->ui['label']) ? sanitize_text_field((string) $descriptor->ui['label']) : __('Field', 'dbvc');
         $type = isset($source['type']) ? sanitize_key((string) $source['type']) : '';
         $field_name = isset($source['field_name']) ? sanitize_key((string) $source['field_name']) : '';
+        $source_context = isset($source['source_context']) ? sanitize_key((string) $source['source_context']) : '';
+        $field_group_title = isset($source['field_group_title']) ? sanitize_text_field((string) $source['field_group_title']) : '';
+        $field_group_option_pages = isset($source['field_group_option_pages']) && is_array($source['field_group_option_pages'])
+            ? array_values(array_filter(array_map('sanitize_key', $source['field_group_option_pages'])))
+            : [];
         $path = isset($descriptor->path) && is_array($descriptor->path) ? $descriptor->path : [];
         $container_type = isset($path['containerType']) ? sanitize_key((string) $path['containerType']) : (isset($source['container_type']) ? sanitize_key((string) $source['container_type']) : '');
         $parent_field_name = isset($path['rootFieldName']) ? sanitize_key((string) $path['rootFieldName']) : (isset($source['parent_field_name']) ? sanitize_key((string) $source['parent_field_name']) : '');
@@ -129,6 +138,18 @@ final class DescriptorSummaryBuilder
             }, $source['nested_repeater_path']))) : []);
         $expression = isset($source['expression']) ? sanitize_text_field((string) $source['expression']) : '';
         $parts = array_values(array_filter([$type, $field_name]));
+
+        if ($source_context !== '') {
+            $parts[] = 'context:' . $source_context;
+        }
+
+        if ($field_group_title !== '') {
+            $parts[] = 'field-group:' . $field_group_title;
+        }
+
+        if (! empty($field_group_option_pages)) {
+            $parts[] = 'options-page:' . implode(',', $field_group_option_pages);
+        }
 
         if ($parent_field_name !== '') {
             $parts[] = ($container_type !== '' ? $container_type : 'repeater') . ':' . $parent_field_name;
@@ -557,5 +578,72 @@ final class DescriptorSummaryBuilder
             ),
             'url' => esc_url_raw($url),
         ];
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $type_label
+     * @return array<string, string>|null
+     */
+    private function buildOptionsPageBackendLink(EditableDescriptor $descriptor, $type_label)
+    {
+        $source = isset($descriptor->source) && is_array($descriptor->source) ? $descriptor->source : [];
+        $entity = isset($descriptor->entity) && is_array($descriptor->entity) ? $descriptor->entity : [];
+        $slug = '';
+
+        if (! empty($source['field_group_option_pages']) && is_array($source['field_group_option_pages'])) {
+            $first = reset($source['field_group_option_pages']);
+            $slug = is_scalar($first) ? sanitize_key((string) $first) : '';
+        }
+
+        if ($slug === '' && ! empty($entity['option_page_slug'])) {
+            $slug = sanitize_key((string) $entity['option_page_slug']);
+        }
+
+        if ($slug === '') {
+            return null;
+        }
+
+        return [
+            'label' => sprintf(
+                /* translators: %s: entity type label */
+                __('Backend - %s Full Editor', 'dbvc'),
+                $type_label
+            ),
+            'url' => esc_url_raw(admin_url('admin.php?page=' . $this->resolveOptionsPageAdminSlug($slug))),
+        ];
+    }
+
+    /**
+     * @param string $slug
+     * @return string
+     */
+    private function resolveOptionsPageAdminSlug($slug)
+    {
+        $slug = sanitize_key((string) $slug);
+        if ($slug === '') {
+            return '';
+        }
+
+        if (function_exists('acf_get_options_pages')) {
+            $pages = acf_get_options_pages();
+            if (is_array($pages)) {
+                foreach ($pages as $page) {
+                    if (! is_array($page)) {
+                        continue;
+                    }
+
+                    $menu_slug = ! empty($page['menu_slug']) ? sanitize_key((string) $page['menu_slug']) : '';
+                    $normalized_menu_slug = preg_replace('/^acf-options-/', '', $menu_slug);
+                    $normalized_menu_slug = is_string($normalized_menu_slug) ? sanitize_key($normalized_menu_slug) : '';
+
+                    if ($menu_slug !== '' && ($menu_slug === $slug || $normalized_menu_slug === $slug)) {
+                        return $menu_slug;
+                    }
+                }
+            }
+        }
+
+        return 'acf-options-' . $slug;
     }
 }

@@ -104,7 +104,7 @@ final class ElementInstrumentationService
 
         $page_context = $this->page_context->resolve();
         $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
-        if ($entity_id <= 0) {
+        if (empty($page_context['isSupported'])) {
             return $attributes;
         }
 
@@ -1177,6 +1177,12 @@ final class ElementInstrumentationService
             'type' => isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '',
             'id' => isset($page_context['entityId']) ? absint($page_context['entityId']) : 0,
             'subtype' => isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '',
+            'taxonomy' => isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '',
+            'archiveType' => isset($page_context['archiveType']) ? sanitize_key((string) $page_context['archiveType']) : '',
+            'archiveKey' => isset($page_context['archiveKey']) ? sanitize_text_field((string) $page_context['archiveKey']) : '',
+            'isArchive' => ! empty($page_context['isArchive']),
+            'isPostTypeArchive' => ! empty($page_context['isPostTypeArchive']),
+            'isTaxonomyArchive' => ! empty($page_context['isTaxonomyArchive']),
             'url' => isset($page_context['url']) ? esc_url_raw((string) $page_context['url']) : '',
         ];
     }

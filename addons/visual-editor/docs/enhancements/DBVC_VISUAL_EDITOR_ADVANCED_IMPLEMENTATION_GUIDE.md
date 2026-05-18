@@ -26,6 +26,8 @@ For the dedicated current-owner connected-items roadmap, see [DBVC_VISUAL_EDITOR
 
 For the runtime badge, hydration, and bounded viewport-prefetch roadmap, see [DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md](./DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md).
 
+For the dedicated CPT archive and taxonomy archive context roadmap, see [DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md](./DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md).
+
 ## Design Decisions
 
 ### 1. Do not jump straight from unsupported to writable
@@ -334,6 +336,7 @@ Recommended sequence:
 For the concrete scenario matrix and later mutation roadmap, use:
 - [DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md](./DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md)
 - [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md)
+- [DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md](./DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md)
 
 Reason:
 - repeater row writes already proved the narrow nested-path pattern
@@ -382,6 +385,19 @@ Delay until later:
 - taxonomy/user loops with nested flexible/repeater mutation
 - builder-generated derived values without stable field ownership
 
+### Archive entry points
+
+Post type archives and taxonomy archives are a separate context tranche, not just another query-loop case.
+
+Use the archive plan before enabling runtime support:
+- expand page context first: implemented for supported CPT and taxonomy archive entry points
+- surface archive markers inspect-only first: implemented for render-verified ACF/post-field candidates
+- enable taxonomy archive direct ACF term fields: initial queried-term slice implemented
+- enable archive direct option-backed ACF fields with shared-option acknowledgement and options-page field-group discovery: initial slice implemented for CPT and taxonomy archives
+- enable native taxonomy archive `{term_name}` and `{term_description}` fields through a dedicated term resolver: initial queried-term slice implemented
+- enable archive query-loop term/post descendants only through explicit loop-owner contracts: initial concrete-owner slice implemented
+- leave native archive tags such as `{archive_title}`, `{post_url}`, `{term_url}`, `{term_id}`, and broad `{term_meta:*}` writes inspect-only until dedicated mutation contracts exist; the first four now surface through a readonly resolver where they can be resolved safely
+
 ## Validation Gates Before Advanced Writes
 
 Require all of the following before enabling save:
@@ -401,7 +417,8 @@ Require all of the following before enabling save:
 5. Formalize descriptor V2 shape for owner/page/path/loop metadata.
 6. Add journal tables and DBVC schema migration hooks for advanced write history before flexible rows, repeater row reordering, relationship collection mutation, or rollback-aware multi-step saves.
 7. Expand repeater/flexible structured descendants.
-8. Add relationship collection mutation UI last.
+8. Add the archive context tranche in inspect-first order if archive page editing is prioritized over broader collection mutation.
+9. Add relationship collection mutation UI last.
 
 ## Current Pause Note
 

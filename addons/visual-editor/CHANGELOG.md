@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Switched the generic Visual Editor plain-text panel control from a narrow single-line text input to a small auto-growing textarea-like control so longer text values stay visible while editing without changing the existing textarea, URL, number, or structured-field flows.
 - Added a status-bar editor link that defaults to the current frontend entity and switches to the active field owner while a panel target is open, then falls back again when the panel closes
 - Increased the default Visual Editor transient session lifetime and made it filterable, then added frontend keepalive/focus refresh so an open page does not lose descriptor access after the original short idle window.
 - Changed the session, descriptor, and save REST paths to return an explicit “session expired, refresh the page” message when the VE session is gone, and taught the panel/status bar to surface that state instead of only showing a generic missing-descriptor error.

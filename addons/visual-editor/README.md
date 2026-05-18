@@ -12,7 +12,7 @@ Current status:
 - addon bootstrap is wired into DBVC core loading
 - Add-ons screen can enable/disable the runtime
 - authorized users can toggle frontend Visual Editor mode from the admin bar
-- frontend assets load only in edit mode on supported singular views
+- frontend assets load only in edit mode on supported singular and archive views
 - frontend runtime, assets, and Bricks instrumentation are now explicitly blocked inside Bricks Builder edit/main/iframe requests and common builder-style preview query contexts
 - supported Bricks direct single-tag text bindings receive lightweight DOM tokens
 - exact Bricks dynamic-data args on those single-tag bindings are preserved for resolver context
@@ -62,6 +62,7 @@ Current status:
 - nested native ACF loop ancestry now also carries the parent native loop kind/selector into descriptor signatures, path summaries, and save-contract detail so `relationship -> repeater`, `post_object -> repeater/flexible`, and similar nested native paths stay explicit and less collision-prone
 - the editor panel is now closed by default, opens from the active shared badge, closes on outside click, and can be dragged to a different screen position that persists for the current browser session
 - empty text-like targets can now surface a pulsing placeholder treatment when the resolved display value is empty, while image targets use a narrow overflow override instead of a broad theme-overriding rule
+- supported post type archives and taxonomy archives now resolve first-class page context and can surface render-verified ACF/post-field markers in inspect-only mode while archive save contracts remain pending
 - advanced exact-tag ACF sources that are not yet save-capable now surface as inspect-only markers instead of being silently dropped
 - generic Bricks query-loop rows with a concrete post owner can now surface inspect-only `post_title`, `post_excerpt`, and direct ACF field descriptors with explicit non-current-owner context
 - marker and modal states now distinguish current, shared, related, and inspect-only sources so non-current owner items are visibly flagged before interaction
@@ -70,7 +71,7 @@ Still out of scope for this slice:
 - deeper grouped descendant save verification and structured descendants beyond the new gallery replacement flow
 - repeater row insert/remove/reorder and nested repeater/flexible collection mutation
 - broader shared, loop-owned, and nested relationship/post-object collection mutation beyond the new direct current-owner query-root collection slice
-- archive-wide editing flows and non-singular entry points
+- archive-wide saves remain unsupported; archive entry points are currently inspect-only and tracked in `docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md`
 - static non-ACF Bricks internal/taxonomy link settings that mutate builder configuration rather than a resolver-owned content field
 - generic non-ACF Bricks post-query loops without a concrete post owner and multi-value related-object editing beyond inspect-only surfacing
 - mixed literal-plus-dynamic Bricks text strings
@@ -162,3 +163,4 @@ This addon now lives inside the DBVC repo at:
 - `docs/enhancements/DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_REPEATER_IMPLEMENTATION_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`
+- `docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md`

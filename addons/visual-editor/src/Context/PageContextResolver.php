@@ -12,14 +12,36 @@ final class PageContextResolver
         $entity_id = get_queried_object_id();
         $is_singular = is_singular() && $entity_id > 0;
 
-        return [
-            'entityType' => $is_singular ? 'post' : '',
-            'entityId' => $is_singular ? absint($entity_id) : 0,
-            'postType' => $is_singular ? (string) get_post_type($entity_id) : '',
-            'isSingular' => $is_singular,
-            'isSupported' => $is_singular,
-            'url' => $this->resolveCurrentUrl($entity_id, $is_singular),
-        ];
+        if ($is_singular) {
+            $post_type = (string) get_post_type($entity_id);
+
+            return [
+                'entityType' => 'post',
+                'entityId' => absint($entity_id),
+                'postType' => $post_type,
+                'taxonomy' => '',
+                'archiveType' => '',
+                'archiveKey' => '',
+                'isSingular' => true,
+                'isArchive' => false,
+                'isPostTypeArchive' => false,
+                'isTaxonomyArchive' => false,
+                'isSupported' => true,
+                'url' => $this->resolveSingularUrl($entity_id),
+            ];
+        }
+
+        $taxonomy_context = $this->resolveTaxonomyArchiveContext();
+        if (! empty($taxonomy_context)) {
+            return $taxonomy_context;
+        }
+
+        $post_type_context = $this->resolvePostTypeArchiveContext();
+        if (! empty($post_type_context)) {
+            return $post_type_context;
+        }
+
+        return $this->buildUnsupportedContext();
     }
 
     /**
@@ -42,23 +64,139 @@ final class PageContextResolver
             return absint($rendered_post_id);
         }
 
-        return absint(get_queried_object_id());
+        return is_singular() ? absint(get_queried_object_id()) : 0;
     }
 
     /**
-     * @param int  $entity_id
-     * @param bool $is_singular
      * @return string
      */
-    private function resolveCurrentUrl($entity_id, $is_singular)
+    private function resolveSingularUrl($entity_id)
     {
-        if ($is_singular) {
-            $permalink = get_permalink($entity_id);
-            if (is_string($permalink) && $permalink !== '') {
-                return $permalink;
-            }
+        $permalink = get_permalink($entity_id);
+        if (is_string($permalink) && $permalink !== '') {
+            return $permalink;
         }
 
         return (string) home_url(add_query_arg([]));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveTaxonomyArchiveContext()
+    {
+        if (! (is_category() || is_tag() || is_tax())) {
+            return [];
+        }
+
+        $term = get_queried_object();
+        if (! $term instanceof \WP_Term || empty($term->term_id) || empty($term->taxonomy)) {
+            return [];
+        }
+
+        $term_link = get_term_link($term);
+        $url = ! is_wp_error($term_link) && is_string($term_link) && $term_link !== ''
+            ? $term_link
+            : (string) home_url(add_query_arg([]));
+        $taxonomy = sanitize_key((string) $term->taxonomy);
+        $term_id = absint($term->term_id);
+
+        return [
+            'entityType' => 'term',
+            'entityId' => $term_id,
+            'postType' => '',
+            'taxonomy' => $taxonomy,
+            'archiveType' => 'term',
+            'archiveKey' => 'term:' . $taxonomy . ':' . $term_id,
+            'isSingular' => false,
+            'isArchive' => true,
+            'isPostTypeArchive' => false,
+            'isTaxonomyArchive' => true,
+            'isSupported' => true,
+            'url' => $url,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolvePostTypeArchiveContext()
+    {
+        if (! is_post_type_archive() && ! (is_home() && ! is_front_page())) {
+            return [];
+        }
+
+        $post_type = $this->resolveArchivePostType();
+        if ($post_type === '') {
+            return [];
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        if (! $post_type_object || empty($post_type_object->public)) {
+            return [];
+        }
+
+        $archive_url = get_post_type_archive_link($post_type);
+        $url = is_string($archive_url) && $archive_url !== ''
+            ? $archive_url
+            : (string) home_url(add_query_arg([]));
+
+        return [
+            'entityType' => 'archive',
+            'entityId' => 0,
+            'postType' => $post_type,
+            'taxonomy' => '',
+            'archiveType' => 'post_type',
+            'archiveKey' => 'post_type:' . $post_type,
+            'isSingular' => false,
+            'isArchive' => true,
+            'isPostTypeArchive' => true,
+            'isTaxonomyArchive' => false,
+            'isSupported' => true,
+            'url' => $url,
+        ];
+    }
+
+    /**
+     * @return string
+     */
+    private function resolveArchivePostType()
+    {
+        if (is_home() && ! is_front_page()) {
+            return 'post';
+        }
+
+        $queried_object = get_queried_object();
+        if ($queried_object instanceof \WP_Post_Type && ! empty($queried_object->name)) {
+            return sanitize_key((string) $queried_object->name);
+        }
+
+        $query_post_type = get_query_var('post_type');
+        if (is_array($query_post_type)) {
+            $query_post_type = reset($query_post_type);
+        }
+
+        return is_scalar($query_post_type) ? sanitize_key((string) $query_post_type) : '';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildUnsupportedContext()
+    {
+        return [
+            'entityType' => '',
+            'entityId' => 0,
+            'postType' => '',
+            'taxonomy' => '',
+            'archiveType' => '',
+            'archiveKey' => '',
+            'isSingular' => false,
+            'isArchive' => false,
+            'isPostTypeArchive' => false,
+            'isTaxonomyArchive' => false,
+            'isSupported' => false,
+            'url' => (string) home_url(add_query_arg([])),
+        ];
     }
 }

@@ -28,6 +28,7 @@ This resolves the biggest issues from the earlier eager model:
 Remaining follow-up areas are now narrower:
 - dwell timing and prefetch policy tuning
 - real-device touch-selection polish
+- statusbar field index/review UI
 - profiling before any deeper caching decisions
 
 ## Design Decisions
@@ -229,6 +230,24 @@ Formalize:
 - touch selection behavior
 - active panel vs passive hover behavior
 - how shared/related/inspect-only states are announced visually
+
+### Slice 4b. Statusbar field index
+
+Status:
+- planned in `DBVC_VISUAL_EDITOR_FIELD_INDEX_PLAN.md`
+
+Implement:
+- collapsible `Review fields` UI inside `dbvc-ve-statusbar__meta`
+- client-side nested index built from the session public map
+- shallow public-map `index` metadata for owner/source grouping
+- `Locate` action that scrolls and highlights the marker
+- `Open` action that reuses existing descriptor loading and panel opening
+
+Guardrails:
+- do not call `hydrate=1` during startup
+- do not include field values or full descriptors in public-map metadata
+- do not introduce bulk edit behavior in this UX slice
+- do not let index enrichment outrank active-marker or explicit open behavior
 
 ### Slice 5. Runtime profiling and measurement
 
