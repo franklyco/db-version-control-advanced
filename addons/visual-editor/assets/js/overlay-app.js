@@ -22,6 +22,10 @@
     touchClickSuppressUntil: 0,
     statusBarState: null,
     fieldIndexOpen: false,
+    fieldIndexFilter: 'all',
+    fieldIndexOpenSubgroups: new Set(),
+    fieldIndexOpenItems: new Set(),
+    fieldIndexRefreshFrame: 0,
     panelOpen: false,
     panelPosition: null,
     panelDrag: null,
@@ -117,6 +121,7 @@
     }
 
     state.descriptorCache[payload.descriptor.token] = clonePayload(payload);
+    scheduleFieldIndexRefresh();
   }
 
   function cacheDescriptorHydrations(hydrations) {
@@ -1421,6 +1426,11 @@
       return;
     }
 
+    if (action === 'filter-field-index') {
+      setFieldIndexFilter(actionNode.getAttribute('data-filter') || 'all');
+      return;
+    }
+
     if (action === 'locate-field') {
       locateFieldIndexMarker(token, false);
       return;
@@ -1435,6 +1445,19 @@
     return typeof count === 'number'
       ? `${count} ${(strings().supportedCount || 'marked fields')}`
       : '';
+  }
+
+  function normalizeFieldIndexFilter(filter) {
+    const value = String(filter || '').trim();
+
+    return ['all', 'editable', 'shared', 'related', 'inspect'].indexOf(value) !== -1
+      ? value
+      : 'all';
+  }
+
+  function setFieldIndexFilter(filter) {
+    state.fieldIndexFilter = normalizeFieldIndexFilter(filter);
+    updateStatusBar({});
   }
 
   function setFieldIndexSubgroupsOpen(actionNode, open) {
@@ -1452,6 +1475,48 @@
     root.querySelectorAll('.dbvc-ve-field-index__subgroup').forEach(function (node) {
       node.open = Boolean(open);
     });
+
+    captureFieldIndexOpenState();
+  }
+
+  function scheduleFieldIndexRefresh() {
+    if (!state.fieldIndexOpen || state.fieldIndexRefreshFrame) {
+      return;
+    }
+
+    state.fieldIndexRefreshFrame = window.requestAnimationFrame(function () {
+      state.fieldIndexRefreshFrame = 0;
+      updateStatusBar({});
+    });
+  }
+
+  function captureFieldIndexOpenState() {
+    const bar = document.querySelector('.dbvc-ve-statusbar');
+    const openSubgroups = new Set();
+    const openItems = new Set();
+
+    if (!bar || !bar.querySelector('.dbvc-ve-field-index')) {
+      return;
+    }
+
+    bar.querySelectorAll('.dbvc-ve-field-index__subgroup[data-subgroup-key]').forEach(function (node) {
+      const key = node.getAttribute('data-subgroup-key') || '';
+
+      if (key && node.open) {
+        openSubgroups.add(key);
+      }
+    });
+
+    bar.querySelectorAll('.dbvc-ve-field-index__item[data-item-key]').forEach(function (node) {
+      const key = node.getAttribute('data-item-key') || '';
+
+      if (key && node.open) {
+        openItems.add(key);
+      }
+    });
+
+    state.fieldIndexOpenSubgroups = openSubgroups;
+    state.fieldIndexOpenItems = openItems;
   }
 
   function getSessionDescriptorEntries() {
@@ -1477,20 +1542,121 @@
       })
       .map(function (token) {
         const descriptor = state.session.descriptors[token] || {};
+        const cached = getCachedDescriptorPayload(token);
+        const hydratedDescriptor = cached && cached.descriptor && typeof cached.descriptor === 'object' ? cached.descriptor : null;
+        const sourceSummary = cached && cached.sourceSummary && typeof cached.sourceSummary === 'object' ? cached.sourceSummary : null;
+        const entitySummary = cached && cached.entitySummary && typeof cached.entitySummary === 'object' ? cached.entitySummary : null;
         const index = descriptor.index && typeof descriptor.index === 'object' ? descriptor.index : {};
         const entity = descriptor.entity && typeof descriptor.entity === 'object' ? descriptor.entity : {};
+        const hydratedEntity = hydratedDescriptor && hydratedDescriptor.entity && typeof hydratedDescriptor.entity === 'object'
+          ? hydratedDescriptor.entity
+          : null;
 
         return {
           token,
-          status: typeof descriptor.status === 'string' && descriptor.status ? descriptor.status : 'editable',
-          scope: typeof descriptor.scope === 'string' && descriptor.scope ? descriptor.scope : 'current_entity',
-          label: descriptor.label ? String(descriptor.label) : (strings().fieldIndexFieldFallback || 'Field'),
-          input: descriptor.input ? String(descriptor.input) : '',
-          entity,
+          status: hydratedDescriptor && typeof hydratedDescriptor.status === 'string' && hydratedDescriptor.status
+            ? hydratedDescriptor.status
+            : (typeof descriptor.status === 'string' && descriptor.status ? descriptor.status : 'editable'),
+          scope: hydratedDescriptor && typeof hydratedDescriptor.scope === 'string' && hydratedDescriptor.scope
+            ? hydratedDescriptor.scope
+            : (typeof descriptor.scope === 'string' && descriptor.scope ? descriptor.scope : 'current_entity'),
+          label: sourceSummary && sourceSummary.label
+            ? String(sourceSummary.label)
+            : (hydratedDescriptor && hydratedDescriptor.ui && hydratedDescriptor.ui.label
+              ? String(hydratedDescriptor.ui.label)
+              : (descriptor.label ? String(descriptor.label) : (strings().fieldIndexFieldFallback || 'Field'))),
+          input: hydratedDescriptor && hydratedDescriptor.ui && hydratedDescriptor.ui.input
+            ? String(hydratedDescriptor.ui.input)
+            : (descriptor.input ? String(descriptor.input) : ''),
+          entity: Object.assign({}, entity, hydratedEntity || {}),
+          sourceSummary,
+          entitySummary,
           index,
           domOrder: markerOrder.get(token)
         };
       });
+  }
+
+  function getFieldIndexFilterOptions(entries) {
+    const counts = {
+      all: entries.length,
+      editable: 0,
+      shared: 0,
+      related: 0,
+      inspect: 0
+    };
+
+    entries.forEach(function (entry) {
+      if (entry.status === 'readonly') {
+        counts.inspect += 1;
+      } else {
+        counts.editable += 1;
+      }
+
+      if (entry.scope === 'shared_entity' || (entry.entity && entry.entity.type === 'option')) {
+        counts.shared += 1;
+      }
+
+      if (entry.scope === 'related_entity') {
+        counts.related += 1;
+      }
+    });
+
+    return [
+      {
+        key: 'all',
+        label: strings().fieldIndexFilterAll || 'All',
+        count: counts.all
+      },
+      {
+        key: 'editable',
+        label: strings().fieldIndexFilterEditable || 'Editable',
+        count: counts.editable
+      },
+      {
+        key: 'shared',
+        label: strings().fieldIndexFilterShared || 'Shared',
+        count: counts.shared
+      },
+      {
+        key: 'related',
+        label: strings().fieldIndexFilterRelated || 'Related',
+        count: counts.related
+      },
+      {
+        key: 'inspect',
+        label: strings().fieldIndexFilterInspect || 'Inspect-only',
+        count: counts.inspect
+      }
+    ];
+  }
+
+  function filterFieldIndexEntries(entries) {
+    const filter = normalizeFieldIndexFilter(state.fieldIndexFilter);
+
+    if (filter === 'all') {
+      return entries;
+    }
+
+    return entries.filter(function (entry) {
+      if (filter === 'editable') {
+        return entry.status !== 'readonly';
+      }
+
+      if (filter === 'shared') {
+        return entry.scope === 'shared_entity' || (entry.entity && entry.entity.type === 'option');
+      }
+
+      if (filter === 'related') {
+        return entry.scope === 'related_entity';
+      }
+
+      if (filter === 'inspect') {
+        return entry.status === 'readonly';
+      }
+
+      return true;
+    });
   }
 
   function humanizeIdentifier(value) {
@@ -1534,9 +1700,10 @@
 
   function resolveEntityIndexLabel(entry) {
     const entity = entry && entry.entity ? entry.entity : {};
-    const typeLabel = resolveEntityTypeLabel(entity);
+    const entitySummary = entry && entry.entitySummary ? entry.entitySummary : {};
+    const typeLabel = entitySummary.typeLabel ? String(entitySummary.typeLabel) : resolveEntityTypeLabel(entity);
     const id = entity && entity.id ? Number(entity.id) : 0;
-    const label = entity && entity.label ? String(entity.label) : '';
+    const label = entitySummary.title ? String(entitySummary.title) : (entity && entity.label ? String(entity.label) : '');
 
     if (entity.type === 'option') {
       return label || typeLabel;
@@ -1691,6 +1858,7 @@
 
   function resolveFieldIndexSourceLabel(entry) {
     const index = entry && entry.index ? entry.index : {};
+    const sourceSummary = entry && entry.sourceSummary ? entry.sourceSummary : {};
     const fieldName = index.leafFieldName || index.fieldName || '';
     const parentFieldName = index.parentFieldName || '';
     const containerType = index.containerType || '';
@@ -1713,7 +1881,9 @@
       }
     });
 
-    if (fieldName) {
+    if (sourceSummary.label) {
+      parts.push(String(sourceSummary.label));
+    } else if (fieldName) {
       parts.push(humanizeIdentifier(fieldName) || fieldName);
     }
 
@@ -1743,6 +1913,41 @@
     }
 
     return resolveEntityIndexLabel(entry) || (strings().fieldIndexSourceFallback || 'Source');
+  }
+
+  function resolveFieldIndexSubGroupKey(entry) {
+    const index = entry && entry.index ? entry.index : {};
+    const entity = entry && entry.entity ? entry.entity : {};
+    const optionPages = Array.isArray(index.fieldGroupOptionPages) ? index.fieldGroupOptionPages.join(',') : '';
+    const nativeKey = [
+      index.nativeQueryKind || '',
+      index.nativeQuerySelector || '',
+      index.parentNativeQueryKind || '',
+      index.parentNativeQuerySelector || '',
+      Array.isArray(index.nativeQueryAncestry)
+        ? index.nativeQueryAncestry.map(function (item) {
+            return [
+              item && item.kind ? String(item.kind) : '',
+              item && item.selector ? String(item.selector) : '',
+              item && item.objectType ? String(item.objectType) : '',
+              item && item.loopIndex !== undefined && item.loopIndex !== null ? String(item.loopIndex) : ''
+            ].join(':');
+          }).join('>')
+        : ''
+    ].filter(Boolean).join('|');
+
+    return [
+      entry.scope || '',
+      entity.type || '',
+      entity.subtype || '',
+      entity.id || 0,
+      index.fieldGroupTitle || '',
+      optionPages,
+      nativeKey,
+      index.parentFieldName || '',
+      index.containerType || '',
+      index.sourceContext || ''
+    ].join('::');
   }
 
   function getFieldIndexSubgroupPriority(entry) {
@@ -1860,13 +2065,13 @@
     return parts.filter(Boolean).join(' / ');
   }
 
-  function buildFieldIndexModel() {
+  function buildFieldIndexModel(entries) {
     const groups = new Map();
 
-    getSessionDescriptorEntries().forEach(function (entry) {
+    entries.forEach(function (entry) {
       const top = resolveFieldIndexTopGroup(entry);
       const subLabel = resolveFieldIndexSubGroup(entry);
-      const subKey = `${top.key}:${subLabel}`;
+      const subKey = `${top.key}:${resolveFieldIndexSubGroupKey(entry)}`;
       let group = groups.get(top.key);
 
       if (!group) {
@@ -1964,11 +2169,12 @@
 
   function renderFieldIndexEntryMarkup(entry) {
     const index = entry && entry.index ? entry.index : {};
+    const sourceSummary = entry && entry.sourceSummary ? entry.sourceSummary : {};
     const sourceLabel = resolveFieldIndexSourceLabel(entry);
     const fieldName = index.leafFieldName || index.fieldName || '';
     const isActive = Boolean(state.activeNode && getMarkerToken(state.activeNode) === entry.token);
     const details = [
-      fieldName,
+      sourceSummary.summary || fieldName,
       index.fieldType,
       entry.input,
       formatRowIndex(index.rowIndex)
@@ -1993,8 +2199,10 @@
   }
 
   function renderFieldIndexItemMarkup(item) {
+    const isOpen = state.fieldIndexOpenItems && state.fieldIndexOpenItems.has(item.key);
+
     return [
-      '<details class="dbvc-ve-field-index__item">',
+      `<details class="dbvc-ve-field-index__item" data-item-key="${escapeHtml(item.key)}"${isOpen ? ' open' : ''}>`,
       '  <summary class="dbvc-ve-field-index__item-summary">',
       '    <span class="dbvc-ve-field-index__item-title">',
       `      <span>${escapeHtml(item.label)}</span>`,
@@ -2017,15 +2225,52 @@
     ].join('');
   }
 
+  function renderFieldIndexFilterMarkup(entries) {
+    const currentFilter = normalizeFieldIndexFilter(state.fieldIndexFilter);
+    const options = getFieldIndexFilterOptions(entries);
+
+    return [
+      '<div class="dbvc-ve-field-index__filters" role="group" aria-label="Field index filters">',
+      options.map(function (option) {
+        const active = option.key === currentFilter;
+
+        return [
+          `<button type="button" class="dbvc-ve-field-index__filter${active ? ' is-active' : ''}" data-dbvc-ve-statusbar-action="filter-field-index" data-filter="${escapeHtml(option.key)}" aria-pressed="${active ? 'true' : 'false'}">`,
+          `  <span>${escapeHtml(option.label)}</span>`,
+          `  <span>${escapeHtml(String(option.count))}</span>`,
+          '</button>'
+        ].join('');
+      }).join(''),
+      '</div>'
+    ].join('');
+  }
+
   function renderFieldIndexMarkup() {
-    const groups = buildFieldIndexModel();
+    const entries = getSessionDescriptorEntries();
+    const groups = buildFieldIndexModel(filterFieldIndexEntries(entries));
+    const filterMarkup = renderFieldIndexFilterMarkup(entries);
+
+    if (!entries.length) {
+      return [
+        '<div class="dbvc-ve-field-index" role="list">',
+        filterMarkup,
+        `<div class="dbvc-ve-field-index__empty">${escapeHtml(strings().fieldIndexNoFields || 'No marked fields are available to review.')}</div>`,
+        '</div>'
+      ].join('');
+    }
 
     if (!groups.length) {
-      return `<div class="dbvc-ve-field-index__empty">${escapeHtml(strings().fieldIndexNoFields || 'No marked fields are available to review.')}</div>`;
+      return [
+        '<div class="dbvc-ve-field-index" role="list">',
+        filterMarkup,
+        `<div class="dbvc-ve-field-index__empty">${escapeHtml(strings().fieldIndexNoFilterResults || 'No marked fields match this filter.')}</div>`,
+        '</div>'
+      ].join('');
     }
 
     return [
       '<div class="dbvc-ve-field-index" role="list">',
+      filterMarkup,
       groups.map(function (group) {
         return [
           '<details class="dbvc-ve-field-index__group" open>',
@@ -2033,8 +2278,10 @@
           '  <div class="dbvc-ve-field-index__subgroups">',
           renderFieldIndexSubgroupControlsMarkup(),
           group.subgroups.map(function (subgroup) {
+            const isOpen = state.fieldIndexOpenSubgroups && state.fieldIndexOpenSubgroups.has(subgroup.key);
+
             return [
-              '<details class="dbvc-ve-field-index__subgroup">',
+              `<details class="dbvc-ve-field-index__subgroup" data-subgroup-key="${escapeHtml(subgroup.key)}"${isOpen ? ' open' : ''}>`,
               `  <summary class="dbvc-ve-field-index__subgroup-summary"><span>${escapeHtml(subgroup.label)}</span><span>${escapeHtml(getStatusBarCountText(subgroup.count))}</span></summary>`,
               '  <div class="dbvc-ve-field-index__items">',
               subgroup.items.map(renderFieldIndexItemMarkup).join(''),
@@ -2051,6 +2298,8 @@
   }
 
   function renderStatusBarMeta(meta, nextState) {
+    captureFieldIndexOpenState();
+
     const countText = getStatusBarCountText(nextState.count);
     const hasIndex = Boolean(state.session && state.session.descriptors && Object.keys(state.session.descriptors).length);
     const expanded = Boolean(state.fieldIndexOpen && hasIndex);
@@ -2250,6 +2499,112 @@
     return target.closest('[data-dbvc-ve]');
   }
 
+  function eventHasViewportPoint(event) {
+    return event
+      && typeof event.clientX === 'number'
+      && typeof event.clientY === 'number'
+      && event.clientX >= 0
+      && event.clientY >= 0;
+  }
+
+  function rectContainsViewportPoint(rect, x, y) {
+    return rect
+      && rect.width > 0
+      && rect.height > 0
+      && x >= rect.left
+      && x <= rect.right
+      && y >= rect.top
+      && y <= rect.bottom;
+  }
+
+  function markerContainsViewportPoint(marker, x, y) {
+    if (!marker || typeof marker.getClientRects !== 'function') {
+      return false;
+    }
+
+    const rects = Array.from(marker.getClientRects());
+
+    if (rects.some(function (rect) {
+      return rectContainsViewportPoint(rect, x, y);
+    })) {
+      return true;
+    }
+
+    if (typeof marker.getBoundingClientRect !== 'function') {
+      return false;
+    }
+
+    return rectContainsViewportPoint(marker.getBoundingClientRect(), x, y);
+  }
+
+  function getMarkerViewportArea(marker) {
+    if (!marker || typeof marker.getBoundingClientRect !== 'function') {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    const rect = marker.getBoundingClientRect();
+
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    return rect.width * rect.height;
+  }
+
+  function resolveMarkerNodeFromPoint(event) {
+    if (!eventHasViewportPoint(event) || typeof document.elementsFromPoint !== 'function') {
+      return null;
+    }
+
+    const x = event.clientX;
+    const y = event.clientY;
+    const candidates = [];
+    const seen = new Set();
+
+    document.elementsFromPoint(x, y).forEach(function (node) {
+      if (!node || isBadgeElement(node) || isPanelElement(node)) {
+        return;
+      }
+
+      const marker = resolveMarkerNodeFromTarget(node);
+
+      if (!marker || !marker.isConnected || seen.has(marker)) {
+        return;
+      }
+
+      if (!markerContainsViewportPoint(marker, x, y)) {
+        return;
+      }
+
+      seen.add(marker);
+      candidates.push(marker);
+    });
+
+    if (!candidates.length) {
+      return null;
+    }
+
+    candidates.sort(function (a, b) {
+      return getMarkerViewportArea(a) - getMarkerViewportArea(b);
+    });
+
+    return candidates[0];
+  }
+
+  function resolveMarkerNodeFromEvent(event) {
+    const marker = resolveMarkerNodeFromTarget(event ? event.target : null);
+
+    if (!marker) {
+      return resolveMarkerNodeFromPoint(event);
+    }
+
+    if (!eventHasViewportPoint(event) || markerContainsViewportPoint(marker, event.clientX, event.clientY)) {
+      return marker;
+    }
+
+    return resolveMarkerNodeFromPoint(event) || marker;
+  }
+
   function isBadgeElement(target) {
     return Boolean(state.badgeNode && target && (state.badgeNode === target || state.badgeNode.contains(target)));
   }
@@ -2271,7 +2626,7 @@
       return;
     }
 
-    const marker = resolveMarkerNodeFromTarget(event.target);
+    const marker = resolveMarkerNodeFromEvent(event);
 
     if (!marker) {
       return;
@@ -2393,7 +2748,7 @@
       return;
     }
 
-    const marker = resolveMarkerNodeFromTarget(event.target);
+    const marker = resolveMarkerNodeFromEvent(event);
     const token = getMarkerToken(marker);
 
     if (!marker || !token) {
@@ -2420,7 +2775,7 @@
   }
 
   function handleMarkerClick(event) {
-    const marker = resolveMarkerNodeFromTarget(event.target);
+    const marker = resolveMarkerNodeFromEvent(event);
     const token = getMarkerToken(marker);
 
     if (!marker || !token) {

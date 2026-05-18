@@ -394,7 +394,7 @@ Use the archive plan before enabling runtime support:
 - surface archive markers inspect-only first: implemented for render-verified ACF/post-field candidates
 - enable taxonomy archive direct ACF term fields: initial queried-term slice implemented
 - enable archive direct option-backed ACF fields with shared-option acknowledgement and options-page field-group discovery: initial slice implemented for CPT and taxonomy archives
-- enable native taxonomy archive `{term_name}` and `{term_description}` fields through a dedicated term resolver: initial queried-term slice implemented
+- enable native taxonomy `{term_name}` and `{term_description}` fields through a dedicated term resolver: queried archive terms and concrete Bricks term-loop owners now supported
 - enable archive query-loop term/post descendants only through explicit loop-owner contracts: initial concrete-owner slice implemented
 - leave native archive tags such as `{archive_title}`, `{post_url}`, `{term_url}`, `{term_id}`, and broad `{term_meta:*}` writes inspect-only until dedicated mutation contracts exist; the first four now surface through a readonly resolver where they can be resolved safely
 

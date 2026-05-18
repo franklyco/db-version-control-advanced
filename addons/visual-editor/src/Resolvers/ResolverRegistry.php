@@ -269,18 +269,15 @@ final class ResolverRegistry
     {
         $field_name = isset($candidate['field_name']) ? sanitize_key((string) $candidate['field_name']) : '';
         if (! in_array($field_name, ['term_name', 'term_description', 'term_url', 'term_id'], true)) {
-            return $this->buildUnsupported('Only native term name, description, URL, and ID bindings are enabled in the current archive term-field slice.');
+            return $this->buildUnsupported('Only native term name, description, URL, and ID bindings are enabled in the current term-field slice.');
         }
 
         $loop_context = $this->loops->resolve();
         $loop_term = ! empty($loop_context['active']) ? $this->resolveLoopTermEntity($loop_context) : [];
+        $is_archive_context = ! empty($page_context['isArchive']);
         if (! empty($loop_context['active'])) {
-            if (empty($page_context['isArchive'])) {
-                return $this->buildUnsupported('Native term fields inside query loops are only enabled on archive contexts in the current slice.');
-            }
-
             if (empty($loop_term)) {
-                return $this->buildUnsupported('Native term fields inside archive query loops require a concrete term owner.');
+                return $this->buildUnsupported('Native term fields inside query loops require a concrete term owner.');
             }
 
             $term_id = isset($loop_term['id']) ? absint($loop_term['id']) : 0;
@@ -299,17 +296,20 @@ final class ResolverRegistry
         }
 
         if ($term_id <= 0 || $taxonomy === '') {
-            return $this->buildUnsupported('Taxonomy archive term context is missing.');
+            return $this->buildUnsupported('Taxonomy term context is missing.');
         }
 
         $term = get_term($term_id, $taxonomy);
         if (! $term || is_wp_error($term)) {
-            return $this->buildUnsupported('Taxonomy archive term could not be resolved.');
+            return $this->buildUnsupported('Taxonomy term could not be resolved.');
         }
 
         $field_type = $field_name === 'term_description' ? 'textarea' : 'text';
         $label = $field_name === 'term_description' ? __('Term Description', 'dbvc') : __('Term Name', 'dbvc');
-        $source_context = $scope === 'related_entity' ? 'archive_loop_term' : 'archive_term';
+        $source_context = 'archive_term';
+        if ($scope === 'related_entity') {
+            $source_context = $is_archive_context ? 'archive_loop_term' : 'loop_term';
+        }
         $readonly_field_labels = [
             'term_url' => __('Term URL', 'dbvc'),
             'term_id' => __('Term ID', 'dbvc'),
@@ -382,7 +382,7 @@ final class ResolverRegistry
             'ui' => [
                 'label' => $label,
                 'input' => $field_name === 'term_description' ? 'textarea' : 'text',
-                'warning' => $this->buildTermFieldWarning($scope),
+                'warning' => $this->buildTermFieldWarning($scope, $is_archive_context),
             ],
         ];
     }
@@ -426,12 +426,17 @@ final class ResolverRegistry
 
     /**
      * @param string $scope
+     * @param bool   $is_archive_context
      * @return string
      */
-    private function buildTermFieldWarning($scope)
+    private function buildTermFieldWarning($scope, $is_archive_context = false)
     {
         if ($scope === 'related_entity') {
-            return __('This edits the native field on the related taxonomy term currently rendered by a Bricks query loop, not the archive term itself.', 'dbvc');
+            if ($is_archive_context) {
+                return __('This edits the native field on the related taxonomy term currently rendered by a Bricks query loop, not the archive term itself.', 'dbvc');
+            }
+
+            return __('This edits the native field on the related taxonomy term currently rendered by a Bricks query loop, not the current page.', 'dbvc');
         }
 
         return __('This edits the native field on the queried taxonomy term for this archive page.', 'dbvc');

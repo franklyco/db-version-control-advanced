@@ -166,10 +166,13 @@ Work:
 #### A3. Taxonomy loops
 
 Target:
-- direct grouped/media term fields first
+- direct native term fields, including `{term_name}` and `{term_description}` when Bricks exposes a concrete loop term owner
+- direct grouped/media term fields
 - then term-owned repeater/flexible descendants
 
 Work:
+- keep native `term_name` and `term_description` writable through `TermFieldResolver` for concrete loop terms on archive and non-archive contexts
+- keep derived `term_url` and `term_id` inspect-only
 - inspect-first on nested term collection paths
 - only widen to writable after real site confirmation that owner identity, nested selector resolution, and save path are stable
 

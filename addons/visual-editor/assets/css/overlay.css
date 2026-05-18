@@ -53,7 +53,8 @@
 
 .dbvc-ve-statusbar__toggle,
 .dbvc-ve-field-index__action,
-.dbvc-ve-field-index__control {
+.dbvc-ve-field-index__control,
+.dbvc-ve-field-index__filter {
   border: 1px solid #99f6e4;
   border-radius: 999px;
   background: #f0fdfa;
@@ -75,7 +76,9 @@
 .dbvc-ve-field-index__action:hover,
 .dbvc-ve-field-index__action:focus,
 .dbvc-ve-field-index__control:hover,
-.dbvc-ve-field-index__control:focus {
+.dbvc-ve-field-index__control:focus,
+.dbvc-ve-field-index__filter:hover,
+.dbvc-ve-field-index__filter:focus {
   border-color: #0f766e;
   outline: none;
 }
@@ -87,6 +90,30 @@
   overflow: auto;
   overscroll-behavior: contain;
   color: #0f172a;
+}
+
+.dbvc-ve-field-index__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+.dbvc-ve-field-index__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+}
+
+.dbvc-ve-field-index__filter.is-active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.dbvc-ve-field-index__filter span:last-child {
+  opacity: 0.72;
 }
 
 .dbvc-ve-field-index__group,

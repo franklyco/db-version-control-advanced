@@ -315,7 +315,7 @@ Acceptance:
 
 ### Phase 4: native term fields and Bricks archive tags
 
-Status: initial queried-term slice implemented and broadened to concrete archive term-loop descendants. `{term_name}` and `{term_description}` are detected as native `term_field` sources on taxonomy archive pages and save through `src/Resolvers/TermFieldResolver.php` using `wp_update_term()` for the queried archive term. When an archive query loop exposes a concrete term owner, those same native term fields use the loop-owned related save path with acknowledgement. Derived native values now surface inspect-only through `src/Resolvers/NativeReadonlyResolver.php`.
+Status: initial queried-term slice implemented and broadened to concrete term-loop descendants beyond archive-only contexts. `{term_name}` and `{term_description}` are detected as native `term_field` sources on taxonomy archive pages and save through `src/Resolvers/TermFieldResolver.php` using `wp_update_term()` for the queried archive term. When a Bricks query loop exposes a concrete term owner, those same native term fields use the loop-owned related save path with acknowledgement on archive and non-archive pages/templates. Derived native values now surface inspect-only through `src/Resolvers/NativeReadonlyResolver.php`.
 
 Files likely involved:
 - `src/Resolvers/TermFieldResolver.php`
@@ -332,7 +332,7 @@ Candidate fields:
 
 Steps:
 1. Keep `{archive_title}` inspect-only because it is derived presentation.
-2. Add a dedicated term resolver for `term_name` and `term_description`. Implemented for the queried taxonomy archive term and concrete archive term-loop owners.
+2. Add a dedicated term resolver for `term_name` and `term_description`. Implemented for the queried taxonomy archive term and concrete Bricks term-loop owners, including non-archive page/template loops.
 3. Treat `term_url` as read-only unless a dedicated slug editor is designed. Implemented as inspect-only.
 4. Treat `term_meta:*` separately from ACF term fields; do not write arbitrary term meta without an allowlist.
 5. Treat `{term_id}`, `{post_url}`, and `{archive_title}` as inspect-only derived values. Implemented for exact single-tag render bindings and direct link-control URL bindings for `post_url` / `term_url`.
@@ -356,7 +356,7 @@ Files likely involved:
 Steps:
 1. Reuse existing concrete loop-owner handling after archive page context is enabled.
    - Implemented for concrete post owners and concrete term owners.
-   - ACF descriptors add source context such as `archive_loop_post` or `archive_loop_term` for panel/debug summaries.
+   - ACF descriptors add source context such as `archive_loop_post`, `archive_loop_term`, or non-archive `loop_term` for panel/debug summaries.
 2. Validate Bricks loop owner resolution for:
    - post loops on CPT archives
    - post loops filtered by current taxonomy term

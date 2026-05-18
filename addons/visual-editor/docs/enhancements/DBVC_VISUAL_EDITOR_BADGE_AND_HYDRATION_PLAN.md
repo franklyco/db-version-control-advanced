@@ -17,6 +17,7 @@ The runtime now does the following when Visual Editor mode is active:
 - fetches the authenticated session public map without full descriptor hydration by default
 - renders one shared badge controller in the detached overlay layer
 - positions that badge only for the currently hovered, focused, or selected marker
+- resolves hover markers by direct target first, then falls back to pointer hit-testing with `elementsFromPoint()` for card/link overlay patterns where the visible marker is under an unmarked or geometrically mismatched overlay
 - fetches full descriptor payloads on demand and caches them after first lookup
 
 This resolves the biggest issues from the earlier eager model:

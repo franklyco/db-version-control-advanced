@@ -81,7 +81,7 @@ Top-level groups:
 
 Second-level groups:
 - entity subtype and ID, such as `post:service`, `term:feature_tax`, `option`
-- source context, such as `archive_option`, `archive_loop_post`, `archive_loop_term`, `shared_option`
+- source context, such as `archive_option`, `archive_loop_post`, `archive_loop_term`, `loop_term`, `shared_option`
 - container root, such as `repeater:process_steps`, `flexible:core_sections`
 - native query root, such as `relationship:related_services`, `post_object:office_manager`, `taxonomy:feature_tax`
 
@@ -330,9 +330,26 @@ Third-slice subgroup UX notes:
 - Individual source subgroups remain independently toggleable through their `<summary>`.
 - Current singular post/term/user metadata subgroups are prioritized before native-loop/archive/related-style subgroups within the current entity area.
 
+Fourth-slice state preservation notes:
+- Open subgroup keys are snapshotted before the statusbar index re-renders.
+- Open item-level accordions are also snapshotted so the exact nested editing context survives panel refreshes.
+- Save/status updates restore the same open subgroup and item state instead of reverting to the default collapsed state.
+- Collapsing and reopening the whole field index preserves subgroup/item state for the current page session.
+
+Fifth-slice lazy enrichment notes:
+- Field-index rows now merge in cached descriptor payload summaries when a field has already been opened or prefetched.
+- Enrichment can improve owner labels, field labels, input hints, and source detail lines without enabling full startup hydration.
+- Descriptor cache updates schedule a lightweight statusbar refresh only when the field index is open.
+- Subgroup keys are stable and separate from display labels so hydrated titles do not collapse the current subgroup.
+
+Sixth-slice filter notes:
+- The expanded field index includes client-side filters for `All`, `Editable`, `Shared`, `Related`, and `Inspect-only`.
+- Filter counts are calculated from the full live marker/session entry set, not only the currently filtered view.
+- Filtering runs before the grouping model is built, so condensed owner/source/item grouping remains unchanged per filtered subset.
+- Empty filtered states show a lightweight message and do not mutate marker, descriptor, or save state.
+
 Defer:
-- search/filter
-- lazy enriched source summaries
+- text search
 - virtualized lists
 - persisted expanded/collapsed group state
 - any bulk actions
