@@ -116,7 +116,7 @@ The field index should not compete with the draggable editor panel. It is a laun
 
 ### Phase 0: Contract Audit
 
-Status: planned.
+Status: completed during planning.
 
 Steps:
 1. Confirm all current markers have stable tokens in the startup public map.
@@ -130,7 +130,7 @@ Acceptance:
 
 ### Phase 1: Public Map Index Metadata
 
-Status: planned.
+Status: implemented in first slice.
 
 Files likely involved:
 - `src/Registry/EditableRegistry.php`
@@ -150,7 +150,7 @@ Acceptance:
 
 ### Phase 2: Client-Side Index Builder
 
-Status: planned.
+Status: implemented in first slice.
 
 Files likely involved:
 - `assets/js/overlay-app.js`
@@ -177,7 +177,7 @@ Acceptance:
 
 ### Phase 3: Statusbar UI
 
-Status: planned.
+Status: implemented in first slice.
 
 Files likely involved:
 - `assets/js/overlay-app.js`
@@ -199,7 +199,7 @@ Acceptance:
 
 ### Phase 4: Marker Actions
 
-Status: planned.
+Status: implemented in first slice.
 
 Files likely involved:
 - `assets/js/overlay-app.js`
@@ -311,6 +311,24 @@ Implement only:
 2. collapsed `Review fields` toggle
 3. owner-type grouping
 4. basic rows with `Locate` and `Open`
+
+First-slice implementation notes:
+- `EditableRegistry::exportPublicMap()` now emits a shallow `index` object per public descriptor.
+- `overlay-app.js` builds the grouped field index from the session public map and live DOM markers.
+- `dbvc-ve-statusbar__meta` now renders a compact count/toggle by default and an expanded nested review list on demand.
+- `Locate` scrolls to and previews the marker; `Open` reuses the existing descriptor hydration and editor panel path.
+
+Second-slice condensation notes:
+- Public entity summaries now include a lightweight owner label for post, term, user, and option owners.
+- Public index summaries now include field-group title and option-page hints where available.
+- The frontend index now aggregates marker rows into item-level accordions under each category/source group.
+- Related post/term fields, shared options fields, native loop fields, and repeater/flexible row fields are condensed behind one item toggle before exposing individual marker rows.
+
+Third-slice subgroup UX notes:
+- `dbvc-ve-field-index__subgroup` details now default collapsed so category-level review stays compact.
+- Each category group includes `Expand all` and `Collapse all` controls for its source subgroups.
+- Individual source subgroups remain independently toggleable through their `<summary>`.
+- Current singular post/term/user metadata subgroups are prioritized before native-loop/archive/related-style subgroups within the current entity area.
 
 Defer:
 - search/filter
