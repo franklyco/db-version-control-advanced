@@ -878,6 +878,13 @@ body.dbvc-ve-active [data-dbvc-ve].dbvc-ve-target[data-dbvc-ve-display-value=""]
   outline-style: dotted;
 }
 
+body.dbvc-ve-active .card .card__title:not(a) > a::after,
+body.dbvc-ve-active .card a.card__title::after,
+body.dbvc-ve-active .card .card__link:not(a) > a::after,
+body.dbvc-ve-active .card a.card__link::after {
+  pointer-events: none !important;
+}
+
 @keyframes dbvc-ve-empty-pulse {
   0%,
   100% {

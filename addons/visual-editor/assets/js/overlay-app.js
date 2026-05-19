@@ -2537,6 +2537,32 @@
     return rectContainsViewportPoint(marker.getBoundingClientRect(), x, y);
   }
 
+  function elementLooksVisible(node, stopNode) {
+    let current = node;
+
+    while (current && current.nodeType === 1) {
+      if (current.hidden || current.getAttribute('aria-hidden') === 'true') {
+        return false;
+      }
+
+      if (typeof window.getComputedStyle === 'function') {
+        const style = window.getComputedStyle(current);
+
+        if (!style || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || style.opacity === '0') {
+          return false;
+        }
+      }
+
+      if (current === stopNode) {
+        break;
+      }
+
+      current = current.parentElement;
+    }
+
+    return true;
+  }
+
   function getMarkerViewportArea(marker) {
     if (!marker || typeof marker.getBoundingClientRect !== 'function') {
       return Number.MAX_SAFE_INTEGER;
@@ -2551,6 +2577,52 @@
     return rect.width * rect.height;
   }
 
+  function getBricksElementIdClasses(node) {
+    if (!node || !node.classList) {
+      return [];
+    }
+
+    return Array.from(node.classList).filter(function (className) {
+      return /^brxe-[a-z0-9]{6}$/i.test(className);
+    });
+  }
+
+  function hasRepeatedBricksElementClass(node) {
+    if (!node || !node.parentElement) {
+      return false;
+    }
+
+    const classNames = getBricksElementIdClasses(node);
+
+    if (!classNames.length) {
+      return false;
+    }
+
+    return classNames.some(function (className) {
+      return Array.from(node.parentElement.children).some(function (sibling) {
+        return sibling !== node && sibling.classList && sibling.classList.contains(className);
+      });
+    });
+  }
+
+  function resolveScopedMarkerRoot(event) {
+    let node = event && event.target && event.target.nodeType === 1 ? event.target : null;
+
+    while (node && node !== document.body && node !== document.documentElement) {
+      if (node.hasAttribute && node.hasAttribute('data-brx-loop-start')) {
+        return node;
+      }
+
+      if (hasRepeatedBricksElementClass(node)) {
+        return node;
+      }
+
+      node = node.parentElement;
+    }
+
+    return null;
+  }
+
   function resolveMarkerNodeFromPoint(event) {
     if (!eventHasViewportPoint(event) || typeof document.elementsFromPoint !== 'function') {
       return null;
@@ -2561,14 +2633,12 @@
     const candidates = [];
     const seen = new Set();
 
-    document.elementsFromPoint(x, y).forEach(function (node) {
-      if (!node || isBadgeElement(node) || isPanelElement(node)) {
+    function addCandidate(marker, scopeRoot) {
+      if (!marker || !marker.isConnected || seen.has(marker)) {
         return;
       }
 
-      const marker = resolveMarkerNodeFromTarget(node);
-
-      if (!marker || !marker.isConnected || seen.has(marker)) {
+      if (scopeRoot && !scopeRoot.contains(marker)) {
         return;
       }
 
@@ -2576,9 +2646,29 @@
         return;
       }
 
+      if (!elementLooksVisible(marker, scopeRoot || null)) {
+        return;
+      }
+
       seen.add(marker);
       candidates.push(marker);
+    }
+
+    document.elementsFromPoint(x, y).forEach(function (node) {
+      if (!node || isBadgeElement(node) || isPanelElement(node)) {
+        return;
+      }
+
+      addCandidate(resolveMarkerNodeFromTarget(node), null);
     });
+
+    const scopedRoot = resolveScopedMarkerRoot(event);
+
+    if (scopedRoot && elementLooksVisible(scopedRoot, null)) {
+      scopedRoot.querySelectorAll('[data-dbvc-ve]').forEach(function (marker) {
+        addCandidate(marker, scopedRoot);
+    });
+    }
 
     if (!candidates.length) {
       return null;
@@ -2594,15 +2684,25 @@
   function resolveMarkerNodeFromEvent(event) {
     const marker = resolveMarkerNodeFromTarget(event ? event.target : null);
 
-    if (!marker) {
-      return resolveMarkerNodeFromPoint(event);
-    }
-
-    if (!eventHasViewportPoint(event) || markerContainsViewportPoint(marker, event.clientX, event.clientY)) {
+    if (!eventHasViewportPoint(event)) {
       return marker;
     }
 
-    return resolveMarkerNodeFromPoint(event) || marker;
+    const pointMarker = resolveMarkerNodeFromPoint(event);
+
+    if (!marker) {
+      return pointMarker;
+    }
+
+    if (!markerContainsViewportPoint(marker, event.clientX, event.clientY)) {
+      return pointMarker || marker;
+    }
+
+    if (pointMarker && pointMarker !== marker && getMarkerViewportArea(pointMarker) < getMarkerViewportArea(marker)) {
+      return pointMarker;
+    }
+
+    return marker;
   }
 
   function isBadgeElement(target) {

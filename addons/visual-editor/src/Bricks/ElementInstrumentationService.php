@@ -72,6 +72,8 @@ final class ElementInstrumentationService
             return is_array($attributes) ? $attributes : [];
         }
 
+        $this->rememberNativeQueryElement($element);
+
         $collection_inspection = $this->inspectCollectionLoopRoot($attributes, $key, $element);
         if (! empty($collection_inspection['supported'])) {
             return $this->instrumentInspection($attributes, $key, $element, $collection_inspection);
@@ -293,6 +295,42 @@ final class ElementInstrumentationService
         }
 
         return isset($group['class']) || isset($group['id']);
+    }
+
+    /**
+     * @param object $element
+     * @return void
+     */
+    private function rememberNativeQueryElement($element)
+    {
+        if (! is_object($element)) {
+            return;
+        }
+
+        $settings = isset($element->settings) && is_array($element->settings) ? $element->settings : [];
+        if (empty($settings['hasLoop']) || empty($settings['query']) || ! is_array($settings['query'])) {
+            return;
+        }
+
+        $query_object_type = isset($settings['query']['objectType'])
+            ? sanitize_key((string) $settings['query']['objectType'])
+            : '';
+        if (strpos($query_object_type, 'acf_') !== 0) {
+            return;
+        }
+
+        $element_ids = [];
+        if (! empty($element->id)) {
+            $element_ids[] = sanitize_text_field((string) $element->id);
+        }
+
+        if (! empty($element->id) && ! empty($element->instanceId) && strpos((string) $element->id, '-') === false) {
+            $element_ids[] = sanitize_text_field((string) $element->id . '-' . (string) $element->instanceId);
+        }
+
+        foreach (array_values(array_unique(array_filter($element_ids))) as $element_id) {
+            $this->loops->rememberElementQueryObjectType($element_id, $query_object_type);
+        }
     }
 
     /**

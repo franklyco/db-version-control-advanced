@@ -17,7 +17,8 @@ The runtime now does the following when Visual Editor mode is active:
 - fetches the authenticated session public map without full descriptor hydration by default
 - renders one shared badge controller in the detached overlay layer
 - positions that badge only for the currently hovered, focused, or selected marker
-- resolves hover markers by direct target first, then falls back to pointer hit-testing with `elementsFromPoint()` for card/link overlay patterns where the visible marker is under an unmarked or geometrically mismatched overlay
+- resolves hover markers by direct target first, then falls back to pointer hit-testing plus nearest repeated Bricks card/loop-item marker matching for card/link overlay patterns where a full-card link target would otherwise hide a smaller nested marker
+- disables known Bricks full-card pseudo-link overlays from `card__title` and `card__link` only while Visual Editor mode is active so nested editable markers can receive hover/click hit-testing
 - fetches full descriptor payloads on demand and caches them after first lookup
 
 This resolves the biggest issues from the earlier eager model:
@@ -96,6 +97,8 @@ Preferred behavior:
 - `pointerleave`, `blur`, `escape`, or panel-close clears the shared badge unless the marker is actively selected
 
 This is simpler and more robust than trying to infer hidden-container state for a whole page of detached controls.
+
+Known Bricks full-card link patterns must be handled at the CSS boundary when possible. The site's global `card` and `card__link` classes create `::after` overlays that fill the full card from title/link elements. During Visual Editor mode only, those pseudo-elements should not receive pointer events; otherwise the browser can hit-test the overlay link instead of the nested editable marker under the pointer.
 
 ### 5a. Add viewport-aware prefetch as a bounded extension of the current model
 

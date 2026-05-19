@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Preserved original Bricks native ACF query object types from render-time element settings when available, so nested owner-loop descendants keep relationship/post-object provenance even if Bricks later exposes a concrete runtime object query.
+- Confirmed the native `relationship -> repeater` descendant path on page `88` / template `923`, where `acf_related_faq_groups -> acf_faq_items_repeater` descendants classify as editable related-owner row-backed fields with full parent native query ancestry.
 - Switched the generic Visual Editor plain-text panel control from a narrow single-line text input to a small auto-growing textarea-like control so longer text values stay visible while editing without changing the existing textarea, URL, number, or structured-field flows.
 - Added a status-bar editor link that defaults to the current frontend entity and switches to the active field owner while a panel target is open, then falls back again when the panel closes
 - Increased the default Visual Editor transient session lifetime and made it filterable, then added frontend keepalive/focus refresh so an open page does not lose descriptor access after the original short idle window.

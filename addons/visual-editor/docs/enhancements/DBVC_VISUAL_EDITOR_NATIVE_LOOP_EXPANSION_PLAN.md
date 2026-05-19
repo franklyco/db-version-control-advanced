@@ -127,6 +127,11 @@ Use the same canonical descriptor requirements:
 - `group_key_path`
 - parent native loop ancestry
 
+Save-side contract rules:
+- row-backed writes may populate an empty leaf value inside a proven row/container
+- row-backed writes must not create missing nested repeater rows, missing nested repeater containers, or missing grouped containers from descriptor metadata alone
+- if a descriptor's nested path no longer resolves against the current stored ACF payload, save should fail with an explicit safety message instead of creating a new path
+
 The runtime should keep solving by failure class:
 - root selector alias drift
 - wrong child key drift
@@ -152,6 +157,13 @@ Work:
 - ensure the effective related-post owner survives nested row/layout descent
 - reuse existing repeater/flexible read/write helpers once the owner/path is canonical
 
+Current status:
+- `relationship -> repeater` is runtime-smoked on page `88` with template `923` (`Single Page`): parent loop `bdxtme` / `acf_related_faq_groups`, inner loop `hudkbu` / `acf_faq_items_repeater`, descendants `yimqpq`, `zvywab`, `lisgki`, and `bwgvtd`.
+- The probe confirmed `scope=related_entity`, owner post `863` (`faq`), row-backed source type `acf_repeater_subfield`, and descriptor ancestry with `parent_native_query_kind=relationship`.
+- Structured synced-template scanning found 25 native `relationship -> repeater` occurrences, including FAQ and gallery-group descendants; use these for wider manual smoke, but do not infer save safety for gallery/media projections without the existing media/galleries final checks.
+- The same structured scan did not find a current native `relationship -> flexible` fixture. Keep that branch WIP until a real template is added or identified.
+- A custom Bricks Query Editor post loop that reads an ACF relationship field is not the same source shape. It can still resolve as a related-owner repeater path when Bricks exposes a concrete `WP_Post`, but it should not be counted as native `relationship -> repeater` coverage.
+
 #### A2. Post-object loops
 
 Target:
@@ -162,6 +174,11 @@ Target:
 Work:
 - same as relationship loops
 - confirm single-owner post-object loops do not regress direct-field support while nested descendants widen
+
+Current status:
+- Direct native post-object owner loops such as `acf_office_manager` remain covered as loop-owned related post fields.
+- Structured synced-template scanning did not find a live native `post_object -> repeater` or `post_object -> flexible` descendant fixture. Keep this branch WIP until a real template is added or a disposable fixture is created.
+- Do not broaden post-object nested save claims from the relationship fixture alone; the expected code path is shared, but the field return shape and Bricks loop normalization still need their own smoke.
 
 #### A3. Taxonomy loops
 
@@ -257,10 +274,10 @@ Required safeguards:
 ## Validation Fixtures To Gather
 
 Before broadening runtime writes further, keep real pages/templates available for:
-- native `relationship -> repeater`
-- native `relationship -> flexible`
-- native `post_object -> repeater`
-- native `post_object -> flexible`
+- native `relationship -> repeater`: page `88`, template `923`, parent `bdxtme` / `acf_related_faq_groups`, inner `hudkbu` / `acf_faq_items_repeater`, descendant examples `yimqpq`, `zvywab`, `lisgki`, `bwgvtd`
+- native `relationship -> flexible`: no current synced-template fixture found; create or identify one before enabling as closed
+- native `post_object -> repeater`: no current synced-template fixture found; create or identify one before enabling as closed
+- native `post_object -> flexible`: no current synced-template fixture found; create or identify one before enabling as closed
 - native taxonomy loop with grouped/media term fields
 - native taxonomy loop with nested repeater or flexible descendants
 - mixed `flexible -> repeater`

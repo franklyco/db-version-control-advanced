@@ -10,6 +10,9 @@
 - [ ] Unsupported nodes do not receive false editable markers
 - [ ] Marker token maps to descriptor correctly
 - [ ] Related-post Bricks query-loop rows receive distinct per-row tokens
+- [ ] Native `relationship -> repeater` descendants expose parent relationship ancestry in descriptor source/path metadata
+- [ ] Native `relationship -> flexible` descendants expose parent relationship ancestry once a live fixture exists
+- [ ] Native `post_object -> repeater/flexible` descendants expose parent post-object ancestry once a live fixture exists
 - [ ] Concrete queried term/user loop owners receive related-owner markers rather than generic shared markers
 - [ ] Repeater row markers stay distinct per row and do not collide across nested related-post loops
 - [ ] Direct flexible descendants with stable row + layout identity surface honest markers and path metadata
@@ -32,7 +35,11 @@
 - [ ] Related-term/user loop saves update the related loop owner, not the current page post
 - [ ] Current-post repeater row saves mutate only the targeted row
 - [ ] Related-post repeater row saves mutate only the targeted related-owner row
+- [ ] Native `relationship -> repeater` saves mutate only the targeted related owner and row path
+- [ ] Native `relationship -> flexible` saves mutate only the targeted related owner and layout path once a live fixture exists
+- [ ] Native `post_object -> repeater/flexible` saves mutate only the targeted related owner and row/layout path once a live fixture exists
 - [ ] Repeater row saves do not live-update sibling rows incorrectly
+- [ ] Row-backed grouped/nested saves reject missing group or nested repeater containers instead of creating new paths from stale descriptors
 - [ ] Current-post flexible text-like/WYSIWYG/choice/link/image saves mutate only the targeted flexible row
 - [ ] Related-post flexible text-like/WYSIWYG/choice/link/image saves mutate only the targeted related-owner flexible row
 
