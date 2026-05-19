@@ -631,6 +631,67 @@ body.dbvc-ve-panel-dragging {
   gap: 8px;
 }
 
+.dbvc-ve-panel__collection-group {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.dbvc-ve-panel__collection-group-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+  background: #f8fafc;
+}
+
+.dbvc-ve-panel__collection-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.dbvc-ve-panel__collection-group-summary::before {
+  content: "+";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.dbvc-ve-panel__collection-group[open] .dbvc-ve-panel__collection-group-summary::before {
+  content: "-";
+}
+
+.dbvc-ve-panel__collection-group-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.dbvc-ve-panel__collection-group-count {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dbvc-ve-panel__collection-group-body {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
 .dbvc-ve-panel__collection-row {
   display: flex;
   align-items: flex-start;
@@ -667,21 +728,31 @@ body.dbvc-ve-panel-dragging {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
 .dbvc-ve-panel__collection-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
-  padding: 6px 8px;
+  padding: 0;
   background: #ffffff;
   color: #0f172a;
   font: inherit;
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .dbvc-ve-panel__collection-action.is-remove {
   color: #9f1239;
+  font-size: 14px;
 }
 
 .dbvc-ve-panel__collection-action:disabled {
@@ -945,4 +1016,28 @@ body.dbvc-ve-active img[data-dbvc-ve].dbvc-ve-target {
 
 .dbvc-ve-badge--connected {
   background: #0f766e;
+}
+
+.dbvc-ve-section-badge {
+  position: fixed;
+  top: calc(50vh + var(--dbvc-ve-section-badge-offset, 0px));
+  left: 16px;
+  z-index: 10000;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  color: #ffffff;
+  background: #0f766e;
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.28);
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+
+.dbvc-ve-section-badge:hover,
+.dbvc-ve-section-badge:focus {
+  background: #115e59;
 }

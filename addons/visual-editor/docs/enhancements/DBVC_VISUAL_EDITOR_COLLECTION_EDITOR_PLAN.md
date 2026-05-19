@@ -326,6 +326,7 @@ Recommended first-slice layout inside the existing panel:
 - header: `Modify Linked Posts`
 - source summary: current owner, field label, target post type, query element
 - selected list: ordered selected target posts with remove and move controls
+- selected list: grouped by object/CPT/term type in collapsed accordions by default, while preserving the stored ID payload order for saves
 - search row: search input plus locked post-type indicator
 - optional taxonomy filter: search-only, not part of the save contract
 - search results: add buttons for allowed target posts
@@ -391,18 +392,27 @@ Security guardrails:
    - choose one exact current-owner fixture before writing UI code
 
 1. Detection probe and docs:
+   - status: implemented in code for post loops whose final Bricks `posts/query_vars` expose a concrete `post__in` list and a single target `post_type`
    - identify live Bricks query-loop examples such as `page_related_items` filtered to `service`
    - inspect whether final query args expose `post__in`, `post_type`, `orderby`, and pagination state
-   - confirm a current-owner ACF field can be matched exactly
+   - confirm a current-owner ACF field can be matched exactly by comparing the queried target-post-type subset to one current-owner relationship/post_object field
    - add fixture notes to the QA log before enabling writable behavior
 
 2. Inspect-only marker:
+   - status: implemented as a locked `Modify Linked Posts` marker backed by the existing `query_collection` descriptor family
    - surface a container/root marker only when one source field matches
+   - Bricks strips `hasLoop` from the visible rendered loop root, so the detector must rely on captured final query vars plus the retained query settings on the visible root instead of requiring `hasLoop`
+   - during the temporary UX bridge, the frontend also adds one visible linked-posts button for each nearest containing `<section>` that contains an eligible linked-post query marker
+   - the temporary button label should prefer the single target post type proven from the query loop, with copy shaped like `Review Posts` / `FAQ Posts` / `Service Posts`
+   - if a later inspect-only marker supports a mixed-post-type query, fall back to `Manage {Bricks element/section label} Posts`
+   - the temporary section button is mounted in the shared overlay layer and fixed to the left side of the viewport, vertically centered, so content-section overflow or transform styles do not control its placement
+   - the underlying query-loop container marker keeps the existing hover/focus inspect-only badge treatment until the filtered-subset save contract is enabled
    - show source field, target post type, current subset, preserved non-target count, and why save is locked
-   - use badge text `Inspect Linked Posts` or locked `Modify Linked Posts` until write safety is proven
+   - use badge text locked `Modify Linked Posts` until write safety is proven
    - render within the existing `dbvc-ve-panel` shell with the same source summary and details toggle
 
 3. Writable current-owner subset:
+   - status: pending
    - enable `relationship_collection_filtered_subset`
    - reuse reference search and selected-list UI
    - save full merged field value with non-target IDs preserved

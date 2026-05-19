@@ -777,6 +777,24 @@
       : '';
   }
 
+  function getDescriptorBadgeLabel(descriptor) {
+    return descriptor && typeof descriptor.badgeLabel === 'string'
+      ? descriptor.badgeLabel.trim()
+      : '';
+  }
+
+  function getDescriptorQuerySource(descriptor) {
+    if (descriptor && descriptor.source && typeof descriptor.source.query_source === 'string') {
+      return descriptor.source.query_source;
+    }
+
+    return descriptor
+      && descriptor.index
+      && typeof descriptor.index.querySource === 'string'
+      ? descriptor.index.querySource
+      : '';
+  }
+
   function resolveRelatedBadgeLabel(entityType) {
     if (entityType === 'term') {
       return strings().badgeRelatedTerm || 'Related Term';
@@ -2444,6 +2462,82 @@
     return badge;
   }
 
+  function shouldMountLinkedPostsSectionBadge(marker) {
+    const descriptor = lookupDescriptorForNode(marker);
+
+    return getDescriptorRenderContext(descriptor, marker) === 'query_collection'
+      && getDescriptorQuerySource(descriptor) === 'derived_bricks_query'
+      && getDescriptorBadgeLabel(descriptor) !== '';
+  }
+
+  function getLinkedPostsSectionBadgeLabel(marker) {
+    const descriptor = lookupDescriptorForNode(marker);
+    const badgeLabel = getDescriptorBadgeLabel(descriptor);
+
+    return badgeLabel || strings().badgeModifyLinkedPosts || 'Linked Posts';
+  }
+
+  function mountLinkedPostsSectionBadges(markers) {
+    const mountedSections = new Set();
+    const entries = [];
+    const layer = ensureBadgeLayer();
+
+    layer.querySelectorAll('.dbvc-ve-section-badge--linked-posts').forEach(function (badge) {
+      badge.remove();
+    });
+
+    markers.forEach(function (marker) {
+      if (!marker || !marker.isConnected || !shouldMountLinkedPostsSectionBadge(marker)) {
+        return;
+      }
+
+      const section = marker.closest('section');
+      if (!section || mountedSections.has(section)) {
+        return;
+      }
+
+      mountedSections.add(section);
+      entries.push({
+        marker,
+        section
+      });
+    });
+
+    entries.forEach(function (entry, index) {
+      const marker = entry.marker;
+      const section = entry.section;
+      const offset = (index - ((entries.length - 1) / 2)) * 44;
+
+      section.classList.add('dbvc-ve-linked-posts-section');
+      section.dataset.dbvcVeLinkedPostsSection = '1';
+
+      const badge = document.createElement('button');
+
+      badge.type = 'button';
+      badge.className = 'dbvc-ve-section-badge dbvc-ve-section-badge--linked-posts';
+      badge.textContent = getLinkedPostsSectionBadgeLabel(marker);
+      badge.style.setProperty('--dbvc-ve-section-badge-offset', `${offset}px`);
+      badge.dataset.token = getMarkerToken(marker);
+      badge.dataset.sectionIndex = String(index);
+      badge.onclick = function (event) {
+        const token = badge.dataset.token || '';
+        const target = token ? document.querySelector(`[data-dbvc-ve="${window.CSS && CSS.escape ? CSS.escape(token) : token}"]`) : null;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!target || !state.session) {
+          return;
+        }
+
+        setPreviewNode(target);
+        openEditor(target, state.session);
+      };
+
+      layer.appendChild(badge);
+    });
+  }
+
   function bindBadgeEvents() {
     if (state.badgeEventsBound) {
       return;
@@ -2667,7 +2761,7 @@
     if (scopedRoot && elementLooksVisible(scopedRoot, null)) {
       scopedRoot.querySelectorAll('[data-dbvc-ve]').forEach(function (marker) {
         addCandidate(marker, scopedRoot);
-    });
+      });
     }
 
     if (!candidates.length) {
@@ -2911,6 +3005,7 @@
     const status = getDescriptorStatus(descriptor, node);
     const entityType = getDescriptorEntityType(descriptor);
     const context = getDescriptorRenderContext(descriptor, node);
+    const badgeLabel = getDescriptorBadgeLabel(descriptor);
     const token = node.getAttribute('data-dbvc-ve') || '';
 
     badge.className = 'dbvc-ve-badge';
@@ -2925,6 +3020,18 @@
     if (scope === 'shared_entity') {
       badge.classList.add('dbvc-ve-badge--shared');
       badge.textContent = resolveSharedBadgeLabel(entityType);
+      return badge;
+    }
+
+    if (badgeLabel && context === 'query_collection' && status === 'readonly') {
+      badge.classList.add('dbvc-ve-badge--readonly');
+      badge.textContent = strings().panelInspectOnly || strings().inspectLabel || 'Inspect only';
+      return badge;
+    }
+
+    if (badgeLabel) {
+      badge.classList.add(context === 'query_collection' ? 'dbvc-ve-badge--connected' : 'dbvc-ve-badge--readonly');
+      badge.textContent = badgeLabel;
       return badge;
     }
 
@@ -4242,7 +4349,9 @@
       items.push({
         id,
         title: item.title ? String(item.title) : `#${id}`,
+        objectType: item.objectType ? String(item.objectType) : '',
         postType: item.postType ? String(item.postType) : '',
+        taxonomy: item.taxonomy ? String(item.taxonomy) : '',
         typeLabel: item.typeLabel ? String(item.typeLabel) : '',
         status: item.status ? String(item.status) : '',
         frontendUrl: item.frontendUrl ? String(item.frontendUrl) : '',
@@ -4251,6 +4360,68 @@
     });
 
     return items;
+  }
+
+  function getReferenceCollectionGroupLabel(item) {
+    if (item && item.typeLabel) {
+      return String(item.typeLabel);
+    }
+
+    if (item && item.postType) {
+      return String(item.postType);
+    }
+
+    if (item && item.taxonomy) {
+      return String(item.taxonomy);
+    }
+
+    if (item && item.objectType) {
+      return String(item.objectType);
+    }
+
+    return strings().panelCollectionGroupFallback || 'Items';
+  }
+
+  function getReferenceCollectionGroupKey(item) {
+    const objectType = item && item.objectType ? String(item.objectType) : '';
+    const postType = item && item.postType ? String(item.postType) : '';
+    const taxonomy = item && item.taxonomy ? String(item.taxonomy) : '';
+    const label = getReferenceCollectionGroupLabel(item);
+
+    return [objectType || postType || taxonomy || 'item', label].join(':');
+  }
+
+  function groupReferenceCollectionItems(items) {
+    const groups = [];
+    const groupMap = new Map();
+
+    items.forEach(function (item, index) {
+      const key = getReferenceCollectionGroupKey(item);
+      let group = groupMap.get(key);
+
+      if (!group) {
+        group = {
+          key,
+          label: getReferenceCollectionGroupLabel(item),
+          items: []
+        };
+        groupMap.set(key, group);
+        groups.push(group);
+      }
+
+      group.items.push({
+        item,
+        index
+      });
+    });
+
+    return groups;
+  }
+
+  function formatReferenceCollectionGroupCount(count) {
+    return count === 1
+      ? (strings().panelCollectionGroupItemSingular || '1 item')
+      : `${count} ${strings().panelCollectionGroupItemPlural || 'items'}`;
   }
 
   function createReferenceCollectionController(value, descriptor) {
@@ -4272,6 +4443,7 @@
     let searchFrame = 0;
     let disabledState = false;
     let lastSearchItems = [];
+    const selectedGroupOpenState = new Map();
 
     wrapper.className = 'dbvc-ve-panel__stack dbvc-ve-panel__collection';
     selectedLabel.className = 'dbvc-ve-panel__collection-label';
@@ -4300,84 +4472,117 @@
         return;
       }
 
-      currentItems.forEach(function (item, index) {
-        const row = document.createElement('div');
-        const text = document.createElement('div');
-        const title = document.createElement('div');
-        const meta = document.createElement('div');
-        const actions = document.createElement('div');
-        const upButton = document.createElement('button');
-        const downButton = document.createElement('button');
-        const removeButton = document.createElement('button');
+      groupReferenceCollectionItems(currentItems).forEach(function (group) {
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        const groupTitle = document.createElement('span');
+        const groupCount = document.createElement('span');
+        const groupBody = document.createElement('div');
 
-        row.className = 'dbvc-ve-panel__collection-row is-selected';
-        text.className = 'dbvc-ve-panel__collection-text';
-        title.className = 'dbvc-ve-panel__collection-title';
-        meta.className = 'dbvc-ve-panel__collection-meta';
-        actions.className = 'dbvc-ve-panel__collection-actions';
-        title.textContent = item.title;
-        meta.textContent = [item.typeLabel, item.status].filter(Boolean).join(' / ');
-
-        upButton.type = 'button';
-        upButton.className = 'dbvc-ve-panel__collection-action';
-        upButton.textContent = '↑';
-        upButton.title = strings().panelCollectionMoveUp || 'Move up';
-        upButton.disabled = disabledState || index <= 0;
-        upButton.addEventListener('click', function () {
-          if (index <= 0) {
-            return;
-          }
-
-          const next = currentItems.slice();
-          const swap = next[index - 1];
-
-          next[index - 1] = next[index];
-          next[index] = swap;
-          currentItems = next;
-          renderSelected();
-          renderResults(null, getSelectedIds());
+        details.className = 'dbvc-ve-panel__collection-group';
+        details.open = selectedGroupOpenState.get(group.key) === true;
+        details.addEventListener('toggle', function () {
+          selectedGroupOpenState.set(group.key, details.open);
         });
+        summary.className = 'dbvc-ve-panel__collection-group-summary';
+        groupTitle.className = 'dbvc-ve-panel__collection-group-title';
+        groupCount.className = 'dbvc-ve-panel__collection-group-count';
+        groupBody.className = 'dbvc-ve-panel__collection-group-body';
+        groupTitle.textContent = group.label;
+        groupCount.textContent = formatReferenceCollectionGroupCount(group.items.length);
 
-        downButton.type = 'button';
-        downButton.className = 'dbvc-ve-panel__collection-action';
-        downButton.textContent = '↓';
-        downButton.title = strings().panelCollectionMoveDown || 'Move down';
-        downButton.disabled = disabledState || index >= currentItems.length - 1;
-        downButton.addEventListener('click', function () {
-          if (index >= currentItems.length - 1) {
-            return;
-          }
+        summary.appendChild(groupTitle);
+        summary.appendChild(groupCount);
+        details.appendChild(summary);
+        details.appendChild(groupBody);
 
-          const next = currentItems.slice();
-          const swap = next[index + 1];
+        group.items.forEach(function (entry, groupIndex) {
+          const item = entry.item;
+          const index = entry.index;
+          const row = document.createElement('div');
+          const text = document.createElement('div');
+          const title = document.createElement('div');
+          const meta = document.createElement('div');
+          const actions = document.createElement('div');
+          const upButton = document.createElement('button');
+          const downButton = document.createElement('button');
+          const removeButton = document.createElement('button');
 
-          next[index + 1] = next[index];
-          next[index] = swap;
-          currentItems = next;
-          renderSelected();
-          renderResults(null, getSelectedIds());
-        });
+          row.className = 'dbvc-ve-panel__collection-row is-selected';
+          text.className = 'dbvc-ve-panel__collection-text';
+          title.className = 'dbvc-ve-panel__collection-title';
+          meta.className = 'dbvc-ve-panel__collection-meta';
+          actions.className = 'dbvc-ve-panel__collection-actions';
+          title.textContent = item.title;
+          meta.textContent = [item.typeLabel, item.status].filter(Boolean).join(' / ');
 
-        removeButton.type = 'button';
-        removeButton.className = 'dbvc-ve-panel__collection-action is-remove';
-        removeButton.textContent = strings().panelCollectionRemove || 'Remove';
-        removeButton.disabled = disabledState;
-        removeButton.addEventListener('click', function () {
-          currentItems = currentItems.filter(function (selected) {
-            return Number(selected.id || 0) !== Number(item.id || 0);
+          upButton.type = 'button';
+          upButton.className = 'dbvc-ve-panel__collection-action';
+          upButton.textContent = '↑';
+          upButton.title = strings().panelCollectionMoveUp || 'Move up';
+          upButton.disabled = disabledState || groupIndex <= 0;
+          upButton.addEventListener('click', function () {
+            if (groupIndex <= 0) {
+              return;
+            }
+
+            const next = currentItems.slice();
+            const previousIndex = group.items[groupIndex - 1].index;
+            const swap = next[previousIndex];
+
+            next[previousIndex] = next[index];
+            next[index] = swap;
+            currentItems = next;
+            renderSelected();
+            renderResults(null, getSelectedIds());
           });
-          renderSelected();
-          renderResults(null, getSelectedIds());
+
+          downButton.type = 'button';
+          downButton.className = 'dbvc-ve-panel__collection-action';
+          downButton.textContent = '↓';
+          downButton.title = strings().panelCollectionMoveDown || 'Move down';
+          downButton.disabled = disabledState || groupIndex >= group.items.length - 1;
+          downButton.addEventListener('click', function () {
+            if (groupIndex >= group.items.length - 1) {
+              return;
+            }
+
+            const next = currentItems.slice();
+            const nextIndex = group.items[groupIndex + 1].index;
+            const swap = next[nextIndex];
+
+            next[nextIndex] = next[index];
+            next[index] = swap;
+            currentItems = next;
+            renderSelected();
+            renderResults(null, getSelectedIds());
+          });
+
+          removeButton.type = 'button';
+          removeButton.className = 'dbvc-ve-panel__collection-action is-remove';
+          removeButton.textContent = '×';
+          removeButton.title = strings().panelCollectionRemove || 'Remove';
+          removeButton.setAttribute('aria-label', strings().panelCollectionRemove || 'Remove');
+          removeButton.disabled = disabledState;
+          removeButton.addEventListener('click', function () {
+            currentItems = currentItems.filter(function (selected) {
+              return Number(selected.id || 0) !== Number(item.id || 0);
+            });
+            renderSelected();
+            renderResults(null, getSelectedIds());
+          });
+
+          text.appendChild(title);
+          text.appendChild(meta);
+          actions.appendChild(upButton);
+          actions.appendChild(downButton);
+          actions.appendChild(removeButton);
+          row.appendChild(text);
+          row.appendChild(actions);
+          groupBody.appendChild(row);
         });
 
-        text.appendChild(title);
-        text.appendChild(meta);
-        actions.appendChild(upButton);
-        actions.appendChild(downButton);
-        actions.appendChild(removeButton);
-        row.appendChild(text);
-        row.appendChild(actions);
-        selectedList.appendChild(row);
+        selectedList.appendChild(details);
       });
     }
 
@@ -5278,6 +5483,7 @@
       node.dataset.dbvcVeDisplayValue = normalizeValue(readNodeComparableValue(node, lookupDescriptorForNode(node)));
     });
 
+    mountLinkedPostsSectionBadges(markers);
     scheduleBadgeLayout();
   }
 

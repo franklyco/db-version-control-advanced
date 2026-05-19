@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Changed temporary linked-posts section badge labels from the generic `Modify Linked Posts` copy to target-CPT labels such as `Review Posts`, with a `Manage {Bricks label} Posts` fallback for future mixed-post-type query markers.
+- Grouped the Visual Editor connected-items selected list by object/CPT/term type in collapsed accordions by default, and reduced the selected-item move/remove action controls.
+- Fixed derived linked-post query markers so Bricks-rendered loop roots can classify even after Bricks strips `hasLoop` from the visible root, added a temporary viewport-fixed left-side `Modify Linked Posts` badge for containing `<section>` elements, and kept the underlying query-loop container marker on the existing inspect-only hover badge treatment.
+- Added the first inspect-only `Modify Linked Posts` path for derived Bricks post query loops: final `bricks/posts/query_vars` are captured and matched to exactly one current-owner ACF relationship/post_object subset before surfacing a locked collection marker.
 - Closed the current native `relationship -> repeater` scalar descendant branch after user testing confirmed the FAQ repeater descendant save flow works against the related owner and targeted row.
 - Marked native `post_object -> repeater/flexible` live-fixture work as paused after synthetic cloned-repeater groundwork, and narrowed taxonomy follow-up to direct term fields/media because the current site does not use ACF repeater or flexible-content fields in term meta.
 - Added post-object nested-repeater groundwork for cloned repeater fields: container definition lookup now expands prefixed ACF clone keys only for subfield-definition loading, and row reads can fall back to existing expanded postmeta when ACF cannot assemble the cloned repeater selector through `get_field()`.

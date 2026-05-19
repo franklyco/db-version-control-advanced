@@ -690,6 +690,10 @@ final class ResolverRegistry
             return $this->buildUnsupported('ACF runtime is unavailable.');
         }
 
+        if ((isset($candidate['query_source']) ? sanitize_key((string) $candidate['query_source']) : '') === 'derived_bricks_query') {
+            return $this->classifyDerivedBricksQueryCollectionField($candidate, $page_context);
+        }
+
         $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
         $entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
         $post_type = isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '';
@@ -843,6 +847,352 @@ final class ResolverRegistry
                 'maxSelections' => $max,
             ],
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function classifyDerivedBricksQueryCollectionField(array $candidate, array $page_context)
+    {
+        if (! function_exists('get_field_objects') || ! function_exists('get_field')) {
+            return $this->buildUnsupported('ACF runtime is unavailable.');
+        }
+
+        $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
+        $post_type = isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '';
+        if ($entity_type !== 'post' || $entity_id <= 0) {
+            return $this->buildUnsupported('Derived Bricks query collections are only inspected for current post/page owners in this slice.');
+        }
+
+        $target_post_type = isset($candidate['target_post_type']) ? sanitize_key((string) $candidate['target_post_type']) : '';
+        $query_ids = $this->normalizeReferenceIdList(isset($candidate['query_result_ids']) ? $candidate['query_result_ids'] : []);
+        if ($target_post_type === '' || empty($query_ids)) {
+            return $this->buildUnsupported('Derived Bricks query collections require a concrete post type and post__in result set.');
+        }
+
+        $field_objects = get_field_objects($entity_id, false, true);
+        if (! is_array($field_objects) || empty($field_objects)) {
+            return $this->buildUnsupported('No current-owner ACF fields were available for derived Bricks query collection inspection.');
+        }
+
+        $matches = [];
+        foreach ($field_objects as $field) {
+            if (! is_array($field)) {
+                continue;
+            }
+
+            $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+            if (! in_array($field_type, ['relationship', 'post_object'], true)) {
+                continue;
+            }
+
+            $allowed_post_types = $this->normalizeStringList($field['post_type'] ?? []);
+            if (! empty($allowed_post_types) && ! in_array($target_post_type, $allowed_post_types, true)) {
+                continue;
+            }
+
+            $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
+            if ($field_name === '') {
+                continue;
+            }
+
+            $stored_value = get_field($field_name, $entity_id, false);
+            $stored_ids = $this->normalizeReferenceIdList($stored_value);
+            if (empty($stored_ids)) {
+                continue;
+            }
+
+            $target_ids = $this->filterReferenceIdsByPostType($stored_ids, $target_post_type);
+            if ($target_ids === $query_ids) {
+                $matches[] = [
+                    'field' => $field,
+                    'stored_ids' => $stored_ids,
+                    'target_ids' => $target_ids,
+                ];
+            }
+        }
+
+        if (count($matches) !== 1) {
+            return $this->buildUnsupported(count($matches) > 1
+                ? 'Derived Bricks query collection inspection found multiple current-owner ACF fields with the same queried subset.'
+                : 'Derived Bricks query collection inspection could not prove a single current-owner ACF relationship/post-object source.');
+        }
+
+        $match = $matches[0];
+        $field = isset($match['field']) && is_array($match['field']) ? $match['field'] : [];
+        $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
+        $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+        $allow_multiple = $this->isReferenceMultiple($field);
+        $max = $this->resolveReferenceMaxSelections($field);
+        $min = $this->resolveReferenceMinSelections($field);
+        $stored_ids = isset($match['stored_ids']) && is_array($match['stored_ids']) ? array_values(array_filter(array_map('absint', $match['stored_ids']))) : [];
+        $preserved_ids = array_values(array_diff($stored_ids, $query_ids));
+        $query_element_id = isset($candidate['query_element_id']) ? sanitize_text_field((string) $candidate['query_element_id']) : '';
+        $query_element_label = isset($candidate['query_element_label']) ? sanitize_text_field((string) $candidate['query_element_label']) : '';
+        $query_section_label = isset($candidate['query_section_label']) ? sanitize_text_field((string) $candidate['query_section_label']) : '';
+        $query_badge_subject = isset($candidate['query_badge_subject']) ? sanitize_text_field((string) $candidate['query_badge_subject']) : '';
+        $query_vars = isset($candidate['query_vars']) && is_array($candidate['query_vars']) ? $candidate['query_vars'] : [];
+        $label = isset($field['label']) && (string) $field['label'] !== ''
+            ? sanitize_text_field((string) $field['label'])
+            : __('Linked posts', 'dbvc');
+        $query_target_post_type_label = $this->resolvePostTypeBadgeLabel($target_post_type);
+        $badge_label = $this->buildDerivedBricksQueryBadgeLabel($query_badge_subject, $target_post_type, $query_element_label);
+
+        return [
+            'status' => 'readonly',
+            'scope' => 'current_entity',
+            'entity' => [
+                'type' => 'post',
+                'id' => $entity_id,
+                'subtype' => $post_type,
+                'acf_object_id' => $entity_id,
+            ],
+            'loop' => [],
+            'repeater' => [],
+            'flexible' => [],
+            'source' => [
+                'type' => 'acf_collection_field',
+                'source_context' => 'current_entity',
+                'expression' => 'query.derived:' . $query_element_id,
+                'expression_args' => [],
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_name,
+                'leaf_field_name' => $field_name,
+                'leaf_field_key' => $field_key,
+                'field_type' => $field_type,
+                'return_format' => isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : 'value',
+                'reference_post_types' => $this->normalizeStringList($field['post_type'] ?? []),
+                'reference_taxonomies' => $this->normalizeStringList($field['taxonomy'] ?? []),
+                'reference_multiple' => $allow_multiple,
+                'reference_min' => $min,
+                'reference_max' => $max,
+                'query_source' => 'derived_bricks_query',
+                'query_source_confidence' => 'exact_current_owner_target_subset',
+                'query_element_id' => $query_element_id,
+                'query_element_label' => $query_element_label,
+                'query_section_label' => $query_section_label,
+                'query_badge_subject' => $query_badge_subject,
+                'query_target_post_type' => $target_post_type,
+                'query_target_post_type_label' => $query_target_post_type_label,
+                'query_result_ids' => $query_ids,
+                'query_full_value_ids' => $stored_ids,
+                'query_preserved_ids' => $preserved_ids,
+                'query_subset_write_mode' => 'replace_target_post_type_subset',
+                'query_vars' => [
+                    'source' => isset($query_vars['source']) ? sanitize_text_field((string) $query_vars['source']) : '',
+                    'post_type' => isset($query_vars['post_type']) ? sanitize_key((string) $query_vars['post_type']) : '',
+                    'orderby' => isset($query_vars['orderby']) ? sanitize_key((string) $query_vars['orderby']) : '',
+                    'posts_per_page' => isset($query_vars['posts_per_page']) && is_numeric($query_vars['posts_per_page']) ? (int) $query_vars['posts_per_page'] : 0,
+                    'paged' => isset($query_vars['paged']) && is_numeric($query_vars['paged']) ? max(1, absint($query_vars['paged'])) : 1,
+                    'disable_query_merge' => ! empty($query_vars['disable_query_merge']),
+                ],
+                'container_type' => '',
+                'parent_field_name' => '',
+                'parent_field_key' => '',
+                'parent_field_selector' => '',
+                'row_index' => null,
+                'layout_key' => '',
+                'layout_name' => '',
+                'container_ancestry' => [],
+                'group_path' => [],
+                'group_key_path' => [],
+                'nested_repeater_path' => [],
+                'is_nested_group' => false,
+                'is_grouped_field' => false,
+                'native_query_active' => false,
+                'native_query_kind' => '',
+                'native_query_selector' => '',
+                'native_query_object_type' => '',
+                'native_query_field_name' => '',
+                'native_query_field_type' => '',
+                'parent_native_query_active' => false,
+                'parent_native_query_kind' => '',
+                'parent_native_query_selector' => '',
+                'parent_native_query_object_type' => '',
+                'parent_native_query_field_name' => '',
+                'parent_native_query_field_type' => '',
+                'native_query_ancestry' => [],
+            ],
+            'resolver' => [
+                'name' => 'acf_reference_collection',
+                'version' => 1,
+            ],
+            'ui' => [
+                'label' => $label,
+                'badgeLabel' => $badge_label,
+                'input' => 'reference_collection',
+                'warning' => $this->buildDerivedBricksQueryCollectionWarning($target_post_type),
+                'allowMultiple' => $allow_multiple,
+                'maxSelections' => $max,
+            ],
+        ];
+    }
+
+    /**
+     * @param string $subject
+     * @param string $target_post_type
+     * @param string $element_label
+     * @return string
+     */
+    private function buildDerivedBricksQueryBadgeLabel($subject, $target_post_type = '', $element_label = '')
+    {
+        $post_type_label = $this->resolvePostTypeBadgeLabel($target_post_type);
+        if ($post_type_label !== '') {
+            return $this->formatPostTypeBadgeLabel($post_type_label, $target_post_type);
+        }
+
+        $element_label = sanitize_text_field((string) $element_label);
+        $element_label = preg_replace('/\s+/', ' ', trim($element_label));
+        $subject = sanitize_text_field((string) $subject);
+        $subject = preg_replace('/\s+/', ' ', trim($subject));
+        $fallback_subject = is_string($element_label) && $element_label !== ''
+            ? $element_label
+            : $subject;
+
+        if (! is_string($fallback_subject) || $fallback_subject === '') {
+            return __('Manage Linked Posts', 'dbvc');
+        }
+
+        if (preg_match('/\bposts?\b$/i', $fallback_subject)) {
+            return sprintf(
+                /* translators: %s: Bricks section or loop element label. */
+                __('Manage %s', 'dbvc'),
+                $fallback_subject
+            );
+        }
+
+        return sprintf(
+            /* translators: %s: Bricks section or loop element label. */
+            __('Manage %s Posts', 'dbvc'),
+            $fallback_subject
+        );
+    }
+
+    /**
+     * @param string $post_type
+     * @return string
+     */
+    private function resolvePostTypeBadgeLabel($post_type)
+    {
+        $post_type = sanitize_key((string) $post_type);
+        if ($post_type === '') {
+            return '';
+        }
+
+        if ($post_type === 'post') {
+            return __('Post', 'dbvc');
+        }
+
+        $post_type_object = get_post_type_object($post_type);
+        if ($post_type_object && ! empty($post_type_object->labels->singular_name)) {
+            return sanitize_text_field((string) $post_type_object->labels->singular_name);
+        }
+
+        $label = preg_replace('/[_-]+/', ' ', $post_type);
+        $label = is_string($label) ? preg_replace('/\s+/', ' ', trim($label)) : '';
+
+        return is_string($label) && $label !== '' ? ucwords($label) : '';
+    }
+
+    /**
+     * @param string $post_type_label
+     * @param string $post_type
+     * @return string
+     */
+    private function formatPostTypeBadgeLabel($post_type_label, $post_type)
+    {
+        $post_type_label = sanitize_text_field((string) $post_type_label);
+        $post_type_label = preg_replace('/\s+/', ' ', trim($post_type_label));
+        $post_type = sanitize_key((string) $post_type);
+
+        if (! is_string($post_type_label) || $post_type_label === '') {
+            return __('Linked Posts', 'dbvc');
+        }
+
+        if ($post_type === 'post') {
+            return __('Posts', 'dbvc');
+        }
+
+        if (preg_match('/\bposts?\b$/i', $post_type_label)) {
+            return $post_type_label;
+        }
+
+        return sprintf(
+            /* translators: %s: post type label. */
+            __('%s Posts', 'dbvc'),
+            $post_type_label
+        );
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function normalizeReferenceIdList($value)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $ids = [];
+
+        foreach ($values as $item) {
+            if (is_object($item) && isset($item->ID)) {
+                $id = absint($item->ID);
+            } elseif (is_array($item) && isset($item['ID'])) {
+                $id = absint($item['ID']);
+            } elseif (is_array($item) && isset($item['id'])) {
+                $id = absint($item['id']);
+            } else {
+                $id = absint($item);
+            }
+
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values($ids);
+    }
+
+    /**
+     * @param array<int, int> $ids
+     * @param string          $post_type
+     * @return array<int, int>
+     */
+    private function filterReferenceIdsByPostType(array $ids, $post_type)
+    {
+        $post_type = sanitize_key((string) $post_type);
+        if ($post_type === '') {
+            return [];
+        }
+
+        $filtered = [];
+        foreach ($ids as $id) {
+            $id = absint($id);
+            if ($id > 0 && get_post_type($id) === $post_type) {
+                $filtered[] = $id;
+            }
+        }
+
+        return array_values($filtered);
+    }
+
+    /**
+     * @param string $target_post_type
+     * @return string
+     */
+    private function buildDerivedBricksQueryCollectionWarning($target_post_type)
+    {
+        $target_post_type = sanitize_key((string) $target_post_type);
+
+        return sprintf(
+            /* translators: %s: queried post type slug */
+            __('This Bricks query loop matches the current page\'s ACF connected-items field for `%s` posts. This first slice is inspect-only; saving remains disabled until the filtered-subset save contract is implemented and validated.', 'dbvc'),
+            $target_post_type !== '' ? $target_post_type : 'post'
+        );
     }
 
     /**

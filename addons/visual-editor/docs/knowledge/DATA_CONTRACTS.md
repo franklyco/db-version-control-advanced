@@ -226,6 +226,8 @@ For the same `query_collection` family, the collection contract name is scope-aw
 - loop-owned related-post roots: `loop_owned_relationship_collection` / `loop_owned_post_object_collection`
 - shared-owner roots: reserved for later `shared_relationship_collection` / `shared_post_object_collection`
 
+Derived Bricks Query Editor post loops use the same `acf_collection_field` family only after the final post query is proven to match one current-owner ACF source field. The first slice is locked/read-only and carries `query_source = derived_bricks_query`, `query_target_post_type`, `query_result_ids`, `query_full_value_ids`, `query_preserved_ids`, and `query_subset_write_mode = replace_target_post_type_subset`. The future writable contract is reserved as `relationship_collection_filtered_subset` / `post_object_collection_filtered_subset` and must preserve all non-target IDs in mixed relationship fields such as `page_related_items`.
+
 Nested current-owner connected-item roots keep that same `acf_collection_field` family, but add explicit container ancestry when the query root lives under repeater/flexible row chains, for example:
 
 ```json

@@ -51,6 +51,16 @@ final class ElementInstrumentationService
      */
     private $descriptors = [];
 
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $post_query_vars_by_element = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $element_metadata_by_id = [];
+
     public function __construct(EditableRegistry $registry, PageContextResolver $page_context, ResolverRegistry $resolvers, ?LoopContextResolver $loops = null)
     {
         $this->registry = $registry;
@@ -72,6 +82,7 @@ final class ElementInstrumentationService
             return is_array($attributes) ? $attributes : [];
         }
 
+        $this->rememberElementMetadata($element);
         $this->rememberNativeQueryElement($element);
 
         $collection_inspection = $this->inspectCollectionLoopRoot($attributes, $key, $element);
@@ -89,6 +100,138 @@ final class ElementInstrumentationService
         }
 
         return $this->instrumentInspection($attributes, $key, $element, $inspection);
+    }
+
+    /**
+     * Capture the final Bricks post-query arguments so derived custom-query loops can be
+     * mapped back to a current-owner ACF relationship/post_object field without parsing PHP.
+     *
+     * @param mixed  $query_vars
+     * @param mixed  $settings
+     * @param string $element_id
+     * @param string $element_name
+     * @return mixed
+     */
+    public function capturePostQueryVars($query_vars, $settings = [], $element_id = '', $element_name = '')
+    {
+        unset($element_name);
+
+        if (! is_array($query_vars)) {
+            return $query_vars;
+        }
+
+        $element_id = sanitize_text_field((string) $element_id);
+        if ($element_id === '') {
+            return $query_vars;
+        }
+
+        $summary = $this->buildPostQueryVarsSummary($query_vars, is_array($settings) ? $settings : []);
+        if (empty($summary)) {
+            return $query_vars;
+        }
+
+        foreach ($this->buildElementIdAliases($element_id) as $alias) {
+            $this->post_query_vars_by_element[$alias] = $summary;
+        }
+
+        return $query_vars;
+    }
+
+    /**
+     * @param object $element
+     * @return void
+     */
+    private function rememberElementMetadata($element)
+    {
+        if (! is_object($element)) {
+            return;
+        }
+
+        $settings = isset($element->settings) && is_array($element->settings) ? $element->settings : [];
+        $label = isset($element->label) ? $this->normalizeElementLabel((string) $element->label) : '';
+        $css_id = isset($settings['_cssId']) ? $this->normalizeElementLabel((string) $settings['_cssId']) : '';
+
+        $metadata = [
+            'id' => isset($element->id) ? sanitize_text_field((string) $element->id) : '',
+            'parent' => isset($element->parent) ? sanitize_text_field((string) $element->parent) : '',
+            'name' => isset($element->name) ? sanitize_key((string) $element->name) : '',
+            'label' => $label,
+            'css_id' => $css_id,
+        ];
+
+        foreach ($this->resolveElementIds($element) as $element_id) {
+            $existing = isset($this->element_metadata_by_id[$element_id]) && is_array($this->element_metadata_by_id[$element_id])
+                ? $this->element_metadata_by_id[$element_id]
+                : [];
+
+            $this->element_metadata_by_id[$element_id] = array_merge($metadata, array_filter($existing, static function ($value) {
+                return $value !== '' && $value !== null;
+            }));
+        }
+    }
+
+    /**
+     * @param string $raw_label
+     * @return string
+     */
+    private function normalizeElementLabel($raw_label)
+    {
+        $label = sanitize_text_field((string) $raw_label);
+        $label = preg_replace('/[_-]+/', ' ', $label);
+        $label = is_string($label) ? preg_replace('/\s+/', ' ', trim($label)) : '';
+
+        if (! is_string($label) || $label === '') {
+            return '';
+        }
+
+        if (strtolower($label) === $label) {
+            $label = ucwords($label);
+        }
+
+        return $label;
+    }
+
+    /**
+     * @param object $element
+     * @return array<string, string>
+     */
+    private function resolveCollectionBadgeLabelContext($element)
+    {
+        $fallback_label = '';
+        $section_label = '';
+        $visited = [];
+        $current_id = isset($element->id) ? sanitize_text_field((string) $element->id) : '';
+
+        for ($depth = 0; $depth < 12 && $current_id !== '' && empty($visited[$current_id]); $depth++) {
+            $visited[$current_id] = true;
+            $metadata = isset($this->element_metadata_by_id[$current_id]) && is_array($this->element_metadata_by_id[$current_id])
+                ? $this->element_metadata_by_id[$current_id]
+                : [];
+
+            $label = isset($metadata['label']) && (string) $metadata['label'] !== ''
+                ? (string) $metadata['label']
+                : (isset($metadata['css_id']) ? (string) $metadata['css_id'] : '');
+            $name = isset($metadata['name']) ? sanitize_key((string) $metadata['name']) : '';
+
+            if ($fallback_label === '' && $label !== '') {
+                $fallback_label = $label;
+            }
+
+            if ($name === 'section' && $label !== '') {
+                $section_label = $label;
+                break;
+            }
+
+            $current_id = isset($metadata['parent']) ? sanitize_text_field((string) $metadata['parent']) : '';
+        }
+
+        $subject = $section_label !== '' ? $section_label : $fallback_label;
+
+        return [
+            'section_label' => $section_label,
+            'element_label' => $fallback_label,
+            'badge_subject' => $subject,
+        ];
     }
 
     /**
@@ -125,19 +268,21 @@ final class ElementInstrumentationService
                 'acf_object_id' => $entity_id,
             ];
         $loop_context = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : [];
+        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
         $rendered_post_id = $this->page_context->resolveRenderedPostId();
         if ($rendered_post_id > 0
             && ($entity['type'] ?? '') === 'post'
             && absint($entity['id'] ?? 0) !== $rendered_post_id
+            && ! $this->allowsCollectionRootRenderedPostMismatch($source, $inspection)
             && ! $this->allowsLoopOwnedPostEntity($entity, $loop_context)) {
             return $attributes;
         }
 
-        $seed = $this->dedupeSeed($this->buildSeed($element, $inspection, $loop_context));
+        $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : 'text';
+        $raw_seed = $this->buildSeed($element, $inspection, $loop_context);
+        $seed = $render_context === 'query_collection' ? $raw_seed : $this->dedupeSeed($raw_seed);
         $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
         $this->instrumented[$seed] = $token;
-        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
-        $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : 'text';
         $render_attribute = isset($inspection['render_attribute']) ? sanitize_key((string) $inspection['render_attribute']) : '';
         $scope = isset($classification['scope']) ? (string) $classification['scope'] : 'current_entity';
         $source_group = $this->buildSourceGroup($entity, $source);
@@ -319,16 +464,7 @@ final class ElementInstrumentationService
             return;
         }
 
-        $element_ids = [];
-        if (! empty($element->id)) {
-            $element_ids[] = sanitize_text_field((string) $element->id);
-        }
-
-        if (! empty($element->id) && ! empty($element->instanceId) && strpos((string) $element->id, '-') === false) {
-            $element_ids[] = sanitize_text_field((string) $element->id . '-' . (string) $element->instanceId);
-        }
-
-        foreach (array_values(array_unique(array_filter($element_ids))) as $element_id) {
+        foreach ($this->resolveElementIds($element) as $element_id) {
             $this->loops->rememberElementQueryObjectType($element_id, $query_object_type);
         }
     }
@@ -353,9 +489,7 @@ final class ElementInstrumentationService
         $query_object_type = isset($query['objectType']) ? sanitize_key((string) $query['objectType']) : '';
 
         if (! $has_loop || $query_object_type === '' || strpos($query_object_type, 'acf_') !== 0) {
-            return [
-                'supported' => false,
-            ];
+            return $this->inspectDerivedPostCollectionLoopRoot($settings, $element);
         }
 
         return [
@@ -367,6 +501,231 @@ final class ElementInstrumentationService
             'render_attribute' => '',
             'query_object_type' => $query_object_type,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectDerivedPostCollectionLoopRoot(array $settings, $element)
+    {
+        if (empty($settings['query']) || ! is_array($settings['query'])) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $query_object_type = isset($settings['query']['objectType'])
+            ? sanitize_key((string) $settings['query']['objectType'])
+            : '';
+        if ($query_object_type !== '' && $query_object_type !== 'post') {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $query_summary = $this->resolvePostQueryVarsSummaryForElement($element);
+        $post_ids = isset($query_summary['post__in']) && is_array($query_summary['post__in'])
+            ? array_values(array_filter(array_map('absint', $query_summary['post__in'])))
+            : [];
+        $target_post_type = isset($query_summary['post_type']) ? sanitize_key((string) $query_summary['post_type']) : '';
+        $query_element_id = isset($query_summary['element_id']) ? sanitize_text_field((string) $query_summary['element_id']) : '';
+
+        if (empty($post_ids) || $target_post_type === '' || $query_element_id === '') {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $label_context = $this->resolveCollectionBadgeLabelContext($element);
+
+        return [
+            'supported' => true,
+            'source_type' => 'acf_collection_field',
+            'query_source' => 'derived_bricks_query',
+            'expression' => 'query.derived:' . $query_element_id,
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => 'post',
+            'query_element_id' => $query_element_id,
+            'query_element_label' => $label_context['element_label'],
+            'query_section_label' => $label_context['section_label'],
+            'query_badge_subject' => $label_context['badge_subject'],
+            'target_post_type' => $target_post_type,
+            'query_result_ids' => $post_ids,
+            'query_vars' => $query_summary,
+        ];
+    }
+
+    /**
+     * @param object $element
+     * @return array<string, mixed>
+     */
+    private function resolvePostQueryVarsSummaryForElement($element)
+    {
+        foreach ($this->resolveElementIds($element) as $element_id) {
+            if (isset($this->post_query_vars_by_element[$element_id])) {
+                $summary = $this->post_query_vars_by_element[$element_id];
+                $summary['element_id'] = $element_id;
+
+                return $summary;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param object $element
+     * @return array<int, string>
+     */
+    private function resolveElementIds($element)
+    {
+        if (! is_object($element)) {
+            return [];
+        }
+
+        $element_ids = [];
+        if (! empty($element->id)) {
+            $element_ids[] = sanitize_text_field((string) $element->id);
+        }
+
+        if (! empty($element->id) && ! empty($element->instanceId) && strpos((string) $element->id, '-') === false) {
+            $element_ids[] = sanitize_text_field((string) $element->id . '-' . (string) $element->instanceId);
+        }
+
+        $aliases = [];
+        foreach ($element_ids as $element_id) {
+            foreach ($this->buildElementIdAliases($element_id) as $alias) {
+                $aliases[] = $alias;
+            }
+        }
+
+        return array_values(array_unique(array_filter($aliases)));
+    }
+
+    /**
+     * @param string $element_id
+     * @return array<int, string>
+     */
+    private function buildElementIdAliases($element_id)
+    {
+        $element_id = sanitize_text_field((string) $element_id);
+        if ($element_id === '') {
+            return [];
+        }
+
+        $aliases = [$element_id];
+        if (preg_match('/^([a-zA-Z0-9]+)-[a-zA-Z0-9]+$/', $element_id, $matches)) {
+            $aliases[] = sanitize_text_field((string) $matches[1]);
+        }
+
+        return array_values(array_unique(array_filter($aliases)));
+    }
+
+    /**
+     * @param array<string, mixed> $query_vars
+     * @param array<string, mixed> $settings
+     * @return array<string, mixed>
+     */
+    private function buildPostQueryVarsSummary(array $query_vars, array $settings)
+    {
+        $post_ids = $this->normalizeIdList(isset($query_vars['post__in']) ? $query_vars['post__in'] : []);
+        if (empty($post_ids) || $post_ids === [0]) {
+            return [];
+        }
+
+        $settings_query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $post_type = $this->normalizeSinglePostType(isset($query_vars['post_type']) ? $query_vars['post_type'] : ($settings_query['post_type'] ?? ''));
+        if ($post_type === '') {
+            $post_type = $this->inferSinglePostTypeFromIds($post_ids);
+        }
+        if ($post_type === '') {
+            return [];
+        }
+
+        $posts_per_page = isset($query_vars['posts_per_page']) && is_numeric($query_vars['posts_per_page'])
+            ? (int) $query_vars['posts_per_page']
+            : 0;
+
+        return [
+            'source' => 'bricks/posts/query_vars',
+            'post_type' => $post_type,
+            'post__in' => $post_ids,
+            'orderby' => isset($query_vars['orderby']) && is_scalar($query_vars['orderby']) ? sanitize_key((string) $query_vars['orderby']) : '',
+            'posts_per_page' => $posts_per_page,
+            'paged' => isset($query_vars['paged']) && is_numeric($query_vars['paged']) ? max(1, absint($query_vars['paged'])) : 1,
+            'disable_query_merge' => ! empty($query_vars['disable_query_merge']),
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalizeSinglePostType($value)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $normalized = [];
+
+        foreach ($values as $item) {
+            $post_type = sanitize_key((string) $item);
+            if ($post_type !== '' && $post_type !== 'any') {
+                $normalized[] = $post_type;
+            }
+        }
+
+        $normalized = array_values(array_unique($normalized));
+
+        return count($normalized) === 1 ? $normalized[0] : '';
+    }
+
+    /**
+     * @param array<int, int> $post_ids
+     * @return string
+     */
+    private function inferSinglePostTypeFromIds(array $post_ids)
+    {
+        $types = [];
+
+        foreach ($post_ids as $post_id) {
+            $post_id = absint($post_id);
+            if ($post_id <= 0) {
+                continue;
+            }
+
+            $post_type = get_post_type($post_id);
+            $post_type = is_string($post_type) ? sanitize_key($post_type) : '';
+            if ($post_type !== '') {
+                $types[] = $post_type;
+            }
+        }
+
+        $types = array_values(array_unique($types));
+
+        return count($types) === 1 ? $types[0] : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function normalizeIdList($value)
+    {
+        $values = is_array($value) ? $value : explode(',', (string) $value);
+        $ids = [];
+
+        foreach ($values as $item) {
+            $id = is_object($item) && isset($item->ID) ? absint($item->ID) : absint($item);
+            $is_zero_sentinel = ! is_object($item) && is_numeric($item) && (int) $item === 0;
+            if ($id > 0 || $is_zero_sentinel) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     /**
@@ -453,6 +812,19 @@ final class ElementInstrumentationService
                 || $entity_id === $loop_object_id
                 || $entity_id === $parent_loop_object_id
             );
+    }
+
+    /**
+     * Query-root collection markers represent the list owner, not the current loop row.
+     *
+     * @param array<string, mixed> $source
+     * @param array<string, mixed> $inspection
+     * @return bool
+     */
+    private function allowsCollectionRootRenderedPostMismatch(array $source, array $inspection)
+    {
+        return (isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : '') === 'query_collection'
+            && (isset($source['type']) ? sanitize_key((string) $source['type']) : '') === 'acf_collection_field';
     }
 
     /**
