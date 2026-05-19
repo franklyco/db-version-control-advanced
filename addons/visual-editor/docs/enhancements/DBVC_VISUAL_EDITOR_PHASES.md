@@ -142,6 +142,7 @@
   - it reuses the existing descriptor cache and in-flight request map so background warmup does not diverge from explicit field-open behavior
   - active field opens, saves, reload-after-save flows, and Media Library interactions remain higher priority than background warmup
 - deferred within the collection-editor branch:
+  - derived Bricks Query Editor loops backed by one current-owner relationship field are now planned as a separate `Modify Linked Posts` tranche; first implementation must prove the source field and preserve non-target IDs in mixed relationship fields such as `page_related_items`
   - shared connected-item collections
   - loop-owned non-post connected-item collections
   - taxonomy collection mutation

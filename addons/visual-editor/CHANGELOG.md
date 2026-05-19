@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Closed the current native `relationship -> repeater` scalar descendant branch after user testing confirmed the FAQ repeater descendant save flow works against the related owner and targeted row.
+- Marked native `post_object -> repeater/flexible` live-fixture work as paused after synthetic cloned-repeater groundwork, and narrowed taxonomy follow-up to direct term fields/media because the current site does not use ACF repeater or flexible-content fields in term meta.
+- Added post-object nested-repeater groundwork for cloned repeater fields: container definition lookup now expands prefixed ACF clone keys only for subfield-definition loading, and row reads can fall back to existing expanded postmeta when ACF cannot assemble the cloned repeater selector through `get_field()`.
 - Preserved original Bricks native ACF query object types from render-time element settings when available, so nested owner-loop descendants keep relationship/post-object provenance even if Bricks later exposes a concrete runtime object query.
 - Confirmed the native `relationship -> repeater` descendant path on page `88` / template `923`, where `acf_related_faq_groups -> acf_faq_items_repeater` descendants classify as editable related-owner row-backed fields with full parent native query ancestry.
 - Switched the generic Visual Editor plain-text panel control from a narrow single-line text input to a small auto-growing textarea-like control so longer text values stay visible while editing without changing the existing textarea, URL, number, or structured-field flows.

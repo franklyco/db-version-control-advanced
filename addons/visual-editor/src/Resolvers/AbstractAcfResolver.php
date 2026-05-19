@@ -559,6 +559,10 @@ abstract class AbstractAcfResolver implements ResolverInterface
             return $path_validation;
         }
 
+        if ($this->shouldUsePostMetaRepeaterFallback($descriptor)) {
+            return $this->writeRepeaterSubfieldPostMetaValue($descriptor, $value);
+        }
+
         $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
 
         if (! function_exists('update_field')) {
@@ -584,11 +588,118 @@ abstract class AbstractAcfResolver implements ResolverInterface
             $next_value = $this->getRawRepeaterSubfieldValue($descriptor);
         }
 
+        if ($result === false && ! $this->valuesEqual($next_value, $value) && $this->shouldUsePostMetaRepeaterFallback($descriptor)) {
+            $fallback = $this->writeRepeaterSubfieldPostMetaValue($descriptor, $value);
+            if (! empty($fallback['ok'])) {
+                return $fallback;
+            }
+        }
+
         if ($result === false && ! $this->valuesEqual($next_value, $value)) {
             return [
                 'ok' => false,
                 'message' => __('ACF repeater row update did not succeed.', 'dbvc'),
             ];
+        }
+
+        return [
+            'ok' => true,
+            'value' => $this->getRawAcfValue($descriptor),
+        ];
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function shouldUsePostMetaRepeaterFallback(EditableDescriptor $descriptor)
+    {
+        $post_id = $this->getPostId($descriptor);
+        $parent_selector = $this->getParentFieldSelector($descriptor);
+        if ($parent_selector === '') {
+            return false;
+        }
+
+        if ($post_id <= 0 || ! metadata_exists('post', $post_id, $parent_selector)) {
+            return false;
+        }
+
+        if (! function_exists('get_field_object')) {
+            return true;
+        }
+
+        foreach (array_values(array_unique(array_filter([
+            $parent_selector,
+            $this->getParentFieldName($descriptor),
+            $this->getParentFieldKey($descriptor),
+        ]))) as $identifier) {
+            $field = get_field_object($identifier, $post_id, false, false);
+            if (is_array($field) && ! empty($field)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param mixed              $value
+     * @return array<string, mixed>
+     */
+    private function writeRepeaterSubfieldPostMetaValue(EditableDescriptor $descriptor, $value)
+    {
+        if (! empty($this->getNestedRepeaterPath($descriptor)) || ! empty($this->getGroupPath($descriptor)) || ! empty($this->getGroupKeyPath($descriptor))) {
+            return [
+                'ok' => false,
+                'message' => __('The post-meta repeater fallback only supports direct existing row fields.', 'dbvc'),
+            ];
+        }
+
+        $post_id = $this->getPostId($descriptor);
+        $parent_selector = $this->getParentFieldSelector($descriptor);
+        $row_index = $this->getRepeaterRowIndex($descriptor);
+        if ($post_id <= 0 || $parent_selector === '' || $row_index === null) {
+            return [
+                'ok' => false,
+                'message' => __('Repeater field context is missing.', 'dbvc'),
+            ];
+        }
+
+        $row_count = get_post_meta($post_id, $parent_selector, true);
+        if (! is_numeric($row_count) || $row_index >= absint($row_count)) {
+            return [
+                'ok' => false,
+                'message' => __('The repeater row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $field_names = array_values(array_unique(array_filter([
+            $this->getLeafFieldName($descriptor),
+            $this->getFieldName($descriptor),
+        ])));
+        $value_key = '';
+
+        foreach ($field_names as $field_name) {
+            $candidate = $parent_selector . '_' . $row_index . '_' . sanitize_key((string) $field_name);
+            if (metadata_exists('post', $post_id, $candidate) || metadata_exists('post', $post_id, '_' . $candidate)) {
+                $value_key = $candidate;
+                break;
+            }
+        }
+
+        if ($value_key === '') {
+            return [
+                'ok' => false,
+                'message' => __('The repeater row field could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        update_post_meta($post_id, $value_key, $value);
+
+        $leaf_field_key = $this->getLeafFieldKey($descriptor);
+        if ($leaf_field_key !== '') {
+            update_post_meta($post_id, '_' . $value_key, $leaf_field_key);
         }
 
         return [
@@ -719,7 +830,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
         $rows = get_field($parent_identifier, $object_id, false);
 
-        return is_array($rows) ? array_values($rows) : [];
+        if (is_array($rows)) {
+            return array_values($rows);
+        }
+
+        return $this->getRawRepeaterRowsFromPostMeta($descriptor);
     }
 
     /**
@@ -789,6 +904,77 @@ abstract class AbstractAcfResolver implements ResolverInterface
         $rows = get_field($parent_identifier, $object_id, false);
 
         return is_array($rows) ? array_values($rows) : [];
+    }
+
+    /**
+     * Load existing rows from ACF's expanded post-meta storage when a cloned
+     * repeater selector is renderable by Bricks but not loadable by get_field().
+     *
+     * @param EditableDescriptor $descriptor
+     * @return array<int, array<string, mixed>>
+     */
+    private function getRawRepeaterRowsFromPostMeta(EditableDescriptor $descriptor)
+    {
+        $post_id = $this->getPostId($descriptor);
+        $parent_selector = $this->getParentFieldSelector($descriptor);
+        if ($parent_selector === '') {
+            $parent_selector = $this->getParentFieldName($descriptor);
+        }
+
+        if ($post_id <= 0 || $parent_selector === '') {
+            return [];
+        }
+
+        $row_count = get_post_meta($post_id, $parent_selector, true);
+        if (! is_numeric($row_count)) {
+            return [];
+        }
+
+        $row_count = absint($row_count);
+        if ($row_count <= 0) {
+            return [];
+        }
+
+        $rows = array_fill(0, $row_count, []);
+
+        global $wpdb;
+        if (! $wpdb instanceof \wpdb) {
+            return $rows;
+        }
+
+        $like = $wpdb->esc_like($parent_selector . '_') . '%';
+        $meta_rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key LIKE %s",
+                $post_id,
+                $like
+            ),
+            ARRAY_A
+        );
+
+        foreach ((array) $meta_rows as $meta_row) {
+            $meta_key = isset($meta_row['meta_key']) ? (string) $meta_row['meta_key'] : '';
+            if (! preg_match('/^' . preg_quote($parent_selector, '/') . '_(\d+)_(.+)$/', $meta_key, $matches)) {
+                continue;
+            }
+
+            $row_index = absint($matches[1]);
+            $field_name = sanitize_key((string) $matches[2]);
+            if ($row_index >= $row_count || $field_name === '') {
+                continue;
+            }
+
+            $value = maybe_unserialize($meta_row['meta_value'] ?? '');
+            $rows[$row_index][$field_name] = $value;
+
+            $field_key = get_post_meta($post_id, '_' . $meta_key, true);
+            $field_key = is_scalar($field_key) ? sanitize_key((string) $field_key) : '';
+            if ($field_key !== '') {
+                $rows[$row_index][$field_key] = $value;
+            }
+        }
+
+        return array_values($rows);
     }
 
     /**

@@ -58,12 +58,12 @@ The narrow direct current-owner connected-items slice now has its own implementa
 | `relationship -> flexible` | concrete related post | row + layout descendant | next writable slice | reuse canonical flexible row contract |
 | `relationship -> group -> repeater/flexible` | concrete related post | grouped nested descendant | inspect-first, then writable | requires live grouped-save smoke before broadening |
 | `post_object -> direct field` | concrete related post | leaf | already largely supported | keep as baseline smoke |
-| `post_object -> repeater` | concrete related post | row descendant | next writable slice | same contract family as relationship case |
-| `post_object -> flexible` | concrete related post | row + layout descendant | next writable slice | same contract family as relationship case |
+| `post_object -> repeater` | concrete related post | row descendant | paused after synthetic groundwork | no current live fixture; do not create one unless explicitly resumed |
+| `post_object -> flexible` | concrete related post | row + layout descendant | paused | no current live fixture; do not create one unless explicitly resumed |
 | `taxonomy -> direct field` | concrete related term | leaf | already partially supported | include media and group cases in smoke |
-| `taxonomy -> repeater` | concrete related term | row descendant | inspect-first, then narrow writable | do not assume term nested collections behave like post nested collections until verified |
-| `taxonomy -> flexible` | concrete related term | row + layout descendant | inspect-first, then narrow writable | same caution as above |
-| `taxonomy -> group -> repeater/flexible` | concrete related term | grouped nested descendant | inspect-only first | only widen after runtime proof |
+| `taxonomy -> repeater` | concrete related term | row descendant | not currently used | keep out of active scope until the site adds term repeaters |
+| `taxonomy -> flexible` | concrete related term | row + layout descendant | not currently used | keep out of active scope until the site adds term flexible content |
+| `taxonomy -> group -> repeater/flexible` | concrete related term | grouped nested descendant | not currently used | keep out of active scope until the site adds nested term collections |
 
 ### B. Mixed collection nesting to support after owner-loop hardening
 
@@ -160,6 +160,7 @@ Work:
 Current status:
 - `relationship -> repeater` is runtime-smoked on page `88` with template `923` (`Single Page`): parent loop `bdxtme` / `acf_related_faq_groups`, inner loop `hudkbu` / `acf_faq_items_repeater`, descendants `yimqpq`, `zvywab`, `lisgki`, and `bwgvtd`.
 - The probe confirmed `scope=related_entity`, owner post `863` (`faq`), row-backed source type `acf_repeater_subfield`, and descriptor ancestry with `parent_native_query_kind=relationship`.
+- User testing confirmed the FAQ repeater descendant can be edited and saved successfully, so this fixture closes the narrow `relationship -> repeater` scalar descendant branch for the current implementation tranche.
 - Structured synced-template scanning found 25 native `relationship -> repeater` occurrences, including FAQ and gallery-group descendants; use these for wider manual smoke, but do not infer save safety for gallery/media projections without the existing media/galleries final checks.
 - The same structured scan did not find a current native `relationship -> flexible` fixture. Keep that branch WIP until a real template is added or identified.
 - A custom Bricks Query Editor post loop that reads an ACF relationship field is not the same source shape. It can still resolve as a related-owner repeater path when Bricks exposes a concrete `WP_Post`, but it should not be counted as native `relationship -> repeater` coverage.
@@ -177,21 +178,25 @@ Work:
 
 Current status:
 - Direct native post-object owner loops such as `acf_office_manager` remain covered as loop-owned related post fields.
-- Structured synced-template scanning did not find a live native `post_object -> repeater` or `post_object -> flexible` descendant fixture. Keep this branch WIP until a real template is added or a disposable fixture is created.
-- Do not broaden post-object nested save claims from the relationship fixture alone; the expected code path is shared, but the field return shape and Bricks loop normalization still need their own smoke.
+- Structured synced-template scanning did not find a live native `post_object -> repeater` or `post_object -> flexible` descendant fixture. Keep live save confirmation WIP until a real template is added or a disposable fixture is created.
+- A synthetic runtime probe now covers `acf_office_manager -> acf_team_member_social_repeater_social` against page `19` and related post `22909`. It confirms `post_object -> repeater` descendants classify as editable related-owner row-backed descriptors across rows `0-3`, with `parent_native_query_kind=post_object` and preserved native query ancestry.
+- The same synthetic branch exposed a cloned-repeater storage shape where Bricks renders a prefixed clone key such as `field_6705a7d60d324_field_6705a4cf81ff8`, but ACF can only resolve the original cloned field definition key. The resolver now uses that original-key expansion only for loading subfield definitions, while read/write selectors remain on the actual stored selector.
+- A resolver read probe confirmed that `team_member_social_repeater_social` cannot be loaded by `get_field()` as an assembled repeater, but the Visual Editor fallback can read existing direct row leaf values from expanded postmeta such as `team_member_social_repeater_social_0_url` and `team_member_social_repeater_social_3_profile_name`.
+- `post_object -> repeater` and `post_object -> flexible` live-fixture work is paused by product scope. Do not create disposable fixtures or pursue save closure unless this branch is explicitly resumed.
+- Do not mark `post_object -> repeater` as live-save confirmed. The current status is classification plus resolver read groundwork only.
 
 #### A3. Taxonomy loops
 
 Target:
 - direct native term fields, including `{term_name}` and `{term_description}` when Bricks exposes a concrete loop term owner
 - direct grouped/media term fields
-- then term-owned repeater/flexible descendants
+- term-owned repeater/flexible descendants are not active scope because the current site does not use ACF repeaters or flexible content fields in taxonomy term meta
 
 Work:
 - keep native `term_name` and `term_description` writable through `TermFieldResolver` for concrete loop terms on archive and non-archive contexts
 - keep derived `term_url` and `term_id` inspect-only
-- inspect-first on nested term collection paths
-- only widen to writable after real site confirmation that owner identity, nested selector resolution, and save path are stable
+- keep direct term ACF scalar/group/media fields within the existing related-term/shared-term contract
+- do not add taxonomy repeater/flexible descendant handling until the site introduces real term-meta fixtures
 
 ### Phase B. Mixed nesting expansion
 
@@ -276,10 +281,10 @@ Required safeguards:
 Before broadening runtime writes further, keep real pages/templates available for:
 - native `relationship -> repeater`: page `88`, template `923`, parent `bdxtme` / `acf_related_faq_groups`, inner `hudkbu` / `acf_faq_items_repeater`, descendant examples `yimqpq`, `zvywab`, `lisgki`, `bwgvtd`
 - native `relationship -> flexible`: no current synced-template fixture found; create or identify one before enabling as closed
-- native `post_object -> repeater`: no current synced-template fixture found; create or identify one before enabling as closed
-- native `post_object -> flexible`: no current synced-template fixture found; create or identify one before enabling as closed
+- native `post_object -> repeater`: paused; synthetic classification/read coverage exists, but no live synced-template fixture is currently needed
+- native `post_object -> flexible`: paused; no live synced-template fixture is currently needed
 - native taxonomy loop with grouped/media term fields
-- native taxonomy loop with nested repeater or flexible descendants
+- native taxonomy loop with nested repeater or flexible descendants: not currently applicable because term repeater/flexible fields are not used
 - mixed `flexible -> repeater`
 - mixed `repeater -> flexible`
 - grouped descendants with repeated visible values across sibling rows
@@ -289,10 +294,11 @@ Before broadening runtime writes further, keep real pages/templates available fo
 Start with:
 1. native `relationship -> repeater`
 2. native `relationship -> flexible`
-3. native `post_object -> repeater`
-4. native `post_object -> flexible`
+3. native direct taxonomy term field/media hardening where live templates expose direct term-owned fields
+4. mixed `flexible -> repeater` / `repeater -> flexible` descendants on current or related post owners, only when live fixtures already exist
 
 Do not start with:
+- native `post_object -> repeater/flexible` live-fixture work while paused
 - taxonomy nested collection writes
 - relationship collection editing
 - repeater/flexible row insert/remove/reorder

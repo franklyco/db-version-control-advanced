@@ -357,17 +357,19 @@ Current status:
 - the narrow first slice is now moving into direct current-owner Bricks native ACF query roots for `relationship` and `post_object` fields
 - that slice uses a dedicated query-root descriptor family, `Edit Connected` badge treatment, and reload-after-save reconciliation instead of pretending collection mutation is just another scalar descendant write
 - that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, to mixed current-owner `repeater -> flexible` / `flexible -> repeater` collection roots when the nested row chain can be reduced to canonical container ancestry, to grouped current-owner row-owned collection roots when the intermediate group ancestry can be proven from the native query path, and to loop-owned related-post collection roots with dedicated collection contracts and acknowledgement flow; broader shared owners and loop-owned non-post collection roots remain deferred
+- a new planned tranche covers custom Bricks Query Editor loops that are derived from a current-owner relationship field, such as `page_related_items` filtered to `service` cards. This should use a `Modify Linked Posts` container badge and a subset-preserving collection editor only when the query result can be proven to match one current-owner ACF source field.
 
 Near-term order:
 1. current-owner native `relationship` query roots
 2. current-owner native `post_object` query roots
 3. current-owner repeater/flexible row-owned relationship/post-object collections
-4. shared and loop-owned collection roots
+4. derived Bricks query loops backed by one provable current-owner relationship field
+5. shared and loop-owned collection roots
 
 Still later:
 - append/remove/reorder from broader owner contexts
 - taxonomy collection mutation
-- custom query-editor collection sources
+- custom query-editor collection sources without exact source-field proof or explicit safe mapping
 
 ## Bricks Query Loop Strategy
 

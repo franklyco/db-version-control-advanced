@@ -1218,6 +1218,7 @@ final class AcfFieldContextResolver
                 )
             )
         );
+        $identifiers = $this->expandContainerFieldDefinitionIdentifiers($identifiers);
 
         foreach ($identifiers as $identifier) {
             $field = get_field_object($identifier, $acf_object_id, false, false);
@@ -1227,6 +1228,35 @@ final class AcfFieldContextResolver
         }
 
         return [];
+    }
+
+    /**
+     * ACF clone fields can expose a prefixed runtime field key such as
+     * `field_clone_field_original`, while `get_field_object()` only resolves the
+     * original cloned field key. Keep the descriptor's selector/key unchanged for
+     * reads and writes; this fallback is only for loading subfield definitions.
+     *
+     * @param array<int, string> $identifiers
+     * @return array<int, string>
+     */
+    private function expandContainerFieldDefinitionIdentifiers(array $identifiers)
+    {
+        $expanded = [];
+
+        foreach ($identifiers as $identifier) {
+            $identifier = sanitize_key((string) $identifier);
+            if ($identifier === '') {
+                continue;
+            }
+
+            $expanded[] = $identifier;
+
+            if (preg_match('/_(field_[a-z0-9]+)$/', $identifier, $matches)) {
+                $expanded[] = sanitize_key((string) $matches[1]);
+            }
+        }
+
+        return array_values(array_unique(array_filter($expanded)));
     }
 
     /**
