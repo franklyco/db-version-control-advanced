@@ -357,19 +357,24 @@ Current status:
 - the narrow first slice is now moving into direct current-owner Bricks native ACF query roots for `relationship` and `post_object` fields
 - that slice uses a dedicated query-root descriptor family, `Edit Connected` badge treatment, and reload-after-save reconciliation instead of pretending collection mutation is just another scalar descendant write
 - that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, to mixed current-owner `repeater -> flexible` / `flexible -> repeater` collection roots when the nested row chain can be reduced to canonical container ancestry, to grouped current-owner row-owned collection roots when the intermediate group ancestry can be proven from the native query path, and to loop-owned related-post collection roots with dedicated collection contracts and acknowledgement flow; broader shared owners and loop-owned non-post collection roots remain deferred
-- the derived Bricks Query Editor tranche now has its first inspect-only implementation slice: final `bricks/posts/query_vars` are captured, `post__in` plus a single target `post_type` are matched against exactly one current-owner ACF relationship/post_object field, and a locked `Modify Linked Posts` marker is surfaced with source metadata. Writable subset saves remain pending until the filtered-subset mutation contract is added.
+- the derived Bricks query tranche now has its first writable current-owner filtered-subset slice: final `bricks/posts/query_vars` are captured, `post__in` plus a single target `post_type` are matched against exactly one current-owner ACF relationship/post_object field, and the `relationship_collection_filtered_subset` / `post_object_collection_filtered_subset` contract replaces only that target CPT subset while preserving non-target IDs.
+- Bricks native dynamic include/post__in controls are included in that tranche only when the saved control exposes ACF dynamic-tag evidence such as `{acf_page_related_items}`; static/manual include lists remain unsupported because there is no editable source field to mutate.
+- simple Query Editor loops that return `post__in => get_field('page_related_items')` now contribute current-owner ACF source hints, but only direct `get_field('field')` calls are accepted; option/user/explicit-object reads remain excluded from writable hints.
+- mixed/`any` derived post queries can now use the full `relationship_collection` / `post_object_collection` contract only when the final ordered query IDs exactly equal one current-owner field's full stored value.
+- custom Query Editor fallback branches now have an inspect-only evidence path: exact options-field fallback matches are labelled as shared-option query collections, unmatched Query Editor `post__in` branches are labelled as locked query evidence, and shared-option writes remain deferred until explicit warnings and save contracts are added.
 
 Near-term order:
 1. current-owner native `relationship` query roots
 2. current-owner native `post_object` query roots
 3. current-owner repeater/flexible row-owned relationship/post-object collections
-4. writable filtered-subset saves for derived Bricks query loops backed by one provable current-owner relationship/post_object field
-5. shared and loop-owned collection roots
+4. browser smoke and hardening for derived Bricks query filtered-subset saves, including native dynamic include/post__in controls
+5. browser smoke and hardening for inspect-only branch evidence on custom Query Editor fallbacks
+6. shared and loop-owned collection roots
 
 Still later:
 - append/remove/reorder from broader owner contexts
 - taxonomy collection mutation
-- custom query-editor collection sources without exact source-field proof or explicit safe mapping
+- custom query-editor collection source writes without active-branch proof, source-owner proof, and explicit shared/current save contracts
 
 ## Bricks Query Loop Strategy
 

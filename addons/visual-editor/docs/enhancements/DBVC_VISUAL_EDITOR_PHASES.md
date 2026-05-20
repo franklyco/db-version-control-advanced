@@ -141,8 +141,14 @@
   - it is driven by `IntersectionObserver` plus a small root margin, not by eager full-page hydration
   - it reuses the existing descriptor cache and in-flight request map so background warmup does not diverge from explicit field-open behavior
   - active field opens, saves, reload-after-save flows, and Media Library interactions remain higher priority than background warmup
+- active within the collection-editor branch:
+  - derived Bricks Query Editor loops backed by one current-owner relationship/post_object field now have a writable filtered-subset contract when the final `post__in` subset exactly matches one current-owner ACF field; the save path preserves non-target IDs in mixed fields such as `page_related_items`
+  - Bricks native dynamic include/post__in controls are now part of that filtered-subset branch when the saved control exposes ACF dynamic-tag evidence; native static/manual ID lists stay unsupported because Visual Editor cannot safely infer a writable source
+  - direct current-owner `get_field('field_name')` calls inside Query Editor PHP now contribute source hints for exact current-owner filtered-subset matching; option/user/explicit-object reads are still deferred
+  - custom Query Editor `post__in` fallback branches now surface inspect-only evidence when they cannot prove a current-owner source; exact ACF options fallback matches are labelled as shared-option fallback sources but remain locked
+  - mixed/`any` derived post queries can use the full collection contract only when the final ordered query IDs exactly equal one current-owner relationship/post_object field's full value
 - deferred within the collection-editor branch:
-  - derived Bricks Query Editor loops backed by one current-owner relationship/post_object field now have an inspect-only `Modify Linked Posts` marker path when the final `post__in` subset exactly matches one current-owner ACF field; writable subset replacement remains deferred until the dedicated save contract preserves non-target IDs in mixed fields such as `page_related_items`
+  - custom Query Editor fallback branch writes, including options-backed defaults and recent-post fallbacks
   - shared connected-item collections
   - loop-owned non-post connected-item collections
   - taxonomy collection mutation

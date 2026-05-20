@@ -3006,10 +3006,17 @@
     const entityType = getDescriptorEntityType(descriptor);
     const context = getDescriptorRenderContext(descriptor, node);
     const badgeLabel = getDescriptorBadgeLabel(descriptor);
+    const querySource = getDescriptorQuerySource(descriptor);
     const token = node.getAttribute('data-dbvc-ve') || '';
 
     badge.className = 'dbvc-ve-badge';
     badge.dataset.token = token;
+
+    if (badgeLabel && context === 'query_collection' && status === 'readonly') {
+      badge.classList.add('dbvc-ve-badge--readonly');
+      badge.textContent = strings().panelInspectOnly || strings().inspectLabel || 'Inspect only';
+      return badge;
+    }
 
     if (scope === 'related_entity') {
       badge.classList.add('dbvc-ve-badge--related');
@@ -3023,7 +3030,7 @@
       return badge;
     }
 
-    if (badgeLabel && context === 'query_collection' && status === 'readonly') {
+    if (badgeLabel && context === 'query_collection' && querySource === 'derived_bricks_query') {
       badge.classList.add('dbvc-ve-badge--readonly');
       badge.textContent = strings().panelInspectOnly || strings().inspectLabel || 'Inspect only';
       return badge;
@@ -4424,9 +4431,83 @@
       : `${count} ${strings().panelCollectionGroupItemPlural || 'items'}`;
   }
 
+  function formatTemplateString(template, replacements) {
+    return String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, function (match, key) {
+      return Object.prototype.hasOwnProperty.call(replacements, key)
+        ? String(replacements[key])
+        : match;
+    });
+  }
+
+  function isFilteredSubsetReferenceCollection(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+
+    return getDescriptorQuerySource(descriptor) === 'derived_bricks_query'
+      && source.query_subset_write_mode === 'replace_target_post_type_subset';
+  }
+
+  function getReferenceCollectionSubsetTargetLabel(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const sourceLabel = source.query_target_post_type_label ? String(source.query_target_post_type_label).replace(/\s+/g, ' ').trim() : '';
+    const badgeLabel = getDescriptorBadgeLabel(descriptor);
+
+    if (sourceLabel) {
+      return /\bposts?\b$/i.test(sourceLabel) ? sourceLabel : `${sourceLabel} Posts`;
+    }
+
+    if (badgeLabel) {
+      return badgeLabel;
+    }
+
+    return strings().badgeModifyLinkedPosts || 'Linked Posts';
+  }
+
+  function getReferenceCollectionPreservedCount(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+
+    if (Array.isArray(source.query_preserved_ids)) {
+      return source.query_preserved_ids.length;
+    }
+
+    if (Array.isArray(source.query_full_value_ids) && Array.isArray(source.query_result_ids)) {
+      const resultIds = new Set(source.query_result_ids.map(function (id) {
+        return Number(id || 0) || 0;
+      }).filter(Boolean));
+
+      return source.query_full_value_ids.filter(function (id) {
+        const normalizedId = Number(id || 0) || 0;
+        return normalizedId && !resultIds.has(normalizedId);
+      }).length;
+    }
+
+    return 0;
+  }
+
+  function formatReferenceCollectionSubsetContext(descriptor, targetLabel) {
+    const parts = [
+      formatTemplateString(
+        strings().panelCollectionSubsetContext || 'Editing only {target} in this connected-items field.',
+        { target: targetLabel }
+      )
+    ];
+    const preservedCount = getReferenceCollectionPreservedCount(descriptor);
+
+    if (preservedCount === 1) {
+      parts.push(strings().panelCollectionSubsetPreservedSingle || '1 other linked item in this field will be preserved.');
+    } else if (preservedCount > 1) {
+      parts.push(formatTemplateString(
+        strings().panelCollectionSubsetPreservedPlural || '{count} other linked items in this field will be preserved.',
+        { count: preservedCount }
+      ));
+    }
+
+    return parts.join(' ');
+  }
+
   function createReferenceCollectionController(value, descriptor) {
     const wrapper = document.createElement('div');
     const selectedLabel = document.createElement('div');
+    const subsetContext = document.createElement('div');
     const selectedList = document.createElement('div');
     const searchLabel = document.createElement('div');
     const searchField = document.createElement('input');
@@ -4444,16 +4525,26 @@
     let disabledState = false;
     let lastSearchItems = [];
     const selectedGroupOpenState = new Map();
+    const isFilteredSubset = isFilteredSubsetReferenceCollection(descriptor);
+    const targetLabel = getReferenceCollectionSubsetTargetLabel(descriptor);
 
     wrapper.className = 'dbvc-ve-panel__stack dbvc-ve-panel__collection';
     selectedLabel.className = 'dbvc-ve-panel__collection-label';
-    selectedLabel.textContent = strings().panelCollectionSelected || 'Connected items';
+    selectedLabel.textContent = isFilteredSubset
+      ? formatTemplateString(strings().panelCollectionSubsetSelected || 'Connected {target}', { target: targetLabel })
+      : (strings().panelCollectionSelected || 'Connected items');
+    subsetContext.className = 'dbvc-ve-panel__collection-context';
+    subsetContext.textContent = formatReferenceCollectionSubsetContext(descriptor, targetLabel);
     selectedList.className = 'dbvc-ve-panel__collection-selected';
     searchLabel.className = 'dbvc-ve-panel__collection-label';
-    searchLabel.textContent = strings().panelCollectionSearch || 'Search connected posts';
+    searchLabel.textContent = isFilteredSubset
+      ? formatTemplateString(strings().panelCollectionSubsetSearch || 'Search {target}', { target: targetLabel })
+      : (strings().panelCollectionSearch || 'Search connected posts');
     searchField.className = 'dbvc-ve-panel__input';
     searchField.type = 'search';
-    searchField.placeholder = strings().panelCollectionSearchPlaceholder || 'Search posts…';
+    searchField.placeholder = isFilteredSubset
+      ? formatTemplateString(strings().panelCollectionSubsetSearchPlaceholder || 'Search {target}…', { target: targetLabel })
+      : (strings().panelCollectionSearchPlaceholder || 'Search posts…');
     resultsLabel.className = 'dbvc-ve-panel__collection-label';
     resultsLabel.textContent = strings().panelCollectionResults || 'Search results';
     resultsList.className = 'dbvc-ve-panel__collection-results';
@@ -4468,7 +4559,11 @@
       selectedList.innerHTML = '';
 
       if (!currentItems.length) {
-        selectedList.innerHTML = `<div class="dbvc-ve-panel__placeholder">${escapeHtml(strings().panelCollectionEmpty || 'No connected posts are set yet.')}</div>`;
+        const emptyMessage = isFilteredSubset
+          ? formatTemplateString(strings().panelCollectionSubsetEmpty || 'No connected {target} are set yet.', { target: targetLabel })
+          : (strings().panelCollectionEmpty || 'No connected posts are set yet.');
+
+        selectedList.innerHTML = `<div class="dbvc-ve-panel__placeholder">${escapeHtml(emptyMessage)}</div>`;
         return;
       }
 
@@ -4689,6 +4784,9 @@
     searchField.addEventListener('input', scheduleSearch);
 
     wrapper.appendChild(selectedLabel);
+    if (isFilteredSubset) {
+      wrapper.appendChild(subsetContext);
+    }
     wrapper.appendChild(selectedList);
     wrapper.appendChild(searchLabel);
     wrapper.appendChild(searchField);

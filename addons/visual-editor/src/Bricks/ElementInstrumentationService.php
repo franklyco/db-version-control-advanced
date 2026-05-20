@@ -530,9 +530,16 @@ final class ElementInstrumentationService
             ? array_values(array_filter(array_map('absint', $query_summary['post__in'])))
             : [];
         $target_post_type = isset($query_summary['post_type']) ? sanitize_key((string) $query_summary['post_type']) : '';
+        $query_result_post_types = isset($query_summary['post_types']) && is_array($query_summary['post_types'])
+            ? array_values(array_filter(array_map('sanitize_key', $query_summary['post_types'])))
+            : [];
         $query_element_id = isset($query_summary['element_id']) ? sanitize_text_field((string) $query_summary['element_id']) : '';
 
-        if (empty($post_ids) || $target_post_type === '' || $query_element_id === '') {
+        if ($target_post_type === 'any') {
+            $target_post_type = '';
+        }
+
+        if (empty($post_ids) || ($target_post_type === '' && empty($query_result_post_types)) || $query_element_id === '') {
             return [
                 'supported' => false,
             ];
@@ -554,6 +561,7 @@ final class ElementInstrumentationService
             'query_section_label' => $label_context['section_label'],
             'query_badge_subject' => $label_context['badge_subject'],
             'target_post_type' => $target_post_type,
+            'query_result_post_types' => $query_result_post_types,
             'query_result_ids' => $post_ids,
             'query_vars' => $query_summary,
         ];
@@ -632,33 +640,326 @@ final class ElementInstrumentationService
      */
     private function buildPostQueryVarsSummary(array $query_vars, array $settings)
     {
-        $post_ids = $this->normalizeIdList(isset($query_vars['post__in']) ? $query_vars['post__in'] : []);
+        $settings_query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $post_id_evidence = $this->resolvePostQueryIdEvidence($query_vars, $settings_query);
+        $post_ids = isset($post_id_evidence['ids']) && is_array($post_id_evidence['ids'])
+            ? array_values(array_filter(array_map('absint', $post_id_evidence['ids'])))
+            : [];
         if (empty($post_ids) || $post_ids === [0]) {
             return [];
         }
 
-        $settings_query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
-        $post_type = $this->normalizeSinglePostType(isset($query_vars['post_type']) ? $query_vars['post_type'] : ($settings_query['post_type'] ?? ''));
+        $declared_post_types = $this->normalizePostTypeList(isset($query_vars['post_type']) ? $query_vars['post_type'] : ($settings_query['post_type'] ?? ''), true);
+        $post_type = $this->normalizeSinglePostType($declared_post_types);
         if ($post_type === '') {
-            $post_type = $this->inferSinglePostTypeFromIds($post_ids);
+            $post_type = in_array('any', $declared_post_types, true)
+                ? 'any'
+                : $this->inferSinglePostTypeFromIds($post_ids);
         }
         if ($post_type === '') {
             return [];
         }
+        $result_post_types = $this->inferPostTypesFromIds($post_ids);
 
         $posts_per_page = isset($query_vars['posts_per_page']) && is_numeric($query_vars['posts_per_page'])
             ? (int) $query_vars['posts_per_page']
-            : 0;
+            : (isset($settings_query['posts_per_page']) && is_numeric($settings_query['posts_per_page']) ? (int) $settings_query['posts_per_page'] : 0);
+        $dynamic_tags = isset($post_id_evidence['dynamic_tags']) && is_array($post_id_evidence['dynamic_tags'])
+            ? array_values(array_filter(array_map('sanitize_text_field', $post_id_evidence['dynamic_tags'])))
+            : [];
+        $query_editor_source_hints = $this->resolveQueryEditorAcfSourceHints($settings_query);
+        $query_editor_hints = isset($query_editor_source_hints['current_owner_fields']) && is_array($query_editor_source_hints['current_owner_fields'])
+            ? $query_editor_source_hints['current_owner_fields']
+            : [];
+        $acf_field_hints = array_values(
+            array_unique(
+                array_filter(
+                    array_merge(
+                        $this->resolveAcfFieldHintsFromDynamicTags($dynamic_tags),
+                        $query_editor_hints
+                    )
+                )
+            )
+        );
 
         return [
             'source' => 'bricks/posts/query_vars',
             'post_type' => $post_type,
+            'post_types' => $result_post_types,
             'post__in' => $post_ids,
-            'orderby' => isset($query_vars['orderby']) && is_scalar($query_vars['orderby']) ? sanitize_key((string) $query_vars['orderby']) : '',
+            'post__in_source' => isset($post_id_evidence['source']) ? sanitize_key((string) $post_id_evidence['source']) : '',
+            'post__in_setting_source' => $this->resolvePostQuerySettingSource($post_id_evidence),
+            'post__in_setting_key' => isset($post_id_evidence['setting_key']) ? sanitize_key((string) $post_id_evidence['setting_key']) : '',
+            'post__in_dynamic_tags' => $dynamic_tags,
+            'post__in_acf_field_hints' => $acf_field_hints,
+            'post__in_has_dynamic_source' => ! empty($dynamic_tags),
+            'query_editor_acf_field_hints' => $query_editor_hints,
+            'query_editor_acf_option_field_hints' => isset($query_editor_source_hints['option_fields']) && is_array($query_editor_source_hints['option_fields']) ? $query_editor_source_hints['option_fields'] : [],
+            'query_editor_acf_explicit_field_hints' => isset($query_editor_source_hints['explicit_object_fields']) && is_array($query_editor_source_hints['explicit_object_fields']) ? $query_editor_source_hints['explicit_object_fields'] : [],
+            'query_editor_acf_source_hints' => $query_editor_source_hints,
+            'query_editor_active' => ! empty($settings_query['queryEditor']),
+            'orderby' => $this->normalizeQueryOrderby(isset($query_vars['orderby']) ? $query_vars['orderby'] : ($settings_query['orderby'] ?? '')),
             'posts_per_page' => $posts_per_page,
             'paged' => isset($query_vars['paged']) && is_numeric($query_vars['paged']) ? max(1, absint($query_vars['paged'])) : 1,
-            'disable_query_merge' => ! empty($query_vars['disable_query_merge']),
+            'disable_query_merge' => ! empty($query_vars['disable_query_merge']) || ! empty($settings_query['disable_query_merge']),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $query_vars
+     * @param array<string, mixed> $settings_query
+     * @return array<string, mixed>
+     */
+    private function resolvePostQueryIdEvidence(array $query_vars, array $settings_query)
+    {
+        $settings_evidence = $this->resolveSettingsQueryIdEvidence($settings_query);
+        $query_candidates = [
+            'query_vars_post__in' => isset($query_vars['post__in']) ? $query_vars['post__in'] : null,
+            'query_vars_include' => isset($query_vars['include']) ? $query_vars['include'] : null,
+            'query_vars_p' => isset($query_vars['p']) ? $query_vars['p'] : null,
+        ];
+
+        foreach ($query_candidates as $source => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $ids = $this->normalizeIdList($value);
+            if (! empty($ids)) {
+                return [
+                    'ids' => $ids,
+                    'source' => $source,
+                    'setting_source' => isset($settings_evidence['source']) ? (string) $settings_evidence['source'] : '',
+                    'setting_key' => isset($settings_evidence['setting_key']) ? (string) $settings_evidence['setting_key'] : '',
+                    'dynamic_tags' => isset($settings_evidence['dynamic_tags']) && is_array($settings_evidence['dynamic_tags'])
+                        ? $settings_evidence['dynamic_tags']
+                        : [],
+                ];
+            }
+        }
+
+        return $settings_evidence;
+    }
+
+    /**
+     * @param array<string, mixed> $post_id_evidence
+     * @return string
+     */
+    private function resolvePostQuerySettingSource(array $post_id_evidence)
+    {
+        $setting_source = isset($post_id_evidence['setting_source'])
+            ? sanitize_key((string) $post_id_evidence['setting_source'])
+            : '';
+        if ($setting_source !== '') {
+            return $setting_source;
+        }
+
+        $source = isset($post_id_evidence['source'])
+            ? sanitize_key((string) $post_id_evidence['source'])
+            : '';
+
+        return strpos($source, 'settings_') === 0 ? $source : '';
+    }
+
+    /**
+     * @param array<string, mixed> $settings_query
+     * @return array<string, mixed>
+     */
+    private function resolveSettingsQueryIdEvidence(array $settings_query)
+    {
+        $settings_candidates = [
+            'post__in' => isset($settings_query['post__in']) ? $settings_query['post__in'] : null,
+            'include' => isset($settings_query['include']) ? $settings_query['include'] : null,
+            'p' => isset($settings_query['p']) ? $settings_query['p'] : null,
+        ];
+
+        foreach ($settings_candidates as $setting_key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $dynamic_tags = $this->extractDynamicTags($value);
+            $ids = $this->normalizeIdList($value);
+
+            if (empty($ids) && ! empty($dynamic_tags)) {
+                $ids = $this->resolveDynamicIdList($value);
+            }
+
+            if (! empty($ids)) {
+                return [
+                    'ids' => $ids,
+                    'source' => ! empty($dynamic_tags) ? 'settings_dynamic_' . $setting_key : 'settings_static_' . $setting_key,
+                    'setting_key' => $setting_key,
+                    'dynamic_tags' => $dynamic_tags,
+                ];
+            }
+        }
+
+        return [
+            'ids' => [],
+            'source' => '',
+            'setting_source' => '',
+            'setting_key' => '',
+            'dynamic_tags' => [],
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, string>
+     */
+    private function extractDynamicTags($value)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $tags = [];
+
+        foreach ($values as $item) {
+            if (! is_scalar($item)) {
+                continue;
+            }
+
+            preg_match_all('/\{([^{}]+)\}/', (string) $item, $matches);
+            foreach ($matches[1] ?? [] as $tag) {
+                $tag = sanitize_text_field((string) $tag);
+                if ($tag !== '') {
+                    $tags[] = $tag;
+                }
+            }
+        }
+
+        return array_values(array_unique($tags));
+    }
+
+    /**
+     * @param array<int, string> $dynamic_tags
+     * @return array<int, string>
+     */
+    private function resolveAcfFieldHintsFromDynamicTags(array $dynamic_tags)
+    {
+        $hints = [];
+
+        foreach ($dynamic_tags as $tag) {
+            $tag = sanitize_text_field((string) $tag);
+            $tag = preg_replace('/:.+$/', '', $tag);
+            $tag = is_string($tag) ? sanitize_key($tag) : '';
+
+            if (strpos($tag, 'acf_') !== 0) {
+                continue;
+            }
+
+            $field_hint = substr($tag, 4);
+            if (is_string($field_hint) && $field_hint !== '') {
+                $hints[] = sanitize_key($field_hint);
+            }
+        }
+
+        return array_values(array_unique(array_filter($hints)));
+    }
+
+    /**
+     * Extract ACF get_field() source hints from Query Editor PHP without treating
+     * shared or explicit-owner reads as current-owner writable evidence.
+     *
+     * @param array<string, mixed> $settings_query
+     * @return array<string, array<int, string>>
+     */
+    private function resolveQueryEditorAcfSourceHints(array $settings_query)
+    {
+        $query_editor = isset($settings_query['queryEditor']) && is_scalar($settings_query['queryEditor'])
+            ? (string) $settings_query['queryEditor']
+            : '';
+        if ($query_editor === '') {
+            return [
+                'current_owner_fields' => [],
+                'option_fields' => [],
+                'explicit_object_fields' => [],
+            ];
+        }
+
+        $hints = [
+            'current_owner_fields' => [],
+            'option_fields' => [],
+            'explicit_object_fields' => [],
+        ];
+        preg_match_all('/\bget_field\s*\(\s*[\'"]([^\'"]+)[\'"]\s*(?:,\s*([^)]*))?\)/i', $query_editor, $matches, PREG_SET_ORDER);
+
+        foreach ($matches as $match) {
+            $field_name = isset($match[1]) ? sanitize_key((string) $match[1]) : '';
+            $object_arg = isset($match[2]) ? trim((string) $match[2]) : '';
+
+            if ($field_name === '') {
+                continue;
+            }
+
+            if ($object_arg === '') {
+                $hints['current_owner_fields'][] = $field_name;
+                continue;
+            }
+
+            $object_arg_parts = preg_split('/,/', $object_arg, 2);
+            $first_object_arg = isset($object_arg_parts[0]) ? trim((string) $object_arg_parts[0]) : $object_arg;
+
+            if (preg_match('/^[\'"]options?[\'"]$/i', $first_object_arg)) {
+                $hints['option_fields'][] = $field_name;
+                continue;
+            }
+
+            $hints['explicit_object_fields'][] = $field_name;
+        }
+
+        foreach ($hints as $key => $values) {
+            $hints[$key] = array_values(array_unique(array_filter(array_map('sanitize_key', $values))));
+        }
+
+        return $hints;
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function resolveDynamicIdList($value)
+    {
+        if (! function_exists('bricks_render_dynamic_data')) {
+            return [];
+        }
+
+        $values = is_array($value) ? $value : [$value];
+        $ids = [];
+
+        foreach ($values as $item) {
+            if (! is_scalar($item) || strpos((string) $item, '{') === false) {
+                continue;
+            }
+
+            $rendered = bricks_render_dynamic_data((string) $item);
+            $ids = array_merge($ids, $this->normalizeIdList($rendered));
+        }
+
+        return array_values(array_unique(array_filter(array_map('absint', $ids))));
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalizeQueryOrderby($value)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $normalized = [];
+
+        foreach ($values as $item) {
+            if (! is_scalar($item)) {
+                continue;
+            }
+
+            $orderby = sanitize_key((string) $item);
+            if ($orderby !== '') {
+                $normalized[] = $orderby;
+            }
+        }
+
+        return implode(',', array_values(array_unique($normalized)));
     }
 
     /**
@@ -667,19 +968,28 @@ final class ElementInstrumentationService
      */
     private function normalizeSinglePostType($value)
     {
+        $values = $this->normalizePostTypeList($value);
+        return count($values) === 1 ? $values[0] : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @param bool  $allow_any
+     * @return array<int, string>
+     */
+    private function normalizePostTypeList($value, $allow_any = false)
+    {
         $values = is_array($value) ? $value : [$value];
         $normalized = [];
 
         foreach ($values as $item) {
             $post_type = sanitize_key((string) $item);
-            if ($post_type !== '' && $post_type !== 'any') {
+            if ($post_type !== '' && ($allow_any || $post_type !== 'any')) {
                 $normalized[] = $post_type;
             }
         }
 
-        $normalized = array_values(array_unique($normalized));
-
-        return count($normalized) === 1 ? $normalized[0] : '';
+        return array_values(array_unique($normalized));
     }
 
     /**
@@ -687,6 +997,17 @@ final class ElementInstrumentationService
      * @return string
      */
     private function inferSinglePostTypeFromIds(array $post_ids)
+    {
+        $types = $this->inferPostTypesFromIds($post_ids);
+
+        return count($types) === 1 ? $types[0] : '';
+    }
+
+    /**
+     * @param array<int, int> $post_ids
+     * @return array<int, string>
+     */
+    private function inferPostTypesFromIds(array $post_ids)
     {
         $types = [];
 
@@ -705,7 +1026,7 @@ final class ElementInstrumentationService
 
         $types = array_values(array_unique($types));
 
-        return count($types) === 1 ? $types[0] : '';
+        return $types;
     }
 
     /**
@@ -1931,7 +2252,17 @@ final class ElementInstrumentationService
         }
         $contract = 'direct_field';
 
-        if ($render_context === 'query_collection' && $field_type === 'relationship') {
+        if ($render_context === 'query_collection'
+            && $field_type === 'relationship'
+            && isset($source['query_subset_write_mode'])
+            && sanitize_key((string) $source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
+            $contract = 'relationship_collection_filtered_subset';
+        } elseif ($render_context === 'query_collection'
+            && $field_type === 'post_object'
+            && isset($source['query_subset_write_mode'])
+            && sanitize_key((string) $source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
+            $contract = 'post_object_collection_filtered_subset';
+        } elseif ($render_context === 'query_collection' && $field_type === 'relationship') {
             if (! empty($loop_context['active']) && $scope === 'related_entity') {
                 $contract = 'loop_owned_relationship_collection';
             } elseif ($scope === 'shared_entity') {

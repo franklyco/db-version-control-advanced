@@ -138,6 +138,59 @@ final class DescriptorSummaryBuilder
             }, $source['nested_repeater_path']))) : []);
         $expression = isset($source['expression']) ? sanitize_text_field((string) $source['expression']) : '';
         $parts = array_values(array_filter([$type, $field_name]));
+        $query_source = isset($source['query_source']) ? sanitize_key((string) $source['query_source']) : '';
+        $query_source_confidence = isset($source['query_source_confidence']) ? sanitize_key((string) $source['query_source_confidence']) : '';
+        $query_branch_state = isset($source['query_branch_state']) ? sanitize_key((string) $source['query_branch_state']) : '';
+        $query_target_post_type = isset($source['query_target_post_type']) ? sanitize_key((string) $source['query_target_post_type']) : '';
+        $query_result_post_types = isset($source['query_result_post_types']) && is_array($source['query_result_post_types'])
+            ? array_values(array_filter(array_map('sanitize_key', $source['query_result_post_types'])))
+            : [];
+        $query_result_ids = isset($source['query_result_ids']) && is_array($source['query_result_ids'])
+            ? array_values(array_filter(array_map('absint', $source['query_result_ids'])))
+            : [];
+        $query_editor_field_hints = isset($source['query_editor_field_hints']) && is_array($source['query_editor_field_hints'])
+            ? array_values(array_filter(array_map('sanitize_key', $source['query_editor_field_hints'])))
+            : [];
+        $query_editor_option_field_hints = isset($source['query_editor_option_field_hints']) && is_array($source['query_editor_option_field_hints'])
+            ? array_values(array_filter(array_map('sanitize_key', $source['query_editor_option_field_hints'])))
+            : [];
+        $query_editor_explicit_field_hints = isset($source['query_editor_explicit_field_hints']) && is_array($source['query_editor_explicit_field_hints'])
+            ? array_values(array_filter(array_map('sanitize_key', $source['query_editor_explicit_field_hints'])))
+            : [];
+
+        if ($query_source !== '') {
+            $parts[] = 'query-source:' . $query_source;
+        }
+
+        if ($query_source_confidence !== '') {
+            $parts[] = 'query-confidence:' . $query_source_confidence;
+        }
+
+        if ($query_branch_state !== '') {
+            $parts[] = 'query-branch:' . $query_branch_state;
+        }
+
+        if ($query_target_post_type !== '') {
+            $parts[] = 'target-post-type:' . $query_target_post_type;
+        } elseif (! empty($query_result_post_types)) {
+            $parts[] = 'result-post-types:' . implode(',', $query_result_post_types);
+        }
+
+        if (! empty($query_result_ids)) {
+            $parts[] = 'query-ids:' . count($query_result_ids);
+        }
+
+        if (! empty($query_editor_field_hints)) {
+            $parts[] = 'query-current-hints:' . implode(',', $query_editor_field_hints);
+        }
+
+        if (! empty($query_editor_option_field_hints)) {
+            $parts[] = 'query-option-hints:' . implode(',', $query_editor_option_field_hints);
+        }
+
+        if (! empty($query_editor_explicit_field_hints)) {
+            $parts[] = 'query-explicit-hints:' . implode(',', $query_editor_explicit_field_hints);
+        }
 
         if ($source_context !== '') {
             $parts[] = 'context:' . $source_context;

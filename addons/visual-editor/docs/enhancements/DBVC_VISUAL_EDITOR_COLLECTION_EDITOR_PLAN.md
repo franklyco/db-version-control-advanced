@@ -171,6 +171,89 @@ This is not safe to infer from DOM cards alone. It requires either:
 - exact runtime proof that the query result is an ordered subset of one current-owner ACF field, or
 - an explicit loop-to-source mapping chosen by an authorized user/admin.
 
+### Phase 6A. Native Bricks include/post__in controls
+
+This phase covers Bricks' native post-query controls that populate `post__in` / include-style arguments without using a custom Query Editor PHP block.
+
+Supported in the current slice:
+- saved Bricks query control includes a dynamic ACF tag such as `{acf_page_related_items}`
+- final Bricks `bricks/posts/query_vars` exposes the resolved ordered IDs, or the saved native control can be resolved through `bricks_render_dynamic_data()`
+- the dynamic tag maps to one current-owner direct ACF `relationship` / `post_object` field
+- the final target post type is concrete or can be inferred from a single post type in the ordered ID list
+- the ordered IDs exactly match that field's filtered target-post-type subset
+- mixed/`any` queries are writable only when the ordered IDs exactly match the full current-owner field value; those use the full `relationship_collection` / `post_object_collection` contract instead of the filtered-subset contract
+
+Not writable in this slice:
+- static/manual Bricks `post__in` IDs because they do not identify an editable source field
+- native include controls that use non-ACF dynamic tags
+- mixed-post-type result sets that do not exactly match the full current-owner field value
+- paginated, limited, or sorted subsets that do not represent the full source subset
+
+Descriptor/source metadata added by this phase:
+- `query_id_source`
+- `query_id_setting_source`
+- `query_id_setting_key`
+- `query_dynamic_tags`
+- `query_dynamic_field_hints`
+- `query_result_post_types`
+- `query_collection_write_mode`
+- `query_editor_active`
+- `query_editor_field_hints`
+- `query_editor_option_field_hints`
+- `query_editor_explicit_field_hints`
+- `query_branch_state`
+
+Guardrail:
+- if a native include/post__in control is static, the loop may render normally, but Visual Editor must not offer a collection editor because saving an ACF field would not change the static Bricks query.
+
+### Phase 7. Custom Query Editor fallback-source handling
+
+This phase covers Bricks Query Editor PHP blocks that select from multiple possible sources, such as:
+- current post relationship/post_object field
+- ACF options relationship/post_object field fallback
+- recent posts fallback
+- taxonomy-filtered or meta-filtered result sets
+
+Example source shape:
+- current field: `page_related_items`
+- options fallback: `settings_globals_default_posts`
+- fallback branch: latest posts when both fields are empty
+- final query: `post__in` plus `orderby = post__in`
+
+Required branch states:
+- current-owner branch active: editable current-post subset if exact source field and target subset are proven
+- options fallback branch active: shared/option-scope inspect-only first, then writable only with explicit shared-option acknowledgement and a save contract for the option field
+- recent/default query branch active: inspect-only or no badge because there is no relationship field to mutate
+- ambiguous branch: inspect-only with source evidence and no save action
+
+Current-owner hint widening now active:
+- simple direct `get_field('field_name')` calls in Query Editor PHP are extracted as current-owner source hints
+- `get_field('field_name', 'option')`, user-owned reads, and any explicit object-ID reads are intentionally excluded from writable hints in this slice
+- hints are only used to narrow candidate matching; the final ordered query IDs still must exactly match the target-post-type subset of one current-owner ACF relationship/post_object field
+- this does not enable shared-option fallback editing
+
+Inspect-only fallback evidence now active:
+- Query Editor `get_field()` calls are split into direct current-owner hints, option-field hints, and explicit-object hints.
+- If final `post__in` IDs do not prove exactly one current-owner relationship/post_object field, the loop can still surface as locked evidence instead of disappearing.
+- Exact ACF options relationship/post_object fallback matches are labelled with `query_branch_state = shared_option_fallback_exact_match`, `scope = shared_entity`, and an inspect-only warning.
+- Recent/default or otherwise unmatched Query Editor `post__in` branches are labelled with `query_branch_state = query_editor_post_in_unmatched` and remain inspect-only.
+- This branch is deliberately read-only; shared-option mutation belongs to the later explicit-warning/save-contract phase.
+
+Panel requirements for custom fallback branches:
+- show the active branch label, such as `Current page related items`, `Site default related items`, or `Recent posts fallback`
+- show candidate source fields and owner scope where proven
+- explain why save is enabled or locked
+- when options fallback is active, use shared-option warnings and shared-option save labels
+- when current field is empty but options fallback is active, provide a future explicit action path such as `Add items to current page field` rather than silently editing the options fallback
+
+Implementation slices for Phase 7:
+1. Add inspect-only branch evidence for known final `post__in` queries that do not match a current-owner field. Implemented for unmatched Query Editor `post__in` branches and exact ACF options fallback matches.
+2. Continue widening current-owner Query Editor source hints only for direct, unambiguous current-owner ACF relationship/post_object reads.
+3. Detect exact option-owned ACF relationship/post_object fallback matches and label them as shared-option query collections. Implemented as inspect-only only.
+4. Add an explicit branch selector UI only after source ownership can be shown in the panel.
+5. Enable shared-option subset saves only after the option field path, target post type, acknowledgement copy, stale-subset handling, and journal payload are proven.
+6. Add a current-owner "seed field from fallback" action only as a separate explicit mutation contract, not as a side effect of editing the fallback list.
+
 ## Derived Bricks Query Loop Linked-Posts Editor
 
 ### Goal
@@ -392,10 +475,13 @@ Security guardrails:
    - choose one exact current-owner fixture before writing UI code
 
 1. Detection probe and docs:
-   - status: implemented in code for post loops whose final Bricks `posts/query_vars` expose a concrete `post__in` list and a single target `post_type`
+   - status: implemented in code for post loops whose final Bricks `posts/query_vars` expose a concrete `post__in` list and a single target `post_type`, and widened to native Bricks dynamic include/post__in controls that expose ACF dynamic-tag source evidence
    - identify live Bricks query-loop examples such as `page_related_items` filtered to `service`
    - inspect whether final query args expose `post__in`, `post_type`, `orderby`, and pagination state
+   - capture saved native query-control source evidence: include/post__in setting key, dynamic tags, ACF field-name hints, and whether Query Editor PHP was active
    - confirm a current-owner ACF field can be matched exactly by comparing the queried target-post-type subset to one current-owner relationship/post_object field
+   - confirm a mixed/any query can match the full ordered current-owner field value before using the full collection contract
+   - reject native static include/post__in controls as unsupported because they do not identify a writable ACF source
    - add fixture notes to the QA log before enabling writable behavior
 
 2. Inspect-only marker:
@@ -412,15 +498,22 @@ Security guardrails:
    - render within the existing `dbvc-ve-panel` shell with the same source summary and details toggle
 
 3. Writable current-owner subset:
-   - status: pending
+   - status: implemented for current-owner derived Bricks post query loops with one exact ACF relationship/post_object source field and one proven target post type
    - enable `relationship_collection_filtered_subset`
+   - enable `post_object_collection_filtered_subset`
    - reuse reference search and selected-list UI
+   - scope search and validation to `query_target_post_type`
+   - save by rereading the full source field immediately before write, rejecting stale target-subset conflicts, replacing only target-post-type IDs, and preserving all non-target IDs in their existing relative order
+   - durable journal context now records full source IDs before/after, edited target subset IDs before/after, preserved IDs before/after, descriptor target IDs, query element ID, and stale-conflict state
+   - reload after save so Bricks rebuilds the query loop DOM from the updated relationship/post_object field
    - save full merged field value with non-target IDs preserved
    - reload after save
    - reject stale descriptors when the source field subset changed since descriptor creation
 
 4. UX refinement:
+   - status: partially implemented for filtered-subset derived Bricks Query Editor editors
    - add selected/search grouping similar to the reference UI
+   - target-CPT filtered subset editors now show selected/search labels scoped to the proven post type and disclose how many other linked items in the source field will be preserved
    - add search post-type/taxonomy controls as search filters
    - improve empty-state handling when the current target subset is empty but source mapping is explicit
    - add clear preserved-items disclosure for mixed relationship fields
@@ -431,9 +524,10 @@ Security guardrails:
    - mapped loops still require runtime validation before save
 
 6. Broaden carefully:
+   - support native Bricks dynamic `include` / `post__in` controls only when the saved control exposes an ACF dynamic tag that maps to one current-owner source field
    - support ACF `post_object` only after relationship subset replacement is stable
    - support multiple editable post-type subsets only after the panel can switch subsets without corrupting preserved IDs
-   - consider shared/option-backed sources only after the current-owner branch has explicit acknowledgement and rollback coverage
+   - consider shared/option-backed sources only after the current-owner branch has explicit acknowledgement, active-branch UI, stale-subset handling, and rollback/journal coverage
 
 ### Acceptance Criteria
 

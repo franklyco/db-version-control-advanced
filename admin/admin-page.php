@@ -60,6 +60,22 @@ function dbvc_render_export_page()
     ? dbvc_get_available_options_groups()
     : [];
   $selected_options_groups = array_map('sanitize_text_field', (array) get_option('dbvc_options_groups', []));
+  $third_party_portability_settings = class_exists('DBVC_Third_Party_Portability')
+    ? DBVC_Third_Party_Portability::get_settings()
+    : [
+      'wsform_forms' => '0',
+      'wsform_settings' => '0',
+      'wsform_include_trash' => '0',
+    ];
+  $third_party_portability_summary = class_exists('DBVC_Third_Party_Portability')
+    ? DBVC_Third_Party_Portability::get_wsform_summary()
+    : [
+      'available' => false,
+      'forms' => 0,
+      'forms_in_trash' => 0,
+      'settings_found' => [],
+      'version' => '',
+    ];
   $current_import_mode    = dbvc_get_import_filename_format();
   $taxonomy_include_meta  = get_option('dbvc_tax_export_meta', '1');
   $taxonomy_include_parent = get_option('dbvc_tax_export_parent_slugs', '1');
@@ -436,6 +452,38 @@ function dbvc_render_export_page()
     }
   }
 
+  if (isset($_POST['dbvc_third_party_export']) && isset($_POST['dbvc_third_party_export_nonce']) && wp_verify_nonce(wp_unslash($_POST['dbvc_third_party_export_nonce']), 'dbvc_third_party_export_action')) {
+    $active_main_tab = 'tab-config';
+    $active_config_subtab = 'dbvc-config-import';
+    $active_import_defaults_subtab = 'dbvc-config-import-third-party';
+    if (! current_user_can('manage_options')) {
+      wp_die(esc_html__('You do not have sufficient permissions to perform this action.', 'dbvc'));
+    }
+
+    if (class_exists('DBVC_Third_Party_Portability')) {
+      DBVC_Third_Party_Portability::save_settings_from_post((array) $_POST);
+      $third_party_portability_settings = DBVC_Third_Party_Portability::get_settings();
+      $third_party_portability_summary = DBVC_Third_Party_Portability::get_wsform_summary();
+
+      $exported = DBVC_Third_Party_Portability::export_selected_entities();
+      $target_dir = trailingslashit(dbvc_get_sync_path()) . DBVC_Third_Party_Portability::SYNC_DIR;
+      if ($exported > 0) {
+        $config_feedback['import']['success'][] = sprintf(
+          esc_html__('%1$d third-party file(s) exported to: %2$s', 'dbvc'),
+          (int) $exported,
+          esc_html($target_dir)
+        );
+      } else {
+        $config_feedback['import']['error'][] = sprintf(
+          esc_html__('No third-party entities were exported. Check plugin availability and 3rd Party Portability selections. Target path: %s', 'dbvc'),
+          esc_html($target_dir)
+        );
+      }
+    } else {
+      $config_feedback['import']['error'][] = esc_html__('3rd Party Portability exporter unavailable.', 'dbvc');
+    }
+  }
+
 
   // Unified Configure (Tab 3) save handler.
   if (isset($_POST['dbvc_config_save']) && isset($_POST['dbvc_config_nonce']) && wp_verify_nonce($_POST['dbvc_config_nonce'], 'dbvc_config_save_action')) {
@@ -453,6 +501,7 @@ function dbvc_render_export_page()
     $import_defaults_subtabs = [
       'dbvc-config-import-settings',
       'dbvc-config-import-options',
+      'dbvc-config-import-third-party',
     ];
     if (isset($_POST['dbvc_import_defaults_subtab'])) {
       $requested_subtab = sanitize_text_field(wp_unslash($_POST['dbvc_import_defaults_subtab']));
@@ -620,6 +669,12 @@ function dbvc_render_export_page()
     }
     update_option('dbvc_options_groups', $options_group_ids);
     $selected_options_groups = $options_group_ids;
+
+    if (class_exists('DBVC_Third_Party_Portability')) {
+      DBVC_Third_Party_Portability::save_settings_from_post((array) $_POST);
+      $third_party_portability_settings = DBVC_Third_Party_Portability::get_settings();
+      $third_party_portability_summary = DBVC_Third_Party_Portability::get_wsform_summary();
+    }
 
     if (in_array('media', $config_sections_submitted, true)) {
       $media_retrieve_enabled = ! empty($_POST['dbvc_media_retrieve_enabled']) ? '1' : '0';
@@ -1237,6 +1292,9 @@ function dbvc_render_export_page()
       }
 
       $import_result = DBVC_Sync_Posts::import_all(0, $smart_import, $import_mode);
+      $third_party_import_stats = isset($import_result['third_party']) && is_array($import_result['third_party'])
+        ? $import_result['third_party']
+        : null;
 
       if ($import_menus) {
         DBVC_Sync_Posts::import_menus_from_json();
@@ -1275,6 +1333,7 @@ function dbvc_render_export_page()
           'media_requested'  => (bool) $download_media,
           'media_downloaded' => is_array($media_stats_import) ? (int) ($media_stats_import['downloaded'] ?? 0) : null,
           'media_errors'     => is_array($media_stats_import) ? (int) ($media_stats_import['errors'] ?? 0) : null,
+          'third_party'      => $third_party_import_stats,
           'user'             => get_current_user_id(),
         ]);
       }
@@ -1287,6 +1346,7 @@ function dbvc_render_export_page()
             'smart_import'   => (bool) $smart_import,
             'import_mode'    => $import_mode,
             'posts_imported' => isset($import_result['processed']) ? (int) $import_result['processed'] : null,
+            'third_party'    => $third_party_import_stats,
             'media_stats'    => $media_stats_import,
             'timestamp'      => current_time('mysql', true),
             'source'         => 'manual',
@@ -1300,6 +1360,7 @@ function dbvc_render_export_page()
           [
             'snapshot_id'    => $snapshot_id,
             'posts_imported' => isset($import_result['processed']) ? (int) $import_result['processed'] : null,
+            'third_party'    => $third_party_import_stats,
             'smart_import'   => (bool) $smart_import,
             'import_mode'    => $import_mode,
             'media_stats'    => $media_stats_import,
@@ -1308,6 +1369,17 @@ function dbvc_render_export_page()
       }
 
       echo '<div class="notice notice-success"><p>' . esc_html__('Import completed.', 'dbvc') . '</p></div>';
+
+      if ($third_party_import_stats && ! empty($third_party_import_stats['processed'])) {
+        $third_party_message = sprintf(
+          esc_html__('3rd Party Portability: processed %1$d, imported %2$d, skipped %3$d, errors %4$d.', 'dbvc'),
+          (int) ($third_party_import_stats['processed'] ?? 0),
+          (int) ($third_party_import_stats['imported'] ?? 0),
+          (int) ($third_party_import_stats['skipped'] ?? 0),
+          count((array) ($third_party_import_stats['errors'] ?? []))
+        );
+        echo '<div class="notice notice-info"><p>' . esc_html($third_party_message) . '</p></div>';
+      }
 
       if ($media_stats_import && is_array($media_stats_import)) {
         $summary_parts = [];
@@ -1789,6 +1861,13 @@ function dbvc_render_export_page()
     }
     if (! empty($decoded['posts_imported'])) {
       $summary_parts[] = sprintf(__('posts_imported: %d', 'dbvc'), (int) $decoded['posts_imported']);
+    }
+    if (! empty($decoded['third_party']) && is_array($decoded['third_party']) && ! empty($decoded['third_party']['processed'])) {
+      $summary_parts[] = sprintf(
+        __('third_party: %1$d imported / %2$d processed', 'dbvc'),
+        (int) ($decoded['third_party']['imported'] ?? 0),
+        (int) ($decoded['third_party']['processed'] ?? 0)
+      );
     }
     if (! empty($decoded['total'])) {
       $summary_parts[] = sprintf(__('total: %d', 'dbvc'), (int) $decoded['total']);
@@ -3416,8 +3495,9 @@ document.addEventListener('DOMContentLoaded', function () {
           <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import Defaults subsections', 'dbvc'); ?>">
             <?php
             $import_defaults_subtabs = [
-              'dbvc-config-import-settings' => esc_html__('Import Settings', 'dbvc'),
-              'dbvc-config-import-options'  => esc_html__('Options Groups (ACF)', 'dbvc'),
+              'dbvc-config-import-settings'    => esc_html__('Import Settings', 'dbvc'),
+              'dbvc-config-import-options'     => esc_html__('Options Groups (ACF)', 'dbvc'),
+              'dbvc-config-import-third-party' => esc_html__('3rd Party Portability', 'dbvc'),
             ];
             foreach ($import_defaults_subtabs as $panel_id => $label) :
               $button_id = 'dbvc-nav-' . $panel_id;
@@ -3643,6 +3723,64 @@ document.addEventListener('DOMContentLoaded', function () {
               <p style="margin-top:1rem;">
                 <?php wp_nonce_field('dbvc_options_groups_export_action', 'dbvc_options_groups_export_nonce'); ?>
                 <?php submit_button(__('Export Options Groups Now', 'dbvc'), 'secondary', 'dbvc_options_groups_export', false); ?>
+              </p>
+
+              <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_config_save[import]', false); ?>
+            </section>
+
+            <section id="dbvc-config-import-third-party" class="dbvc-subtab-panel<?php echo $active_import_defaults_subtab === 'dbvc-config-import-third-party' ? ' is-active' : ''; ?>" data-dbvc-subpanel="dbvc-config-import-third-party" role="tabpanel" aria-labelledby="dbvc-nav-dbvc-config-import-third-party" <?php echo $active_import_defaults_subtab === 'dbvc-config-import-third-party' ? '' : 'hidden'; ?>>
+              <h2><?php esc_html_e('3rd Party Portability', 'dbvc'); ?></h2>
+              <p class="description"><?php esc_html_e('Export and import supported plugin-owned entities alongside DBVC content. Initial support is limited to WS Form definitions and non-sensitive WS Form settings.', 'dbvc'); ?></p>
+
+              <h3><?php esc_html_e('WS Form', 'dbvc'); ?></h3>
+              <?php if (empty($third_party_portability_summary['available'])) : ?>
+                <p><?php esc_html_e('WS Form is not active or its core classes are unavailable on this site.', 'dbvc'); ?></p>
+              <?php else : ?>
+                <p>
+                  <strong><?php esc_html_e('Detected:', 'dbvc'); ?></strong>
+                  <?php
+                  echo esc_html(sprintf(
+                    __('Version %1$s, %2$d active form(s), %3$d trashed form(s).', 'dbvc'),
+                    (string) ($third_party_portability_summary['version'] ?: __('unknown', 'dbvc')),
+                    (int) ($third_party_portability_summary['forms'] ?? 0),
+                    (int) ($third_party_portability_summary['forms_in_trash'] ?? 0)
+                  ));
+                  ?>
+                </p>
+                <?php if (! empty($third_party_portability_summary['settings_found'])) : ?>
+                  <p>
+                    <strong><?php esc_html_e('Settings options found:', 'dbvc'); ?></strong>
+                    <code><?php echo esc_html(implode(', ', (array) $third_party_portability_summary['settings_found'])); ?></code>
+                  </p>
+                <?php endif; ?>
+              <?php endif; ?>
+
+              <p>
+                <label>
+                  <input type="checkbox" name="<?php echo esc_attr(DBVC_Third_Party_Portability::OPTION_WSFORM_FORMS); ?>" value="1" <?php checked($third_party_portability_settings['wsform_forms'], '1'); ?> />
+                  <?php esc_html_e('Include WS Form form definitions in export/import', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('Exports WS Form form, group, section, field, and meta tables through WS Form’s own form object API. Submissions and stats are not included.', 'dbvc'); ?></small>
+              </p>
+
+              <p>
+                <label>
+                  <input type="checkbox" name="<?php echo esc_attr(DBVC_Third_Party_Portability::OPTION_WSFORM_SETTINGS); ?>" value="1" <?php checked($third_party_portability_settings['wsform_settings'], '1'); ?> />
+                  <?php esc_html_e('Include non-sensitive WS Form settings', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('License keys, API keys, tokens, passwords, secrets, and similar values are excluded from exports and preserved locally during import.', 'dbvc'); ?></small>
+              </p>
+
+              <p>
+                <label>
+                  <input type="checkbox" name="<?php echo esc_attr(DBVC_Third_Party_Portability::OPTION_WSFORM_INCLUDE_TRASH); ?>" value="1" <?php checked($third_party_portability_settings['wsform_include_trash'], '1'); ?> />
+                  <?php esc_html_e('Include trashed WS Form forms during export', 'dbvc'); ?>
+                </label>
+              </p>
+
+              <p style="margin-top:1rem;">
+                <?php wp_nonce_field('dbvc_third_party_export_action', 'dbvc_third_party_export_nonce'); ?>
+                <?php submit_button(__('Export 3rd Party Entities Now', 'dbvc'), 'secondary', 'dbvc_third_party_export', false); ?>
               </p>
 
               <?php submit_button(__('Save Import Settings', 'dbvc'), 'secondary', 'dbvc_config_save[import]', false); ?>
@@ -4514,7 +4652,13 @@ document.addEventListener('DOMContentLoaded', function () {
                   <tbody>
                   <?php foreach ($manifest_page_slice as $item) :
                     $item_type = $item['item_type'] ?? 'generic';
-                    $title     = $item_type === 'post' ? ($item['post_title'] ?: sprintf(__('Post #%d', 'dbvc'), $item['post_id'])) : ucfirst($item_type);
+                    if ($item_type === 'post') {
+                      $title = $item['post_title'] ?: sprintf(__('Post #%d', 'dbvc'), $item['post_id']);
+                    } elseif ($item_type === 'third_party') {
+                      $title = $item['third_party_label'] ?: __('Third-party entity', 'dbvc');
+                    } else {
+                      $title = ucfirst($item_type);
+                    }
                     $hash_info = ($item['has_import_hash'] ?? false) ? esc_html__('Present', 'dbvc') : esc_html__('Missing', 'dbvc');
                     ?>
                     <tr>

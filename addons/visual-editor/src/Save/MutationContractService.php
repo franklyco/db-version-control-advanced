@@ -58,6 +58,8 @@ final class MutationContractService
                 'flexible_layout',
                 'relationship_collection',
                 'post_object_collection',
+                'relationship_collection_filtered_subset',
+                'post_object_collection_filtered_subset',
                 'shared_relationship_collection',
                 'shared_post_object_collection',
                 'loop_owned_relationship_collection',
@@ -300,6 +302,10 @@ final class MutationContractService
                 return __('relationship collection', 'dbvc');
             case 'post_object_collection':
                 return __('post object collection', 'dbvc');
+            case 'relationship_collection_filtered_subset':
+                return __('relationship collection filtered subset', 'dbvc');
+            case 'post_object_collection_filtered_subset':
+                return __('post object collection filtered subset', 'dbvc');
             case 'shared_relationship_collection':
                 return __('shared relationship collection', 'dbvc');
             case 'shared_post_object_collection':

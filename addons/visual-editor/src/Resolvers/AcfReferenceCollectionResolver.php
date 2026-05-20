@@ -168,6 +168,10 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
         $field_type = $this->getFieldType($descriptor);
         $is_multiple = ! empty($descriptor->source['reference_multiple']);
 
+        if ($this->isFilteredSubsetDescriptor($descriptor)) {
+            return $ids;
+        }
+
         if ($field_type === 'relationship' || $is_multiple) {
             return $ids;
         }
@@ -255,11 +259,17 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
             $ids[] = $this->extractReferenceId($raw_value);
         }
 
-        return array_values(
+        $ids = array_values(
             array_filter(
                 array_map('absint', $ids)
             )
         );
+
+        if ($this->isFilteredSubsetDescriptor($descriptor)) {
+            return $this->filterIdsByTargetPostType($descriptor, $ids);
+        }
+
+        return $ids;
     }
 
     /**
@@ -301,6 +311,10 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
     {
         $ancestry = $this->getContainerAncestry($descriptor);
         if (empty($ancestry)) {
+            if ($this->isFilteredSubsetDescriptor($descriptor)) {
+                return $this->writeFilteredSubsetValue($descriptor, $value);
+            }
+
             return $this->writeAcfValue($descriptor, $value);
         }
 
@@ -331,6 +345,84 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
         return [
             'ok' => true,
             'value' => $this->getValue($descriptor),
+        ];
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param mixed              $value
+     * @return array<string, mixed>
+     */
+    private function writeFilteredSubsetValue(EditableDescriptor $descriptor, $value)
+    {
+        $target_post_type = $this->getQueryTargetPostType($descriptor);
+        if ($target_post_type === '') {
+            return [
+                'ok' => false,
+                'message' => __('The linked-post subset target post type is missing.', 'dbvc'),
+            ];
+        }
+
+        $submitted_ids = is_array($value)
+            ? $this->normalizeSubmittedIds($value)
+            : $this->normalizeSubmittedIds([$value]);
+        $latest_ids = $this->normalizeStoredReferenceIds($this->getRawAcfValue($descriptor));
+        $latest_target_ids = $this->filterIdsByPostType($latest_ids, $target_post_type);
+        $original_target_ids = $this->normalizeSourceIdList($descriptor, 'query_result_ids');
+
+        if ($latest_target_ids !== $original_target_ids) {
+            return [
+                'ok' => false,
+                'message' => __('The linked-post subset changed after this page loaded. Refresh and reopen the Visual Editor before saving.', 'dbvc'),
+                'journal' => $this->buildFilteredSubsetJournalContext(
+                    $descriptor,
+                    $target_post_type,
+                    $latest_ids,
+                    $latest_ids,
+                    $latest_target_ids,
+                    $submitted_ids,
+                    true
+                ),
+            ];
+        }
+
+        foreach ($submitted_ids as $post_id) {
+            if (get_post_type($post_id) !== $target_post_type) {
+                return [
+                    'ok' => false,
+                    'message' => __('The linked-post subset can only contain posts from the query loop target post type.', 'dbvc'),
+                ];
+            }
+        }
+
+        $merged_ids = $this->mergeFilteredSubsetIds($latest_ids, $submitted_ids, $target_post_type);
+        $write_result = $this->writeAcfValue($descriptor, $merged_ids);
+        if (empty($write_result['ok'])) {
+            $write_result['journal'] = $this->buildFilteredSubsetJournalContext(
+                $descriptor,
+                $target_post_type,
+                $latest_ids,
+                $latest_ids,
+                $latest_target_ids,
+                $submitted_ids,
+                false
+            );
+
+            return $write_result;
+        }
+
+        return [
+            'ok' => true,
+            'value' => $this->getValue($descriptor),
+            'journal' => $this->buildFilteredSubsetJournalContext(
+                $descriptor,
+                $target_post_type,
+                $latest_ids,
+                $merged_ids,
+                $latest_target_ids,
+                $submitted_ids,
+                false
+            ),
         ];
     }
 
@@ -811,6 +903,179 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
     }
 
     /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function isFilteredSubsetDescriptor(EditableDescriptor $descriptor)
+    {
+        return isset($descriptor->source['query_source'], $descriptor->source['query_subset_write_mode'])
+            && sanitize_key((string) $descriptor->source['query_source']) === 'derived_bricks_query'
+            && sanitize_key((string) $descriptor->source['query_subset_write_mode']) === 'replace_target_post_type_subset';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function getQueryTargetPostType(EditableDescriptor $descriptor)
+    {
+        return isset($descriptor->source['query_target_post_type'])
+            ? sanitize_key((string) $descriptor->source['query_target_post_type'])
+            : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function normalizeStoredReferenceIds($value)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $ids = [];
+
+        foreach ($values as $item) {
+            $id = $this->extractReferenceId($item);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values($ids);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $key
+     * @return array<int, int>
+     */
+    private function normalizeSourceIdList(EditableDescriptor $descriptor, $key)
+    {
+        $values = isset($descriptor->source[$key]) && is_array($descriptor->source[$key])
+            ? $descriptor->source[$key]
+            : [];
+
+        return array_values(array_filter(array_map('absint', $values)));
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param array<int, int>    $ids
+     * @return array<int, int>
+     */
+    private function filterIdsByTargetPostType(EditableDescriptor $descriptor, array $ids)
+    {
+        return $this->filterIdsByPostType($ids, $this->getQueryTargetPostType($descriptor));
+    }
+
+    /**
+     * @param array<int, int> $ids
+     * @param string          $post_type
+     * @return array<int, int>
+     */
+    private function filterIdsByPostType(array $ids, $post_type)
+    {
+        $post_type = sanitize_key((string) $post_type);
+        if ($post_type === '') {
+            return [];
+        }
+
+        $filtered = [];
+        foreach ($ids as $id) {
+            $id = absint($id);
+            if ($id > 0 && get_post_type($id) === $post_type) {
+                $filtered[] = $id;
+            }
+        }
+
+        return array_values($filtered);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $target_post_type
+     * @param array<int, int>    $full_before_ids
+     * @param array<int, int>    $full_after_ids
+     * @param array<int, int>    $target_before_ids
+     * @param array<int, int>    $target_after_ids
+     * @param bool               $stale_conflict
+     * @return array<string, mixed>
+     */
+    private function buildFilteredSubsetJournalContext(EditableDescriptor $descriptor, $target_post_type, array $full_before_ids, array $full_after_ids, array $target_before_ids, array $target_after_ids, $stale_conflict = false)
+    {
+        return [
+            'contract' => 'filtered_subset',
+            'targetPostType' => sanitize_key((string) $target_post_type),
+            'fieldName' => isset($descriptor->source['field_name']) ? sanitize_key((string) $descriptor->source['field_name']) : '',
+            'fieldKey' => isset($descriptor->source['field_key']) ? sanitize_key((string) $descriptor->source['field_key']) : '',
+            'queryElementId' => isset($descriptor->source['query_element_id']) ? sanitize_text_field((string) $descriptor->source['query_element_id']) : '',
+            'descriptorTargetIds' => $this->normalizeSourceIdList($descriptor, 'query_result_ids'),
+            'fullBeforeIds' => array_values(array_filter(array_map('absint', $full_before_ids))),
+            'fullAfterIds' => array_values(array_filter(array_map('absint', $full_after_ids))),
+            'targetBeforeIds' => array_values(array_filter(array_map('absint', $target_before_ids))),
+            'targetAfterIds' => array_values(array_filter(array_map('absint', $target_after_ids))),
+            'preservedBeforeIds' => $this->filterIdsNotByPostType($full_before_ids, $target_post_type),
+            'preservedAfterIds' => $this->filterIdsNotByPostType($full_after_ids, $target_post_type),
+            'staleConflict' => (bool) $stale_conflict,
+        ];
+    }
+
+    /**
+     * @param array<int, int> $ids
+     * @param string          $post_type
+     * @return array<int, int>
+     */
+    private function filterIdsNotByPostType(array $ids, $post_type)
+    {
+        $post_type = sanitize_key((string) $post_type);
+        $filtered = [];
+
+        foreach ($ids as $id) {
+            $id = absint($id);
+            if ($id > 0 && ($post_type === '' || get_post_type($id) !== $post_type)) {
+                $filtered[] = $id;
+            }
+        }
+
+        return array_values($filtered);
+    }
+
+    /**
+     * @param array<int, int> $current_ids
+     * @param array<int, int> $submitted_ids
+     * @param string          $target_post_type
+     * @return array<int, int>
+     */
+    private function mergeFilteredSubsetIds(array $current_ids, array $submitted_ids, $target_post_type)
+    {
+        $merged = [];
+        $inserted = false;
+
+        foreach ($current_ids as $id) {
+            $id = absint($id);
+            if ($id <= 0) {
+                continue;
+            }
+
+            if (get_post_type($id) === $target_post_type) {
+                if (! $inserted) {
+                    $merged = array_merge($merged, $submitted_ids);
+                    $inserted = true;
+                }
+
+                continue;
+            }
+
+            $merged[] = $id;
+        }
+
+        if (! $inserted) {
+            $merged = array_merge($merged, $submitted_ids);
+        }
+
+        return array_values($merged);
+    }
+
+    /**
      * @param mixed $value
      * @return int
      */
@@ -854,6 +1119,12 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
      */
     private function getAllowedPostTypes(EditableDescriptor $descriptor)
     {
+        if ($this->isFilteredSubsetDescriptor($descriptor)) {
+            $target_post_type = $this->getQueryTargetPostType($descriptor);
+
+            return $target_post_type !== '' ? [$target_post_type] : [];
+        }
+
         $post_types = isset($descriptor->source['reference_post_types']) && is_array($descriptor->source['reference_post_types'])
             ? array_values(array_filter(array_map('sanitize_key', $descriptor->source['reference_post_types'])))
             : [];

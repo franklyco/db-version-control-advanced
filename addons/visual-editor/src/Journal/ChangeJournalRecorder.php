@@ -76,11 +76,12 @@ final class ChangeJournalRecorder
      * @param string             $resolver_name
      * @param mixed              $old_value
      * @param mixed              $new_value
+     * @param array<string, mixed> $save_context
      * @return void
      */
-    public function recordSuccess($change_set_id, EditableDescriptor $descriptor, $resolver_name, $old_value, $new_value)
+    public function recordSuccess($change_set_id, EditableDescriptor $descriptor, $resolver_name, $old_value, $new_value, array $save_context = [])
     {
-        $this->recordItem($change_set_id, $descriptor, $resolver_name, $old_value, $new_value, $old_value, 'completed', '');
+        $this->recordItem($change_set_id, $descriptor, $resolver_name, $old_value, $new_value, $old_value, 'completed', '', $save_context);
         $this->store->finishChangeSet($change_set_id, 'completed');
     }
 
@@ -91,11 +92,12 @@ final class ChangeJournalRecorder
      * @param mixed              $old_value
      * @param mixed              $attempted_value
      * @param string             $error_message
+     * @param array<string, mixed> $save_context
      * @return void
      */
-    public function recordFailure($change_set_id, EditableDescriptor $descriptor, $resolver_name, $old_value, $attempted_value, $error_message)
+    public function recordFailure($change_set_id, EditableDescriptor $descriptor, $resolver_name, $old_value, $attempted_value, $error_message, array $save_context = [])
     {
-        $this->recordItem($change_set_id, $descriptor, $resolver_name, $old_value, $attempted_value, $old_value, 'failed', $error_message);
+        $this->recordItem($change_set_id, $descriptor, $resolver_name, $old_value, $attempted_value, $old_value, 'failed', $error_message, $save_context);
         $this->store->finishChangeSet($change_set_id, 'failed', 0, $error_message);
     }
 
@@ -108,9 +110,10 @@ final class ChangeJournalRecorder
      * @param mixed              $rollback_value
      * @param string             $result_status
      * @param string             $error_message
+     * @param array<string, mixed> $save_context
      * @return void
      */
-    private function recordItem($change_set_id, EditableDescriptor $descriptor, $resolver_name, $old_value, $new_value, $rollback_value, $result_status, $error_message)
+    private function recordItem($change_set_id, EditableDescriptor $descriptor, $resolver_name, $old_value, $new_value, $rollback_value, $result_status, $error_message, array $save_context = [])
     {
         $change_set_id = absint($change_set_id);
         if ($change_set_id <= 0) {
@@ -143,6 +146,7 @@ final class ChangeJournalRecorder
                     'mutation' => $this->resolveMutationContext($descriptor),
                     'source' => $source,
                     'render' => isset($descriptor->render) && is_array($descriptor->render) ? $descriptor->render : [],
+                    'save' => $save_context,
                 ],
             ]
         );

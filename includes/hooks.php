@@ -38,6 +38,12 @@ if (class_exists('DBVC_Options_Groups')) {
 	});
 }
 
+if (class_exists('DBVC_Third_Party_Portability')) {
+	add_action('dbvc_after_export_options', function() {
+		DBVC_Third_Party_Portability::export_selected_entities();
+	});
+}
+
 // Ensure FTP upload window expiry hook is available.
 add_action('dbvc_sync_ftp_window_expire', function () {
 	if (function_exists('dbvc_close_sync_ftp_window')) {

@@ -117,6 +117,10 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 $entity_payload   = null;
                 $options_group_id = '';
                 $options_group_type = '';
+                $third_party_provider = '';
+                $third_party_object_type = '';
+                $third_party_uid = '';
+                $third_party_label = '';
                 $media_refs       = [
                     'meta'    => [],
                     'content' => [],
@@ -242,6 +246,35 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $post_name   = $term_slug;
                     $post_type   = $term_taxonomy ? 'term:' . $term_taxonomy : 'term';
                     $post_status = 'term';
+                } elseif (class_exists('DBVC_Third_Party_Portability') && DBVC_Third_Party_Portability::is_third_party_payload($decoded)) {
+                    $item_type = 'third_party';
+                    if (DBVC_Third_Party_Portability::is_wsform_form_payload($decoded)) {
+                        $third_party_provider = 'ws_form';
+                        $third_party_object_type = 'form';
+                        $third_party_uid = isset($decoded['dbvc_portability']['uid'])
+                            ? sanitize_text_field((string) $decoded['dbvc_portability']['uid'])
+                            : sanitize_text_field((string) ($decoded['meta']['dbvc_portability_uid'] ?? ''));
+                        $third_party_label = isset($decoded['label']) ? sanitize_text_field((string) $decoded['label']) : '';
+                        $post_title = $third_party_label;
+                        $post_type = 'third_party:ws_form:form';
+                        $post_status = isset($decoded['dbvc_portability']['source_status'])
+                            ? sanitize_text_field((string) $decoded['dbvc_portability']['source_status'])
+                            : sanitize_text_field((string) ($decoded['status'] ?? ''));
+                        $entity_uid = $third_party_uid;
+                        $content_hash = md5(serialize([
+                            $decoded['label'] ?? '',
+                            $decoded['meta'] ?? [],
+                            $decoded['groups'] ?? [],
+                        ]));
+                    } elseif (DBVC_Third_Party_Portability::is_wsform_settings_payload($decoded)) {
+                        $third_party_provider = 'ws_form';
+                        $third_party_object_type = 'settings';
+                        $third_party_label = 'WS Form settings';
+                        $post_title = $third_party_label;
+                        $post_type = 'third_party:ws_form:settings';
+                        $post_status = 'settings';
+                        $content_hash = md5(serialize($decoded['options'] ?? []));
+                    }
                 }
 
                 $reference_context = [
@@ -295,6 +328,13 @@ if (! class_exists('DBVC_Backup_Manager')) {
                             $entity_payload['parent_uid'] = $term_parent_uid;
                         }
                     }
+                }
+
+                if ($item_type === 'third_party') {
+                    $entry['third_party_provider'] = $third_party_provider;
+                    $entry['third_party_object_type'] = $third_party_object_type;
+                    $entry['third_party_uid'] = $third_party_uid;
+                    $entry['third_party_label'] = $third_party_label;
                 }
 
                 if (! empty($entity_refs)) {

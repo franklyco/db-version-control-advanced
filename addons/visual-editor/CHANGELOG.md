@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Widened derived Bricks post-query collection detection to capture native dynamic include/post__in controls, including saved setting provenance, dynamic ACF tags, field-name hints, and query-editor state; native static include lists remain unsupported to avoid writing unrelated ACF fields.
+- Added current-owner Query Editor source hints for simple direct `get_field('field_name')` post__in loops while excluding option/user/explicit-object reads from writable hinting.
+- Added inspect-only Query Editor fallback evidence for final `post__in` loops that do not prove a current-owner source, including exact ACF options fallback matches such as `settings_globals_default_posts`; shared-option fallback writes remain disabled.
+- Added full-field derived collection support for mixed/`any` post queries when final ordered query IDs exactly match one current-owner relationship/post_object field's full stored value.
+- Planned the next custom Query Editor fallback branch for current-field, options-field, and recent-post fallback sources, with inspect-only first behavior and shared-option writes deferred until explicit branch/source contracts are proven.
+- Added supplemental journal context for filtered-subset connected-items saves so the durable change item records full source IDs before/after, edited target-subset IDs before/after, preserved IDs, and stale-conflict state.
+- Clarified the filtered-subset connected-items panel so derived Bricks Query Editor linked-post editors show target-CPT selected/search labels and disclose preserved non-target linked items inside the existing `dbvc-ve-panel` UI.
+- Enabled the first writable filtered-subset save contract for derived Bricks Query Editor linked-post loops backed by one current-owner ACF relationship/post_object field; saves now replace only the proven target CPT subset, preserve other linked IDs, reject stale subset conflicts, and reload the page after save.
 - Changed temporary linked-posts section badge labels from the generic `Modify Linked Posts` copy to target-CPT labels such as `Review Posts`, with a `Manage {Bricks label} Posts` fallback for future mixed-post-type query markers.
 - Grouped the Visual Editor connected-items selected list by object/CPT/term type in collapsed accordions by default, and reduced the selected-item move/remove action controls.
 - Fixed derived linked-post query markers so Bricks-rendered loop roots can classify even after Bricks strips `hasLoop` from the visible root, added a temporary viewport-fixed left-side `Modify Linked Posts` badge for containing `<section>` elements, and kept the underlying query-loop container marker on the existing inspect-only hover badge treatment.

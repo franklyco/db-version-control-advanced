@@ -625,6 +625,17 @@ body.dbvc-ve-panel-dragging {
   letter-spacing: 0.04em;
 }
 
+.dbvc-ve-panel__collection-context {
+  margin-top: -6px;
+  padding: 8px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .dbvc-ve-panel__collection-selected,
 .dbvc-ve-panel__collection-results {
   display: grid;

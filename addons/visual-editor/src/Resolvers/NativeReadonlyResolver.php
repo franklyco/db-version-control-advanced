@@ -47,6 +47,11 @@ final class NativeReadonlyResolver implements ResolverInterface
             return $this->getArchiveTitle($descriptor);
         }
 
+        if (($descriptor->render['context'] ?? '') === 'query_collection'
+            && in_array($source_type, ['acf_collection_field', 'derived_query_collection'], true)) {
+            return $this->getQueryCollectionValue($descriptor);
+        }
+
         return '';
     }
 
@@ -57,7 +62,23 @@ final class NativeReadonlyResolver implements ResolverInterface
      */
     public function getDisplayValue(EditableDescriptor $descriptor, $value)
     {
-        unset($descriptor);
+        if (($descriptor->render['context'] ?? '') === 'query_collection' && is_array($value)) {
+            $count = count($value);
+
+            if ($count === 1 && isset($value[0]['title']) && is_scalar($value[0]['title'])) {
+                return sanitize_text_field((string) $value[0]['title']);
+            }
+
+            if ($count > 0) {
+                return sprintf(
+                    /* translators: %d: queried item count */
+                    _n('%d queried item', '%d queried items', $count, 'dbvc'),
+                    $count
+                );
+            }
+
+            return '';
+        }
 
         return is_scalar($value) || $value === null ? (string) $value : '';
     }
@@ -174,5 +195,45 @@ final class NativeReadonlyResolver implements ResolverInterface
         }
 
         return '';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<int, array<string, mixed>>
+     */
+    private function getQueryCollectionValue(EditableDescriptor $descriptor)
+    {
+        $ids = isset($descriptor->source['query_result_ids']) && is_array($descriptor->source['query_result_ids'])
+            ? array_values(array_filter(array_map('absint', $descriptor->source['query_result_ids'])))
+            : [];
+        $items = [];
+
+        foreach ($ids as $post_id) {
+            $post = get_post($post_id);
+            if (! $post instanceof \WP_Post) {
+                continue;
+            }
+
+            $post_type = get_post_type($post_id);
+            $post_type = is_string($post_type) ? sanitize_key($post_type) : '';
+            $type_object = $post_type !== '' ? get_post_type_object($post_type) : null;
+            $type_label = $type_object && ! empty($type_object->labels->singular_name)
+                ? sanitize_text_field((string) $type_object->labels->singular_name)
+                : ($post_type !== '' ? sanitize_text_field(ucwords(str_replace(['_', '-'], ' ', $post_type))) : __('Post', 'dbvc'));
+
+            $items[] = [
+                'id' => $post_id,
+                'title' => get_the_title($post_id),
+                'objectType' => 'post',
+                'postType' => $post_type,
+                'taxonomy' => '',
+                'typeLabel' => $type_label,
+                'status' => get_post_status($post_id),
+                'frontendUrl' => get_permalink($post_id),
+                'backendUrl' => get_edit_post_link($post_id, 'raw'),
+            ];
+        }
+
+        return $items;
     }
 }
