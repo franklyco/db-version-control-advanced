@@ -42,7 +42,9 @@
     viewportPrefetchQueue: [],
     viewportPrefetchIdleHandle: 0,
     viewportPrefetchTimer: 0,
-    viewportPrefetchInFlight: 0
+    viewportPrefetchInFlight: 0,
+    queryCollectionBadgeRefreshTimer: 0,
+    queryCollectionBadgeObserver: null
   };
 
   const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
@@ -115,6 +117,16 @@
       .replace(/'/g, '&#39;');
   }
 
+  function escapeCssValue(value) {
+    const stringValue = String(value || '');
+
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(stringValue);
+    }
+
+    return stringValue.replace(/["\\]/g, '\\$&');
+  }
+
   function cacheDescriptorPayload(payload) {
     if (!payload || !payload.descriptor || !payload.descriptor.token) {
       return;
@@ -146,6 +158,18 @@
     return node && typeof node.getAttribute === 'function'
       ? String(node.getAttribute('data-dbvc-ve') || '')
       : '';
+  }
+
+  function mapDescriptorScopeToMarker(scope) {
+    if (scope === 'shared_entity') {
+      return 'shared';
+    }
+
+    if (scope === 'related_entity') {
+      return 'related';
+    }
+
+    return 'current';
   }
 
   function getSessionId() {
@@ -777,9 +801,31 @@
       : '';
   }
 
-  function getDescriptorBadgeLabel(descriptor) {
+  function getDescriptorBadgeLabel(descriptor, node) {
+    if (descriptor && descriptor.ui && typeof descriptor.ui.badgeLabel === 'string') {
+      return descriptor.ui.badgeLabel.trim();
+    }
+
+    if (node && node.dataset && typeof node.dataset.dbvcVeBadgeLabel === 'string') {
+      return node.dataset.dbvcVeBadgeLabel.trim();
+    }
+
     return descriptor && typeof descriptor.badgeLabel === 'string'
       ? descriptor.badgeLabel.trim()
+      : '';
+  }
+
+  function getDescriptorInputType(descriptor, node) {
+    if (descriptor && descriptor.ui && typeof descriptor.ui.input === 'string' && descriptor.ui.input) {
+      return descriptor.ui.input;
+    }
+
+    if (node && node.dataset && typeof node.dataset.dbvcVeInput === 'string' && node.dataset.dbvcVeInput) {
+      return node.dataset.dbvcVeInput;
+    }
+
+    return descriptor && typeof descriptor.input === 'string'
+      ? descriptor.input
       : '';
   }
 
@@ -2462,63 +2508,303 @@
     return badge;
   }
 
-  function shouldMountLinkedPostsSectionBadge(marker) {
+  function shouldMountQueryCollectionContainerBadge(marker) {
     const descriptor = lookupDescriptorForNode(marker);
+    const context = getDescriptorRenderContext(descriptor, marker);
+    const inputType = getDescriptorInputType(descriptor, marker);
+    const badgeLabel = getDescriptorBadgeLabel(descriptor, marker);
 
-    return getDescriptorRenderContext(descriptor, marker) === 'query_collection'
-      && getDescriptorQuerySource(descriptor) === 'derived_bricks_query'
-      && getDescriptorBadgeLabel(descriptor) !== '';
+    return context === 'query_collection'
+      && (
+        !descriptor
+        || badgeLabel !== ''
+        || inputType === 'reference_collection'
+        || inputType === 'reference_collection_preview'
+        || getDescriptorQuerySource(descriptor) === 'derived_bricks_query'
+      );
   }
 
-  function getLinkedPostsSectionBadgeLabel(marker) {
+  function getQueryCollectionContainerGroupKey(marker) {
     const descriptor = lookupDescriptorForNode(marker);
-    const badgeLabel = getDescriptorBadgeLabel(descriptor);
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const queryElementId = getMarkerQueryElementId(marker, descriptor);
+    const nativeSelector = source.native_query_selector ? String(source.native_query_selector) : '';
+    const sourceGroup = getDescriptorSourceGroup(descriptor, marker);
+    const expression = source.expression ? String(source.expression) : '';
+    const badgeLabel = getDescriptorBadgeLabel(descriptor, marker);
 
-    return badgeLabel || strings().badgeModifyLinkedPosts || 'Linked Posts';
+    return [
+      queryElementId || nativeSelector || sourceGroup || expression || getMarkerToken(marker),
+      badgeLabel || getQueryCollectionContainerBadgeLabel(marker)
+    ].join(':');
   }
 
-  function mountLinkedPostsSectionBadges(markers) {
-    const mountedSections = new Set();
+  function getQueryCollectionContainerBadgeLabel(marker) {
+    const descriptor = lookupDescriptorForNode(marker);
+    const badgeLabel = getDescriptorBadgeLabel(descriptor, marker);
+    const status = getDescriptorStatus(descriptor, marker);
+
+    if (status === 'readonly') {
+      return strings().panelInspectOnly || strings().inspectLabel || 'Inspect only';
+    }
+
+    return badgeLabel || strings().badgeConnected || 'Edit Connected';
+  }
+
+  function normalizeBricksDomId(id) {
+    const value = String(id || '').trim();
+
+    return value.indexOf('brxe-') === 0 ? value.slice(5) : value;
+  }
+
+  function getMarkerQueryElementId(marker, descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+
+    if (source.query_element_id) {
+      return String(source.query_element_id);
+    }
+
+    if (marker && marker.dataset) {
+      if (typeof marker.dataset.dbvcVeQueryElementId === 'string' && marker.dataset.dbvcVeQueryElementId) {
+        return marker.dataset.dbvcVeQueryElementId;
+      }
+
+      if (typeof marker.dataset.queryElementId === 'string' && marker.dataset.queryElementId) {
+        return marker.dataset.queryElementId;
+      }
+    }
+
+    return '';
+  }
+
+  function findLoopCommentParent(queryElementId) {
+    const normalizedId = String(queryElementId || '').trim();
+
+    if (!normalizedId || typeof document.createTreeWalker !== 'function') {
+      return null;
+    }
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT);
+    let node = walker.nextNode();
+
+    while (node) {
+      if (String(node.nodeValue || '').trim() === `brx-loop-start-${normalizedId}`) {
+        const parent = node.parentElement;
+
+        return parent && elementHasUsableBadgeRect(parent) ? parent : null;
+      }
+
+      node = walker.nextNode();
+    }
+
+    return null;
+  }
+
+  function getElementAncestorList(node) {
+    const ancestors = [];
+    let current = node && node.nodeType === 1 ? node : null;
+
+    while (current && current.nodeType === 1) {
+      ancestors.push(current);
+      current = current.parentElement;
+    }
+
+    return ancestors;
+  }
+
+  function findCommonElementAncestor(nodes) {
+    const normalized = Array.isArray(nodes)
+      ? nodes.filter(function (node) {
+        return node && node.nodeType === 1;
+      })
+      : [];
+
+    if (!normalized.length) {
+      return null;
+    }
+
+    const firstAncestors = getElementAncestorList(normalized[0]);
+
+    return firstAncestors.find(function (candidate) {
+      return normalized.every(function (node) {
+        return candidate === node || candidate.contains(node);
+      });
+    }) || null;
+  }
+
+  function elementHasUsableBadgeRect(node) {
+    if (!node || typeof node.getBoundingClientRect !== 'function' || !elementLooksVisible(node)) {
+      return false;
+    }
+
+    const rect = node.getBoundingClientRect();
+
+    return Boolean(rect && rect.width > 0 && rect.height > 0);
+  }
+
+  function findNearestBricksContainer(node, stopNode, excludedQueryElementId) {
+    let current = node && node.nodeType === 1 ? node : null;
+    const excludedId = normalizeBricksDomId(excludedQueryElementId);
+
+    while (current && current.nodeType === 1) {
+      const currentId = current.id ? normalizeBricksDomId(current.id) : '';
+
+      if (currentId !== '' && currentId !== excludedId && elementHasUsableBadgeRect(current)) {
+        return current;
+      }
+
+      if (current === stopNode) {
+        break;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  function resolveQueryCollectionContainerBadgeTarget(markers) {
+    const groupMarkers = Array.isArray(markers)
+      ? markers.filter(function (marker) {
+        return marker && marker.isConnected;
+      })
+      : [];
+
+    if (!groupMarkers.length) {
+      return null;
+    }
+
+    const descriptor = lookupDescriptorForNode(groupMarkers[0]);
+    const queryElementId = getMarkerQueryElementId(groupMarkers[0], descriptor);
+    const emptyLoopParent = groupMarkers.length === 1
+      && groupMarkers[0].dataset
+      && groupMarkers[0].dataset.dbvcVeEmptyLoopContainer === '1'
+      ? groupMarkers[0]
+      : null;
+
+    if (emptyLoopParent && elementHasUsableBadgeRect(emptyLoopParent)) {
+      return emptyLoopParent;
+    }
+
+    const queryTrailParent = groupMarkers.length === 1
+      && groupMarkers[0].classList
+      && groupMarkers[0].classList.contains('brx-query-trail')
+      ? groupMarkers[0].parentElement
+      : null;
+
+    if (queryTrailParent && elementHasUsableBadgeRect(queryTrailParent)) {
+      return queryTrailParent;
+    }
+
+    const section = groupMarkers[0].closest('section');
+    const common = findCommonElementAncestor(groupMarkers);
+    const searchStart = groupMarkers.length === 1 && common && common.parentElement
+      ? common.parentElement
+      : common;
+    const commonTarget = findNearestBricksContainer(searchStart, section, queryElementId);
+
+    if (commonTarget) {
+      return commonTarget;
+    }
+
+    const markerTarget = findNearestBricksContainer(groupMarkers[0], section, queryElementId);
+    if (markerTarget) {
+      return markerTarget;
+    }
+
+    return section && elementHasUsableBadgeRect(section) ? section : groupMarkers[0];
+  }
+
+  function mountQueryCollectionContainerBadges(markers) {
+    const groups = new Map();
     const entries = [];
     const layer = ensureBadgeLayer();
 
-    layer.querySelectorAll('.dbvc-ve-section-badge--linked-posts').forEach(function (badge) {
+    layer.querySelectorAll('.dbvc-ve-section-badge--query-collection').forEach(function (badge) {
       badge.remove();
     });
 
     markers.forEach(function (marker) {
-      if (!marker || !marker.isConnected || !shouldMountLinkedPostsSectionBadge(marker)) {
+      if (!marker || !marker.isConnected || !shouldMountQueryCollectionContainerBadge(marker)) {
         return;
       }
 
-      const section = marker.closest('section');
-      if (!section || mountedSections.has(section)) {
-        return;
-      }
-
-      mountedSections.add(section);
-      entries.push({
+      const key = getQueryCollectionContainerGroupKey(marker);
+      const group = groups.get(key) || {
+        key,
         marker,
-        section
+        markers: []
+      };
+
+      group.markers.push(marker);
+      groups.set(key, group);
+    });
+
+    groups.forEach(function (group) {
+      const target = resolveQueryCollectionContainerBadgeTarget(group.markers);
+
+      if (!target) {
+        return;
+      }
+
+      entries.push({
+        marker: group.marker,
+        target
       });
     });
 
+    const entryTokens = new Set(entries.map(function (entry) {
+      return getMarkerToken(entry.marker);
+    }));
+
+    markers.forEach(function (marker) {
+      const token = getMarkerToken(marker);
+
+      if (!marker || !marker.isConnected || !token || entryTokens.has(token)) {
+        return;
+      }
+
+      if (getDescriptorRenderContext(lookupDescriptorForNode(marker), marker) !== 'query_collection') {
+        return;
+      }
+
+      if (!marker.classList || !marker.classList.contains('brx-query-trail')) {
+        return;
+      }
+
+      const target = marker.parentElement;
+      if (!target || !elementHasUsableBadgeRect(target)) {
+        return;
+      }
+
+      entries.push({
+        marker,
+        target
+      });
+      entryTokens.add(token);
+    });
+
+    const targetCounts = new Map();
+
     entries.forEach(function (entry, index) {
       const marker = entry.marker;
-      const section = entry.section;
-      const offset = (index - ((entries.length - 1) / 2)) * 44;
+      const target = entry.target;
+      const targetIndex = targetCounts.get(target) || 0;
 
-      section.classList.add('dbvc-ve-linked-posts-section');
-      section.dataset.dbvcVeLinkedPostsSection = '1';
+      targetCounts.set(target, targetIndex + 1);
+      target.classList.add('dbvc-ve-query-collection-container');
+      target.dataset.dbvcVeQueryCollectionContainer = '1';
 
       const badge = document.createElement('button');
 
       badge.type = 'button';
-      badge.className = 'dbvc-ve-section-badge dbvc-ve-section-badge--linked-posts';
-      badge.textContent = getLinkedPostsSectionBadgeLabel(marker);
-      badge.style.setProperty('--dbvc-ve-section-badge-offset', `${offset}px`);
+      badge.className = 'dbvc-ve-section-badge dbvc-ve-section-badge--query-collection dbvc-ve-section-badge--container';
+      badge.textContent = getQueryCollectionContainerBadgeLabel(marker);
       badge.dataset.token = getMarkerToken(marker);
       badge.dataset.sectionIndex = String(index);
+      badge.dataset.targetIndex = String(targetIndex);
+      badge.dataset.targetId = target.id || '';
+      badge._dbvcVeBadgeTarget = target;
       badge.onclick = function (event) {
         const token = badge.dataset.token || '';
         const target = token ? document.querySelector(`[data-dbvc-ve="${window.CSS && CSS.escape ? CSS.escape(token) : token}"]`) : null;
@@ -2536,6 +2822,8 @@
 
       layer.appendChild(badge);
     });
+
+    positionQueryCollectionContainerBadges();
   }
 
   function bindBadgeEvents() {
@@ -2609,6 +2897,16 @@
       && x <= rect.right
       && y >= rect.top
       && y <= rect.bottom;
+  }
+
+  function rectIntersectsViewport(rect) {
+    return rect
+      && rect.width > 0
+      && rect.height > 0
+      && rect.right > 0
+      && rect.bottom > 0
+      && rect.left < window.innerWidth
+      && rect.top < window.innerHeight;
   }
 
   function markerContainsViewportPoint(marker, x, y) {
@@ -2800,7 +3098,10 @@
   }
 
   function isBadgeElement(target) {
-    return Boolean(state.badgeNode && target && (state.badgeNode === target || state.badgeNode.contains(target)));
+    return Boolean(target && (
+      (state.badgeNode && (state.badgeNode === target || state.badgeNode.contains(target)))
+      || (typeof target.closest === 'function' && target.closest('.dbvc-ve-section-badge'))
+    ));
   }
 
   function setPreviewNode(node) {
@@ -3005,8 +3306,7 @@
     const status = getDescriptorStatus(descriptor, node);
     const entityType = getDescriptorEntityType(descriptor);
     const context = getDescriptorRenderContext(descriptor, node);
-    const badgeLabel = getDescriptorBadgeLabel(descriptor);
-    const querySource = getDescriptorQuerySource(descriptor);
+    const badgeLabel = getDescriptorBadgeLabel(descriptor, node);
     const token = node.getAttribute('data-dbvc-ve') || '';
 
     badge.className = 'dbvc-ve-badge';
@@ -3027,12 +3327,6 @@
     if (scope === 'shared_entity') {
       badge.classList.add('dbvc-ve-badge--shared');
       badge.textContent = resolveSharedBadgeLabel(entityType);
-      return badge;
-    }
-
-    if (badgeLabel && context === 'query_collection' && querySource === 'derived_bricks_query') {
-      badge.classList.add('dbvc-ve-badge--readonly');
-      badge.textContent = strings().panelInspectOnly || strings().inspectLabel || 'Inspect only';
       return badge;
     }
 
@@ -3076,6 +3370,83 @@
     state.badgeLayoutFrame = window.requestAnimationFrame(function () {
       state.badgeLayoutFrame = 0;
       positionSharedBadge();
+      positionQueryCollectionContainerBadges();
+    });
+  }
+
+  function positionQueryCollectionContainerBadges() {
+    const badges = Array.from(document.querySelectorAll('.dbvc-ve-section-badge--query-collection'));
+    const groups = new Map();
+
+    badges.forEach(function (badge) {
+      const target = badge._dbvcVeBadgeTarget;
+
+      if (!target || !target.isConnected || !elementHasUsableBadgeRect(target)) {
+        badge.style.opacity = '0';
+        badge.style.pointerEvents = 'none';
+        return;
+      }
+
+      const rect = target.getBoundingClientRect();
+
+      if (!rectIntersectsViewport(rect)) {
+        badge.style.opacity = '0';
+        badge.style.pointerEvents = 'none';
+        return;
+      }
+
+      if (!groups.has(target)) {
+        groups.set(target, {
+          rect,
+          badges: []
+        });
+      }
+
+      groups.get(target).badges.push(badge);
+    });
+
+    groups.forEach(function (group) {
+      const baseLeft = Math.max(8, group.rect.left + 10);
+      const baseTop = Math.max(8, group.rect.top + 10);
+      const rowRight = Math.min(
+        window.innerWidth - 8,
+        Math.max(baseLeft, group.rect.right - 10)
+      );
+      let left = baseLeft;
+      let top = baseTop;
+      let rowHeight = 0;
+
+      group.badges
+        .sort(function (a, b) {
+          const aIndex = Number(a.dataset.targetIndex || a.dataset.sectionIndex || 0) || 0;
+          const bIndex = Number(b.dataset.targetIndex || b.dataset.sectionIndex || 0) || 0;
+
+          return aIndex - bIndex;
+        })
+        .forEach(function (badge, index) {
+          const badgeWidth = badge.offsetWidth || 0;
+          const badgeHeight = badge.offsetHeight || 0;
+
+          if (index > 0 && left + badgeWidth > rowRight) {
+            left = baseLeft;
+            top += rowHeight + 8;
+            rowHeight = 0;
+          }
+
+          badge.style.left = `${Math.min(
+            Math.max(8, left),
+            window.innerWidth - badgeWidth - 8
+          )}px`;
+          badge.style.top = `${Math.min(
+            Math.max(8, top),
+            window.innerHeight - badgeHeight - 8
+          )}px`;
+          badge.style.opacity = '1';
+          badge.style.pointerEvents = 'auto';
+
+          left += badgeWidth + 8;
+          rowHeight = Math.max(rowHeight, badgeHeight);
+        });
     });
   }
 
@@ -3084,6 +3455,11 @@
     const badge = ensureSharedBadge();
 
     if (!target || !target.isConnected) {
+      hideSharedBadge();
+      return;
+    }
+
+    if (shouldMountQueryCollectionContainerBadge(target)) {
       hideSharedBadge();
       return;
     }
@@ -4431,6 +4807,251 @@
       : `${count} ${strings().panelCollectionGroupItemPlural || 'items'}`;
   }
 
+  function getReferenceCollectionPreviewBranchLabel(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const branchState = source.query_branch_state ? String(source.query_branch_state) : '';
+
+    if (branchState === 'shared_option_fallback_exact_match') {
+      return strings().panelCollectionBranchOptionsFallback || 'Options fallback active';
+    }
+
+    if (branchState === 'query_editor_post_in_unmatched') {
+      return strings().panelCollectionBranchUnmatchedQuery || 'Query Editor post list';
+    }
+
+    return strings().panelCollectionBranchInspectOnly || 'Inspect-only query';
+  }
+
+  function getReferenceCollectionPreviewContext(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const branchState = source.query_branch_state ? String(source.query_branch_state) : '';
+
+    if (branchState === 'shared_option_fallback_exact_match') {
+      return strings().panelCollectionPreviewOptionsFallback || 'This query is currently using a shared ACF options fallback, but this branch did not meet the exact shared-option save contract. Saving is disabled.';
+    }
+
+    if (branchState === 'query_editor_post_in_unmatched') {
+      return strings().panelCollectionPreviewUnmatched || 'Visual Editor could not prove a writable ACF source for this query. Saving is disabled.';
+    }
+
+    return strings().panelCollectionPreviewInspectOnly || 'This query result can be inspected, but it is not writable from the Visual Editor yet.';
+  }
+
+  function appendReferenceCollectionPreviewLink(actions, url, label) {
+    if (!url) {
+      return;
+    }
+
+    const link = document.createElement('a');
+
+    link.className = 'dbvc-ve-panel__entity-link';
+    link.href = String(url);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = label;
+    actions.appendChild(link);
+  }
+
+  function getReferenceCollectionSeedContext(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const seed = source.query_seed_current_field && typeof source.query_seed_current_field === 'object'
+      ? source.query_seed_current_field
+      : null;
+
+    return seed && seed.enabled ? seed : null;
+  }
+
+  async function handleReferenceCollectionSeed(descriptor, button) {
+    const panelNodes = getPanelNodes();
+    const sessionId = getSessionId();
+    const token = descriptor && descriptor.token ? String(descriptor.token) : '';
+
+    if (!sessionId || !token || !button) {
+      return;
+    }
+
+    const confirmMessage = strings().panelCollectionSeedConfirm || 'This copies the queried fallback items into the current page field and reloads the page. Continue?';
+    if (typeof window.confirm === 'function' && !window.confirm(confirmMessage)) {
+      return;
+    }
+
+    button.disabled = true;
+    state.saveInFlight = true;
+    panelNodes.panel.dataset.state = 'saving';
+    panelNodes.status.textContent = strings().panelCollectionSeedSaving || 'Adding fallback items to current page field…';
+    schedulePanelViewportClamp();
+
+    try {
+      if (shouldRefreshSessionBeforeAction()) {
+        await refreshSession({ silent: true });
+      }
+
+      const result = await window.DBVCVisualEditorApi.seedCurrentField(state.session.sessionId, token);
+      const message = result && result.message
+        ? result.message
+        : (strings().panelCollectionSeedReloading || 'Current page field updated. Reloading page…');
+
+      panelNodes.panel.dataset.state = 'saved';
+      panelNodes.status.textContent = message;
+      updateStatusBar({
+        kind: 'ready',
+        count: getMarkerCount(),
+        message,
+        entitySummary: result && result.entitySummary ? result.entitySummary : null
+      });
+      schedulePanelViewportClamp();
+
+      state.reloadPending = true;
+      window.setTimeout(function () {
+        window.location.reload();
+      }, 250);
+    } catch (error) {
+      if (isSessionExpiredError(error)) {
+        handleExpiredSession(error);
+      }
+
+      panelNodes.panel.dataset.state = 'error';
+      panelNodes.status.textContent = error && error.message ? error.message : (strings().saveFailed || 'Save failed.');
+      button.disabled = false;
+      schedulePanelViewportClamp();
+      window.console.error(error);
+    } finally {
+      state.saveInFlight = false;
+    }
+  }
+
+  function appendReferenceCollectionSeedAction(wrapper, descriptor) {
+    const seed = getReferenceCollectionSeedContext(descriptor);
+    if (!seed) {
+      return;
+    }
+
+    const box = document.createElement('div');
+    const title = document.createElement('div');
+    const description = document.createElement('div');
+    const button = document.createElement('button');
+    const fieldLabel = seed.field_label ? String(seed.field_label) : '';
+
+    box.className = 'dbvc-ve-panel__collection-seed';
+    title.className = 'dbvc-ve-panel__collection-seed-title';
+    description.className = 'dbvc-ve-panel__collection-seed-description';
+    button.type = 'button';
+    button.className = 'dbvc-ve-panel__toolbar-button';
+    title.textContent = strings().panelCollectionSeedTitle || 'Current page field fallback';
+    description.textContent = fieldLabel
+      ? `${strings().panelCollectionSeedDescription || 'The current page field is empty for this query branch. You can copy these fallback items into the current page field instead of editing the shared fallback.'} (${fieldLabel})`
+      : (strings().panelCollectionSeedDescription || 'The current page field is empty for this query branch. You can copy these fallback items into the current page field instead of editing the shared fallback.');
+    button.textContent = strings().panelCollectionSeedButton || 'Add to current page field';
+    button.addEventListener('click', function () {
+      handleReferenceCollectionSeed(descriptor, button);
+    });
+
+    box.appendChild(title);
+    box.appendChild(description);
+    box.appendChild(button);
+    wrapper.appendChild(box);
+  }
+
+  function createReferenceCollectionPreviewController(value, descriptor) {
+    const wrapper = document.createElement('div');
+    const selectedLabel = document.createElement('div');
+    const branchContext = document.createElement('div');
+    const selectedList = document.createElement('div');
+    let currentItems = normalizeReferenceCollectionItems(value);
+
+    wrapper.className = 'dbvc-ve-panel__stack dbvc-ve-panel__collection';
+    selectedLabel.className = 'dbvc-ve-panel__collection-label';
+    selectedLabel.textContent = strings().panelCollectionPreviewSelected || 'Queried items';
+    branchContext.className = 'dbvc-ve-panel__collection-context';
+    branchContext.textContent = `${getReferenceCollectionPreviewBranchLabel(descriptor)}. ${getReferenceCollectionPreviewContext(descriptor)}`;
+    selectedList.className = 'dbvc-ve-panel__collection-selected';
+
+    function renderSelected() {
+      selectedList.innerHTML = '';
+
+      if (!currentItems.length) {
+        selectedList.innerHTML = `<div class="dbvc-ve-panel__placeholder">${escapeHtml(strings().panelCollectionPreviewEmpty || 'No queried items were found.')}</div>`;
+        return;
+      }
+
+      groupReferenceCollectionItems(currentItems).forEach(function (group) {
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        const groupTitle = document.createElement('span');
+        const groupCount = document.createElement('span');
+        const groupBody = document.createElement('div');
+
+        details.className = 'dbvc-ve-panel__collection-group';
+        summary.className = 'dbvc-ve-panel__collection-group-summary';
+        groupTitle.className = 'dbvc-ve-panel__collection-group-title';
+        groupCount.className = 'dbvc-ve-panel__collection-group-count';
+        groupBody.className = 'dbvc-ve-panel__collection-group-body';
+        groupTitle.textContent = group.label;
+        groupCount.textContent = formatReferenceCollectionGroupCount(group.items.length);
+
+        summary.appendChild(groupTitle);
+        summary.appendChild(groupCount);
+        details.appendChild(summary);
+        details.appendChild(groupBody);
+
+        group.items.forEach(function (entry) {
+          const item = entry.item;
+          const row = document.createElement('div');
+          const text = document.createElement('div');
+          const title = document.createElement('div');
+          const meta = document.createElement('div');
+          const actions = document.createElement('div');
+
+          row.className = 'dbvc-ve-panel__collection-row is-readonly';
+          text.className = 'dbvc-ve-panel__collection-text';
+          title.className = 'dbvc-ve-panel__collection-title';
+          meta.className = 'dbvc-ve-panel__collection-meta';
+          actions.className = 'dbvc-ve-panel__collection-actions';
+          title.textContent = item.title;
+          meta.textContent = [item.typeLabel, item.status].filter(Boolean).join(' / ');
+
+          appendReferenceCollectionPreviewLink(actions, item.frontendUrl, strings().panelCollectionPreviewFrontend || 'Frontend');
+          appendReferenceCollectionPreviewLink(actions, item.backendUrl, strings().panelCollectionPreviewBackend || 'Backend');
+
+          text.appendChild(title);
+          if (meta.textContent) {
+            text.appendChild(meta);
+          }
+          row.appendChild(text);
+          if (actions.children.length) {
+            row.appendChild(actions);
+          }
+          groupBody.appendChild(row);
+        });
+
+        selectedList.appendChild(details);
+      });
+    }
+
+    wrapper.appendChild(selectedLabel);
+    wrapper.appendChild(branchContext);
+    appendReferenceCollectionSeedAction(wrapper, descriptor);
+    wrapper.appendChild(selectedList);
+    renderSelected();
+
+    return createNoopLifecycle({
+      element: wrapper,
+      getValue() {
+        return value;
+      },
+      setValue(nextValue) {
+        currentItems = normalizeReferenceCollectionItems(nextValue);
+        renderSelected();
+      },
+      focus() {
+        const firstSummary = wrapper.querySelector('summary');
+        if (firstSummary) {
+          firstSummary.focus();
+        }
+      }
+    });
+  }
+
   function formatTemplateString(template, replacements) {
     return String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, function (match, key) {
       return Object.prototype.hasOwnProperty.call(replacements, key)
@@ -4787,6 +5408,7 @@
     if (isFilteredSubset) {
       wrapper.appendChild(subsetContext);
     }
+    appendReferenceCollectionSeedAction(wrapper, descriptor);
     wrapper.appendChild(selectedList);
     wrapper.appendChild(searchLabel);
     wrapper.appendChild(searchField);
@@ -4832,6 +5454,8 @@
 
   function createFieldController(inputType, value, descriptor) {
     switch (inputType) {
+      case 'reference_collection_preview':
+        return createReferenceCollectionPreviewController(value, descriptor);
       case 'readonly_preview':
         return createReadonlyPreviewController(value);
       case 'reference_collection':
@@ -5185,6 +5809,126 @@
 
   function getMarkerCount() {
     return findMarkers().length;
+  }
+
+  function recoverQueryCollectionMarkersFromSession() {
+    if (!state.session || !state.session.descriptors || typeof state.session.descriptors !== 'object') {
+      return;
+    }
+
+    Object.keys(state.session.descriptors).forEach(function (token) {
+      const descriptor = state.session.descriptors[token];
+      const index = descriptor && descriptor.index ? descriptor.index : {};
+      const queryElementId = typeof index.queryElementId === 'string' ? index.queryElementId : '';
+
+      if (!queryElementId || index.renderContext !== 'query_collection') {
+        return;
+      }
+
+      if (document.querySelector(`[data-dbvc-ve="${escapeCssValue(token)}"]`)) {
+        return;
+      }
+
+      const marker = document.querySelector(`[data-query-element-id="${escapeCssValue(queryElementId)}"]`)
+        || findLoopCommentParent(queryElementId);
+      if (!marker || marker.getAttribute('data-dbvc-ve')) {
+        return;
+      }
+
+      marker.setAttribute('data-dbvc-ve', token);
+      marker.setAttribute('data-dbvc-ve-status', descriptor.status || 'editable');
+      marker.setAttribute('data-dbvc-ve-scope', mapDescriptorScopeToMarker(descriptor.scope || 'current_entity'));
+      marker.setAttribute('data-dbvc-ve-context', 'query_collection');
+      marker.setAttribute('data-dbvc-ve-query-element-id', queryElementId);
+
+      if (!marker.hasAttribute('data-query-element-id')) {
+        marker.setAttribute('data-dbvc-ve-empty-loop-container', '1');
+      }
+
+      if (descriptor.badgeLabel) {
+        marker.setAttribute('data-dbvc-ve-badge-label', descriptor.badgeLabel);
+      }
+
+      if (descriptor.input) {
+        marker.setAttribute('data-dbvc-ve-input', descriptor.input);
+      }
+    });
+  }
+
+  function mountMarkerNode(node) {
+    if (!node || !node.dataset || node.dataset.dbvcVeMounted === '1') {
+      return;
+    }
+
+    node.dataset.dbvcVeMounted = '1';
+    node.classList.add('dbvc-ve-target');
+    if (node.dataset.dbvcVeScope === 'shared') {
+      node.classList.add('is-shared');
+    } else if (node.dataset.dbvcVeScope === 'related') {
+      node.classList.add('is-related');
+    }
+    if (node.dataset.dbvcVeStatus === 'readonly') {
+      node.classList.add('is-readonly');
+    }
+    node.dataset.dbvcVeDisplayValue = normalizeValue(readNodeComparableValue(node, lookupDescriptorForNode(node)));
+  }
+
+  function refreshQueryCollectionBadges() {
+    if (!state.session) {
+      return;
+    }
+
+    recoverQueryCollectionMarkersFromSession();
+    const markers = findMarkers();
+    markers.forEach(mountMarkerNode);
+    mountQueryCollectionContainerBadges(markers);
+    scheduleBadgeLayout();
+  }
+
+  function scheduleQueryCollectionBadgeRefresh(delay) {
+    if (state.queryCollectionBadgeRefreshTimer) {
+      window.clearTimeout(state.queryCollectionBadgeRefreshTimer);
+    }
+
+    state.queryCollectionBadgeRefreshTimer = window.setTimeout(function () {
+      state.queryCollectionBadgeRefreshTimer = 0;
+      refreshQueryCollectionBadges();
+    }, typeof delay === 'number' ? delay : 100);
+  }
+
+  function startQueryCollectionBadgeObserver() {
+    if (state.queryCollectionBadgeObserver || typeof window.MutationObserver !== 'function') {
+      return;
+    }
+
+    state.queryCollectionBadgeObserver = new window.MutationObserver(function (mutations) {
+      if (mutations.some(function (mutation) {
+        if (mutation.type === 'attributes') {
+          return mutation.target
+            && mutation.target.nodeType === 1
+            && (mutation.target.hasAttribute('data-dbvc-ve') || mutation.target.hasAttribute('data-query-element-id'));
+        }
+
+        return Array.from(mutation.addedNodes || []).some(function (node) {
+          return node
+            && node.nodeType === 1
+            && (
+              node.hasAttribute('data-dbvc-ve')
+              || node.hasAttribute('data-query-element-id')
+              || (typeof node.querySelector === 'function' && node.querySelector('[data-dbvc-ve], [data-query-element-id]'))
+            );
+        });
+      })) {
+        scheduleQueryCollectionBadgeRefresh(120);
+      }
+    });
+
+    state.queryCollectionBadgeObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-dbvc-ve', 'data-dbvc-ve-context', 'data-query-element-id']
+    });
   }
 
   function getActiveSyncGroup() {
@@ -5550,8 +6294,10 @@
     }
 
     syncSessionPayload(session);
+    recoverQueryCollectionMarkersFromSession();
+    const mountedMarkers = findMarkers();
     startSessionKeepalive();
-    startViewportPrefetch(markers);
+    startViewportPrefetch(mountedMarkers);
 
     if (state.previewNode) {
       scheduleDescriptorPrefetch(state.previewNode);
@@ -5559,29 +6305,17 @@
 
     updateStatusBar({
       kind: 'ready',
-      count: markers.length,
+      count: mountedMarkers.length,
       message: ''
     });
 
-    markers.forEach(function (node) {
-      if (node.dataset.dbvcVeMounted === '1') {
-        return;
-      }
+    mountedMarkers.forEach(mountMarkerNode);
 
-      node.dataset.dbvcVeMounted = '1';
-      node.classList.add('dbvc-ve-target');
-      if (node.dataset.dbvcVeScope === 'shared') {
-        node.classList.add('is-shared');
-      } else if (node.dataset.dbvcVeScope === 'related') {
-        node.classList.add('is-related');
-      }
-      if (node.dataset.dbvcVeStatus === 'readonly') {
-        node.classList.add('is-readonly');
-      }
-      node.dataset.dbvcVeDisplayValue = normalizeValue(readNodeComparableValue(node, lookupDescriptorForNode(node)));
+    mountQueryCollectionContainerBadges(mountedMarkers);
+    startQueryCollectionBadgeObserver();
+    [250, 1000, 2500].forEach(function (delay) {
+      window.setTimeout(refreshQueryCollectionBadges, delay);
     });
-
-    mountLinkedPostsSectionBadges(markers);
     scheduleBadgeLayout();
   }
 

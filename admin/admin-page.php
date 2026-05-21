@@ -1113,6 +1113,9 @@ function dbvc_render_export_page()
       DBVC_Sync_Posts::begin_full_export();
       // --- Exports ---
       DBVC_Sync_Posts::export_options_to_json();
+      if (class_exists('DBVC_Third_Party_Portability')) {
+        DBVC_Third_Party_Portability::export_selected_entities();
+      }
       DBVC_Sync_Posts::export_menus_to_json();
       if (class_exists('DBVC_Sync_Taxonomies')) {
         DBVC_Sync_Taxonomies::export_selected_taxonomies();

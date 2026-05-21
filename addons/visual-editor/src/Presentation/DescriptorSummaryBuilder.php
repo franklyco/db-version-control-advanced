@@ -45,6 +45,7 @@ final class DescriptorSummaryBuilder
         $label = isset($descriptor->ui['label']) ? sanitize_text_field((string) $descriptor->ui['label']) : __('Field', 'dbvc');
         $type = isset($source['type']) ? sanitize_key((string) $source['type']) : '';
         $field_name = isset($source['field_name']) ? sanitize_key((string) $source['field_name']) : '';
+        $field_selector_raw = isset($source['field_selector_raw']) ? $this->normalizeAcfSelectorForSummary((string) $source['field_selector_raw']) : '';
         $source_context = isset($source['source_context']) ? sanitize_key((string) $source['source_context']) : '';
         $field_group_title = isset($source['field_group_title']) ? sanitize_text_field((string) $source['field_group_title']) : '';
         $field_group_option_pages = isset($source['field_group_option_pages']) && is_array($source['field_group_option_pages'])
@@ -138,6 +139,10 @@ final class DescriptorSummaryBuilder
             }, $source['nested_repeater_path']))) : []);
         $expression = isset($source['expression']) ? sanitize_text_field((string) $source['expression']) : '';
         $parts = array_values(array_filter([$type, $field_name]));
+        if ($field_selector_raw !== '' && $field_selector_raw !== $field_name) {
+            $parts[] = 'selector:' . $field_selector_raw;
+        }
+
         $query_source = isset($source['query_source']) ? sanitize_key((string) $source['query_source']) : '';
         $query_source_confidence = isset($source['query_source_confidence']) ? sanitize_key((string) $source['query_source_confidence']) : '';
         $query_branch_state = isset($source['query_branch_state']) ? sanitize_key((string) $source['query_branch_state']) : '';
@@ -148,6 +153,7 @@ final class DescriptorSummaryBuilder
         $query_result_ids = isset($source['query_result_ids']) && is_array($source['query_result_ids'])
             ? array_values(array_filter(array_map('absint', $source['query_result_ids'])))
             : [];
+        $query_result_empty = ! empty($source['query_result_empty']);
         $query_editor_field_hints = isset($source['query_editor_field_hints']) && is_array($source['query_editor_field_hints'])
             ? array_values(array_filter(array_map('sanitize_key', $source['query_editor_field_hints'])))
             : [];
@@ -178,6 +184,8 @@ final class DescriptorSummaryBuilder
 
         if (! empty($query_result_ids)) {
             $parts[] = 'query-ids:' . count($query_result_ids);
+        } elseif ($query_result_empty) {
+            $parts[] = 'query-empty';
         }
 
         if (! empty($query_editor_field_hints)) {
@@ -284,10 +292,27 @@ final class DescriptorSummaryBuilder
             'label' => $label,
             'type' => $type,
             'fieldName' => $field_name,
+            'fieldSelectorRaw' => $field_selector_raw,
             'parentFieldName' => $parent_field_name,
             'expression' => $expression,
             'summary' => implode(' / ', $parts),
         ];
+    }
+
+    /**
+     * @param string $selector
+     * @return string
+     */
+    private function normalizeAcfSelectorForSummary($selector)
+    {
+        $selector = trim((string) $selector);
+        if ($selector === '') {
+            return '';
+        }
+
+        $normalized = preg_replace('/[^A-Za-z0-9_\-]/', '', $selector);
+
+        return is_string($normalized) ? $normalized : '';
     }
 
     /**
@@ -347,6 +372,11 @@ final class DescriptorSummaryBuilder
         $scope_label = $this->resolveScopeSummaryLabel($descriptor, $entity_summary);
 
         if ($status === 'readonly') {
+            $query_notice = $this->buildReadonlyQueryCollectionNoticeSummary($descriptor, $type_label, $source_label, $scope_label);
+            if (! empty($query_notice)) {
+                return $query_notice;
+            }
+
             return [
                 'title' => sprintf(
                     /* translators: %s: entity title */
@@ -398,6 +428,69 @@ final class DescriptorSummaryBuilder
         }
 
         return [];
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $type_label
+     * @param string             $source_label
+     * @param string             $scope_label
+     * @return array<string, string>
+     */
+    private function buildReadonlyQueryCollectionNoticeSummary(EditableDescriptor $descriptor, $type_label, $source_label, $scope_label)
+    {
+        $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
+        if ($render_context !== 'query_collection') {
+            return [];
+        }
+
+        $source = isset($descriptor->source) && is_array($descriptor->source) ? $descriptor->source : [];
+        $branch_state = isset($source['query_branch_state']) ? sanitize_key((string) $source['query_branch_state']) : '';
+        $query_ids = isset($source['query_result_ids']) && is_array($source['query_result_ids'])
+            ? array_values(array_filter(array_map('absint', $source['query_result_ids'])))
+            : [];
+        $count_label = sprintf(
+            /* translators: %d: queried item count */
+            _n('%d queried item', '%d queried items', count($query_ids), 'dbvc'),
+            count($query_ids)
+        );
+
+        if ($branch_state === 'shared_option_fallback_exact_match') {
+            return [
+                'title' => __('Inspecting shared options fallback', 'dbvc'),
+                'detail' => sprintf(
+                    /* translators: 1: count label, 2: source label, 3: scope label */
+                    __('%1$s / Source: %2$s / %3$s / Active branch: shared options fallback', 'dbvc'),
+                    $count_label,
+                    $source_label,
+                    $scope_label
+                ),
+            ];
+        }
+
+        if ($branch_state === 'query_editor_post_in_unmatched') {
+            return [
+                'title' => __('Inspecting Query Editor result', 'dbvc'),
+                'detail' => sprintf(
+                    /* translators: 1: count label, 2: source label, 3: scope label */
+                    __('%1$s / Source: %2$s / %3$s / Active branch: unmatched post__in query', 'dbvc'),
+                    $count_label,
+                    $source_label,
+                    $scope_label
+                ),
+            ];
+        }
+
+        return [
+            'title' => __('Inspecting query result', 'dbvc'),
+            'detail' => sprintf(
+                /* translators: 1: count label, 2: entity type label, 3: source label */
+                __('%1$s / %2$s / Source: %3$s', 'dbvc'),
+                $count_label,
+                $type_label,
+                $source_label
+            ),
+        ];
     }
 
     /**

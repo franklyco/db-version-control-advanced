@@ -114,8 +114,6 @@ final class ElementInstrumentationService
      */
     public function capturePostQueryVars($query_vars, $settings = [], $element_id = '', $element_name = '')
     {
-        unset($element_name);
-
         if (! is_array($query_vars)) {
             return $query_vars;
         }
@@ -134,7 +132,134 @@ final class ElementInstrumentationService
             $this->post_query_vars_by_element[$alias] = $summary;
         }
 
+        if (! empty($summary['query_result_empty'])) {
+            $this->registerSyntheticEmptyDerivedPostCollectionDescriptor($summary, $element_id, $element_name);
+        }
+
         return $query_vars;
+    }
+
+    /**
+     * Fully empty Bricks loops may only render loop-start/end comments, which means the
+     * render-attributes hook never creates a marker. Register a descriptor from proven
+     * query-vars evidence so finalizeRenderedData() can inject a hidden comment anchor.
+     *
+     * @param array<string, mixed> $query_summary
+     * @param string               $element_id
+     * @param string               $element_name
+     * @return void
+     */
+    private function registerSyntheticEmptyDerivedPostCollectionDescriptor(array $query_summary, $element_id, $element_name)
+    {
+        $element_id = sanitize_text_field((string) $element_id);
+        if ($element_id === '') {
+            return;
+        }
+
+        $target_post_type = isset($query_summary['post_type']) ? sanitize_key((string) $query_summary['post_type']) : '';
+        if ($target_post_type === '' || $target_post_type === 'any') {
+            return;
+        }
+
+        $query_result_ids = isset($query_summary['post__in']) && is_array($query_summary['post__in'])
+            ? array_values(array_filter(array_map('absint', $query_summary['post__in'])))
+            : [];
+        if (! empty($query_result_ids)) {
+            return;
+        }
+
+        $query_vars = array_merge($query_summary, ['query_result_empty' => true]);
+        $element_label = $this->normalizeElementLabel((string) $element_name);
+        $inspection = [
+            'supported' => true,
+            'source_type' => 'acf_collection_field',
+            'query_source' => 'derived_bricks_query',
+            'expression' => 'query.derived:' . $element_id,
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => 'post',
+            'query_element_id' => $element_id,
+            'query_element_label' => $element_label,
+            'query_section_label' => '',
+            'query_badge_subject' => $element_label,
+            'target_post_type' => $target_post_type,
+            'query_result_post_types' => [],
+            'query_result_ids' => [],
+            'query_result_empty' => true,
+            'query_vars' => $query_vars,
+        ];
+
+        $page_context = $this->page_context->resolve();
+        if (empty($page_context['isSupported'])) {
+            return;
+        }
+
+        $classification = $this->resolvers->classifyCandidate($inspection, $page_context);
+        $status = isset($classification['status']) ? (string) $classification['status'] : 'unsupported';
+        if (! in_array($status, ['editable', 'readonly'], true)) {
+            return;
+        }
+
+        $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $entity = isset($classification['entity']) && is_array($classification['entity']) && ! empty($classification['entity'])
+            ? $classification['entity']
+            : [
+                'type' => 'post',
+                'id' => $entity_id,
+                'subtype' => isset($page_context['postType']) ? (string) $page_context['postType'] : '',
+                'acf_object_id' => $entity_id,
+            ];
+        $loop_context = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : [];
+        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
+        $scope = isset($classification['scope']) ? (string) $classification['scope'] : 'current_entity';
+        $source_group = $this->buildSourceGroup($entity, $source);
+        $sync_group = $this->buildSyncGroup($entity, $source, 'query_collection');
+        $page_descriptor = $this->buildPageDescriptor($page_context);
+        $owner_descriptor = $this->buildOwnerDescriptor($entity, $scope, $page_descriptor, $loop_context);
+        $path_descriptor = $this->buildPathDescriptor($source);
+        $mutation_descriptor = $this->buildMutationDescriptor($source, 'query_collection', $scope, $status, $path_descriptor, $loop_context);
+        $seed = implode('|', [
+            $element_id,
+            sanitize_key((string) $element_name),
+            'query',
+            'query.derived:' . $element_id,
+            '',
+        ]);
+        $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
+        $this->instrumented[$seed] = $token;
+
+        $descriptor = new EditableDescriptor(
+            $token,
+            $status,
+            $scope,
+            $entity,
+            [
+                'template_id' => 0,
+                'element_id' => $element_id,
+                'element_uid' => $element_id,
+                'element_name' => sanitize_key((string) $element_name),
+                'setting_key' => 'query',
+                'attribute_key' => '_empty_query',
+                'context' => 'query_collection',
+                'attribute' => '',
+                'source_group' => $source_group,
+                'sync_group' => $sync_group,
+                'loop_signature' => '',
+                'loop' => $loop_context,
+            ],
+            $source,
+            isset($classification['ui']) && is_array($classification['ui']) ? $classification['ui'] : [],
+            isset($classification['resolver']) && is_array($classification['resolver']) ? $classification['resolver'] : [],
+            $page_descriptor,
+            $owner_descriptor,
+            $loop_context,
+            $path_descriptor,
+            $mutation_descriptor
+        );
+
+        $this->registry->add($descriptor);
+        $this->descriptors[$token] = $descriptor;
     }
 
     /**
@@ -334,6 +459,11 @@ final class ElementInstrumentationService
         $attributes[$key]['data-dbvc-ve-source-group'] = $source_group;
         $attributes[$key]['data-dbvc-ve-group'] = $sync_group;
         $attributes[$key]['data-dbvc-ve-context'] = $descriptor->render['context'];
+        $attributes[$key]['data-dbvc-ve-badge-label'] = isset($descriptor->ui['badgeLabel']) ? sanitize_text_field((string) $descriptor->ui['badgeLabel']) : '';
+        $attributes[$key]['data-dbvc-ve-input'] = isset($descriptor->ui['input']) ? sanitize_key((string) $descriptor->ui['input']) : '';
+        if (! empty($descriptor->source['query_element_id'])) {
+            $attributes[$key]['data-dbvc-ve-query-element-id'] = sanitize_text_field((string) $descriptor->source['query_element_id']);
+        }
 
         if ($render_attribute !== '') {
             $attributes[$key]['data-dbvc-ve-attribute'] = $render_attribute;
@@ -395,7 +525,14 @@ final class ElementInstrumentationService
             }
 
             $index = isset($occurrences[$element_id]) ? (int) $occurrences[$element_id] : 0;
+            $before_injection = $content;
             $content = $this->injectMarkerIntoElementOccurrence($content, $descriptor, $element_id, $index);
+            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+                $content = $this->injectEmptyQueryCollectionMarkerAfterLoopComment($content, $descriptor, $element_id, $index);
+            }
+            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+                $content = $this->injectEmptyQueryCollectionMarkerAfterQueryTrail($content, $descriptor, $element_id, $index);
+            }
             $occurrences[$element_id] = $index + 1;
         }
 
@@ -534,12 +671,13 @@ final class ElementInstrumentationService
             ? array_values(array_filter(array_map('sanitize_key', $query_summary['post_types'])))
             : [];
         $query_element_id = isset($query_summary['element_id']) ? sanitize_text_field((string) $query_summary['element_id']) : '';
+        $query_result_empty = ! empty($query_summary['query_result_empty']);
 
         if ($target_post_type === 'any') {
             $target_post_type = '';
         }
 
-        if (empty($post_ids) || ($target_post_type === '' && empty($query_result_post_types)) || $query_element_id === '') {
+        if ((empty($post_ids) && ! $query_result_empty) || ($target_post_type === '' && empty($query_result_post_types)) || $query_element_id === '') {
             return [
                 'supported' => false,
             ];
@@ -563,6 +701,7 @@ final class ElementInstrumentationService
             'target_post_type' => $target_post_type,
             'query_result_post_types' => $query_result_post_types,
             'query_result_ids' => $post_ids,
+            'query_result_empty' => $query_result_empty,
             'query_vars' => $query_summary,
         ];
     }
@@ -642,28 +781,13 @@ final class ElementInstrumentationService
     {
         $settings_query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
         $post_id_evidence = $this->resolvePostQueryIdEvidence($query_vars, $settings_query);
-        $post_ids = isset($post_id_evidence['ids']) && is_array($post_id_evidence['ids'])
-            ? array_values(array_filter(array_map('absint', $post_id_evidence['ids'])))
+        $raw_post_ids = isset($post_id_evidence['ids']) && is_array($post_id_evidence['ids'])
+            ? array_values(array_map('absint', $post_id_evidence['ids']))
             : [];
-        if (empty($post_ids) || $post_ids === [0]) {
-            return [];
-        }
+        $post_ids = array_values(array_filter($raw_post_ids));
+        $has_empty_id_evidence = ! empty($raw_post_ids) && empty($post_ids);
 
-        $declared_post_types = $this->normalizePostTypeList(isset($query_vars['post_type']) ? $query_vars['post_type'] : ($settings_query['post_type'] ?? ''), true);
-        $post_type = $this->normalizeSinglePostType($declared_post_types);
-        if ($post_type === '') {
-            $post_type = in_array('any', $declared_post_types, true)
-                ? 'any'
-                : $this->inferSinglePostTypeFromIds($post_ids);
-        }
-        if ($post_type === '') {
-            return [];
-        }
-        $result_post_types = $this->inferPostTypesFromIds($post_ids);
-
-        $posts_per_page = isset($query_vars['posts_per_page']) && is_numeric($query_vars['posts_per_page'])
-            ? (int) $query_vars['posts_per_page']
-            : (isset($settings_query['posts_per_page']) && is_numeric($settings_query['posts_per_page']) ? (int) $settings_query['posts_per_page'] : 0);
+        $raw_result_post_types = $this->inferPostTypesFromIds($post_ids);
         $dynamic_tags = isset($post_id_evidence['dynamic_tags']) && is_array($post_id_evidence['dynamic_tags'])
             ? array_values(array_filter(array_map('sanitize_text_field', $post_id_evidence['dynamic_tags'])))
             : [];
@@ -681,28 +805,121 @@ final class ElementInstrumentationService
                 )
             )
         );
+        $query_editor_active = ! empty($settings_query['queryEditor']);
+        $has_source_evidence = ! empty($dynamic_tags) || ! empty($query_editor_hints);
+        if (empty($post_ids) && ! $has_empty_id_evidence && ! $has_source_evidence) {
+            return [];
+        }
+
+        $declared_post_types = $this->normalizePostTypeList(isset($query_vars['post_type']) ? $query_vars['post_type'] : ($settings_query['post_type'] ?? ''), true);
+        $query_editor_post_type = $this->resolveQueryEditorPostTypeHint($settings_query);
+        $post_type = $query_editor_post_type !== '' && (empty($declared_post_types) || in_array($query_editor_post_type, $declared_post_types, true))
+            ? $query_editor_post_type
+            : $this->normalizeSinglePostType($declared_post_types);
+        if ($post_type === '') {
+            $post_type = in_array('any', $declared_post_types, true)
+                ? 'any'
+                : $this->inferSinglePostTypeFromIds($post_ids);
+        }
+
+        $query_post_ids = $this->filterPostQueryResultIdsByDeclaredTypes($post_ids, $post_type, $declared_post_types);
+        $excluded_post_ids = array_values(array_diff($post_ids, $query_post_ids));
+        $result_post_types = $this->inferPostTypesFromIds($query_post_ids);
+
+        if ($post_type === '' && empty($post_ids)) {
+            return [];
+        }
+
+        if ($post_type === '' && ! $this->shouldAllowMixedPostTypeQuerySummary($result_post_types, $query_editor_active, $acf_field_hints)) {
+            return [];
+        }
+
+        $posts_per_page = isset($query_vars['posts_per_page']) && is_numeric($query_vars['posts_per_page'])
+            ? (int) $query_vars['posts_per_page']
+            : (isset($settings_query['posts_per_page']) && is_numeric($settings_query['posts_per_page']) ? (int) $settings_query['posts_per_page'] : 0);
 
         return [
             'source' => 'bricks/posts/query_vars',
             'post_type' => $post_type,
             'post_types' => $result_post_types,
-            'post__in' => $post_ids,
+            'post__in' => $query_post_ids,
+            'post__in_raw' => $post_ids,
+            'post__in_raw_post_types' => $raw_result_post_types,
+            'post__in_excluded_by_post_type' => $excluded_post_ids,
             'post__in_source' => isset($post_id_evidence['source']) ? sanitize_key((string) $post_id_evidence['source']) : '',
             'post__in_setting_source' => $this->resolvePostQuerySettingSource($post_id_evidence),
             'post__in_setting_key' => isset($post_id_evidence['setting_key']) ? sanitize_key((string) $post_id_evidence['setting_key']) : '',
             'post__in_dynamic_tags' => $dynamic_tags,
             'post__in_acf_field_hints' => $acf_field_hints,
             'post__in_has_dynamic_source' => ! empty($dynamic_tags),
+            'post__in_empty_sentinel' => $has_empty_id_evidence,
+            'query_result_empty' => empty($query_post_ids),
             'query_editor_acf_field_hints' => $query_editor_hints,
             'query_editor_acf_option_field_hints' => isset($query_editor_source_hints['option_fields']) && is_array($query_editor_source_hints['option_fields']) ? $query_editor_source_hints['option_fields'] : [],
             'query_editor_acf_explicit_field_hints' => isset($query_editor_source_hints['explicit_object_fields']) && is_array($query_editor_source_hints['explicit_object_fields']) ? $query_editor_source_hints['explicit_object_fields'] : [],
             'query_editor_acf_source_hints' => $query_editor_source_hints,
-            'query_editor_active' => ! empty($settings_query['queryEditor']),
+            'query_editor_active' => $query_editor_active,
+            'query_editor_post_type_hint' => $query_editor_post_type,
             'orderby' => $this->normalizeQueryOrderby(isset($query_vars['orderby']) ? $query_vars['orderby'] : ($settings_query['orderby'] ?? '')),
             'posts_per_page' => $posts_per_page,
             'paged' => isset($query_vars['paged']) && is_numeric($query_vars['paged']) ? max(1, absint($query_vars['paged'])) : 1,
             'disable_query_merge' => ! empty($query_vars['disable_query_merge']) || ! empty($settings_query['disable_query_merge']),
         ];
+    }
+
+    /**
+     * Mixed post-type query summaries are only useful when they can continue into
+     * the full-collection resolver path. Opaque mixed ID lists still stay hidden.
+     *
+     * @param array<int, string> $result_post_types
+     * @param bool               $query_editor_active
+     * @param array<int, string> $acf_field_hints
+     * @return bool
+     */
+    private function shouldAllowMixedPostTypeQuerySummary(array $result_post_types, $query_editor_active, array $acf_field_hints)
+    {
+        $result_post_types = array_values(array_filter(array_map('sanitize_key', $result_post_types)));
+        if (count($result_post_types) < 2) {
+            return false;
+        }
+
+        return ! empty($query_editor_active) || ! empty($acf_field_hints);
+    }
+
+    /**
+     * @param array<int, int>    $post_ids
+     * @param string             $post_type
+     * @param array<int, string> $declared_post_types
+     * @return array<int, int>
+     */
+    private function filterPostQueryResultIdsByDeclaredTypes(array $post_ids, $post_type, array $declared_post_types)
+    {
+        $post_ids = array_values(array_filter(array_map('absint', $post_ids)));
+        if (empty($post_ids)) {
+            return [];
+        }
+
+        $post_type = sanitize_key((string) $post_type);
+        $target_post_types = [];
+        if ($post_type !== '' && $post_type !== 'any') {
+            $target_post_types = [$post_type];
+        } elseif (! in_array('any', $declared_post_types, true)) {
+            $target_post_types = array_values(array_filter(array_map('sanitize_key', $declared_post_types)));
+        }
+
+        if (empty($target_post_types)) {
+            return $post_ids;
+        }
+
+        $filtered = [];
+        foreach ($post_ids as $post_id) {
+            $resolved_type = get_post_type($post_id);
+            if (is_string($resolved_type) && in_array($resolved_type, $target_post_types, true)) {
+                $filtered[] = $post_id;
+            }
+        }
+
+        return array_values($filtered);
     }
 
     /**
@@ -793,6 +1010,15 @@ final class ElementInstrumentationService
                     'dynamic_tags' => $dynamic_tags,
                 ];
             }
+
+            if (! empty($dynamic_tags)) {
+                return [
+                    'ids' => [],
+                    'source' => 'settings_dynamic_' . $setting_key,
+                    'setting_key' => $setting_key,
+                    'dynamic_tags' => $dynamic_tags,
+                ];
+            }
         }
 
         return [
@@ -854,6 +1080,41 @@ final class ElementInstrumentationService
         }
 
         return array_values(array_unique(array_filter($hints)));
+    }
+
+    /**
+     * Resolve common scalar post-type assignments in Bricks Query Editor snippets.
+     *
+     * @param array<string, mixed> $settings_query
+     * @return string
+     */
+    private function resolveQueryEditorPostTypeHint(array $settings_query)
+    {
+        $query_editor = isset($settings_query['queryEditor']) && is_scalar($settings_query['queryEditor'])
+            ? (string) $settings_query['queryEditor']
+            : '';
+        if ($query_editor === '') {
+            return '';
+        }
+
+        $patterns = [
+            '/\$post_type\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/i',
+            '/[\'"]post_type[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i',
+            '/\$query_args\s*\[\s*[\'"]post_type[\'"]\s*\]\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (! preg_match($pattern, $query_editor, $matches)) {
+                continue;
+            }
+
+            $post_type = isset($matches[1]) ? sanitize_key((string) $matches[1]) : '';
+            if ($post_type !== '') {
+                return $post_type;
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -1817,6 +2078,107 @@ final class ElementInstrumentationService
     }
 
     /**
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_id
+     * @param int                $occurrence_index
+     * @return string
+     */
+    private function injectEmptyQueryCollectionMarkerAfterLoopComment($content, EditableDescriptor $descriptor, $element_id, $occurrence_index)
+    {
+        if (! $this->isEmptyQueryCollectionDescriptor($descriptor)) {
+            return $content;
+        }
+
+        $pattern = '/<!--\s*brx-loop-start-' . preg_quote($element_id, '/') . '\s*-->/';
+        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
+            return $content;
+        }
+
+        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
+            return $content;
+        }
+
+        $comment = (string) $matches[0][$occurrence_index][0];
+        $offset = (int) $matches[0][$occurrence_index][1];
+        $marker_tag = $this->appendMarkerAttributesToTag(
+            '<span class="dbvc-ve-empty-query-marker" data-dbvc-ve-empty-query="1" aria-hidden="true">',
+            $descriptor
+        ) . '</span>';
+
+        return substr((string) $content, 0, $offset + strlen($comment))
+            . $marker_tag
+            . substr((string) $content, $offset + strlen($comment));
+    }
+
+    /**
+     * Bricks can replace a fully empty query loop with a query-trail placeholder
+     * instead of the loop-start comment. Anchor the same hidden marker there.
+     *
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_id
+     * @param int                $occurrence_index
+     * @return string
+     */
+    private function injectEmptyQueryCollectionMarkerAfterQueryTrail($content, EditableDescriptor $descriptor, $element_id, $occurrence_index)
+    {
+        if (! $this->isEmptyQueryCollectionDescriptor($descriptor)) {
+            return $content;
+        }
+
+        $pattern = '/<div\b(?=[^>]*\bclass=(["\'])(?:(?:(?!\1).)*)\bbrx-query-trail\b(?:(?:(?!\1).)*)\1)(?=[^>]*\bdata-query-element-id=(["\'])' . preg_quote($element_id, '/') . '\2)[^>]*>\s*<\/div>/is';
+        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
+            return $content;
+        }
+
+        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
+            return $content;
+        }
+
+        $query_trail = (string) $matches[0][$occurrence_index][0];
+        $offset = (int) $matches[0][$occurrence_index][1];
+        $marker_tag = $this->appendMarkerAttributesToTag(
+            '<span class="dbvc-ve-empty-query-marker" data-dbvc-ve-empty-query="1" aria-hidden="true">',
+            $descriptor
+        ) . '</span>';
+
+        return substr((string) $content, 0, $offset + strlen($query_trail))
+            . $marker_tag
+            . substr((string) $content, $offset + strlen($query_trail));
+    }
+
+    /**
+     * @param string $content
+     * @param string $token
+     * @return bool
+     */
+    private function contentContainsMarkerToken($content, $token)
+    {
+        $token = esc_attr((string) $token);
+        if ($token === '') {
+            return false;
+        }
+
+        return strpos((string) $content, 'data-dbvc-ve="' . $token . '"') !== false
+            || strpos((string) $content, "data-dbvc-ve='" . $token . "'") !== false;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function isEmptyQueryCollectionDescriptor(EditableDescriptor $descriptor)
+    {
+        $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
+        $source_type = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : '';
+
+        return $render_context === 'query_collection'
+            && $source_type === 'acf_collection_field'
+            && ! empty($descriptor->source['query_result_empty']);
+    }
+
+    /**
      * @param string             $element_html
      * @param EditableDescriptor $descriptor
      * @return string
@@ -1857,6 +2219,9 @@ final class ElementInstrumentationService
             'data-dbvc-ve-source-group' => isset($descriptor->render['source_group']) ? (string) $descriptor->render['source_group'] : '',
             'data-dbvc-ve-group' => isset($descriptor->render['sync_group']) ? (string) $descriptor->render['sync_group'] : '',
             'data-dbvc-ve-context' => isset($descriptor->render['context']) ? (string) $descriptor->render['context'] : 'text',
+            'data-dbvc-ve-badge-label' => isset($descriptor->ui['badgeLabel']) ? sanitize_text_field((string) $descriptor->ui['badgeLabel']) : '',
+            'data-dbvc-ve-input' => isset($descriptor->ui['input']) ? sanitize_key((string) $descriptor->ui['input']) : '',
+            'data-dbvc-ve-query-element-id' => isset($descriptor->source['query_element_id']) ? sanitize_text_field((string) $descriptor->source['query_element_id']) : '',
         ];
 
         if (! empty($descriptor->render['attribute'])) {
@@ -2256,12 +2621,16 @@ final class ElementInstrumentationService
             && $field_type === 'relationship'
             && isset($source['query_subset_write_mode'])
             && sanitize_key((string) $source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
-            $contract = 'relationship_collection_filtered_subset';
+            $contract = $scope === 'shared_entity'
+                ? 'shared_relationship_collection_filtered_subset'
+                : 'relationship_collection_filtered_subset';
         } elseif ($render_context === 'query_collection'
             && $field_type === 'post_object'
             && isset($source['query_subset_write_mode'])
             && sanitize_key((string) $source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
-            $contract = 'post_object_collection_filtered_subset';
+            $contract = $scope === 'shared_entity'
+                ? 'shared_post_object_collection_filtered_subset'
+                : 'post_object_collection_filtered_subset';
         } elseif ($render_context === 'query_collection' && $field_type === 'relationship') {
             if (! empty($loop_context['active']) && $scope === 'related_entity') {
                 $contract = 'loop_owned_relationship_collection';

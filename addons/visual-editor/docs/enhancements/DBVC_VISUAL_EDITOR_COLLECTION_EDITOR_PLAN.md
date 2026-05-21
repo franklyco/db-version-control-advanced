@@ -78,6 +78,7 @@ Required source metadata:
 Current-owner collection roots should use:
 - badge text: `Edit Connected`
 - current-owner border color treatment
+- frontend placement: one overlay badge anchored to the resolved query-loop parent/items container, not one hover badge per repeated query item
 
 This badge is only valid when VE can prove:
 - the loop root maps back to one direct current-owner ACF relationship/post-object field
@@ -181,12 +182,17 @@ Supported in the current slice:
 - the dynamic tag maps to one current-owner direct ACF `relationship` / `post_object` field
 - the final target post type is concrete or can be inferred from a single post type in the ordered ID list
 - the ordered IDs exactly match that field's filtered target-post-type subset
-- mixed/`any` queries are writable only when the ordered IDs exactly match the full current-owner field value; those use the full `relationship_collection` / `post_object_collection` contract instead of the filtered-subset contract
+- mixed/`any` queries are writable only when source evidence exists and the ordered IDs exactly match the full current-owner field value; those use the full `relationship_collection` / `post_object_collection` contract instead of the filtered-subset contract
+- mixed post-type Query Editor loops can use direct current-owner `get_field()` hints to reach that same full-collection proof path; unmatched fallback branches remain inspect-only
+- native dynamic include/post__in controls preserve their saved `{acf_*}` tag evidence even if the saved setting cannot be rendered during summary capture, provided the final `bricks/posts/query_vars` exposes the resolved ordered IDs
+- native controls with only final query IDs but no saved ACF dynamic-tag evidence remain unsupported, even if the IDs happen to match a current-owner field
 
 Not writable in this slice:
 - static/manual Bricks `post__in` IDs because they do not identify an editable source field
+- opaque/native final-ID lists where the saved Bricks setting no longer exposes the ACF dynamic tag that produced the IDs
 - native include controls that use non-ACF dynamic tags
 - mixed-post-type result sets that do not exactly match the full current-owner field value
+- mixed-post-type result sets with no ACF dynamic tag or Query Editor source hint
 - paginated, limited, or sorted subsets that do not represent the full source subset
 
 Descriptor/source metadata added by this phase:
@@ -222,7 +228,7 @@ Example source shape:
 
 Required branch states:
 - current-owner branch active: editable current-post subset if exact source field and target subset are proven
-- options fallback branch active: shared/option-scope inspect-only first, then writable only with explicit shared-option acknowledgement and a save contract for the option field
+- options fallback branch active: shared/option-scope with inspect-only default, then writable only for exact target-CPT subsets or exact full-field matches with explicit shared-option acknowledgement and a save contract for the option field
 - recent/default query branch active: inspect-only or no badge because there is no relationship field to mutate
 - ambiguous branch: inspect-only with source evidence and no save action
 
@@ -230,29 +236,47 @@ Current-owner hint widening now active:
 - simple direct `get_field('field_name')` calls in Query Editor PHP are extracted as current-owner source hints
 - `get_field('field_name', 'option')`, user-owned reads, and any explicit object-ID reads are intentionally excluded from writable hints in this slice
 - hints are only used to narrow candidate matching; the final ordered query IDs still must exactly match the target-post-type subset of one current-owner ACF relationship/post_object field
-- this does not enable shared-option fallback editing
+- this hint branch itself does not enable shared-option fallback editing; exact options fallback subsets are handled by the explicit shared-option branch below
 
 Inspect-only fallback evidence now active:
 - Query Editor `get_field()` calls are split into direct current-owner hints, option-field hints, and explicit-object hints.
 - If final `post__in` IDs do not prove exactly one current-owner relationship/post_object field, the loop can still surface as locked evidence instead of disappearing.
-- Exact ACF options relationship/post_object fallback matches are labelled with `query_branch_state = shared_option_fallback_exact_match`, `scope = shared_entity`, and an inspect-only warning.
+- Exact ACF options relationship/post_object fallback matches are labelled with `query_branch_state = shared_option_fallback_exact_match` and `scope = shared_entity`.
+- Exact options fallback matches with one concrete target post type can now use the shared filtered-subset editor with acknowledgement.
+- Exact options fallback matches with no concrete target post type can use the full shared collection editor only when the rendered query IDs exactly equal the full stored options field order.
+- Exact options fallback matching now walks nested ACF group fields and preserves `field_selector_raw`, leaf field identity, `group_path`, and `group_key_path` before enabling the shared-option collection contract.
 - Recent/default or otherwise unmatched Query Editor `post__in` branches are labelled with `query_branch_state = query_editor_post_in_unmatched` and remain inspect-only.
-- This branch is deliberately read-only; shared-option mutation belongs to the later explicit-warning/save-contract phase.
+- Shared-option mutation is deliberately limited to exact target-CPT subset replacement or exact full-field replacement; current-field seeding, recent/default editing, partial windows, sorted results, and ambiguous fallback editing remain deferred.
 
 Panel requirements for custom fallback branches:
 - show the active branch label, such as `Current page related items`, `Site default related items`, or `Recent posts fallback`
 - show candidate source fields and owner scope where proven
 - explain why save is enabled or locked
 - when options fallback is active, use shared-option warnings and shared-option save labels
-- when current field is empty but options fallback is active, provide a future explicit action path such as `Add items to current page field` rather than silently editing the options fallback
+- when current field is empty but options fallback is active, provide an explicit action path such as `Add items to current page field` rather than silently editing the options fallback
+
+Current UI status:
+- locked fallback branches use `reference_collection_preview`, a read-only panel mode that groups queried items by object/CPT type and shows frontend/backend item links when available
+- notice copy names the active branch as either shared options fallback or unmatched Query Editor `post__in`
+- search, add, remove, reorder, and save controls are intentionally absent from the locked preview mode
+- exact target-CPT and exact full-field shared options fallback branches use the standard `reference_collection` editor, shared-scope acknowledgement, and reload-after-save behavior
+- exact shared options fallback branches can also expose an explicit `Add to current page field` action when one current-owner relationship/post_object hint is proven, the current field has no existing target items for that branch, and the action can be routed through a dedicated current-owner seed contract; nested current-owner group fields are allowed only when the flattened selector and grouped metadata are proven
+
+Next writable slice:
+- exact ACF options fallback branches may become editable only when the final query IDs equal one target-post-type subset or the full stored value of one options-owned ACF `relationship` / `post_object` field
+- descriptors must remain `scope = shared_entity`, `entity.type = option`, and `source_context = shared_option_fallback`
+- save contracts must use shared filtered-subset names so the panel and REST route require shared-scope acknowledgement before saving
+- target-subset saves must reuse the filtered-subset stale check, target-post-type validation, full-field merge preservation, reload-after-save behavior, and journal payload
+- exact full-field options saves use the standard shared collection contract and reload-after-save behavior
+- current-field seeding from fallback is limited to the explicit current-owner seed action; nested group seed targets preserve their raw selector and group path metadata before mutation; recent/default fallback editing, partial windows, sorted results, and ambiguous fallback editing remain deferred
 
 Implementation slices for Phase 7:
 1. Add inspect-only branch evidence for known final `post__in` queries that do not match a current-owner field. Implemented for unmatched Query Editor `post__in` branches and exact ACF options fallback matches.
 2. Continue widening current-owner Query Editor source hints only for direct, unambiguous current-owner ACF relationship/post_object reads.
-3. Detect exact option-owned ACF relationship/post_object fallback matches and label them as shared-option query collections. Implemented as inspect-only only.
+3. Detect exact option-owned ACF relationship/post_object fallback matches and label them as shared-option query collections. Implemented; exact target-CPT subsets use the shared filtered-subset editor, exact full-field matches use the full shared collection editor, and nested group option fields reuse the same recursive field matching as current-owner collections.
 4. Add an explicit branch selector UI only after source ownership can be shown in the panel.
-5. Enable shared-option subset saves only after the option field path, target post type, acknowledgement copy, stale-subset handling, and journal payload are proven.
-6. Add a current-owner "seed field from fallback" action only as a separate explicit mutation contract, not as a side effect of editing the fallback list.
+5. Enable shared-option saves only after the option field path, target post type or full-field identity, acknowledgement copy, stale-subset/full-field handling, and journal payload are proven. Current slice is limited to exact target-CPT options fallback subsets and exact full-field options fallback matches.
+6. Add a current-owner "seed field from fallback" action only as a separate explicit mutation contract, not as a side effect of editing the fallback list. Implemented for exact shared-option fallback branches when one current-owner direct or nested-group field hint is proven and the current field has no existing target items to overwrite.
 
 ## Derived Bricks Query Loop Linked-Posts Editor
 
@@ -476,10 +500,13 @@ Security guardrails:
 
 1. Detection probe and docs:
    - status: implemented in code for post loops whose final Bricks `posts/query_vars` expose a concrete `post__in` list and a single target `post_type`, and widened to native Bricks dynamic include/post__in controls that expose ACF dynamic-tag source evidence
+   - nested current-owner ACF group descendants are included when the relationship/post_object leaf can be proven through the flattened ACF selector, for example `benefits_section_benefitsContent_related_items` under `benefits_section -> benefitsContent`
    - identify live Bricks query-loop examples such as `page_related_items` filtered to `service`
    - inspect whether final query args expose `post__in`, `post_type`, `orderby`, and pagination state
    - capture saved native query-control source evidence: include/post__in setting key, dynamic tags, ACF field-name hints, and whether Query Editor PHP was active
    - confirm a current-owner ACF field can be matched exactly by comparing the queried target-post-type subset to one current-owner relationship/post_object field
+- for grouped ACF fields, preserve the exact flattened selector as `field_selector_raw` when ACF can read the field by the original mixed-case name but not by the lowercased `sanitize_key()` output
+- source summaries should display that raw selector as `selector:{field_selector_raw}` when it differs from the normalized `field_name`, so QA can confirm the visible panel metadata matches the resolver's trusted read/write selector
    - confirm a mixed/any query can match the full ordered current-owner field value before using the full collection contract
    - reject native static include/post__in controls as unsupported because they do not identify a writable ACF source
    - add fixture notes to the QA log before enabling writable behavior
@@ -488,19 +515,21 @@ Security guardrails:
    - status: implemented as a locked `Modify Linked Posts` marker backed by the existing `query_collection` descriptor family
    - surface a container/root marker only when one source field matches
    - Bricks strips `hasLoop` from the visible rendered loop root, so the detector must rely on captured final query vars plus the retained query settings on the visible root instead of requiring `hasLoop`
-   - during the temporary UX bridge, the frontend also adds one visible linked-posts button for each nearest containing `<section>` that contains an eligible linked-post query marker
+   - during the temporary UX bridge, the frontend also adds one visible linked-posts button for each resolved Bricks query-loop items container that contains an eligible linked-post query marker
    - the temporary button label should prefer the single target post type proven from the query loop, with copy shaped like `Review Posts` / `FAQ Posts` / `Service Posts`
    - if a later inspect-only marker supports a mixed-post-type query, fall back to `Manage {Bricks element/section label} Posts`
-   - the temporary section button is mounted in the shared overlay layer and fixed to the left side of the viewport, vertically centered, so content-section overflow or transform styles do not control its placement
+   - the temporary button remains mounted in the shared overlay layer but is positioned against the target container's viewport rect, so content-section overflow or transform styles do not clip the badge while it visually sits on containers such as `brxe-swnffk`
+   - when multiple eligible query loops resolve to the same container, lay their bridge badges out in a horizontal row before falling back to viewport-safe wrapping
    - the underlying query-loop container marker keeps the existing hover/focus inspect-only badge treatment until the filtered-subset save contract is enabled
    - show source field, target post type, current subset, preserved non-target count, and why save is locked
    - use badge text locked `Modify Linked Posts` until write safety is proven
-   - render within the existing `dbvc-ve-panel` shell with the same source summary and details toggle
+- render within the existing `dbvc-ve-panel` shell with the same source summary and details toggle
 
 3. Writable current-owner subset:
    - status: implemented for current-owner derived Bricks post query loops with one exact ACF relationship/post_object source field and one proven target post type
    - enable `relationship_collection_filtered_subset`
    - enable `post_object_collection_filtered_subset`
+   - grouped current-owner source fields use the same filtered-subset contract once the flattened selector and stored IDs are proven; they do not use row-backed ancestry unless the query root is actually inside a repeater/flexible row
    - reuse reference search and selected-list UI
    - scope search and validation to `query_target_post_type`
    - save by rereading the full source field immediately before write, rejecting stale target-subset conflicts, replacing only target-post-type IDs, and preserving all non-target IDs in their existing relative order
@@ -518,6 +547,16 @@ Security guardrails:
    - improve empty-state handling when the current target subset is empty but source mapping is explicit
    - add clear preserved-items disclosure for mixed relationship fields
 
+4A. Empty current-owner query loops:
+   - support Bricks loops that render only comments such as `<!--brx-loop-start-zsfmel-->` because the current-owner relationship/post_object field has no matching related items
+   - require explicit source evidence from a saved ACF dynamic include/post__in control or a Query Editor current-owner `get_field('field_name')` hint
+   - require a concrete target post type from final query vars or saved query settings; empty mixed/`any` loops remain unsupported because there are no result IDs to prove the target subset
+   - require the hinted current-owner ACF field's stored target-CPT subset to be empty at descriptor creation
+   - register a synthetic `query_collection` descriptor from the captured Bricks `posts/query_vars` hook, because a fully empty loop may never call the render-attributes hook for the loop element
+   - keep the normal filtered-subset save contract so adding the first item rereads the full ACF value, rejects stale target-subset conflicts, preserves non-target IDs, writes the merged ordered ID list, journals the mutation, and reloads the page
+   - when Bricks renders no loop item element, inject a hidden Visual Editor marker immediately after the matching `brx-loop-start-{element_id}` comment so the existing container-level badge can anchor to the nearest visible Bricks parent container
+   - do not make empty shared-option fallback, recent/default, paginated, sorted, or ambiguous Query Editor branches writable in this slice
+
 5. Optional explicit mappings:
    - add a safe admin/frontend mapping layer for query loops that cannot be automatically proven
    - mapping fields: Bricks element ID, source ACF field, owner scope, target post type, optional taxonomy filter
@@ -532,6 +571,8 @@ Security guardrails:
 ### Acceptance Criteria
 
 - A custom Bricks query loop derived from `page_related_items` and filtered to `service` can surface one container-level `Modify Linked Posts` badge.
+- A custom Bricks query loop derived from a nested group relationship field such as `benefits_section_benefitsContent_related_items` and filtered to `benefit` can surface the same container-level collection badge.
+- The same kind of custom or native dynamic query loop can surface a container-level badge when the proven current-owner target subset is empty and Bricks only outputs the loop-start comment.
 - The modal lists only the currently linked service posts from `page_related_items`.
 - Search returns only valid service posts allowed by the source ACF field settings.
 - Saving replaces the service subset while preserving other post types in `page_related_items`.

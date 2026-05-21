@@ -143,12 +143,18 @@
   - active field opens, saves, reload-after-save flows, and Media Library interactions remain higher priority than background warmup
 - active within the collection-editor branch:
   - derived Bricks Query Editor loops backed by one current-owner relationship/post_object field now have a writable filtered-subset contract when the final `post__in` subset exactly matches one current-owner ACF field; the save path preserves non-target IDs in mixed fields such as `page_related_items`
-  - Bricks native dynamic include/post__in controls are now part of that filtered-subset branch when the saved control exposes ACF dynamic-tag evidence; native static/manual ID lists stay unsupported because Visual Editor cannot safely infer a writable source
+  - Bricks native dynamic include/post__in controls are now part of that filtered-subset/full-collection branch when the saved control exposes ACF dynamic-tag evidence; native static/manual ID lists and opaque native final-ID lists stay unsupported because Visual Editor cannot safely infer a writable source
   - direct current-owner `get_field('field_name')` calls inside Query Editor PHP now contribute source hints for exact current-owner filtered-subset matching; option/user/explicit-object reads are still deferred
-  - custom Query Editor `post__in` fallback branches now surface inspect-only evidence when they cannot prove a current-owner source; exact ACF options fallback matches are labelled as shared-option fallback sources but remain locked
-  - mixed/`any` derived post queries can use the full collection contract only when the final ordered query IDs exactly equal one current-owner relationship/post_object field's full value
+  - custom Query Editor `post__in` fallback branches now surface inspect-only evidence when they cannot prove a current-owner source; exact ACF options fallback matches are labelled as shared-option fallback sources, and exact target-CPT or exact full-field option matches can use shared collection contracts with acknowledgement
+  - exact ACF options fallback matches can also expose an explicit current-page seed action when one direct current-owner relationship/post_object hint is proven and the current field is empty for that target branch
+  - locked fallback branches now use a read-only connected-items preview in the panel, with grouped queried items and active-branch copy instead of raw descriptor JSON
+  - mixed/`any` derived post queries can use the full collection contract only when source evidence exists and the final ordered query IDs exactly equal one current-owner relationship/post_object field's full value
+  - nested ACF group relationship/post_object fields are now included in current-owner derived Query Editor collection matching when the flattened field selector and final queried ID subset prove one source, including mixed-case selectors that require a preserved `field_selector_raw`
+  - nested-group matching now also applies to exact shared-option fallback collections and explicit seed-current-field targets, with grouped metadata preserved before shared-option or seed contracts become writable
+  - source-summary details now expose trusted raw grouped selectors when they differ from normalized field names, so panel/status QA can verify the exact flattened ACF selector behind nested-group collection badges
+  - current-owner empty derived query loops use a narrow first-slice plan: explicit ACF source evidence, concrete target post type, empty stored target subset, synthetic descriptor registration from captured query-vars, hidden marker injection after the Bricks loop-start comment, and the existing filtered-subset save contract for adding the first connected item
 - deferred within the collection-editor branch:
-  - custom Query Editor fallback branch writes, including options-backed defaults and recent-post fallbacks
+  - custom Query Editor fallback branch writes beyond exact shared-option target-CPT/full-field matches and the narrow explicit current-page seed action, including recent-post fallbacks, empty shared-option fallback branches, and ambiguous branch selection
   - shared connected-item collections
   - loop-owned non-post connected-item collections
   - taxonomy collection mutation

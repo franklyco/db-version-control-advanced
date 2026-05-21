@@ -575,13 +575,13 @@ UI priority:
 | Phase | Status | Goal |
 |---|---|---|
 | `P0` | `CLOSED` | Initial repository discovery and guide creation |
-| `P1` | `WIP` | Build configuration domain registry and provider contracts |
-| `P2` | `OPEN` | Implement export package builder with redaction and profiles |
-| `P3` | `OPEN` | Implement import validation, sessions, and diff engine |
-| `P4` | `OPEN` | Add admin UI and REST endpoints |
-| `P5` | `OPEN` | Add apply, backup, rollback, and runtime refresh |
-| `P6` | `OPEN` | Expand granular environment replacement controls |
-| `P7` | `OPEN` | Add PHPUnit coverage and safe runtime smoke tests |
+| `P1` | `DONE` | Build configuration domain registry and provider contracts |
+| `P2` | `DONE` | Implement export package builder with redaction and profiles |
+| `P3` | `WIP` | Implement import validation, sessions, and diff engine |
+| `P4` | `WIP` | Add admin UI and REST endpoints |
+| `P5` | `WIP` | Add apply, backup, rollback, and runtime refresh |
+| `P6` | `WIP` | Expand granular environment replacement controls |
+| `P7` | `WIP` | Add PHPUnit coverage and safe runtime smoke tests |
 | `P8` | `DEFERRED` | Add WP-CLI parity, encrypted secret transport, and fleet workflows |
 
 Update this table at the end of each implementation tranche.
@@ -686,7 +686,14 @@ Create the domain registry and enough providers to inventory, export, validate, 
 
 ## Phase 2 - Export Package Builder
 
-Status: `OPEN`
+Status: `DONE`
+
+### 2026-05-19 package builder tranche notes
+
+- Added storage helpers under uploads `dbvc/dbvc-config-portability/` with `exports`, `sessions`, and `backups` roots.
+- Added the export package builder for registry-backed domain exports.
+- Implemented package id generation, export profiles, optional per-domain field selection, `manifest.json`, `site.json`, `domains/*.json`, `redactions.json`, `checksums.json`, ZIP creation, workspace cleanup, and `record.json`.
+- Added PHPUnit coverage for ZIP layout, checksums, environment redactions, and API secret exclusion.
 
 ### Outcome
 
@@ -694,17 +701,17 @@ Generate a downloadable ZIP package for selected domains and fields.
 
 ### Tasks
 
-- [ ] Add package id generation.
-- [ ] Add package workspace under `dbvc-config-portability/exports/`.
-- [ ] Add export profiles.
-- [ ] Add field selection resolver.
-- [ ] Add redaction and placeholder service.
-- [ ] Add manifest writer.
-- [ ] Add domain JSON writers.
-- [ ] Add checksums.
-- [ ] Add ZIP builder.
-- [ ] Add export record/history storage.
-- [ ] Add tests for package layout, checksums, and redacted secrets.
+- [x] Add package id generation.
+- [x] Add package workspace under `dbvc-config-portability/exports/`.
+- [x] Add export profiles.
+- [x] Add field selection resolver.
+- [x] Add redaction and placeholder service.
+- [x] Add manifest writer.
+- [x] Add domain JSON writers.
+- [x] Add checksums.
+- [x] Add ZIP builder.
+- [x] Add export record/history storage.
+- [x] Add tests for package layout, checksums, and redacted secrets.
 
 ### Acceptance Criteria
 
@@ -715,7 +722,26 @@ Generate a downloadable ZIP package for selected domains and fields.
 
 ## Phase 3 - Import Validation, Sessions, And Diff
 
-Status: `OPEN`
+Status: `WIP`
+
+### 2026-05-19 import session tranche notes
+
+- Added upload package staging for DBVC configuration portability ZIP files.
+- Added safe extraction with path traversal protection.
+- Added manifest/package type/schema validation and checksum validation before session creation.
+- Added import session storage under `dbvc-config-portability/sessions/`.
+- Added registry-backed domain diff generation without writing target settings.
+- Added PHPUnit coverage proving staged import diffs are generated and target option values are not applied.
+
+### 2026-05-19 apply preflight tranche notes
+
+- Added import apply preflight validation for required environment decisions.
+- Unresolved prompt-redacted fields now block apply unless the operator explicitly keeps the current target value or supplies a replacement.
+
+### 2026-05-19 compatibility warning tranche notes
+
+- Added a lightweight session warning pass for package DBVC version, per-domain version mismatches, skipped domains, and empty target providers.
+- Warnings are review-only and do not introduce a separate blocking workflow.
 
 ### Outcome
 
@@ -723,16 +749,17 @@ Upload a package, validate it, stage an import session, and compare incoming set
 
 ### Tasks
 
-- [ ] Add ZIP upload validation.
-- [ ] Add safe extraction with path traversal protection.
-- [ ] Validate `manifest.json`, `checksums.json`, package type, and package version.
-- [ ] Add import session storage.
-- [ ] Add domain compatibility checks.
+- [x] Add ZIP upload validation.
+- [x] Add safe extraction with path traversal protection.
+- [x] Validate `manifest.json`, `checksums.json`, package type, and package version.
+- [x] Add import session storage.
+- [x] Add domain compatibility checks.
 - [ ] Add dependency checks for post types, taxonomies, ACF option groups, and add-on classes.
-- [ ] Add diff service.
-- [ ] Add status model and warnings.
+- [x] Add diff service.
+- [x] Add status model and warnings.
 - [ ] Add draft decision persistence.
-- [ ] Add tests for invalid ZIPs, checksum failures, missing domains, unsupported fields, and target dependency warnings.
+- [ ] Add tests for checksum failures, missing domains, unsupported fields, and target dependency warnings.
+- [x] Add tests for package/domain compatibility warnings.
 
 ### Acceptance Criteria
 
@@ -743,7 +770,30 @@ Upload a package, validate it, stage an import session, and compare incoming set
 
 ## Phase 4 - Admin UI And REST
 
-Status: `OPEN`
+Status: `WIP`
+
+### 2026-05-19 first admin surface tranche notes
+
+- Added a dedicated DBVC submenu page at `admin.php?page=dbvc-configuration-portability`.
+- Added export profile/domain controls, ZIP download action, package upload form, package summary notices, and a first-pass diff preview table.
+- Deferred REST endpoints, draft decisions, environment replacement inputs, apply, backup, and rollback to the next tranches.
+
+### 2026-05-19 apply controls tranche notes
+
+- Added import-session environment decision controls for prompt-redacted fields.
+- Added explicit apply confirmation, backup-before-apply handling, applied-session summary, and rollback confirmation controls.
+- Kept the current form-based admin workflow; REST endpoints, filters, draft decisions, and richer JS-assisted review remain open.
+
+### 2026-05-19 warning display tranche notes
+
+- Added a compact compatibility warning box to import review sessions.
+- Kept warnings server-rendered with no new JavaScript or REST dependency.
+
+### 2026-05-20 domain accordion tranche notes
+
+- Replaced long per-domain diff tables with native server-rendered accordion sections.
+- Added compact badges with icons for review-needed, changed, missing, secret-skipped, same, and other statuses.
+- Added current/incoming preview columns inside each expanded domain so operators can inspect changes without leaving the accordion.
 
 ### Outcome
 
@@ -752,15 +802,19 @@ Expose export, import, review, environment replacement, draft, apply, and rollba
 ### Tasks
 
 - [ ] Add REST controller.
-- [ ] Add admin page renderer or Configure subtab integration.
-- [ ] Add export profile/domain controls.
-- [ ] Add upload form.
-- [ ] Add package summary panel.
-- [ ] Add diff table with domain/group/field filters.
-- [ ] Add environment replacement inputs.
+- [x] Add admin page renderer or Configure subtab integration.
+- [x] Add export profile/domain controls.
+- [x] Add upload form.
+- [x] Add package summary panel.
+- [x] Add first-pass diff table.
+- [x] Add domain diff accordion.
+- [x] Add status badges/icons for review, changed, missing, skipped secret, and same rows.
+- [x] Add compatibility warnings display.
+- [ ] Add domain/group/field filters.
+- [x] Add environment replacement inputs.
 - [ ] Add draft decisions.
-- [ ] Add apply confirmation checkbox.
-- [ ] Add backup/rollback list.
+- [x] Add apply confirmation checkbox.
+- [x] Add backup/rollback controls.
 - [ ] Add client-side JS only where needed for table filtering and environment prompts.
 
 ### Acceptance Criteria
@@ -772,7 +826,15 @@ Expose export, import, review, environment replacement, draft, apply, and rollba
 
 ## Phase 5 - Apply, Backup, Rollback, Runtime Refresh
 
-Status: `OPEN`
+Status: `WIP`
+
+### 2026-05-19 apply/rollback service tranche notes
+
+- Added import-session apply orchestration that preflights all selected domains before writing.
+- Added backup capture into `dbvc-config-portability/backups/` before the first provider write.
+- Apply uses each provider's sanitizer and apply method instead of raw option updates.
+- Added rollback orchestration that restores provider backups and updates the session record.
+- Added PHPUnit coverage for unresolved environment preflight, confirmed apply, backup capture, and rollback restore.
 
 ### Outcome
 
@@ -780,20 +842,20 @@ Apply approved settings safely and make the operation reversible.
 
 ### Tasks
 
-- [ ] Add apply service.
-- [ ] Require session id and explicit confirmation.
-- [ ] Capture backup before first write.
-- [ ] Apply by provider and field decision.
-- [ ] Use provider sanitizers or existing module save methods.
+- [x] Add apply service.
+- [x] Require session id and explicit confirmation.
+- [x] Capture backup before first write.
+- [x] Apply by provider and field decision.
+- [x] Use provider sanitizers or existing module save methods.
 - [ ] Call runtime refresh hooks after relevant providers:
-  - [ ] Bricks runtime registration
+  - [x] Bricks runtime registration
   - [ ] Visual Editor runtime registration
   - [ ] Content Collector runtime registration
   - [ ] AI model catalog schedule refresh
-- [ ] Add rollback service.
+- [x] Add rollback service.
 - [ ] Add activity/log entries without secrets.
 - [ ] Add partial failure reporting.
-- [ ] Add tests for backup and rollback.
+- [x] Add tests for backup and rollback.
 
 ### Acceptance Criteria
 
@@ -804,7 +866,13 @@ Apply approved settings safely and make the operation reversible.
 
 ## Phase 6 - Granular Environment Controls
 
-Status: `OPEN`
+Status: `WIP`
+
+### 2026-05-19 first environment controls tranche notes
+
+- Added import-time keep-current or replace decisions for prompt-redacted fields included in the package.
+- Added prompt-required validation before apply.
+- Secrets that were excluded from the package remain blocked and must be configured directly until the explicit secret-supply workflow is added.
 
 ### Outcome
 
@@ -815,9 +883,9 @@ Make environment-specific values ergonomic for agencies running repeat imports.
 - [ ] Add named environment replacement presets.
 - [ ] Add import-time replacement for URLs/domains.
 - [ ] Add import-time replacement for relative paths.
-- [ ] Add prompt-required field validation.
+- [x] Add prompt-required field validation.
 - [ ] Add per-domain environment policy overrides.
-- [ ] Add "keep target secrets" bulk action.
+- [x] Add "keep target values" per-field action.
 - [ ] Add warnings for Bricks mothership/client role mismatches.
 - [ ] Add warnings for switching Visual Editor or Content Collector activation state.
 
@@ -829,7 +897,7 @@ Make environment-specific values ergonomic for agencies running repeat imports.
 
 ## Phase 7 - Tests, QA, And Documentation
 
-Status: `OPEN`
+Status: `WIP`
 
 ### Outcome
 
@@ -837,16 +905,17 @@ Lock the workflow with automated and manual validation.
 
 ### PHPUnit Coverage
 
-- [ ] Registry provider discovery.
+- [x] Registry provider discovery.
 - [ ] Core provider export and apply.
-- [ ] Secret redaction.
-- [ ] Package manifest/checksum validation.
-- [ ] Import session diff status.
+- [x] Secret redaction.
+- [x] Package manifest/checksum validation.
+- [x] Import session diff status.
+- [x] Package/domain compatibility warnings.
 - [ ] Missing dependency warnings.
-- [ ] Apply backup and rollback.
+- [x] Apply backup and rollback.
 - [ ] Bricks secret keep-existing behavior.
-- [ ] AI package API key exclusion.
-- [ ] Unknown domain/field rejection.
+- [x] AI package API key exclusion.
+- [x] Unknown domain/field rejection.
 
 ### Runtime QA
 

@@ -76,6 +76,27 @@
 
         throw new Error((data && data.message) || `Visual Editor save request failed (${response.status}).`);
       });
+    },
+
+    seedCurrentField(sessionId, token) {
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/collection-seed/${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce
+        },
+        body: JSON.stringify({ acknowledgeSeed: true })
+      }).then(async (response) => {
+        const data = await response.json().catch(function () {
+          return null;
+        });
+
+        if (response.ok) {
+          return data;
+        }
+
+        throw new Error((data && data.message) || `Visual Editor collection seed request failed (${response.status}).`);
+      });
     }
   };
 })();

@@ -1004,6 +1004,10 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
     {
         return [
             'contract' => 'filtered_subset',
+            'scope' => isset($descriptor->scope) ? sanitize_key((string) $descriptor->scope) : '',
+            'sourceContext' => isset($descriptor->source['source_context']) ? sanitize_key((string) $descriptor->source['source_context']) : '',
+            'queryBranchState' => isset($descriptor->source['query_branch_state']) ? sanitize_key((string) $descriptor->source['query_branch_state']) : '',
+            'acfObjectId' => $this->getAcfObjectId($descriptor),
             'targetPostType' => sanitize_key((string) $target_post_type),
             'fieldName' => isset($descriptor->source['field_name']) ? sanitize_key((string) $descriptor->source['field_name']) : '',
             'fieldKey' => isset($descriptor->source['field_key']) ? sanitize_key((string) $descriptor->source['field_key']) : '',

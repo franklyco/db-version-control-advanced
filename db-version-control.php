@@ -143,6 +143,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/DomainPr
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Field.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/AbstractOptionDomainProvider.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/AbstractOptionArrayDomainProvider.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Storage.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/VisualEditorProvider.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/LoggingProvider.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/MediaHandlingProvider.php';
@@ -155,6 +156,9 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Provider
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/ContentCollectorProvider.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Providers/ContentCollectorRuntimeProvider.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/Registry.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/ExportPackageBuilder.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/ImportSessionService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/ConfigurationPortability/AdminPage.php';
 $dbvc_cc_addon_bootstrap = DBVC_PLUGIN_PATH . 'addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php';
 if (file_exists($dbvc_cc_addon_bootstrap)) {
 	require_once $dbvc_cc_addon_bootstrap;
@@ -184,6 +188,7 @@ if (is_admin()) {
 	if (class_exists('DBVC_AI_Tools_Page') && method_exists('DBVC_AI_Tools_Page', 'init')) {
 		DBVC_AI_Tools_Page::init();
 	}
+	\Dbvc\ConfigurationPortability\AdminPage::init();
 }
 
 DBVC_Database::init();
@@ -195,7 +200,7 @@ add_action('save_post', ['DBVC_Sync_Posts', 'export_post_to_json'], 10, 2);
 
 /**
  * Load plugin text domain for translations.
- * 
+ *
  * @since  1.0.0
  * @return void
  */
@@ -207,9 +212,9 @@ add_action('plugins_loaded', 'dbvc_load_textdomain');
 
 /**
  * Add settings link to plugin action links.
- * 
+ *
  * @param mixed $links
- * 
+ *
  * @since  1.0.0
  * @return array
  */

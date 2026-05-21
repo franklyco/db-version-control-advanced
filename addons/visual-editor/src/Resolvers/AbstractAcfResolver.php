@@ -166,6 +166,13 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function getFieldIdentifier(EditableDescriptor $descriptor)
     {
+        $field_selector_raw = isset($descriptor->source['field_selector_raw'])
+            ? $this->normalizeAcfFieldSelector((string) $descriptor->source['field_selector_raw'])
+            : '';
+        if ($field_selector_raw !== '') {
+            return $field_selector_raw;
+        }
+
         $field_selector = isset($descriptor->source['field_selector']) ? sanitize_key((string) $descriptor->source['field_selector']) : '';
         if ($field_selector !== '') {
             return $field_selector;
@@ -178,6 +185,22 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         return $this->getFieldKey($descriptor);
+    }
+
+    /**
+     * @param string $selector
+     * @return string
+     */
+    protected function normalizeAcfFieldSelector($selector)
+    {
+        $selector = trim((string) $selector);
+        if ($selector === '') {
+            return '';
+        }
+
+        $selector = preg_replace('/[^A-Za-z0-9_\-]/', '', $selector);
+
+        return is_string($selector) ? $selector : '';
     }
 
     /**

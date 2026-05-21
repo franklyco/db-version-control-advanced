@@ -873,11 +873,16 @@ final class ResolverRegistry
             ? array_values(array_filter(array_map('sanitize_key', $candidate['query_result_post_types'])))
             : [];
         $is_full_collection_query = $target_post_type === '';
-        if (empty($query_ids) || ($target_post_type === '' && empty($query_result_post_types))) {
+        $query_vars = isset($candidate['query_vars']) && is_array($candidate['query_vars']) ? $candidate['query_vars'] : [];
+        $is_empty_query = empty($query_ids) && (! empty($candidate['query_result_empty']) || ! empty($query_vars['query_result_empty']));
+        if ((empty($query_ids) && ! $is_empty_query) || ($target_post_type === '' && empty($query_result_post_types))) {
             return $this->buildUnsupported('Derived Bricks query collections require a concrete post type and post__in result set.');
         }
 
-        $query_vars = isset($candidate['query_vars']) && is_array($candidate['query_vars']) ? $candidate['query_vars'] : [];
+        if ($is_empty_query && $target_post_type === '') {
+            return $this->buildUnsupported('Empty derived Bricks query collections require a concrete target post type.');
+        }
+
         $query_editor_active = ! empty($query_vars['query_editor_active']);
         $query_setting_source = isset($query_vars['post__in_setting_source']) ? sanitize_key((string) $query_vars['post__in_setting_source']) : '';
         $query_dynamic_field_hints = isset($query_vars['post__in_acf_field_hints']) && is_array($query_vars['post__in_acf_field_hints'])
@@ -893,10 +898,12 @@ final class ResolverRegistry
             ? array_values(array_filter(array_map('sanitize_key', $query_vars['query_editor_acf_explicit_field_hints'])))
             : [];
 
-        if (! $query_editor_active
-            && empty($query_dynamic_field_hints)
-            && strpos($query_setting_source, 'settings_static_') === 0) {
-            return $this->buildUnsupported('Native Bricks include/post__in controls with static post IDs do not identify a writable ACF source field.');
+        if (! $query_editor_active && empty($query_dynamic_field_hints)) {
+            if (strpos($query_setting_source, 'settings_static_') === 0) {
+                return $this->buildUnsupported('Native Bricks include/post__in controls with static post IDs do not identify a writable ACF source field.');
+            }
+
+            return $this->buildUnsupported('Native Bricks include/post__in controls require saved ACF dynamic-tag evidence before Visual Editor can safely mutate an ACF source field.');
         }
 
         $field_objects = get_field_objects($entity_id, false, true);
@@ -904,34 +911,46 @@ final class ResolverRegistry
             return $this->buildUnsupported('No current-owner ACF fields were available for derived Bricks query collection inspection.');
         }
 
+        $current_owner_field_hints = array_values(array_unique(array_filter(array_merge(
+            $query_dynamic_field_hints,
+            $query_editor_field_hints
+        ))));
+        if ($is_empty_query && empty($current_owner_field_hints)) {
+            return $this->buildUnsupported('Empty derived Bricks query collections require explicit current-owner ACF source evidence.');
+        }
+
         $matches = [];
-        foreach ($field_objects as $field) {
-            if (! is_array($field)) {
-                continue;
+        foreach ($this->buildDerivedQueryCollectionFieldCandidates($field_objects, $entity_id) as $field_candidate) {
+            $field = isset($field_candidate['field']) && is_array($field_candidate['field']) ? $field_candidate['field'] : [];
+            $field_type = isset($field_candidate['field_type']) ? sanitize_key((string) $field_candidate['field_type']) : '';
+            if ($field_type === '') {
+                $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
             }
 
-            $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
-            if (! in_array($field_type, ['relationship', 'post_object'], true)) {
-                continue;
-            }
-
-            $allowed_post_types = $this->normalizeStringList($field['post_type'] ?? []);
+            $allowed_post_types = isset($field_candidate['reference_post_types']) && is_array($field_candidate['reference_post_types'])
+                ? $field_candidate['reference_post_types']
+                : $this->normalizeStringList($field['post_type'] ?? []);
             if (! empty($allowed_post_types) && ! $this->fieldAllowsQueryPostTypes($allowed_post_types, $target_post_type, $query_result_post_types)) {
                 continue;
             }
 
-            $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
+            $field_name = isset($field_candidate['field_name']) ? sanitize_key((string) $field_candidate['field_name']) : '';
             if ($field_name === '') {
                 continue;
             }
 
-            if (! empty($query_dynamic_field_hints) && ! in_array($field_name, $query_dynamic_field_hints, true)) {
+            $candidate_hint_names = isset($field_candidate['hint_names']) && is_array($field_candidate['hint_names'])
+                ? array_values(array_filter(array_map('sanitize_key', $field_candidate['hint_names'])))
+                : [$field_name];
+            if (! empty($current_owner_field_hints) && empty(array_intersect($candidate_hint_names, $current_owner_field_hints))) {
                 continue;
             }
 
-            $stored_value = get_field($field_name, $entity_id, false);
+            $stored_value = array_key_exists('stored_value', $field_candidate)
+                ? $field_candidate['stored_value']
+                : get_field($field_name, $entity_id, false);
             $stored_ids = $this->normalizeReferenceIdList($stored_value);
-            if (empty($stored_ids)) {
+            if (empty($stored_ids) && ! $is_empty_query) {
                 continue;
             }
 
@@ -941,6 +960,7 @@ final class ResolverRegistry
             if ($target_ids === $query_ids) {
                 $matches[] = [
                     'field' => $field,
+                    'field_context' => $field_candidate,
                     'stored_ids' => $stored_ids,
                     'target_ids' => $target_ids,
                 ];
@@ -970,8 +990,36 @@ final class ResolverRegistry
 
         $match = $matches[0];
         $field = isset($match['field']) && is_array($match['field']) ? $match['field'] : [];
-        $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
-        $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        $field_context = isset($match['field_context']) && is_array($match['field_context']) ? $match['field_context'] : [];
+        $field_name = isset($field_context['field_name']) ? sanitize_key((string) $field_context['field_name']) : '';
+        if ($field_name === '') {
+            $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
+        }
+        $field_key = isset($field_context['field_key']) ? sanitize_key((string) $field_context['field_key']) : '';
+        if ($field_key === '') {
+            $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        }
+        $field_selector = isset($field_context['field_selector']) ? sanitize_key((string) $field_context['field_selector']) : '';
+        if ($field_selector === '') {
+            $field_selector = $field_name;
+        }
+        $field_selector_raw = isset($field_context['field_selector_raw'])
+            ? $this->normalizeAcfSelectorForSource((string) $field_context['field_selector_raw'])
+            : '';
+        $leaf_field_name = isset($field_context['leaf_field_name']) ? sanitize_key((string) $field_context['leaf_field_name']) : '';
+        if ($leaf_field_name === '') {
+            $leaf_field_name = $field_name;
+        }
+        $leaf_field_key = isset($field_context['leaf_field_key']) ? sanitize_key((string) $field_context['leaf_field_key']) : '';
+        if ($leaf_field_key === '') {
+            $leaf_field_key = $field_key;
+        }
+        $group_path = isset($field_context['group_path']) && is_array($field_context['group_path'])
+            ? array_values(array_filter(array_map('sanitize_key', $field_context['group_path'])))
+            : [];
+        $group_key_path = isset($field_context['group_key_path']) && is_array($field_context['group_key_path'])
+            ? array_values(array_filter(array_map('sanitize_key', $field_context['group_key_path'])))
+            : [];
         $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
         $allow_multiple = $this->isReferenceMultiple($field);
         $max = $this->resolveReferenceMaxSelections($field);
@@ -1007,9 +1055,10 @@ final class ResolverRegistry
                 'expression_args' => [],
                 'field_name' => $field_name,
                 'field_key' => $field_key,
-                'field_selector' => $field_name,
-                'leaf_field_name' => $field_name,
-                'leaf_field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'field_selector_raw' => $field_selector_raw,
+                'leaf_field_name' => $leaf_field_name,
+                'leaf_field_key' => $leaf_field_key,
                 'field_type' => $field_type,
                 'return_format' => isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : 'value',
                 'reference_post_types' => $this->normalizeStringList($field['post_type'] ?? []),
@@ -1027,6 +1076,7 @@ final class ResolverRegistry
                 'query_target_post_type_label' => $query_target_post_type_label,
                 'query_result_post_types' => $query_result_post_types,
                 'query_result_ids' => $query_ids,
+                'query_result_empty' => $is_empty_query,
                 'query_full_value_ids' => $stored_ids,
                 'query_preserved_ids' => $preserved_ids,
                 'query_subset_write_mode' => $is_full_collection_query ? '' : 'replace_target_post_type_subset',
@@ -1060,11 +1110,11 @@ final class ResolverRegistry
                 'layout_key' => '',
                 'layout_name' => '',
                 'container_ancestry' => [],
-                'group_path' => [],
-                'group_key_path' => [],
+                'group_path' => $group_path,
+                'group_key_path' => $group_key_path,
                 'nested_repeater_path' => [],
-                'is_nested_group' => false,
-                'is_grouped_field' => false,
+                'is_nested_group' => ! empty($group_path),
+                'is_grouped_field' => ! empty($group_path),
                 'native_query_active' => false,
                 'native_query_kind' => '',
                 'native_query_selector' => '',
@@ -1115,8 +1165,11 @@ final class ResolverRegistry
             $option_field['_dbvc_stored_ids'] = isset($option_match['stored_ids']) && is_array($option_match['stored_ids'])
                 ? array_values(array_filter(array_map('absint', $option_match['stored_ids'])))
                 : [];
+            if (isset($option_match['field_context']) && is_array($option_match['field_context'])) {
+                $option_field['_dbvc_field_context'] = $option_match['field_context'];
+            }
 
-            return $this->buildReadonlyDerivedBricksQueryCollectionClassification(
+            return $this->buildFallbackDerivedBricksQueryCollectionClassification(
                 $candidate,
                 $page_context,
                 $query_vars,
@@ -1132,7 +1185,7 @@ final class ResolverRegistry
             );
         }
 
-        return $this->buildReadonlyDerivedBricksQueryCollectionClassification(
+        return $this->buildFallbackDerivedBricksQueryCollectionClassification(
             $candidate,
             $page_context,
             $query_vars,
@@ -1157,31 +1210,53 @@ final class ResolverRegistry
      */
     private function matchDerivedQueryOptionFallbackField(array $option_field_hints, $target_post_type, array $query_result_post_types, array $query_ids)
     {
-        if (! function_exists('get_field_object') || ! function_exists('get_field') || empty($option_field_hints)) {
+        if (! function_exists('get_field_objects') || ! function_exists('get_field') || empty($option_field_hints)) {
             return [];
         }
 
         $target_post_type = sanitize_key((string) $target_post_type);
         $is_full_collection_query = $target_post_type === '';
+        $field_hints = array_values(array_unique(array_filter(array_map('sanitize_key', $option_field_hints))));
+        if (empty($field_hints)) {
+            return [];
+        }
+
+        $field_objects = get_field_objects('option', false, true);
+        if (! is_array($field_objects) || empty($field_objects)) {
+            return [];
+        }
+
         $matches = [];
 
-        foreach (array_values(array_unique(array_filter(array_map('sanitize_key', $option_field_hints)))) as $field_name) {
-            $field = get_field_object($field_name, 'option', false, true);
-            if (! is_array($field)) {
-                continue;
+        foreach ($this->buildDerivedQueryCollectionFieldCandidates($field_objects, 'option') as $field_candidate) {
+            $field = isset($field_candidate['field']) && is_array($field_candidate['field']) ? $field_candidate['field'] : [];
+            $field_type = isset($field_candidate['field_type']) ? sanitize_key((string) $field_candidate['field_type']) : '';
+            if ($field_type === '') {
+                $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
             }
 
-            $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
             if (! in_array($field_type, ['relationship', 'post_object'], true)) {
                 continue;
             }
 
-            $allowed_post_types = $this->normalizeStringList($field['post_type'] ?? []);
+            $candidate_hint_names = isset($field_candidate['hint_names']) && is_array($field_candidate['hint_names'])
+                ? array_values(array_filter(array_map('sanitize_key', $field_candidate['hint_names'])))
+                : [];
+            if (empty($candidate_hint_names) || empty(array_intersect($candidate_hint_names, $field_hints))) {
+                continue;
+            }
+
+            $allowed_post_types = isset($field_candidate['reference_post_types']) && is_array($field_candidate['reference_post_types'])
+                ? $field_candidate['reference_post_types']
+                : $this->normalizeStringList($field['post_type'] ?? []);
             if (! empty($allowed_post_types) && ! $this->fieldAllowsQueryPostTypes($allowed_post_types, $target_post_type, $query_result_post_types)) {
                 continue;
             }
 
-            $stored_value = get_field($field_name, 'option', false);
+            $field_name = isset($field_candidate['field_name']) ? sanitize_key((string) $field_candidate['field_name']) : '';
+            $stored_value = array_key_exists('stored_value', $field_candidate)
+                ? $field_candidate['stored_value']
+                : ($field_name !== '' ? get_field($field_name, 'option', false) : null);
             $stored_ids = $this->normalizeReferenceIdList($stored_value);
             if (empty($stored_ids)) {
                 continue;
@@ -1194,6 +1269,7 @@ final class ResolverRegistry
             if ($target_ids === $query_ids) {
                 $matches[] = [
                     'field' => $field,
+                    'field_context' => $field_candidate,
                     'stored_ids' => $stored_ids,
                 ];
             }
@@ -1217,14 +1293,46 @@ final class ResolverRegistry
      * @param string               $branch_state
      * @return array<string, mixed>
      */
-    private function buildReadonlyDerivedBricksQueryCollectionClassification(array $candidate, array $page_context, array $query_vars, array $query_ids, $target_post_type, array $query_result_post_types, array $query_dynamic_field_hints, array $query_editor_field_hints, array $query_editor_option_field_hints, array $query_editor_explicit_field_hints, array $field, $branch_state)
+    private function buildFallbackDerivedBricksQueryCollectionClassification(array $candidate, array $page_context, array $query_vars, array $query_ids, $target_post_type, array $query_result_post_types, array $query_dynamic_field_hints, array $query_editor_field_hints, array $query_editor_option_field_hints, array $query_editor_explicit_field_hints, array $field, $branch_state)
     {
         $branch_state = sanitize_key((string) $branch_state);
         $is_option_fallback = $branch_state === 'shared_option_fallback_exact_match';
-        $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
-        $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        $field_context = isset($field['_dbvc_field_context']) && is_array($field['_dbvc_field_context'])
+            ? $field['_dbvc_field_context']
+            : [];
+        $field_name = isset($field_context['field_name']) ? sanitize_key((string) $field_context['field_name']) : '';
+        if ($field_name === '') {
+            $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
+        }
+        $field_key = isset($field_context['field_key']) ? sanitize_key((string) $field_context['field_key']) : '';
+        if ($field_key === '') {
+            $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        }
+        $field_selector = isset($field_context['field_selector']) ? sanitize_key((string) $field_context['field_selector']) : '';
+        if ($field_selector === '') {
+            $field_selector = $field_name;
+        }
+        $field_selector_raw = isset($field_context['field_selector_raw'])
+            ? $this->normalizeAcfSelectorForSource((string) $field_context['field_selector_raw'])
+            : '';
+        $leaf_field_name = isset($field_context['leaf_field_name']) ? sanitize_key((string) $field_context['leaf_field_name']) : '';
+        if ($leaf_field_name === '') {
+            $leaf_field_name = $field_name;
+        }
+        $leaf_field_key = isset($field_context['leaf_field_key']) ? sanitize_key((string) $field_context['leaf_field_key']) : '';
+        if ($leaf_field_key === '') {
+            $leaf_field_key = $field_key;
+        }
+        $group_path = isset($field_context['group_path']) && is_array($field_context['group_path'])
+            ? array_values(array_filter(array_map('sanitize_key', $field_context['group_path'])))
+            : [];
+        $group_key_path = isset($field_context['group_key_path']) && is_array($field_context['group_key_path'])
+            ? array_values(array_filter(array_map('sanitize_key', $field_context['group_key_path'])))
+            : [];
         $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
         $target_post_type = sanitize_key((string) $target_post_type);
+        $is_full_collection_query = $target_post_type === '';
+        $is_option_fallback_writable = $is_option_fallback && ! empty($field);
         $query_element_id = isset($candidate['query_element_id']) ? sanitize_text_field((string) $candidate['query_element_id']) : '';
         $query_element_label = isset($candidate['query_element_label']) ? sanitize_text_field((string) $candidate['query_element_label']) : '';
         $query_section_label = isset($candidate['query_section_label']) ? sanitize_text_field((string) $candidate['query_section_label']) : '';
@@ -1255,9 +1363,20 @@ final class ResolverRegistry
         $preserved_ids = $is_option_fallback && ! empty($stored_ids)
             ? array_values(array_diff($stored_ids, $query_ids))
             : [];
+        $allow_multiple = ! empty($field) ? $this->isReferenceMultiple($field) : true;
+        $max = ! empty($field) ? $this->resolveReferenceMaxSelections($field) : 0;
+        $min = ! empty($field) ? $this->resolveReferenceMinSelections($field) : 0;
+        $seed_current_field = $this->buildDerivedQueryCurrentOwnerSeedContext(
+            $is_option_fallback,
+            $page_context,
+            $query_editor_field_hints,
+            $target_post_type,
+            $query_result_post_types,
+            $query_ids
+        );
 
         return [
-            'status' => 'readonly',
+            'status' => $is_option_fallback_writable ? 'editable' : 'readonly',
             'scope' => $scope,
             'entity' => $entity,
             'loop' => [],
@@ -1270,16 +1389,17 @@ final class ResolverRegistry
                 'expression_args' => [],
                 'field_name' => $field_name,
                 'field_key' => $field_key,
-                'field_selector' => $field_name,
-                'leaf_field_name' => $field_name,
-                'leaf_field_key' => $field_key,
+                'field_selector' => $field_selector,
+                'field_selector_raw' => $field_selector_raw,
+                'leaf_field_name' => $leaf_field_name,
+                'leaf_field_key' => $leaf_field_key,
                 'field_type' => $field_type,
                 'return_format' => isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : 'value',
                 'reference_post_types' => isset($field['post_type']) ? $this->normalizeStringList($field['post_type']) : [],
                 'reference_taxonomies' => isset($field['taxonomy']) ? $this->normalizeStringList($field['taxonomy']) : [],
-                'reference_multiple' => ! empty($field) ? $this->isReferenceMultiple($field) : true,
-                'reference_min' => ! empty($field) ? $this->resolveReferenceMinSelections($field) : 0,
-                'reference_max' => ! empty($field) ? $this->resolveReferenceMaxSelections($field) : 0,
+                'reference_multiple' => $allow_multiple,
+                'reference_min' => $min,
+                'reference_max' => $max,
                 'query_source' => 'derived_bricks_query',
                 'query_source_confidence' => $is_option_fallback ? 'exact_shared_option_fallback' : 'unmatched_query_editor_post_in',
                 'query_branch_state' => $branch_state,
@@ -1293,8 +1413,10 @@ final class ResolverRegistry
                 'query_result_ids' => $query_ids,
                 'query_full_value_ids' => ! empty($stored_ids) ? $stored_ids : $query_ids,
                 'query_preserved_ids' => $preserved_ids,
-                'query_subset_write_mode' => '',
-                'query_collection_write_mode' => 'inspect_only',
+                'query_subset_write_mode' => $is_option_fallback_writable && ! $is_full_collection_query ? 'replace_target_post_type_subset' : '',
+                'query_collection_write_mode' => $is_option_fallback_writable
+                    ? ($is_full_collection_query ? 'replace_full_collection' : 'replace_target_post_type_subset')
+                    : 'inspect_only',
                 'query_id_source' => isset($query_vars['post__in_source']) ? sanitize_key((string) $query_vars['post__in_source']) : '',
                 'query_id_setting_source' => isset($query_vars['post__in_setting_source']) ? sanitize_key((string) $query_vars['post__in_setting_source']) : '',
                 'query_id_setting_key' => isset($query_vars['post__in_setting_key']) ? sanitize_key((string) $query_vars['post__in_setting_key']) : '',
@@ -1303,6 +1425,7 @@ final class ResolverRegistry
                 'query_editor_field_hints' => $query_editor_field_hints,
                 'query_editor_option_field_hints' => $query_editor_option_field_hints,
                 'query_editor_explicit_field_hints' => $query_editor_explicit_field_hints,
+                'query_seed_current_field' => $seed_current_field,
                 'query_editor_active' => true,
                 'query_vars' => [
                     'source' => isset($query_vars['source']) ? sanitize_text_field((string) $query_vars['source']) : '',
@@ -1324,11 +1447,11 @@ final class ResolverRegistry
                 'layout_key' => '',
                 'layout_name' => '',
                 'container_ancestry' => [],
-                'group_path' => [],
-                'group_key_path' => [],
+                'group_path' => $group_path,
+                'group_key_path' => $group_key_path,
                 'nested_repeater_path' => [],
-                'is_nested_group' => false,
-                'is_grouped_field' => false,
+                'is_nested_group' => ! empty($group_path),
+                'is_grouped_field' => ! empty($group_path),
                 'native_query_active' => false,
                 'native_query_kind' => '',
                 'native_query_selector' => '',
@@ -1344,7 +1467,7 @@ final class ResolverRegistry
                 'native_query_ancestry' => [],
             ],
             'resolver' => [
-                'name' => 'native_readonly',
+                'name' => $is_option_fallback_writable ? 'acf_reference_collection' : 'native_readonly',
                 'version' => 1,
             ],
             'ui' => [
@@ -1352,11 +1475,178 @@ final class ResolverRegistry
                 'badgeLabel' => $is_option_fallback
                     ? $this->buildDerivedBricksQueryBadgeLabel($query_badge_subject, $target_post_type, $query_element_label)
                     : __('Inspect Query Posts', 'dbvc'),
-                'input' => 'readonly_preview',
-                'warning' => $this->buildDerivedBricksQueryReadonlyWarning($branch_state),
-                'allowMultiple' => true,
-                'maxSelections' => 0,
+                'input' => $is_option_fallback_writable ? 'reference_collection' : 'reference_collection_preview',
+                'warning' => $is_option_fallback_writable
+                    ? $this->buildDerivedBricksQuerySharedOptionFallbackWarning($target_post_type, $is_full_collection_query)
+                    : $this->buildDerivedBricksQueryReadonlyWarning($branch_state),
+                'allowMultiple' => $allow_multiple,
+                'maxSelections' => $max,
             ],
+        ];
+    }
+
+    /**
+     * @param bool                 $is_option_fallback
+     * @param array<string, mixed> $page_context
+     * @param array<int, string>   $query_editor_field_hints
+     * @param string               $target_post_type
+     * @param array<int, string>   $query_result_post_types
+     * @param array<int, int>      $query_ids
+     * @return array<string, mixed>
+     */
+    private function buildDerivedQueryCurrentOwnerSeedContext($is_option_fallback, array $page_context, array $query_editor_field_hints, $target_post_type, array $query_result_post_types, array $query_ids)
+    {
+        if (! $is_option_fallback || empty($query_editor_field_hints) || empty($query_ids) || ! function_exists('get_field_objects') || ! function_exists('get_field')) {
+            return [];
+        }
+
+        $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
+        if ($entity_type !== 'post' || $entity_id <= 0) {
+            return [];
+        }
+
+        $target_post_type = sanitize_key((string) $target_post_type);
+        $is_full_collection_query = $target_post_type === '';
+        $field_hints = array_values(array_unique(array_filter(array_map('sanitize_key', $query_editor_field_hints))));
+        if (empty($field_hints)) {
+            return [];
+        }
+
+        $field_objects = get_field_objects($entity_id, false, true);
+        if (! is_array($field_objects) || empty($field_objects)) {
+            return [];
+        }
+
+        $matches = [];
+
+        foreach ($this->buildDerivedQueryCollectionFieldCandidates($field_objects, $entity_id) as $field_candidate) {
+            $field = isset($field_candidate['field']) && is_array($field_candidate['field']) ? $field_candidate['field'] : [];
+            $field_name = isset($field_candidate['field_name']) ? sanitize_key((string) $field_candidate['field_name']) : '';
+            if ($field_name === '') {
+                continue;
+            }
+
+            $candidate_hint_names = isset($field_candidate['hint_names']) && is_array($field_candidate['hint_names'])
+                ? array_values(array_filter(array_map('sanitize_key', $field_candidate['hint_names'])))
+                : [$field_name];
+            if (empty(array_intersect($candidate_hint_names, $field_hints))) {
+                continue;
+            }
+
+            $field_type = isset($field_candidate['field_type']) ? sanitize_key((string) $field_candidate['field_type']) : '';
+            if ($field_type === '') {
+                $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+            }
+
+            if (! in_array($field_type, ['relationship', 'post_object'], true)) {
+                continue;
+            }
+
+            $allowed_post_types = isset($field_candidate['reference_post_types']) && is_array($field_candidate['reference_post_types'])
+                ? $field_candidate['reference_post_types']
+                : $this->normalizeStringList($field['post_type'] ?? []);
+            if (! empty($allowed_post_types) && ! $this->fieldAllowsQueryPostTypes($allowed_post_types, $target_post_type, $query_result_post_types)) {
+                continue;
+            }
+
+            $stored_value = array_key_exists('stored_value', $field_candidate)
+                ? $field_candidate['stored_value']
+                : get_field($field_name, $entity_id, false);
+            $stored_ids = $this->normalizeReferenceIdList($stored_value);
+            $existing_target_ids = $is_full_collection_query
+                ? $stored_ids
+                : $this->filterReferenceIdsByPostType($stored_ids, $target_post_type);
+
+            if (! empty($existing_target_ids)) {
+                continue;
+            }
+
+            $max = $this->resolveReferenceMaxSelections($field);
+            if ($max > 0 && count($query_ids) + count($stored_ids) > $max) {
+                continue;
+            }
+
+            $allow_multiple = $this->isReferenceMultiple($field);
+            if (! $allow_multiple && count($query_ids) + count($stored_ids) > 1) {
+                continue;
+            }
+
+            $matches[] = [
+                'field' => $field,
+                'field_context' => $field_candidate,
+                'stored_ids' => $stored_ids,
+                'existing_target_ids' => $existing_target_ids,
+            ];
+        }
+
+        if (count($matches) !== 1) {
+            return [];
+        }
+
+        $match = $matches[0];
+        $field = isset($match['field']) && is_array($match['field']) ? $match['field'] : [];
+        $field_context = isset($match['field_context']) && is_array($match['field_context']) ? $match['field_context'] : [];
+        $field_name = isset($field_context['field_name']) ? sanitize_key((string) $field_context['field_name']) : '';
+        if ($field_name === '') {
+            $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
+        }
+        $field_key = isset($field_context['field_key']) ? sanitize_key((string) $field_context['field_key']) : '';
+        if ($field_key === '') {
+            $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        }
+        $field_selector = isset($field_context['field_selector']) ? sanitize_key((string) $field_context['field_selector']) : '';
+        if ($field_selector === '') {
+            $field_selector = $field_name;
+        }
+        $field_selector_raw = isset($field_context['field_selector_raw'])
+            ? $this->normalizeAcfSelectorForSource((string) $field_context['field_selector_raw'])
+            : '';
+        $leaf_field_name = isset($field_context['leaf_field_name']) ? sanitize_key((string) $field_context['leaf_field_name']) : '';
+        if ($leaf_field_name === '') {
+            $leaf_field_name = $field_name;
+        }
+        $leaf_field_key = isset($field_context['leaf_field_key']) ? sanitize_key((string) $field_context['leaf_field_key']) : '';
+        if ($leaf_field_key === '') {
+            $leaf_field_key = $field_key;
+        }
+        $group_path = isset($field_context['group_path']) && is_array($field_context['group_path'])
+            ? array_values(array_filter(array_map('sanitize_key', $field_context['group_path'])))
+            : [];
+        $group_key_path = isset($field_context['group_key_path']) && is_array($field_context['group_key_path'])
+            ? array_values(array_filter(array_map('sanitize_key', $field_context['group_key_path'])))
+            : [];
+        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+        $stored_ids = isset($match['stored_ids']) && is_array($match['stored_ids']) ? array_values(array_filter(array_map('absint', $match['stored_ids']))) : [];
+
+        if ($field_name === '' || $field_type === '') {
+            return [];
+        }
+
+        return [
+            'enabled' => true,
+            'mode' => $is_full_collection_query ? 'seed_full_collection' : 'seed_target_post_type_subset',
+            'field_name' => $field_name,
+            'field_key' => $field_key,
+            'field_selector' => $field_selector,
+            'field_selector_raw' => $field_selector_raw,
+            'leaf_field_name' => $leaf_field_name,
+            'leaf_field_key' => $leaf_field_key,
+            'field_label' => isset($field['label']) ? sanitize_text_field((string) $field['label']) : $field_name,
+            'field_type' => $field_type,
+            'return_format' => isset($field['return_format']) ? sanitize_key((string) $field['return_format']) : 'value',
+            'reference_post_types' => $this->normalizeStringList($field['post_type'] ?? []),
+            'reference_taxonomies' => $this->normalizeStringList($field['taxonomy'] ?? []),
+            'reference_multiple' => $this->isReferenceMultiple($field),
+            'reference_min' => $this->resolveReferenceMinSelections($field),
+            'reference_max' => $this->resolveReferenceMaxSelections($field),
+            'target_post_type' => $target_post_type,
+            'target_ids' => array_values(array_filter(array_map('absint', $query_ids))),
+            'existing_ids' => $stored_ids,
+            'group_path' => $group_path,
+            'group_key_path' => $group_key_path,
+            'is_nested_group' => ! empty($group_path),
+            'is_grouped_field' => ! empty($group_path),
         ];
     }
 
@@ -1369,10 +1659,30 @@ final class ResolverRegistry
         $branch_state = sanitize_key((string) $branch_state);
 
         if ($branch_state === 'shared_option_fallback_exact_match') {
-            return __('This Bricks query loop is currently using an ACF options connected-items fallback. It is inspect-only until shared-option fallback editing has explicit warnings, save contracts, stale-subset checks, and journal coverage.', 'dbvc');
+            return __('This Bricks query loop is currently using an ACF options connected-items fallback, but it does not expose a concrete target post type for the narrow shared-option subset save contract yet. It remains inspect-only.', 'dbvc');
         }
 
         return __('This Bricks Query Editor loop resolved to a post__in list, but Visual Editor could not prove one writable current-owner ACF connected-items field for it. It is inspect-only so the rendered query can be reviewed without risking an incorrect write.', 'dbvc');
+    }
+
+    /**
+     * @param string $target_post_type
+     * @param bool   $is_full_collection_query
+     * @return string
+     */
+    private function buildDerivedBricksQuerySharedOptionFallbackWarning($target_post_type, $is_full_collection_query = false)
+    {
+        if ($is_full_collection_query) {
+            return __('This Bricks query loop is using a shared ACF options fallback. Saving edits the full shared options connected-items field because the rendered query exactly matches that field\'s stored order, and may affect every page/template that uses the same fallback.', 'dbvc');
+        }
+
+        $target_post_type = sanitize_key((string) $target_post_type);
+
+        return sprintf(
+            /* translators: %s: queried post type slug */
+            __('This Bricks query loop is using a shared ACF options fallback. Saving edits only the `%s` posts inside that shared options connected-items field, preserves all other linked items, and may affect every page/template that uses the same fallback.', 'dbvc'),
+            $target_post_type !== '' ? $target_post_type : 'post'
+        );
     }
 
     /**
@@ -1469,6 +1779,220 @@ final class ResolverRegistry
             __('%s Posts', 'dbvc'),
             $post_type_label
         );
+    }
+
+    /**
+     * @param array<string, mixed> $field_objects
+     * @param int|string           $acf_object_id
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildDerivedQueryCollectionFieldCandidates(array $field_objects, $acf_object_id)
+    {
+        $candidates = [];
+        $acf_object_id = $this->normalizeAcfObjectIdForRead($acf_object_id);
+
+        foreach ($field_objects as $field) {
+            if (! is_array($field)) {
+                continue;
+            }
+
+            $this->collectDerivedQueryCollectionFieldCandidate(
+                $field,
+                $acf_object_id,
+                [],
+                [],
+                '',
+                $candidates
+            );
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * @param array<string, mixed>              $field
+     * @param int|string                        $acf_object_id
+     * @param array<int, string>                $group_path
+     * @param array<int, string>                $group_key_path
+     * @param string                            $name_prefix
+     * @param array<int, array<string, mixed>> &$candidates
+     * @return void
+     */
+    private function collectDerivedQueryCollectionFieldCandidate(array $field, $acf_object_id, array $group_path, array $group_key_path, $name_prefix, array &$candidates)
+    {
+        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+        $raw_field_name = isset($field['name']) && is_scalar($field['name']) ? (string) $field['name'] : '';
+        $field_name = sanitize_key($raw_field_name);
+        $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+
+        if ($field_type === 'group') {
+            $sub_fields = isset($field['sub_fields']) && is_array($field['sub_fields']) ? $field['sub_fields'] : [];
+            if (empty($sub_fields)) {
+                return;
+            }
+
+            $next_group_path = $field_name !== '' ? array_merge($group_path, [$field_name]) : $group_path;
+            $next_group_key_path = $field_key !== '' ? array_merge($group_key_path, [$field_key]) : $group_key_path;
+            $next_name_prefix = $this->appendAcfFieldNameSegment($name_prefix, $raw_field_name);
+
+            foreach ($sub_fields as $sub_field) {
+                if (! is_array($sub_field)) {
+                    continue;
+                }
+
+                $this->collectDerivedQueryCollectionFieldCandidate(
+                    $sub_field,
+                    $acf_object_id,
+                    $next_group_path,
+                    $next_group_key_path,
+                    $next_name_prefix,
+                    $candidates
+                );
+            }
+
+            return;
+        }
+
+        if (! in_array($field_type, ['relationship', 'post_object'], true)) {
+            return;
+        }
+
+        $flattened_raw_name = $this->appendAcfFieldNameSegment($name_prefix, $raw_field_name);
+        $flattened_name = sanitize_key($flattened_raw_name);
+        if ($flattened_name === '') {
+            return;
+        }
+
+        $is_grouped = ! empty($group_path);
+        $field_selector = $flattened_name;
+        $stored_value = $this->readDerivedQueryCollectionCandidateValue($acf_object_id, [
+            $flattened_raw_name,
+            $flattened_name,
+            $is_grouped ? $field_key : '',
+        ]);
+        $candidate_field = $field;
+        $candidate_field['name'] = $flattened_name;
+
+        $candidates[] = [
+            'field' => $candidate_field,
+            'field_name' => $flattened_name,
+            'field_key' => $field_key,
+            'field_selector' => $field_selector,
+            'field_selector_raw' => $flattened_raw_name,
+            'leaf_field_name' => $field_name !== '' ? $field_name : $flattened_name,
+            'leaf_field_key' => $field_key,
+            'field_type' => $field_type,
+            'reference_post_types' => $this->normalizeStringList($field['post_type'] ?? []),
+            'group_path' => $group_path,
+            'group_key_path' => $group_key_path,
+            'stored_value' => $stored_value,
+            'hint_names' => $this->buildDerivedQueryCollectionCandidateHintNames($flattened_raw_name, $flattened_name, $raw_field_name, $field_name),
+        ];
+    }
+
+    /**
+     * @param string $prefix
+     * @param string $segment
+     * @return string
+     */
+    private function appendAcfFieldNameSegment($prefix, $segment)
+    {
+        $prefix = trim((string) $prefix);
+        $segment = trim((string) $segment);
+
+        if ($segment === '') {
+            return $prefix;
+        }
+
+        if ($prefix === '') {
+            return $segment;
+        }
+
+        return $prefix . '_' . $segment;
+    }
+
+    /**
+     * @param string $selector
+     * @return string
+     */
+    private function normalizeAcfSelectorForSource($selector)
+    {
+        $selector = trim((string) $selector);
+        if ($selector === '') {
+            return '';
+        }
+
+        $selector = preg_replace('/[^A-Za-z0-9_\-]/', '', $selector);
+
+        return is_string($selector) ? $selector : '';
+    }
+
+    /**
+     * @param int|string $object_id
+     * @return int|string
+     */
+    private function normalizeAcfObjectIdForRead($object_id)
+    {
+        if (is_numeric($object_id)) {
+            return absint($object_id);
+        }
+
+        return sanitize_text_field((string) $object_id);
+    }
+
+    /**
+     * @param int|string         $acf_object_id
+     * @param array<int, string> $selectors
+     * @return mixed
+     */
+    private function readDerivedQueryCollectionCandidateValue($acf_object_id, array $selectors)
+    {
+        if (! function_exists('get_field')) {
+            return null;
+        }
+
+        $acf_object_id = $this->normalizeAcfObjectIdForRead($acf_object_id);
+        if ($acf_object_id === '' || $acf_object_id === 0) {
+            return null;
+        }
+
+        $fallback_value = null;
+        $has_fallback = false;
+        foreach ($selectors as $selector) {
+            $selector = is_scalar($selector) ? trim((string) $selector) : '';
+            if ($selector === '') {
+                continue;
+            }
+
+            $value = get_field($selector, $acf_object_id, false);
+            if (! $has_fallback) {
+                $fallback_value = $value;
+                $has_fallback = true;
+            }
+
+            if (! empty($this->normalizeReferenceIdList($value))) {
+                return $value;
+            }
+        }
+
+        return $has_fallback ? $fallback_value : null;
+    }
+
+    /**
+     * @param string $flattened_raw_name
+     * @param string $flattened_name
+     * @param string $raw_field_name
+     * @param string $field_name
+     * @return array<int, string>
+     */
+    private function buildDerivedQueryCollectionCandidateHintNames($flattened_raw_name, $flattened_name, $raw_field_name, $field_name)
+    {
+        return array_values(array_unique(array_filter(array_map('sanitize_key', [
+            $flattened_raw_name,
+            $flattened_name,
+            $raw_field_name,
+            $field_name,
+        ]))));
     }
 
     /**

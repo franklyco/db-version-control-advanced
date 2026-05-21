@@ -315,7 +315,19 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             return self::with_wsform_caps(function () use ($form_id, $uid) {
                 $ws_form = new WS_Form_Form();
                 $ws_form->id = $form_id;
-                $form_object = $ws_form->db_read(true, true, false, false, true);
+                try {
+                    $form_object = $ws_form->db_read(true, true, false, false, true);
+                } catch (Throwable $e) {
+                    if (class_exists('DBVC_Sync_Logger')) {
+                        DBVC_Sync_Logger::log('WS Form export skipped unreadable form', [
+                            'form_id' => $form_id,
+                            'error'   => $e->getMessage(),
+                        ]);
+                    }
+
+                    return null;
+                }
+
                 if (! is_object($form_object)) {
                     return null;
                 }

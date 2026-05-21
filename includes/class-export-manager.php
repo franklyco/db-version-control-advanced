@@ -71,6 +71,9 @@ if (! class_exists('DBVC_Export_Manager')) {
                 $creating_job = true;
 
                 DBVC_Sync_Posts::export_options_to_json();
+                if (class_exists('DBVC_Third_Party_Portability')) {
+                    DBVC_Third_Party_Portability::export_selected_entities();
+                }
                 DBVC_Sync_Posts::export_menus_to_json();
                 if (class_exists('DBVC_Sync_Taxonomies')) {
                     DBVC_Sync_Taxonomies::export_selected_taxonomies();
