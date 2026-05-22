@@ -625,6 +625,11 @@ final class ElementInstrumentationService
         $query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
         $query_object_type = isset($query['objectType']) ? sanitize_key((string) $query['objectType']) : '';
 
+        $native_terms_inspection = $this->inspectNativePostTermsElementRoot($settings, $element);
+        if (! empty($native_terms_inspection['supported'])) {
+            return $native_terms_inspection;
+        }
+
         if ($has_loop && $query_object_type === 'term') {
             return $this->inspectPostTermsCollectionLoopRoot($settings, $element);
         }
@@ -641,6 +646,49 @@ final class ElementInstrumentationService
             'render_context' => 'query_collection',
             'render_attribute' => '',
             'query_object_type' => $query_object_type,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectNativePostTermsElementRoot(array $settings, $element)
+    {
+        $element_name = isset($element->name) ? sanitize_key((string) $element->name) : '';
+        if ($element_name !== 'post-taxonomy') {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $taxonomy = isset($settings['taxonomy']) ? sanitize_key((string) $settings['taxonomy']) : '';
+        if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $label_context = $this->resolveCollectionBadgeLabelContext($element);
+        $element_ids = $this->resolveElementIds($element);
+        $query_element_id = isset($element_ids[0]) ? sanitize_text_field((string) $element_ids[0]) : '';
+
+        return [
+            'supported' => true,
+            'source_type' => 'post_terms_collection',
+            'query_source' => 'bricks_native_post_taxonomy_element',
+            'expression' => 'element.taxonomy:' . $taxonomy,
+            'setting_key' => 'taxonomy',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => 'post-taxonomy',
+            'query_element_id' => $query_element_id,
+            'query_element_label' => $label_context['element_label'],
+            'query_section_label' => $label_context['section_label'],
+            'query_badge_subject' => $label_context['badge_subject'],
+            'taxonomy' => $taxonomy,
+            'native_terms_element' => true,
         ];
     }
 

@@ -647,7 +647,7 @@ Implementation slices:
 2. Add `PostTermsCollectionResolver` for read/search/validate/save using WordPress term APIs. Implemented.
 3. Add explicit mutation contracts and acknowledgement labels for current-owner and loop-owned post term collection saves. Implemented.
 4. Reuse the existing reference-collection panel with term-specific copy and grouped term rows. Implemented with minimal term-specific panel copy.
-5. Add empty-loop handling only after non-empty term-loop root markers are confirmed.
+5. Add empty-loop handling only after non-empty term-loop root markers are confirmed. WIP/live QA.
 6. Later, consider ACF `taxonomy` field-backed query roots as a separate branch because those mutate an ACF field, not native post term relationships.
 
 Initial live examples to inspect:
@@ -656,6 +656,36 @@ Initial live examples to inspect:
 
 Validation note:
 - `/private/tmp/dbvc_ve_post_terms_collection_probe.php` classified a real `filter-tag` current-post term loop candidate as editable, resolved `post_terms_collection`, returned badge `Filter Tag Terms`, confirmed the mutation contract is writable, and found searchable term results.
+- Status: WIP while live browser testing validates marker placement, no-reload save, optional reload, and rendered chip updates.
+
+## Native Bricks Taxonomy/Terms Elements
+
+Bricks native taxonomy display elements such as `post-taxonomy` are different from Bricks term query loops. They render the terms assigned to a post directly from an element setting like `settings.taxonomy = category`, not from `query.objectType = term`.
+
+First slice scope:
+- exact Bricks native taxonomy/terms element names only, starting with `post-taxonomy`
+- one explicit `taxonomy` setting on the element
+- current post/page/CPT owner or a concrete loop-owned post owner already proven by `LoopContextResolver`
+- marker on the native taxonomy element root, not on each rendered term link/chip
+- reuse `source.type = post_terms_collection`, `resolver.name = post_terms_collection`, and `query_collection_write_mode = replace_post_terms`
+
+Out of scope for this slice:
+- elements with multiple or ambiguous taxonomies
+- taxonomy elements rendered for users, terms, archives, or unknown owners
+- ACF taxonomy selector fields, which mutate an ACF field instead of native post-term relationships
+- shared/default/fallback term lists without a concrete owner post
+
+Implementation steps:
+1. Detect native taxonomy elements during root attribute instrumentation before falling back to derived query inspection.
+2. Build a `post_terms_collection` candidate with `query_source = bricks_native_post_taxonomy_element`, the element ID/label, and one taxonomy.
+3. Broaden `classifyPostTermsCollectionField()` so it accepts the native element source as well as Bricks `current_post_term` query roots, while preserving owner/taxonomy validation.
+4. Reuse the existing term collection panel copy, search, save, no-reload save, and optional reload path.
+5. Validate with a runtime probe and then live-test a real `post-taxonomy` element inside and outside a post query loop.
+
+Implementation status:
+- Steps 1-4 are implemented for `post-taxonomy`.
+- Runtime probe `/private/tmp/dbvc_ve_native_post_taxonomy_probe.php` confirmed a synthetic native `post-taxonomy` root for `category` resolves to editable `post_terms_collection`, badge `Category Terms`, and a writable `post_terms_collection` contract.
+- Live browser QA is still open for marker placement, panel load, term search, no-reload save, optional reload, and rendered term chip updates.
 
 ## Acceptance For The First Slice
 

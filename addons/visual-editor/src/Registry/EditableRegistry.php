@@ -236,6 +236,43 @@ final class EditableRegistry
     }
 
     /**
+     * @param string             $session_id
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    public function addDescriptorToSession($session_id, EditableDescriptor $descriptor)
+    {
+        $session_id = $this->normalizeSessionId($session_id);
+        if ($session_id === '' || $descriptor->token === '') {
+            return false;
+        }
+
+        $payload = $this->loadSession($session_id);
+        if (empty($payload)) {
+            return false;
+        }
+
+        $descriptors = isset($payload['descriptors']) && is_array($payload['descriptors']) ? $payload['descriptors'] : [];
+        $descriptors[$descriptor->token] = $descriptor->toArray();
+        $payload['descriptors'] = $descriptors;
+        $resolved = [];
+
+        foreach ($descriptors as $token => $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $resolved[sanitize_key((string) $token)] = EditableDescriptor::fromArray($item);
+        }
+
+        $payload['public_map'] = $this->exportPublicMap($resolved);
+
+        set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
+
+        return true;
+    }
+
+    /**
      * @param array<string, EditableDescriptor>|null $descriptors
      * @return array<string, array<string, mixed>>
      */

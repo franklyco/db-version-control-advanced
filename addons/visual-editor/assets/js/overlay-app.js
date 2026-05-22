@@ -22,6 +22,18 @@
     touchSuppressToken: '',
     touchClickSuppressUntil: 0,
     statusBarState: null,
+    toolbarNode: null,
+    toolbarPopoverNode: null,
+    toolbarStatusbarParkingNode: null,
+    toolbarOpenPanel: '',
+    toolbarTriggerNode: null,
+    toolbarEventsBound: false,
+    toolbarObjectSearchRequestId: 0,
+    toolbarObjectSearchTimer: 0,
+    toolbarObjectSearchType: 'all',
+    toolbarObjectSearchTerm: '',
+    toolbarSharedGlobalsRequestId: 0,
+    toolbarSharedGlobalsByToken: {},
     fieldIndexOpen: false,
     fieldIndexFilter: 'all',
     fieldIndexOpenSubgroups: new Set(),
@@ -270,6 +282,49 @@
     state.sessionLastRefreshAt = Date.now();
     cacheDescriptorHydrations(session.descriptorHydrations);
     scheduleViewportPrefetch();
+  }
+
+  function mergeSessionDescriptors(descriptors) {
+    if (!descriptors || typeof descriptors !== 'object') {
+      return;
+    }
+
+    if (!state.session || typeof state.session !== 'object') {
+      return;
+    }
+
+    if (!state.session.descriptors || typeof state.session.descriptors !== 'object') {
+      state.session.descriptors = {};
+    }
+
+    Object.keys(descriptors).forEach(function (token) {
+      if (!token || !descriptors[token] || typeof descriptors[token] !== 'object') {
+        return;
+      }
+
+      state.session.descriptors[token] = descriptors[token];
+    });
+
+    scheduleFieldIndexRefresh();
+  }
+
+  function mergeSharedGlobalInventory(result) {
+    if (!result || typeof result !== 'object') {
+      return;
+    }
+
+    mergeSessionDescriptors(result.descriptors);
+    cacheDescriptorHydrations(result.descriptorHydrations);
+
+    if (Array.isArray(result.fields)) {
+      result.fields.forEach(function (field) {
+        if (!field || typeof field !== 'object' || !field.token) {
+          return;
+        }
+
+        state.toolbarSharedGlobalsByToken[String(field.token)] = field;
+      });
+    }
   }
 
   function handleExpiredSession(error) {
@@ -1425,9 +1480,13 @@
 
   function ensureStatusBar() {
     let bar = document.querySelector('.dbvc-ve-statusbar');
+    const mount = getStatusBarMountNode();
 
     if (bar) {
       bindStatusBarEvents(bar);
+      if (mount && bar.parentNode !== mount) {
+        mount.appendChild(bar);
+      }
       return bar;
     }
 
@@ -1441,7 +1500,7 @@
     ].join('');
 
     bindStatusBarEvents(bar);
-    document.body.appendChild(bar);
+    mount.appendChild(bar);
 
     return bar;
   }
@@ -1489,6 +1548,804 @@
     }
 
     return `<a class="dbvc-ve-statusbar__link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label || link.url)}</a>`;
+  }
+
+  function getToolbarString(key, fallback) {
+    const value = strings()[key];
+
+    return typeof value === 'string' && value ? value : fallback;
+  }
+
+  function renderToolbarIcon(name) {
+    const attrs = 'aria-hidden="true" focusable="false" viewBox="0 0 24 24"';
+    const common = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    const filled = 'fill="currentColor"';
+    const icons = {
+      status: `<svg ${attrs}><path ${filled} d="M8 5a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Zm8 0a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Z"/></svg>`,
+      layers: `<svg ${attrs}><path ${common} d="m12 3 8 4-8 4-8-4 8-4Z"/><path ${common} d="m4 12 8 4 8-4"/><path ${common} d="m4 17 8 4 8-4"/></svg>`,
+      search: `<svg ${attrs}><circle ${common} cx="11" cy="11" r="6"/><path ${common} d="m16 16 4 4"/></svg>`,
+      globe: `<svg ${attrs}><circle ${common} cx="12" cy="12" r="9"/><path ${common} d="M3 12h18"/><path ${common} d="M12 3c2.5 2.7 3.5 5.7 3.5 9s-1 6.3-3.5 9c-2.5-2.7-3.5-5.7-3.5-9S9.5 5.7 12 3Z"/></svg>`,
+      edit: `<svg ${attrs}><path ${common} d="M4 20h16"/><path ${common} d="m6 16 1-4 9-9 4 4-9 9-4 1Z"/><path ${common} d="m14 5 4 4"/></svg>`,
+      more: `<svg ${attrs}><circle ${filled} cx="5" cy="12" r="1.8"/><circle ${filled} cx="12" cy="12" r="1.8"/><circle ${filled} cx="19" cy="12" r="1.8"/></svg>`,
+      power: `<svg ${attrs}><path ${common} d="M12 2v10"/><path ${common} d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>`
+    };
+
+    return icons[name] || icons.more;
+  }
+
+  function createToolbarButtonMarkup(action, icon, label, extraClass, disabled) {
+    const classes = ['dbvc-ve-toolbar__button'];
+
+    if (extraClass) {
+      classes.push(extraClass);
+    }
+
+    return [
+      `<button type="button" class="${classes.join(' ')}" data-dbvc-ve-toolbar-action="${escapeHtml(action)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${disabled ? ' disabled aria-disabled="true"' : ''}>`,
+      renderToolbarIcon(icon),
+      '<span class="dbvc-ve-toolbar__count" aria-hidden="true"></span>',
+      '</button>'
+    ].join('');
+  }
+
+  function getToolbarToggleUrl() {
+    const value = window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.toggleUrl;
+
+    return typeof value === 'string' && value ? value : '';
+  }
+
+  function bindToolbarEvents(toolbar) {
+    if (!toolbar || toolbar.dataset.toolbarBound === '1') {
+      return;
+    }
+
+    toolbar.dataset.toolbarBound = '1';
+    toolbar.addEventListener('click', handleToolbarClick);
+
+    if (!state.toolbarEventsBound) {
+      state.toolbarEventsBound = true;
+      document.addEventListener('pointerdown', handleToolbarOutsidePointerDown, true);
+      document.addEventListener('keydown', handleToolbarKeydown, true);
+    }
+  }
+
+  function ensureToolbar() {
+    if (state.toolbarNode && state.toolbarNode.isConnected) {
+      return state.toolbarNode;
+    }
+
+    let toolbar = document.querySelector('.dbvc-ve-toolbar');
+
+    if (!toolbar) {
+      const toolbarLabel = getToolbarString('toolbarLabel', 'Visual Editor toolbar');
+      const statusLabel = getToolbarString('toolbarStatus', 'Visual Editor status');
+      const reviewLabel = getToolbarString('toolbarReviewFields', 'Review fields');
+      const goObjectLabel = getToolbarString('toolbarGoToObject', 'Go to object');
+      const sharedGlobalsLabel = getToolbarString('toolbarSharedGlobals', 'Shared globals');
+      const moreLabel = getToolbarString('toolbarMore', 'More options');
+      const editLabel = getToolbarString('toolbarEditObject', 'Edit object');
+      const exitLabel = getToolbarString('toolbarExitMode', 'Exit Visual Editor');
+      const toggleUrl = getToolbarToggleUrl();
+
+      toolbar = document.createElement('div');
+      toolbar.className = 'dbvc-ve-toolbar';
+      toolbar.setAttribute('role', 'toolbar');
+      toolbar.setAttribute('aria-label', toolbarLabel);
+      toolbar.innerHTML = [
+        createToolbarButtonMarkup('status', 'status', statusLabel, 'dbvc-ve-toolbar__button--satellite', false),
+        '<div class="dbvc-ve-toolbar__dock">',
+        createToolbarButtonMarkup('review-fields', 'layers', reviewLabel, 'dbvc-ve-toolbar__button--dock', false),
+        createToolbarButtonMarkup('go-object', 'search', goObjectLabel, 'dbvc-ve-toolbar__button--dock', false),
+        createToolbarButtonMarkup('shared-globals', 'globe', sharedGlobalsLabel, 'dbvc-ve-toolbar__button--dock', false),
+        createToolbarButtonMarkup('overflow', 'more', moreLabel, 'dbvc-ve-toolbar__button--dock', true),
+        '</div>',
+        `<a class="dbvc-ve-toolbar__button dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__edit-link is-disabled" data-dbvc-ve-toolbar-action="edit-object" aria-label="${escapeHtml(editLabel)}" title="${escapeHtml(editLabel)}" target="_blank" rel="noopener noreferrer" aria-disabled="true">${renderToolbarIcon('edit')}</a>`,
+        toggleUrl
+          ? `<a class="dbvc-ve-toolbar__button dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__button--power" data-dbvc-ve-toolbar-action="toggle-mode" aria-label="${escapeHtml(exitLabel)}" title="${escapeHtml(exitLabel)}" href="${escapeHtml(toggleUrl)}">${renderToolbarIcon('power')}</a>`
+          : createToolbarButtonMarkup('toggle-mode', 'power', exitLabel, 'dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__button--power', true),
+        '<div class="dbvc-ve-toolbar__message" hidden></div>',
+        '<div class="dbvc-ve-toolbar-popover" role="dialog" aria-modal="false" hidden>',
+        '  <div class="dbvc-ve-toolbar-popover__header">',
+        '    <div class="dbvc-ve-toolbar-popover__title" id="dbvc-ve-toolbar-popover-title"></div>',
+        `    <button type="button" class="dbvc-ve-toolbar-popover__close" data-dbvc-ve-toolbar-action="close-popover" aria-label="${escapeHtml(strings().panelCancel || 'Close')}">×</button>`,
+        '  </div>',
+        '  <div class="dbvc-ve-toolbar-popover__body"></div>',
+        '</div>',
+        '<div class="dbvc-ve-toolbar__statusbar-parking" hidden></div>'
+      ].join('');
+
+      document.body.appendChild(toolbar);
+    }
+
+    state.toolbarNode = toolbar;
+    state.toolbarPopoverNode = toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    state.toolbarStatusbarParkingNode = toolbar.querySelector('.dbvc-ve-toolbar__statusbar-parking');
+    bindToolbarEvents(toolbar);
+    syncToolbarState(state.statusBarState || {});
+
+    return toolbar;
+  }
+
+  function getToolbarPopoverBody() {
+    const toolbar = ensureToolbar();
+
+    return toolbar.querySelector('.dbvc-ve-toolbar-popover__body');
+  }
+
+  function getStatusBarMountNode() {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const body = toolbar.querySelector('.dbvc-ve-toolbar-popover__body');
+
+    if (popover && body && !popover.hidden && (state.toolbarOpenPanel === 'status' || state.toolbarOpenPanel === 'review-fields')) {
+      return body;
+    }
+
+    return state.toolbarStatusbarParkingNode || toolbar.querySelector('.dbvc-ve-toolbar__statusbar-parking') || document.body;
+  }
+
+  function clearToolbarPopoverBody(body, keepNode) {
+    if (!body) {
+      return;
+    }
+
+    Array.from(body.childNodes).forEach(function (node) {
+      if (node !== keepNode) {
+        node.remove();
+      }
+    });
+  }
+
+  function openStatusBarToolbarPopover(options) {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const title = toolbar.querySelector('.dbvc-ve-toolbar-popover__title');
+    const body = getToolbarPopoverBody();
+    const expandIndex = Boolean(options && options.expandIndex);
+
+    state.toolbarOpenPanel = expandIndex ? 'review-fields' : 'status';
+    state.toolbarTriggerNode = options && options.trigger ? options.trigger : null;
+
+    state.fieldIndexOpen = expandIndex;
+
+    if (popover) {
+      popover.hidden = false;
+      popover.setAttribute('aria-labelledby', 'dbvc-ve-toolbar-popover-title');
+    }
+
+    if (title) {
+      title.textContent = expandIndex
+        ? getToolbarString('toolbarReviewFields', 'Review fields')
+        : getToolbarString('toolbarStatus', 'Visual Editor status');
+    }
+
+    const bar = ensureStatusBar();
+    clearToolbarPopoverBody(body, bar);
+    if (body && bar.parentNode !== body) {
+      body.appendChild(bar);
+    }
+
+    updateToolbarExpandedState();
+    updateStatusBar({});
+  }
+
+  function getToolbarObjectSearchFilterOptions() {
+    return [
+      {
+        key: 'all',
+        label: getToolbarString('toolbarObjectFilterAll', 'All')
+      },
+      {
+        key: 'post',
+        label: getToolbarString('toolbarObjectFilterPosts', 'Posts')
+      },
+      {
+        key: 'term',
+        label: getToolbarString('toolbarObjectFilterTerms', 'Terms')
+      }
+    ];
+  }
+
+  function buildCurrentObjectShortcut() {
+    const bootstrap = window.DBVCVisualEditorBootstrap || {};
+    const pageContext = bootstrap.pageContext && typeof bootstrap.pageContext === 'object' ? bootstrap.pageContext : {};
+    const editLink = normalizeStatusBarLink(bootstrap.currentEditLink || null);
+    const url = pageContext.url ? String(pageContext.url) : '';
+    const entityType = pageContext.entityType ? String(pageContext.entityType) : '';
+    const entityId = Number(pageContext.entityId || 0) || 0;
+
+    if (!url && !editLink) {
+      return null;
+    }
+
+    return {
+      objectType: entityType === 'term' ? 'term' : 'post',
+      id: entityId,
+      title: getToolbarString('toolbarObjectCurrent', 'Current object'),
+      typeLabel: entityType === 'term'
+        ? getToolbarString('toolbarObjectCurrentTerm', 'Current term')
+        : getToolbarString('toolbarObjectCurrentPage', 'Current page'),
+      status: '',
+      frontendUrl: url,
+      backendUrl: editLink && editLink.url ? editLink.url : '',
+      canEdit: Boolean(editLink && editLink.url)
+    };
+  }
+
+  function renderObjectSearchItem(item) {
+    const object = item && typeof item === 'object' ? item : {};
+    const title = object.title ? String(object.title) : `#${Number(object.id || 0) || ''}`;
+    const typeLabel = object.typeLabel ? String(object.typeLabel) : (object.objectType ? String(object.objectType) : '');
+    const status = object.status ? String(object.status) : '';
+    const meta = [typeLabel, status].filter(Boolean).join(' / ');
+    const frontendUrl = object.frontendUrl ? String(object.frontendUrl) : '';
+    const backendUrl = object.backendUrl ? String(object.backendUrl) : '';
+    const primaryUrl = frontendUrl || backendUrl;
+    const primaryLabel = frontendUrl
+      ? getToolbarString('toolbarObjectOpenFrontend', 'Open')
+      : getToolbarString('toolbarObjectOpenBackend', 'Edit');
+
+    return [
+      '<div class="dbvc-ve-toolbar-object__row">',
+      '  <div class="dbvc-ve-toolbar-object__row-text">',
+      `    <div class="dbvc-ve-toolbar-object__row-title">${escapeHtml(title)}</div>`,
+      meta ? `    <div class="dbvc-ve-toolbar-object__row-meta">${escapeHtml(meta)}</div>` : '',
+      '  </div>',
+      '  <div class="dbvc-ve-toolbar-object__row-actions">',
+      primaryUrl ? `    <a class="dbvc-ve-toolbar-object__action" href="${escapeHtml(primaryUrl)}">${escapeHtml(primaryLabel)}</a>` : '',
+      backendUrl && backendUrl !== primaryUrl ? `    <a class="dbvc-ve-toolbar-object__action" href="${escapeHtml(backendUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(getToolbarString('toolbarObjectEditBackend', 'Edit'))}</a>` : '',
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderObjectSearchResults(body, items, message) {
+    const results = body ? body.querySelector('.dbvc-ve-toolbar-object__results') : null;
+    const shortcuts = body ? body.querySelector('.dbvc-ve-toolbar-object__shortcuts') : null;
+
+    if (!results) {
+      return;
+    }
+
+    if (shortcuts) {
+      const current = buildCurrentObjectShortcut();
+      shortcuts.innerHTML = current
+        ? [
+          `<div class="dbvc-ve-toolbar-object__section-title">${escapeHtml(getToolbarString('toolbarObjectCurrentLabel', 'Current'))}</div>`,
+          renderObjectSearchItem(current)
+        ].join('')
+        : '';
+    }
+
+    if (message) {
+      results.innerHTML = `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(message)}</div>`;
+      return;
+    }
+
+    if (!Array.isArray(items) || !items.length) {
+      results.innerHTML = `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(getToolbarString('toolbarObjectNoResults', 'No matching objects were found.'))}</div>`;
+      return;
+    }
+
+    results.innerHTML = [
+      `<div class="dbvc-ve-toolbar-object__section-title">${escapeHtml(getToolbarString('toolbarObjectResults', 'Results'))}</div>`,
+      items.map(renderObjectSearchItem).join('')
+    ].join('');
+  }
+
+  function performToolbarObjectSearch(body) {
+    const search = state.toolbarObjectSearchTerm;
+    const objectType = state.toolbarObjectSearchType;
+    const requestId = state.toolbarObjectSearchRequestId + 1;
+
+    state.toolbarObjectSearchRequestId = requestId;
+    renderObjectSearchResults(body, [], getToolbarString('toolbarObjectSearching', 'Searching...'));
+
+    window.DBVCVisualEditorApi.searchObjects(search, objectType)
+      .then(function (result) {
+        if (requestId !== state.toolbarObjectSearchRequestId || state.toolbarOpenPanel !== 'go-object') {
+          return;
+        }
+
+        renderObjectSearchResults(body, result && Array.isArray(result.items) ? result.items : [], '');
+      })
+      .catch(function (error) {
+        if (requestId !== state.toolbarObjectSearchRequestId) {
+          return;
+        }
+
+        renderObjectSearchResults(body, [], error && error.message ? error.message : getToolbarString('toolbarObjectSearchFailed', 'Object search failed.'));
+      });
+  }
+
+  function scheduleToolbarObjectSearch(body) {
+    if (state.toolbarObjectSearchTimer) {
+      window.clearTimeout(state.toolbarObjectSearchTimer);
+    }
+
+    state.toolbarObjectSearchTimer = window.setTimeout(function () {
+      state.toolbarObjectSearchTimer = 0;
+      performToolbarObjectSearch(body);
+    }, 180);
+  }
+
+  function openObjectSearchToolbarPopover(options) {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const title = toolbar.querySelector('.dbvc-ve-toolbar-popover__title');
+    const body = getToolbarPopoverBody();
+    const filters = getToolbarObjectSearchFilterOptions();
+
+    state.toolbarOpenPanel = 'go-object';
+    state.toolbarTriggerNode = options && options.trigger ? options.trigger : null;
+    state.fieldIndexOpen = false;
+
+    if (state.toolbarObjectSearchType === '') {
+      state.toolbarObjectSearchType = 'all';
+    }
+
+    if (popover) {
+      popover.hidden = false;
+      popover.setAttribute('aria-labelledby', 'dbvc-ve-toolbar-popover-title');
+    }
+
+    if (title) {
+      title.textContent = getToolbarString('toolbarGoToObject', 'Go to object');
+    }
+
+    if (body) {
+      body.innerHTML = [
+        '<div class="dbvc-ve-toolbar-object">',
+        '  <div class="dbvc-ve-toolbar-object__filters">',
+        filters.map(function (filter) {
+          const active = filter.key === state.toolbarObjectSearchType;
+
+          return `<button type="button" class="dbvc-ve-toolbar-object__filter${active ? ' is-active' : ''}" data-dbvc-ve-object-filter="${escapeHtml(filter.key)}" aria-pressed="${active ? 'true' : 'false'}">${escapeHtml(filter.label)}</button>`;
+        }).join(''),
+        '  </div>',
+        `  <input type="search" class="dbvc-ve-toolbar-object__search" value="${escapeHtml(state.toolbarObjectSearchTerm)}" placeholder="${escapeHtml(getToolbarString('toolbarObjectSearchPlaceholder', 'Search posts and terms...'))}">`,
+        '  <div class="dbvc-ve-toolbar-object__shortcuts"></div>',
+        '  <div class="dbvc-ve-toolbar-object__results"></div>',
+        '</div>'
+      ].join('');
+
+      const input = body.querySelector('.dbvc-ve-toolbar-object__search');
+
+      body.querySelectorAll('[data-dbvc-ve-object-filter]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          state.toolbarObjectSearchType = button.getAttribute('data-dbvc-ve-object-filter') || 'all';
+          openObjectSearchToolbarPopover({ trigger: state.toolbarTriggerNode });
+        });
+      });
+
+      if (input) {
+        input.addEventListener('input', function () {
+          state.toolbarObjectSearchTerm = input.value.trim();
+          scheduleToolbarObjectSearch(body);
+        });
+
+        window.setTimeout(function () {
+          input.focus();
+          input.select();
+        }, 0);
+      }
+
+      renderObjectSearchResults(body, [], '');
+      performToolbarObjectSearch(body);
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function isSharedGlobalCandidate(entry) {
+    const entity = entry && entry.entity && typeof entry.entity === 'object' ? entry.entity : {};
+    const index = entry && entry.index && typeof entry.index === 'object' ? entry.index : {};
+    const input = entry && entry.input ? String(entry.input) : '';
+    const fieldType = index.fieldType ? String(index.fieldType) : '';
+
+    if (entity.type !== 'option') {
+      return false;
+    }
+
+    return fieldType === 'relationship'
+      || fieldType === 'post_object'
+      || input === 'reference_collection'
+      || input === 'reference_collection_preview';
+  }
+
+  function getSharedGlobalEntries() {
+    return getSessionDescriptorEntries()
+      .filter(isSharedGlobalCandidate)
+      .sort(function (left, right) {
+        return left.domOrder - right.domOrder;
+      });
+  }
+
+  function getSharedGlobalGroupLabel(entry) {
+    const index = entry && entry.index && typeof entry.index === 'object' ? entry.index : {};
+    const optionPages = Array.isArray(index.fieldGroupOptionPages)
+      ? index.fieldGroupOptionPages.filter(Boolean).join(', ')
+      : '';
+
+    return optionPages || index.fieldGroupTitle || getToolbarString('toolbarSharedGlobals', 'Shared globals');
+  }
+
+  function renderSharedGlobalEntry(entry) {
+    const index = entry.index && typeof entry.index === 'object' ? entry.index : {};
+    const inventory = state.toolbarSharedGlobalsByToken && state.toolbarSharedGlobalsByToken[entry.token]
+      ? state.toolbarSharedGlobalsByToken[entry.token]
+      : null;
+    const fieldType = index.fieldType ? String(index.fieldType) : '';
+    const isConfigured = inventory && inventory.configured
+      || index.sourceContext === 'toolbar_shared_global_option';
+    const status = isConfigured
+      ? getToolbarString('toolbarSharedGlobalConfigured', 'Configured global')
+      : (entry.status === 'editable'
+        ? getToolbarString('toolbarSharedGlobalEditable', 'Writable on page')
+        : getToolbarString('toolbarSharedGlobalInspectOnly', 'Inspect only'));
+    const itemCount = inventory && typeof inventory.itemCount === 'number'
+      ? `${inventory.itemCount} ${inventory.itemCount === 1 ? 'item' : 'items'}`
+      : '';
+    const details = [
+      fieldType,
+      index.fieldName ? String(index.fieldName) : '',
+      itemCount,
+      status
+    ].filter(Boolean).join(' / ');
+    const label = entry.label || index.label || getToolbarString('fieldIndexFieldFallback', 'Field');
+
+    return [
+      '<div class="dbvc-ve-toolbar-shared__row">',
+      '  <div class="dbvc-ve-toolbar-shared__row-text">',
+      `    <div class="dbvc-ve-toolbar-shared__row-title">${escapeHtml(label)}</div>`,
+      details ? `    <div class="dbvc-ve-toolbar-shared__row-meta">${escapeHtml(details)}</div>` : '',
+      '  </div>',
+      '  <div class="dbvc-ve-toolbar-shared__row-actions">',
+      `    <button type="button" class="dbvc-ve-toolbar-shared__action" data-dbvc-ve-toolbar-shared-open="${escapeHtml(entry.token)}">${escapeHtml(getToolbarString('fieldIndexOpen', 'Open'))}</button>`,
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderSharedGlobalsMarkup(entries, options) {
+    const renderOptions = options && typeof options === 'object' ? options : {};
+    const warnings = Array.isArray(renderOptions.warnings) ? renderOptions.warnings : [];
+
+    if (!entries.length) {
+      return [
+        '<div class="dbvc-ve-toolbar-shared">',
+        renderOptions.loading ? `<div class="dbvc-ve-toolbar-shared__notice">${escapeHtml(getToolbarString('toolbarSharedGlobalsLoading', 'Loading shared globals...'))}</div>` : '',
+        warnings.length ? `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(warnings.join(' '))}</div>` : '',
+        `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(getToolbarString('toolbarSharedGlobalsEmpty', 'No shared global relationship or post object fields are marked on this page.'))}</div>`,
+        '</div>'
+      ].join('');
+    }
+
+    const groups = new Map();
+
+    entries.forEach(function (entry) {
+      const label = getSharedGlobalGroupLabel(entry);
+      const key = label.toLowerCase();
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          label,
+          entries: []
+        });
+      }
+
+      groups.get(key).entries.push(entry);
+    });
+
+    return [
+      '<div class="dbvc-ve-toolbar-shared">',
+      `<div class="dbvc-ve-toolbar-shared__notice">${escapeHtml(getToolbarString('toolbarSharedGlobalsNotice', 'These are shared option-owned connected fields already proven by this page session. Editing remains routed through the existing field panel and shared acknowledgement flow.'))}</div>`,
+      warnings.length ? `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(warnings.join(' '))}</div>` : '',
+      Array.from(groups.values()).map(function (group) {
+        return [
+          `<div class="dbvc-ve-toolbar-object__section-title">${escapeHtml(group.label)}</div>`,
+          group.entries.map(renderSharedGlobalEntry).join('')
+        ].join('');
+      }).join(''),
+      '</div>'
+    ].join('');
+  }
+
+  function openSharedGlobalsToolbarPopover(options) {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const title = toolbar.querySelector('.dbvc-ve-toolbar-popover__title');
+    const body = getToolbarPopoverBody();
+
+    state.toolbarOpenPanel = 'shared-globals';
+    state.toolbarTriggerNode = options && options.trigger ? options.trigger : null;
+    state.fieldIndexOpen = false;
+
+    if (popover) {
+      popover.hidden = false;
+      popover.setAttribute('aria-labelledby', 'dbvc-ve-toolbar-popover-title');
+    }
+
+    if (title) {
+      title.textContent = getToolbarString('toolbarSharedGlobals', 'Shared globals');
+    }
+
+    if (body) {
+      body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries());
+      bindSharedGlobalsToolbarActions(body);
+      loadConfiguredSharedGlobals(body);
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function bindSharedGlobalsToolbarActions(body) {
+    if (!body) {
+      return;
+    }
+
+    body.querySelectorAll('[data-dbvc-ve-toolbar-shared-open]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const token = button.getAttribute('data-dbvc-ve-toolbar-shared-open') || '';
+
+        closeToolbarPopover();
+
+        if (findMarkerByToken(token)) {
+          locateFieldIndexMarker(token, true);
+          return;
+        }
+
+        openToolbarDescriptorPanel(token);
+      });
+    });
+  }
+
+  function loadConfiguredSharedGlobals(body) {
+    const sessionId = getSessionId();
+    const requestId = state.toolbarSharedGlobalsRequestId + 1;
+
+    state.toolbarSharedGlobalsRequestId = requestId;
+
+    if (!body || !sessionId || !window.DBVCVisualEditorApi || typeof window.DBVCVisualEditorApi.getSharedGlobalFields !== 'function') {
+      return;
+    }
+
+    body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries(), { loading: true });
+    bindSharedGlobalsToolbarActions(body);
+
+    window.DBVCVisualEditorApi.getSharedGlobalFields(sessionId)
+      .then(function (result) {
+        if (state.toolbarSharedGlobalsRequestId !== requestId || state.toolbarOpenPanel !== 'shared-globals') {
+          return;
+        }
+
+        mergeSharedGlobalInventory(result);
+        body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries(), {
+          warnings: result && Array.isArray(result.warnings) ? result.warnings : []
+        });
+        bindSharedGlobalsToolbarActions(body);
+      })
+      .catch(function (error) {
+        if (isSessionExpiredError(error)) {
+          handleExpiredSession(error);
+        }
+
+        if (state.toolbarSharedGlobalsRequestId !== requestId || state.toolbarOpenPanel !== 'shared-globals') {
+          return;
+        }
+
+        body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries(), {
+          warnings: [error && error.message ? error.message : getToolbarString('toolbarSharedGlobalsFailed', 'Shared globals could not be loaded.')]
+        });
+        bindSharedGlobalsToolbarActions(body);
+      });
+  }
+
+  function closeToolbarPopover() {
+    const toolbar = state.toolbarNode;
+    const popover = state.toolbarPopoverNode;
+
+    if (state.toolbarObjectSearchTimer) {
+      window.clearTimeout(state.toolbarObjectSearchTimer);
+      state.toolbarObjectSearchTimer = 0;
+    }
+
+    state.toolbarObjectSearchRequestId += 1;
+    state.toolbarSharedGlobalsRequestId += 1;
+    state.toolbarOpenPanel = '';
+    state.toolbarTriggerNode = null;
+
+    if (popover) {
+      popover.hidden = true;
+    }
+
+    if (toolbar) {
+      const parking = state.toolbarStatusbarParkingNode || toolbar.querySelector('.dbvc-ve-toolbar__statusbar-parking');
+      const bar = toolbar.querySelector('.dbvc-ve-statusbar');
+
+      if (parking && bar && bar.parentNode !== parking) {
+        parking.appendChild(bar);
+      }
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function updateToolbarExpandedState() {
+    const toolbar = state.toolbarNode;
+
+    if (!toolbar) {
+      return;
+    }
+
+    toolbar.classList.toggle('is-popover-open', Boolean(state.toolbarOpenPanel));
+    toolbar.querySelectorAll('[data-dbvc-ve-toolbar-action]').forEach(function (node) {
+      const action = node.getAttribute('data-dbvc-ve-toolbar-action') || '';
+      const expanded = action === state.toolbarOpenPanel;
+
+      if (action === 'status' || action === 'review-fields') {
+        node.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      }
+    });
+  }
+
+  function syncToolbarState(nextState) {
+    const toolbar = state.toolbarNode && state.toolbarNode.isConnected
+      ? state.toolbarNode
+      : document.querySelector('.dbvc-ve-toolbar');
+
+    if (!toolbar) {
+      return;
+    }
+
+    const statusButton = toolbar.querySelector('[data-dbvc-ve-toolbar-action="status"]');
+    const reviewButton = toolbar.querySelector('[data-dbvc-ve-toolbar-action="review-fields"]');
+    const editLink = toolbar.querySelector('[data-dbvc-ve-toolbar-action="edit-object"]');
+    const message = toolbar.querySelector('.dbvc-ve-toolbar__message');
+    const count = typeof nextState.count === 'number' ? nextState.count : null;
+    const countText = count !== null ? String(count) : '';
+    const statusText = nextState.message
+      ? String(nextState.message)
+      : [strings().modeActive || 'Visual Editor active', getStatusBarCountText(count)].filter(Boolean).join(' / ');
+
+    toolbar.dataset.state = nextState.kind || 'active';
+
+    [statusButton, reviewButton].forEach(function (button) {
+      if (!button) {
+        return;
+      }
+
+      button.dataset.state = nextState.kind || 'active';
+      button.title = statusText || button.getAttribute('aria-label') || '';
+      const countNode = button.querySelector('.dbvc-ve-toolbar__count');
+      if (countNode) {
+        countNode.textContent = countText;
+        countNode.hidden = count === null;
+      }
+    });
+
+    if (editLink) {
+      const link = normalizeStatusBarLink(nextState.editLink || null);
+      const label = link && link.label ? link.label : getToolbarString('toolbarEditObject', 'Edit object');
+
+      editLink.setAttribute('aria-label', label);
+      editLink.title = label;
+
+      if (link && link.url) {
+        editLink.href = link.url;
+        editLink.classList.remove('is-disabled');
+        editLink.setAttribute('aria-disabled', 'false');
+      } else {
+        editLink.removeAttribute('href');
+        editLink.classList.add('is-disabled');
+        editLink.setAttribute('aria-disabled', 'true');
+      }
+    }
+
+    if (message) {
+      message.textContent = nextState.message || '';
+      message.hidden = !nextState.message;
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function handleToolbarClick(event) {
+    const actionNode = event.target && typeof event.target.closest === 'function'
+      ? event.target.closest('[data-dbvc-ve-toolbar-action]')
+      : null;
+
+    if (!actionNode) {
+      return;
+    }
+
+    const action = actionNode.getAttribute('data-dbvc-ve-toolbar-action') || '';
+
+    if (actionNode.disabled || actionNode.getAttribute('aria-disabled') === 'true') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (action === 'edit-object' || action === 'toggle-mode') {
+      closeToolbarPopover();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (action === 'close-popover') {
+      const trigger = state.toolbarTriggerNode;
+      closeToolbarPopover();
+      if (trigger && typeof trigger.focus === 'function') {
+        trigger.focus();
+      }
+      return;
+    }
+
+    if (action === 'status') {
+      if (state.toolbarOpenPanel === 'status') {
+        closeToolbarPopover();
+      } else {
+        openStatusBarToolbarPopover({ trigger: actionNode, expandIndex: false });
+      }
+      return;
+    }
+
+    if (action === 'review-fields') {
+      if (state.toolbarOpenPanel === 'review-fields') {
+        closeToolbarPopover();
+      } else {
+        openStatusBarToolbarPopover({ trigger: actionNode, expandIndex: true });
+      }
+      return;
+    }
+
+    if (action === 'go-object') {
+      if (state.toolbarOpenPanel === 'go-object') {
+        closeToolbarPopover();
+      } else {
+        openObjectSearchToolbarPopover({ trigger: actionNode });
+      }
+      return;
+    }
+
+    if (action === 'shared-globals') {
+      if (state.toolbarOpenPanel === 'shared-globals') {
+        closeToolbarPopover();
+      } else {
+        openSharedGlobalsToolbarPopover({ trigger: actionNode });
+      }
+    }
+  }
+
+  function handleToolbarOutsidePointerDown(event) {
+    if (!state.toolbarOpenPanel) {
+      return;
+    }
+
+    const target = event.target;
+
+    if (!target || isWpMediaModalElement(target)) {
+      return;
+    }
+
+    if (target.closest && target.closest('.dbvc-ve-toolbar')) {
+      return;
+    }
+
+    closeToolbarPopover();
+  }
+
+  function handleToolbarKeydown(event) {
+    if (!state.toolbarOpenPanel || event.key !== 'Escape') {
+      return;
+    }
+
+    closeToolbarPopover();
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   function bindStatusBarEvents(bar) {
@@ -3575,6 +4432,7 @@
     links.innerHTML = createStatusBarLinkMarkup(nextState.editLink);
     links.hidden = !nextState.editLink;
     message.textContent = nextState.message || '';
+    syncToolbarState(nextState);
   }
 
   function clampPanelPosition(position, panel) {
@@ -6374,6 +7232,86 @@
     });
   }
 
+  async function openToolbarDescriptorPanel(token) {
+    const panelNodes = getPanelNodes();
+    const cached = getCachedDescriptorPayload(token);
+    let session = state.session;
+
+    if (!token) {
+      return;
+    }
+
+    setPanelOpen(true);
+    destroyActiveController();
+    state.activeController = null;
+    panelNodes.panel.dataset.state = 'loading';
+    panelNodes.title.textContent = strings().panelTitle || 'Edit field';
+    panelNodes.entityType.textContent = '';
+    panelNodes.entityLinks.innerHTML = '';
+    panelNodes.meta.innerHTML = '';
+    panelNodes.notice.innerHTML = '';
+    panelNodes.fieldLabel.textContent = '';
+    panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
+    panelNodes.fieldWrap.firstChild.textContent = strings().panelLoading || 'Loading field details...';
+    panelNodes.status.textContent = '';
+    panelNodes.saveNoReloadButton.hidden = true;
+    panelNodes.saveNoReloadButton.disabled = true;
+    panelNodes.saveButton.disabled = true;
+    schedulePanelViewportClamp();
+
+    state.activeNode = null;
+    state.activeDescriptor = null;
+    state.activeRequiresSharedScopeAck = false;
+    state.activeAcknowledgementType = 'none';
+    state.sharedScopeAcknowledged = false;
+    state.touchSelectionToken = token;
+    clearDescriptorPrefetch();
+
+    if (shouldRefreshSessionBeforeAction()) {
+      try {
+        session = await refreshSession({ silent: true });
+      } catch (error) {
+        panelNodes.panel.dataset.state = 'error';
+        panelNodes.status.textContent = error && error.message ? error.message : getSessionExpiredMessage();
+        schedulePanelViewportClamp();
+        window.console.error(error);
+        return;
+      }
+    }
+
+    if (!session || !session.sessionId) {
+      panelNodes.panel.dataset.state = 'error';
+      panelNodes.status.textContent = getSessionExpiredMessage();
+      schedulePanelViewportClamp();
+      return;
+    }
+
+    if (cached && cached.ok && cached.descriptor) {
+      cached.sourceMismatch = false;
+      cached.renderedValue = cached.displayValue || '';
+      state.activeDescriptor = cached.descriptor;
+      renderEditorPanel(cached);
+      return;
+    }
+
+    try {
+      const result = await loadDescriptorPayload(session.sessionId, token);
+      result.sourceMismatch = false;
+      result.renderedValue = result.displayValue || '';
+      state.activeDescriptor = result.descriptor;
+      renderEditorPanel(result);
+    } catch (error) {
+      if (isSessionExpiredError(error)) {
+        handleExpiredSession(error);
+      }
+
+      panelNodes.panel.dataset.state = 'error';
+      panelNodes.status.textContent = error && error.message ? error.message : (strings().descriptorMissing || 'Descriptor not found.');
+      schedulePanelViewportClamp();
+      window.console.error(error);
+    }
+  }
+
   async function openEditor(node, session) {
     const token = getMarkerToken(node);
     const panelNodes = getPanelNodes();
@@ -6447,7 +7385,7 @@
     const saveOptions = options && typeof options === 'object' ? options : {};
     const panelNodes = getPanelNodes();
 
-    if (!state.session || !state.activeNode || !state.activeDescriptor || !state.activeController) {
+    if (!state.session || !state.activeDescriptor || !state.activeController) {
       return;
     }
 
@@ -6559,6 +7497,7 @@
     }
 
     document.body.classList.add('dbvc-ve-active');
+    ensureToolbar();
     ensureStatusBar();
     ensureEditorPanel();
     ensureBadgeLayer();

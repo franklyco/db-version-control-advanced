@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+- Added configurable Toolbar Shared Globals support for option-owned ACF relationship/post_object fields, defaulting to `settings_globals_default_posts`, with a settings textarea for additional option field names and a Visual Editor-mode REST endpoint that creates toolbar-scoped descriptors through the existing shared collection save contract.
+- Added a session-backed Shared Globals toolbar inventory for option-owned relationship/post_object candidates already proven by the current page, with `Open` routed through the existing marker/panel flow and no new global save path.
+- Added Toolbar 2.0 Go To Object search as a navigation-only popover backed by a capped, Visual Editor-mode REST endpoint that filters editable public posts and terms before exposing frontend/backend links.
+- Implemented the first Toolbar 2.0 shell slice: the Visual Editor now renders a bottom-center toolbar, parks the existing statusbar inside an upward status/review popover, mirrors status messages while closed, and keeps the active-object edit link available.
+- Added a Toolbar 2.0 enhancement implementation guide for migrating the bottom-corner statusbar into a bottom-center Visual Editor toolbar with upward field review, object navigation, shared-global collection management, active-object links, and guarded phased rollout rules.
 - Added the first post-owned linked-term collection editor slice for nested Bricks `objectType: term` loops using `current_post_term`, with a dedicated `post_terms_collection` source/resolver, term search, and current/loop-owned post-term save contracts separate from ACF taxonomy fields.
+- Added guarded Bricks native `post-taxonomy` element handling so elements with one explicit taxonomy can surface the same post-term collection editor for the current or loop-owned post.
 - Enabled the guarded taxonomy nested descendant tranche for current taxonomy archive terms and concrete loop-owned terms: existing ACF repeater-row descendants can now move past the non-post repeater gate when owner/path metadata is proven, while shared term repeater collections and row/layout lifecycle mutations remain deferred.
 - Widened derived Bricks post-query collection detection to capture native dynamic include/post__in controls, including mixed post-type full-collection loops, saved setting provenance, dynamic ACF tags, field-name hints, and query-editor state; native static include lists and opaque final-ID lists remain unsupported to avoid writing unrelated ACF fields.
 - Preserved saved ACF dynamic-tag provenance for native include/post__in controls even when the saved Bricks setting cannot be rendered during summary capture, as long as final `bricks/posts/query_vars` exposes the resolved IDs.

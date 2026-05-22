@@ -57,6 +57,48 @@
       });
     },
 
+    searchObjects(search, objectType) {
+      const params = new URLSearchParams();
+
+      if (typeof search === 'string' && search.trim()) {
+        params.set('search', search.trim());
+      }
+
+      if (typeof objectType === 'string' && objectType.trim() && objectType !== 'all') {
+        params.set('objectType', objectType.trim());
+      }
+
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/object-search?${params.toString()}`, {
+        headers: { 'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce }
+      }).then(async (response) => {
+        const data = await response.json().catch(function () {
+          return null;
+        });
+
+        if (response.ok) {
+          return data;
+        }
+
+        throw new Error((data && data.message) || `Visual Editor object search failed (${response.status}).`);
+      });
+    },
+
+    getSharedGlobalFields(sessionId) {
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/shared-global-fields`, {
+        headers: { 'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce }
+      }).then(async (response) => {
+        const data = await response.json().catch(function () {
+          return null;
+        });
+
+        if (response.ok) {
+          return data;
+        }
+
+        throw new Error((data && data.message) || `Visual Editor shared global fields request failed (${response.status}).`);
+      });
+    },
+
     save(sessionId, token, value, acknowledgeSharedScope) {
       return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/save`, {
         method: 'POST',

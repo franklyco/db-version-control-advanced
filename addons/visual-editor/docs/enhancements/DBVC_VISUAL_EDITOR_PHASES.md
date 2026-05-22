@@ -88,6 +88,26 @@
   - persisted expanded group state
   - bulk actions
 
+## Toolbar 2.0 UX Tranche
+- Dedicated guide: `DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md`.
+- Goal: replace the bottom-corner `dbvc-ve-statusbar` presentation with a bottom-center Visual Editor toolbar that hosts status, field review, object navigation, shared/global collection launchers, active object links, and session/mode controls.
+- Recommended shape: fixed dark compact dock, icon-first controls with accessible labels, circular satellite buttons, and upward-opening popovers that reuse current statusbar, field index, descriptor hydration, panel, and collection-editor contracts.
+- Migration rule: move the existing statusbar into the toolbar through a compatibility wrapper first. Preserve marker counts, save/session messages, field index filters/state, `Locate`, `Open`, and active-owner edit links before retiring the old statusbar root.
+- Go To Object: navigation-only popover for capability-aware post and term search. It must not expose descriptor payloads, field values, or mutable save targets.
+- Shared Globals: session-backed inventory plus configured option-owned ACF `relationship` / `post_object` fields from the Visual Editor settings allowlist. Writable configured globals require exact ACF metadata, option capability, shared acknowledgement, the existing shared collection mutation contract, and reload-after-save behavior.
+- Current runtime state: first toolbar shell slice is implemented. The existing `dbvc-ve-statusbar` renderer is parked inside the toolbar and opens upward for status/review so current marker counts, field index filters/state, `Locate`, `Open`, active-owner edit links, and save/session messages stay on the existing code path. Go To Object is implemented as navigation-only capped post/term search with capability filtering and explicit frontend/backend links. Shared Globals is implemented for session-backed candidates plus configured option fields, defaulting to `settings_globals_default_posts`; configured fields are attached to the active session as toolbar-scoped descriptors and open through the existing connected-items panel/save flow.
+- Recommended first implementation slice:
+  - toolbar shell behind a reversible migration path
+  - shared upward popover manager
+  - statusbar/field-index popover parity
+  - active object edit-link button parity
+- Deferred:
+  - object search writes or arbitrary URL navigation
+  - generic options editing
+  - shared global writes before inspectable inventory and exact collection contracts
+  - row/layout lifecycle mutation
+  - cross-page live DOM patching after shared global saves
+
 ## Current Hold Context
 - The next paused advanced-data follow-up is nested ACF group and deeper flexible/repeater descendant save verification, not marker discovery.
 - Active implementation focus has shifted to Bricks native ACF query loops so the addon can classify and edit fields rendered through native repeater, relationship, and post-object loop types before returning to the paused grouped-save smoke work.
@@ -153,7 +173,8 @@
   - nested-group matching now also applies to exact shared-option fallback collections and explicit seed-current-field targets, with grouped metadata preserved before shared-option or seed contracts become writable
   - source-summary details now expose trusted raw grouped selectors when they differ from normalized field names, so panel/status QA can verify the exact flattened ACF selector behind nested-group collection badges
   - current-owner empty derived query loops use a narrow first-slice plan: explicit ACF source evidence, concrete target post type, empty stored target subset, synthetic descriptor registration from captured query-vars, hidden marker injection after the Bricks loop-start comment or query-trail placeholder, and the existing filtered-subset save contract for adding the first connected item; raw `post__in` IDs outside the target post type are preserved as non-target IDs
-  - post-owned linked-term collections are now planned as a separate branch from ACF connected posts: Bricks `objectType: term` roots with `current_post_term` and exactly one taxonomy can map to the owner post's assigned terms through a dedicated `post_terms_collection` contract
+  - post-owned linked-term collections are now WIP/live QA as a separate branch from ACF connected posts: Bricks `objectType: term` roots with `current_post_term` and exactly one taxonomy can map to the owner post's assigned terms through a dedicated `post_terms_collection` contract
+  - Bricks native taxonomy/terms elements such as `post-taxonomy` are planned as the next guarded branch: one explicit element taxonomy, current or concrete loop-owned post owner, marker on the element root, and the existing `post_terms_collection` save contract
 - deferred within the collection-editor branch:
   - custom Query Editor fallback branch writes beyond exact shared-option target-CPT/full-field matches and the narrow explicit current-page seed action, including recent-post fallbacks, empty shared-option fallback branches, and ambiguous branch selection
   - shared connected-item collections
