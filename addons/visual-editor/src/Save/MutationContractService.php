@@ -56,6 +56,20 @@ final class MutationContractService
                 'shared_field',
                 'repeater_row',
                 'flexible_layout',
+                'relationship_collection',
+                'post_object_collection',
+                'relationship_collection_filtered_subset',
+                'post_object_collection_filtered_subset',
+                'relationship_collection_seed_from_fallback',
+                'post_object_collection_seed_from_fallback',
+                'shared_relationship_collection_filtered_subset',
+                'shared_post_object_collection_filtered_subset',
+                'shared_relationship_collection',
+                'shared_post_object_collection',
+                'loop_owned_relationship_collection',
+                'loop_owned_post_object_collection',
+                'post_terms_collection',
+                'loop_owned_post_terms_collection',
                 'loop_owned_field',
                 'loop_owned_repeater_row',
                 'loop_owned_flexible_layout',
@@ -105,12 +119,40 @@ final class MutationContractService
             return __('This loop-owned repeater row requires explicit acknowledgement before it can be saved.', 'dbvc');
         }
 
+        if ($contract === 'loop_owned_relationship_collection') {
+            return __('This loop-owned relationship collection requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
+        if ($contract === 'loop_owned_post_object_collection') {
+            return __('This loop-owned post object collection requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
+        if ($contract === 'loop_owned_post_terms_collection') {
+            return __('This loop-owned post terms collection requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
         if ($contract === 'loop_owned_field') {
             return __('This loop-owned field requires explicit acknowledgement before it can be saved.', 'dbvc');
         }
 
         if ($contract === 'shared_repeater_row') {
             return __('This shared repeater row requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
+        if ($contract === 'shared_relationship_collection') {
+            return __('This shared relationship collection requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
+        if ($contract === 'shared_post_object_collection') {
+            return __('This shared post object collection requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
+        if ($contract === 'shared_relationship_collection_filtered_subset') {
+            return __('This shared options relationship subset requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
+        if ($contract === 'shared_post_object_collection_filtered_subset') {
+            return __('This shared options post object subset requires explicit acknowledgement before it can be saved.', 'dbvc');
         }
 
         if (strpos($contract, 'shared_') === 0) {
@@ -151,6 +193,10 @@ final class MutationContractService
 
         $scope = isset($descriptor->scope) ? (string) $descriptor->scope : 'current_entity';
         $container_type = isset($descriptor->source['container_type']) ? sanitize_key((string) $descriptor->source['container_type']) : '';
+        $field_type = isset($descriptor->source['field_type']) ? sanitize_key((string) $descriptor->source['field_type']) : '';
+        $render_context = isset($descriptor->mutation['renderContext']) && is_scalar($descriptor->mutation['renderContext'])
+            ? sanitize_key((string) $descriptor->mutation['renderContext'])
+            : (isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '');
         $target = 'field';
         if ($container_type === 'repeater') {
             $target = 'row';
@@ -159,6 +205,18 @@ final class MutationContractService
         }
 
         if ($scope === 'related_entity') {
+            if ($render_context === 'query_collection' && $field_type === 'relationship') {
+                return 'loop_owned_relationship_collection';
+            }
+
+            if ($render_context === 'query_collection' && $field_type === 'post_object') {
+                return 'loop_owned_post_object_collection';
+            }
+
+            if ($render_context === 'query_collection' && $field_type === 'taxonomy' && (string) ($descriptor->source['type'] ?? '') === 'post_terms_collection') {
+                return 'loop_owned_post_terms_collection';
+            }
+
             if ($target === 'row') {
                 return 'loop_owned_repeater_row';
             }
@@ -171,6 +229,28 @@ final class MutationContractService
         }
 
         if ($scope === 'shared_entity') {
+            if ($render_context === 'query_collection'
+                && $field_type === 'relationship'
+                && isset($descriptor->source['query_subset_write_mode'])
+                && sanitize_key((string) $descriptor->source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
+                return 'shared_relationship_collection_filtered_subset';
+            }
+
+            if ($render_context === 'query_collection'
+                && $field_type === 'post_object'
+                && isset($descriptor->source['query_subset_write_mode'])
+                && sanitize_key((string) $descriptor->source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
+                return 'shared_post_object_collection_filtered_subset';
+            }
+
+            if ($render_context === 'query_collection' && $field_type === 'relationship') {
+                return 'shared_relationship_collection';
+            }
+
+            if ($render_context === 'query_collection' && $field_type === 'post_object') {
+                return 'shared_post_object_collection';
+            }
+
             if ($target === 'row') {
                 return 'shared_repeater_row';
             }
@@ -180,6 +260,18 @@ final class MutationContractService
             }
 
             return 'shared_field';
+        }
+
+        if ($render_context === 'query_collection' && $field_type === 'relationship') {
+            return 'relationship_collection';
+        }
+
+        if ($render_context === 'query_collection' && $field_type === 'post_object') {
+            return 'post_object_collection';
+        }
+
+        if ($render_context === 'query_collection' && $field_type === 'taxonomy' && (string) ($descriptor->source['type'] ?? '') === 'post_terms_collection') {
+            return 'post_terms_collection';
         }
 
         if ($target === 'row') {
@@ -246,6 +338,34 @@ final class MutationContractService
                 return __('repeater row', 'dbvc');
             case 'flexible_layout':
                 return __('flexible layout row', 'dbvc');
+            case 'relationship_collection':
+                return __('relationship collection', 'dbvc');
+            case 'post_object_collection':
+                return __('post object collection', 'dbvc');
+            case 'relationship_collection_filtered_subset':
+                return __('relationship collection filtered subset', 'dbvc');
+            case 'post_object_collection_filtered_subset':
+                return __('post object collection filtered subset', 'dbvc');
+            case 'relationship_collection_seed_from_fallback':
+                return __('relationship collection seed from fallback', 'dbvc');
+            case 'post_object_collection_seed_from_fallback':
+                return __('post object collection seed from fallback', 'dbvc');
+            case 'shared_relationship_collection_filtered_subset':
+                return __('shared relationship collection filtered subset', 'dbvc');
+            case 'shared_post_object_collection_filtered_subset':
+                return __('shared post object collection filtered subset', 'dbvc');
+            case 'shared_relationship_collection':
+                return __('shared relationship collection', 'dbvc');
+            case 'shared_post_object_collection':
+                return __('shared post object collection', 'dbvc');
+            case 'loop_owned_relationship_collection':
+                return __('loop-owned relationship collection', 'dbvc');
+            case 'loop_owned_post_object_collection':
+                return __('loop-owned post object collection', 'dbvc');
+            case 'post_terms_collection':
+                return __('post terms collection', 'dbvc');
+            case 'loop_owned_post_terms_collection':
+                return __('loop-owned post terms collection', 'dbvc');
             case 'loop_owned_field':
                 return __('loop-owned field', 'dbvc');
             case 'loop_owned_repeater_row':

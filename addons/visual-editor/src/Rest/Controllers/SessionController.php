@@ -108,7 +108,7 @@ final class SessionController
             return new WP_REST_Response(
                 [
                     'ok' => false,
-                    'message' => __('Visual Editor session not found.', 'dbvc'),
+                    'message' => __('Visual Editor session expired. Refresh the page to continue editing.', 'dbvc'),
                     'active' => true,
                     'pageContext' => $this->page_context->resolve(),
                 ],

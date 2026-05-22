@@ -9,11 +9,36 @@ final class LoopContextResolver
      */
     private $native_acf_queries;
 
+    /**
+     * @var array<string, string>
+     */
+    private $element_query_object_types = [];
+
     public function __construct(?NativeAcfQueryResolver $native_acf_queries = null)
     {
         $this->native_acf_queries = $native_acf_queries instanceof NativeAcfQueryResolver
             ? $native_acf_queries
             : new NativeAcfQueryResolver();
+    }
+
+    /**
+     * Preserve the original Bricks element query object type before Bricks normalizes
+     * relationship/post_object loops to a concrete WP object loop at runtime.
+     *
+     * @param string $element_id
+     * @param string $query_object_type
+     * @return void
+     */
+    public function rememberElementQueryObjectType($element_id, $query_object_type)
+    {
+        $element_id = sanitize_text_field((string) $element_id);
+        $query_object_type = sanitize_key((string) $query_object_type);
+
+        if ($element_id === '' || strpos($query_object_type, 'acf_') !== 0) {
+            return;
+        }
+
+        $this->element_query_object_types[$element_id] = $query_object_type;
     }
 
     /**
@@ -69,9 +94,6 @@ final class LoopContextResolver
             return [];
         }
 
-        $query_object_type = method_exists('\\Bricks\\Query', 'get_query_object_type')
-            ? sanitize_key((string) \Bricks\Query::get_query_object_type($query_id))
-            : '';
         $loop_object_type = method_exists('\\Bricks\\Query', 'get_loop_object_type')
             ? sanitize_key((string) \Bricks\Query::get_loop_object_type($query_id))
             : '';
@@ -84,6 +106,10 @@ final class LoopContextResolver
         $query_element_id = method_exists('\\Bricks\\Query', 'get_query_element_id')
             ? sanitize_text_field((string) \Bricks\Query::get_query_element_id($query_id))
             : '';
+        $runtime_query_object_type = method_exists('\\Bricks\\Query', 'get_query_object_type')
+            ? sanitize_key((string) \Bricks\Query::get_query_object_type($query_id))
+            : '';
+        $query_object_type = $this->resolveEffectiveQueryObjectType($query_element_id, $runtime_query_object_type);
         $loop_object = method_exists('\\Bricks\\Query', 'get_loop_object')
             ? \Bricks\Query::get_loop_object($query_id)
             : null;
@@ -94,6 +120,7 @@ final class LoopContextResolver
             'query_id' => $query_id,
             'query_element_id' => $query_element_id,
             'query_object_type' => $query_object_type,
+            'runtime_query_object_type' => $runtime_query_object_type,
             'loop_object_type' => $loop_object_type,
             'loop_object_id' => $loop_object_id,
             'loop_index' => $loop_index,
@@ -180,6 +207,7 @@ final class LoopContextResolver
             'query_id' => isset($context['query_id']) ? sanitize_text_field((string) $context['query_id']) : '',
             'query_element_id' => isset($context['query_element_id']) ? sanitize_text_field((string) $context['query_element_id']) : '',
             'query_object_type' => isset($context['query_object_type']) ? sanitize_key((string) $context['query_object_type']) : '',
+            'runtime_query_object_type' => isset($context['runtime_query_object_type']) ? sanitize_key((string) $context['runtime_query_object_type']) : '',
             'loop_object_type' => isset($context['loop_object_type']) ? sanitize_key((string) $context['loop_object_type']) : '',
             'loop_object_id' => isset($context['loop_object_id']) ? absint($context['loop_object_id']) : 0,
             'loop_index' => isset($context['loop_index']) ? $this->normalizeScalar($context['loop_index']) : '',
@@ -195,6 +223,7 @@ final class LoopContextResolver
             'parent_native_acf_query' => $this->exportNativeAcfQuery(isset($context['parent_native_acf_query']) && is_array($context['parent_native_acf_query']) ? $context['parent_native_acf_query'] : []),
             'native_acf_query_ancestry' => $this->exportNativeAcfQueryAncestry($context),
             'parent_query_object_type' => isset($context['parent']['query_object_type']) ? sanitize_key((string) $context['parent']['query_object_type']) : '',
+            'parent_runtime_query_object_type' => isset($context['parent']['runtime_query_object_type']) ? sanitize_key((string) $context['parent']['runtime_query_object_type']) : '',
             'parent_loop_object_type' => isset($context['parent']['loop_object_type']) ? sanitize_key((string) $context['parent']['loop_object_type']) : '',
             'parent_loop_object_id' => isset($context['parent']['loop_object_id']) ? absint($context['parent']['loop_object_id']) : 0,
             'parent_loop_index' => isset($context['parent']['loop_index']) ? $this->normalizeScalar($context['parent']['loop_index']) : '',
@@ -257,6 +286,34 @@ final class LoopContextResolver
         }
 
         return implode('|', $parts);
+    }
+
+    /**
+     * @param string $query_element_id
+     * @param string $runtime_query_object_type
+     * @return string
+     */
+    private function resolveEffectiveQueryObjectType($query_element_id, $runtime_query_object_type)
+    {
+        $query_element_id = sanitize_text_field((string) $query_element_id);
+        $runtime_query_object_type = sanitize_key((string) $runtime_query_object_type);
+
+        if ($query_element_id === '' || strpos($runtime_query_object_type, 'acf_') === 0) {
+            return $runtime_query_object_type;
+        }
+
+        if (isset($this->element_query_object_types[$query_element_id])) {
+            return sanitize_key((string) $this->element_query_object_types[$query_element_id]);
+        }
+
+        $base_element_id = preg_replace('/-[A-Za-z0-9]+$/', '', $query_element_id);
+        $base_element_id = is_string($base_element_id) ? sanitize_text_field($base_element_id) : '';
+
+        if ($base_element_id !== '' && isset($this->element_query_object_types[$base_element_id])) {
+            return sanitize_key((string) $this->element_query_object_types[$base_element_id]);
+        }
+
+        return $runtime_query_object_type;
     }
 
     /**

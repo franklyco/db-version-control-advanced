@@ -1183,12 +1183,20 @@ final class DBVC_Bricks_Portability_Package_Service
      */
     private static function validate_checksums($extract_dir, array $checksums)
     {
+        $normalized_checksums = [];
         foreach ($checksums as $relative_path => $expected) {
-            $relative_path = ltrim(str_replace('\\', '/', (string) $relative_path), '/');
+            $relative_path = self::normalize_package_relative_path($relative_path);
             $expected = sanitize_text_field((string) $expected);
             if ($relative_path === '' || $expected === '') {
                 continue;
             }
+
+            $path_validation = self::validate_checksummed_payload_path($relative_path);
+            if (is_wp_error($path_validation)) {
+                return $path_validation;
+            }
+
+            $normalized_checksums[$relative_path] = $expected;
             $absolute = wp_normalize_path(trailingslashit($extract_dir) . $relative_path);
             if (! is_file($absolute)) {
                 return new \WP_Error('dbvc_bricks_portability_checksum_missing', sprintf(__('Missing package file `%s` while validating checksums.', 'dbvc'), $relative_path), ['status' => 400]);
@@ -1203,7 +1211,103 @@ final class DBVC_Bricks_Portability_Package_Service
             }
         }
 
+        foreach (['manifest.json', 'site.json'] as $required_file) {
+            if (! isset($normalized_checksums[$required_file])) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_checksum_required_missing',
+                    sprintf(__('Required package file `%s` is not listed in checksums.', 'dbvc'), $required_file),
+                    ['status' => 400]
+                );
+            }
+        }
+
+        return self::validate_extracted_payloads_are_checksummed($extract_dir, $normalized_checksums);
+    }
+
+    /**
+     * @param string $extract_dir
+     * @param array<string, string> $checksums
+     * @return true|\WP_Error
+     */
+    private static function validate_extracted_payloads_are_checksummed($extract_dir, array $checksums)
+    {
+        $extract_dir = wp_normalize_path((string) $extract_dir);
+        if ($extract_dir === '' || ! is_dir($extract_dir)) {
+            return new \WP_Error('dbvc_bricks_portability_extract_dir_missing', __('The extracted Bricks portability package directory is missing.', 'dbvc'), ['status' => 400]);
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($extract_dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($iterator as $file_info) {
+            if (! $file_info->isFile()) {
+                continue;
+            }
+
+            $absolute = wp_normalize_path((string) $file_info->getPathname());
+            $extract_prefix = wp_normalize_path(trailingslashit($extract_dir));
+            $relative_path = strpos($absolute, $extract_prefix) === 0 ? substr($absolute, strlen($extract_prefix)) : '';
+            $relative_path = self::normalize_package_relative_path($relative_path);
+            if ($relative_path === 'checksums.json') {
+                continue;
+            }
+
+            $path_validation = self::validate_checksummed_payload_path($relative_path);
+            if (is_wp_error($path_validation)) {
+                return $path_validation;
+            }
+
+            if (! isset($checksums[$relative_path])) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_checksum_unlisted',
+                    sprintf(__('Package file `%s` is not listed in checksums.', 'dbvc'), $relative_path),
+                    ['status' => 400]
+                );
+            }
+        }
+
         return true;
+    }
+
+    /**
+     * @param mixed $relative_path
+     * @return string
+     */
+    private static function normalize_package_relative_path($relative_path)
+    {
+        return ltrim(str_replace('\\', '/', (string) $relative_path), '/');
+    }
+
+    /**
+     * @param string $relative_path
+     * @return true|\WP_Error
+     */
+    private static function validate_checksummed_payload_path($relative_path)
+    {
+        $relative_path = self::normalize_package_relative_path($relative_path);
+        if (
+            $relative_path === ''
+            || strpos($relative_path, '../') !== false
+            || strpos($relative_path, '..\\') !== false
+            || preg_match('#^([A-Za-z]:)?[\\\\/]#', $relative_path)
+        ) {
+            return new \WP_Error('dbvc_bricks_portability_checksum_path_invalid', __('The package checksum list contains an invalid path.', 'dbvc'), ['status' => 400]);
+        }
+
+        if (in_array($relative_path, ['manifest.json', 'site.json'], true)) {
+            return true;
+        }
+
+        if (preg_match('#^(domains|raw-options)/[^/]+\.json$#', $relative_path) === 1) {
+            return true;
+        }
+
+        return new \WP_Error(
+            'dbvc_bricks_portability_checksum_path_invalid',
+            sprintf(__('Package file `%s` is not part of the Bricks portability package contract.', 'dbvc'), $relative_path),
+            ['status' => 400]
+        );
     }
 
     /**

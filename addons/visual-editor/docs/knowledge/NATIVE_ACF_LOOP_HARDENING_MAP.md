@@ -52,10 +52,13 @@ These are safe but should become fallback-only over time:
 | Native Bricks ACF query roots were not first-class | [`src/Bricks/NativeAcfQueryResolver.php`](../../src/Bricks/NativeAcfQueryResolver.php), [`src/Bricks/LoopContextResolver.php`](../../src/Bricks/LoopContextResolver.php) | `NativeAcfQueryResolver::resolve()`, `resolveFieldDefinition()`, `getFieldPathIndex()`, `mapFieldTypeToLoopKind()`, `LoopContextResolver::resolve()`, `mapLoopObjectToEntity()`, `export()` | Classifies `query.objectType` roots like `acf_process_section_process_steps`, `acf_related_faq_groups`, `acf_office_manager`, and native taxonomy roots into a real loop kind plus owner-aware context | Make native query metadata the only accepted root for native ACF loop path identity instead of relying on suffix heuristics |
 | Inserted-template inner native loop roots could use trimmed selector aliases that no flat ACF lookup could resolve | [`src/Bricks/NativeAcfQueryResolver.php`](../../src/Bricks/NativeAcfQueryResolver.php) | `resolveFieldDefinition()`, `resolveNestedFieldDefinitionFromOwner()`, `resolveNestedFieldSegments()`, `findNestedChildField()`, `buildUnderscoreAlias()`, `buildTrimmedUnderscoreAlias()` | Recovers inner loop field identity from the current owner by resolving the longest real root field object first and then walking nested child segments; this covers cases like homepage pricing where Bricks emits `acf_price_item_repeater_quantities` while the real ACF root is `_price_item_repeater` | Fold nested owner-aware selector traversal into the canonical native query resolver path so inner repeater/flexible roots do not depend on brittle flat selector indexes |
 | Loop owner identity was too weak for queried post/term/user cases | [`src/Bricks/LoopContextResolver.php`](../../src/Bricks/LoopContextResolver.php), [`src/Bricks/ElementInstrumentationService.php`](../../src/Bricks/ElementInstrumentationService.php) | `LoopContextResolver::supportsRelatedPostEditing()`, `hasConcreteOwner()`, `hasConcretePostOwner()`, `mapLoopObjectToEntity()`, `ElementInstrumentationService::allowsLoopOwnedPostEntity()` | Prevents VE from surfacing loop-owned fields unless Bricks exposes a concrete owner entity | Fold owner identity into a stricter descriptor contract so loop-owned paths never depend on downstream guardrails alone |
+| Bricks can normalize an ACF owner loop to a concrete runtime object query | [`src/Bricks/LoopContextResolver.php`](../../src/Bricks/LoopContextResolver.php), [`src/Bricks/ElementInstrumentationService.php`](../../src/Bricks/ElementInstrumentationService.php) | `ElementInstrumentationService::rememberNativeQueryElement()`, `LoopContextResolver::rememberElementQueryObjectType()`, `resolveEffectiveQueryObjectType()` | Preserves the original `acf_*` query object type from the Bricks element settings when available, so descendant descriptors can keep native provenance even if Bricks later exposes the runtime loop as a `post`, `term`, or `user` query | Keep this as a narrow render-time provenance side channel; ownership still comes from the concrete loop object, not from the remembered setting alone |
 | Native child tags could point at the wrong field key or shortened parent alias | [`src/Bricks/AcfFieldContextResolver.php`](../../src/Bricks/AcfFieldContextResolver.php) | `resolve()`, `rebindContainerScopedTagField()`, `resolveContainerFieldDefinition()`, `findContainerSubFieldDefinition()`, `normalizeTagGroupPath()`, `resolveNativeQueryFieldSelector()` | Rebinds Bricks child tags against the actual container field definition so duplicate or shortened tags resolve to the correct subfield | Promote this from repair logic to the canonical field-binding path for all native ACF loop descendants |
+| ACF clone-prefixed container keys could be renderable but not field-definition-loadable | [`src/Bricks/AcfFieldContextResolver.php`](../../src/Bricks/AcfFieldContextResolver.php) | `resolveContainerFieldDefinition()`, `expandContainerFieldDefinitionIdentifiers()` | Expands runtime keys like `field_clone_field_original` to the original cloned `field_original` key only while loading subfield definitions, so Bricks-rendered cloned repeater descendants can classify without changing the actual descriptor selector/key used for reads and writes | Keep definition lookup aliases separate from mutation selectors; do not let this become a broad key rewrite |
 | Nested descriptors did not carry enough canonical path data | [`src/Resolvers/ResolverRegistry.php`](../../src/Resolvers/ResolverRegistry.php), [`src/Bricks/ElementInstrumentationService.php`](../../src/Bricks/ElementInstrumentationService.php) | `classifyAcfField()`, `buildPathDescriptor()` | Stores `field_selector`, `leaf_field_name`, `leaf_field_key`, `parent_field_selector`, `row_index`, `layout_key`, `layout_name`, `group_path`, and `group_key_path` on the descriptor source, and now promotes grouped key ancestry into the formal `path` contract as `groupKeyPath` plus keyed `group` segments | Treat these fields as required nested-path contract inputs, not optional metadata |
 | Group descendants inside native repeater/flexible loops lost row support | [`src/Bricks/AcfFieldContextResolver.php`](../../src/Bricks/AcfFieldContextResolver.php) | `resolve()`, `rebindContainerScopedTagField()`, `findContainerSubFieldDefinition()` | Lets grouped descendants inherit repeater or flexible root context when the actual container definition proves they belong there | Keep inheritance, but make the inherited container identity explicit and complete before any resolver read/write step |
 | Repeater/flexible reads and writes needed the full native root selector, not the child alias | [`src/Resolvers/AbstractAcfResolver.php`](../../src/Resolvers/AbstractAcfResolver.php) | `getRawRepeaterSubfieldValue()`, `writeRepeaterSubfieldValue()`, `getRawFlexibleSubfieldValue()`, `writeFlexibleSubfieldValue()`, `resolveParentFieldReadIdentifier()` | Reads and writes rows through the full parent selector like `process_section_process_steps`, not a shorter duplicate child parent such as `process_steps` | Keep this as the only allowed nested-row read/write entry path |
+| Cloned repeater selectors could exist only as expanded postmeta rows | [`src/Resolvers/AbstractAcfResolver.php`](../../src/Resolvers/AbstractAcfResolver.php) | `getRawRepeaterRowsFromPostMeta()`, `shouldUsePostMetaRepeaterFallback()`, `writeRepeaterSubfieldPostMetaValue()` | Reconstructs direct existing post-owned repeater row leaf values from expanded ACF postmeta when `get_field(parent_selector, post_id, false)` cannot assemble a cloned repeater selector; writes are limited to direct existing row leaf fields and only when the cloned selector cannot resolve to an ACF field object | Keep this fallback post-only, direct-row-only, and existing-meta-only; live `post_object -> repeater` fixture/save closure is paused |
 | Grouped row payloads were keyed by field keys, not group names | [`src/Resolvers/AbstractAcfResolver.php`](../../src/Resolvers/AbstractAcfResolver.php) | `extractRowFieldValue()`, `replaceRowFieldValue()`, `resolveGroupedRowContainer()`, `resolveGroupedRowSegmentKey()` | Traverses nested groups by `group_key_path` first, then name fallback, so raw ACF row arrays keyed by field keys still resolve safely | Make key-path traversal the default, and leave name fallback as compatibility only |
 | Grouped direct saves could fall back to ambiguous leaf names | [`src/Resolvers/AbstractAcfResolver.php`](../../src/Resolvers/AbstractAcfResolver.php) | `getFieldIdentifier()`, `shouldPreferFieldIdentifierWrite()` | Prefers full selector-based writes for grouped fields instead of ambiguous leaf-name writes | Keep selector-first writes as the permanent grouped-field rule |
 | Same-named nested leaves could cross-sync after save | [`src/Bricks/ElementInstrumentationService.php`](../../src/Bricks/ElementInstrumentationService.php) | `buildSourceGroup()`, `buildSyncGroup()` | Hashes sync/source grouping with selector, leaf identity, container type, row index, layout identity, and group ancestry | Preserve this as the stable live-update identity model for nested paths |
@@ -110,7 +113,25 @@ What it fixes:
 Why it matters for universal handling:
 - This should become the canonical field-binding path for native loop descendants, not just a repair step for known bad tags.
 
-### 3. Descriptor source/path enrichment
+### 3. Clone-prefixed container definition lookup
+
+Code:
+- [`src/Bricks/AcfFieldContextResolver.php`](../../src/Bricks/AcfFieldContextResolver.php)
+
+Key methods:
+- `AcfFieldContextResolver::resolveContainerFieldDefinition()`
+- `AcfFieldContextResolver::expandContainerFieldDefinitionIdentifiers()`
+
+What it fixes:
+- ACF clone fields can expose a runtime container key like `field_6705a7d60d324_field_6705a4cf81ff8`.
+- `get_field_object()` may only resolve the original cloned definition key, such as `field_6705a4cf81ff8`.
+- VE can now load the original repeater subfield definitions for classification while keeping the real stored selector and prefixed parent key on the descriptor.
+
+Why it matters for universal handling:
+- Definition aliases and mutation selectors are different concerns.
+- This fallback should remain limited to loading field definitions, not rewriting save targets.
+
+### 4. Descriptor source/path enrichment
 
 Code:
 - [`src/Resolvers/ResolverRegistry.php`](../../src/Resolvers/ResolverRegistry.php)
@@ -135,7 +156,7 @@ What it fixes:
 Why it matters for universal handling:
 - These keys are the raw material for a real universal nested-path contract.
 
-### 4. Canonical row reads and writes
+### 5. Canonical row reads and writes
 
 Code:
 - [`src/Resolvers/AbstractAcfResolver.php`](../../src/Resolvers/AbstractAcfResolver.php)
@@ -155,7 +176,26 @@ What it fixes:
 Why it matters for universal handling:
 - This is already the right permanent direction: resolve the root field canonically, then operate on rows by explicit row identity.
 
-### 5. Group-key-path traversal
+### 6. Expanded postmeta fallback for cloned repeater rows
+
+Code:
+- [`src/Resolvers/AbstractAcfResolver.php`](../../src/Resolvers/AbstractAcfResolver.php)
+
+Key methods:
+- `AbstractAcfResolver::getRawRepeaterRowsFromPostMeta()`
+- `AbstractAcfResolver::shouldUsePostMetaRepeaterFallback()`
+- `AbstractAcfResolver::writeRepeaterSubfieldPostMetaValue()`
+
+What it fixes:
+- Some cloned repeater selectors are renderable by Bricks and stored in ACF's expanded postmeta shape, but `get_field(parent_selector, post_id, false)` returns no assembled row array.
+- The current example is `team_member_social_repeater_social` on team-member post `22909`, where row leaves are stored as keys like `team_member_social_repeater_social_0_url`.
+
+Why it matters for universal handling:
+- This is a narrow compatibility fallback for cloned repeater storage.
+- It is post-owned, direct-existing-row, direct-leaf-only by design. It should not create missing rows, nested containers, or grouped paths.
+- Live save confirmation for `post_object -> repeater` is paused until explicitly resumed.
+
+### 7. Group-key-path traversal
 
 Code:
 - [`src/Resolvers/AbstractAcfResolver.php`](../../src/Resolvers/AbstractAcfResolver.php)
@@ -173,7 +213,7 @@ What it fixes:
 Why it matters for universal handling:
 - Key-path traversal should remain the canonical nested-group access strategy.
 
-### 6. Row-aware live-update grouping
+### 8. Row-aware live-update grouping
 
 Code:
 - [`src/Bricks/ElementInstrumentationService.php`](../../src/Bricks/ElementInstrumentationService.php)
@@ -188,7 +228,7 @@ What it fixes:
 Why it matters for universal handling:
 - The same canonical nested-path identity should drive both save targeting and post-save DOM syncing.
 
-### 7. Flexible layout canonicalization from live row payload
+### 9. Flexible layout canonicalization from live row payload
 
 Code:
 - [`src/Bricks/AcfFieldContextResolver.php`](../../src/Bricks/AcfFieldContextResolver.php)
@@ -208,7 +248,7 @@ Why it matters for universal handling:
 - This is a true upstream identity fix, not a display-layer workaround.
 - It pushes flexible row/layout truth closer to descriptor creation, which reduces how often render verification has to recover from damaged Bricks metadata later.
 
-### 8. Render-time row-rebind fallback
+### 10. Render-time row-rebind fallback
 
 Code:
 - [`src/Bricks/ElementInstrumentationService.php`](../../src/Bricks/ElementInstrumentationService.php)
@@ -267,6 +307,7 @@ To graduate these patches into true universal handling, keep adding repeatable f
 
 - The row-rebind fallback intentionally does nothing when multiple rows render the same exact value.
 - Any native loop case with incomplete Bricks provider metadata can still fall back to unsupported if the root/container identity cannot be proven safely.
+- The expanded postmeta fallback intentionally handles only post-owned cloned repeater direct leaf fields; nested/grouped cloned repeater descendants still need explicit live fixtures before broadening.
 - Structured collection cases still need their own contract work and should not be folded into these scalar-row fixes by accident.
 
 ## Short Answer

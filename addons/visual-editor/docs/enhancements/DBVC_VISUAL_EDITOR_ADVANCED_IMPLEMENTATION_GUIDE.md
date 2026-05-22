@@ -22,6 +22,12 @@ If a repeater, flexible layout, relationship collection, or complex query-loop n
 
 For the recent native ACF loop hardening patches and the code-level consolidation map that should turn them into true universal handling, see [../knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md](../knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md).
 
+For the dedicated current-owner connected-items roadmap, see [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md).
+
+For the runtime badge, hydration, and bounded viewport-prefetch roadmap, see [DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md](./DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md).
+
+For the dedicated CPT archive and taxonomy archive context roadmap, see [DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md](./DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md).
+
 ## Design Decisions
 
 ### 1. Do not jump straight from unsupported to writable
@@ -73,6 +79,38 @@ Near-term runtime optimization should focus on:
 - on-demand descriptor hydration
 
 Those changes do not require new DB tables.
+
+### 6. Add bounded viewport-aware descriptor prefetch before any heavier caching
+
+If the next runtime optimization step is “make other visible fields feel faster while the editor is open,” do that by extending the current lightweight runtime model, not by reintroducing eager hydration.
+
+Current status:
+- implemented at a bounded baseline level in the frontend runtime
+- still subject to profiling/tuning rather than broader cache expansion
+
+Recommended approach:
+- keep the current public-map-only session bootstrap
+- keep on-demand descriptor lookup as the only source of full field payloads
+- reuse the existing in-memory descriptor cache and in-flight request reuse
+- add a low-priority viewport-aware prefetch queue for visible uncached markers
+
+Guardrails:
+- no `hydrate=1` warmup for the whole page
+- no persistent runtime token/descriptor cache table
+- no broad hidden-container prefetch
+- no competing request storm while a save or collection mutation is in progress
+
+This should remain a runtime convenience layer, not a new source-of-truth path.
+
+### 7. Keep editing interactions higher priority than background prefetch
+
+Viewport prefetch is only worthwhile if it stays subordinate to explicit user actions.
+
+That means:
+- active-marker hover/focus/touch prefetch still has highest priority
+- opening a field should always be able to reuse or supersede the same in-flight descriptor request
+- background viewport work should pause or defer during save, reload-after-save states, and other expensive modal flows such as Media Library selection
+- the browser should only prefetch a small bounded set of nearby markers at a time
 
 ## Recommended Storage Shape
 
@@ -177,6 +215,34 @@ Recommended next-step UI model:
 
 This gives most of the inline feel without forcing a real button into every marked subtree.
 
+### Viewport-aware descriptor warmup
+
+Recommended next-step runtime behavior:
+- while the user is editing or inspecting one field, the browser may opportunistically prefetch full descriptors for other visible markers nearby
+- that warmup should be driven by viewport visibility, not by hydrating every token at bootstrap
+- the warmup queue should only touch markers that are already in the authenticated public descriptor map and are not already cached or in flight
+
+Recommended priority order:
+1. active marker selected by hover/focus/touch
+2. currently visible editable markers
+3. currently visible inspect-only markers
+4. near-viewport markers inside a small root margin
+
+Recommended mechanics:
+- `IntersectionObserver` over rendered VE markers
+- small root margin such as `200px` to `400px`
+- bounded concurrency such as `1` to `2` descriptor requests
+- idle-time pumping via `requestIdleCallback` with a timer fallback
+- per-cycle queue cap so long pages do not backfill everything at once
+
+Recommended pause conditions:
+- save request in progress
+- page reload pending after gallery or collection mutation
+- session expired
+- panel or Media Library flow is already under heavy interaction
+
+This should make nearby markers open faster without materially changing the current save/session architecture.
+
 ### Non-current-post badge
 
 Any item whose owner entity differs from the current page post should surface a visible badge in the overlay.
@@ -256,8 +322,21 @@ Recommended next sequence:
 5. expand inspect-only flexible/query-loop coverage where ownership is stable
 6. enable writable flexible scalar descendants only after the above are in place
 
+### Immediate runtime optimization order
+
+Treat viewport-aware prefetch as a separate bounded UX slice, not part of resolver expansion.
+
+Recommended sequence:
+1. keep current public-map bootstrap and active-marker dwell prefetch unchanged
+2. add `IntersectionObserver`-driven visible-marker collection
+3. add a bounded low-priority descriptor prefetch queue that reuses current cache and in-flight request logic
+4. pause that queue during save, reload, and heavy modal flows
+5. profile marker counts, descriptor request counts, and modal-open latency before considering any larger cache design
+
 For the concrete scenario matrix and later mutation roadmap, use:
 - [DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md](./DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md)
+- [DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md](./DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md)
+- [DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md](./DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md)
 
 Reason:
 - repeater row writes already proved the narrow nested-path pattern
@@ -274,11 +353,33 @@ Add writable paths for:
 
 ### Phase D: relationship collection controls
 
-Only after journaling exists:
-- single-item replace
-- append/remove
-- reorder
-- relation target validation
+Current status:
+- the narrow first slice is now moving into direct current-owner Bricks native ACF query roots for `relationship` and `post_object` fields
+- that slice uses a dedicated query-root descriptor family, `Edit Connected` badge treatment, and reload-after-save reconciliation instead of pretending collection mutation is just another scalar descendant write
+- that implementation is now widened in code to direct current-owner repeater-row and flexible-row roots when the active row path is stable, to mixed current-owner `repeater -> flexible` / `flexible -> repeater` collection roots when the nested row chain can be reduced to canonical container ancestry, to grouped current-owner row-owned collection roots when the intermediate group ancestry can be proven from the native query path, and to loop-owned related-post collection roots with dedicated collection contracts and acknowledgement flow; broader shared owners and loop-owned non-post collection roots remain deferred
+- the derived Bricks query tranche now has its first writable current-owner filtered-subset slice: final `bricks/posts/query_vars` are captured, `post__in` plus a single target `post_type` are matched against exactly one current-owner ACF relationship/post_object field, and the `relationship_collection_filtered_subset` / `post_object_collection_filtered_subset` contract replaces only that target CPT subset while preserving non-target IDs.
+- Bricks native dynamic include/post__in controls are included in that tranche only when the saved control exposes ACF dynamic-tag evidence such as `{acf_page_related_items}`; that evidence is preserved from the saved setting even when the final resolved IDs come from `bricks/posts/query_vars`, while static/manual include lists and opaque native final-ID lists remain unsupported because there is no editable source field to mutate safely.
+- simple Query Editor loops that return `post__in => get_field('page_related_items')` now contribute current-owner ACF source hints, but only direct `get_field('field')` calls are accepted; option/user/explicit-object reads remain excluded from writable hints.
+- mixed/`any` derived post queries can now use the full `relationship_collection` / `post_object_collection` contract only when source evidence exists and the final ordered query IDs exactly equal one current-owner field's full stored value.
+- custom Query Editor fallback branches now have a governed evidence path: exact options-field fallback matches are labelled as shared-option query collections, exact target-CPT and exact full-field option matches can use shared collection save contracts with acknowledgement, exact branches with one empty hinted current-owner field can expose an explicit seed-current-field action, and unmatched Query Editor `post__in` branches remain locked query evidence.
+- locked fallback branches use a read-only connected-items preview in the panel, grouping queried items by object type and naming the active branch without mounting search or mutation controls.
+- current-owner derived Query Editor collection matching now walks nested ACF group sub-fields for relationship/post_object leaves and preserves a case-sensitive `field_selector_raw` for flattened grouped selectors such as `benefits_section_benefitsContent_related_items`; this keeps the save contract on the proven current-owner ACF field rather than falling back to selector/text guessing.
+- exact shared-option fallback collection matching and the explicit seed-current-field action now use the same nested-group candidate model, so option-backed and seed-target grouped collections require the same source-owner, raw selector, group path, and stored-ID proof before a mutation contract is exposed.
+- Visual Editor source summaries now surface `selector:{field_selector_raw}` when that trusted grouped selector differs from the normalized field name, making grouped collection contracts auditable from the panel/status details without adding new frontend state.
+- empty current-owner derived post loops are now treated as a first-class collection source only when Bricks exposes explicit ACF source evidence and a concrete target post type; this includes non-empty raw `post__in` lists whose IDs are all outside the proven target post type. The query-vars hook can register a synthetic descriptor when no loop element is rendered, and the server injects a hidden marker after the `brx-loop-start-*` comment or Bricks query-trail placeholder so the existing container badge and filtered-subset save contract can add the first connected item without guessing from missing DOM children.
+
+Near-term order:
+1. current-owner native `relationship` query roots
+2. current-owner native `post_object` query roots
+3. current-owner repeater/flexible row-owned relationship/post-object collections
+4. browser smoke and hardening for derived Bricks query filtered-subset saves, including native dynamic include/post__in controls
+5. browser smoke and hardening for inspect-only branch evidence on custom Query Editor fallbacks
+6. shared and loop-owned collection roots
+
+Still later:
+- append/remove/reorder from broader owner contexts
+- taxonomy collection mutation
+- custom query-editor collection source writes without active-branch proof, source-owner proof, and explicit shared/current save contracts
 
 ## Bricks Query Loop Strategy
 
@@ -295,6 +396,19 @@ Delay until later:
 - generic non-ACF post queries
 - taxonomy/user loops with nested flexible/repeater mutation
 - builder-generated derived values without stable field ownership
+
+### Archive entry points
+
+Post type archives and taxonomy archives are a separate context tranche, not just another query-loop case.
+
+Use the archive plan before enabling runtime support:
+- expand page context first: implemented for supported CPT and taxonomy archive entry points
+- surface archive markers inspect-only first: implemented for render-verified ACF/post-field candidates
+- enable taxonomy archive direct ACF term fields: initial queried-term slice implemented
+- enable archive direct option-backed ACF fields with shared-option acknowledgement and options-page field-group discovery: initial slice implemented for CPT and taxonomy archives
+- enable native taxonomy `{term_name}` and `{term_description}` fields through a dedicated term resolver: queried archive terms and concrete Bricks term-loop owners now supported
+- enable archive query-loop term/post descendants only through explicit loop-owner contracts: initial concrete-owner slice implemented
+- leave native archive tags such as `{archive_title}`, `{post_url}`, `{term_url}`, `{term_id}`, and broad `{term_meta:*}` writes inspect-only until dedicated mutation contracts exist; the first four now surface through a readonly resolver where they can be resolved safely
 
 ## Validation Gates Before Advanced Writes
 
@@ -315,7 +429,8 @@ Require all of the following before enabling save:
 5. Formalize descriptor V2 shape for owner/page/path/loop metadata.
 6. Add journal tables and DBVC schema migration hooks for advanced write history before flexible rows, repeater row reordering, relationship collection mutation, or rollback-aware multi-step saves.
 7. Expand repeater/flexible structured descendants.
-8. Add relationship collection mutation UI last.
+8. Add the archive context tranche in inspect-first order if archive page editing is prioritized over broader collection mutation.
+9. Add relationship collection mutation UI last.
 
 ## Current Pause Note
 
@@ -326,7 +441,7 @@ Resume from here:
    - widen from the hardened native repeater slice into native `relationship -> repeater` and `relationship -> flexible` descendants first
    - then widen to native `post_object -> repeater` and `post_object -> flexible` descendants
    - keep native loop provenance and parent native ancestry first-class throughout descriptor/source/path/mutation summaries
-   - treat native taxonomy nested descendants as inspect-first until real-site validation proves writable stability
+   - native taxonomy nested descendants are limited to guarded current archive term or concrete loop-owned term writes where the row/layout path is already proven; shared term collections and row/layout lifecycle mutation remain deferred
    - leave relationship collection editing and repeater/flexible row insert-remove-reorder in the later collection-mutation branch
 1. run live save smoke tests for nested grouped descendants inside supported repeater/flexible/related-owner paths
    - direct grouped ACF leaves now preserve parent group ancestry and prefer selector-based writes, so the next verification target is live save behavior rather than descriptor discovery

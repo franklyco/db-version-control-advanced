@@ -67,6 +67,7 @@ final class HookRegistrar
             remove_filter('bricks/element/render_attributes', [$this->service, 'instrumentAttributes'], 20);
             remove_filter('bricks/frontend/render_element', [$this->service, 'verifyRenderedElement'], 20);
             remove_filter('bricks/frontend/render_data', [$this->service, 'finalizeRenderedData'], 20);
+            remove_filter('bricks/posts/query_vars', [$this->service, 'capturePostQueryVars'], 30);
         }
     }
 
@@ -83,6 +84,7 @@ final class HookRegistrar
             $this->service = new ElementInstrumentationService($this->registry, $this->page_context, $this->resolvers, $this->loops);
         }
 
+        add_filter('bricks/posts/query_vars', [$this->service, 'capturePostQueryVars'], 30, 4);
         add_filter('bricks/element/render_attributes', [$this->service, 'instrumentAttributes'], 20, 3);
         add_filter('bricks/frontend/render_element', [$this->service, 'verifyRenderedElement'], 20, 2);
         add_filter('bricks/frontend/render_data', [$this->service, 'finalizeRenderedData'], 20, 3);

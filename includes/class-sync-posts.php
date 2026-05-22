@@ -1139,6 +1139,11 @@ HT;
             }
 
             foreach ($manifest['items'] as $item) {
+                if (($item['item_type'] ?? '') === 'third_party') {
+                    $targets[] = $item;
+                    continue;
+                }
+
                 if (($item['item_type'] ?? '') !== 'post') {
                     $skipped++;
                     continue;
@@ -1479,6 +1484,21 @@ HT;
             } elseif (($entry['item_type'] ?? '') === 'options_group') {
                 if (class_exists('DBVC_Options_Groups') && DBVC_Options_Groups::import_group_from_file($path)) {
                     $imported++;
+                }
+            } elseif (($entry['item_type'] ?? '') === 'third_party') {
+                if (class_exists('DBVC_Third_Party_Portability')) {
+                    $result = DBVC_Third_Party_Portability::import_entity_file($path, $entry);
+                    if (is_wp_error($result)) {
+                        $errors[] = $result->get_error_message();
+                    } elseif ($result) {
+                        $imported++;
+                        $applied_entities++;
+                        $proposal_processed = true;
+                    } else {
+                        $skipped++;
+                    }
+                } else {
+                    $skipped++;
                 }
             } elseif (($entry['item_type'] ?? '') === 'menus') {
                 $payload = json_decode(file_get_contents($path), true);
@@ -2503,12 +2523,22 @@ $acf_relationship_fields = [
 
         self::remap_relationship_fields($acf_relationship_fields); */
 
+        $third_party_stats = [
+            'processed' => 0,
+            'imported'  => 0,
+            'skipped'   => 0,
+            'errors'    => [],
+        ];
+        if (class_exists('DBVC_Third_Party_Portability')) {
+            $third_party_stats = DBVC_Third_Party_Portability::import_selected_entities_from_sync();
+        }
 
         $result = [
-            'processed' => $processed,
-            'remaining' => 0,
-            'total'     => $processed,
-            'offset'    => $offset + $processed,
+            'processed'   => $processed,
+            'remaining'   => 0,
+            'total'       => $processed,
+            'offset'      => $offset + $processed,
+            'third_party' => $third_party_stats,
         ];
 
         if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {

@@ -63,6 +63,9 @@ class DBVC_WP_CLI_Commands {
 		
 		// Export options and menus first (these are typically small)
         DBVC_Sync_Posts::export_options_to_json();
+        if ( class_exists( 'DBVC_Third_Party_Portability' ) ) {
+            DBVC_Third_Party_Portability::export_selected_entities();
+        }
         DBVC_Sync_Posts::export_menus_to_json();
         if ( class_exists( 'DBVC_Sync_Taxonomies' ) ) {
             DBVC_Sync_Taxonomies::export_selected_taxonomies();
@@ -197,6 +200,7 @@ class DBVC_WP_CLI_Commands {
         
         $import_success_message = '';
         $processed_total         = null;
+        $third_party_stats       = null;
 
         if ( $no_batch ) {
 			// Legacy behavior - import all at once
@@ -204,6 +208,9 @@ class DBVC_WP_CLI_Commands {
 			$import_result = DBVC_Sync_Posts::import_all_json_files( $import_mode );
 			if ( is_array( $import_result ) ) {
 				$processed_total = isset( $import_result['processed'] ) ? (int) $import_result['processed'] : null;
+				$third_party_stats = isset( $import_result['third_party'] ) && is_array( $import_result['third_party'] )
+					? $import_result['third_party']
+					: null;
 			}
 			$import_success_message = __( 'All JSON files imported to DB.', 'dbvc' );
 		} else {
@@ -244,6 +251,20 @@ class DBVC_WP_CLI_Commands {
 			$processed_total = $total_processed;
 		}
 
+		if ( ! $no_batch && class_exists( 'DBVC_Third_Party_Portability' ) ) {
+			$third_party_stats = DBVC_Third_Party_Portability::import_selected_entities_from_sync();
+		}
+
+		if ( is_array( $third_party_stats ) && ! empty( $third_party_stats['processed'] ) ) {
+			WP_CLI::log( sprintf(
+				'3rd Party Portability: processed %1$d, imported %2$d, skipped %3$d, errors %4$d.',
+				(int) ( $third_party_stats['processed'] ?? 0 ),
+				(int) ( $third_party_stats['imported'] ?? 0 ),
+				(int) ( $third_party_stats['skipped'] ?? 0 ),
+				count( (array) ( $third_party_stats['errors'] ?? [] ) )
+			) );
+		}
+
 		$media_stats = $this->maybe_sync_media_after_import();
 
 		if ( class_exists( 'DBVC_Sync_Logger' ) && DBVC_Sync_Logger::is_import_logging_enabled() ) {
@@ -251,6 +272,7 @@ class DBVC_WP_CLI_Commands {
 				'mode'             => $no_batch ? 'all' : 'batch',
 				'processed'        => $processed_total,
 				'batch_size'       => $no_batch ? null : $batch_size,
+				'third_party'      => $third_party_stats,
 				'media_run'        => class_exists( 'DBVC_Media_Sync' ) ? DBVC_Media_Sync::is_enabled() : false,
 				'media_downloaded' => is_array( $media_stats ) ? (int) ( $media_stats['downloaded'] ?? 0 ) : null,
 				'media_errors'     => is_array( $media_stats ) ? (int) ( $media_stats['errors'] ?? 0 ) : null,
@@ -265,6 +287,7 @@ class DBVC_WP_CLI_Commands {
 					'mode'             => $no_batch ? 'all' : 'batch',
 					'processed'        => $processed_total,
 					'batch_size'       => $no_batch ? null : $batch_size,
+					'third_party'      => $third_party_stats,
 					'media_stats'      => $media_stats,
 					'timestamp'        => current_time( 'mysql', true ),
 					'source'           => 'cli',
@@ -280,6 +303,7 @@ class DBVC_WP_CLI_Commands {
 					'mode'           => $no_batch ? 'all' : 'batch',
 					'processed'      => $processed_total,
 					'batch_size'     => $no_batch ? null : $batch_size,
+					'third_party'    => $third_party_stats,
 					'media_stats'    => $media_stats,
 				]
 			);

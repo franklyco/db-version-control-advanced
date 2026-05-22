@@ -51,6 +51,16 @@ final class ElementInstrumentationService
      */
     private $descriptors = [];
 
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $post_query_vars_by_element = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $element_metadata_by_id = [];
+
     public function __construct(EditableRegistry $registry, PageContextResolver $page_context, ResolverRegistry $resolvers, ?LoopContextResolver $loops = null)
     {
         $this->registry = $registry;
@@ -72,6 +82,14 @@ final class ElementInstrumentationService
             return is_array($attributes) ? $attributes : [];
         }
 
+        $this->rememberElementMetadata($element);
+        $this->rememberNativeQueryElement($element);
+
+        $collection_inspection = $this->inspectCollectionLoopRoot($attributes, $key, $element);
+        if (! empty($collection_inspection['supported'])) {
+            return $this->instrumentInspection($attributes, $key, $element, $collection_inspection);
+        }
+
         $inspection = $this->inspector->inspectForAttribute($element, $key);
         if (empty($inspection['supported'])) {
             return $attributes;
@@ -81,9 +99,282 @@ final class ElementInstrumentationService
             return $attributes;
         }
 
+        return $this->instrumentInspection($attributes, $key, $element, $inspection);
+    }
+
+    /**
+     * Capture the final Bricks post-query arguments so derived custom-query loops can be
+     * mapped back to a current-owner ACF relationship/post_object field without parsing PHP.
+     *
+     * @param mixed  $query_vars
+     * @param mixed  $settings
+     * @param string $element_id
+     * @param string $element_name
+     * @return mixed
+     */
+    public function capturePostQueryVars($query_vars, $settings = [], $element_id = '', $element_name = '')
+    {
+        if (! is_array($query_vars)) {
+            return $query_vars;
+        }
+
+        $element_id = sanitize_text_field((string) $element_id);
+        if ($element_id === '') {
+            return $query_vars;
+        }
+
+        $summary = $this->buildPostQueryVarsSummary($query_vars, is_array($settings) ? $settings : []);
+        if (empty($summary)) {
+            return $query_vars;
+        }
+
+        foreach ($this->buildElementIdAliases($element_id) as $alias) {
+            $this->post_query_vars_by_element[$alias] = $summary;
+        }
+
+        if (! empty($summary['query_result_empty'])) {
+            $this->registerSyntheticEmptyDerivedPostCollectionDescriptor($summary, $element_id, $element_name);
+        }
+
+        return $query_vars;
+    }
+
+    /**
+     * Fully empty Bricks loops may only render loop-start/end comments, which means the
+     * render-attributes hook never creates a marker. Register a descriptor from proven
+     * query-vars evidence so finalizeRenderedData() can inject a hidden comment anchor.
+     *
+     * @param array<string, mixed> $query_summary
+     * @param string               $element_id
+     * @param string               $element_name
+     * @return void
+     */
+    private function registerSyntheticEmptyDerivedPostCollectionDescriptor(array $query_summary, $element_id, $element_name)
+    {
+        $element_id = sanitize_text_field((string) $element_id);
+        if ($element_id === '') {
+            return;
+        }
+
+        $target_post_type = isset($query_summary['post_type']) ? sanitize_key((string) $query_summary['post_type']) : '';
+        if ($target_post_type === '' || $target_post_type === 'any') {
+            return;
+        }
+
+        $query_result_ids = isset($query_summary['post__in']) && is_array($query_summary['post__in'])
+            ? array_values(array_filter(array_map('absint', $query_summary['post__in'])))
+            : [];
+        if (! empty($query_result_ids)) {
+            return;
+        }
+
+        $query_vars = array_merge($query_summary, ['query_result_empty' => true]);
+        $element_label = $this->normalizeElementLabel((string) $element_name);
+        $inspection = [
+            'supported' => true,
+            'source_type' => 'acf_collection_field',
+            'query_source' => 'derived_bricks_query',
+            'expression' => 'query.derived:' . $element_id,
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => 'post',
+            'query_element_id' => $element_id,
+            'query_element_label' => $element_label,
+            'query_section_label' => '',
+            'query_badge_subject' => $element_label,
+            'target_post_type' => $target_post_type,
+            'query_result_post_types' => [],
+            'query_result_ids' => [],
+            'query_result_empty' => true,
+            'query_vars' => $query_vars,
+        ];
+
+        $page_context = $this->page_context->resolve();
+        if (empty($page_context['isSupported'])) {
+            return;
+        }
+
+        $classification = $this->resolvers->classifyCandidate($inspection, $page_context);
+        $status = isset($classification['status']) ? (string) $classification['status'] : 'unsupported';
+        if (! in_array($status, ['editable', 'readonly'], true)) {
+            return;
+        }
+
+        $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $entity = isset($classification['entity']) && is_array($classification['entity']) && ! empty($classification['entity'])
+            ? $classification['entity']
+            : [
+                'type' => 'post',
+                'id' => $entity_id,
+                'subtype' => isset($page_context['postType']) ? (string) $page_context['postType'] : '',
+                'acf_object_id' => $entity_id,
+            ];
+        $loop_context = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : [];
+        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
+        $scope = isset($classification['scope']) ? (string) $classification['scope'] : 'current_entity';
+        $source_group = $this->buildSourceGroup($entity, $source);
+        $sync_group = $this->buildSyncGroup($entity, $source, 'query_collection');
+        $page_descriptor = $this->buildPageDescriptor($page_context);
+        $owner_descriptor = $this->buildOwnerDescriptor($entity, $scope, $page_descriptor, $loop_context);
+        $path_descriptor = $this->buildPathDescriptor($source);
+        $mutation_descriptor = $this->buildMutationDescriptor($source, 'query_collection', $scope, $status, $path_descriptor, $loop_context);
+        $seed = implode('|', [
+            $element_id,
+            sanitize_key((string) $element_name),
+            'query',
+            'query.derived:' . $element_id,
+            '',
+        ]);
+        $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
+        $this->instrumented[$seed] = $token;
+
+        $descriptor = new EditableDescriptor(
+            $token,
+            $status,
+            $scope,
+            $entity,
+            [
+                'template_id' => 0,
+                'element_id' => $element_id,
+                'element_uid' => $element_id,
+                'element_name' => sanitize_key((string) $element_name),
+                'setting_key' => 'query',
+                'attribute_key' => '_empty_query',
+                'context' => 'query_collection',
+                'attribute' => '',
+                'source_group' => $source_group,
+                'sync_group' => $sync_group,
+                'loop_signature' => '',
+                'loop' => $loop_context,
+            ],
+            $source,
+            isset($classification['ui']) && is_array($classification['ui']) ? $classification['ui'] : [],
+            isset($classification['resolver']) && is_array($classification['resolver']) ? $classification['resolver'] : [],
+            $page_descriptor,
+            $owner_descriptor,
+            $loop_context,
+            $path_descriptor,
+            $mutation_descriptor
+        );
+
+        $this->registry->add($descriptor);
+        $this->descriptors[$token] = $descriptor;
+    }
+
+    /**
+     * @param object $element
+     * @return void
+     */
+    private function rememberElementMetadata($element)
+    {
+        if (! is_object($element)) {
+            return;
+        }
+
+        $settings = isset($element->settings) && is_array($element->settings) ? $element->settings : [];
+        $label = isset($element->label) ? $this->normalizeElementLabel((string) $element->label) : '';
+        $css_id = isset($settings['_cssId']) ? $this->normalizeElementLabel((string) $settings['_cssId']) : '';
+
+        $metadata = [
+            'id' => isset($element->id) ? sanitize_text_field((string) $element->id) : '',
+            'parent' => isset($element->parent) ? sanitize_text_field((string) $element->parent) : '',
+            'name' => isset($element->name) ? sanitize_key((string) $element->name) : '',
+            'label' => $label,
+            'css_id' => $css_id,
+        ];
+
+        foreach ($this->resolveElementIds($element) as $element_id) {
+            $existing = isset($this->element_metadata_by_id[$element_id]) && is_array($this->element_metadata_by_id[$element_id])
+                ? $this->element_metadata_by_id[$element_id]
+                : [];
+
+            $this->element_metadata_by_id[$element_id] = array_merge($metadata, array_filter($existing, static function ($value) {
+                return $value !== '' && $value !== null;
+            }));
+        }
+    }
+
+    /**
+     * @param string $raw_label
+     * @return string
+     */
+    private function normalizeElementLabel($raw_label)
+    {
+        $label = sanitize_text_field((string) $raw_label);
+        $label = preg_replace('/[_-]+/', ' ', $label);
+        $label = is_string($label) ? preg_replace('/\s+/', ' ', trim($label)) : '';
+
+        if (! is_string($label) || $label === '') {
+            return '';
+        }
+
+        if (strtolower($label) === $label) {
+            $label = ucwords($label);
+        }
+
+        return $label;
+    }
+
+    /**
+     * @param object $element
+     * @return array<string, string>
+     */
+    private function resolveCollectionBadgeLabelContext($element)
+    {
+        $fallback_label = '';
+        $section_label = '';
+        $visited = [];
+        $current_id = isset($element->id) ? sanitize_text_field((string) $element->id) : '';
+
+        for ($depth = 0; $depth < 12 && $current_id !== '' && empty($visited[$current_id]); $depth++) {
+            $visited[$current_id] = true;
+            $metadata = isset($this->element_metadata_by_id[$current_id]) && is_array($this->element_metadata_by_id[$current_id])
+                ? $this->element_metadata_by_id[$current_id]
+                : [];
+
+            $label = isset($metadata['label']) && (string) $metadata['label'] !== ''
+                ? (string) $metadata['label']
+                : (isset($metadata['css_id']) ? (string) $metadata['css_id'] : '');
+            $name = isset($metadata['name']) ? sanitize_key((string) $metadata['name']) : '';
+
+            if ($fallback_label === '' && $label !== '') {
+                $fallback_label = $label;
+            }
+
+            if ($name === 'section' && $label !== '') {
+                $section_label = $label;
+                break;
+            }
+
+            $current_id = isset($metadata['parent']) ? sanitize_text_field((string) $metadata['parent']) : '';
+        }
+
+        $subject = $section_label !== '' ? $section_label : $fallback_label;
+
+        return [
+            'section_label' => $section_label,
+            'element_label' => $fallback_label,
+            'badge_subject' => $subject,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @param object               $element
+     * @param array<string, mixed> $inspection
+     * @return array<string, mixed>
+     */
+    private function instrumentInspection(array $attributes, $key, $element, array $inspection)
+    {
+        if (empty($inspection['supported'])) {
+            return $attributes;
+        }
+
         $page_context = $this->page_context->resolve();
         $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
-        if ($entity_id <= 0) {
+        if (empty($page_context['isSupported'])) {
             return $attributes;
         }
 
@@ -102,19 +393,21 @@ final class ElementInstrumentationService
                 'acf_object_id' => $entity_id,
             ];
         $loop_context = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : [];
+        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
         $rendered_post_id = $this->page_context->resolveRenderedPostId();
         if ($rendered_post_id > 0
             && ($entity['type'] ?? '') === 'post'
             && absint($entity['id'] ?? 0) !== $rendered_post_id
+            && ! $this->allowsCollectionRootRenderedPostMismatch($source, $inspection)
             && ! $this->allowsLoopOwnedPostEntity($entity, $loop_context)) {
             return $attributes;
         }
 
-        $seed = $this->dedupeSeed($this->buildSeed($element, $inspection, $loop_context));
+        $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : 'text';
+        $raw_seed = $this->buildSeed($element, $inspection, $loop_context);
+        $seed = $render_context === 'query_collection' ? $raw_seed : $this->dedupeSeed($raw_seed);
         $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
         $this->instrumented[$seed] = $token;
-        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
-        $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : 'text';
         $render_attribute = isset($inspection['render_attribute']) ? sanitize_key((string) $inspection['render_attribute']) : '';
         $scope = isset($classification['scope']) ? (string) $classification['scope'] : 'current_entity';
         $source_group = $this->buildSourceGroup($entity, $source);
@@ -166,6 +459,11 @@ final class ElementInstrumentationService
         $attributes[$key]['data-dbvc-ve-source-group'] = $source_group;
         $attributes[$key]['data-dbvc-ve-group'] = $sync_group;
         $attributes[$key]['data-dbvc-ve-context'] = $descriptor->render['context'];
+        $attributes[$key]['data-dbvc-ve-badge-label'] = isset($descriptor->ui['badgeLabel']) ? sanitize_text_field((string) $descriptor->ui['badgeLabel']) : '';
+        $attributes[$key]['data-dbvc-ve-input'] = isset($descriptor->ui['input']) ? sanitize_key((string) $descriptor->ui['input']) : '';
+        if (! empty($descriptor->source['query_element_id'])) {
+            $attributes[$key]['data-dbvc-ve-query-element-id'] = sanitize_text_field((string) $descriptor->source['query_element_id']);
+        }
 
         if ($render_attribute !== '') {
             $attributes[$key]['data-dbvc-ve-attribute'] = $render_attribute;
@@ -227,7 +525,14 @@ final class ElementInstrumentationService
             }
 
             $index = isset($occurrences[$element_id]) ? (int) $occurrences[$element_id] : 0;
+            $before_injection = $content;
             $content = $this->injectMarkerIntoElementOccurrence($content, $descriptor, $element_id, $index);
+            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+                $content = $this->injectEmptyQueryCollectionMarkerAfterLoopComment($content, $descriptor, $element_id, $index);
+            }
+            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+                $content = $this->injectEmptyQueryCollectionMarkerAfterQueryTrail($content, $descriptor, $element_id, $index);
+            }
             $occurrences[$element_id] = $index + 1;
         }
 
@@ -270,6 +575,892 @@ final class ElementInstrumentationService
         if (isset($group['href']) || isset($group['src'])) {
             return false;
         }
+
+        return isset($group['class']) || isset($group['id']);
+    }
+
+    /**
+     * @param object $element
+     * @return void
+     */
+    private function rememberNativeQueryElement($element)
+    {
+        if (! is_object($element)) {
+            return;
+        }
+
+        $settings = isset($element->settings) && is_array($element->settings) ? $element->settings : [];
+        if (empty($settings['hasLoop']) || empty($settings['query']) || ! is_array($settings['query'])) {
+            return;
+        }
+
+        $query_object_type = isset($settings['query']['objectType'])
+            ? sanitize_key((string) $settings['query']['objectType'])
+            : '';
+        if (strpos($query_object_type, 'acf_') !== 0) {
+            return;
+        }
+
+        foreach ($this->resolveElementIds($element) as $element_id) {
+            $this->loops->rememberElementQueryObjectType($element_id, $query_object_type);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectCollectionLoopRoot(array $attributes, $key, $element)
+    {
+        if (! $this->shouldInstrumentCollectionRootAttributeGroup($attributes, $key)) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $settings = isset($element->settings) && is_array($element->settings) ? $element->settings : [];
+        $has_loop = ! empty($settings['hasLoop']);
+        $query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $query_object_type = isset($query['objectType']) ? sanitize_key((string) $query['objectType']) : '';
+
+        if ($has_loop && $query_object_type === 'term') {
+            return $this->inspectPostTermsCollectionLoopRoot($settings, $element);
+        }
+
+        if (! $has_loop || $query_object_type === '' || strpos($query_object_type, 'acf_') !== 0) {
+            return $this->inspectDerivedPostCollectionLoopRoot($settings, $element);
+        }
+
+        return [
+            'supported' => true,
+            'source_type' => 'acf_collection_field',
+            'expression' => $query_object_type,
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => $query_object_type,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectPostTermsCollectionLoopRoot(array $settings, $element)
+    {
+        $query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $taxonomies = $this->normalizePostTypeList(isset($query['taxonomy']) ? $query['taxonomy'] : []);
+
+        if (empty($query['current_post_term']) || count($taxonomies) !== 1) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $taxonomy = $taxonomies[0];
+        if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $label_context = $this->resolveCollectionBadgeLabelContext($element);
+        $element_ids = $this->resolveElementIds($element);
+        $query_element_id = isset($element_ids[0]) ? sanitize_text_field((string) $element_ids[0]) : '';
+
+        return [
+            'supported' => true,
+            'source_type' => 'post_terms_collection',
+            'expression' => 'query.objectType:term',
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => 'term',
+            'query_element_id' => $query_element_id,
+            'query_element_label' => $label_context['element_label'],
+            'query_section_label' => $label_context['section_label'],
+            'query_badge_subject' => $label_context['badge_subject'],
+            'taxonomy' => $taxonomy,
+            'query_current_post_term' => true,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectDerivedPostCollectionLoopRoot(array $settings, $element)
+    {
+        if (empty($settings['query']) || ! is_array($settings['query'])) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $query_object_type = isset($settings['query']['objectType'])
+            ? sanitize_key((string) $settings['query']['objectType'])
+            : '';
+        if ($query_object_type !== '' && $query_object_type !== 'post') {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $query_summary = $this->resolvePostQueryVarsSummaryForElement($element);
+        $post_ids = isset($query_summary['post__in']) && is_array($query_summary['post__in'])
+            ? array_values(array_filter(array_map('absint', $query_summary['post__in'])))
+            : [];
+        $target_post_type = isset($query_summary['post_type']) ? sanitize_key((string) $query_summary['post_type']) : '';
+        $query_result_post_types = isset($query_summary['post_types']) && is_array($query_summary['post_types'])
+            ? array_values(array_filter(array_map('sanitize_key', $query_summary['post_types'])))
+            : [];
+        $query_element_id = isset($query_summary['element_id']) ? sanitize_text_field((string) $query_summary['element_id']) : '';
+        $query_result_empty = ! empty($query_summary['query_result_empty']);
+
+        if ($target_post_type === 'any') {
+            $target_post_type = '';
+        }
+
+        if ((empty($post_ids) && ! $query_result_empty) || ($target_post_type === '' && empty($query_result_post_types)) || $query_element_id === '') {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $label_context = $this->resolveCollectionBadgeLabelContext($element);
+
+        return [
+            'supported' => true,
+            'source_type' => 'acf_collection_field',
+            'query_source' => 'derived_bricks_query',
+            'expression' => 'query.derived:' . $query_element_id,
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => 'post',
+            'query_element_id' => $query_element_id,
+            'query_element_label' => $label_context['element_label'],
+            'query_section_label' => $label_context['section_label'],
+            'query_badge_subject' => $label_context['badge_subject'],
+            'target_post_type' => $target_post_type,
+            'query_result_post_types' => $query_result_post_types,
+            'query_result_ids' => $post_ids,
+            'query_result_empty' => $query_result_empty,
+            'query_vars' => $query_summary,
+        ];
+    }
+
+    /**
+     * @param object $element
+     * @return array<string, mixed>
+     */
+    private function resolvePostQueryVarsSummaryForElement($element)
+    {
+        foreach ($this->resolveElementIds($element) as $element_id) {
+            if (isset($this->post_query_vars_by_element[$element_id])) {
+                $summary = $this->post_query_vars_by_element[$element_id];
+                $summary['element_id'] = $element_id;
+
+                return $summary;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param object $element
+     * @return array<int, string>
+     */
+    private function resolveElementIds($element)
+    {
+        if (! is_object($element)) {
+            return [];
+        }
+
+        $element_ids = [];
+        if (! empty($element->id)) {
+            $element_ids[] = sanitize_text_field((string) $element->id);
+        }
+
+        if (! empty($element->id) && ! empty($element->instanceId) && strpos((string) $element->id, '-') === false) {
+            $element_ids[] = sanitize_text_field((string) $element->id . '-' . (string) $element->instanceId);
+        }
+
+        $aliases = [];
+        foreach ($element_ids as $element_id) {
+            foreach ($this->buildElementIdAliases($element_id) as $alias) {
+                $aliases[] = $alias;
+            }
+        }
+
+        return array_values(array_unique(array_filter($aliases)));
+    }
+
+    /**
+     * @param string $element_id
+     * @return array<int, string>
+     */
+    private function buildElementIdAliases($element_id)
+    {
+        $element_id = sanitize_text_field((string) $element_id);
+        if ($element_id === '') {
+            return [];
+        }
+
+        $aliases = [$element_id];
+        if (preg_match('/^([a-zA-Z0-9]+)-[a-zA-Z0-9]+$/', $element_id, $matches)) {
+            $aliases[] = sanitize_text_field((string) $matches[1]);
+        }
+
+        return array_values(array_unique(array_filter($aliases)));
+    }
+
+    /**
+     * @param array<string, mixed> $query_vars
+     * @param array<string, mixed> $settings
+     * @return array<string, mixed>
+     */
+    private function buildPostQueryVarsSummary(array $query_vars, array $settings)
+    {
+        $settings_query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $post_id_evidence = $this->resolvePostQueryIdEvidence($query_vars, $settings_query);
+        $raw_post_ids = isset($post_id_evidence['ids']) && is_array($post_id_evidence['ids'])
+            ? array_values(array_map('absint', $post_id_evidence['ids']))
+            : [];
+        $post_ids = array_values(array_filter($raw_post_ids));
+        $has_empty_id_evidence = ! empty($raw_post_ids) && empty($post_ids);
+
+        $raw_result_post_types = $this->inferPostTypesFromIds($post_ids);
+        $dynamic_tags = isset($post_id_evidence['dynamic_tags']) && is_array($post_id_evidence['dynamic_tags'])
+            ? array_values(array_filter(array_map('sanitize_text_field', $post_id_evidence['dynamic_tags'])))
+            : [];
+        $query_editor_source_hints = $this->resolveQueryEditorAcfSourceHints($settings_query);
+        $query_editor_hints = isset($query_editor_source_hints['current_owner_fields']) && is_array($query_editor_source_hints['current_owner_fields'])
+            ? $query_editor_source_hints['current_owner_fields']
+            : [];
+        $acf_field_hints = array_values(
+            array_unique(
+                array_filter(
+                    array_merge(
+                        $this->resolveAcfFieldHintsFromDynamicTags($dynamic_tags),
+                        $query_editor_hints
+                    )
+                )
+            )
+        );
+        $query_editor_active = ! empty($settings_query['queryEditor']);
+        $has_source_evidence = ! empty($dynamic_tags) || ! empty($query_editor_hints);
+        if (empty($post_ids) && ! $has_empty_id_evidence && ! $has_source_evidence) {
+            return [];
+        }
+
+        $declared_post_types = $this->normalizePostTypeList(isset($query_vars['post_type']) ? $query_vars['post_type'] : ($settings_query['post_type'] ?? ''), true);
+        $query_editor_post_type = $this->resolveQueryEditorPostTypeHint($settings_query);
+        $post_type = $query_editor_post_type !== '' && (empty($declared_post_types) || in_array($query_editor_post_type, $declared_post_types, true))
+            ? $query_editor_post_type
+            : $this->normalizeSinglePostType($declared_post_types);
+        if ($post_type === '') {
+            $post_type = in_array('any', $declared_post_types, true)
+                ? 'any'
+                : $this->inferSinglePostTypeFromIds($post_ids);
+        }
+
+        $query_post_ids = $this->filterPostQueryResultIdsByDeclaredTypes($post_ids, $post_type, $declared_post_types);
+        $excluded_post_ids = array_values(array_diff($post_ids, $query_post_ids));
+        $result_post_types = $this->inferPostTypesFromIds($query_post_ids);
+
+        if ($post_type === '' && empty($post_ids)) {
+            return [];
+        }
+
+        if ($post_type === '' && ! $this->shouldAllowMixedPostTypeQuerySummary($result_post_types, $query_editor_active, $acf_field_hints)) {
+            return [];
+        }
+
+        $posts_per_page = isset($query_vars['posts_per_page']) && is_numeric($query_vars['posts_per_page'])
+            ? (int) $query_vars['posts_per_page']
+            : (isset($settings_query['posts_per_page']) && is_numeric($settings_query['posts_per_page']) ? (int) $settings_query['posts_per_page'] : 0);
+
+        return [
+            'source' => 'bricks/posts/query_vars',
+            'post_type' => $post_type,
+            'post_types' => $result_post_types,
+            'post__in' => $query_post_ids,
+            'post__in_raw' => $post_ids,
+            'post__in_raw_post_types' => $raw_result_post_types,
+            'post__in_excluded_by_post_type' => $excluded_post_ids,
+            'post__in_source' => isset($post_id_evidence['source']) ? sanitize_key((string) $post_id_evidence['source']) : '',
+            'post__in_setting_source' => $this->resolvePostQuerySettingSource($post_id_evidence),
+            'post__in_setting_key' => isset($post_id_evidence['setting_key']) ? sanitize_key((string) $post_id_evidence['setting_key']) : '',
+            'post__in_dynamic_tags' => $dynamic_tags,
+            'post__in_acf_field_hints' => $acf_field_hints,
+            'post__in_has_dynamic_source' => ! empty($dynamic_tags),
+            'post__in_empty_sentinel' => $has_empty_id_evidence,
+            'query_result_empty' => empty($query_post_ids),
+            'query_editor_acf_field_hints' => $query_editor_hints,
+            'query_editor_acf_option_field_hints' => isset($query_editor_source_hints['option_fields']) && is_array($query_editor_source_hints['option_fields']) ? $query_editor_source_hints['option_fields'] : [],
+            'query_editor_acf_explicit_field_hints' => isset($query_editor_source_hints['explicit_object_fields']) && is_array($query_editor_source_hints['explicit_object_fields']) ? $query_editor_source_hints['explicit_object_fields'] : [],
+            'query_editor_acf_source_hints' => $query_editor_source_hints,
+            'query_editor_active' => $query_editor_active,
+            'query_editor_post_type_hint' => $query_editor_post_type,
+            'orderby' => $this->normalizeQueryOrderby(isset($query_vars['orderby']) ? $query_vars['orderby'] : ($settings_query['orderby'] ?? '')),
+            'posts_per_page' => $posts_per_page,
+            'paged' => isset($query_vars['paged']) && is_numeric($query_vars['paged']) ? max(1, absint($query_vars['paged'])) : 1,
+            'disable_query_merge' => ! empty($query_vars['disable_query_merge']) || ! empty($settings_query['disable_query_merge']),
+        ];
+    }
+
+    /**
+     * Mixed post-type query summaries are only useful when they can continue into
+     * the full-collection resolver path. Opaque mixed ID lists still stay hidden.
+     *
+     * @param array<int, string> $result_post_types
+     * @param bool               $query_editor_active
+     * @param array<int, string> $acf_field_hints
+     * @return bool
+     */
+    private function shouldAllowMixedPostTypeQuerySummary(array $result_post_types, $query_editor_active, array $acf_field_hints)
+    {
+        $result_post_types = array_values(array_filter(array_map('sanitize_key', $result_post_types)));
+        if (count($result_post_types) < 2) {
+            return false;
+        }
+
+        return ! empty($query_editor_active) || ! empty($acf_field_hints);
+    }
+
+    /**
+     * @param array<int, int>    $post_ids
+     * @param string             $post_type
+     * @param array<int, string> $declared_post_types
+     * @return array<int, int>
+     */
+    private function filterPostQueryResultIdsByDeclaredTypes(array $post_ids, $post_type, array $declared_post_types)
+    {
+        $post_ids = array_values(array_filter(array_map('absint', $post_ids)));
+        if (empty($post_ids)) {
+            return [];
+        }
+
+        $post_type = sanitize_key((string) $post_type);
+        $target_post_types = [];
+        if ($post_type !== '' && $post_type !== 'any') {
+            $target_post_types = [$post_type];
+        } elseif (! in_array('any', $declared_post_types, true)) {
+            $target_post_types = array_values(array_filter(array_map('sanitize_key', $declared_post_types)));
+        }
+
+        if (empty($target_post_types)) {
+            return $post_ids;
+        }
+
+        $filtered = [];
+        foreach ($post_ids as $post_id) {
+            $resolved_type = get_post_type($post_id);
+            if (is_string($resolved_type) && in_array($resolved_type, $target_post_types, true)) {
+                $filtered[] = $post_id;
+            }
+        }
+
+        return array_values($filtered);
+    }
+
+    /**
+     * @param array<string, mixed> $query_vars
+     * @param array<string, mixed> $settings_query
+     * @return array<string, mixed>
+     */
+    private function resolvePostQueryIdEvidence(array $query_vars, array $settings_query)
+    {
+        $settings_evidence = $this->resolveSettingsQueryIdEvidence($settings_query);
+        $query_candidates = [
+            'query_vars_post__in' => isset($query_vars['post__in']) ? $query_vars['post__in'] : null,
+            'query_vars_include' => isset($query_vars['include']) ? $query_vars['include'] : null,
+            'query_vars_p' => isset($query_vars['p']) ? $query_vars['p'] : null,
+        ];
+
+        foreach ($query_candidates as $source => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $ids = $this->normalizeIdList($value);
+            if (! empty($ids)) {
+                return [
+                    'ids' => $ids,
+                    'source' => $source,
+                    'setting_source' => isset($settings_evidence['source']) ? (string) $settings_evidence['source'] : '',
+                    'setting_key' => isset($settings_evidence['setting_key']) ? (string) $settings_evidence['setting_key'] : '',
+                    'dynamic_tags' => isset($settings_evidence['dynamic_tags']) && is_array($settings_evidence['dynamic_tags'])
+                        ? $settings_evidence['dynamic_tags']
+                        : [],
+                ];
+            }
+        }
+
+        return $settings_evidence;
+    }
+
+    /**
+     * @param array<string, mixed> $post_id_evidence
+     * @return string
+     */
+    private function resolvePostQuerySettingSource(array $post_id_evidence)
+    {
+        $setting_source = isset($post_id_evidence['setting_source'])
+            ? sanitize_key((string) $post_id_evidence['setting_source'])
+            : '';
+        if ($setting_source !== '') {
+            return $setting_source;
+        }
+
+        $source = isset($post_id_evidence['source'])
+            ? sanitize_key((string) $post_id_evidence['source'])
+            : '';
+
+        return strpos($source, 'settings_') === 0 ? $source : '';
+    }
+
+    /**
+     * @param array<string, mixed> $settings_query
+     * @return array<string, mixed>
+     */
+    private function resolveSettingsQueryIdEvidence(array $settings_query)
+    {
+        $settings_candidates = [
+            'post__in' => isset($settings_query['post__in']) ? $settings_query['post__in'] : null,
+            'include' => isset($settings_query['include']) ? $settings_query['include'] : null,
+            'p' => isset($settings_query['p']) ? $settings_query['p'] : null,
+        ];
+
+        foreach ($settings_candidates as $setting_key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $dynamic_tags = $this->extractDynamicTags($value);
+            $ids = $this->normalizeIdList($value);
+
+            if (empty($ids) && ! empty($dynamic_tags)) {
+                $ids = $this->resolveDynamicIdList($value);
+            }
+
+            if (! empty($ids)) {
+                return [
+                    'ids' => $ids,
+                    'source' => ! empty($dynamic_tags) ? 'settings_dynamic_' . $setting_key : 'settings_static_' . $setting_key,
+                    'setting_key' => $setting_key,
+                    'dynamic_tags' => $dynamic_tags,
+                ];
+            }
+
+            if (! empty($dynamic_tags)) {
+                return [
+                    'ids' => [],
+                    'source' => 'settings_dynamic_' . $setting_key,
+                    'setting_key' => $setting_key,
+                    'dynamic_tags' => $dynamic_tags,
+                ];
+            }
+        }
+
+        return [
+            'ids' => [],
+            'source' => '',
+            'setting_source' => '',
+            'setting_key' => '',
+            'dynamic_tags' => [],
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, string>
+     */
+    private function extractDynamicTags($value)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $tags = [];
+
+        foreach ($values as $item) {
+            if (! is_scalar($item)) {
+                continue;
+            }
+
+            preg_match_all('/\{([^{}]+)\}/', (string) $item, $matches);
+            foreach ($matches[1] ?? [] as $tag) {
+                $tag = sanitize_text_field((string) $tag);
+                if ($tag !== '') {
+                    $tags[] = $tag;
+                }
+            }
+        }
+
+        return array_values(array_unique($tags));
+    }
+
+    /**
+     * @param array<int, string> $dynamic_tags
+     * @return array<int, string>
+     */
+    private function resolveAcfFieldHintsFromDynamicTags(array $dynamic_tags)
+    {
+        $hints = [];
+
+        foreach ($dynamic_tags as $tag) {
+            $tag = sanitize_text_field((string) $tag);
+            $tag = preg_replace('/:.+$/', '', $tag);
+            $tag = is_string($tag) ? sanitize_key($tag) : '';
+
+            if (strpos($tag, 'acf_') !== 0) {
+                continue;
+            }
+
+            $field_hint = substr($tag, 4);
+            if (is_string($field_hint) && $field_hint !== '') {
+                $hints[] = sanitize_key($field_hint);
+            }
+        }
+
+        return array_values(array_unique(array_filter($hints)));
+    }
+
+    /**
+     * Resolve common scalar post-type assignments in Bricks Query Editor snippets.
+     *
+     * @param array<string, mixed> $settings_query
+     * @return string
+     */
+    private function resolveQueryEditorPostTypeHint(array $settings_query)
+    {
+        $query_editor = isset($settings_query['queryEditor']) && is_scalar($settings_query['queryEditor'])
+            ? (string) $settings_query['queryEditor']
+            : '';
+        if ($query_editor === '') {
+            return '';
+        }
+
+        $patterns = [
+            '/\$post_type\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/i',
+            '/[\'"]post_type[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i',
+            '/\$query_args\s*\[\s*[\'"]post_type[\'"]\s*\]\s*=\s*[\'"]([^\'"]+)[\'"]\s*;/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (! preg_match($pattern, $query_editor, $matches)) {
+                continue;
+            }
+
+            $post_type = isset($matches[1]) ? sanitize_key((string) $matches[1]) : '';
+            if ($post_type !== '') {
+                return $post_type;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Extract ACF get_field() source hints from Query Editor PHP without treating
+     * shared or explicit-owner reads as current-owner writable evidence.
+     *
+     * @param array<string, mixed> $settings_query
+     * @return array<string, array<int, string>>
+     */
+    private function resolveQueryEditorAcfSourceHints(array $settings_query)
+    {
+        $query_editor = isset($settings_query['queryEditor']) && is_scalar($settings_query['queryEditor'])
+            ? (string) $settings_query['queryEditor']
+            : '';
+        if ($query_editor === '') {
+            return [
+                'current_owner_fields' => [],
+                'option_fields' => [],
+                'explicit_object_fields' => [],
+            ];
+        }
+
+        $hints = [
+            'current_owner_fields' => [],
+            'option_fields' => [],
+            'explicit_object_fields' => [],
+        ];
+        $current_owner_object_vars = $this->resolveQueryEditorCurrentOwnerObjectVars($query_editor);
+        preg_match_all('/\bget_field\s*\(\s*[\'"]([^\'"]+)[\'"]\s*(?:,\s*([^)]*))?\)/i', $query_editor, $matches, PREG_SET_ORDER);
+
+        foreach ($matches as $match) {
+            $field_name = isset($match[1]) ? sanitize_key((string) $match[1]) : '';
+            $object_arg = isset($match[2]) ? trim((string) $match[2]) : '';
+
+            if ($field_name === '') {
+                continue;
+            }
+
+            if ($object_arg === '') {
+                $hints['current_owner_fields'][] = $field_name;
+                continue;
+            }
+
+            $object_arg_parts = preg_split('/,/', $object_arg, 2);
+            $first_object_arg = isset($object_arg_parts[0]) ? trim((string) $object_arg_parts[0]) : $object_arg;
+
+            if (preg_match('/^[\'"]options?[\'"]$/i', $first_object_arg)) {
+                $hints['option_fields'][] = $field_name;
+                continue;
+            }
+
+            if ($this->isCurrentOwnerQueryEditorObjectArg($first_object_arg, $current_owner_object_vars)) {
+                $hints['current_owner_fields'][] = $field_name;
+                continue;
+            }
+
+            $hints['explicit_object_fields'][] = $field_name;
+        }
+
+        foreach ($hints as $key => $values) {
+            $hints[$key] = array_values(array_unique(array_filter(array_map('sanitize_key', $values))));
+        }
+
+        return $hints;
+    }
+
+    /**
+     * @param string $query_editor
+     * @return array<int, string>
+     */
+    private function resolveQueryEditorCurrentOwnerObjectVars($query_editor)
+    {
+        $query_editor = (string) $query_editor;
+        if ($query_editor === '') {
+            return [];
+        }
+
+        preg_match_all(
+            '/\$([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/',
+            $query_editor,
+            $assignment_matches,
+            PREG_SET_ORDER
+        );
+        $assignment_counts = [];
+        foreach ($assignment_matches as $assignment_match) {
+            $assignment_var = isset($assignment_match[1]) ? (string) $assignment_match[1] : '';
+            if ($assignment_var === '') {
+                continue;
+            }
+
+            if (! isset($assignment_counts[$assignment_var])) {
+                $assignment_counts[$assignment_var] = 0;
+            }
+
+            $assignment_counts[$assignment_var]++;
+        }
+
+        preg_match_all(
+            '/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get_the_ID|get_queried_object_id)\s*\(\s*\)\s*;/i',
+            $query_editor,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        $vars = [];
+        foreach ($matches as $match) {
+            $var_name = isset($match[1]) ? (string) $match[1] : '';
+            if ($var_name === '') {
+                continue;
+            }
+
+            if (($assignment_counts[$var_name] ?? 0) !== 1) {
+                continue;
+            }
+
+            $vars[] = '$' . $var_name;
+        }
+
+        return array_values(array_unique($vars));
+    }
+
+    /**
+     * Keep Query Editor source hints narrow: only obvious current-object function
+     * calls or variables directly assigned from those functions are treated as
+     * current-owner evidence. Other variables and literal IDs stay explicit-owner
+     * evidence because they can point at a different object.
+     *
+     * @param string $object_arg
+     * @param array<int, string> $current_owner_object_vars
+     * @return bool
+     */
+    private function isCurrentOwnerQueryEditorObjectArg($object_arg, array $current_owner_object_vars = [])
+    {
+        $object_arg = preg_replace('/\s+/', '', (string) $object_arg);
+        if (! is_string($object_arg) || $object_arg === '') {
+            return false;
+        }
+
+        $current_owner_object_vars = array_values(array_unique(array_filter(array_map('strval', $current_owner_object_vars))));
+        if (! empty($current_owner_object_vars) && in_array($object_arg, $current_owner_object_vars, true)) {
+            return true;
+        }
+
+        return preg_match('/^(?:get_the_ID|get_queried_object_id)\($/i', $object_arg)
+            || preg_match('/^(?:get_the_ID|get_queried_object_id)\(\)$/i', $object_arg);
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function resolveDynamicIdList($value)
+    {
+        if (! function_exists('bricks_render_dynamic_data')) {
+            return [];
+        }
+
+        $values = is_array($value) ? $value : [$value];
+        $ids = [];
+
+        foreach ($values as $item) {
+            if (! is_scalar($item) || strpos((string) $item, '{') === false) {
+                continue;
+            }
+
+            $rendered = bricks_render_dynamic_data((string) $item);
+            $ids = array_merge($ids, $this->normalizeIdList($rendered));
+        }
+
+        return array_values(array_unique(array_filter(array_map('absint', $ids))));
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalizeQueryOrderby($value)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $normalized = [];
+
+        foreach ($values as $item) {
+            if (! is_scalar($item)) {
+                continue;
+            }
+
+            $orderby = sanitize_key((string) $item);
+            if ($orderby !== '') {
+                $normalized[] = $orderby;
+            }
+        }
+
+        return implode(',', array_values(array_unique($normalized)));
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalizeSinglePostType($value)
+    {
+        $values = $this->normalizePostTypeList($value);
+        return count($values) === 1 ? $values[0] : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @param bool  $allow_any
+     * @return array<int, string>
+     */
+    private function normalizePostTypeList($value, $allow_any = false)
+    {
+        $values = is_array($value) ? $value : [$value];
+        $normalized = [];
+
+        foreach ($values as $item) {
+            $post_type = sanitize_key((string) $item);
+            if ($post_type !== '' && ($allow_any || $post_type !== 'any')) {
+                $normalized[] = $post_type;
+            }
+        }
+
+        return array_values(array_unique($normalized));
+    }
+
+    /**
+     * @param array<int, int> $post_ids
+     * @return string
+     */
+    private function inferSinglePostTypeFromIds(array $post_ids)
+    {
+        $types = $this->inferPostTypesFromIds($post_ids);
+
+        return count($types) === 1 ? $types[0] : '';
+    }
+
+    /**
+     * @param array<int, int> $post_ids
+     * @return array<int, string>
+     */
+    private function inferPostTypesFromIds(array $post_ids)
+    {
+        $types = [];
+
+        foreach ($post_ids as $post_id) {
+            $post_id = absint($post_id);
+            if ($post_id <= 0) {
+                continue;
+            }
+
+            $post_type = get_post_type($post_id);
+            $post_type = is_string($post_type) ? sanitize_key($post_type) : '';
+            if ($post_type !== '') {
+                $types[] = $post_type;
+            }
+        }
+
+        $types = array_values(array_unique($types));
+
+        return $types;
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function normalizeIdList($value)
+    {
+        $values = is_array($value) ? $value : explode(',', (string) $value);
+        $ids = [];
+
+        foreach ($values as $item) {
+            $id = is_object($item) && isset($item->ID) ? absint($item->ID) : absint($item);
+            $is_zero_sentinel = ! is_object($item) && is_numeric($item) && (int) $item === 0;
+            if ($id > 0 || $is_zero_sentinel) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @return bool
+     */
+    private function shouldInstrumentCollectionRootAttributeGroup(array $attributes, $key)
+    {
+        if (! in_array($key, ['_root', 'root', 'wrapper'], true)) {
+            return false;
+        }
+
+        if (! isset($attributes[$key]) || ! is_array($attributes[$key])) {
+            return false;
+        }
+
+        $group = $attributes[$key];
 
         return isset($group['class']) || isset($group['id']);
     }
@@ -337,6 +1528,23 @@ final class ElementInstrumentationService
                 ($effective_owner_type === 'post' && $entity_id === $effective_owner_id)
                 || $entity_id === $loop_object_id
                 || $entity_id === $parent_loop_object_id
+            );
+    }
+
+    /**
+     * Query-root collection markers represent the list owner, not the current loop row.
+     *
+     * @param array<string, mixed> $source
+     * @param array<string, mixed> $inspection
+     * @return bool
+     */
+    private function allowsCollectionRootRenderedPostMismatch(array $source, array $inspection)
+    {
+        return (isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : '') === 'query_collection'
+            && in_array(
+                isset($source['type']) ? sanitize_key((string) $source['type']) : '',
+                ['acf_collection_field', 'post_terms_collection'],
+                true
             );
     }
 
@@ -574,6 +1782,19 @@ final class ElementInstrumentationService
             $this->dropDescriptorByToken($descriptor->token);
 
             return $this->stripMarkerAttributesForToken($element_html, $descriptor->token);
+        }
+
+        if (($descriptor->render['context'] ?? '') === 'query_collection') {
+            $descriptor->render['rendered_value'] = '';
+            $descriptor->render['resolved_value'] = '';
+            $descriptor->render['rendered_text'] = '';
+            $descriptor->render['resolved_text'] = '';
+            $descriptor->render['display_key'] = 'default';
+            $descriptor->render['display_mode'] = 'text';
+            $descriptor->render['render_verified'] = true;
+            $descriptor->render['value_match'] = true;
+
+            return $element_html;
         }
 
         $rendered_value = $this->extractComparableRenderValue($rendered_fragment, $descriptor);
@@ -996,6 +2217,107 @@ final class ElementInstrumentationService
     }
 
     /**
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_id
+     * @param int                $occurrence_index
+     * @return string
+     */
+    private function injectEmptyQueryCollectionMarkerAfterLoopComment($content, EditableDescriptor $descriptor, $element_id, $occurrence_index)
+    {
+        if (! $this->isEmptyQueryCollectionDescriptor($descriptor)) {
+            return $content;
+        }
+
+        $pattern = '/<!--\s*brx-loop-start-' . preg_quote($element_id, '/') . '\s*-->/';
+        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
+            return $content;
+        }
+
+        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
+            return $content;
+        }
+
+        $comment = (string) $matches[0][$occurrence_index][0];
+        $offset = (int) $matches[0][$occurrence_index][1];
+        $marker_tag = $this->appendMarkerAttributesToTag(
+            '<span class="dbvc-ve-empty-query-marker" data-dbvc-ve-empty-query="1" aria-hidden="true">',
+            $descriptor
+        ) . '</span>';
+
+        return substr((string) $content, 0, $offset + strlen($comment))
+            . $marker_tag
+            . substr((string) $content, $offset + strlen($comment));
+    }
+
+    /**
+     * Bricks can replace a fully empty query loop with a query-trail placeholder
+     * instead of the loop-start comment. Anchor the same hidden marker there.
+     *
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_id
+     * @param int                $occurrence_index
+     * @return string
+     */
+    private function injectEmptyQueryCollectionMarkerAfterQueryTrail($content, EditableDescriptor $descriptor, $element_id, $occurrence_index)
+    {
+        if (! $this->isEmptyQueryCollectionDescriptor($descriptor)) {
+            return $content;
+        }
+
+        $pattern = '/<div\b(?=[^>]*\bclass=(["\'])(?:(?:(?!\1).)*)\bbrx-query-trail\b(?:(?:(?!\1).)*)\1)(?=[^>]*\bdata-query-element-id=(["\'])' . preg_quote($element_id, '/') . '\2)[^>]*>\s*<\/div>/is';
+        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
+            return $content;
+        }
+
+        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
+            return $content;
+        }
+
+        $query_trail = (string) $matches[0][$occurrence_index][0];
+        $offset = (int) $matches[0][$occurrence_index][1];
+        $marker_tag = $this->appendMarkerAttributesToTag(
+            '<span class="dbvc-ve-empty-query-marker" data-dbvc-ve-empty-query="1" aria-hidden="true">',
+            $descriptor
+        ) . '</span>';
+
+        return substr((string) $content, 0, $offset + strlen($query_trail))
+            . $marker_tag
+            . substr((string) $content, $offset + strlen($query_trail));
+    }
+
+    /**
+     * @param string $content
+     * @param string $token
+     * @return bool
+     */
+    private function contentContainsMarkerToken($content, $token)
+    {
+        $token = esc_attr((string) $token);
+        if ($token === '') {
+            return false;
+        }
+
+        return strpos((string) $content, 'data-dbvc-ve="' . $token . '"') !== false
+            || strpos((string) $content, "data-dbvc-ve='" . $token . "'") !== false;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function isEmptyQueryCollectionDescriptor(EditableDescriptor $descriptor)
+    {
+        $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
+        $source_type = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : '';
+
+        return $render_context === 'query_collection'
+            && $source_type === 'acf_collection_field'
+            && ! empty($descriptor->source['query_result_empty']);
+    }
+
+    /**
      * @param string             $element_html
      * @param EditableDescriptor $descriptor
      * @return string
@@ -1036,6 +2358,9 @@ final class ElementInstrumentationService
             'data-dbvc-ve-source-group' => isset($descriptor->render['source_group']) ? (string) $descriptor->render['source_group'] : '',
             'data-dbvc-ve-group' => isset($descriptor->render['sync_group']) ? (string) $descriptor->render['sync_group'] : '',
             'data-dbvc-ve-context' => isset($descriptor->render['context']) ? (string) $descriptor->render['context'] : 'text',
+            'data-dbvc-ve-badge-label' => isset($descriptor->ui['badgeLabel']) ? sanitize_text_field((string) $descriptor->ui['badgeLabel']) : '',
+            'data-dbvc-ve-input' => isset($descriptor->ui['input']) ? sanitize_key((string) $descriptor->ui['input']) : '',
+            'data-dbvc-ve-query-element-id' => isset($descriptor->source['query_element_id']) ? sanitize_text_field((string) $descriptor->source['query_element_id']) : '',
         ];
 
         if (! empty($descriptor->render['attribute'])) {
@@ -1087,6 +2412,12 @@ final class ElementInstrumentationService
             'type' => isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '',
             'id' => isset($page_context['entityId']) ? absint($page_context['entityId']) : 0,
             'subtype' => isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '',
+            'taxonomy' => isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '',
+            'archiveType' => isset($page_context['archiveType']) ? sanitize_key((string) $page_context['archiveType']) : '',
+            'archiveKey' => isset($page_context['archiveKey']) ? sanitize_text_field((string) $page_context['archiveKey']) : '',
+            'isArchive' => ! empty($page_context['isArchive']),
+            'isPostTypeArchive' => ! empty($page_context['isPostTypeArchive']),
+            'isTaxonomyArchive' => ! empty($page_context['isTaxonomyArchive']),
             'url' => isset($page_context['url']) ? esc_url_raw((string) $page_context['url']) : '',
         ];
     }
@@ -1405,7 +2736,9 @@ final class ElementInstrumentationService
         $native_loop_ancestry = $this->buildNativeQueryAncestryLabels(isset($path_descriptor['nativeQueryAncestry']) && is_array($path_descriptor['nativeQueryAncestry']) ? $path_descriptor['nativeQueryAncestry'] : []);
         $kind = 'scalar';
 
-        if (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
+        if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true)) {
+            $kind = 'collection';
+        } elseif (in_array($field_type, ['link', 'image', 'post_object', 'relationship', 'taxonomy'], true)) {
             $kind = 'structured';
         } elseif ($field_type === 'gallery') {
             $kind = 'collection';
@@ -1423,14 +2756,50 @@ final class ElementInstrumentationService
         }
         $contract = 'direct_field';
 
-        if ($target === 'row') {
+        if ($render_context === 'query_collection'
+            && $field_type === 'relationship'
+            && isset($source['query_subset_write_mode'])
+            && sanitize_key((string) $source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
+            $contract = $scope === 'shared_entity'
+                ? 'shared_relationship_collection_filtered_subset'
+                : 'relationship_collection_filtered_subset';
+        } elseif ($render_context === 'query_collection'
+            && $field_type === 'post_object'
+            && isset($source['query_subset_write_mode'])
+            && sanitize_key((string) $source['query_subset_write_mode']) === 'replace_target_post_type_subset') {
+            $contract = $scope === 'shared_entity'
+                ? 'shared_post_object_collection_filtered_subset'
+                : 'post_object_collection_filtered_subset';
+        } elseif ($render_context === 'query_collection' && $field_type === 'relationship') {
+            if (! empty($loop_context['active']) && $scope === 'related_entity') {
+                $contract = 'loop_owned_relationship_collection';
+            } elseif ($scope === 'shared_entity') {
+                $contract = 'shared_relationship_collection';
+            } else {
+                $contract = 'relationship_collection';
+            }
+        } elseif ($render_context === 'query_collection' && $field_type === 'post_object') {
+            if (! empty($loop_context['active']) && $scope === 'related_entity') {
+                $contract = 'loop_owned_post_object_collection';
+            } elseif ($scope === 'shared_entity') {
+                $contract = 'shared_post_object_collection';
+            } else {
+                $contract = 'post_object_collection';
+            }
+        } elseif ($render_context === 'query_collection' && $field_type === 'taxonomy' && (isset($source['type']) ? sanitize_key((string) $source['type']) : '') === 'post_terms_collection') {
+            $contract = (! empty($loop_context['active']) && $scope === 'related_entity')
+                ? 'loop_owned_post_terms_collection'
+                : 'post_terms_collection';
+        } elseif ($target === 'row') {
             $contract = 'repeater_row';
         } elseif ($target === 'layout') {
             $contract = 'flexible_layout';
         }
 
         if (! empty($loop_context['active']) && $scope === 'related_entity') {
-            if ($target === 'row') {
+            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true)) {
+                // collection contracts are already scope-specific above
+            } elseif ($target === 'row') {
                 $contract = 'loop_owned_repeater_row';
             } elseif ($target === 'layout') {
                 $contract = 'loop_owned_flexible_layout';
@@ -1438,7 +2807,9 @@ final class ElementInstrumentationService
                 $contract = 'loop_owned_field';
             }
         } elseif ($scope === 'shared_entity') {
-            if ($target === 'row') {
+            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true)) {
+                // collection contracts are already scope-specific above
+            } elseif ($target === 'row') {
                 $contract = 'shared_repeater_row';
             } elseif ($target === 'layout') {
                 $contract = 'shared_flexible_layout';

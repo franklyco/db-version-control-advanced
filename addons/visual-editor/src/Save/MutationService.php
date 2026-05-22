@@ -94,6 +94,8 @@ final class MutationService
             : 0;
         $result = $resolver->save($descriptor, $sanitized);
         if (empty($result['ok'])) {
+            $journal_context = isset($result['journal']) && is_array($result['journal']) ? $result['journal'] : [];
+
             if ($this->journal instanceof ChangeJournalRecorder) {
                 $this->journal->recordFailure(
                     $change_set_id,
@@ -101,7 +103,8 @@ final class MutationService
                     $resolver->name(),
                     $old_value,
                     $sanitized,
-                    isset($result['message']) ? (string) $result['message'] : __('Save failed.', 'dbvc')
+                    isset($result['message']) ? (string) $result['message'] : __('Save failed.', 'dbvc'),
+                    $journal_context
                 );
             }
 
@@ -120,7 +123,8 @@ final class MutationService
         $source_summary = $this->summaries->buildSourceSummary($descriptor);
         $save_summary = $this->summaries->buildSaveSummary($descriptor, $entity_summary, $source_summary);
         if ($this->journal instanceof ChangeJournalRecorder) {
-            $this->journal->recordSuccess($change_set_id, $descriptor, $resolver->name(), $old_value, $current_value);
+            $journal_context = isset($result['journal']) && is_array($result['journal']) ? $result['journal'] : [];
+            $this->journal->recordSuccess($change_set_id, $descriptor, $resolver->name(), $old_value, $current_value, $journal_context);
         }
         $this->audit->log($descriptor, $old_value, $current_value);
         $this->cache->invalidate($descriptor);

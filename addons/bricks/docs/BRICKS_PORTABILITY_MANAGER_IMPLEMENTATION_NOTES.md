@@ -53,6 +53,25 @@
 - Apply always snapshots affected options first and rollback restores the pre-apply snapshot.
 - Breakpoints now pass through a dedicated storage-shape verifier before export and before apply. Unrecognized breakpoint payloads are blocked instead of being blindly transported.
 
+## Current implementation checklist
+
+1. Best add-on folder location: `addons/bricks/portability/` is the active runtime location and should remain the only implementation path for this feature.
+2. Existing Bricks add-on architecture to reuse: `DBVC_Bricks_Addon` bootstrap/settings/menu gates, existing `manage_options` capability checks, existing idempotency helper, existing DBVC jobs/activity hooks, and existing add-on docs/tracker conventions.
+3. Admin screen placement: dedicated Bricks-related submenu page `DBVC > ↳ Settings Portability`, not another tab in the main Bricks add-on page.
+4. Existing service/module conventions: focused static service classes for registry, normalizer, package service, diff engine, apply service, backup service, storage, REST controller, and page renderer.
+5. Existing logging/history/backup patterns: use DBVC jobs/activity when available, JSON session/export/backup records under DBVC storage, and pre-apply option snapshots through `DBVC_Bricks_Portability_Backup_Service`.
+6. Existing REST/ajax patterns: REST namespace `dbvc/v1/bricks/portability/*`, nonce-protected admin fetches, idempotency keys on mutating requests, and capability-aware route callbacks.
+7. Recommended file/class breakdown: keep current service split; add new narrow verifier/normalizer helpers only when behavior cannot fit existing classes cleanly.
+8. Naming conflicts or architectural risks: avoid reusing legacy package/apply concepts from `bricks-packages.php` for settings portability; keep this governed package/session model separate.
+9. Custom DB tables for MVP: not needed. Existing DBVC storage plus jobs/activity is sufficient for export packages, review sessions, backups, rollback records, and recent history.
+10. Canonical Bricks option names: MVP registry treats `bricks_global_settings`, `bricks_color_palette`, `bricks_global_classes`, `bricks_global_variables`, `bricks_global_pseudo_classes`, `bricks_theme_styles`, `bricks_components`, and verified `bricks_breakpoints` as portable; class/variable categories are related metadata; generated/locked/change/user/trash markers are backup-only or ignored.
+
+## Next phased hardening plan
+
+- `BPDM-HARDEN-01`: tighten uploaded package validation so every extracted JSON payload must be explicitly checksummed and allowed by the package contract.
+- `BPDM-HARDEN-02`: add regression coverage for unchecksummed package payload rejection and unexpected package file rejection.
+- `BPDM-HARDEN-03`: run targeted PHPUnit and syntax validation before expanding into Phase 2 domains.
+
 ## Current assumptions worth re-checking against live Bricks installs
 
 - Breakpoints are wired to `bricks_breakpoints` if that option exists locally. This remains the biggest live-storage verification point.

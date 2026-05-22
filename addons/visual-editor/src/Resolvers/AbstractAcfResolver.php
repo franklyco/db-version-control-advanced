@@ -12,6 +12,14 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function getRawAcfValue(EditableDescriptor $descriptor)
     {
+        if ($this->isRepeaterCollectionSource($descriptor)) {
+            return $this->getRawRepeaterSubfieldValue($descriptor);
+        }
+
+        if ($this->isFlexibleCollectionSource($descriptor)) {
+            return $this->getRawFlexibleSubfieldValue($descriptor);
+        }
+
         if ($this->isRepeaterSubfieldSource($descriptor)) {
             return $this->getRawRepeaterSubfieldValue($descriptor);
         }
@@ -44,6 +52,14 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function writeAcfValue(EditableDescriptor $descriptor, $value)
     {
+        if ($this->isRepeaterCollectionSource($descriptor)) {
+            return $this->writeRepeaterSubfieldValue($descriptor, $value);
+        }
+
+        if ($this->isFlexibleCollectionSource($descriptor)) {
+            return $this->writeFlexibleSubfieldValue($descriptor, $value);
+        }
+
         if ($this->isRepeaterSubfieldSource($descriptor)) {
             return $this->writeRepeaterSubfieldValue($descriptor, $value);
         }
@@ -150,6 +166,13 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function getFieldIdentifier(EditableDescriptor $descriptor)
     {
+        $field_selector_raw = isset($descriptor->source['field_selector_raw'])
+            ? $this->normalizeAcfFieldSelector((string) $descriptor->source['field_selector_raw'])
+            : '';
+        if ($field_selector_raw !== '') {
+            return $field_selector_raw;
+        }
+
         $field_selector = isset($descriptor->source['field_selector']) ? sanitize_key((string) $descriptor->source['field_selector']) : '';
         if ($field_selector !== '') {
             return $field_selector;
@@ -162,6 +185,22 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         return $this->getFieldKey($descriptor);
+    }
+
+    /**
+     * @param string $selector
+     * @return string
+     */
+    protected function normalizeAcfFieldSelector($selector)
+    {
+        $selector = trim((string) $selector);
+        if ($selector === '') {
+            return '';
+        }
+
+        $selector = preg_replace('/[^A-Za-z0-9_\-]/', '', $selector);
+
+        return is_string($selector) ? $selector : '';
     }
 
     /**
@@ -319,7 +358,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     protected function supportsAcfSource(EditableDescriptor $descriptor)
     {
-        return in_array((string) ($descriptor->source['type'] ?? ''), ['acf_field', 'acf_repeater_subfield', 'acf_flexible_subfield'], true);
+        return in_array((string) ($descriptor->source['type'] ?? ''), ['acf_field', 'acf_repeater_subfield', 'acf_flexible_subfield', 'acf_collection_field'], true);
     }
 
     /**
@@ -338,6 +377,26 @@ abstract class AbstractAcfResolver implements ResolverInterface
     protected function isFlexibleSubfieldSource(EditableDescriptor $descriptor)
     {
         return ($descriptor->source['type'] ?? '') === 'acf_flexible_subfield';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    protected function isRepeaterCollectionSource(EditableDescriptor $descriptor)
+    {
+        return ($descriptor->source['type'] ?? '') === 'acf_collection_field'
+            && ($descriptor->source['container_type'] ?? '') === 'repeater';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    protected function isFlexibleCollectionSource(EditableDescriptor $descriptor)
+    {
+        return ($descriptor->source['type'] ?? '') === 'acf_collection_field'
+            && ($descriptor->source['container_type'] ?? '') === 'flexible_content';
     }
 
     /**
@@ -518,6 +577,15 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         $row = is_array($rows[$row_index]) ? $rows[$row_index] : [];
+        $path_validation = $this->validateExistingRowContainerPath($row, $descriptor);
+        if (empty($path_validation['ok'])) {
+            return $path_validation;
+        }
+
+        if ($this->shouldUsePostMetaRepeaterFallback($descriptor)) {
+            return $this->writeRepeaterSubfieldPostMetaValue($descriptor, $value);
+        }
+
         $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
 
         if (! function_exists('update_field')) {
@@ -543,11 +611,118 @@ abstract class AbstractAcfResolver implements ResolverInterface
             $next_value = $this->getRawRepeaterSubfieldValue($descriptor);
         }
 
+        if ($result === false && ! $this->valuesEqual($next_value, $value) && $this->shouldUsePostMetaRepeaterFallback($descriptor)) {
+            $fallback = $this->writeRepeaterSubfieldPostMetaValue($descriptor, $value);
+            if (! empty($fallback['ok'])) {
+                return $fallback;
+            }
+        }
+
         if ($result === false && ! $this->valuesEqual($next_value, $value)) {
             return [
                 'ok' => false,
                 'message' => __('ACF repeater row update did not succeed.', 'dbvc'),
             ];
+        }
+
+        return [
+            'ok' => true,
+            'value' => $this->getRawAcfValue($descriptor),
+        ];
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function shouldUsePostMetaRepeaterFallback(EditableDescriptor $descriptor)
+    {
+        $post_id = $this->getPostId($descriptor);
+        $parent_selector = $this->getParentFieldSelector($descriptor);
+        if ($parent_selector === '') {
+            return false;
+        }
+
+        if ($post_id <= 0 || ! metadata_exists('post', $post_id, $parent_selector)) {
+            return false;
+        }
+
+        if (! function_exists('get_field_object')) {
+            return true;
+        }
+
+        foreach (array_values(array_unique(array_filter([
+            $parent_selector,
+            $this->getParentFieldName($descriptor),
+            $this->getParentFieldKey($descriptor),
+        ]))) as $identifier) {
+            $field = get_field_object($identifier, $post_id, false, false);
+            if (is_array($field) && ! empty($field)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param mixed              $value
+     * @return array<string, mixed>
+     */
+    private function writeRepeaterSubfieldPostMetaValue(EditableDescriptor $descriptor, $value)
+    {
+        if (! empty($this->getNestedRepeaterPath($descriptor)) || ! empty($this->getGroupPath($descriptor)) || ! empty($this->getGroupKeyPath($descriptor))) {
+            return [
+                'ok' => false,
+                'message' => __('The post-meta repeater fallback only supports direct existing row fields.', 'dbvc'),
+            ];
+        }
+
+        $post_id = $this->getPostId($descriptor);
+        $parent_selector = $this->getParentFieldSelector($descriptor);
+        $row_index = $this->getRepeaterRowIndex($descriptor);
+        if ($post_id <= 0 || $parent_selector === '' || $row_index === null) {
+            return [
+                'ok' => false,
+                'message' => __('Repeater field context is missing.', 'dbvc'),
+            ];
+        }
+
+        $row_count = get_post_meta($post_id, $parent_selector, true);
+        if (! is_numeric($row_count) || $row_index >= absint($row_count)) {
+            return [
+                'ok' => false,
+                'message' => __('The repeater row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $field_names = array_values(array_unique(array_filter([
+            $this->getLeafFieldName($descriptor),
+            $this->getFieldName($descriptor),
+        ])));
+        $value_key = '';
+
+        foreach ($field_names as $field_name) {
+            $candidate = $parent_selector . '_' . $row_index . '_' . sanitize_key((string) $field_name);
+            if (metadata_exists('post', $post_id, $candidate) || metadata_exists('post', $post_id, '_' . $candidate)) {
+                $value_key = $candidate;
+                break;
+            }
+        }
+
+        if ($value_key === '') {
+            return [
+                'ok' => false,
+                'message' => __('The repeater row field could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        update_post_meta($post_id, $value_key, $value);
+
+        $leaf_field_key = $this->getLeafFieldKey($descriptor);
+        if ($leaf_field_key !== '') {
+            update_post_meta($post_id, '_' . $value_key, $leaf_field_key);
         }
 
         return [
@@ -616,6 +791,11 @@ abstract class AbstractAcfResolver implements ResolverInterface
             ];
         }
 
+        $path_validation = $this->validateExistingRowContainerPath($row, $descriptor);
+        if (empty($path_validation['ok'])) {
+            return $path_validation;
+        }
+
         $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
 
         if (! function_exists('update_field')) {
@@ -673,7 +853,58 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
         $rows = get_field($parent_identifier, $object_id, false);
 
-        return is_array($rows) ? array_values($rows) : [];
+        if (is_array($rows)) {
+            return array_values($rows);
+        }
+
+        return $this->getRawRepeaterRowsFromPostMeta($descriptor);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @return mixed
+     */
+    protected function readValueFromRepeaterRows(array $rows, EditableDescriptor $descriptor)
+    {
+        $row_index = $this->resolveRepeaterRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
+            return '';
+        }
+
+        return $this->extractRowFieldValue($rows[$row_index], $descriptor);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @param mixed                            $value
+     * @return array<string, mixed>
+     */
+    protected function writeValueToRepeaterRows(array $rows, EditableDescriptor $descriptor, $value)
+    {
+        $row_index = $this->resolveRepeaterRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index])) {
+            return [
+                'ok' => false,
+                'message' => __('The repeater row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $row = is_array($rows[$row_index]) ? $rows[$row_index] : [];
+        $path_validation = $this->validateExistingRowContainerPath($row, $descriptor);
+        if (empty($path_validation['ok'])) {
+            return $path_validation;
+        }
+
+        $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
+
+        return [
+            'ok' => true,
+            'rows' => array_values($rows),
+        ];
     }
 
     /**
@@ -696,6 +927,138 @@ abstract class AbstractAcfResolver implements ResolverInterface
         $rows = get_field($parent_identifier, $object_id, false);
 
         return is_array($rows) ? array_values($rows) : [];
+    }
+
+    /**
+     * Load existing rows from ACF's expanded post-meta storage when a cloned
+     * repeater selector is renderable by Bricks but not loadable by get_field().
+     *
+     * @param EditableDescriptor $descriptor
+     * @return array<int, array<string, mixed>>
+     */
+    private function getRawRepeaterRowsFromPostMeta(EditableDescriptor $descriptor)
+    {
+        $post_id = $this->getPostId($descriptor);
+        $parent_selector = $this->getParentFieldSelector($descriptor);
+        if ($parent_selector === '') {
+            $parent_selector = $this->getParentFieldName($descriptor);
+        }
+
+        if ($post_id <= 0 || $parent_selector === '') {
+            return [];
+        }
+
+        $row_count = get_post_meta($post_id, $parent_selector, true);
+        if (! is_numeric($row_count)) {
+            return [];
+        }
+
+        $row_count = absint($row_count);
+        if ($row_count <= 0) {
+            return [];
+        }
+
+        $rows = array_fill(0, $row_count, []);
+
+        global $wpdb;
+        if (! $wpdb instanceof \wpdb) {
+            return $rows;
+        }
+
+        $like = $wpdb->esc_like($parent_selector . '_') . '%';
+        $meta_rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key LIKE %s",
+                $post_id,
+                $like
+            ),
+            ARRAY_A
+        );
+
+        foreach ((array) $meta_rows as $meta_row) {
+            $meta_key = isset($meta_row['meta_key']) ? (string) $meta_row['meta_key'] : '';
+            if (! preg_match('/^' . preg_quote($parent_selector, '/') . '_(\d+)_(.+)$/', $meta_key, $matches)) {
+                continue;
+            }
+
+            $row_index = absint($matches[1]);
+            $field_name = sanitize_key((string) $matches[2]);
+            if ($row_index >= $row_count || $field_name === '') {
+                continue;
+            }
+
+            $value = maybe_unserialize($meta_row['meta_value'] ?? '');
+            $rows[$row_index][$field_name] = $value;
+
+            $field_key = get_post_meta($post_id, '_' . $meta_key, true);
+            $field_key = is_scalar($field_key) ? sanitize_key((string) $field_key) : '';
+            if ($field_key !== '') {
+                $rows[$row_index][$field_key] = $value;
+            }
+        }
+
+        return array_values($rows);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @return mixed
+     */
+    protected function readValueFromFlexibleRows(array $rows, EditableDescriptor $descriptor)
+    {
+        $row_index = $this->resolveFlexibleRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
+            return '';
+        }
+
+        $row = $rows[$row_index];
+        $layout_name = $this->getFlexibleLayoutName($descriptor);
+        if ($layout_name !== '' && isset($row['acf_fc_layout']) && sanitize_key((string) $row['acf_fc_layout']) !== $layout_name) {
+            return '';
+        }
+
+        return $this->extractRowFieldValue($row, $descriptor);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param EditableDescriptor               $descriptor
+     * @param mixed                            $value
+     * @return array<string, mixed>
+     */
+    protected function writeValueToFlexibleRows(array $rows, EditableDescriptor $descriptor, $value)
+    {
+        $row_index = $this->resolveFlexibleRowIndex($descriptor, $rows);
+
+        if ($row_index < 0 || ! isset($rows[$row_index])) {
+            return [
+                'ok' => false,
+                'message' => __('The flexible-content row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $row = is_array($rows[$row_index]) ? $rows[$row_index] : [];
+        $layout_name = $this->getFlexibleLayoutName($descriptor);
+        if ($layout_name !== '' && isset($row['acf_fc_layout']) && sanitize_key((string) $row['acf_fc_layout']) !== $layout_name) {
+            return [
+                'ok' => false,
+                'message' => __('The flexible-content layout did not match the expected row.', 'dbvc'),
+            ];
+        }
+
+        $path_validation = $this->validateExistingRowContainerPath($row, $descriptor);
+        if (empty($path_validation['ok'])) {
+            return $path_validation;
+        }
+
+        $rows[$row_index] = $this->replaceRowFieldValue($row, $descriptor, $value);
+
+        return [
+            'ok' => true,
+            'rows' => array_values($rows),
+        ];
     }
 
     /**
@@ -801,6 +1164,45 @@ abstract class AbstractAcfResolver implements ResolverInterface
      * @param EditableDescriptor   $descriptor
      * @return array<string, mixed>
      */
+    private function validateExistingRowContainerPath(array $row, EditableDescriptor $descriptor)
+    {
+        if (empty($this->getNestedRepeaterPath($descriptor)) && empty($this->getGroupPath($descriptor)) && empty($this->getGroupKeyPath($descriptor))) {
+            return [
+                'ok' => true,
+            ];
+        }
+
+        $nested = $this->resolveExistingNestedRepeaterRow($row, $descriptor);
+        if (empty($nested['ok'])) {
+            return [
+                'ok' => false,
+                'message' => isset($nested['message'])
+                    ? (string) $nested['message']
+                    : __('The nested repeater row could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        $leaf_row = isset($nested['row']) && is_array($nested['row']) ? $nested['row'] : [];
+        $grouped = $this->resolveExistingGroupedRowContainer($leaf_row, $descriptor);
+        if (empty($grouped['ok'])) {
+            return [
+                'ok' => false,
+                'message' => isset($grouped['message'])
+                    ? (string) $grouped['message']
+                    : __('The grouped row field container could not be resolved safely.', 'dbvc'),
+            ];
+        }
+
+        return [
+            'ok' => true,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
     private function resolveLeafRowContainer(array $row, EditableDescriptor $descriptor)
     {
         $leaf_row = $this->resolveNestedRepeaterRow($row, $descriptor);
@@ -848,25 +1250,48 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     private function resolveNestedRepeaterRow(array $row, EditableDescriptor $descriptor)
     {
+        $resolved = $this->resolveExistingNestedRepeaterRow($row, $descriptor);
+
+        return ! empty($resolved['ok']) && isset($resolved['row']) && is_array($resolved['row'])
+            ? $resolved['row']
+            : [];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function resolveExistingNestedRepeaterRow(array $row, EditableDescriptor $descriptor)
+    {
         $container = $row;
         $segments = $this->getNestedRepeaterPath($descriptor);
 
         foreach ($segments as $segment) {
             $segment_key = $this->resolveNestedRepeaterSegmentKey($container, $segment);
             if ($segment_key === '' || ! isset($container[$segment_key]) || ! is_array($container[$segment_key])) {
-                return [];
+                return [
+                    'ok' => false,
+                    'message' => __('The nested repeater container could not be resolved safely.', 'dbvc'),
+                ];
             }
 
             $rows = array_values($container[$segment_key]);
             $row_index = $this->resolveNestedRepeaterSegmentRowIndex($segment, $rows);
             if ($row_index < 0 || ! isset($rows[$row_index]) || ! is_array($rows[$row_index])) {
-                return [];
+                return [
+                    'ok' => false,
+                    'message' => __('The nested repeater row could not be resolved safely.', 'dbvc'),
+                ];
             }
 
             $container = $rows[$row_index];
         }
 
-        return is_array($container) ? $container : [];
+        return [
+            'ok' => true,
+            'row' => is_array($container) ? $container : [],
+        ];
     }
 
     /**
@@ -989,6 +1414,20 @@ abstract class AbstractAcfResolver implements ResolverInterface
      */
     private function resolveGroupedRowContainer(array $row, EditableDescriptor $descriptor)
     {
+        $resolved = $this->resolveExistingGroupedRowContainer($row, $descriptor);
+
+        return ! empty($resolved['ok']) && isset($resolved['container']) && is_array($resolved['container'])
+            ? $resolved['container']
+            : [];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param EditableDescriptor   $descriptor
+     * @return array<string, mixed>
+     */
+    private function resolveExistingGroupedRowContainer(array $row, EditableDescriptor $descriptor)
+    {
         $container = $row;
 
         $group_names = $this->getGroupPath($descriptor);
@@ -1001,13 +1440,19 @@ abstract class AbstractAcfResolver implements ResolverInterface
             $segment = $this->resolveGroupedRowSegmentKey($container, $group_name, $group_key);
 
             if ($segment === '' || ! isset($container[$segment]) || ! is_array($container[$segment])) {
-                return [];
+                return [
+                    'ok' => false,
+                    'message' => __('The grouped row field container could not be resolved safely.', 'dbvc'),
+                ];
             }
 
             $container = $container[$segment];
         }
 
-        return is_array($container) ? $container : [];
+        return [
+            'ok' => true,
+            'container' => is_array($container) ? $container : [],
+        ];
     }
 
     /**

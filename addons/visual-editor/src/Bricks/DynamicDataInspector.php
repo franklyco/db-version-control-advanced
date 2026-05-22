@@ -259,7 +259,7 @@ final class DynamicDataInspector
         }
 
         $candidate = $this->inspectExpression($url, $setting_key);
-        if (empty($candidate['supported']) || ($candidate['source_type'] ?? '') !== 'acf_field') {
+        if (! $this->supportsDirectLinkSource($candidate)) {
             return [
                 'supported' => false,
             ];
@@ -327,7 +327,7 @@ final class DynamicDataInspector
             ];
         }
 
-        if (in_array($tag, ['post_title', 'post_excerpt', 'featured_image'], true)) {
+        if (in_array($tag, ['post_title', 'post_excerpt', 'featured_image', 'post_url'], true)) {
             return [
                 'supported' => true,
                 'setting_key' => $setting_key,
@@ -339,8 +339,53 @@ final class DynamicDataInspector
             ];
         }
 
+        if (in_array($tag, ['term_name', 'term_description', 'term_url', 'term_id'], true)) {
+            return [
+                'supported' => true,
+                'setting_key' => $setting_key,
+                'source_type' => 'term_field',
+                'expression' => $expression,
+                'field_name' => $tag,
+                'tag' => $tag,
+                'args' => $args,
+            ];
+        }
+
+        if ($tag === 'archive_title') {
+            return [
+                'supported' => true,
+                'setting_key' => $setting_key,
+                'source_type' => 'archive_field',
+                'expression' => $expression,
+                'field_name' => $tag,
+                'tag' => $tag,
+                'args' => $args,
+            ];
+        }
+
         return [
             'supported' => false,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @return bool
+     */
+    private function supportsDirectLinkSource(array $candidate)
+    {
+        if (empty($candidate['supported'])) {
+            return false;
+        }
+
+        $source_type = isset($candidate['source_type']) ? (string) $candidate['source_type'] : '';
+        if ($source_type === 'acf_field') {
+            return true;
+        }
+
+        $field_name = isset($candidate['field_name']) ? sanitize_key((string) $candidate['field_name']) : '';
+
+        return ($source_type === 'post_field' && $field_name === 'post_url')
+            || ($source_type === 'term_field' && $field_name === 'term_url');
     }
 }

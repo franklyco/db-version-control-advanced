@@ -12,7 +12,7 @@ Current status:
 - addon bootstrap is wired into DBVC core loading
 - Add-ons screen can enable/disable the runtime
 - authorized users can toggle frontend Visual Editor mode from the admin bar
-- frontend assets load only in edit mode on supported singular views
+- frontend assets load only in edit mode on supported singular and archive views
 - frontend runtime, assets, and Bricks instrumentation are now explicitly blocked inside Bricks Builder edit/main/iframe requests and common builder-style preview query contexts
 - supported Bricks direct single-tag text bindings receive lightweight DOM tokens
 - exact Bricks dynamic-data args on those single-tag bindings are preserved for resolver context
@@ -23,9 +23,10 @@ Current status:
 - direct Bricks image elements backed by either a single-tag ACF image field or a direct WordPress `{featured_image}` binding can now surface a marker on the wrapper and switch to another existing Media Library attachment through an attachment-ID-first save contract, with local Media Library URL fallback resolution when needed
 - direct Bricks `_background.image` controls backed by a single-tag ACF image field can now reuse that same attachment-aware media workflow for rendered background images
 - direct Bricks image-gallery elements backed by a single-tag ACF gallery field can now surface an editable marker with thumbnail preview and ordered Media Library gallery replacement
+- direct Bricks native ACF `relationship` and `post_object` query roots on the current page owner can now surface a container-level `Edit Connected` marker with a dedicated connected-items panel mode and reload-after-save reconciliation
 - direct Bricks ACF repeater row subfields can now be marked and resolved through stable parent-repeater metadata plus Bricks loop index
 - current-post and related-post repeater row descendants can now reuse the existing safe field resolvers for text-like, WYSIWYG, choice, link, and image field types
-- descriptor state is kept server-side in a short-lived session registry
+- descriptor state is kept server-side in a filterable transient session registry, now with a longer default lifetime plus client keepalive/focus refresh so an open editor session does not age out after only a few idle minutes
 - authenticated REST inspection and save endpoints are available for the MVP allowlist
 - ACF object context now resolves through Bricks provider logic for current-post, options, term, and user-backed fields on singular views
 - current-post ACF `post_object`, single-target `relationship`, and single-select `taxonomy` fields can now be edited through their rendered permalink when Bricks uses them as direct link targets
@@ -46,7 +47,7 @@ Current status:
 - repeated markers for the same resolved field projection now update together on the current page after save
 - structured field saves can now refresh other matched projections of that same resolved field on the current page without a reload
 - the frontend runtime now uses one shared active badge for hover, focus, and touch selection instead of one detached badge per marker
-- initial session bootstrap now stays lightweight by default, while full descriptor payloads load on demand, cache after first lookup, and can prefetch after a short hover/focus dwell on the active marker
+- initial session bootstrap now stays lightweight by default, while full descriptor payloads load on demand, cache after first lookup, can prefetch after a short hover/focus dwell on the active marker, and can also warm nearby visible uncached markers through a bounded low-priority viewport-aware queue
 - shared-badge labels now distinguish lightweight owner types such as `Related Post`, `Shared Term`, and `Shared User` from the session public map without forcing eager descriptor hydration
 - panel acknowledgement copy, save-button labels, and locked-state messaging now reuse that same owner-type refinement for shared term, user, option, and post targets
 - the panel header now surfaces the actual entity title/name plus frontend/backend editor links when that entity has canonical URLs, and the field block now exposes a compact expandable source-details toggle with the raw dynamic source summary
@@ -61,6 +62,7 @@ Current status:
 - nested native ACF loop ancestry now also carries the parent native loop kind/selector into descriptor signatures, path summaries, and save-contract detail so `relationship -> repeater`, `post_object -> repeater/flexible`, and similar nested native paths stay explicit and less collision-prone
 - the editor panel is now closed by default, opens from the active shared badge, closes on outside click, and can be dragged to a different screen position that persists for the current browser session
 - empty text-like targets can now surface a pulsing placeholder treatment when the resolved display value is empty, while image targets use a narrow overflow override instead of a broad theme-overriding rule
+- supported post type archives and taxonomy archives now resolve first-class page context and can surface render-verified ACF/post-field markers in inspect-only mode while archive save contracts remain pending
 - advanced exact-tag ACF sources that are not yet save-capable now surface as inspect-only markers instead of being silently dropped
 - generic Bricks query-loop rows with a concrete post owner can now surface inspect-only `post_title`, `post_excerpt`, and direct ACF field descriptors with explicit non-current-owner context
 - marker and modal states now distinguish current, shared, related, and inspect-only sources so non-current owner items are visibly flagged before interaction
@@ -68,7 +70,8 @@ Current status:
 Still out of scope for this slice:
 - deeper grouped descendant save verification and structured descendants beyond the new gallery replacement flow
 - repeater row insert/remove/reorder and nested repeater/flexible collection mutation
-- archive-wide editing flows and non-singular entry points
+- broader shared, loop-owned, and nested relationship/post-object collection mutation beyond the new direct current-owner query-root collection slice
+- archive-wide saves remain unsupported; archive entry points are currently inspect-only and tracked in `docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md`
 - static non-ACF Bricks internal/taxonomy link settings that mutate builder configuration rather than a resolver-owned content field
 - generic non-ACF Bricks post-query loops without a concrete post owner and multi-value related-object editing beyond inspect-only surfacing
 - mixed literal-plus-dynamic Bricks text strings
@@ -100,6 +103,7 @@ This addon now lives inside the DBVC repo at:
 - safe Bricks ACF `relationship` / `post_object` post-loop row support where the loop owner is a concrete related post
 - safe direct ACF field support where the loop owner is a concrete queried post, term, or user
 - native Bricks ACF query-loop metadata for repeater, relationship, post-object, and taxonomy `query.objectType` roots
+- direct native Bricks ACF `relationship` and `post_object` query-root collection editing with ordered add/remove/reorder and reload-after-save reconciliation for current owners, direct repeater-row and flexible-row roots, mixed current-owner `repeater -> flexible` and `flexible -> repeater` roots, grouped current-owner row-owned roots, and concrete loop-owned related-post roots with explicit acknowledgement
 - safe Bricks ACF repeater row support where the row index is stable and the owner resolves to the current post or a concrete related post
 - writable support for direct Bricks ACF flexible-content text-like, WYSIWYG, choice, link, image, and gallery descendants on current owners, loop-owned related owners, and shared term/user/option owners, with inspect-only surfacing still reserved for the remaining unsupported flexible descendants
 - nested-group descendants inside supported repeater/flexible rows now preserve their Bricks ACF group ancestry in the descriptor path and row mutation layer
@@ -158,3 +162,5 @@ This addon now lives inside the DBVC repo at:
 - `docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_REPEATER_IMPLEMENTATION_PLAN.md`
+- `docs/enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`
+- `docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md`

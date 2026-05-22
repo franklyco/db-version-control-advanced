@@ -191,6 +191,103 @@ Direct flexible-content descendants now use the same descriptor contract shape w
 }
 ```
 
+Direct current-owner connected-item query roots now use a dedicated collection descriptor family, for example:
+
+```json
+{
+  "source": {
+    "type": "acf_collection_field",
+    "expression": "query.objectType:acf_related_faq_groups",
+    "field_name": "related_faq_groups",
+    "field_key": "field_66abc123",
+    "field_selector": "related_faq_groups",
+    "field_type": "relationship",
+    "reference_post_types": ["faq_group"],
+    "reference_multiple": true,
+    "reference_min": 0,
+    "reference_max": 0,
+    "native_query_kind": "relationship",
+    "native_query_selector": "related_faq_groups",
+    "native_query_object_type": "acf_related_faq_groups"
+  },
+  "mutation": {
+    "version": 2,
+    "kind": "collection",
+    "target": "field",
+    "contract": "relationship_collection",
+    "renderContext": "query_collection",
+    "requiresJournal": true
+  }
+}
+```
+
+For the same `query_collection` family, the collection contract name is scope-aware:
+- current-owner roots: `relationship_collection` / `post_object_collection`
+- current-owner derived Bricks query subsets: `relationship_collection_filtered_subset` / `post_object_collection_filtered_subset`
+- explicit current-owner seed from a proven shared fallback: `relationship_collection_seed_from_fallback` / `post_object_collection_seed_from_fallback`
+- loop-owned related-post roots: `loop_owned_relationship_collection` / `loop_owned_post_object_collection`
+- shared-owner roots: `shared_relationship_collection` / `shared_post_object_collection`
+
+Derived Bricks post loops use the same `acf_collection_field` family only after the final post query is proven to match one current-owner ACF source field. They carry `query_source = derived_bricks_query`, `query_target_post_type`, `query_target_post_type_label`, `query_result_ids`, `query_full_value_ids`, `query_preserved_ids`, and `query_subset_write_mode = replace_target_post_type_subset` for filtered subsets. Bricks native dynamic include/post__in controls additionally carry query-ID provenance such as `query_id_source`, `query_id_setting_source`, `query_id_setting_key`, `query_dynamic_tags`, and `query_dynamic_field_hints`; static/manual native ID lists and opaque native final-ID lists without saved ACF dynamic-tag evidence are not writable because they do not identify an editable source field. Simple Query Editor `get_field('field_name')` calls can add `query_editor_field_hints` for current-owner matching, while option and explicit-object reads are split into `query_editor_option_field_hints` and `query_editor_explicit_field_hints` for fallback provenance. Mixed/`any` derived post queries can omit `query_target_post_type` and use `query_collection_write_mode = replace_full_collection` only when `query_result_ids` exactly equal `query_full_value_ids`, which falls back to the standard full `relationship_collection` / `post_object_collection` contract. The filtered-subset contract rereads the full ACF field at save time, rejects stale target-subset conflicts, replaces only IDs matching `query_target_post_type`, and preserves all non-target IDs in mixed relationship fields such as `page_related_items`.
+
+Nested grouped collection fields may also carry `field_selector_raw` when the exact ACF selector differs from the normalized `field_name`, for example `benefits_section_benefitsContent_related_items`. Descriptor source summaries expose that selector as `selector:{field_selector_raw}` so panel/status metadata shows the exact trusted selector used by the resolver.
+
+Empty current-owner derived post loops are allowed only when the query summary still proves the source field. The descriptor carries `query_result_empty = true`, an empty `query_result_ids` list, a concrete `query_target_post_type`, and the same `relationship_collection_filtered_subset` / `post_object_collection_filtered_subset` contract. A loop also counts as empty for this contract when the raw `post__in` list is non-empty but every raw ID is outside the proven target post type; those raw IDs are preserved as non-target IDs during save. Because Bricks may not render the loop element when there are no rows, the descriptor can be registered synthetically from the captured `bricks/posts/query_vars` evidence. The frontend marker may be a hidden span injected after `<!--brx-loop-start-{element_id}-->` or after a `.brx-query-trail[data-query-element-id="{element_id}"]` placeholder, used only to anchor the existing container-level badge. Saves still reread the full field, reject stale target-subset conflicts, preserve non-target IDs, and reload after save.
+
+Custom Query Editor fallback branches that resolve to `post__in` but cannot prove a current-owner field now stay non-writable unless they exactly match one option-owned ACF relationship/post_object fallback field. Exact option-owned matches surface as `scope = shared_entity`, `source_context = shared_option_fallback`, and `query_branch_state = shared_option_fallback_exact_match`; exact target-CPT subsets use `shared_relationship_collection_filtered_subset` / `shared_post_object_collection_filtered_subset`, while exact full-field matches use `shared_relationship_collection` / `shared_post_object_collection`. Unmatched Query Editor `post__in` branches surface as `status = readonly`, `source.type = derived_query_collection`, `query_branch_state = query_editor_post_in_unmatched`, and `query_collection_write_mode = inspect_only`. Recent/default branches, ambiguous matches, and partial windows remain deferred.
+
+The seed-current-field action is not a normal save on the shared fallback descriptor. When an exact shared fallback descriptor also carries `source.query_seed_current_field.enabled = true`, the frontend may call the dedicated collection-seed REST route. The backend then revalidates that the current page has exactly one hinted ACF `relationship` / `post_object` field, confirms the current field has no existing target items for that branch, builds a synthetic current-owner `query_collection` descriptor, and runs it through the normal mutation service with `relationship_collection_seed_from_fallback` / `post_object_collection_seed_from_fallback`. Direct and nested-group seed targets are both allowed only when the flattened selector and grouped metadata are proven; `field_selector_raw`, leaf field identity, `group_path`, and `group_key_path` are preserved in the synthetic descriptor before mutation. This keeps fallback seeding explicit and prevents silently overwriting current-page connected items.
+
+Locked Query Editor fallback branches use `ui.input = reference_collection_preview`. That frontend control consumes the same readonly queried-item payload returned by `native_readonly`, groups items by object/CPT type, and does not mount reference search or mutation controls. This keeps branch evidence inspectable without making a non-writable source look editable.
+
+Nested current-owner connected-item roots keep that same `acf_collection_field` family, but add explicit container ancestry when the query root lives under repeater/flexible row chains, for example:
+
+```json
+{
+  "source": {
+    "type": "acf_collection_field",
+    "expression": "query.objectType:acf_related_services",
+    "field_name": "related_services",
+    "field_key": "field_66abc999",
+    "field_selector": "related_services",
+    "field_type": "relationship",
+    "container_type": "repeater",
+    "parent_field_name": "sections_repeater",
+    "parent_field_key": "field_66aaa111",
+    "parent_field_selector": "sections_repeater",
+    "row_index": 0,
+    "container_ancestry": [
+      {
+        "type": "repeater",
+        "field_name": "sections_repeater",
+        "field_key": "field_66aaa111",
+        "field_selector": "sections_repeater",
+        "row_index": 0
+      },
+      {
+        "type": "flexible_content",
+        "field_name": "layout_rows",
+        "field_key": "field_66aaa222",
+        "field_selector": "layout_rows",
+        "row_index": 1,
+        "layout_name": "services_block",
+        "layout_key": "layout_66aaa223"
+      }
+    ],
+    "group_path": ["settings"],
+    "group_key_path": ["field_66aaa224"]
+  },
+  "mutation": {
+    "version": 2,
+    "kind": "collection",
+    "target": "row",
+    "contract": "relationship_collection",
+    "renderContext": "query_collection",
+    "requiresJournal": true
+  }
+}
+```
+
 The repeater row identity is also formalized in `path`, for example:
 
 ```json
