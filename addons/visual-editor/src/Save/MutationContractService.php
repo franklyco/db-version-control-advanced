@@ -68,6 +68,8 @@ final class MutationContractService
                 'shared_post_object_collection',
                 'loop_owned_relationship_collection',
                 'loop_owned_post_object_collection',
+                'post_terms_collection',
+                'loop_owned_post_terms_collection',
                 'loop_owned_field',
                 'loop_owned_repeater_row',
                 'loop_owned_flexible_layout',
@@ -123,6 +125,10 @@ final class MutationContractService
 
         if ($contract === 'loop_owned_post_object_collection') {
             return __('This loop-owned post object collection requires explicit acknowledgement before it can be saved.', 'dbvc');
+        }
+
+        if ($contract === 'loop_owned_post_terms_collection') {
+            return __('This loop-owned post terms collection requires explicit acknowledgement before it can be saved.', 'dbvc');
         }
 
         if ($contract === 'loop_owned_field') {
@@ -207,6 +213,10 @@ final class MutationContractService
                 return 'loop_owned_post_object_collection';
             }
 
+            if ($render_context === 'query_collection' && $field_type === 'taxonomy' && (string) ($descriptor->source['type'] ?? '') === 'post_terms_collection') {
+                return 'loop_owned_post_terms_collection';
+            }
+
             if ($target === 'row') {
                 return 'loop_owned_repeater_row';
             }
@@ -258,6 +268,10 @@ final class MutationContractService
 
         if ($render_context === 'query_collection' && $field_type === 'post_object') {
             return 'post_object_collection';
+        }
+
+        if ($render_context === 'query_collection' && $field_type === 'taxonomy' && (string) ($descriptor->source['type'] ?? '') === 'post_terms_collection') {
+            return 'post_terms_collection';
         }
 
         if ($target === 'row') {
@@ -348,6 +362,10 @@ final class MutationContractService
                 return __('loop-owned relationship collection', 'dbvc');
             case 'loop_owned_post_object_collection':
                 return __('loop-owned post object collection', 'dbvc');
+            case 'post_terms_collection':
+                return __('post terms collection', 'dbvc');
+            case 'loop_owned_post_terms_collection':
+                return __('loop-owned post terms collection', 'dbvc');
             case 'loop_owned_field':
                 return __('loop-owned field', 'dbvc');
             case 'loop_owned_repeater_row':

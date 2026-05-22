@@ -78,14 +78,19 @@
       });
     },
 
-    seedCurrentField(sessionId, token) {
+    seedCurrentField(sessionId, token, options) {
+      const payload = Object.assign({
+        acknowledgeSeed: true,
+        mode: 'seed'
+      }, options || {});
+
       return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/collection-seed/${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce
         },
-        body: JSON.stringify({ acknowledgeSeed: true })
+        body: JSON.stringify(payload)
       }).then(async (response) => {
         const data = await response.json().catch(function () {
           return null;

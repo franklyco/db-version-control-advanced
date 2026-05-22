@@ -625,6 +625,10 @@ final class ElementInstrumentationService
         $query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
         $query_object_type = isset($query['objectType']) ? sanitize_key((string) $query['objectType']) : '';
 
+        if ($has_loop && $query_object_type === 'term') {
+            return $this->inspectPostTermsCollectionLoopRoot($settings, $element);
+        }
+
         if (! $has_loop || $query_object_type === '' || strpos($query_object_type, 'acf_') !== 0) {
             return $this->inspectDerivedPostCollectionLoopRoot($settings, $element);
         }
@@ -637,6 +641,50 @@ final class ElementInstrumentationService
             'render_context' => 'query_collection',
             'render_attribute' => '',
             'query_object_type' => $query_object_type,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function inspectPostTermsCollectionLoopRoot(array $settings, $element)
+    {
+        $query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $taxonomies = $this->normalizePostTypeList(isset($query['taxonomy']) ? $query['taxonomy'] : []);
+
+        if (empty($query['current_post_term']) || count($taxonomies) !== 1) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $taxonomy = $taxonomies[0];
+        if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $label_context = $this->resolveCollectionBadgeLabelContext($element);
+        $element_ids = $this->resolveElementIds($element);
+        $query_element_id = isset($element_ids[0]) ? sanitize_text_field((string) $element_ids[0]) : '';
+
+        return [
+            'supported' => true,
+            'source_type' => 'post_terms_collection',
+            'expression' => 'query.objectType:term',
+            'setting_key' => 'query',
+            'render_context' => 'query_collection',
+            'render_attribute' => '',
+            'query_object_type' => 'term',
+            'query_element_id' => $query_element_id,
+            'query_element_label' => $label_context['element_label'],
+            'query_section_label' => $label_context['section_label'],
+            'query_badge_subject' => $label_context['badge_subject'],
+            'taxonomy' => $taxonomy,
+            'query_current_post_term' => true,
         ];
     }
 
@@ -1142,6 +1190,7 @@ final class ElementInstrumentationService
             'option_fields' => [],
             'explicit_object_fields' => [],
         ];
+        $current_owner_object_vars = $this->resolveQueryEditorCurrentOwnerObjectVars($query_editor);
         preg_match_all('/\bget_field\s*\(\s*[\'"]([^\'"]+)[\'"]\s*(?:,\s*([^)]*))?\)/i', $query_editor, $matches, PREG_SET_ORDER);
 
         foreach ($matches as $match) {
@@ -1165,6 +1214,11 @@ final class ElementInstrumentationService
                 continue;
             }
 
+            if ($this->isCurrentOwnerQueryEditorObjectArg($first_object_arg, $current_owner_object_vars)) {
+                $hints['current_owner_fields'][] = $field_name;
+                continue;
+            }
+
             $hints['explicit_object_fields'][] = $field_name;
         }
 
@@ -1173,6 +1227,87 @@ final class ElementInstrumentationService
         }
 
         return $hints;
+    }
+
+    /**
+     * @param string $query_editor
+     * @return array<int, string>
+     */
+    private function resolveQueryEditorCurrentOwnerObjectVars($query_editor)
+    {
+        $query_editor = (string) $query_editor;
+        if ($query_editor === '') {
+            return [];
+        }
+
+        preg_match_all(
+            '/\$([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/',
+            $query_editor,
+            $assignment_matches,
+            PREG_SET_ORDER
+        );
+        $assignment_counts = [];
+        foreach ($assignment_matches as $assignment_match) {
+            $assignment_var = isset($assignment_match[1]) ? (string) $assignment_match[1] : '';
+            if ($assignment_var === '') {
+                continue;
+            }
+
+            if (! isset($assignment_counts[$assignment_var])) {
+                $assignment_counts[$assignment_var] = 0;
+            }
+
+            $assignment_counts[$assignment_var]++;
+        }
+
+        preg_match_all(
+            '/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:get_the_ID|get_queried_object_id)\s*\(\s*\)\s*;/i',
+            $query_editor,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        $vars = [];
+        foreach ($matches as $match) {
+            $var_name = isset($match[1]) ? (string) $match[1] : '';
+            if ($var_name === '') {
+                continue;
+            }
+
+            if (($assignment_counts[$var_name] ?? 0) !== 1) {
+                continue;
+            }
+
+            $vars[] = '$' . $var_name;
+        }
+
+        return array_values(array_unique($vars));
+    }
+
+    /**
+     * Keep Query Editor source hints narrow: only obvious current-object function
+     * calls or variables directly assigned from those functions are treated as
+     * current-owner evidence. Other variables and literal IDs stay explicit-owner
+     * evidence because they can point at a different object.
+     *
+     * @param string $object_arg
+     * @param array<int, string> $current_owner_object_vars
+     * @return bool
+     */
+    private function isCurrentOwnerQueryEditorObjectArg($object_arg, array $current_owner_object_vars = [])
+    {
+        $object_arg = preg_replace('/\s+/', '', (string) $object_arg);
+        if (! is_string($object_arg) || $object_arg === '') {
+            return false;
+        }
+
+        $current_owner_object_vars = array_values(array_unique(array_filter(array_map('strval', $current_owner_object_vars))));
+        if (! empty($current_owner_object_vars) && in_array($object_arg, $current_owner_object_vars, true)) {
+            return true;
+        }
+
+        return preg_match('/^(?:get_the_ID|get_queried_object_id)\($/i', $object_arg)
+            || preg_match('/^(?:get_the_ID|get_queried_object_id)\(\)$/i', $object_arg);
     }
 
     /**
@@ -1406,7 +1541,11 @@ final class ElementInstrumentationService
     private function allowsCollectionRootRenderedPostMismatch(array $source, array $inspection)
     {
         return (isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : '') === 'query_collection'
-            && (isset($source['type']) ? sanitize_key((string) $source['type']) : '') === 'acf_collection_field';
+            && in_array(
+                isset($source['type']) ? sanitize_key((string) $source['type']) : '',
+                ['acf_collection_field', 'post_terms_collection'],
+                true
+            );
     }
 
     /**
@@ -2647,6 +2786,10 @@ final class ElementInstrumentationService
             } else {
                 $contract = 'post_object_collection';
             }
+        } elseif ($render_context === 'query_collection' && $field_type === 'taxonomy' && (isset($source['type']) ? sanitize_key((string) $source['type']) : '') === 'post_terms_collection') {
+            $contract = (! empty($loop_context['active']) && $scope === 'related_entity')
+                ? 'loop_owned_post_terms_collection'
+                : 'post_terms_collection';
         } elseif ($target === 'row') {
             $contract = 'repeater_row';
         } elseif ($target === 'layout') {
@@ -2654,7 +2797,7 @@ final class ElementInstrumentationService
         }
 
         if (! empty($loop_context['active']) && $scope === 'related_entity') {
-            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object'], true)) {
+            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true)) {
                 // collection contracts are already scope-specific above
             } elseif ($target === 'row') {
                 $contract = 'loop_owned_repeater_row';
@@ -2664,7 +2807,7 @@ final class ElementInstrumentationService
                 $contract = 'loop_owned_field';
             }
         } elseif ($scope === 'shared_entity') {
-            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object'], true)) {
+            if ($render_context === 'query_collection' && in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true)) {
                 // collection contracts are already scope-specific above
             } elseif ($target === 'row') {
                 $contract = 'shared_repeater_row';

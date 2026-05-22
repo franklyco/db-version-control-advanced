@@ -116,7 +116,7 @@
   - start with native `relationship -> repeater` and `relationship -> flexible` descendants
   - then widen to native `post_object -> repeater` and `post_object -> flexible` descendants
   - keep native loop provenance first-class in descriptor/source/save-contract summaries, including parent native ancestry for nested loops
-  - treat native taxonomy nested descendants as inspect-first until real site validation proves owner/path stability for writes
+  - native taxonomy nested descendants are now entering a guarded existing-row tranche: current taxonomy archive terms and concrete loop-owned term owners only, canonical row/group ancestry required, no row/layout lifecycle mutation
   - use the native loop expansion plan as the runtime ordering source of truth before opening later mutation branches
   - stable flexible row mutation is now widened across shared post/term/user/option owners for the existing safe flexible field set, including gallery descendants when Bricks renders a direct gallery collection
   - direct gallery collections now support ordered Media Library replacement for top-level, repeater-row, and flexible-row ACF gallery fields, with page reload after save so Bricks can rebuild gallery markup cleanly
@@ -152,12 +152,14 @@
   - nested ACF group relationship/post_object fields are now included in current-owner derived Query Editor collection matching when the flattened field selector and final queried ID subset prove one source, including mixed-case selectors that require a preserved `field_selector_raw`
   - nested-group matching now also applies to exact shared-option fallback collections and explicit seed-current-field targets, with grouped metadata preserved before shared-option or seed contracts become writable
   - source-summary details now expose trusted raw grouped selectors when they differ from normalized field names, so panel/status QA can verify the exact flattened ACF selector behind nested-group collection badges
-  - current-owner empty derived query loops use a narrow first-slice plan: explicit ACF source evidence, concrete target post type, empty stored target subset, synthetic descriptor registration from captured query-vars, hidden marker injection after the Bricks loop-start comment, and the existing filtered-subset save contract for adding the first connected item
+  - current-owner empty derived query loops use a narrow first-slice plan: explicit ACF source evidence, concrete target post type, empty stored target subset, synthetic descriptor registration from captured query-vars, hidden marker injection after the Bricks loop-start comment or query-trail placeholder, and the existing filtered-subset save contract for adding the first connected item; raw `post__in` IDs outside the target post type are preserved as non-target IDs
+  - post-owned linked-term collections are now planned as a separate branch from ACF connected posts: Bricks `objectType: term` roots with `current_post_term` and exactly one taxonomy can map to the owner post's assigned terms through a dedicated `post_terms_collection` contract
 - deferred within the collection-editor branch:
   - custom Query Editor fallback branch writes beyond exact shared-option target-CPT/full-field matches and the narrow explicit current-page seed action, including recent-post fallbacks, empty shared-option fallback branches, and ambiguous branch selection
   - shared connected-item collections
   - loop-owned non-post connected-item collections
   - taxonomy collection mutation
+  - shared term collection mutation
   - true row insert/remove/reorder branches
 - paused slice to return to after the native loop work:
   - live-save smoke test nested grouped descendants inside supported repeater/flexible/related-owner paths

@@ -47,6 +47,7 @@ final class ResolverRegistry
             new AcfImageResolver(),
             new AcfGalleryResolver(),
             new AcfReferenceCollectionResolver(),
+            new PostTermsCollectionResolver(),
             new AcfReferenceLinkResolver(),
             new AcfTextResolver(),
             new AcfReadonlyResolver(),
@@ -108,6 +109,10 @@ final class ResolverRegistry
 
         if ($source_type === 'acf_collection_field') {
             return $this->classifyAcfCollectionField($candidate, $page_context);
+        }
+
+        if ($source_type === 'post_terms_collection') {
+            return $this->classifyPostTermsCollectionField($candidate, $page_context);
         }
 
         return $this->buildUnsupported('Unsupported dynamic source.');
@@ -599,7 +604,7 @@ final class ResolverRegistry
             || ($field_type === 'select' && ! empty($field['multiple']));
         $readonly_reason = ! empty($page_context['isArchive'])
             ? $this->resolveArchiveAcfReadonlyReason($page_context, $field, $resolved, $render_context)
-            : $this->resolveAcfReadonlyReason($field, $resolved, $render_context);
+            : $this->resolveAcfReadonlyReason($field, $resolved, $render_context, $page_context);
         $status = $readonly_reason !== '' ? 'readonly' : 'editable';
         $resolver_name = $status === 'readonly'
             ? $this->resolveReadonlyAcfResolverName($field_type, $render_context)
@@ -854,6 +859,135 @@ final class ResolverRegistry
      * @param array<string, mixed> $page_context
      * @return array<string, mixed>
      */
+    private function classifyPostTermsCollectionField(array $candidate, array $page_context)
+    {
+        if (empty($candidate['query_current_post_term'])) {
+            return $this->buildUnsupported('Linked-term collection editing is only enabled for Bricks current-post term query roots.');
+        }
+
+        $taxonomy = isset($candidate['taxonomy']) ? sanitize_key((string) $candidate['taxonomy']) : '';
+        if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+            return $this->buildUnsupported('Linked-term collection editing requires exactly one valid taxonomy.');
+        }
+
+        $page_entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $page_entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '';
+        $page_post_type = isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '';
+        $loop_context = $this->loops->resolve();
+        $loop_export = [];
+
+        if ($this->loops->supportsRelatedPostEditing($loop_context)) {
+            $entity = isset($loop_context['effective_owner_entity']) && is_array($loop_context['effective_owner_entity'])
+                ? $loop_context['effective_owner_entity']
+                : [];
+            $scope = $page_entity_id > 0 && absint($entity['id'] ?? 0) === $page_entity_id ? 'current_entity' : 'related_entity';
+            $loop_export = $this->loops->export($loop_context);
+        } elseif ($page_entity_type === 'post' && $page_entity_id > 0) {
+            $entity = [
+                'type' => 'post',
+                'id' => $page_entity_id,
+                'subtype' => $page_post_type,
+                'acf_object_id' => $page_entity_id,
+            ];
+            $scope = 'current_entity';
+        } else {
+            return $this->buildUnsupported('Linked-term collection editing requires a current post or concrete loop-owned post.');
+        }
+
+        $post_id = isset($entity['id']) ? absint($entity['id']) : 0;
+        $post_type = $post_id > 0 ? sanitize_key((string) get_post_type($post_id)) : '';
+        if ($post_id <= 0 || ($entity['type'] ?? '') !== 'post' || $post_type === '') {
+            return $this->buildUnsupported('Linked-term collection editing could not prove the owner post.');
+        }
+
+        if (! is_object_in_taxonomy($post_type, $taxonomy)) {
+            return $this->buildUnsupported('The selected taxonomy is not registered for this owner post type.');
+        }
+
+        $taxonomy_object = get_taxonomy($taxonomy);
+        $taxonomy_label = $taxonomy_object && ! empty($taxonomy_object->labels->singular_name)
+            ? sanitize_text_field((string) $taxonomy_object->labels->singular_name)
+            : ucwords(str_replace(['_', '-'], ' ', $taxonomy));
+        $badge_label = sprintf(
+            /* translators: %s: taxonomy label */
+            __('%s Terms', 'dbvc'),
+            $taxonomy_label
+        );
+        $term_ids = $this->getPostTermCollectionIds($post_id, $taxonomy);
+
+        return [
+            'status' => 'editable',
+            'scope' => $scope,
+            'entity' => [
+                'type' => 'post',
+                'id' => $post_id,
+                'subtype' => $post_type,
+                'acf_object_id' => $post_id,
+            ],
+            'loop' => $loop_export,
+            'source' => [
+                'type' => 'post_terms_collection',
+                'expression' => isset($candidate['expression']) ? sanitize_text_field((string) $candidate['expression']) : 'query.objectType:term',
+                'expression_args' => [],
+                'field_name' => $taxonomy,
+                'field_key' => '',
+                'field_selector' => $taxonomy,
+                'leaf_field_name' => $taxonomy,
+                'leaf_field_key' => '',
+                'field_type' => 'taxonomy',
+                'source_context' => $scope === 'related_entity' ? 'loop_post_terms' : 'current_post_terms',
+                'reference_post_types' => [$post_type],
+                'reference_taxonomies' => [$taxonomy],
+                'reference_multiple' => true,
+                'reference_min' => 0,
+                'reference_max' => 0,
+                'query_source' => 'bricks_current_post_term',
+                'query_object_type' => 'term',
+                'query_element_id' => isset($candidate['query_element_id']) ? sanitize_text_field((string) $candidate['query_element_id']) : '',
+                'query_element_label' => isset($candidate['query_element_label']) ? sanitize_text_field((string) $candidate['query_element_label']) : '',
+                'query_section_label' => isset($candidate['query_section_label']) ? sanitize_text_field((string) $candidate['query_section_label']) : '',
+                'query_badge_subject' => isset($candidate['query_badge_subject']) ? sanitize_text_field((string) $candidate['query_badge_subject']) : '',
+                'query_collection_write_mode' => 'replace_post_terms',
+                'query_result_ids' => $term_ids,
+                'query_full_value_ids' => $term_ids,
+                'query_preserved_ids' => [],
+                'query_result_empty' => empty($term_ids),
+                'taxonomy' => $taxonomy,
+                'taxonomy_label' => $taxonomy_label,
+                'native_query_active' => true,
+                'native_query_kind' => 'post_terms',
+                'native_query_selector' => $taxonomy,
+                'native_query_object_type' => 'term',
+                'native_query_field_name' => $taxonomy,
+                'native_query_field_type' => 'taxonomy',
+                'parent_native_query_active' => false,
+                'parent_native_query_kind' => '',
+                'parent_native_query_selector' => '',
+                'parent_native_query_object_type' => '',
+                'parent_native_query_field_name' => '',
+                'parent_native_query_field_type' => '',
+                'native_query_ancestry' => [],
+            ],
+            'resolver' => [
+                'name' => 'post_terms_collection',
+                'version' => 1,
+            ],
+            'ui' => [
+                'label' => $badge_label,
+                'badgeLabel' => $badge_label,
+                'input' => 'reference_collection',
+                'warning' => $this->buildPostTermsCollectionWarning($taxonomy_label, $scope),
+                'allowMultiple' => true,
+                'maxSelections' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
     private function classifyDerivedBricksQueryCollectionField(array $candidate, array $page_context)
     {
         if (! function_exists('get_field_objects') || ! function_exists('get_field')) {
@@ -915,6 +1049,21 @@ final class ResolverRegistry
             $query_dynamic_field_hints,
             $query_editor_field_hints
         ))));
+        if ($query_editor_active && empty($current_owner_field_hints)) {
+            return $this->classifyDerivedBricksQueryReadonlyBranch(
+                $candidate,
+                $page_context,
+                $query_vars,
+                $query_ids,
+                $target_post_type,
+                $query_result_post_types,
+                $query_dynamic_field_hints,
+                $query_editor_field_hints,
+                $query_editor_option_field_hints,
+                $query_editor_explicit_field_hints
+            );
+        }
+
         if ($is_empty_query && empty($current_owner_field_hints)) {
             return $this->buildUnsupported('Empty derived Bricks query collections require explicit current-owner ACF source evidence.');
         }
@@ -2181,6 +2330,63 @@ final class ResolverRegistry
     }
 
     /**
+     * @param string $taxonomy_label
+     * @param string $scope
+     * @return string
+     */
+    private function buildPostTermsCollectionWarning($taxonomy_label, $scope)
+    {
+        $taxonomy_label = sanitize_text_field((string) $taxonomy_label);
+        if ($taxonomy_label === '') {
+            $taxonomy_label = __('taxonomy', 'dbvc');
+        }
+
+        if ($scope === 'related_entity') {
+            return sprintf(
+                /* translators: %s: taxonomy label */
+                __('This nested term query is driven by the %s terms assigned to the related post card. Saving here updates that related post, not the current page.', 'dbvc'),
+                $taxonomy_label
+            );
+        }
+
+        return sprintf(
+            /* translators: %s: taxonomy label */
+            __('This nested term query is driven by the %s terms assigned to the current post. Saving here updates that post-term relationship list.', 'dbvc'),
+            $taxonomy_label
+        );
+    }
+
+    /**
+     * @param int    $post_id
+     * @param string $taxonomy
+     * @return array<int, int>
+     */
+    private function getPostTermCollectionIds($post_id, $taxonomy)
+    {
+        $post_id = absint($post_id);
+        $taxonomy = sanitize_key((string) $taxonomy);
+        if ($post_id <= 0 || $taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+            return [];
+        }
+
+        $terms = wp_get_object_terms(
+            $post_id,
+            $taxonomy,
+            [
+                'fields' => 'ids',
+                'orderby' => 'term_order',
+                'order' => 'ASC',
+            ]
+        );
+
+        if (is_wp_error($terms) || ! is_array($terms)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('absint', $terms)));
+    }
+
+    /**
      * @param array<string, mixed> $page_context
      * @param array<string, mixed> $loop_context
      * @return array<string, mixed>
@@ -2505,6 +2711,10 @@ final class ResolverRegistry
             $warnings[] = __('Archive Visual Editor support is currently inspect-only. This field is surfaced so its archive owner and source path can be verified before saves are enabled.', 'dbvc');
         } elseif ($reason === 'repeater_shared_owner') {
             $warnings[] = __('This repeater row resolves to a non-post owner. Non-post repeater mutation is still inspect-only until it has a dedicated rollback-safe contract.', 'dbvc');
+        } elseif ($reason === 'term_nested_owner_pending') {
+            $warnings[] = __('This taxonomy term repeater row is inspect-only because Visual Editor could not prove a current archive term or concrete loop-owned term save contract for it.', 'dbvc');
+        } elseif ($reason === 'term_nested_field_type_pending') {
+            $warnings[] = __('This taxonomy term repeater row is inspect-only because this field type is outside the current safe scalar/media descendant set.', 'dbvc');
         } elseif ($reason === 'loop_owned_readonly') {
             $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
             $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
@@ -2676,7 +2886,7 @@ final class ResolverRegistry
         if ($this->supportsTaxonomyArchiveTermAcfSave($page_context, $field, $resolved)
             || $this->supportsArchiveOptionAcfSave($page_context, $field, $resolved)
             || $this->supportsArchiveLoopOwnedAcfSave($page_context, $resolved)) {
-            return $this->resolveAcfReadonlyReason($field, $resolved, $render_context);
+            return $this->resolveAcfReadonlyReason($field, $resolved, $render_context, $page_context);
         }
 
         return 'archive_context_pending';
@@ -2710,7 +2920,63 @@ final class ResolverRegistry
         }
 
         $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
-        $entity_taxonomy = isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '';
+        $entity_taxonomy = isset($entity['subtype'])
+            ? sanitize_key((string) $entity['subtype'])
+            : (isset($entity['taxonomy']) ? sanitize_key((string) $entity['taxonomy']) : '');
+        if ($entity_id !== $page_term_id || $entity_taxonomy !== $page_taxonomy) {
+            return false;
+        }
+
+        $acf_object_id = isset($entity['acf_object_id']) ? sanitize_text_field((string) $entity['acf_object_id']) : '';
+        if (! in_array($acf_object_id, [$page_taxonomy . '_' . $page_term_id, 'term_' . $page_term_id], true)) {
+            return false;
+        }
+
+        if (! $this->supportsCurrentTaxonomyArchiveTermOwner($page_context, $resolved)) {
+            return false;
+        }
+
+        $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
+        $flexible = isset($resolved['flexible']) && is_array($resolved['flexible']) ? $resolved['flexible'] : [];
+        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+
+        if (! empty($repeater['supported']) || ! empty($flexible['supported'])) {
+            return $this->isEditableTaxonomyNestedTermAcfFieldType($field_type);
+        }
+
+        return $this->isEditableTaxonomyArchiveTermAcfFieldType($field_type);
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @param array<string, mixed> $resolved
+     * @return bool
+     */
+    private function supportsCurrentTaxonomyArchiveTermOwner(array $page_context, array $resolved)
+    {
+        if (empty($page_context['isTaxonomyArchive'])) {
+            return false;
+        }
+
+        $page_term_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $page_taxonomy = isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '';
+        if ($page_term_id <= 0 || $page_taxonomy === '') {
+            return false;
+        }
+
+        if ((string) ($resolved['scope'] ?? '') !== 'current_entity') {
+            return false;
+        }
+
+        $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
+        if ((string) ($entity['type'] ?? '') !== 'term') {
+            return false;
+        }
+
+        $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
+        $entity_taxonomy = isset($entity['subtype'])
+            ? sanitize_key((string) $entity['subtype'])
+            : (isset($entity['taxonomy']) ? sanitize_key((string) $entity['taxonomy']) : '');
         if ($entity_id !== $page_term_id || $entity_taxonomy !== $page_taxonomy) {
             return false;
         }
@@ -2721,18 +2987,7 @@ final class ResolverRegistry
         }
 
         $loop = isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [];
-        if (! empty($loop['active'])) {
-            return false;
-        }
-
-        $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
-        $flexible = isset($resolved['flexible']) && is_array($resolved['flexible']) ? $resolved['flexible'] : [];
-        if (! empty($repeater['supported']) || ! empty($flexible['supported'])) {
-            return false;
-        }
-
-        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
-        return $this->isEditableTaxonomyArchiveTermAcfFieldType($field_type);
+        return empty($loop['active']);
     }
 
     /**
@@ -2746,6 +3001,15 @@ final class ResolverRegistry
             ['text', 'textarea', 'url', 'email', 'number', 'range', 'wysiwyg', 'checkbox', 'select', 'radio', 'button_group', 'link', 'image'],
             true
         );
+    }
+
+    /**
+     * @param string $field_type
+     * @return bool
+     */
+    private function isEditableTaxonomyNestedTermAcfFieldType($field_type)
+    {
+        return $this->isEditableTaxonomyArchiveTermAcfFieldType($field_type);
     }
 
     /**
@@ -2845,12 +3109,83 @@ final class ResolverRegistry
     }
 
     /**
+     * @param array<string, mixed> $resolved
+     * @return bool
+     */
+    private function isTermNestedAcfSource(array $resolved)
+    {
+        $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
+        if ((string) ($entity['type'] ?? '') !== 'term') {
+            return false;
+        }
+
+        $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
+        $flexible = isset($resolved['flexible']) && is_array($resolved['flexible']) ? $resolved['flexible'] : [];
+
+        return ! empty($repeater['supported']) || ! empty($flexible['supported']);
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @param array<string, mixed> $resolved
+     * @return bool
+     */
+    private function supportsTermNestedAcfSave(array $page_context, array $resolved)
+    {
+        if (! $this->isTermNestedAcfSource($resolved)) {
+            return false;
+        }
+
+        if ($this->supportsCurrentTaxonomyArchiveTermOwner($page_context, $resolved)) {
+            return true;
+        }
+
+        return $this->supportsConcreteLoopOwnedTermOwner($resolved);
+    }
+
+    /**
+     * @param array<string, mixed> $resolved
+     * @return bool
+     */
+    private function supportsConcreteLoopOwnedTermOwner(array $resolved)
+    {
+        if ((string) ($resolved['scope'] ?? '') !== 'related_entity') {
+            return false;
+        }
+
+        $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
+        if ((string) ($entity['type'] ?? '') !== 'term') {
+            return false;
+        }
+
+        $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
+        $entity_taxonomy = isset($entity['taxonomy'])
+            ? sanitize_key((string) $entity['taxonomy'])
+            : (isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '');
+
+        $loop = isset($resolved['loop']) && is_array($resolved['loop']) ? $resolved['loop'] : [];
+        $owner_type = isset($loop['effective_owner_type']) ? sanitize_key((string) $loop['effective_owner_type']) : '';
+        $owner_id = isset($loop['effective_owner_id']) ? absint($loop['effective_owner_id']) : 0;
+        $owner_taxonomy = isset($loop['effective_owner_subtype']) ? sanitize_key((string) $loop['effective_owner_subtype']) : '';
+
+        return $entity_id > 0
+            && $entity_taxonomy !== ''
+            && ! empty($loop['active'])
+            && ! empty($loop['has_concrete_owner'])
+            && ! empty($loop['supports_loop_owned_editing'])
+            && $owner_type === 'term'
+            && $owner_id === $entity_id
+            && $owner_taxonomy === $entity_taxonomy;
+    }
+
+    /**
      * @param array<string, mixed> $field
      * @param array<string, mixed> $resolved
      * @param string               $render_context
+     * @param array<string, mixed> $page_context
      * @return string
      */
-    private function resolveAcfReadonlyReason(array $field, array $resolved, $render_context = '')
+    private function resolveAcfReadonlyReason(array $field, array $resolved, $render_context = '', array $page_context = [])
     {
         if ($this->isRestrictedOptionsFieldGroup($field, $resolved)) {
             return 'restricted_options_group';
@@ -2858,19 +3193,29 @@ final class ResolverRegistry
 
         $repeater = isset($resolved['repeater']) && is_array($resolved['repeater']) ? $resolved['repeater'] : [];
         $flexible = isset($resolved['flexible']) && is_array($resolved['flexible']) ? $resolved['flexible'] : [];
+        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+        $is_term_nested = $this->isTermNestedAcfSource($resolved);
+
         if (! empty($repeater['supported'])) {
             $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
             $entity_type = isset($entity['type']) ? (string) $entity['type'] : '';
 
             if ($entity_type !== 'post') {
-                return 'repeater_shared_owner';
+                if ($is_term_nested) {
+                    if (! $this->supportsTermNestedAcfSave($page_context, $resolved)) {
+                        return 'term_nested_owner_pending';
+                    }
+
+                    if (! $this->isEditableTaxonomyNestedTermAcfFieldType($field_type)) {
+                        return 'term_nested_field_type_pending';
+                    }
+                } else {
+                    return 'repeater_shared_owner';
+                }
             }
         }
 
         if (! empty($flexible['supported'])) {
-            $entity = isset($resolved['entity']) && is_array($resolved['entity']) ? $resolved['entity'] : [];
-            $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
-
             if (! $this->isEditableFlexibleFieldType($field_type)) {
                 return 'flexible_pending';
             }
@@ -2881,7 +3226,6 @@ final class ResolverRegistry
             return 'loop_owned_readonly';
         }
 
-        $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
         if ($field_type === 'gallery' && $render_context !== 'gallery_collection') {
             return 'gallery_collection';
         }

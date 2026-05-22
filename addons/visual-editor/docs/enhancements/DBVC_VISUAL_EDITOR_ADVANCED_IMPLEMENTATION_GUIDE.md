@@ -366,7 +366,7 @@ Current status:
 - current-owner derived Query Editor collection matching now walks nested ACF group sub-fields for relationship/post_object leaves and preserves a case-sensitive `field_selector_raw` for flattened grouped selectors such as `benefits_section_benefitsContent_related_items`; this keeps the save contract on the proven current-owner ACF field rather than falling back to selector/text guessing.
 - exact shared-option fallback collection matching and the explicit seed-current-field action now use the same nested-group candidate model, so option-backed and seed-target grouped collections require the same source-owner, raw selector, group path, and stored-ID proof before a mutation contract is exposed.
 - Visual Editor source summaries now surface `selector:{field_selector_raw}` when that trusted grouped selector differs from the normalized field name, making grouped collection contracts auditable from the panel/status details without adding new frontend state.
-- empty current-owner derived post loops are now treated as a first-class collection source only when Bricks exposes explicit ACF source evidence and a concrete target post type; the query-vars hook can register a synthetic descriptor when no loop element is rendered, and the server injects a hidden marker after the `brx-loop-start-*` comment so the existing container badge and filtered-subset save contract can add the first connected item without guessing from missing DOM children.
+- empty current-owner derived post loops are now treated as a first-class collection source only when Bricks exposes explicit ACF source evidence and a concrete target post type; this includes non-empty raw `post__in` lists whose IDs are all outside the proven target post type. The query-vars hook can register a synthetic descriptor when no loop element is rendered, and the server injects a hidden marker after the `brx-loop-start-*` comment or Bricks query-trail placeholder so the existing container badge and filtered-subset save contract can add the first connected item without guessing from missing DOM children.
 
 Near-term order:
 1. current-owner native `relationship` query roots
@@ -441,7 +441,7 @@ Resume from here:
    - widen from the hardened native repeater slice into native `relationship -> repeater` and `relationship -> flexible` descendants first
    - then widen to native `post_object -> repeater` and `post_object -> flexible` descendants
    - keep native loop provenance and parent native ancestry first-class throughout descriptor/source/path/mutation summaries
-   - treat native taxonomy nested descendants as inspect-first until real-site validation proves writable stability
+   - native taxonomy nested descendants are limited to guarded current archive term or concrete loop-owned term writes where the row/layout path is already proven; shared term collections and row/layout lifecycle mutation remain deferred
    - leave relationship collection editing and repeater/flexible row insert-remove-reorder in the later collection-mutation branch
 1. run live save smoke tests for nested grouped descendants inside supported repeater/flexible/related-owner paths
    - direct grouped ACF leaves now preserve parent group ancestry and prefer selector-based writes, so the next verification target is live save behavior rather than descriptor discovery

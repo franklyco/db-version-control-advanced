@@ -256,7 +256,7 @@ Acceptance:
 
 ### Phase 2: taxonomy archive current-term ACF fields
 
-Status: initial direct-field slice implemented. Taxonomy archive pages can save direct ACF fields owned by the queried term when the descriptor resolves to the current archive term and the field is not inside an archive query loop, repeater row, flexible row, gallery collection, relationship collection, or other collection-style owner.
+Status: direct-field slice implemented, with guarded existing-row descendants now planned/active. Taxonomy archive pages can save direct ACF fields owned by the queried term when the descriptor resolves to the current archive term. Nested repeater/flexible descendants are eligible only when the descriptor resolves to the current archive term, the row/layout path already exists, and the field type uses the safe scalar/media field set. Gallery collections, relationship/taxonomy selector collections, shared term collections, archive query-loop descendants without concrete owner proof, and row/layout insert-remove-reorder remain deferred.
 
 Files likely involved:
 - `src/Bricks/AcfFieldContextResolver.php`

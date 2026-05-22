@@ -9,6 +9,7 @@
     sharedScopeAcknowledged: false,
     descriptorCache: {},
     descriptorRequests: {},
+    collectionSeedUndoByToken: {},
     badgeLayer: null,
     badgeNode: null,
     badgeLayoutFrame: 0,
@@ -1239,6 +1240,41 @@
         payload.sourceSummary = clonePayload(saveResult.sourceSummary);
       }
     });
+  }
+
+  function applyCollectionStateToDescriptor(descriptor, collectionState) {
+    if (!descriptor || !descriptor.source || !collectionState || typeof collectionState !== 'object') {
+      return;
+    }
+
+    if (Array.isArray(collectionState.queryResultIds)) {
+      descriptor.source.query_result_ids = collectionState.queryResultIds.slice();
+      descriptor.source.query_result_empty = collectionState.queryResultIds.length === 0;
+    }
+
+    if (Array.isArray(collectionState.queryFullValueIds)) {
+      descriptor.source.query_full_value_ids = collectionState.queryFullValueIds.slice();
+    }
+
+    if (Array.isArray(collectionState.queryPreservedIds)) {
+      descriptor.source.query_preserved_ids = collectionState.queryPreservedIds.slice();
+    }
+  }
+
+  function applyCollectionStateToCachedDescriptors(saveResult) {
+    if (!saveResult || !saveResult.collectionState) {
+      return;
+    }
+
+    Object.keys(state.descriptorCache).forEach(function (token) {
+      const payload = state.descriptorCache[token];
+
+      if (payload && payload.descriptor && payload.descriptor.token === saveResult.token) {
+        applyCollectionStateToDescriptor(payload.descriptor, saveResult.collectionState);
+      }
+    });
+
+    applyCollectionStateToDescriptor(state.activeDescriptor, saveResult.collectionState);
   }
 
   function normalizeValue(value) {
@@ -3318,6 +3354,12 @@
       return badge;
     }
 
+    if (badgeLabel && context === 'query_collection') {
+      badge.classList.add('dbvc-ve-badge--connected');
+      badge.textContent = badgeLabel;
+      return badge;
+    }
+
     if (scope === 'related_entity') {
       badge.classList.add('dbvc-ve-badge--related');
       badge.textContent = resolveRelatedBadgeLabel(entityType);
@@ -3738,13 +3780,19 @@
       '<div class="dbvc-ve-panel__status"></div>',
       '<div class="dbvc-ve-panel__actions">',
       '  <button type="button" class="dbvc-ve-panel__button dbvc-ve-panel__button--secondary" data-action="close"></button>',
+      '  <button type="button" class="dbvc-ve-panel__button dbvc-ve-panel__button--secondary" data-action="save-no-reload" hidden></button>',
       '  <button type="button" class="dbvc-ve-panel__button dbvc-ve-panel__button--primary" data-action="save"></button>',
       '</div>'
     ].join('');
 
     panel.querySelector('[data-action="close"]').addEventListener('click', closeEditorPanel);
     panel.querySelector('.dbvc-ve-panel__close').addEventListener('click', closeEditorPanel);
-    panel.querySelector('[data-action="save"]').addEventListener('click', handleSave);
+    panel.querySelector('[data-action="save"]').addEventListener('click', function () {
+      handleSave({ reloadAfterSave: true });
+    });
+    panel.querySelector('[data-action="save-no-reload"]').addEventListener('click', function () {
+      handleSave({ reloadAfterSave: false, closeAfterSave: true });
+    });
     panel.querySelector('.dbvc-ve-panel__header').addEventListener('pointerdown', startPanelDrag);
 
     document.body.appendChild(panel);
@@ -3769,6 +3817,7 @@
       fieldWrap: panel.querySelector('.dbvc-ve-panel__field-wrap'),
       status: panel.querySelector('.dbvc-ve-panel__status'),
       closeButton: panel.querySelector('[data-action="close"]'),
+      saveNoReloadButton: panel.querySelector('[data-action="save-no-reload"]'),
       saveButton: panel.querySelector('[data-action="save"]')
     };
   }
@@ -3798,6 +3847,9 @@
     panelNodes.fieldWrap.firstChild.textContent = strings().panelReady || 'Select a marker to inspect and edit it.';
     panelNodes.status.textContent = '';
     panelNodes.closeButton.textContent = strings().panelCancel || 'Close';
+    panelNodes.saveNoReloadButton.textContent = strings().panelSave || 'Save';
+    panelNodes.saveNoReloadButton.hidden = true;
+    panelNodes.saveNoReloadButton.disabled = true;
     panelNodes.saveButton.textContent = strings().panelSave || 'Save';
     panelNodes.saveButton.disabled = true;
 
@@ -4837,6 +4889,110 @@
     return strings().panelCollectionPreviewInspectOnly || 'This query result can be inspected, but it is not writable from the Visual Editor yet.';
   }
 
+  function normalizeReferenceCollectionPreviewList(value, limit) {
+    const values = Array.isArray(value) ? value : [];
+    const max = Number.isFinite(Number(limit)) ? Math.max(1, Number(limit)) : 6;
+    const normalized = [];
+
+    values.forEach(function (item) {
+      const text = String(item || '').replace(/\s+/g, ' ').trim();
+
+      if (text && !normalized.includes(text)) {
+        normalized.push(text);
+      }
+    });
+
+    if (normalized.length <= max) {
+      return normalized;
+    }
+
+    return normalized.slice(0, max).concat([`+${normalized.length - max} more`]);
+  }
+
+  function getReferenceCollectionPreviewLockedReason(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const branchState = source.query_branch_state ? String(source.query_branch_state) : '';
+
+    if (branchState === 'query_editor_post_in_unmatched') {
+      return strings().panelCollectionPreviewReasonUnmatched || 'Locked because the final queried IDs do not exactly match one writable current-page ACF relationship or post-object field.';
+    }
+
+    if (branchState === 'shared_option_fallback_exact_match') {
+      return strings().panelCollectionPreviewReasonOptionsFallback || 'Locked because this shared options fallback did not meet the exact shared-option save contract for this panel state.';
+    }
+
+    return strings().panelCollectionPreviewReasonGeneric || 'Locked because Visual Editor cannot prove a safe collection save contract for this query branch.';
+  }
+
+  function appendReferenceCollectionEvidenceRow(body, label, values) {
+    const normalized = normalizeReferenceCollectionPreviewList(values, 6);
+
+    if (!normalized.length) {
+      return;
+    }
+
+    const row = document.createElement('div');
+    const term = document.createElement('dt');
+    const detail = document.createElement('dd');
+
+    row.className = 'dbvc-ve-panel__collection-evidence-row';
+    term.textContent = label;
+    detail.textContent = normalized.join(', ');
+    row.appendChild(term);
+    row.appendChild(detail);
+    body.appendChild(row);
+  }
+
+  function createReferenceCollectionPreviewEvidence(descriptor, currentItems) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    const body = document.createElement('dl');
+    const reason = document.createElement('div');
+    const branchLabel = getReferenceCollectionPreviewBranchLabel(descriptor);
+    const targetLabel = source.query_target_post_type_label || source.query_target_post_type || '';
+    const querySetting = [source.query_id_setting_source, source.query_id_setting_key].filter(Boolean).join(':');
+
+    details.className = 'dbvc-ve-panel__collection-evidence';
+    details.open = true;
+    summary.className = 'dbvc-ve-panel__collection-evidence-summary';
+    summary.textContent = strings().panelCollectionPreviewEvidence || 'Locked source evidence';
+    body.className = 'dbvc-ve-panel__collection-evidence-body';
+    reason.className = 'dbvc-ve-panel__collection-evidence-reason';
+    reason.textContent = getReferenceCollectionPreviewLockedReason(descriptor);
+
+    appendReferenceCollectionEvidenceRow(body, strings().panelCollectionPreviewEvidenceBranch || 'Active branch', [branchLabel]);
+    appendReferenceCollectionEvidenceRow(body, strings().panelCollectionPreviewEvidenceCount || 'Queried items', [String((currentItems || []).length)]);
+    appendReferenceCollectionEvidenceRow(body, strings().panelCollectionPreviewEvidenceTarget || 'Target type', targetLabel ? [targetLabel] : []);
+    appendReferenceCollectionEvidenceRow(body, strings().panelCollectionPreviewEvidenceCurrentHints || 'Current field hints', source.query_editor_field_hints || []);
+    appendReferenceCollectionEvidenceRow(body, strings().panelCollectionPreviewEvidenceOptionHints || 'Option field hints', source.query_editor_option_field_hints || []);
+    appendReferenceCollectionEvidenceRow(body, strings().panelCollectionPreviewEvidenceDynamicTags || 'Dynamic tags', source.query_dynamic_tags || []);
+    appendReferenceCollectionEvidenceRow(body, strings().panelCollectionPreviewEvidenceSetting || 'Query setting', querySetting ? [querySetting] : []);
+
+    details.appendChild(summary);
+    details.appendChild(reason);
+    details.appendChild(body);
+
+    return details;
+  }
+
+  function getReferenceCollectionEditableBranchContext(descriptor) {
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+    const branchState = source.query_branch_state ? String(source.query_branch_state) : '';
+    const sourceContext = source.source_context ? String(source.source_context) : '';
+    const writeMode = source.query_collection_write_mode ? String(source.query_collection_write_mode) : '';
+
+    if (branchState === 'shared_option_fallback_exact_match' || sourceContext === 'shared_option_fallback') {
+      if (writeMode === 'replace_full_collection') {
+        return strings().panelCollectionOptionsFallbackFullContext || 'This loop is using a shared ACF options fallback. Saving replaces the full shared fallback list and can affect every page that uses this fallback.';
+      }
+
+      return strings().panelCollectionOptionsFallbackSubsetContext || 'This loop is using a shared ACF options fallback. Saving updates only the proven matching post-type subset and preserves other connected items in the shared field.';
+    }
+
+    return '';
+  }
+
   function appendReferenceCollectionPreviewLink(actions, url, label) {
     if (!url) {
       return;
@@ -4861,24 +5017,69 @@
     return seed && seed.enabled ? seed : null;
   }
 
-  async function handleReferenceCollectionSeed(descriptor, button) {
-    const panelNodes = getPanelNodes();
-    const sessionId = getSessionId();
-    const token = descriptor && descriptor.token ? String(descriptor.token) : '';
-
-    if (!sessionId || !token || !button) {
+  function setReferenceCollectionSeedActionState(actionNodes, stateName, message) {
+    if (!actionNodes) {
       return;
     }
 
-    const confirmMessage = strings().panelCollectionSeedConfirm || 'This copies the queried fallback items into the current page field and reloads the page. Continue?';
+    const hasUndo = Boolean(actionNodes.token && state.collectionSeedUndoByToken[actionNodes.token]);
+
+    if (actionNodes.feedback) {
+      actionNodes.feedback.textContent = message || '';
+      actionNodes.feedback.hidden = !message;
+    }
+
+    if (actionNodes.seedButton) {
+      actionNodes.seedButton.disabled = stateName === 'saving' || hasUndo;
+    }
+
+    if (actionNodes.undoButton) {
+      actionNodes.undoButton.hidden = !hasUndo;
+      actionNodes.undoButton.disabled = stateName === 'saving';
+    }
+
+    if (actionNodes.reloadButton) {
+      actionNodes.reloadButton.hidden = !hasUndo;
+      actionNodes.reloadButton.disabled = stateName === 'saving';
+    }
+  }
+
+  async function handleReferenceCollectionSeed(descriptor, actionNodes, mode) {
+    const panelNodes = getPanelNodes();
+    const sessionId = getSessionId();
+    const token = descriptor && descriptor.token ? String(descriptor.token) : '';
+    const isUndo = mode === 'undo';
+    const undoState = token ? state.collectionSeedUndoByToken[token] : null;
+
+    if (!sessionId || !token || !actionNodes) {
+      return;
+    }
+
+    if (isUndo && (!undoState || !Array.isArray(undoState.previousValue))) {
+      return;
+    }
+
+    const confirmMessage = isUndo
+      ? (strings().panelCollectionSeedUndoConfirm || 'Undo the current-page seed and restore the previous connected-items value?')
+      : (strings().panelCollectionSeedConfirm || 'This copies the queried fallback items into the current page field. You can undo this before reloading. Continue?');
     if (typeof window.confirm === 'function' && !window.confirm(confirmMessage)) {
       return;
     }
 
-    button.disabled = true;
+    setReferenceCollectionSeedActionState(actionNodes, 'saving', isUndo
+      ? (strings().panelCollectionSeedUndoSaving || 'Undoing current page seed…')
+      : (strings().panelCollectionSeedSaving || 'Adding fallback items to current page field…'));
+    if (panelNodes.saveButton) {
+      panelNodes.saveButton.disabled = true;
+    }
+    if (panelNodes.saveNoReloadButton) {
+      panelNodes.saveNoReloadButton.disabled = true;
+    }
     state.saveInFlight = true;
     panelNodes.panel.dataset.state = 'saving';
-    panelNodes.status.textContent = strings().panelCollectionSeedSaving || 'Adding fallback items to current page field…';
+    panelNodes.status.textContent = isUndo
+      ? (strings().panelCollectionSeedUndoSaving || 'Undoing current page seed…')
+      : (strings().panelCollectionSeedSaving || 'Adding fallback items to current page field…');
     schedulePanelViewportClamp();
 
     try {
@@ -4886,13 +5087,31 @@
         await refreshSession({ silent: true });
       }
 
-      const result = await window.DBVCVisualEditorApi.seedCurrentField(state.session.sessionId, token);
+      const result = await window.DBVCVisualEditorApi.seedCurrentField(state.session.sessionId, token, {
+        mode: isUndo ? 'undo' : 'seed',
+        previousValue: isUndo ? undoState.previousValue : []
+      });
       const message = result && result.message
         ? result.message
-        : (strings().panelCollectionSeedReloading || 'Current page field updated. Reloading page…');
+        : (isUndo
+          ? (strings().panelCollectionSeedUndoDone || 'Current page seed undone. Reload when ready.')
+          : (strings().panelCollectionSeedDone || 'Current page field updated. Reload when ready, or undo this seed before reloading.'));
+
+      if (isUndo) {
+        delete state.collectionSeedUndoByToken[token];
+      } else if (result && result.undo && result.undo.enabled) {
+        state.collectionSeedUndoByToken[token] = {
+          previousValue: Array.isArray(result.undo.previousValue) ? result.undo.previousValue.slice() : []
+        };
+      }
 
       panelNodes.panel.dataset.state = 'saved';
       panelNodes.status.textContent = message;
+      setReferenceCollectionSeedActionState(actionNodes, 'ready', message);
+      if (state.activeController && typeof state.activeController.setDisabled === 'function') {
+        state.activeController.setDisabled(false);
+      }
+      updateSaveButtonState(panelNodes, getDescriptorStatus(state.activeDescriptor, state.activeNode) !== 'readonly');
       updateStatusBar({
         kind: 'ready',
         count: getMarkerCount(),
@@ -4900,11 +5119,6 @@
         entitySummary: result && result.entitySummary ? result.entitySummary : null
       });
       schedulePanelViewportClamp();
-
-      state.reloadPending = true;
-      window.setTimeout(function () {
-        window.location.reload();
-      }, 250);
     } catch (error) {
       if (isSessionExpiredError(error)) {
         handleExpiredSession(error);
@@ -4912,7 +5126,11 @@
 
       panelNodes.panel.dataset.state = 'error';
       panelNodes.status.textContent = error && error.message ? error.message : (strings().saveFailed || 'Save failed.');
-      button.disabled = false;
+      setReferenceCollectionSeedActionState(actionNodes, 'ready', error && error.message ? error.message : (strings().saveFailed || 'Save failed.'));
+      if (state.activeController && typeof state.activeController.setDisabled === 'function') {
+        state.activeController.setDisabled(false);
+      }
+      updateSaveButtonState(panelNodes, getDescriptorStatus(state.activeDescriptor, state.activeNode) !== 'readonly');
       schedulePanelViewportClamp();
       window.console.error(error);
     } finally {
@@ -4929,27 +5147,63 @@
     const box = document.createElement('div');
     const title = document.createElement('div');
     const description = document.createElement('div');
+    const actions = document.createElement('div');
     const button = document.createElement('button');
+    const undoButton = document.createElement('button');
+    const reloadButton = document.createElement('button');
+    const feedback = document.createElement('div');
     const fieldLabel = seed.field_label ? String(seed.field_label) : '';
+    const actionNodes = {
+      token: descriptor && descriptor.token ? String(descriptor.token) : '',
+      seedButton: button,
+      undoButton,
+      reloadButton,
+      feedback
+    };
 
     box.className = 'dbvc-ve-panel__collection-seed';
     title.className = 'dbvc-ve-panel__collection-seed-title';
     description.className = 'dbvc-ve-panel__collection-seed-description';
+    actions.className = 'dbvc-ve-panel__collection-seed-actions';
     button.type = 'button';
     button.className = 'dbvc-ve-panel__toolbar-button';
+    undoButton.type = 'button';
+    undoButton.className = 'dbvc-ve-panel__collection-action';
+    undoButton.title = strings().panelCollectionSeedUndo || 'Undo seed';
+    undoButton.setAttribute('aria-label', strings().panelCollectionSeedUndo || 'Undo seed');
+    undoButton.textContent = '↶';
+    reloadButton.type = 'button';
+    reloadButton.className = 'dbvc-ve-panel__collection-action';
+    reloadButton.title = strings().panelCollectionSeedReload || 'Reload page';
+    reloadButton.setAttribute('aria-label', strings().panelCollectionSeedReload || 'Reload page');
+    reloadButton.textContent = '↻';
+    feedback.className = 'dbvc-ve-panel__collection-seed-feedback';
+    feedback.hidden = true;
     title.textContent = strings().panelCollectionSeedTitle || 'Current page field fallback';
     description.textContent = fieldLabel
       ? `${strings().panelCollectionSeedDescription || 'The current page field is empty for this query branch. You can copy these fallback items into the current page field instead of editing the shared fallback.'} (${fieldLabel})`
       : (strings().panelCollectionSeedDescription || 'The current page field is empty for this query branch. You can copy these fallback items into the current page field instead of editing the shared fallback.');
     button.textContent = strings().panelCollectionSeedButton || 'Add to current page field';
     button.addEventListener('click', function () {
-      handleReferenceCollectionSeed(descriptor, button);
+      handleReferenceCollectionSeed(descriptor, actionNodes, 'seed');
+    });
+    undoButton.addEventListener('click', function () {
+      handleReferenceCollectionSeed(descriptor, actionNodes, 'undo');
+    });
+    reloadButton.addEventListener('click', function () {
+      state.reloadPending = true;
+      window.location.reload();
     });
 
+    actions.appendChild(button);
+    actions.appendChild(undoButton);
+    actions.appendChild(reloadButton);
     box.appendChild(title);
     box.appendChild(description);
-    box.appendChild(button);
+    box.appendChild(actions);
+    box.appendChild(feedback);
     wrapper.appendChild(box);
+    setReferenceCollectionSeedActionState(actionNodes, 'ready', '');
   }
 
   function createReferenceCollectionPreviewController(value, descriptor) {
@@ -5030,6 +5284,7 @@
 
     wrapper.appendChild(selectedLabel);
     wrapper.appendChild(branchContext);
+    wrapper.appendChild(createReferenceCollectionPreviewEvidence(descriptor, currentItems));
     appendReferenceCollectionSeedAction(wrapper, descriptor);
     wrapper.appendChild(selectedList);
     renderSelected();
@@ -5065,6 +5320,10 @@
 
     return getDescriptorQuerySource(descriptor) === 'derived_bricks_query'
       && source.query_subset_write_mode === 'replace_target_post_type_subset';
+  }
+
+  function isPostTermsReferenceCollection(descriptor) {
+    return Boolean(descriptor && descriptor.source && descriptor.source.type === 'post_terms_collection');
   }
 
   function getReferenceCollectionSubsetTargetLabel(descriptor) {
@@ -5128,6 +5387,7 @@
   function createReferenceCollectionController(value, descriptor) {
     const wrapper = document.createElement('div');
     const selectedLabel = document.createElement('div');
+    const branchContext = document.createElement('div');
     const subsetContext = document.createElement('div');
     const selectedList = document.createElement('div');
     const searchLabel = document.createElement('div');
@@ -5147,25 +5407,35 @@
     let lastSearchItems = [];
     const selectedGroupOpenState = new Map();
     const isFilteredSubset = isFilteredSubsetReferenceCollection(descriptor);
+    const isPostTermsCollection = isPostTermsReferenceCollection(descriptor);
     const targetLabel = getReferenceCollectionSubsetTargetLabel(descriptor);
+    const editableBranchContext = getReferenceCollectionEditableBranchContext(descriptor);
 
     wrapper.className = 'dbvc-ve-panel__stack dbvc-ve-panel__collection';
     selectedLabel.className = 'dbvc-ve-panel__collection-label';
-    selectedLabel.textContent = isFilteredSubset
+    selectedLabel.textContent = isPostTermsCollection
+      ? 'Linked terms'
+      : (isFilteredSubset
       ? formatTemplateString(strings().panelCollectionSubsetSelected || 'Connected {target}', { target: targetLabel })
-      : (strings().panelCollectionSelected || 'Connected items');
+      : (strings().panelCollectionSelected || 'Connected items'));
+    branchContext.className = 'dbvc-ve-panel__collection-context';
+    branchContext.textContent = editableBranchContext;
     subsetContext.className = 'dbvc-ve-panel__collection-context';
     subsetContext.textContent = formatReferenceCollectionSubsetContext(descriptor, targetLabel);
     selectedList.className = 'dbvc-ve-panel__collection-selected';
     searchLabel.className = 'dbvc-ve-panel__collection-label';
-    searchLabel.textContent = isFilteredSubset
+    searchLabel.textContent = isPostTermsCollection
+      ? 'Search terms'
+      : (isFilteredSubset
       ? formatTemplateString(strings().panelCollectionSubsetSearch || 'Search {target}', { target: targetLabel })
-      : (strings().panelCollectionSearch || 'Search connected posts');
+      : (strings().panelCollectionSearch || 'Search connected posts'));
     searchField.className = 'dbvc-ve-panel__input';
     searchField.type = 'search';
-    searchField.placeholder = isFilteredSubset
+    searchField.placeholder = isPostTermsCollection
+      ? 'Search terms...'
+      : (isFilteredSubset
       ? formatTemplateString(strings().panelCollectionSubsetSearchPlaceholder || 'Search {target}…', { target: targetLabel })
-      : (strings().panelCollectionSearchPlaceholder || 'Search posts…');
+      : (strings().panelCollectionSearchPlaceholder || 'Search posts…'));
     resultsLabel.className = 'dbvc-ve-panel__collection-label';
     resultsLabel.textContent = strings().panelCollectionResults || 'Search results';
     resultsList.className = 'dbvc-ve-panel__collection-results';
@@ -5405,6 +5675,9 @@
     searchField.addEventListener('input', scheduleSearch);
 
     wrapper.appendChild(selectedLabel);
+    if (editableBranchContext) {
+      wrapper.appendChild(branchContext);
+    }
     if (isFilteredSubset) {
       wrapper.appendChild(subsetContext);
     }
@@ -5642,6 +5915,16 @@
     const needsSharedAck = state.activeRequiresSharedScopeAck;
     const acknowledgementType = state.activeAcknowledgementType;
     const entityType = getDescriptorEntityType(state.activeDescriptor);
+    const renderContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
+    const canNoReloadSave = renderContext === 'query_collection' && status !== 'readonly';
+    const isReloadOnlyContext = renderContext === 'gallery_collection';
+    const disabled = !canEdit || (needsSharedAck && !state.sharedScopeAcknowledged);
+
+    if (panelNodes.saveNoReloadButton) {
+      panelNodes.saveNoReloadButton.hidden = !canNoReloadSave;
+      panelNodes.saveNoReloadButton.textContent = strings().panelSave || 'Save';
+      panelNodes.saveNoReloadButton.disabled = disabled;
+    }
 
     if (status === 'readonly') {
       panelNodes.saveButton.textContent = strings().panelInspectOnly || 'Inspect only';
@@ -5649,7 +5932,9 @@
       return;
     }
 
-    if (needsSharedAck && acknowledgementType === 'related') {
+    if (canNoReloadSave || isReloadOnlyContext) {
+      panelNodes.saveButton.textContent = strings().panelSaveAndReload || 'Save and Reload';
+    } else if (needsSharedAck && acknowledgementType === 'related') {
       panelNodes.saveButton.textContent = resolveRelatedSaveLabel(entityType);
     } else if (needsSharedAck) {
       panelNodes.saveButton.textContent = resolveSharedSaveLabel(entityType);
@@ -5657,7 +5942,7 @@
       panelNodes.saveButton.textContent = strings().panelSave || 'Save';
     }
 
-    panelNodes.saveButton.disabled = !canEdit || (needsSharedAck && !state.sharedScopeAcknowledged);
+    panelNodes.saveButton.disabled = disabled;
   }
 
   function renderPanelNotice(result, panelNodes, canEdit) {
@@ -6107,6 +6392,8 @@
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
     panelNodes.fieldWrap.firstChild.textContent = strings().panelLoading || 'Loading field details…';
     panelNodes.status.textContent = '';
+    panelNodes.saveNoReloadButton.hidden = true;
+    panelNodes.saveNoReloadButton.disabled = true;
     panelNodes.saveButton.disabled = true;
     schedulePanelViewportClamp();
 
@@ -6156,7 +6443,8 @@
     }
   }
 
-  async function handleSave() {
+  async function handleSave(options) {
+    const saveOptions = options && typeof options === 'object' ? options : {};
     const panelNodes = getPanelNodes();
 
     if (!state.session || !state.activeNode || !state.activeDescriptor || !state.activeController) {
@@ -6180,6 +6468,9 @@
     panelNodes.panel.dataset.state = 'saving';
     panelNodes.status.textContent = strings().panelSaving || 'Saving…';
     panelNodes.saveButton.disabled = true;
+    if (panelNodes.saveNoReloadButton) {
+      panelNodes.saveNoReloadButton.disabled = true;
+    }
     state.activeController.setDisabled(true);
     state.saveInFlight = true;
 
@@ -6192,16 +6483,23 @@
       const syncGroup = getActiveSyncGroup();
       const sourceGroup = getActiveSourceGroup();
       const activeContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
-      const shouldReloadAfterSave = activeContext === 'gallery_collection' || activeContext === 'query_collection';
+      const canDeferReload = activeContext === 'query_collection';
+      const shouldReloadAfterSave = activeContext === 'gallery_collection'
+        || (activeContext === 'query_collection' && saveOptions.reloadAfterSave !== false);
       const saveSummaryMessage = formatSaveSummary(saveResult);
-      const successMessage = shouldReloadAfterSave
-        ? (activeContext === 'query_collection'
+      let successMessage = saveSummaryMessage || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.'));
+
+      if (shouldReloadAfterSave) {
+        successMessage = activeContext === 'query_collection'
           ? (strings().panelCollectionReloading || 'Connected items saved. Reloading page…')
-          : (strings().panelGalleryReloading || 'Gallery saved. Reloading page…'))
-        : (saveSummaryMessage || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.')));
+          : (strings().panelGalleryReloading || 'Gallery saved. Reloading page…');
+      } else if (canDeferReload) {
+        successMessage = strings().panelCollectionSavedNoReload || 'Connected items saved. Reload when ready to refresh this query loop.';
+      }
 
       updateCachedDescriptors(syncGroup, sourceGroup, saveResult);
-      if (!shouldReloadAfterSave) {
+      applyCollectionStateToCachedDescriptors(saveResult);
+      if (!shouldReloadAfterSave && !canDeferReload) {
         syncSavedDisplayValues(syncGroup, sourceGroup, saveResult);
       }
       state.activeController.setValue(saveResult.value);
@@ -6228,6 +6526,8 @@
         window.setTimeout(function () {
           window.location.reload();
         }, 250);
+      } else if (canDeferReload && saveOptions.closeAfterSave) {
+        closeEditorPanel();
       }
     } catch (error) {
       if (isSessionExpiredError(error)) {

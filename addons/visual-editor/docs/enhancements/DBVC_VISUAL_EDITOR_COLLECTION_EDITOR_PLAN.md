@@ -234,8 +234,11 @@ Required branch states:
 
 Current-owner hint widening now active:
 - simple direct `get_field('field_name')` calls in Query Editor PHP are extracted as current-owner source hints
-- `get_field('field_name', 'option')`, user-owned reads, and any explicit object-ID reads are intentionally excluded from writable hints in this slice
+- obvious current-object calls such as `get_field('field_name', get_the_ID())` and `get_field('field_name', get_queried_object_id())` are also treated as current-owner source hints
+- local variables directly assigned from `get_the_ID()` or `get_queried_object_id()` and then passed to `get_field()` are also treated as current-owner source hints
+- `get_field('field_name', 'option')`, user-owned reads, literal object-ID reads, and arbitrary variable object reads are intentionally excluded from writable current-owner hints in this slice
 - hints are only used to narrow candidate matching; the final ordered query IDs still must exactly match the target-post-type subset of one current-owner ACF relationship/post_object field
+- if Query Editor source evidence contains only explicit-object reads, the loop falls through to locked fallback evidence even when the final IDs coincidentally match a current-owner field
 - this hint branch itself does not enable shared-option fallback editing; exact options fallback subsets are handled by the explicit shared-option branch below
 
 Inspect-only fallback evidence now active:
@@ -258,17 +261,25 @@ Panel requirements for custom fallback branches:
 Current UI status:
 - locked fallback branches use `reference_collection_preview`, a read-only panel mode that groups queried items by object/CPT type and shows frontend/backend item links when available
 - notice copy names the active branch as either shared options fallback or unmatched Query Editor `post__in`
+- locked fallback previews include a compact source-evidence block with the active branch, queried count, target type, current/options field hints, dynamic tags, and saved Bricks include/post__in setting evidence when available
 - search, add, remove, reorder, and save controls are intentionally absent from the locked preview mode
 - exact target-CPT and exact full-field shared options fallback branches use the standard `reference_collection` editor, shared-scope acknowledgement, and reload-after-save behavior
 - exact shared options fallback branches can also expose an explicit `Add to current page field` action when one current-owner relationship/post_object hint is proven, the current field has no existing target items for that branch, and the action can be routed through a dedicated current-owner seed contract; nested current-owner group fields are allowed only when the flattened selector and grouped metadata are proven
+- collection saves now expose both `Save` and `Save and Reload` for query-collection editors: `Save` writes the collection, keeps the page in place, closes the panel, and updates the transient descriptor state so repeat saves do not stale-conflict; `Save and Reload` preserves the original reload-based reconciliation path
+- seed actions no longer force an immediate reload; the panel exposes undo and reload controls after seeding so users can restore the previous current-page field value before refreshing the Bricks query loop
 
-Next writable slice:
-- exact ACF options fallback branches may become editable only when the final query IDs equal one target-post-type subset or the full stored value of one options-owned ACF `relationship` / `post_object` field
-- descriptors must remain `scope = shared_entity`, `entity.type = option`, and `source_context = shared_option_fallback`
-- save contracts must use shared filtered-subset names so the panel and REST route require shared-scope acknowledgement before saving
-- target-subset saves must reuse the filtered-subset stale check, target-post-type validation, full-field merge preservation, reload-after-save behavior, and journal payload
+Current writable status:
+- exact ACF options fallback branches are writable only when the final query IDs equal one target-post-type subset or the full stored value of one options-owned ACF `relationship` / `post_object` field
+- descriptors remain `scope = shared_entity`, `entity.type = option`, and `source_context = shared_option_fallback`
+- save contracts use shared filtered-subset names so the panel and REST route require shared-scope acknowledgement before saving
+- target-subset saves reuse the filtered-subset stale check, target-post-type validation, full-field merge preservation, reload-after-save behavior, and journal payload
 - exact full-field options saves use the standard shared collection contract and reload-after-save behavior
 - current-field seeding from fallback is limited to the explicit current-owner seed action; nested group seed targets preserve their raw selector and group path metadata before mutation; recent/default fallback editing, partial windows, sorted results, and ambiguous fallback editing remain deferred
+
+Next validation/UI slice:
+- browser-smoke no-reload `Save`, `Save and Reload`, seed undo, and seed reload controls on a real fallback loop
+- keep branch/source copy visible in the panel so users can distinguish editing the shared fallback from seeding the current page field
+- keep recent/default and ambiguous fallback branches read-only in the locked preview mode until a provable writable source contract exists
 
 Implementation slices for Phase 7:
 1. Add inspect-only branch evidence for known final `post__in` queries that do not match a current-owner field. Implemented for unmatched Query Editor `post__in` branches and exact ACF options fallback matches.
@@ -549,12 +560,13 @@ Security guardrails:
 
 4A. Empty current-owner query loops:
    - support Bricks loops that render only comments such as `<!--brx-loop-start-zsfmel-->` because the current-owner relationship/post_object field has no matching related items
+   - support Bricks loops whose source field is not empty but contains no IDs matching the loop's proven target post type, for example a mixed relationship field containing only `benefit` IDs while the loop targets `post`
    - require explicit source evidence from a saved ACF dynamic include/post__in control or a Query Editor current-owner `get_field('field_name')` hint
    - require a concrete target post type from final query vars or saved query settings; empty mixed/`any` loops remain unsupported because there are no result IDs to prove the target subset
    - require the hinted current-owner ACF field's stored target-CPT subset to be empty at descriptor creation
    - register a synthetic `query_collection` descriptor from the captured Bricks `posts/query_vars` hook, because a fully empty loop may never call the render-attributes hook for the loop element
    - keep the normal filtered-subset save contract so adding the first item rereads the full ACF value, rejects stale target-subset conflicts, preserves non-target IDs, writes the merged ordered ID list, journals the mutation, and reloads the page
-   - when Bricks renders no loop item element, inject a hidden Visual Editor marker immediately after the matching `brx-loop-start-{element_id}` comment so the existing container-level badge can anchor to the nearest visible Bricks parent container
+   - when Bricks renders no loop item element, inject a hidden Visual Editor marker immediately after the matching `brx-loop-start-{element_id}` comment or `.brx-query-trail[data-query-element-id="{element_id}"]` placeholder so the existing container-level badge can anchor to the nearest visible Bricks parent container
    - do not make empty shared-option fallback, recent/default, paginated, sorted, or ambiguous Query Editor branches writable in this slice
 
 5. Optional explicit mappings:
@@ -591,6 +603,59 @@ These remain separate from the collection-editor rollout:
 
 Reason:
 - they mutate row cardinality or ownership scope, not just the ordered values inside one direct field
+
+## New Phase: Post-Owned Linked Term Collections
+
+Goal:
+- let a user manage the taxonomy terms assigned to the post rendered by a Bricks query-loop card when that card contains a nested Bricks `objectType: term` query using `current_post_term`
+- surface a container/root badge such as `Edit Linked Terms` or `{Taxonomy Label} Terms`
+- reuse the existing Visual Editor collection modal where possible, but make the source contract explicit as WordPress post-term relationships instead of an ACF relationship/post_object field
+
+Source shape:
+- parent loop owner: concrete post entity, either the current post/page or a loop-owned related post card
+- child loop root: Bricks query with `objectType: term`, `current_post_term: true`, and exactly one taxonomy in the saved query settings
+- storage target: `wp_term_relationships` for the owner post and taxonomy, mutated through `wp_set_object_terms()`
+- read target: `wp_get_object_terms()` for the same owner post and taxonomy
+
+Descriptor requirements:
+- `source.type = post_terms_collection`
+- `render.context = query_collection`
+- `source.field_type = taxonomy`
+- `source.reference_taxonomies = [taxonomy]`
+- `source.query_collection_write_mode = replace_post_terms`
+- `resolver.name = post_terms_collection`
+- current-owner contract: `post_terms_collection`
+- loop-owned post contract: `loop_owned_post_terms_collection`
+
+UI requirements:
+- badge appears on the nested term query loop container/root, not on every rendered term chip/link
+- panel label should name the taxonomy, for example `Filter Tag Terms`
+- panel source meta must identify owner post, taxonomy, Bricks query element, and save contract
+- selected/search lists should use term labels and term edit/frontend links where possible
+- loop-owned card edits require the existing related-owner acknowledgement so users understand they are changing the card post, not the current page
+
+Save safety:
+- require `edit_post` on the owner post
+- require taxonomy `assign_terms` capability when WordPress exposes one
+- reject descriptors without exactly one taxonomy
+- reject non-hierarchical/hierarchical ambiguity by saving term IDs only
+- preserve all other taxonomies assigned to the post; only replace the one descriptor taxonomy
+- use no-reload save by default with optional reload, matching current query-collection UX
+
+Implementation slices:
+1. Detect `objectType: term` + `current_post_term` query roots from Bricks element settings and create a collection-root descriptor only when a concrete post owner and one taxonomy are proven. Implemented for non-empty rendered loop roots.
+2. Add `PostTermsCollectionResolver` for read/search/validate/save using WordPress term APIs. Implemented.
+3. Add explicit mutation contracts and acknowledgement labels for current-owner and loop-owned post term collection saves. Implemented.
+4. Reuse the existing reference-collection panel with term-specific copy and grouped term rows. Implemented with minimal term-specific panel copy.
+5. Add empty-loop handling only after non-empty term-loop root markers are confirmed.
+6. Later, consider ACF `taxonomy` field-backed query roots as a separate branch because those mutate an ACF field, not native post term relationships.
+
+Initial live examples to inspect:
+- `bricks_template-f3-pricing-cards-tall-23814.json` includes `objectType: term`, `current_post_term: true`, taxonomy `filter-tag` inside pricing/card structures.
+- `bricks_template-flo-about-single-26168.json` includes plain `objectType: term` taxonomy loops without `current_post_term`; those should remain outside this first save slice unless owner semantics are proven.
+
+Validation note:
+- `/private/tmp/dbvc_ve_post_terms_collection_probe.php` classified a real `filter-tag` current-post term loop candidate as editable, resolved `post_terms_collection`, returned badge `Filter Tag Terms`, confirmed the mutation contract is writable, and found searchable term results.
 
 ## Acceptance For The First Slice
 

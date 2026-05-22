@@ -97,7 +97,12 @@ final class CollectionSeedController
             return $this->error(__('Descriptor not found.', 'dbvc'), 404);
         }
 
-        $seed = $this->buildSeedMutation($descriptor);
+        $mode = sanitize_key((string) $request->get_param('mode'));
+        if ($mode !== 'undo') {
+            $mode = 'seed';
+        }
+
+        $seed = $this->buildSeedMutation($descriptor, $mode, $request->get_param('previousValue'));
         if (empty($seed['ok'])) {
             return $this->error(isset($seed['message']) ? (string) $seed['message'] : __('This fallback branch cannot seed the current page field safely.', 'dbvc'), 400);
         }
@@ -115,10 +120,22 @@ final class CollectionSeedController
 
         $result = $this->mutations->mutate($seed_descriptor, $value);
         $result['saveContractSummary'] = $contract_summary;
-        $result['reload'] = ! empty($result['ok']);
+        $result['reload'] = false;
         $result['seededField'] = isset($seed_descriptor->source['field_name']) ? sanitize_key((string) $seed_descriptor->source['field_name']) : '';
         if (! empty($result['ok'])) {
-            $result['message'] = __('Current page connected-items field was populated from the fallback list. Reloading page…', 'dbvc');
+            if ($mode === 'undo') {
+                $result['message'] = __('Current page connected-items seed was undone. Reload when ready to refresh this query loop.', 'dbvc');
+                $result['undo'] = [
+                    'enabled' => false,
+                ];
+            } else {
+                $result['message'] = __('Current page connected-items field was populated from the fallback list. Reload when ready, or undo this seed before reloading.', 'dbvc');
+                $result['undo'] = [
+                    'enabled' => true,
+                    'previousValue' => isset($seed['previousValue']) && is_array($seed['previousValue']) ? array_values(array_map('absint', $seed['previousValue'])) : [],
+                    'label' => __('Undo seed', 'dbvc'),
+                ];
+            }
         }
 
         return new WP_REST_Response($result, ! empty($result['ok']) ? 200 : 400);
@@ -128,8 +145,13 @@ final class CollectionSeedController
      * @param EditableDescriptor $descriptor
      * @return array<string, mixed>
      */
-    private function buildSeedMutation(EditableDescriptor $descriptor)
+    private function buildSeedMutation(EditableDescriptor $descriptor, $mode = 'seed', $previous_value = null)
     {
+        $mode = sanitize_key((string) $mode);
+        if ($mode !== 'undo') {
+            $mode = 'seed';
+        }
+
         $source = isset($descriptor->source) && is_array($descriptor->source) ? $descriptor->source : [];
         $seed = isset($source['query_seed_current_field']) && is_array($source['query_seed_current_field'])
             ? $source['query_seed_current_field']
@@ -210,8 +232,40 @@ final class CollectionSeedController
         $existing_target_ids = $target_post_type === ''
             ? $existing_ids
             : $this->filterIdsByPostType($existing_ids, $target_post_type);
+        $previous_ids = [];
 
-        if (! empty($existing_target_ids)) {
+        if ($mode === 'undo') {
+            $previous_ids = $this->normalizeIdList($previous_value);
+            $previous_target_ids = $target_post_type === ''
+                ? $previous_ids
+                : $this->filterIdsByPostType($previous_ids, $target_post_type);
+
+            if (! empty($previous_target_ids)) {
+                return [
+                    'ok' => false,
+                    'message' => __('This seed cannot be undone because the previous current-page value already had items for this query branch.', 'dbvc'),
+                ];
+            }
+
+            $expected_seeded_ids = $this->mergeSeedIds($previous_ids, $query_ids);
+            if ($existing_ids !== $expected_seeded_ids) {
+                return [
+                    'ok' => false,
+                    'message' => __('This seed cannot be undone because the current page field changed after the seed action.', 'dbvc'),
+                ];
+            }
+
+            foreach ($previous_ids as $post_id) {
+                if (! $this->postMatchesField($field, $post_id)) {
+                    return [
+                        'ok' => false,
+                        'message' => __('The previous current-page value is no longer valid for this field.', 'dbvc'),
+                    ];
+                }
+            }
+        }
+
+        if ($mode === 'seed' && ! empty($existing_target_ids)) {
             return [
                 'ok' => false,
                 'message' => __('The current page field already has connected items for this query branch. Edit the current field directly instead of seeding from fallback.', 'dbvc'),
@@ -227,7 +281,7 @@ final class CollectionSeedController
             }
         }
 
-        $value = $this->mergeSeedIds($existing_ids, $query_ids);
+        $value = $mode === 'undo' ? $previous_ids : $this->mergeSeedIds($existing_ids, $query_ids);
         $max = $this->resolveReferenceMaxSelections($field);
         if ($max > 0 && count($value) > $max) {
             return [
@@ -364,6 +418,7 @@ final class CollectionSeedController
             'ok' => true,
             'descriptor' => $seed_descriptor,
             'value' => $value,
+            'previousValue' => $existing_ids,
         ];
     }
 

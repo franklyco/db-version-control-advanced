@@ -61,9 +61,9 @@ The narrow direct current-owner connected-items slice now has its own implementa
 | `post_object -> repeater` | concrete related post | row descendant | paused after synthetic groundwork | no current live fixture; do not create one unless explicitly resumed |
 | `post_object -> flexible` | concrete related post | row + layout descendant | paused | no current live fixture; do not create one unless explicitly resumed |
 | `taxonomy -> direct field` | concrete related term | leaf | already partially supported | include media and group cases in smoke |
-| `taxonomy -> repeater` | concrete related term | row descendant | not currently used | keep out of active scope until the site adds term repeaters |
-| `taxonomy -> flexible` | concrete related term | row + layout descendant | not currently used | keep out of active scope until the site adds term flexible content |
-| `taxonomy -> group -> repeater/flexible` | concrete related term | grouped nested descendant | not currently used | keep out of active scope until the site adds nested term collections |
+| `taxonomy -> repeater` | concrete related term | row descendant | active guarded tranche | existing-row descendant writes only; no row insert/remove/reorder |
+| `taxonomy -> flexible` | concrete related term | row + layout descendant | active guarded tranche | existing-layout descendant writes only; no layout insert/remove/reorder |
+| `taxonomy -> group -> repeater/flexible` | concrete related term | grouped nested descendant | active guarded tranche | requires canonical group + row ancestry; first live fixture is `service_area` term meta |
 
 ### B. Mixed collection nesting to support after owner-loop hardening
 
@@ -190,13 +190,15 @@ Current status:
 Target:
 - direct native term fields, including `{term_name}` and `{term_description}` when Bricks exposes a concrete loop term owner
 - direct grouped/media term fields
-- term-owned repeater/flexible descendants are not active scope because the current site does not use ACF repeaters or flexible content fields in taxonomy term meta
+- term-owned repeater/flexible descendants are now active only for existing stored rows/layouts where the descriptor proves the concrete term owner and canonical row/group ancestry
+- current known term-meta fixture: `service_area` terms have grouped repeaters under `vf_sa_group_content` and `vf_sa_group_geometry`; synced templates currently expose direct term fields, so live nested-render smoke still needs a rendered fixture
 
 Work:
 - keep native `term_name` and `term_description` writable through `TermFieldResolver` for concrete loop terms on archive and non-archive contexts
 - keep derived `term_url` and `term_id` inspect-only
 - keep direct term ACF scalar/group/media fields within the existing related-term/shared-term contract
-- do not add taxonomy repeater/flexible descendant handling until the site introduces real term-meta fixtures
+- allow nested term ACF descendants only through current taxonomy archive term ownership or concrete loop-owned term ownership
+- keep shared term collections, taxonomy selector collection mutation, and row/layout lifecycle mutation deferred
 
 ### Phase B. Mixed nesting expansion
 
@@ -284,7 +286,7 @@ Before broadening runtime writes further, keep real pages/templates available fo
 - native `post_object -> repeater`: paused; synthetic classification/read coverage exists, but no live synced-template fixture is currently needed
 - native `post_object -> flexible`: paused; no live synced-template fixture is currently needed
 - native taxonomy loop with grouped/media term fields
-- native taxonomy loop with nested repeater or flexible descendants: not currently applicable because term repeater/flexible fields are not used
+- native taxonomy loop with nested repeater or flexible descendants: field definitions exist for `service_area`; live nested-render fixture still needs confirmation before marking closed
 - mixed `flexible -> repeater`
 - mixed `repeater -> flexible`
 - grouped descendants with repeated visible values across sibling rows
@@ -299,11 +301,11 @@ Start with:
 
 Do not start with:
 - native `post_object -> repeater/flexible` live-fixture work while paused
-- taxonomy nested collection writes
 - relationship collection editing
 - repeater/flexible row insert/remove/reorder
 
 Reason:
 - the related-post owner contract is already the closest to the hardened native repeater slice
 - these scenarios reuse the existing resolver stack with the smallest new mutation surface
+- taxonomy nested descendant writes are now limited to existing term-owned rows/layouts; taxonomy collection mutation and row lifecycle changes remain out of scope
 - they are the most likely to uncover the next real failure classes in owner/path ancestry before the collection-mutation phase
