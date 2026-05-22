@@ -411,7 +411,7 @@ Acceptance:
 First-slice implementation notes:
 
 - `overlay-app.js` now creates a bottom-center `dbvc-ve-toolbar` with a dark central dock, circular satellite buttons, an active-object edit link, and the existing Visual Editor mode exit URL.
-- Go to Object is enabled as navigation-only search, Shared Globals is enabled as session-backed inspect/launcher inventory, and overflow remains a disabled shell control until it has a concrete purpose.
+- Go to Object is enabled as navigation-only search, Shared Globals is enabled as a configured sitewide option-field launcher/editor, and overflow remains a disabled shell control until it has a concrete purpose.
 - The toolbar uses the existing Visual Editor asset bootstrap and does not add a new runtime authority path.
 
 ### Phase 2: Statusbar Inside Toolbar
@@ -471,15 +471,15 @@ First-slice implementation notes:
 
 ### Phase 4: Shared Globals Inspectable Inventory
 
-Status: implemented for session-backed candidates and configured option-field inventory.
+Status: implemented for configured option-field inventory.
 
 Steps:
 
-1. List shared option collection candidates already proven by the current page/session.
+1. Load configured option-owned globals from the Visual Editor add-on settings allowlist.
 2. Show option page, field group, field label, field type, and item count.
-3. Load configured option-owned globals from the Visual Editor add-on settings allowlist.
-4. Keep unsupported fields locked or omitted until toolbar-scoped descriptors and shared save contracts are proven.
-5. Add locked explanations for unsupported or ambiguous candidates.
+3. Exclude current-page fallback query-loop descriptors from this popover; those remain available through the status/review flow.
+4. Keep unsupported fields omitted until toolbar-scoped descriptors and shared save contracts are proven.
+5. Add clear warnings for missing, unsupported, or ambiguous configured fields.
 
 Acceptance:
 
@@ -489,9 +489,10 @@ Acceptance:
 
 First-slice implementation notes:
 
-- The Shared Globals toolbar popover now lists option-owned `relationship` / `post_object` style candidates already present in the current page's lightweight session map.
+- The Shared Globals toolbar popover now lists configured option-owned `relationship` / `post_object` fields only.
 - Entries are grouped by option page or field group metadata when available.
-- The popover is inspect/launcher-only and routes `Open` through the existing marker/panel path, preserving current descriptor hydration, shared acknowledgement, and save-contract behavior.
+- The popover routes `Open` through the existing panel path, preserving descriptor hydration, shared acknowledgement, and save-contract behavior without requiring a visible marker.
+- Page-discovered shared option fallback descriptors are intentionally excluded so the popover edits the actual sitewide global field, not the current page's found fallback query loops.
 - The Visual Editor settings area now includes `Shared global option field names`, defaulting to `settings_globals_default_posts`.
 - Added `SharedGlobalFieldsController` at `GET /dbvc/v1/visual-editor/session/{session_id}/shared-global-fields`.
 - The route requires active Visual Editor mode, base Visual Editor capability, the option capability used by `canEditDescriptor()` for option owners, a valid current session, and ACF field metadata.
@@ -572,8 +573,9 @@ Go To Object:
 
 Shared Globals:
 
-- session-backed shared option relationship field appears inspect-only first
-- ambiguous option fields stay locked
+- configured shared option relationship/post_object field appears in the Shared Globals popover
+- current-page fallback query-loop descriptors do not appear in the Shared Globals popover
+- ambiguous or unsupported configured option fields are omitted with warnings
 - writable first slice requires acknowledgement
 - search results honor allowed post types
 - save request records shared option owner and field metadata
@@ -602,7 +604,7 @@ Guardrails:
 
 - keep the field editor in `dbvc-ve-panel`
 - keep toolbar popovers launcher-sized and focused
-- keep initial shared globals inspect-only
+- keep unsupported or non-configured shared globals omitted or locked
 - require exact option field metadata before shared collection saves
 - require shared acknowledgement for every shared global mutation
 - do not hydrate all descriptors to populate toolbar panels

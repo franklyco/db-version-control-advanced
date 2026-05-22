@@ -1937,37 +1937,141 @@
     updateToolbarExpandedState();
   }
 
-  function isSharedGlobalCandidate(entry) {
-    const entity = entry && entry.entity && typeof entry.entity === 'object' ? entry.entity : {};
-    const index = entry && entry.index && typeof entry.index === 'object' ? entry.index : {};
-    const input = entry && entry.input ? String(entry.input) : '';
-    const fieldType = index.fieldType ? String(index.fieldType) : '';
+  function buildSessionDescriptorEntry(token, domOrder) {
+    if (!token
+      || !state.session
+      || !state.session.descriptors
+      || typeof state.session.descriptors !== 'object'
+      || !state.session.descriptors[token]
+      || typeof state.session.descriptors[token] !== 'object') {
+      return null;
+    }
 
-    if (entity.type !== 'option') {
+    const descriptor = state.session.descriptors[token] || {};
+    const cached = getCachedDescriptorPayload(token);
+    const hydratedDescriptor = cached && cached.descriptor && typeof cached.descriptor === 'object' ? cached.descriptor : null;
+    const sourceSummary = cached && cached.sourceSummary && typeof cached.sourceSummary === 'object' ? cached.sourceSummary : null;
+    const entitySummary = cached && cached.entitySummary && typeof cached.entitySummary === 'object' ? cached.entitySummary : null;
+    const publicIndex = descriptor.index && typeof descriptor.index === 'object' ? descriptor.index : {};
+    const source = hydratedDescriptor && hydratedDescriptor.source && typeof hydratedDescriptor.source === 'object' ? hydratedDescriptor.source : {};
+    const index = Object.assign({}, publicIndex);
+    const entity = descriptor.entity && typeof descriptor.entity === 'object' ? descriptor.entity : {};
+    const hydratedEntity = hydratedDescriptor && hydratedDescriptor.entity && typeof hydratedDescriptor.entity === 'object'
+      ? hydratedDescriptor.entity
+      : null;
+
+    if (!index.sourceContext && source.source_context) {
+      index.sourceContext = String(source.source_context);
+    }
+
+    if (!index.fieldName && source.field_name) {
+      index.fieldName = String(source.field_name);
+    }
+
+    if (!index.fieldType && source.field_type) {
+      index.fieldType = String(source.field_type);
+    }
+
+    if ((!Array.isArray(index.fieldGroupOptionPages) || !index.fieldGroupOptionPages.length)
+      && Array.isArray(source.field_group_option_pages)) {
+      index.fieldGroupOptionPages = source.field_group_option_pages.slice();
+    }
+
+    if (!index.fieldGroupTitle && source.field_group_title) {
+      index.fieldGroupTitle = String(source.field_group_title);
+    }
+
+    return {
+      token,
+      status: hydratedDescriptor && typeof hydratedDescriptor.status === 'string' && hydratedDescriptor.status
+        ? hydratedDescriptor.status
+        : (typeof descriptor.status === 'string' && descriptor.status ? descriptor.status : 'editable'),
+      scope: hydratedDescriptor && typeof hydratedDescriptor.scope === 'string' && hydratedDescriptor.scope
+        ? hydratedDescriptor.scope
+        : (typeof descriptor.scope === 'string' && descriptor.scope ? descriptor.scope : 'current_entity'),
+      label: sourceSummary && sourceSummary.label
+        ? String(sourceSummary.label)
+        : (hydratedDescriptor && hydratedDescriptor.ui && hydratedDescriptor.ui.label
+          ? String(hydratedDescriptor.ui.label)
+          : (descriptor.label ? String(descriptor.label) : (strings().fieldIndexFieldFallback || 'Field'))),
+      input: hydratedDescriptor && hydratedDescriptor.ui && hydratedDescriptor.ui.input
+        ? String(hydratedDescriptor.ui.input)
+        : (descriptor.input ? String(descriptor.input) : ''),
+      entity: Object.assign({}, entity, hydratedEntity || {}),
+      sourceSummary,
+      entitySummary,
+      index,
+      domOrder
+    };
+  }
+
+  function isConfiguredSharedGlobalCandidate(entry) {
+    const index = entry && entry.index && typeof entry.index === 'object' ? entry.index : {};
+    const inventory = entry && state.toolbarSharedGlobalsByToken && state.toolbarSharedGlobalsByToken[entry.token]
+      ? state.toolbarSharedGlobalsByToken[entry.token]
+      : null;
+    const fieldType = index.fieldType
+      ? String(index.fieldType)
+      : (inventory && inventory.fieldType ? String(inventory.fieldType) : '');
+
+    if (!inventory && index.sourceContext !== 'toolbar_shared_global_option') {
       return false;
     }
 
     return fieldType === 'relationship'
-      || fieldType === 'post_object'
-      || input === 'reference_collection'
-      || input === 'reference_collection_preview';
+      || fieldType === 'post_object';
   }
 
   function getSharedGlobalEntries() {
-    return getSessionDescriptorEntries()
-      .filter(isSharedGlobalCandidate)
+    const tokens = new Set();
+
+    Object.keys(state.toolbarSharedGlobalsByToken || {}).forEach(function (token) {
+      if (token) {
+        tokens.add(token);
+      }
+    });
+
+    if (state.session && state.session.descriptors && typeof state.session.descriptors === 'object') {
+      Object.keys(state.session.descriptors).forEach(function (token) {
+        const entry = buildSessionDescriptorEntry(token, Number.MAX_SAFE_INTEGER);
+
+        if (entry && isConfiguredSharedGlobalCandidate(entry)) {
+          tokens.add(token);
+        }
+      });
+    }
+
+    return Array.from(tokens)
+      .map(function (token) {
+        return buildSessionDescriptorEntry(token, Number.MAX_SAFE_INTEGER);
+      })
+      .filter(function (entry) {
+        return entry && isConfiguredSharedGlobalCandidate(entry);
+      })
       .sort(function (left, right) {
-        return left.domOrder - right.domOrder;
+        const leftField = left.index && left.index.fieldName ? String(left.index.fieldName) : left.label;
+        const rightField = right.index && right.index.fieldName ? String(right.index.fieldName) : right.label;
+
+        return leftField.localeCompare(rightField);
       });
   }
 
   function getSharedGlobalGroupLabel(entry) {
     const index = entry && entry.index && typeof entry.index === 'object' ? entry.index : {};
-    const optionPages = Array.isArray(index.fieldGroupOptionPages)
-      ? index.fieldGroupOptionPages.filter(Boolean).join(', ')
+    const inventory = entry && state.toolbarSharedGlobalsByToken && state.toolbarSharedGlobalsByToken[entry.token]
+      ? state.toolbarSharedGlobalsByToken[entry.token]
+      : null;
+    const optionPageList = Array.isArray(index.fieldGroupOptionPages) && index.fieldGroupOptionPages.length
+      ? index.fieldGroupOptionPages
+      : (inventory && Array.isArray(inventory.optionPages) ? inventory.optionPages : []);
+    const optionPages = optionPageList.length
+      ? optionPageList.filter(Boolean).join(', ')
       : '';
 
-    return optionPages || index.fieldGroupTitle || getToolbarString('toolbarSharedGlobals', 'Shared globals');
+    return optionPages
+      || index.fieldGroupTitle
+      || (inventory && inventory.fieldGroupTitle)
+      || getToolbarString('toolbarSharedGlobals', 'Shared globals');
   }
 
   function renderSharedGlobalEntry(entry) {
@@ -1975,14 +2079,13 @@
     const inventory = state.toolbarSharedGlobalsByToken && state.toolbarSharedGlobalsByToken[entry.token]
       ? state.toolbarSharedGlobalsByToken[entry.token]
       : null;
-    const fieldType = index.fieldType ? String(index.fieldType) : '';
-    const isConfigured = inventory && inventory.configured
-      || index.sourceContext === 'toolbar_shared_global_option';
-    const status = isConfigured
+    const fieldType = index.fieldType
+      ? String(index.fieldType)
+      : (inventory && inventory.fieldType ? String(inventory.fieldType) : '');
+    const status = inventory && inventory.configured
+      || index.sourceContext === 'toolbar_shared_global_option'
       ? getToolbarString('toolbarSharedGlobalConfigured', 'Configured global')
-      : (entry.status === 'editable'
-        ? getToolbarString('toolbarSharedGlobalEditable', 'Writable on page')
-        : getToolbarString('toolbarSharedGlobalInspectOnly', 'Inspect only'));
+      : getToolbarString('toolbarSharedGlobalInspectOnly', 'Inspect only');
     const itemCount = inventory && typeof inventory.itemCount === 'number'
       ? `${inventory.itemCount} ${inventory.itemCount === 1 ? 'item' : 'items'}`
       : '';
@@ -1992,7 +2095,7 @@
       itemCount,
       status
     ].filter(Boolean).join(' / ');
-    const label = entry.label || index.label || getToolbarString('fieldIndexFieldFallback', 'Field');
+    const label = entry.label || (inventory && inventory.label) || index.label || getToolbarString('fieldIndexFieldFallback', 'Field');
 
     return [
       '<div class="dbvc-ve-toolbar-shared__row">',
@@ -2016,7 +2119,7 @@
         '<div class="dbvc-ve-toolbar-shared">',
         renderOptions.loading ? `<div class="dbvc-ve-toolbar-shared__notice">${escapeHtml(getToolbarString('toolbarSharedGlobalsLoading', 'Loading shared globals...'))}</div>` : '',
         warnings.length ? `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(warnings.join(' '))}</div>` : '',
-        `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(getToolbarString('toolbarSharedGlobalsEmpty', 'No shared global relationship or post object fields are marked on this page.'))}</div>`,
+        `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(getToolbarString('toolbarSharedGlobalsEmpty', 'No configured shared global relationship or post object fields are available.'))}</div>`,
         '</div>'
       ].join('');
     }
@@ -2039,7 +2142,7 @@
 
     return [
       '<div class="dbvc-ve-toolbar-shared">',
-      `<div class="dbvc-ve-toolbar-shared__notice">${escapeHtml(getToolbarString('toolbarSharedGlobalsNotice', 'These are shared option-owned connected fields already proven by this page session. Editing remains routed through the existing field panel and shared acknowledgement flow.'))}</div>`,
+      `<div class="dbvc-ve-toolbar-shared__notice">${escapeHtml(getToolbarString('toolbarSharedGlobalsNotice', 'Configured sitewide option-owned relationship/post_object fields are listed here with verified ACF metadata. Saving updates the global fallback field itself, uses shared acknowledgement, and reloads after save.'))}</div>`,
       warnings.length ? `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(warnings.join(' '))}</div>` : '',
       Array.from(groups.values()).map(function (group) {
         return [

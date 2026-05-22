@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Added configurable Toolbar Shared Globals support for option-owned ACF relationship/post_object fields, defaulting to `settings_globals_default_posts`, with a settings textarea for additional option field names and a Visual Editor-mode REST endpoint that creates toolbar-scoped descriptors through the existing shared collection save contract.
-- Added a session-backed Shared Globals toolbar inventory for option-owned relationship/post_object candidates already proven by the current page, with `Open` routed through the existing marker/panel flow and no new global save path.
+- Scoped the Shared Globals toolbar inventory to configured sitewide option fields only; current-page fallback query-loop descriptors remain in the normal status/review flow instead of appearing as global field editors.
 - Added Toolbar 2.0 Go To Object search as a navigation-only popover backed by a capped, Visual Editor-mode REST endpoint that filters editable public posts and terms before exposing frontend/backend links.
 - Implemented the first Toolbar 2.0 shell slice: the Visual Editor now renders a bottom-center toolbar, parks the existing statusbar inside an upward status/review popover, mirrors status messages while closed, and keeps the active-object edit link available.
 - Added a Toolbar 2.0 enhancement implementation guide for migrating the bottom-corner statusbar into a bottom-center Visual Editor toolbar with upward field review, object navigation, shared-global collection management, active-object links, and guarded phased rollout rules.
