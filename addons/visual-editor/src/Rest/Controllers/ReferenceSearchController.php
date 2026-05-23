@@ -131,8 +131,63 @@ final class ReferenceSearchController
         return new WP_REST_Response(
             [
                 'ok' => true,
-                'items' => is_array($items) ? $items : [],
+                'items' => is_array($items) ? $this->filterExcludedItems($items) : [],
             ]
         );
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterExcludedItems(array $items)
+    {
+        return array_values(
+            array_filter(
+                $items,
+                function ($item) {
+                    if (! is_array($item)) {
+                        return false;
+                    }
+
+                    $post_type = isset($item['postType']) ? sanitize_key((string) $item['postType']) : '';
+                    if ($post_type !== '' && $this->isPostTypeExcluded($post_type)) {
+                        return false;
+                    }
+
+                    $taxonomy = isset($item['taxonomy']) ? sanitize_key((string) $item['taxonomy']) : '';
+                    if ($taxonomy === '' && isset($item['postType'])) {
+                        $candidate = sanitize_key((string) $item['postType']);
+                        if ($candidate !== '' && taxonomy_exists($candidate)) {
+                            $taxonomy = $candidate;
+                        }
+                    }
+
+                    return $taxonomy === '' || ! $this->isTaxonomyExcluded($taxonomy);
+                }
+            )
+        );
+    }
+
+    /**
+     * @param string $post_type
+     * @return bool
+     */
+    private function isPostTypeExcluded($post_type)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_post_type_excluded')
+            && \DBVC_Visual_Editor_Addon::is_post_type_excluded($post_type);
+    }
+
+    /**
+     * @param string $taxonomy
+     * @return bool
+     */
+    private function isTaxonomyExcluded($taxonomy)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_taxonomy_excluded')
+            && \DBVC_Visual_Editor_Addon::is_taxonomy_excluded($taxonomy);
     }
 }

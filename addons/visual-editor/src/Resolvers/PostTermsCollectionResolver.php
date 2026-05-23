@@ -119,6 +119,13 @@ final class PostTermsCollectionResolver implements ResolverInterface
             ];
         }
 
+        if ($this->isTaxonomyExcluded($taxonomy)) {
+            return [
+                'ok' => false,
+                'message' => __('This taxonomy is excluded from Visual Editor linked-term editing.', 'dbvc'),
+            ];
+        }
+
         foreach ($this->normalizeSubmittedIds($value) as $term_id) {
             $term = get_term($term_id, $taxonomy);
             if (! $term instanceof \WP_Term || is_wp_error($term)) {
@@ -208,7 +215,7 @@ final class PostTermsCollectionResolver implements ResolverInterface
     public function searchItems(EditableDescriptor $descriptor, $search = '', $limit = 20)
     {
         $taxonomy = $this->getTaxonomy($descriptor);
-        if ($taxonomy === '') {
+        if ($taxonomy === '' || $this->isTaxonomyExcluded($taxonomy)) {
             return [];
         }
 
@@ -252,6 +259,10 @@ final class PostTermsCollectionResolver implements ResolverInterface
         $taxonomy = $this->getTaxonomy($descriptor);
 
         if ($post_id <= 0 || $taxonomy === '') {
+            return [];
+        }
+
+        if ($this->isTaxonomyExcluded($taxonomy)) {
             return [];
         }
 
@@ -313,11 +324,11 @@ final class PostTermsCollectionResolver implements ResolverInterface
             : [];
 
         if (count($taxonomies) === 1 && taxonomy_exists($taxonomies[0])) {
-            return $taxonomies[0];
+            return $this->isTaxonomyExcluded($taxonomies[0]) ? '' : $taxonomies[0];
         }
 
         $taxonomy = isset($descriptor->source['taxonomy']) ? sanitize_key((string) $descriptor->source['taxonomy']) : '';
-        return $taxonomy !== '' && taxonomy_exists($taxonomy) ? $taxonomy : '';
+        return $taxonomy !== '' && taxonomy_exists($taxonomy) && ! $this->isTaxonomyExcluded($taxonomy) ? $taxonomy : '';
     }
 
     /**
@@ -353,10 +364,22 @@ final class PostTermsCollectionResolver implements ResolverInterface
             'id' => $term_id,
             'title' => sanitize_text_field((string) $term->name),
             'postType' => $taxonomy,
+            'taxonomy' => $taxonomy,
             'typeLabel' => $type_label,
             'status' => sanitize_key((string) $term->slug),
             'frontendUrl' => is_string($frontend_url) ? esc_url_raw($frontend_url) : '',
             'backendUrl' => is_string($backend_url) ? esc_url_raw($backend_url) : '',
         ];
+    }
+
+    /**
+     * @param string $taxonomy
+     * @return bool
+     */
+    private function isTaxonomyExcluded($taxonomy)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_taxonomy_excluded')
+            && \DBVC_Visual_Editor_Addon::is_taxonomy_excluded($taxonomy);
     }
 }

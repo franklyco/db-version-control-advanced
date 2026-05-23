@@ -1,5 +1,12 @@
 # DBVC Visual Editor Phases
 
+## Thread Status Snapshot - 2026-05-23
+- Toolbar 2.0 is now the active Visual Editor chrome direction: bottom-center dock, upward status/review popover, Go To Object navigation, Shared Globals launcher, active-object edit link, and mode exit control.
+- Shared Globals is intentionally scoped to configured option-owned ACF `relationship` / `post_object` fields. The default configured field is `settings_globals_default_posts`; current-page fallback query-loop descriptors stay in the normal status/review flow.
+- The panel warning UX has moved from tall top warning blocks to compact footer warning icons with typed context (`Shared`, `Related`, `Query Loop collection`, `Current Post`) and tooltip/title/ARIA warning text. Shared/related acknowledgement controls now sit near Save / Save and Reload.
+- Overlay styling has been consolidated around Visual Editor design tokens while preserving editable element outlines and badge source colors.
+- Browser/live QA still needs to confirm shared global save, tooltip hover/focus behavior, and large connected-items list scrolling in the actual editor.
+
 ## Phase 1
 - activation
 - Bricks instrumentation
@@ -111,6 +118,28 @@
   - row/layout lifecycle mutation
   - cross-page live DOM patching after shared global saves
 
+## Add-on Settings and Frontend Exclusions Tranche
+- Dedicated guide section: `DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md` -> `Add-on Settings Submenu and Exclusions`.
+- Goal: give Visual Editor its own DBVC submenu settings page while preserving the existing Configure -> Add-ons settings source of truth, then allow site admins to exclude internal or non-content post types/taxonomies from every frontend Visual Editor surface.
+- Default exclusions:
+  - post types: `bricks_template`
+  - taxonomies: `template_tag`, `template_bundle`
+- Exclusion surfaces:
+  - page-context support checks for singular, CPT archive, and taxonomy archive entry points
+  - request/session descriptor registration and public-map export
+  - Go To Object post/term search
+  - descriptor-scoped connected-item and linked-term searches
+  - Toolbar Shared Globals configured-field inventory
+- Save safety rule: excluded selected values must not be silently deleted just because the panel hides them. Full replacement collection saves must preserve excluded stored IDs that were hidden from the editor UI.
+- Current runtime state: implementation slice added a Visual Editor submenu page, content visibility settings, centralized exclusion helpers, descriptor/session filtering, object/reference search filtering, shared-global target filtering, page-context guards, and hidden-excluded-ID preservation for ACF reference collection saves.
+- Validation focus:
+  - settings page saves and reflects values
+  - excluded `bricks_template`, `template_tag`, and `template_bundle` do not appear in Go To Object
+  - excluded taxonomy archives do not activate Visual Editor
+  - connected-items searches omit excluded post types
+  - linked-term searches omit excluded taxonomies
+  - mixed relationship fields preserve hidden excluded IDs on save
+
 ## Current Hold Context
 - The next paused advanced-data follow-up is nested ACF group and deeper flexible/repeater descendant save verification, not marker discovery.
 - Active implementation focus has shifted to Bricks native ACF query loops so the addon can classify and edit fields rendered through native repeater, relationship, and post-object loop types before returning to the paused grouped-save smoke work.
@@ -143,9 +172,10 @@
   - use the native loop expansion plan as the runtime ordering source of truth before opening later mutation branches
   - stable flexible row mutation is now widened across shared post/term/user/option owners for the existing safe flexible field set, including gallery descendants when Bricks renders a direct gallery collection
   - direct gallery collections now support ordered Media Library replacement for top-level, repeater-row, and flexible-row ACF gallery fields, with page reload after save so Bricks can rebuild gallery markup cleanly
+  - empty/conditional direct Bricks gallery collections now share the missing-media parent-anchor path when the ACF gallery source resolves empty, with `Add Gallery` badge treatment and reload-after-save
   - current WIP/paused items on the user side:
     - shared non-current post flexible descendants through `shared_flexible_layout`
-    - direct/repeater/flexible gallery collection replacement flow
+    - populated direct/repeater/flexible gallery collection replacement browser flow
   - current active collection-editor slice:
     - current-owner native ACF `relationship` query roots can now surface as `Edit Connected` container markers instead of only descendant field markers
     - current-owner native ACF `post_object` query roots can now use that same connected-items container contract

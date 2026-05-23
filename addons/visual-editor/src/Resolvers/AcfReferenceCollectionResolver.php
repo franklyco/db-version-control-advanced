@@ -173,7 +173,7 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
         }
 
         if ($field_type === 'relationship' || $is_multiple) {
-            return $ids;
+            return $this->mergeExcludedStoredReferenceIds($descriptor, $ids);
         }
 
         return isset($ids[0]) ? $ids[0] : '';
@@ -208,9 +208,12 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
         $search = sanitize_text_field((string) $search);
         $limit = max(1, min(50, absint($limit)));
         $post_types = $this->getAllowedPostTypes($descriptor);
+        if (empty($post_types)) {
+            return [];
+        }
 
         $query_args = [
-            'post_type' => ! empty($post_types) ? $post_types : 'any',
+            'post_type' => $post_types,
             'post_status' => ['publish', 'future', 'draft', 'pending', 'private'],
             'posts_per_page' => $limit,
             'orderby' => $search !== '' ? 'title' : 'modified',
@@ -1126,7 +1129,7 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
         if ($this->isFilteredSubsetDescriptor($descriptor)) {
             $target_post_type = $this->getQueryTargetPostType($descriptor);
 
-            return $target_post_type !== '' ? [$target_post_type] : [];
+            return $target_post_type !== '' ? $this->filterPostTypes([$target_post_type]) : [];
         }
 
         $post_types = isset($descriptor->source['reference_post_types']) && is_array($descriptor->source['reference_post_types'])
@@ -1134,16 +1137,18 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
             : [];
 
         if (! empty($post_types)) {
-            return $post_types;
+            return $this->filterPostTypes($post_types);
         }
 
-        return array_values(
-            array_filter(
-                get_post_types(
-                    [
-                        'public' => true,
-                    ],
-                    'names'
+        return $this->filterPostTypes(
+            array_values(
+                array_filter(
+                    get_post_types(
+                        [
+                            'public' => true,
+                        ],
+                        'names'
+                    )
                 )
             )
         );
@@ -1161,8 +1166,12 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
             return false;
         }
 
+        if ($this->isPostTypeExcluded($post->post_type)) {
+            return false;
+        }
+
         $allowed_post_types = $this->getAllowedPostTypes($descriptor);
-        if (! empty($allowed_post_types) && ! in_array((string) $post->post_type, $allowed_post_types, true)) {
+        if (empty($allowed_post_types) || ! in_array((string) $post->post_type, $allowed_post_types, true)) {
             return false;
         }
 
@@ -1186,6 +1195,10 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
         }
 
         $post_type = sanitize_key((string) $post->post_type);
+        if ($this->isPostTypeExcluded($post_type)) {
+            return [];
+        }
+
         $post_type_object = get_post_type_object($post_type);
         $type_label = $post_type_object && ! empty($post_type_object->labels->singular_name)
             ? sanitize_text_field((string) $post_type_object->labels->singular_name)
@@ -1208,6 +1221,72 @@ final class AcfReferenceCollectionResolver extends AbstractAcfResolver
             'frontendUrl' => ($url = get_permalink($post_id)) && is_string($url) ? esc_url_raw($url) : '',
             'backendUrl' => ($edit_url = get_edit_post_link($post_id, '')) && is_string($edit_url) ? esc_url_raw($edit_url) : '',
         ];
+    }
+
+    /**
+     * @param array<int, string> $post_types
+     * @return array<int, string>
+     */
+    private function filterPostTypes(array $post_types)
+    {
+        if (class_exists('\DBVC_Visual_Editor_Addon') && method_exists('\DBVC_Visual_Editor_Addon', 'filter_post_types')) {
+            return \DBVC_Visual_Editor_Addon::filter_post_types($post_types);
+        }
+
+        return array_values(array_filter(array_map('sanitize_key', $post_types)));
+    }
+
+    /**
+     * @param string $post_type
+     * @return bool
+     */
+    private function isPostTypeExcluded($post_type)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_post_type_excluded')
+            && \DBVC_Visual_Editor_Addon::is_post_type_excluded($post_type);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param array<int, int>     $submitted_ids
+     * @return array<int, int>
+     */
+    private function mergeExcludedStoredReferenceIds(EditableDescriptor $descriptor, array $submitted_ids)
+    {
+        $stored_ids = $this->normalizeStoredReferenceIds($this->getCollectionValue($descriptor));
+        if (empty($stored_ids)) {
+            return $submitted_ids;
+        }
+
+        $submitted_queue = array_values($submitted_ids);
+        $merged = [];
+
+        foreach ($stored_ids as $stored_id) {
+            $post_type = get_post_type($stored_id);
+            if (is_string($post_type) && $this->isPostTypeExcluded($post_type)) {
+                $merged[] = $stored_id;
+                continue;
+            }
+
+            if (! empty($submitted_queue)) {
+                $merged[] = array_shift($submitted_queue);
+            }
+        }
+
+        foreach ($submitted_queue as $submitted_id) {
+            $merged[] = $submitted_id;
+        }
+
+        $deduped = [];
+        foreach ($merged as $post_id) {
+            $post_id = absint($post_id);
+            if ($post_id > 0 && ! in_array($post_id, $deduped, true)) {
+                $deduped[] = $post_id;
+            }
+        }
+
+        return $deduped;
     }
 
     /**

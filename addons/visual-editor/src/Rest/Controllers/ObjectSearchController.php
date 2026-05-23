@@ -206,6 +206,10 @@ final class ObjectSearchController
                 continue;
             }
 
+            if ($this->isPostTypeExcluded($name)) {
+                continue;
+            }
+
             if ($subtype !== '' && $subtype !== $name) {
                 continue;
             }
@@ -307,6 +311,10 @@ final class ObjectSearchController
         foreach ($objects as $name => $object) {
             $name = sanitize_key((string) $name);
 
+            if ($this->isTaxonomyExcluded($name)) {
+                continue;
+            }
+
             if ($subtype !== '' && $subtype !== $name) {
                 continue;
             }
@@ -342,5 +350,27 @@ final class ObjectSearchController
             'backendUrl' => is_string($backend_url) ? esc_url_raw($backend_url) : '',
             'canEdit' => true,
         ];
+    }
+
+    /**
+     * @param string $post_type
+     * @return bool
+     */
+    private function isPostTypeExcluded($post_type)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_post_type_excluded')
+            && \DBVC_Visual_Editor_Addon::is_post_type_excluded($post_type);
+    }
+
+    /**
+     * @param string $taxonomy
+     * @return bool
+     */
+    private function isTaxonomyExcluded($taxonomy)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_taxonomy_excluded')
+            && \DBVC_Visual_Editor_Addon::is_taxonomy_excluded($taxonomy);
     }
 }

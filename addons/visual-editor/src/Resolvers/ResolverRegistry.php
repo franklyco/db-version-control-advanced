@@ -2548,7 +2548,7 @@ final class ResolverRegistry
     private function resolveReadonlyAcfInputType($field_type, $allow_multiple, $render_context = '')
     {
         if ($field_type === 'gallery') {
-            return 'media_gallery_reference';
+            return 'media_gallery_preview';
         }
 
         if ($field_type === 'image') {
@@ -2603,7 +2603,7 @@ final class ResolverRegistry
         }
 
         if ($field_type === 'gallery') {
-            return 'media_gallery_preview';
+            return 'media_gallery_reference';
         }
 
         if ($allow_multiple) {

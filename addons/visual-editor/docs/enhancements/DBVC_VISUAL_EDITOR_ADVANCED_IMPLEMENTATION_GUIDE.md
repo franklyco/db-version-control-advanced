@@ -309,16 +309,19 @@ Current status:
 - nested ACF group ancestry is now preserved through descriptor metadata, row traversal, and live sync identity so grouped descendants can be resumed from a stable contract baseline
 - ordered gallery replacement is now enabled for direct Bricks gallery collections, including stable repeater and flexible row descendants, and the same safe flexible field set is now widened across shared post/term/user/option owners through the explicit `shared_flexible_layout` contract
 
-### Planned tranche: missing or conditional Bricks image/media markers
+### Planned tranche: missing or conditional Bricks image/media/gallery markers
 
 Problem:
 - Bricks image/background elements only receive Visual Editor media badges today when the element renders and exposes a direct image source/background attribute.
+- Bricks image-gallery elements only receive Visual Editor gallery badges when the gallery element renders and exposes the direct gallery marker.
 - Some templates intentionally conditionally hide or skip the image element when the source field is empty, especially inside Bricks query-loop cards, repeater rows, and flexible-content rows.
-- In those cases the editable source can be valid and safely writable, but there is no rendered `<figure>`, `<img>`, or background wrapper to carry `data-dbvc-ve`.
+- Gallery sections can follow the same pattern when an ACF gallery field is empty and the Bricks image-gallery element is conditionally hidden.
+- In those cases the editable source can be valid and safely writable, but there is no rendered `<figure>`, `<img>`, gallery wrapper, or background wrapper to carry `data-dbvc-ve`.
 
 Goal:
-- surface an actionable media badge on the nearest safe visible parent/container when a proven Bricks image element is missing because the underlying image/media source is empty or the element condition prevented render output.
-- reuse the existing `media_reference` panel and ACF image / featured-image save contracts.
+- surface an actionable media/gallery badge on the nearest safe visible parent/container when a proven Bricks image or image-gallery element is missing because the underlying source is empty or the element condition prevented render output.
+- reuse the existing `media_reference` panel and ACF image / featured-image save contracts for single images.
+- reuse the existing `media_gallery_reference` panel and ACF gallery save contract for Bricks image-gallery elements backed by direct ACF gallery fields.
 - keep source ownership/path strict for current owners, loop-owned posts, repeater rows, and flexible layouts.
 
 Source shapes for the first slice:
@@ -326,6 +329,8 @@ Source shapes for the first slice:
   - ACF `image` field
   - post `featured_image`
 - render context expected to be `image_src`
+- Bricks image-gallery element with `settings.items.useDynamicData` mapped to a direct ACF `gallery` field.
+- render context expected to be `gallery_collection`
 - owner/path already resolvable through the existing resolver stack:
   - current post/page/CPT
   - concrete loop-owned post
@@ -334,7 +339,8 @@ Source shapes for the first slice:
   - nested group descendants where source/path metadata is already proven
 
 Deferred source shapes:
-- galleries and multi-image collections
+- gallery sources that are not direct ACF gallery fields
+- non-empty galleries hidden by unrelated Bricks conditions
 - ambiguous image projections that are not direct image source bindings
 - relationship/post_object/taxonomy selector fields rendered as image projections
 - shared option fallback media unless the owner contract is explicit and acknowledged
@@ -347,7 +353,7 @@ Recommended implementation design:
    - do not register synthetic descriptors for unsupported or ambiguous image projections.
 2. Register a synthetic descriptor only after resolver classification succeeds:
    - status can be editable only if the existing resolver/save contract would already be writable for the same image source if rendered normally.
-   - render metadata should include `context = image_src` or `background_image`, plus a new marker hint such as `missing_media_anchor = true`.
+   - render metadata should include `context = image_src`, `background_image`, or `gallery_collection`, plus a marker hint such as `missing_media_anchor = true`.
    - skip normal rendered-value verification because the element is absent, but require resolver value to be empty or missing before surfacing the missing-media marker.
 3. Inject a hidden marker if final HTML lacks the descriptor token:
    - first try the exact Bricks image element occurrence by `brxe-{element_id}` when a wrapper exists but the inner image does not.
@@ -358,12 +364,13 @@ Recommended implementation design:
    - mark the synthetic node with a dedicated data flag such as `data-dbvc-ve-missing-media="1"` so CSS/JS can position a container badge without making a fake visible image.
 4. Frontend badge behavior:
    - mount a container-style badge labelled from the media source, for example `Add Image`, `Add Featured Image`, or the ACF field label.
+   - gallery markers should label as `Add Gallery` or `Add {ACF gallery label}`.
    - keep the dashed outline on the parent/container using a distinct empty-media style, not the text empty-field pulse.
-   - opening the panel should use the existing media reference UI and Media Library flow.
+   - opening the panel should use the existing single-media or ordered-gallery Media Library flow based on descriptor input type.
 5. Save behavior:
    - saving without reload can update descriptor state, but cannot reliably render an absent Bricks element that was removed by a server-side condition.
    - default primary action should be `Save and Reload` for missing-media markers unless the marker was attached to an existing image wrapper that can be patched in place.
-   - after reload, Bricks should render the image element normally and the marker should become a regular `image_src` marker.
+   - after reload, Bricks should render the image or gallery element normally and the marker should become a regular `image_src` / `gallery_collection` marker.
 
 Safety requirements:
 - never infer an image source from DOM proximity alone.
@@ -374,10 +381,18 @@ Safety requirements:
 
 Current implementation state:
 - First guarded runtime slice is implemented for empty direct `image_src` / `background_image` descriptors backed by an existing ACF image or post featured-image save contract.
+- The same guarded fallback now includes empty direct `gallery_collection` descriptors backed by an existing ACF gallery save contract.
+- Populated direct Bricks `image-gallery` render verification now compares rendered attachment IDs from Bricks gallery markup (`data-id` first, `wp-image-*` fallback) against resolved ACF gallery attachment IDs instead of comparing text content such as `5 images`.
+- Bricks can apply the gallery root attributes to each gallery item; Visual Editor now keeps the first gallery collection marker on the gallery wrapper and strips duplicate item-level marker attributes for the same token.
+- The gallery panel now manages the full ordered gallery collection: `Add images` appends new Media Library selections while preserving existing IDs, `Replace gallery` intentionally overwrites the collection, individual thumbnails can be removed, thumbnail controls can move images earlier/later, and desktop drag-and-drop can reorder thumbnails before the ordered ID list is saved.
+- Rendered media markers now expose both `Save` and `Save and Reload`: no-reload saves patch `img` `src/srcset/sizes/alt`, background-image style values, or a lightweight live gallery thumbnail list in the existing wrapper; reload saves remain available when Bricks needs to rebuild full gallery/lightbox markup.
 - When Bricks emits no image markup, the descriptor is retained only if the backend media value resolves empty; non-empty hidden/conditional image values remain unsurfaced rather than becoming writable from proximity.
-- The marker anchors to the configured Bricks parent element by matching the final DOM class `brxe-{parent_element_id}` while descriptors continue to store unprefixed Bricks IDs.
-- The frontend uses `data-dbvc-ve-missing-media="1"` to show a media badge and forces reload after save so Bricks can render the missing image element normally.
-- Still deferred: conditional image elements whose source already has a value, parent-fallback search beyond the immediate configured parent, gallery-missing placeholders, and synthetic row/layout creation for missing containers.
+- When Bricks emits no gallery markup, the descriptor is retained only if the backend gallery value resolves to an empty list; non-empty hidden/conditional gallery values remain unsurfaced rather than becoming writable from proximity.
+- The marker first anchors to the configured Bricks parent element by matching the final DOM class `brxe-{parent_element_id}` while descriptors continue to store unprefixed Bricks IDs.
+- If the immediate wrapper is absent or already owns another Visual Editor marker, the marker walks known Bricks ancestor metadata and chooses the nearest rendered unclaimed ancestor. This supports conditional wrapper omission without overwriting a different editable descriptor.
+- The frontend uses `data-dbvc-ve-missing-media="1"` plus `data-dbvc-ve-missing-media-kind` to show the proper media/gallery badge and forces reload after save so Bricks can render the missing image or gallery element normally.
+- Writable gallery descriptors now use `media_gallery_reference`; readonly gallery descriptors use `media_gallery_preview`.
+- Still deferred: conditional image/gallery elements whose source already has a value, ancestor recovery when Bricks exposes no parent-chain metadata at all, and synthetic row/layout creation for missing containers.
 
 Validation targets:
 - current post ACF image field that renders no image when empty
@@ -385,6 +400,12 @@ Validation targets:
 - native repeater row image subfield where one row has no image
 - flexible-content image subfield inside a row/layout that conditionally hides the Bricks image element
 - background image dynamic-data source with an empty ACF image field
+- Bricks image-gallery dynamic-data source with an empty direct ACF gallery field
+- populated Bricks image-gallery source to verify ordered Media Library replacement and reload-after-save on live markup
+
+Concrete gallery fixtures:
+- Populated gallery: `https://dbvc-codexchanges.local/vertical/websites-for-contractors/` uses `FLO-Verticals-Single` template `26763`, Bricks image-gallery element `xxrpfg`, and ACF gallery field `gallery_section_gallery` with five stored attachment IDs.
+- Empty/condition-skipped gallery gap: `https://dbvc-codexchanges.local/vertical/dentists/` uses the same template and field with an empty value; current render probes show Bricks emits no `xxrpfg` markup and no Visual Editor marker because the element is skipped before the current render hooks can register a descriptor.
 
 ### Immediate next implementation order
 

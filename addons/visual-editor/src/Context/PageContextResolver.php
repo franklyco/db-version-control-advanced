@@ -14,6 +14,9 @@ final class PageContextResolver
 
         if ($is_singular) {
             $post_type = (string) get_post_type($entity_id);
+            if ($this->isPostTypeExcluded($post_type)) {
+                return $this->buildUnsupportedContext();
+            }
 
             return [
                 'entityType' => 'post',
@@ -99,6 +102,10 @@ final class PageContextResolver
             ? $term_link
             : (string) home_url(add_query_arg([]));
         $taxonomy = sanitize_key((string) $term->taxonomy);
+        if ($this->isTaxonomyExcluded($taxonomy)) {
+            return [];
+        }
+
         $term_id = absint($term->term_id);
 
         return [
@@ -128,6 +135,10 @@ final class PageContextResolver
 
         $post_type = $this->resolveArchivePostType();
         if ($post_type === '') {
+            return [];
+        }
+
+        if ($this->isPostTypeExcluded($post_type)) {
             return [];
         }
 
@@ -177,6 +188,28 @@ final class PageContextResolver
         }
 
         return is_scalar($query_post_type) ? sanitize_key((string) $query_post_type) : '';
+    }
+
+    /**
+     * @param string $post_type
+     * @return bool
+     */
+    private function isPostTypeExcluded($post_type)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_post_type_excluded')
+            && \DBVC_Visual_Editor_Addon::is_post_type_excluded($post_type);
+    }
+
+    /**
+     * @param string $taxonomy
+     * @return bool
+     */
+    private function isTaxonomyExcluded($taxonomy)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_taxonomy_excluded')
+            && \DBVC_Visual_Editor_Addon::is_taxonomy_excluded($taxonomy);
     }
 
     /**

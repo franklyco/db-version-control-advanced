@@ -807,6 +807,10 @@
     return context === 'image_src' || context === 'background_image';
   }
 
+  function canPatchRenderContextWithoutReload(context) {
+    return isMediaRenderContext(context) || context === 'gallery_collection';
+  }
+
   function getDescriptorSourceGroup(descriptor, node) {
     if (descriptor && descriptor.render && typeof descriptor.render.source_group === 'string' && descriptor.render.source_group) {
       return descriptor.render.source_group;
@@ -890,6 +894,14 @@
 
   function isMissingMediaMarker(node) {
     return Boolean(node && node.dataset && node.dataset.dbvcVeMissingMedia === '1');
+  }
+
+  function getMissingMediaKind(node) {
+    if (!isMissingMediaMarker(node)) {
+      return '';
+    }
+
+    return node.dataset.dbvcVeMissingMediaKind === 'gallery' ? 'gallery' : 'image';
   }
 
   function getDescriptorQuerySource(descriptor) {
@@ -1195,6 +1207,120 @@
         title: String(item.title || '')
       };
     }).filter(Boolean);
+  }
+
+  function copyClassName(source, fallback) {
+    return source && typeof source.className === 'string' && source.className
+      ? source.className
+      : fallback;
+  }
+
+  function patchGalleryCollectionNode(node, value, descriptor) {
+    if (!node) {
+      return 0;
+    }
+
+    const items = normalizeGalleryItems(value, descriptor);
+    const existingChildren = Array.from(node.children || []);
+    const existingItem = existingChildren[0] || null;
+    const existingFigure = existingItem && existingItem.matches && existingItem.matches('figure')
+      ? existingItem
+      : (existingItem && existingItem.querySelector ? existingItem.querySelector('figure') : null);
+    const existingAnchor = existingItem && existingItem.querySelector ? existingItem.querySelector('a') : null;
+    const existingImage = existingItem && existingItem.querySelector ? existingItem.querySelector('img') : null;
+    const usesListItems = ['UL', 'OL'].indexOf(node.tagName) !== -1;
+    const itemTag = usesListItems ? 'li' : 'figure';
+    const itemClassName = copyClassName(existingItem, 'dbvc-ve-live-gallery-item');
+    const figureClassName = existingFigure && existingFigure !== existingItem ? copyClassName(existingFigure, '') : '';
+    const anchorClassName = copyClassName(existingAnchor, '');
+    const imageClassName = copyClassName(existingImage, '');
+
+    node.innerHTML = '';
+
+    items.forEach(function (item) {
+      const id = Number(item && item.id || 0) || 0;
+      const url = item && (item.renderUrl || item.url) ? String(item.renderUrl || item.url) : '';
+      const fullUrl = item && item.url ? String(item.url) : url;
+
+      if (!url) {
+        return;
+      }
+
+      const itemNode = document.createElement(itemTag);
+      let imageParent = itemNode;
+
+      itemNode.className = itemClassName;
+      itemNode.classList.add('dbvc-ve-live-gallery-item');
+
+      if (id > 0) {
+        itemNode.dataset.id = String(id);
+      }
+
+      if (usesListItems) {
+        const figure = document.createElement('figure');
+
+        if (figureClassName) {
+          figure.className = figureClassName;
+        }
+
+        itemNode.appendChild(figure);
+        imageParent = figure;
+      }
+
+      if (existingAnchor) {
+        const anchor = document.createElement('a');
+
+        anchor.href = fullUrl || url;
+        if (anchorClassName) {
+          anchor.className = anchorClassName;
+        }
+        if (existingAnchor.target) {
+          anchor.target = existingAnchor.target;
+        }
+        if (existingAnchor.rel) {
+          anchor.rel = existingAnchor.rel;
+        }
+
+        imageParent.appendChild(anchor);
+        imageParent = anchor;
+      }
+
+      const image = document.createElement('img');
+
+      image.src = url;
+      image.alt = item && item.alt ? String(item.alt) : '';
+      image.loading = 'lazy';
+      image.decoding = 'async';
+
+      if (imageClassName) {
+        image.className = imageClassName;
+      }
+
+      imageParent.appendChild(image);
+      node.appendChild(itemNode);
+    });
+
+    return items.length;
+  }
+
+  function mergeGalleryItems(existingItems, addedItems) {
+    const items = [];
+    const seen = new Set();
+
+    [existingItems, addedItems].forEach(function (group) {
+      normalizeGalleryItems(group || []).forEach(function (item) {
+        const id = Number(item.id || 0) || 0;
+
+        if (!id || seen.has(id)) {
+          return;
+        }
+
+        seen.add(id);
+        items.push(item);
+      });
+    });
+
+    return items;
   }
 
   function mapMediaSelectionToGalleryItem(data, descriptor) {
@@ -5782,8 +5908,30 @@
     });
   }
 
-  function renderGalleryPreviewItems(grid, meta, items) {
+  function reorderGalleryItems(items, fromIndex, toIndex) {
     const normalized = Array.isArray(items) ? items : [];
+    const from = Number(fromIndex);
+    const to = Number(toIndex);
+
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || from < 0 || to < 0 || from >= normalized.length || to >= normalized.length) {
+      return null;
+    }
+
+    const nextItems = normalized.slice();
+    const item = nextItems.splice(from, 1)[0];
+
+    nextItems.splice(to, 0, item);
+
+    return nextItems;
+  }
+
+  function renderGalleryPreviewItems(grid, meta, items, options) {
+    const normalized = Array.isArray(items) ? items : [];
+    const controls = options && typeof options === 'object' ? options : {};
+    const editable = Boolean(controls.editable);
+    const disabled = Boolean(controls.disabled);
+    const draggable = editable && !disabled && normalized.length > 1 && typeof controls.onReorder === 'function';
+    let draggedIndex = null;
 
     grid.innerHTML = '';
     meta.textContent = normalized.length === 1
@@ -5795,7 +5943,7 @@
       return;
     }
 
-    normalized.forEach(function (item) {
+    normalized.forEach(function (item, index) {
       const url = item && (item.renderUrl || item.url) ? String(item.renderUrl || item.url) : '';
 
       if (!url) {
@@ -5808,7 +5956,130 @@
       figure.className = 'dbvc-ve-panel__gallery-item';
       image.src = url;
       image.alt = item && item.alt ? String(item.alt) : '';
+      image.draggable = false;
       figure.appendChild(image);
+
+      if (draggable) {
+        figure.draggable = true;
+        figure.classList.add('is-draggable');
+        figure.title = strings().panelGalleryDragToReorder || 'Drag to reorder gallery image';
+        figure.setAttribute('aria-grabbed', 'false');
+
+        figure.addEventListener('dragstart', function (event) {
+          if (event.target && typeof event.target.closest === 'function' && event.target.closest('.dbvc-ve-panel__gallery-action')) {
+            event.preventDefault();
+            return;
+          }
+
+          draggedIndex = index;
+          figure.classList.add('is-dragging');
+          figure.setAttribute('aria-grabbed', 'true');
+
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(index));
+          }
+        });
+        figure.addEventListener('dragover', function (event) {
+          if (draggedIndex === null || draggedIndex === index) {
+            return;
+          }
+
+          event.preventDefault();
+          figure.classList.add('is-drop-target');
+
+          if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'move';
+          }
+        });
+        figure.addEventListener('dragleave', function (event) {
+          if (event.relatedTarget && figure.contains(event.relatedTarget)) {
+            return;
+          }
+
+          figure.classList.remove('is-drop-target');
+        });
+        figure.addEventListener('drop', function (event) {
+          let fromIndex = draggedIndex;
+
+          event.preventDefault();
+          figure.classList.remove('is-drop-target');
+
+          if (event.dataTransfer) {
+            const transferredValue = event.dataTransfer.getData('text/plain');
+            const transferredIndex = transferredValue === '' ? null : Number(transferredValue);
+
+            if (Number.isInteger(transferredIndex)) {
+              fromIndex = transferredIndex;
+            }
+          }
+
+          if (fromIndex === null || fromIndex === index) {
+            return;
+          }
+
+          controls.onReorder(fromIndex, index);
+        });
+        figure.addEventListener('dragend', function () {
+          draggedIndex = null;
+          figure.classList.remove('is-dragging');
+          figure.setAttribute('aria-grabbed', 'false');
+
+          grid.querySelectorAll('.dbvc-ve-panel__gallery-item.is-drop-target').forEach(function (itemNode) {
+            itemNode.classList.remove('is-drop-target');
+          });
+        });
+      }
+
+      if (editable) {
+        const actions = document.createElement('div');
+        const moveUpButton = document.createElement('button');
+        const moveDownButton = document.createElement('button');
+        const removeButton = document.createElement('button');
+        const itemLabel = item && item.title ? String(item.title) : `#${Number(item && item.id || 0) || index + 1}`;
+
+        actions.className = 'dbvc-ve-panel__gallery-actions';
+        moveUpButton.type = 'button';
+        moveDownButton.type = 'button';
+        removeButton.type = 'button';
+        moveUpButton.className = 'dbvc-ve-panel__gallery-action';
+        moveDownButton.className = 'dbvc-ve-panel__gallery-action';
+        removeButton.className = 'dbvc-ve-panel__gallery-action dbvc-ve-panel__gallery-action--danger';
+        moveUpButton.textContent = '↑';
+        moveDownButton.textContent = '↓';
+        removeButton.textContent = '×';
+        moveUpButton.title = strings().panelGalleryMoveEarlier || 'Move earlier';
+        moveDownButton.title = strings().panelGalleryMoveLater || 'Move later';
+        removeButton.title = strings().panelGalleryRemove || 'Remove image';
+        moveUpButton.setAttribute('aria-label', `${moveUpButton.title}: ${itemLabel}`);
+        moveDownButton.setAttribute('aria-label', `${moveDownButton.title}: ${itemLabel}`);
+        removeButton.setAttribute('aria-label', `${removeButton.title}: ${itemLabel}`);
+        moveUpButton.disabled = disabled || index === 0;
+        moveDownButton.disabled = disabled || index >= normalized.length - 1;
+        removeButton.disabled = disabled;
+
+        moveUpButton.addEventListener('click', function () {
+          if (controls.onMove) {
+            controls.onMove(index, -1);
+          }
+        });
+        moveDownButton.addEventListener('click', function () {
+          if (controls.onMove) {
+            controls.onMove(index, 1);
+          }
+        });
+        removeButton.addEventListener('click', function () {
+          if (controls.onRemove) {
+            controls.onRemove(index);
+          }
+        });
+
+        actions.appendChild(moveUpButton);
+        actions.appendChild(moveDownButton);
+        actions.appendChild(removeButton);
+        figure.appendChild(actions);
+      }
+
       grid.appendChild(figure);
     });
   }
@@ -5849,84 +6120,120 @@
   function createMediaGalleryReferenceController(value, descriptor) {
     const wrapper = document.createElement('div');
     const buttonRow = document.createElement('div');
-    const chooseButton = document.createElement('button');
+    const addButton = document.createElement('button');
+    const replaceButton = document.createElement('button');
     const clearButton = document.createElement('button');
     const meta = document.createElement('div');
     const grid = document.createElement('div');
-    const fields = [chooseButton, clearButton];
+    const fields = [addButton, replaceButton, clearButton];
     let currentItems = normalizeGalleryItems(value, descriptor);
-    let mediaFrame = null;
+    let disabledState = false;
 
     wrapper.className = 'dbvc-ve-panel__stack';
     buttonRow.className = 'dbvc-ve-panel__toolbar';
     meta.className = 'dbvc-ve-panel__media-meta';
     grid.className = 'dbvc-ve-panel__gallery-preview';
-    chooseButton.type = 'button';
-    chooseButton.className = 'dbvc-ve-panel__toolbar-button';
+    addButton.type = 'button';
+    addButton.className = 'dbvc-ve-panel__toolbar-button';
+    replaceButton.type = 'button';
+    replaceButton.className = 'dbvc-ve-panel__toolbar-button';
     clearButton.type = 'button';
     clearButton.className = 'dbvc-ve-panel__toolbar-button';
 
     function render(nextItems) {
       currentItems = normalizeGalleryItems(nextItems, descriptor);
-      chooseButton.textContent = currentItems.length
-        ? (strings().panelGalleryReplace || 'Replace gallery selection')
+      addButton.textContent = currentItems.length
+        ? (strings().panelGalleryAdd || 'Add images')
         : (strings().panelGalleryChoose || 'Choose gallery images');
+      replaceButton.textContent = strings().panelGalleryReplace || 'Replace gallery';
+      replaceButton.hidden = !currentItems.length;
       clearButton.textContent = strings().panelGalleryClear || 'Clear gallery';
-      clearButton.disabled = !currentItems.length;
-      renderGalleryPreviewItems(grid, meta, currentItems);
+      addButton.disabled = disabledState;
+      replaceButton.disabled = disabledState || !currentItems.length;
+      clearButton.disabled = disabledState || !currentItems.length;
+      renderGalleryPreviewItems(grid, meta, currentItems, {
+        editable: true,
+        disabled: disabledState,
+        onMove(index, direction) {
+          const nextItems = reorderGalleryItems(currentItems, index, index + direction);
+
+          if (nextItems) {
+            render(nextItems);
+          }
+        },
+        onReorder(fromIndex, toIndex) {
+          const nextItems = reorderGalleryItems(currentItems, fromIndex, toIndex);
+
+          if (nextItems) {
+            render(nextItems);
+          }
+        },
+        onRemove(index) {
+          const nextItems = currentItems.slice();
+
+          nextItems.splice(index, 1);
+          render(nextItems);
+        }
+      });
     }
 
-    function openMediaFrame() {
+    function openMediaFrame(mode) {
       if (!supportsWpMedia()) {
         return;
       }
 
-      if (!mediaFrame) {
-        mediaFrame = window.wp.media({
-          title: strings().panelGalleryFrameTitle || 'Select gallery images',
-          button: {
-            text: strings().panelGalleryFrameButton || 'Use selected images'
-          },
-          library: {
-            type: 'image'
-          },
-          multiple: true
-        });
-        bindMediaFramePrefetchState(mediaFrame);
+      const mediaFrame = window.wp.media({
+        title: mode === 'add'
+          ? (strings().panelGalleryAddFrameTitle || strings().panelGalleryFrameTitle || 'Add gallery images')
+          : (strings().panelGalleryFrameTitle || 'Select gallery images'),
+        button: {
+          text: mode === 'add'
+            ? (strings().panelGalleryAddFrameButton || strings().panelGalleryFrameButton || 'Add selected images')
+            : (strings().panelGalleryFrameButton || 'Use selected images')
+        },
+        library: {
+          type: 'image'
+        },
+        multiple: true
+      });
+      bindMediaFramePrefetchState(mediaFrame);
 
-        mediaFrame.on('select', function () {
-          const selection = mediaFrame.state().get('selection');
-          const items = [];
+      mediaFrame.on('select', function () {
+        const selection = mediaFrame.state().get('selection');
+        const items = [];
 
-          if (selection && typeof selection.each === 'function') {
-            selection.each(function (attachment) {
-              const data = attachment ? attachment.toJSON() : null;
+        if (selection && typeof selection.each === 'function') {
+          selection.each(function (attachment) {
+            const data = attachment ? attachment.toJSON() : null;
 
-              if (!data) {
-                return;
-              }
+            if (!data) {
+              return;
+            }
 
-              items.push(mapMediaSelectionToGalleryItem(data, descriptor));
-            });
-          }
+            items.push(mapMediaSelectionToGalleryItem(data, descriptor));
+          });
+        }
 
-          render(items);
-        });
-      }
+        render(mode === 'add' ? mergeGalleryItems(currentItems, items) : items);
+      });
 
       mediaFrame.open();
     }
 
     render(value);
 
-    chooseButton.addEventListener('click', function () {
-      openMediaFrame();
+    addButton.addEventListener('click', function () {
+      openMediaFrame('add');
+    });
+    replaceButton.addEventListener('click', function () {
+      openMediaFrame('replace');
     });
     clearButton.addEventListener('click', function () {
       render([]);
     });
 
-    buttonRow.appendChild(chooseButton);
+    buttonRow.appendChild(addButton);
+    buttonRow.appendChild(replaceButton);
     buttonRow.appendChild(clearButton);
     wrapper.appendChild(buttonRow);
     wrapper.appendChild(meta);
@@ -5943,14 +6250,12 @@
         render(nextValue);
       },
       focus() {
-        chooseButton.focus();
+        addButton.focus();
       },
       setDisabled(disabled) {
-        const isDisabled = Boolean(disabled);
+        disabledState = Boolean(disabled);
 
-        fields.forEach(function (field) {
-          field.disabled = isDisabled;
-        });
+        render(currentItems);
       }
     });
   }
@@ -7109,8 +7414,11 @@
     const acknowledgementType = state.activeAcknowledgementType;
     const entityType = getDescriptorEntityType(state.activeDescriptor);
     const renderContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
-    const canNoReloadSave = renderContext === 'query_collection' && status !== 'readonly';
-    const isReloadOnlyContext = renderContext === 'gallery_collection';
+    const isMissingMedia = isMissingMediaMarker(state.activeNode);
+    const canNoReloadSave = !isMissingMedia
+      && status !== 'readonly'
+      && (renderContext === 'query_collection' || canPatchRenderContextWithoutReload(renderContext));
+    const offersReloadSave = canNoReloadSave || isMissingMedia;
     const disabled = !canEdit || (needsSharedAck && !state.sharedScopeAcknowledged);
 
     if (panelNodes.saveNoReloadButton) {
@@ -7125,7 +7433,7 @@
       return;
     }
 
-    if (canNoReloadSave || isReloadOnlyContext) {
+    if (offersReloadSave) {
       panelNodes.saveButton.textContent = strings().panelSaveAndReload || 'Save and Reload';
     } else if (needsSharedAck && acknowledgementType === 'related') {
       panelNodes.saveButton.textContent = resolveRelatedSaveLabel(entityType);
@@ -7563,6 +7871,7 @@
       }
 
       node.dataset.dbvcVeDisplayValue = normalizeValue(nextSrc);
+      scheduleBadgeLayout();
       return;
     }
 
@@ -7572,11 +7881,14 @@
 
       node.style.backgroundImage = nextBackground ? `url("${nextBackground.replace(/"/g, '\\"')}")` : '';
       node.dataset.dbvcVeDisplayValue = normalizeValue(nextBackground);
+      scheduleBadgeLayout();
       return;
     }
 
     if (context === 'gallery_collection') {
+      patchGalleryCollectionNode(node, currentValue, descriptor);
       node.dataset.dbvcVeDisplayValue = normalizeValue(nextValue);
+      scheduleBadgeLayout();
       return;
     }
 
@@ -7616,6 +7928,12 @@
 
             return getDescriptorRenderContext(descriptor, node) === activeContext
               && getDescriptorMediaSize(descriptor) === activeMediaSize;
+          }
+
+          if (activeContext === 'gallery_collection') {
+            const descriptor = lookupDescriptorForNode(node);
+
+            return getDescriptorRenderContext(descriptor, node) === 'gallery_collection';
           }
 
           return true;
@@ -7856,26 +8174,34 @@
       const sourceGroup = getActiveSourceGroup();
       const activeContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
       const activeMissingMedia = isMissingMediaMarker(state.activeNode);
-      const canDeferReload = activeContext === 'query_collection';
-      const shouldReloadAfterSave = activeContext === 'gallery_collection'
-        || activeMissingMedia
-        || (activeContext === 'query_collection' && saveOptions.reloadAfterSave !== false);
+      const canPatchWithoutReload = !activeMissingMedia && canPatchRenderContextWithoutReload(activeContext);
+      const canDeferReload = activeContext === 'query_collection' || canPatchWithoutReload;
+      const shouldReloadAfterSave = activeMissingMedia
+        || ((activeContext === 'query_collection' || canPatchWithoutReload) && saveOptions.reloadAfterSave !== false);
       const saveSummaryMessage = formatSaveSummary(saveResult);
       let successMessage = saveSummaryMessage || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.'));
 
       if (shouldReloadAfterSave) {
-        successMessage = activeMissingMedia
-          ? (strings().panelMediaReloading || 'Image saved. Reloading page…')
-          : (activeContext === 'query_collection'
-          ? (strings().panelCollectionReloading || 'Connected items saved. Reloading page…')
-          : (strings().panelGalleryReloading || 'Gallery saved. Reloading page…'));
+        if (activeContext === 'query_collection') {
+          successMessage = strings().panelCollectionReloading || 'Connected items saved. Reloading page…';
+        } else if (activeContext === 'gallery_collection' || (activeMissingMedia && getMissingMediaKind(state.activeNode) === 'gallery')) {
+          successMessage = strings().panelGalleryReloading || 'Gallery saved. Reloading page…';
+        } else {
+          successMessage = strings().panelMediaReloading || 'Image saved. Reloading page…';
+        }
       } else if (canDeferReload) {
-        successMessage = strings().panelCollectionSavedNoReload || 'Connected items saved. Reload when ready to refresh this query loop.';
+        if (activeContext === 'gallery_collection') {
+          successMessage = strings().panelGallerySavedNoReload || 'Gallery saved. Reload when ready to rebuild the full gallery markup.';
+        } else if (isMediaRenderContext(activeContext)) {
+          successMessage = strings().panelMediaSavedNoReload || 'Image saved and updated on the page.';
+        } else {
+          successMessage = strings().panelCollectionSavedNoReload || 'Connected items saved. Reload when ready to refresh this query loop.';
+        }
       }
 
       updateCachedDescriptors(syncGroup, sourceGroup, saveResult);
       applyCollectionStateToCachedDescriptors(saveResult);
-      if (!shouldReloadAfterSave && !canDeferReload) {
+      if (!shouldReloadAfterSave && (canPatchWithoutReload || !canDeferReload)) {
         syncSavedDisplayValues(syncGroup, sourceGroup, saveResult);
       }
       state.activeController.setValue(saveResult.value);

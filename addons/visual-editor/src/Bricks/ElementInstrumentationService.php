@@ -430,7 +430,7 @@ final class ElementInstrumentationService
 
         $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : 'text';
         $raw_seed = $this->buildSeed($element, $inspection, $loop_context);
-        $seed = $render_context === 'query_collection' ? $raw_seed : $this->dedupeSeed($raw_seed);
+        $seed = in_array($render_context, ['query_collection', 'gallery_collection'], true) ? $raw_seed : $this->dedupeSeed($raw_seed);
         $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
         $this->instrumented[$seed] = $token;
         $render_attribute = isset($inspection['render_attribute']) ? sanitize_key((string) $inspection['render_attribute']) : '';
@@ -583,6 +583,7 @@ final class ElementInstrumentationService
             if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
                 $content = $this->injectEmptyQueryCollectionMarkerAfterQueryTrail($content, $descriptor, $element_id, $index);
             }
+            $content = $this->stripDuplicateGalleryCollectionMarkers($content, $descriptor);
             $occurrences[$element_id] = $index + 1;
         }
 
@@ -1901,6 +1902,10 @@ final class ElementInstrumentationService
             return $element_html;
         }
 
+        if (($descriptor->render['context'] ?? '') === 'gallery_collection') {
+            return $this->verifyGalleryCollectionDescriptor($element_html, $descriptor, $raw_value, $rendered_fragment, $resolver);
+        }
+
         $rendered_value = $this->extractComparableRenderValue($rendered_fragment, $descriptor);
         $display_payload = $this->resolveDisplayPayload($resolver, $descriptor, $raw_value, $rendered_value);
         $resolved_value = isset($display_payload['text']) ? (string) $display_payload['text'] : '';
@@ -1955,6 +1960,115 @@ final class ElementInstrumentationService
         );
 
         return $this->replaceMarkerAttributeForToken($element_html, $descriptor->token, 'data-dbvc-ve-group', $descriptor->render['sync_group']);
+    }
+
+    /**
+     * Bricks gallery markup renders a collection of attachment nodes, not text.
+     * Verify direct gallery descriptors by attachment identity before exposing saves.
+     *
+     * @param string             $element_html
+     * @param EditableDescriptor $descriptor
+     * @param mixed              $raw_value
+     * @param string             $rendered_fragment
+     * @param object             $resolver
+     * @return string
+     */
+    private function verifyGalleryCollectionDescriptor($element_html, EditableDescriptor $descriptor, $raw_value, $rendered_fragment, $resolver)
+    {
+        $resolved_ids = $this->normalizeGalleryAttachmentIds($raw_value);
+        $rendered_ids = $this->extractRenderedGalleryAttachmentIds($rendered_fragment);
+        $value_match = $resolved_ids === $rendered_ids;
+
+        $rendered_value = implode(',', $rendered_ids);
+        $resolved_value = implode(',', $resolved_ids);
+        $display_text = is_object($resolver) && method_exists($resolver, 'getDisplayValue')
+            ? (string) $resolver->getDisplayValue($descriptor, $raw_value)
+            : $resolved_value;
+
+        $descriptor->render['rendered_value'] = $rendered_value;
+        $descriptor->render['resolved_value'] = $resolved_value;
+        $descriptor->render['rendered_text'] = $rendered_value;
+        $descriptor->render['resolved_text'] = $display_text;
+        $descriptor->render['display_key'] = 'gallery_ids';
+        $descriptor->render['display_mode'] = 'text';
+        $descriptor->render['render_verified'] = true;
+        $descriptor->render['value_match'] = $value_match;
+
+        if ($descriptor->status === 'editable' && ! $value_match) {
+            $descriptor->status = 'unsupported';
+            $descriptor->ui['warning'] = __(self::MISMATCH_WARNING, 'dbvc');
+            $this->dropDescriptorByToken($descriptor->token);
+
+            return $this->stripMarkerAttributesForToken($element_html, $descriptor->token);
+        }
+
+        $descriptor->render['sync_group'] = $this->buildSyncGroup(
+            $descriptor->entity,
+            $descriptor->source,
+            'gallery_collection',
+            'gallery_ids'
+        );
+
+        return $this->replaceMarkerAttributeForToken($element_html, $descriptor->token, 'data-dbvc-ve-group', $descriptor->render['sync_group']);
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, int>
+     */
+    private function normalizeGalleryAttachmentIds($value)
+    {
+        $ids = [];
+        $items = is_array($value) ? $value : [$value];
+
+        foreach ($items as $item) {
+            $id = 0;
+            if (is_numeric($item)) {
+                $id = absint($item);
+            } elseif (is_array($item) && isset($item['id'])) {
+                $id = absint($item['id']);
+            } elseif (is_array($item) && isset($item['ID'])) {
+                $id = absint($item['ID']);
+            } elseif (is_object($item) && isset($item->ID)) {
+                $id = absint($item->ID);
+            }
+
+            if ($id <= 0 || in_array($id, $ids, true)) {
+                continue;
+            }
+
+            $ids[] = $id;
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param string $rendered_fragment
+     * @return array<int, int>
+     */
+    private function extractRenderedGalleryAttachmentIds($rendered_fragment)
+    {
+        $ids = [];
+        if (preg_match_all('/\bdata-id=(["\'])(\d+)\1/i', (string) $rendered_fragment, $matches)) {
+            foreach ($matches[2] as $id) {
+                $id = absint($id);
+                if ($id > 0 && ! in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+        }
+
+        if (empty($ids) && preg_match_all('/\bwp-image-(\d+)\b/i', (string) $rendered_fragment, $matches)) {
+            foreach ($matches[1] as $id) {
+                $id = absint($id);
+                if ($id > 0 && ! in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+        }
+
+        return $ids;
     }
 
     /**
@@ -2135,6 +2249,8 @@ final class ElementInstrumentationService
         $clean = preg_replace('/\sdata-dbvc-ve-group="[^"]*"/', '', (string) $clean, 1);
         $clean = preg_replace('/\sdata-dbvc-ve-context="[^"]*"/', '', (string) $clean, 1);
         $clean = preg_replace('/\sdata-dbvc-ve-attribute="[^"]*"/', '', (string) $clean, 1);
+        $clean = preg_replace('/\sdata-dbvc-ve-badge-label(?:="[^"]*")?/', '', (string) $clean, 1);
+        $clean = preg_replace('/\sdata-dbvc-ve-input="[^"]*"/', '', (string) $clean, 1);
 
         return is_string($clean) ? $clean : (string) $element_html;
     }
@@ -2154,6 +2270,44 @@ final class ElementInstrumentationService
         $clean_tag = $this->stripMarkerAttributes($tag);
 
         return str_replace($tag, $clean_tag, (string) $element_html);
+    }
+
+    /**
+     * Bricks image-gallery can apply root attributes to each gallery item.
+     * Keep the first collection marker on the gallery wrapper and remove duplicates.
+     *
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function stripDuplicateGalleryCollectionMarkers($content, EditableDescriptor $descriptor)
+    {
+        if (($descriptor->render['context'] ?? '') !== 'gallery_collection') {
+            return $content;
+        }
+
+        $token = sanitize_key((string) $descriptor->token);
+        if ($token === '') {
+            return $content;
+        }
+
+        $seen = false;
+        $updated = preg_replace_callback(
+            '/<[^>]*\sdata-dbvc-ve="' . preg_quote($token, '/') . '"[^>]*>/i',
+            function ($matches) use (&$seen) {
+                $tag = isset($matches[0]) ? (string) $matches[0] : '';
+                if (! $seen) {
+                    $seen = true;
+
+                    return $tag;
+                }
+
+                return $this->stripMarkerAttributes($tag);
+            },
+            (string) $content
+        );
+
+        return is_string($updated) ? $updated : (string) $content;
     }
 
     /**
@@ -2422,7 +2576,7 @@ final class ElementInstrumentationService
     }
 
     /**
-     * Register a normal image descriptor even when Bricks emits no image markup.
+     * Register a normal image/gallery descriptor even when Bricks emits no media markup.
      * The descriptor only becomes visible later if the resolved source is empty.
      *
      * @param object $element
@@ -2446,7 +2600,7 @@ final class ElementInstrumentationService
         }
 
         $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : '';
-        if (! in_array($render_context, ['image_src', 'background_image'], true)) {
+        if (! in_array($render_context, ['image_src', 'background_image', 'gallery_collection'], true)) {
             return;
         }
 
@@ -2460,7 +2614,7 @@ final class ElementInstrumentationService
     private function isMissingMediaDescriptorCandidate(EditableDescriptor $descriptor)
     {
         $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
-        if (! in_array($render_context, ['image_src', 'background_image'], true)) {
+        if (! in_array($render_context, ['image_src', 'background_image', 'gallery_collection'], true)) {
             return false;
         }
 
@@ -2468,7 +2622,7 @@ final class ElementInstrumentationService
         $field_type = isset($descriptor->source['field_type']) ? sanitize_key((string) $descriptor->source['field_type']) : '';
         $field_name = isset($descriptor->source['field_name']) ? sanitize_key((string) $descriptor->source['field_name']) : '';
 
-        return $field_type === 'image'
+        return in_array($field_type, ['image', 'gallery'], true)
             || ($source_type === 'post_field' && $field_name === 'featured_image');
     }
 
@@ -2478,12 +2632,8 @@ final class ElementInstrumentationService
      */
     private function isMissingMediaDescriptor(EditableDescriptor $descriptor)
     {
-        $parent_element_id = isset($descriptor->render['parent_element_id'])
-            ? sanitize_key((string) $descriptor->render['parent_element_id'])
-            : '';
-
         return ! empty($descriptor->render['missing_media_anchor'])
-            && $parent_element_id !== ''
+            && ! empty($this->resolveMissingMediaAnchorElementIds($descriptor))
             && $this->isMissingMediaDescriptorCandidate($descriptor);
     }
 
@@ -2500,6 +2650,11 @@ final class ElementInstrumentationService
             }
 
             $value = $resolver->getValue($descriptor);
+            $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
+            if ($render_context === 'gallery_collection') {
+                return empty($value) || (is_array($value) && count($value) === 0);
+            }
+
             $display_value = $resolver->getDisplayValue($descriptor, $value);
 
             return trim((string) $display_value) === '';
@@ -2545,38 +2700,92 @@ final class ElementInstrumentationService
             return $content;
         }
 
-        $parent_element_id = sanitize_key((string) $descriptor->render['parent_element_id']);
-        $pattern = '/<([A-Za-z][A-Za-z0-9:-]*)([^>]*\bclass=(["\'])(?:(?:(?!\3).)*)\bbrxe-' . preg_quote($parent_element_id, '/') . '\b(?:(?:(?!\3).)*)\3[^>]*)>/s';
+        foreach ($this->resolveMissingMediaAnchorElementIds($descriptor) as $anchor_element_id) {
+            $match = $this->findBricksElementOpeningTagMatch($content, $anchor_element_id, $occurrence_index);
+            if (empty($match)) {
+                continue;
+            }
+
+            $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+            $offset = isset($match['offset']) ? (int) $match['offset'] : 0;
+            if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
+                continue;
+            }
+
+            $updated_tag = $this->appendMarkerAttributesToTag(
+                $tag,
+                $descriptor,
+                [
+                    'data-dbvc-ve-missing-media' => '1',
+                    'data-dbvc-ve-missing-media-kind' => $this->resolveMissingMediaKind($descriptor),
+                    'data-dbvc-ve-missing-media-anchor' => $anchor_element_id,
+                    'data-dbvc-ve-badge-label' => $this->resolveMissingMediaBadgeLabel($descriptor),
+                    'data-dbvc-ve-display-value' => '',
+                ]
+            );
+            if ($updated_tag === $tag) {
+                continue;
+            }
+
+            return substr((string) $content, 0, $offset)
+                . $updated_tag
+                . substr((string) $content, $offset + strlen($tag));
+        }
+
+        return $content;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<int, string>
+     */
+    private function resolveMissingMediaAnchorElementIds(EditableDescriptor $descriptor)
+    {
+        $current = isset($descriptor->render['parent_element_id'])
+            ? sanitize_key((string) $descriptor->render['parent_element_id'])
+            : '';
+        $ids = [];
+        $visited = [];
+
+        for ($depth = 0; $depth < 12 && $current !== '' && empty($visited[$current]); $depth++) {
+            $visited[$current] = true;
+            $ids[] = $current;
+
+            $metadata = isset($this->element_metadata_by_id[$current]) && is_array($this->element_metadata_by_id[$current])
+                ? $this->element_metadata_by_id[$current]
+                : [];
+            $current = isset($metadata['parent']) ? sanitize_key((string) $metadata['parent']) : '';
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * @param string $content
+     * @param string $element_id
+     * @param int    $occurrence_index
+     * @return array<string, mixed>
+     */
+    private function findBricksElementOpeningTagMatch($content, $element_id, $occurrence_index)
+    {
+        $element_id = sanitize_key((string) $element_id);
+        if ($element_id === '') {
+            return [];
+        }
+
+        $pattern = '/<([A-Za-z][A-Za-z0-9:-]*)([^>]*\bclass=(["\'])(?:(?:(?!\3).)*)\bbrxe-' . preg_quote($element_id, '/') . '\b(?:(?:(?!\3).)*)\3[^>]*)>/s';
         if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
-            return $content;
+            return [];
         }
 
         if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
-            return $content;
+            return [];
         }
 
-        $tag = (string) $matches[0][$occurrence_index][0];
-        $offset = (int) $matches[0][$occurrence_index][1];
-        if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
-            return $content;
-        }
-
-        $updated_tag = $this->appendMarkerAttributesToTag(
-            $tag,
-            $descriptor,
-            [
-                'data-dbvc-ve-missing-media' => '1',
-                'data-dbvc-ve-badge-label' => $this->resolveMissingMediaBadgeLabel($descriptor),
-                'data-dbvc-ve-display-value' => '',
-            ]
-        );
-        if ($updated_tag === $tag) {
-            return $content;
-        }
-
-        return substr((string) $content, 0, $offset)
-            . $updated_tag
-            . substr((string) $content, $offset + strlen($tag));
+        return [
+            'tag' => (string) $matches[0][$occurrence_index][0],
+            'offset' => (int) $matches[0][$occurrence_index][1],
+        ];
     }
 
     /**
@@ -2591,8 +2800,10 @@ final class ElementInstrumentationService
             return __('Add Featured Image', 'dbvc');
         }
 
+        $field_type = isset($descriptor->source['field_type']) ? sanitize_key((string) $descriptor->source['field_type']) : '';
         $label = isset($descriptor->ui['label']) ? sanitize_text_field((string) $descriptor->ui['label']) : '';
-        if ($label !== '' && strtolower($label) !== 'image') {
+        $default_label = $field_type === 'gallery' ? 'gallery' : 'image';
+        if ($label !== '' && strtolower($label) !== $default_label) {
             return sprintf(
                 /* translators: %s: media field label. */
                 __('Add %s', 'dbvc'),
@@ -2600,7 +2811,22 @@ final class ElementInstrumentationService
             );
         }
 
+        if ($field_type === 'gallery') {
+            return __('Add Gallery', 'dbvc');
+        }
+
         return __('Add Image', 'dbvc');
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function resolveMissingMediaKind(EditableDescriptor $descriptor)
+    {
+        $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
+
+        return $render_context === 'gallery_collection' ? 'gallery' : 'image';
     }
 
     /**

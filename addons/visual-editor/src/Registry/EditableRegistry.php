@@ -42,6 +42,10 @@ final class EditableRegistry
      */
     public function add(EditableDescriptor $descriptor)
     {
+        if ($this->isDescriptorExcluded($descriptor)) {
+            return;
+        }
+
         $this->descriptors[$descriptor->token] = $descriptor;
         $this->getSessionId();
     }
@@ -103,9 +107,9 @@ final class EditableRegistry
                 static function (EditableDescriptor $descriptor) {
                     return $descriptor->toArray();
                 },
-                $this->descriptors
+                $this->filterExcludedDescriptors($this->descriptors)
             ),
-            'public_map' => $this->exportPublicMap($this->descriptors),
+            'public_map' => $this->exportPublicMap($this->filterExcludedDescriptors($this->descriptors)),
             'created_at' => time(),
         ];
 
@@ -170,7 +174,9 @@ final class EditableRegistry
             return null;
         }
 
-        return EditableDescriptor::fromArray($descriptors[$token]);
+        $descriptor = EditableDescriptor::fromArray($descriptors[$token]);
+
+        return $this->isDescriptorExcluded($descriptor) ? null : $descriptor;
     }
 
     /**
@@ -188,7 +194,12 @@ final class EditableRegistry
                 continue;
             }
 
-            $resolved[sanitize_key((string) $token)] = EditableDescriptor::fromArray($payload);
+            $descriptor = EditableDescriptor::fromArray($payload);
+            if ($this->isDescriptorExcluded($descriptor)) {
+                continue;
+            }
+
+            $resolved[sanitize_key((string) $token)] = $descriptor;
         }
 
         return $resolved;
@@ -202,7 +213,7 @@ final class EditableRegistry
     public function updateDescriptorInSession($session_id, EditableDescriptor $descriptor)
     {
         $session_id = $this->normalizeSessionId($session_id);
-        if ($session_id === '' || $descriptor->token === '') {
+        if ($session_id === '' || $descriptor->token === '' || $this->isDescriptorExcluded($descriptor)) {
             return false;
         }
 
@@ -225,7 +236,12 @@ final class EditableRegistry
                 continue;
             }
 
-            $resolved[sanitize_key((string) $token)] = EditableDescriptor::fromArray($item);
+            $resolved_descriptor = EditableDescriptor::fromArray($item);
+            if ($this->isDescriptorExcluded($resolved_descriptor)) {
+                continue;
+            }
+
+            $resolved[sanitize_key((string) $token)] = $resolved_descriptor;
         }
 
         $payload['public_map'] = $this->exportPublicMap($resolved);
@@ -243,7 +259,7 @@ final class EditableRegistry
     public function addDescriptorToSession($session_id, EditableDescriptor $descriptor)
     {
         $session_id = $this->normalizeSessionId($session_id);
-        if ($session_id === '' || $descriptor->token === '') {
+        if ($session_id === '' || $descriptor->token === '' || $this->isDescriptorExcluded($descriptor)) {
             return false;
         }
 
@@ -262,7 +278,12 @@ final class EditableRegistry
                 continue;
             }
 
-            $resolved[sanitize_key((string) $token)] = EditableDescriptor::fromArray($item);
+            $resolved_descriptor = EditableDescriptor::fromArray($item);
+            if ($this->isDescriptorExcluded($resolved_descriptor)) {
+                continue;
+            }
+
+            $resolved[sanitize_key((string) $token)] = $resolved_descriptor;
         }
 
         $payload['public_map'] = $this->exportPublicMap($resolved);
@@ -283,6 +304,10 @@ final class EditableRegistry
 
         foreach ($descriptors as $token => $descriptor) {
             if (! $descriptor instanceof EditableDescriptor) {
+                continue;
+            }
+
+            if ($this->isDescriptorExcluded($descriptor)) {
                 continue;
             }
 
@@ -526,6 +551,31 @@ final class EditableRegistry
                 )
             )
         );
+    }
+
+    /**
+     * @param array<string, EditableDescriptor> $descriptors
+     * @return array<string, EditableDescriptor>
+     */
+    private function filterExcludedDescriptors(array $descriptors)
+    {
+        return array_filter(
+            $descriptors,
+            function ($descriptor) {
+                return $descriptor instanceof EditableDescriptor && ! $this->isDescriptorExcluded($descriptor);
+            }
+        );
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function isDescriptorExcluded(EditableDescriptor $descriptor)
+    {
+        return class_exists('\DBVC_Visual_Editor_Addon')
+            && method_exists('\DBVC_Visual_Editor_Addon', 'is_descriptor_excluded')
+            && \DBVC_Visual_Editor_Addon::is_descriptor_excluded($descriptor);
     }
 
     /**

@@ -164,6 +164,15 @@ final class SharedGlobalFieldsController
             }
 
             $descriptor = $this->buildDescriptor($session_id, $page_context, $field);
+            if (empty($descriptor->source['reference_post_types'])) {
+                $warnings[] = sprintf(
+                    /* translators: %s: ACF field name */
+                    __('Configured shared global field `%s` only targets post types excluded from Visual Editor.', 'dbvc'),
+                    $configured_name
+                );
+                continue;
+            }
+
             if (! $this->registry->addDescriptorToSession($session_id, $descriptor)) {
                 $warnings[] = sprintf(
                     /* translators: %s: ACF field name */
@@ -242,7 +251,10 @@ final class SharedGlobalFieldsController
         $field_label = isset($field['label']) && is_scalar($field['label'])
             ? sanitize_text_field((string) $field['label'])
             : $field_name;
-        $post_types = $this->normalizePostTypes(isset($field['post_type']) ? $field['post_type'] : []);
+        $post_types = $this->filterPostTypes($this->normalizePostTypes(isset($field['post_type']) ? $field['post_type'] : []));
+        if (empty($post_types)) {
+            $post_types = $this->getDefaultReferencePostTypes();
+        }
         $field_group = $this->resolveFieldGroupContext($field);
         $option_page_slug = ! empty($field_group['option_pages']) ? (string) reset($field_group['option_pages']) : '';
         $option_page_label = $this->resolveOptionPageLabel($option_page_slug);
@@ -357,7 +369,7 @@ final class SharedGlobalFieldsController
             'canEdit' => ! empty($payload['canEdit']),
             'configured' => true,
             'multiple' => ! empty($descriptor->source['reference_multiple']),
-            'postTypes' => $this->normalizePostTypes(isset($field['post_type']) ? $field['post_type'] : []),
+            'postTypes' => $this->resolveFieldPostTypes($field),
         ];
     }
 
@@ -419,6 +431,49 @@ final class SharedGlobalFieldsController
         }
 
         return $post_types;
+    }
+
+    /**
+     * @param array<string, mixed> $field
+     * @return array<int, string>
+     */
+    private function resolveFieldPostTypes(array $field)
+    {
+        $post_types = $this->filterPostTypes($this->normalizePostTypes(isset($field['post_type']) ? $field['post_type'] : []));
+
+        return ! empty($post_types) ? $post_types : $this->getDefaultReferencePostTypes();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function getDefaultReferencePostTypes()
+    {
+        return $this->filterPostTypes(
+            array_values(
+                array_filter(
+                    get_post_types(
+                        [
+                            'public' => true,
+                        ],
+                        'names'
+                    )
+                )
+            )
+        );
+    }
+
+    /**
+     * @param array<int, string> $post_types
+     * @return array<int, string>
+     */
+    private function filterPostTypes(array $post_types)
+    {
+        if (class_exists('\DBVC_Visual_Editor_Addon') && method_exists('\DBVC_Visual_Editor_Addon', 'filter_post_types')) {
+            return \DBVC_Visual_Editor_Addon::filter_post_types($post_types);
+        }
+
+        return array_values(array_filter(array_map('sanitize_key', $post_types)));
     }
 
     /**

@@ -547,6 +547,78 @@ Acceptance:
 - text does not overflow buttons or result rows
 - no popover opens below the viewport
 
+### Add-on Settings Submenu and Exclusions
+
+Status: first implementation slice added.
+
+Goal:
+
+Add a dedicated Visual Editor submenu page under DBVC while keeping the existing Configure -> Add-ons -> Visual Editor settings as the same source of truth. Use that settings surface to exclude internal/non-content post types and taxonomies from all frontend Visual Editor panels and toolbar popovers.
+
+Exact source shape being enabled:
+
+- addon-level configuration, not a new descriptor type
+- post type exclusion slugs stored in `dbvc_visual_editor_excluded_post_types`
+- taxonomy exclusion slugs stored in `dbvc_visual_editor_excluded_taxonomies`
+- default exclusions for Bricks internal template handling:
+  - `bricks_template`
+  - `template_tag`
+  - `template_bundle`
+
+Current code paths involved:
+
+- `addons/visual-editor/bootstrap.php`
+- `addons/visual-editor/src/Admin/SettingsPage.php`
+- `addons/visual-editor/src/Context/PageContextResolver.php`
+- `addons/visual-editor/src/Registry/EditableRegistry.php`
+- `addons/visual-editor/src/Rest/Controllers/ObjectSearchController.php`
+- `addons/visual-editor/src/Rest/Controllers/ReferenceSearchController.php`
+- `addons/visual-editor/src/Rest/Controllers/SharedGlobalFieldsController.php`
+- `addons/visual-editor/src/Resolvers/AcfReferenceCollectionResolver.php`
+- `addons/visual-editor/src/Resolvers/PostTermsCollectionResolver.php`
+
+Descriptor metadata requirements:
+
+- descriptors whose entity or owner subtype is an excluded post type/taxonomy must not enter the request/session registry
+- query collection descriptors with an excluded `query_target_post_type` must not surface
+- linked-term descriptors with an excluded `taxonomy` or sole `reference_taxonomies` value must not surface
+- relationship/post_object descriptors whose configured target types are all excluded must not surface
+
+Resolver and REST impact:
+
+- Go To Object search filters excluded post types and taxonomies before querying
+- reference collection search uses filtered post type allowlists and returns no results when the allowlist is empty
+- linked-term search returns no results for excluded taxonomies
+- Shared Globals skips configured fields whose effective target post types are excluded
+
+Mutation and rollback risk:
+
+- this feature must not create new write contracts
+- excluded selected items hidden from the panel must not be removed accidentally
+- full ACF reference collection saves preserve hidden excluded stored IDs while allowing visible non-excluded items to be reordered/replaced
+- filtered-subset query collection saves keep their existing target-subset contract and do not preserve unrelated hidden types through this exclusion branch
+
+UI/panel impact:
+
+- new submenu page: DBVC -> Visual Editor
+- existing Configure -> Add-ons -> Visual Editor still renders the same settings fields
+- frontend panels should simply omit excluded content rather than adding extra warning rows
+
+Testing examples:
+
+- `template_tag` and `template_bundle` should not appear in Go To Object term results
+- `bricks_template` should not appear in Go To Object post results
+- Visual Editor should not activate on excluded post type singular or archive contexts
+- a linked-term editor for an excluded taxonomy should not be reachable
+- a mixed relationship field containing hidden excluded IDs should preserve them after saving visible allowed items
+
+Validation:
+
+- PHP lint touched files
+- focused object-search REST probe with exclusions set
+- focused reference-search probe for a descriptor with an excluded target type
+- browser smoke for settings page save and frontend toolbar search results
+
 ## Validation Matrix
 
 Run the narrowest applicable checks per phase.
