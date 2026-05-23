@@ -278,7 +278,7 @@ final class ElementInstrumentationService
 
         $metadata = [
             'id' => isset($element->id) ? sanitize_text_field((string) $element->id) : '',
-            'parent' => isset($element->parent) ? sanitize_text_field((string) $element->parent) : '',
+            'parent' => $this->resolveElementParentId($element),
             'name' => isset($element->name) ? sanitize_key((string) $element->name) : '',
             'label' => $label,
             'css_id' => $css_id,
@@ -360,6 +360,31 @@ final class ElementInstrumentationService
     }
 
     /**
+     * Bricks may clear the public parent property on frontend element instances,
+     * but the raw template element array still carries the unprefixed parent ID.
+     *
+     * @param object $element
+     * @return string
+     */
+    private function resolveElementParentId($element)
+    {
+        if (! is_object($element)) {
+            return '';
+        }
+
+        if (! empty($element->parent)) {
+            return sanitize_text_field((string) $element->parent);
+        }
+
+        $raw_element = isset($element->element) && is_array($element->element) ? $element->element : [];
+        if (! empty($raw_element['parent'])) {
+            return sanitize_text_field((string) $raw_element['parent']);
+        }
+
+        return '';
+    }
+
+    /**
      * @param array<string, mixed> $attributes
      * @param string               $key
      * @param object               $element
@@ -427,6 +452,7 @@ final class ElementInstrumentationService
                 'element_id' => isset($element->id) ? sanitize_text_field((string) $element->id) : '',
                 'element_uid' => isset($element->uid) ? sanitize_text_field((string) $element->uid) : (isset($element->id) ? sanitize_text_field((string) $element->id) : ''),
                 'element_name' => isset($element->name) ? sanitize_key((string) $element->name) : '',
+                'parent_element_id' => $this->resolveElementParentId($element),
                 'setting_key' => isset($inspection['setting_key']) ? sanitize_key((string) $inspection['setting_key']) : '',
                 'attribute_key' => sanitize_text_field($key),
                 'context' => $render_context !== '' ? $render_context : 'text',
@@ -481,8 +507,29 @@ final class ElementInstrumentationService
      */
     public function verifyRenderedElement($element_html, $element)
     {
-        if (! is_string($element_html) || $element_html === '' || ! is_object($element)) {
+        if (! is_string($element_html) || ! is_object($element)) {
             return is_string($element_html) ? $element_html : '';
+        }
+
+        $this->rememberElementMetadata($element);
+        $this->rememberNativeQueryElement($element);
+
+        if ($element_html === '') {
+            $this->maybeRegisterMissingMediaDescriptorForElement($element);
+
+            foreach ($this->findElementDescriptors($element) as $descriptor) {
+                if (! $this->isMissingMediaDescriptorCandidate($descriptor)) {
+                    continue;
+                }
+
+                if ($this->descriptorHasEmptyMediaValue($descriptor)) {
+                    $this->markMissingMediaDescriptorVerified($descriptor);
+                } else {
+                    $this->dropDescriptorByToken($descriptor->token);
+                }
+            }
+
+            return '';
         }
 
         $descriptors = $this->findElementDescriptors($element);
@@ -527,6 +574,9 @@ final class ElementInstrumentationService
             $index = isset($occurrences[$element_id]) ? (int) $occurrences[$element_id] : 0;
             $before_injection = $content;
             $content = $this->injectMarkerIntoElementOccurrence($content, $descriptor, $element_id, $index);
+            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+                $content = $this->injectMissingMediaMarkerIntoParentOccurrence($content, $descriptor, $index);
+            }
             if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
                 $content = $this->injectEmptyQueryCollectionMarkerAfterLoopComment($content, $descriptor, $element_id, $index);
             }
@@ -673,12 +723,17 @@ final class ElementInstrumentationService
         $label_context = $this->resolveCollectionBadgeLabelContext($element);
         $element_ids = $this->resolveElementIds($element);
         $query_element_id = isset($element_ids[0]) ? sanitize_text_field((string) $element_ids[0]) : '';
+        $owner_post_id_hint = absint($this->page_context->resolveRenderedPostId());
+        $expression = 'element.taxonomy:' . $taxonomy;
+        if ($owner_post_id_hint > 0) {
+            $expression .= ':post:' . $owner_post_id_hint;
+        }
 
         return [
             'supported' => true,
             'source_type' => 'post_terms_collection',
             'query_source' => 'bricks_native_post_taxonomy_element',
-            'expression' => 'element.taxonomy:' . $taxonomy,
+            'expression' => $expression,
             'setting_key' => 'taxonomy',
             'render_context' => 'query_collection',
             'render_attribute' => '',
@@ -689,6 +744,7 @@ final class ElementInstrumentationService
             'query_badge_subject' => $label_context['badge_subject'],
             'taxonomy' => $taxonomy,
             'native_terms_element' => true,
+            'owner_post_id_hint' => $owner_post_id_hint,
         ];
     }
 
@@ -2366,6 +2422,188 @@ final class ElementInstrumentationService
     }
 
     /**
+     * Register a normal image descriptor even when Bricks emits no image markup.
+     * The descriptor only becomes visible later if the resolved source is empty.
+     *
+     * @param object $element
+     * @return void
+     */
+    private function maybeRegisterMissingMediaDescriptorForElement($element)
+    {
+        if (! is_object($element)) {
+            return;
+        }
+
+        foreach ($this->findElementDescriptors($element) as $descriptor) {
+            if ($this->isMissingMediaDescriptorCandidate($descriptor)) {
+                return;
+            }
+        }
+
+        $inspection = $this->inspector->inspect($element);
+        if (empty($inspection['supported'])) {
+            return;
+        }
+
+        $render_context = isset($inspection['render_context']) ? sanitize_key((string) $inspection['render_context']) : '';
+        if (! in_array($render_context, ['image_src', 'background_image'], true)) {
+            return;
+        }
+
+        $this->instrumentInspection([], '_missing_media', $element, $inspection);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function isMissingMediaDescriptorCandidate(EditableDescriptor $descriptor)
+    {
+        $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
+        if (! in_array($render_context, ['image_src', 'background_image'], true)) {
+            return false;
+        }
+
+        $source_type = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : '';
+        $field_type = isset($descriptor->source['field_type']) ? sanitize_key((string) $descriptor->source['field_type']) : '';
+        $field_name = isset($descriptor->source['field_name']) ? sanitize_key((string) $descriptor->source['field_name']) : '';
+
+        return $field_type === 'image'
+            || ($source_type === 'post_field' && $field_name === 'featured_image');
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function isMissingMediaDescriptor(EditableDescriptor $descriptor)
+    {
+        $parent_element_id = isset($descriptor->render['parent_element_id'])
+            ? sanitize_key((string) $descriptor->render['parent_element_id'])
+            : '';
+
+        return ! empty($descriptor->render['missing_media_anchor'])
+            && $parent_element_id !== ''
+            && $this->isMissingMediaDescriptorCandidate($descriptor);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function descriptorHasEmptyMediaValue(EditableDescriptor $descriptor)
+    {
+        try {
+            $resolver = $this->resolvers->resolve($descriptor);
+            if (! is_object($resolver) || ! method_exists($resolver, 'name') || $resolver->name() === 'unsupported') {
+                return false;
+            }
+
+            $value = $resolver->getValue($descriptor);
+            $display_value = $resolver->getDisplayValue($descriptor, $value);
+
+            return trim((string) $display_value) === '';
+        } catch (\Throwable $exception) {
+            unset($exception);
+
+            return false;
+        }
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return void
+     */
+    private function markMissingMediaDescriptorVerified(EditableDescriptor $descriptor)
+    {
+        $descriptor->render['missing_media_anchor'] = true;
+        $descriptor->render['rendered_value'] = '';
+        $descriptor->render['resolved_value'] = '';
+        $descriptor->render['rendered_text'] = '';
+        $descriptor->render['resolved_text'] = '';
+        $descriptor->render['display_key'] = 'src';
+        $descriptor->render['display_mode'] = 'text';
+        $descriptor->render['render_verified'] = true;
+        $descriptor->render['value_match'] = true;
+        $descriptor->render['sync_group'] = $this->buildSyncGroup(
+            $descriptor->entity,
+            $descriptor->source,
+            isset($descriptor->render['context']) ? (string) $descriptor->render['context'] : 'image_src',
+            'src'
+        );
+    }
+
+    /**
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param int                $occurrence_index
+     * @return string
+     */
+    private function injectMissingMediaMarkerIntoParentOccurrence($content, EditableDescriptor $descriptor, $occurrence_index)
+    {
+        if (! $this->isMissingMediaDescriptor($descriptor)) {
+            return $content;
+        }
+
+        $parent_element_id = sanitize_key((string) $descriptor->render['parent_element_id']);
+        $pattern = '/<([A-Za-z][A-Za-z0-9:-]*)([^>]*\bclass=(["\'])(?:(?:(?!\3).)*)\bbrxe-' . preg_quote($parent_element_id, '/') . '\b(?:(?:(?!\3).)*)\3[^>]*)>/s';
+        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
+            return $content;
+        }
+
+        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
+            return $content;
+        }
+
+        $tag = (string) $matches[0][$occurrence_index][0];
+        $offset = (int) $matches[0][$occurrence_index][1];
+        if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
+            return $content;
+        }
+
+        $updated_tag = $this->appendMarkerAttributesToTag(
+            $tag,
+            $descriptor,
+            [
+                'data-dbvc-ve-missing-media' => '1',
+                'data-dbvc-ve-badge-label' => $this->resolveMissingMediaBadgeLabel($descriptor),
+                'data-dbvc-ve-display-value' => '',
+            ]
+        );
+        if ($updated_tag === $tag) {
+            return $content;
+        }
+
+        return substr((string) $content, 0, $offset)
+            . $updated_tag
+            . substr((string) $content, $offset + strlen($tag));
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function resolveMissingMediaBadgeLabel(EditableDescriptor $descriptor)
+    {
+        $source_type = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : '';
+        $field_name = isset($descriptor->source['field_name']) ? sanitize_key((string) $descriptor->source['field_name']) : '';
+        if ($source_type === 'post_field' && $field_name === 'featured_image') {
+            return __('Add Featured Image', 'dbvc');
+        }
+
+        $label = isset($descriptor->ui['label']) ? sanitize_text_field((string) $descriptor->ui['label']) : '';
+        if ($label !== '' && strtolower($label) !== 'image') {
+            return sprintf(
+                /* translators: %s: media field label. */
+                __('Add %s', 'dbvc'),
+                $label
+            );
+        }
+
+        return __('Add Image', 'dbvc');
+    }
+
+    /**
      * @param string             $element_html
      * @param EditableDescriptor $descriptor
      * @return string
@@ -2395,9 +2633,10 @@ final class ElementInstrumentationService
     /**
      * @param string             $tag
      * @param EditableDescriptor $descriptor
+     * @param array<string, mixed> $extra_attributes
      * @return string
      */
-    private function appendMarkerAttributesToTag($tag, EditableDescriptor $descriptor)
+    private function appendMarkerAttributesToTag($tag, EditableDescriptor $descriptor, array $extra_attributes = [])
     {
         $attributes = [
             'data-dbvc-ve' => $descriptor->token,
@@ -2413,6 +2652,15 @@ final class ElementInstrumentationService
 
         if (! empty($descriptor->render['attribute'])) {
             $attributes['data-dbvc-ve-attribute'] = (string) $descriptor->render['attribute'];
+        }
+
+        foreach ($extra_attributes as $name => $value) {
+            $name = sanitize_key((string) $name);
+            if ($name === '') {
+                continue;
+            }
+
+            $attributes[$name] = is_scalar($value) ? (string) $value : '';
         }
 
         $attribute_markup = '';
@@ -2835,7 +3083,7 @@ final class ElementInstrumentationService
                 $contract = 'post_object_collection';
             }
         } elseif ($render_context === 'query_collection' && $field_type === 'taxonomy' && (isset($source['type']) ? sanitize_key((string) $source['type']) : '') === 'post_terms_collection') {
-            $contract = (! empty($loop_context['active']) && $scope === 'related_entity')
+            $contract = $scope === 'related_entity'
                 ? 'loop_owned_post_terms_collection'
                 : 'post_terms_collection';
         } elseif ($target === 'row') {

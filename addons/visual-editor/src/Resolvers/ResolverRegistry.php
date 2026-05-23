@@ -877,6 +877,9 @@ final class ResolverRegistry
         $page_post_type = isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '';
         $loop_context = $this->loops->resolve();
         $loop_export = [];
+        $owner_post_id_hint = $is_native_terms_element && isset($candidate['owner_post_id_hint'])
+            ? absint($candidate['owner_post_id_hint'])
+            : 0;
 
         if ($this->loops->supportsRelatedPostEditing($loop_context)) {
             $entity = isset($loop_context['effective_owner_entity']) && is_array($loop_context['effective_owner_entity'])
@@ -884,6 +887,15 @@ final class ResolverRegistry
                 : [];
             $scope = $page_entity_id > 0 && absint($entity['id'] ?? 0) === $page_entity_id ? 'current_entity' : 'related_entity';
             $loop_export = $this->loops->export($loop_context);
+        } elseif ($owner_post_id_hint > 0 && get_post_type($owner_post_id_hint)) {
+            $owner_post_type = sanitize_key((string) get_post_type($owner_post_id_hint));
+            $entity = [
+                'type' => 'post',
+                'id' => $owner_post_id_hint,
+                'subtype' => $owner_post_type,
+                'acf_object_id' => $owner_post_id_hint,
+            ];
+            $scope = $page_entity_id > 0 && $owner_post_id_hint === $page_entity_id ? 'current_entity' : 'related_entity';
         } elseif ($page_entity_type === 'post' && $page_entity_id > 0) {
             $entity = [
                 'type' => 'post',

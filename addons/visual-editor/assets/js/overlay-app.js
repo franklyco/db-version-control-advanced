@@ -36,8 +36,11 @@
     toolbarSharedGlobalsByToken: {},
     fieldIndexOpen: false,
     fieldIndexFilter: 'all',
-    fieldIndexOpenSubgroups: new Set(),
+    fieldIndexScrollTop: 0,
+    fieldIndexResetScroll: false,
+    fieldIndexOpenSections: new Set(),
     fieldIndexOpenItems: new Set(),
+    fieldIndexSectionStateCaptured: false,
     fieldIndexRefreshFrame: 0,
     panelOpen: false,
     panelPosition: null,
@@ -885,6 +888,10 @@
       : '';
   }
 
+  function isMissingMediaMarker(node) {
+    return Boolean(node && node.dataset && node.dataset.dbvcVeMissingMedia === '1');
+  }
+
   function getDescriptorQuerySource(descriptor) {
     if (descriptor && descriptor.source && typeof descriptor.source.query_source === 'string') {
       return descriptor.source.query_source;
@@ -1702,11 +1709,15 @@
     const title = toolbar.querySelector('.dbvc-ve-toolbar-popover__title');
     const body = getToolbarPopoverBody();
     const expandIndex = Boolean(options && options.expandIndex);
+    const wasReviewOpen = state.toolbarOpenPanel === 'review-fields';
 
     state.toolbarOpenPanel = expandIndex ? 'review-fields' : 'status';
     state.toolbarTriggerNode = options && options.trigger ? options.trigger : null;
 
     state.fieldIndexOpen = expandIndex;
+    if (expandIndex && !wasReviewOpen) {
+      requestFieldIndexScrollReset();
+    }
 
     if (popover) {
       popover.hidden = false;
@@ -2477,12 +2488,13 @@
 
     if (action === 'toggle-field-index') {
       state.fieldIndexOpen = !state.fieldIndexOpen;
+      requestFieldIndexScrollReset();
       updateStatusBar({});
       return;
     }
 
-    if (action === 'expand-field-subgroups' || action === 'collapse-field-subgroups') {
-      setFieldIndexSubgroupsOpen(actionNode, action === 'expand-field-subgroups');
+    if (action === 'expand-field-sections' || action === 'collapse-field-sections') {
+      setFieldIndexSectionsOpen(actionNode, action === 'expand-field-sections');
       return;
     }
 
@@ -2517,10 +2529,13 @@
 
   function setFieldIndexFilter(filter) {
     state.fieldIndexFilter = normalizeFieldIndexFilter(filter);
+    state.fieldIndexOpenSections = new Set();
+    state.fieldIndexSectionStateCaptured = false;
+    requestFieldIndexScrollReset();
     updateStatusBar({});
   }
 
-  function setFieldIndexSubgroupsOpen(actionNode, open) {
+  function setFieldIndexSectionsOpen(actionNode, open) {
     const group = actionNode && typeof actionNode.closest === 'function'
       ? actionNode.closest('.dbvc-ve-field-index__group')
       : null;
@@ -2532,11 +2547,52 @@
       return;
     }
 
-    root.querySelectorAll('.dbvc-ve-field-index__subgroup').forEach(function (node) {
+    root.querySelectorAll('.dbvc-ve-field-index__section').forEach(function (node) {
       node.open = Boolean(open);
     });
 
     captureFieldIndexOpenState();
+  }
+
+  function requestFieldIndexScrollReset() {
+    state.fieldIndexScrollTop = 0;
+    state.fieldIndexResetScroll = true;
+  }
+
+  function getFieldIndexScrollNode() {
+    const bar = document.querySelector('.dbvc-ve-statusbar');
+
+    return bar ? bar.querySelector('.dbvc-ve-field-index') : null;
+  }
+
+  function captureFieldIndexScrollState() {
+    const indexNode = getFieldIndexScrollNode();
+
+    if (!indexNode) {
+      return state.fieldIndexScrollTop || 0;
+    }
+
+    state.fieldIndexScrollTop = Math.max(0, Number(indexNode.scrollTop) || 0);
+
+    return state.fieldIndexScrollTop;
+  }
+
+  function restoreFieldIndexScrollState() {
+    const indexNode = getFieldIndexScrollNode();
+
+    if (!indexNode) {
+      state.fieldIndexResetScroll = false;
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, indexNode.scrollHeight - indexNode.clientHeight);
+    const nextScrollTop = state.fieldIndexResetScroll
+      ? 0
+      : Math.min(Math.max(0, state.fieldIndexScrollTop || 0), maxScrollTop);
+
+    indexNode.scrollTop = nextScrollTop;
+    state.fieldIndexScrollTop = nextScrollTop;
+    state.fieldIndexResetScroll = false;
   }
 
   function scheduleFieldIndexRefresh() {
@@ -2552,18 +2608,20 @@
 
   function captureFieldIndexOpenState() {
     const bar = document.querySelector('.dbvc-ve-statusbar');
-    const openSubgroups = new Set();
+    const openSections = new Set();
     const openItems = new Set();
+    let sectionCount = 0;
 
     if (!bar || !bar.querySelector('.dbvc-ve-field-index')) {
       return;
     }
 
-    bar.querySelectorAll('.dbvc-ve-field-index__subgroup[data-subgroup-key]').forEach(function (node) {
-      const key = node.getAttribute('data-subgroup-key') || '';
+    bar.querySelectorAll('.dbvc-ve-field-index__section[data-section-key]').forEach(function (node) {
+      const key = node.getAttribute('data-section-key') || '';
 
+      sectionCount += 1;
       if (key && node.open) {
-        openSubgroups.add(key);
+        openSections.add(key);
       }
     });
 
@@ -2575,7 +2633,10 @@
       }
     });
 
-    state.fieldIndexOpenSubgroups = openSubgroups;
+    if (sectionCount > 0) {
+      state.fieldIndexOpenSections = openSections;
+      state.fieldIndexSectionStateCaptured = true;
+    }
     state.fieldIndexOpenItems = openItems;
   }
 
@@ -3107,6 +3168,98 @@
     ].join('::');
   }
 
+  function getFieldIndexGroupPath(index) {
+    return Array.isArray(index && index.groupPath)
+      ? index.groupPath.map(function (segment) {
+          return String(segment || '').trim();
+        }).filter(Boolean)
+      : [];
+  }
+
+  function resolveFieldIndexUngroupedSectionLabel(entry) {
+    const entity = entry && entry.entity ? entry.entity : {};
+
+    if (entity.type === 'option') {
+      return strings().fieldIndexOptionFields || 'Option fields';
+    }
+
+    if (isArchiveIndexEntry(entry)) {
+      return strings().fieldIndexArchiveFields || 'Archive fields';
+    }
+
+    if (entry && entry.status === 'readonly') {
+      return strings().fieldIndexInspectOnly || 'Inspect-only fields';
+    }
+
+    return strings().fieldIndexGeneralFields || 'General fields';
+  }
+
+  function resolveFieldIndexSection(entry) {
+    const index = entry && entry.index ? entry.index : {};
+    const groupPath = getFieldIndexGroupPath(index);
+    const immediateGroup = groupPath.length ? groupPath[0] : '';
+    const parentFieldName = index.parentFieldName ? String(index.parentFieldName) : '';
+    const containerType = index.containerType ? String(index.containerType) : '';
+    const optionPages = Array.isArray(index.fieldGroupOptionPages)
+      ? index.fieldGroupOptionPages.map(humanizeIdentifier).filter(Boolean).join(', ')
+      : '';
+    const nativeLabel = formatNativeQueryLabel(index);
+
+    if (immediateGroup) {
+      return {
+        key: `acf-group:${immediateGroup}`,
+        label: humanizeIdentifier(immediateGroup) || immediateGroup,
+        priority: 0
+      };
+    }
+
+    if (parentFieldName && containerType) {
+      return {
+        key: `container:${containerType}:${parentFieldName}`,
+        label: [
+          humanizeIdentifier(parentFieldName) || parentFieldName,
+          humanizeIdentifier(containerType)
+        ].filter(Boolean).join(' / '),
+        priority: 3
+      };
+    }
+
+    if (index.fieldGroupTitle || optionPages) {
+      const label = index.fieldGroupTitle ? String(index.fieldGroupTitle) : optionPages;
+
+      return {
+        key: `field-group:${label}`,
+        label,
+        priority: 5
+      };
+    }
+
+    if (nativeLabel) {
+      return {
+        key: [
+          'native',
+          nativeLabel,
+          index.nativeQueryKind || '',
+          index.nativeQuerySelector || '',
+          index.parentNativeQueryKind || '',
+          index.parentNativeQuerySelector || ''
+        ].join(':'),
+        label: nativeLabel,
+        priority: 8
+      };
+    }
+
+    return {
+      key: 'ungrouped',
+      label: resolveFieldIndexUngroupedSectionLabel(entry),
+      priority: 20
+    };
+  }
+
+  function summarizeFieldIndexSection(section) {
+    return getStatusBarCountText(section && typeof section.count === 'number' ? section.count : 0);
+  }
+
   function summarizeFieldIndexItem(item) {
     const count = item && Array.isArray(item.entries) ? item.entries.length : 0;
     const readonly = item.entries.filter(function (entry) {
@@ -3130,6 +3283,8 @@
 
     entries.forEach(function (entry) {
       const top = resolveFieldIndexTopGroup(entry);
+      const sectionMeta = resolveFieldIndexSection(entry);
+      const sectionKey = `${top.key}:${sectionMeta.key}`;
       const subLabel = resolveFieldIndexSubGroup(entry);
       const subKey = `${top.key}:${resolveFieldIndexSubGroupKey(entry)}`;
       let group = groups.get(top.key);
@@ -3141,14 +3296,30 @@
           order: top.order,
           domOrder: entry.domOrder,
           count: 0,
-          subgroups: new Map()
+          sections: new Map()
         };
         groups.set(top.key, group);
       } else {
         group.domOrder = Math.min(group.domOrder, entry.domOrder);
       }
 
-      let subgroup = group.subgroups.get(subKey);
+      let section = group.sections.get(sectionKey);
+      if (!section) {
+        section = {
+          key: sectionKey,
+          label: sectionMeta.label,
+          domOrder: entry.domOrder,
+          priority: sectionMeta.priority,
+          count: 0,
+          subgroups: new Map()
+        };
+        group.sections.set(sectionKey, section);
+      } else {
+        section.domOrder = Math.min(section.domOrder, entry.domOrder);
+        section.priority = Math.min(section.priority, sectionMeta.priority);
+      }
+
+      let subgroup = section.subgroups.get(subKey);
       if (!subgroup) {
         subgroup = {
           key: subKey,
@@ -3158,7 +3329,7 @@
           count: 0,
           items: new Map()
         };
-        group.subgroups.set(subKey, subgroup);
+        section.subgroups.set(subKey, subgroup);
       } else {
         subgroup.domOrder = Math.min(subgroup.domOrder, entry.domOrder);
         subgroup.priority = Math.min(subgroup.priority, getFieldIndexSubgroupPriority(entry));
@@ -3179,6 +3350,7 @@
       }
 
       group.count += 1;
+      section.count += 1;
       subgroup.count += 1;
       item.entries.push(entry);
     });
@@ -3190,27 +3362,37 @@
           || left.label.localeCompare(right.label);
       })
       .map(function (group) {
-        group.subgroups = Array.from(group.subgroups.values())
+        group.sections = Array.from(group.sections.values())
           .sort(function (left, right) {
             return left.priority - right.priority
               || left.domOrder - right.domOrder
               || left.label.localeCompare(right.label);
           })
-          .map(function (subgroup) {
-            subgroup.items = Array.from(subgroup.items.values())
+          .map(function (section) {
+            section.subgroups = Array.from(section.subgroups.values())
               .sort(function (left, right) {
-                return left.domOrder - right.domOrder || left.label.localeCompare(right.label);
+                return left.priority - right.priority
+                  || left.domOrder - right.domOrder
+                  || left.label.localeCompare(right.label);
               })
-              .map(function (item) {
-                item.entries = item.entries.sort(function (left, right) {
-                  return left.domOrder - right.domOrder
-                    || resolveFieldIndexSourceLabel(left).localeCompare(resolveFieldIndexSourceLabel(right));
-                });
+              .map(function (subgroup) {
+                subgroup.items = Array.from(subgroup.items.values())
+                  .sort(function (left, right) {
+                    return left.domOrder - right.domOrder || left.label.localeCompare(right.label);
+                  })
+                  .map(function (item) {
+                    item.entries = item.entries.sort(function (left, right) {
+                      return left.domOrder - right.domOrder
+                        || resolveFieldIndexSourceLabel(left).localeCompare(resolveFieldIndexSourceLabel(right));
+                    });
 
-                return item;
+                    return item;
+                  });
+
+                return subgroup;
               });
 
-            return subgroup;
+            return section;
           });
 
         return group;
@@ -3276,12 +3458,39 @@
     ].join('');
   }
 
-  function renderFieldIndexSubgroupControlsMarkup() {
+  function renderFieldIndexSectionControlsMarkup() {
     return [
-      '<div class="dbvc-ve-field-index__subgroup-controls">',
-      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="expand-field-subgroups">${escapeHtml(strings().fieldIndexExpandAll || 'Expand all')}</button>`,
-      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="collapse-field-subgroups">${escapeHtml(strings().fieldIndexCollapseAll || 'Collapse all')}</button>`,
+      '<div class="dbvc-ve-field-index__section-controls">',
+      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="expand-field-sections">${escapeHtml(strings().fieldIndexExpandAll || 'Expand all')}</button>`,
+      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="collapse-field-sections">${escapeHtml(strings().fieldIndexCollapseAll || 'Collapse all')}</button>`,
       '</div>'
+    ].join('');
+  }
+
+  function renderFieldIndexSubgroupMarkup(subgroup) {
+    return [
+      `<div class="dbvc-ve-field-index__subgroup" data-subgroup-key="${escapeHtml(subgroup.key)}">`,
+      '  <div class="dbvc-ve-field-index__items">',
+      subgroup.items.map(renderFieldIndexItemMarkup).join(''),
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderFieldIndexSectionMarkup(section) {
+    const isOpen = !state.fieldIndexSectionStateCaptured
+      || (state.fieldIndexOpenSections && state.fieldIndexOpenSections.has(section.key));
+
+    return [
+      `<details class="dbvc-ve-field-index__section" data-section-key="${escapeHtml(section.key)}"${isOpen ? ' open' : ''}>`,
+      '  <summary class="dbvc-ve-field-index__section-summary">',
+      `    <span>${escapeHtml(section.label)}</span>`,
+      `    <span>${escapeHtml(summarizeFieldIndexSection(section))}</span>`,
+      '  </summary>',
+      '  <div class="dbvc-ve-field-index__subgroups">',
+      section.subgroups.map(renderFieldIndexSubgroupMarkup).join(''),
+      '  </div>',
+      '</details>'
     ].join('');
   }
 
@@ -3335,20 +3544,9 @@
         return [
           '<details class="dbvc-ve-field-index__group" open>',
           `  <summary class="dbvc-ve-field-index__group-summary"><span>${escapeHtml(group.label)}</span><span>${escapeHtml(getStatusBarCountText(group.count))}</span></summary>`,
-          '  <div class="dbvc-ve-field-index__subgroups">',
-          renderFieldIndexSubgroupControlsMarkup(),
-          group.subgroups.map(function (subgroup) {
-            const isOpen = state.fieldIndexOpenSubgroups && state.fieldIndexOpenSubgroups.has(subgroup.key);
-
-            return [
-              `<details class="dbvc-ve-field-index__subgroup" data-subgroup-key="${escapeHtml(subgroup.key)}"${isOpen ? ' open' : ''}>`,
-              `  <summary class="dbvc-ve-field-index__subgroup-summary"><span>${escapeHtml(subgroup.label)}</span><span>${escapeHtml(getStatusBarCountText(subgroup.count))}</span></summary>`,
-              '  <div class="dbvc-ve-field-index__items">',
-              subgroup.items.map(renderFieldIndexItemMarkup).join(''),
-              '  </div>',
-              '</details>'
-            ].join('');
-          }).join(''),
+          '  <div class="dbvc-ve-field-index__sections">',
+          renderFieldIndexSectionControlsMarkup(),
+          group.sections.map(renderFieldIndexSectionMarkup).join(''),
           '  </div>',
           '</details>'
         ].join('');
@@ -3359,6 +3557,11 @@
 
   function renderStatusBarMeta(meta, nextState) {
     captureFieldIndexOpenState();
+    if (state.fieldIndexResetScroll) {
+      state.fieldIndexScrollTop = 0;
+    } else {
+      captureFieldIndexScrollState();
+    }
 
     const countText = getStatusBarCountText(nextState.count);
     const hasIndex = Boolean(state.session && state.session.descriptors && Object.keys(state.session.descriptors).length);
@@ -3369,6 +3572,7 @@
 
     if (!countText && !hasIndex) {
       meta.textContent = '';
+      state.fieldIndexResetScroll = false;
       return;
     }
 
@@ -3379,6 +3583,12 @@
       '</div>',
       expanded ? renderFieldIndexMarkup() : ''
     ].join('');
+
+    if (expanded) {
+      restoreFieldIndexScrollState();
+    } else {
+      state.fieldIndexResetScroll = false;
+    }
   }
 
   function findMarkerByToken(token) {
@@ -3528,9 +3738,12 @@
     const sourceGroup = getDescriptorSourceGroup(descriptor, marker);
     const expression = source.expression ? String(source.expression) : '';
     const badgeLabel = getDescriptorBadgeLabel(descriptor, marker);
+    const isPostTermsCollection = source.type === 'post_terms_collection';
 
     return [
-      queryElementId || nativeSelector || sourceGroup || expression || getMarkerToken(marker),
+      isPostTermsCollection
+        ? (sourceGroup || getMarkerToken(marker) || queryElementId || nativeSelector || expression)
+        : (queryElementId || nativeSelector || sourceGroup || expression || getMarkerToken(marker)),
       badgeLabel || getQueryCollectionContainerBadgeLabel(marker)
     ].join(':');
   }
@@ -3545,6 +3758,13 @@
     }
 
     return badgeLabel || strings().badgeConnected || 'Edit Connected';
+  }
+
+  function isPostTermsCollectionMarker(marker) {
+    const descriptor = lookupDescriptorForNode(marker);
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+
+    return source.type === 'post_terms_collection';
   }
 
   function normalizeBricksDomId(id) {
@@ -4308,6 +4528,12 @@
     badge.className = 'dbvc-ve-badge';
     badge.dataset.token = token;
 
+    if (isMissingMediaMarker(node)) {
+      badge.classList.add('dbvc-ve-badge--connected');
+      badge.textContent = badgeLabel || strings().panelMediaChoose || 'Add Image';
+      return badge;
+    }
+
     if (badgeLabel && context === 'query_collection' && status === 'readonly') {
       badge.classList.add('dbvc-ve-badge--readonly');
       badge.textContent = strings().panelInspectOnly || strings().inspectLabel || 'Inspect only';
@@ -4461,7 +4687,7 @@
       return;
     }
 
-    if (shouldMountQueryCollectionContainerBadge(target)) {
+    if (shouldMountQueryCollectionContainerBadge(target) && !isPostTermsCollectionMarker(target)) {
       hideSharedBadge();
       return;
     }
@@ -4739,6 +4965,7 @@
       '  <div class="dbvc-ve-panel__field-wrap"></div>',
       '</div>',
       '<div class="dbvc-ve-panel__status"></div>',
+      '<div class="dbvc-ve-panel__footer-notice" hidden></div>',
       '<div class="dbvc-ve-panel__actions">',
       '  <button type="button" class="dbvc-ve-panel__button dbvc-ve-panel__button--secondary" data-action="close"></button>',
       '  <button type="button" class="dbvc-ve-panel__button dbvc-ve-panel__button--secondary" data-action="save-no-reload" hidden></button>',
@@ -4777,6 +5004,7 @@
       fieldLabel: panel.querySelector('.dbvc-ve-panel__field-label'),
       fieldWrap: panel.querySelector('.dbvc-ve-panel__field-wrap'),
       status: panel.querySelector('.dbvc-ve-panel__status'),
+      footerNotice: panel.querySelector('.dbvc-ve-panel__footer-notice'),
       closeButton: panel.querySelector('[data-action="close"]'),
       saveNoReloadButton: panel.querySelector('[data-action="save-no-reload"]'),
       saveButton: panel.querySelector('[data-action="save"]')
@@ -4803,6 +5031,10 @@
     panelNodes.entityLinks.innerHTML = '';
     panelNodes.meta.innerHTML = '';
     panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
     panelNodes.fieldLabel.textContent = '';
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
     panelNodes.fieldWrap.firstChild.textContent = strings().panelReady || 'Select a marker to inspect and edit it.';
@@ -6906,6 +7138,79 @@
     panelNodes.saveButton.disabled = disabled;
   }
 
+  function resolvePanelNoticeIndicatorType(descriptor) {
+    const scope = getDescriptorScope(descriptor, state.activeNode);
+    const renderContext = getDescriptorRenderContext(descriptor, state.activeNode);
+
+    if (scope === 'shared_entity') {
+      return 'shared';
+    }
+
+    if (scope === 'related_entity') {
+      return 'related';
+    }
+
+    if (renderContext === 'query_collection') {
+      return 'query';
+    }
+
+    return 'current';
+  }
+
+  function resolvePanelNoticeIndicatorLabel(type) {
+    if (type === 'shared') {
+      return strings().panelNoticeTypeShared || 'Shared';
+    }
+
+    if (type === 'related') {
+      return strings().panelNoticeTypeRelated || 'Related';
+    }
+
+    if (type === 'query') {
+      return strings().panelNoticeTypeQuery || 'Query Loop collection';
+    }
+
+    return strings().panelNoticeTypeCurrent || 'Current Post';
+  }
+
+  function renderPanelNoticeIndicatorIcon(type) {
+    const attrs = 'aria-hidden="true" focusable="false" viewBox="0 0 24 24"';
+    const common = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+
+    if (type === 'shared') {
+      return `<svg ${attrs}><circle ${common} cx="12" cy="12" r="9"/><path ${common} d="M3 12h18"/><path ${common} d="M12 3c2.5 2.8 3.5 5.8 3.5 9s-1 6.2-3.5 9c-2.5-2.8-3.5-5.8-3.5-9s1-6.2 3.5-9Z"/></svg>`;
+    }
+
+    if (type === 'related') {
+      return `<svg ${attrs}><path ${common} d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path ${common} d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"/></svg>`;
+    }
+
+    if (type === 'query') {
+      return `<svg ${attrs}><path ${common} d="M4 6h16"/><path ${common} d="M4 12h16"/><path ${common} d="M4 18h16"/><circle fill="currentColor" cx="7" cy="6" r="1.6"/><circle fill="currentColor" cx="17" cy="12" r="1.6"/><circle fill="currentColor" cx="10" cy="18" r="1.6"/></svg>`;
+    }
+
+    return `<svg ${attrs}><path ${common} d="M7 3h7l4 4v14H7z"/><path ${common} d="M14 3v5h5"/><path ${common} d="M10 13h6"/><path ${common} d="M10 17h4"/></svg>`;
+  }
+
+  function createPanelWarningIndicator(descriptor, warning) {
+    const type = resolvePanelNoticeIndicatorType(descriptor);
+    const label = resolvePanelNoticeIndicatorLabel(type);
+    const button = document.createElement('button');
+
+    button.type = 'button';
+    button.className = 'dbvc-ve-panel__notice-indicator';
+    button.dataset.noticeType = type;
+    button.title = warning;
+    button.setAttribute('aria-label', `${label}: ${warning}`);
+    button.innerHTML = [
+      renderPanelNoticeIndicatorIcon(type),
+      `<span class="dbvc-ve-panel__notice-indicator-label">${escapeHtml(label)}</span>`,
+      `<span class="dbvc-ve-panel__notice-tooltip" role="tooltip">${escapeHtml(warning)}</span>`
+    ].join('');
+
+    return button;
+  }
+
   function renderPanelNotice(result, panelNodes, canEdit) {
     const descriptor = result.descriptor;
     const warning = descriptor.ui && descriptor.ui.warning ? String(descriptor.ui.warning) : '';
@@ -6918,6 +7223,10 @@
     const entityType = getDescriptorEntityType(descriptor);
 
     panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
 
     if (!warning && !editMessage && !requiresSharedAck && !noticeSummary) {
       return;
@@ -6946,11 +7255,17 @@
     }
 
     if (warning) {
-      const warningBlock = document.createElement('div');
+      const warningIndicator = createPanelWarningIndicator(descriptor, warning);
 
-      warningBlock.className = 'dbvc-ve-panel__notice-block is-warning';
-      warningBlock.textContent = warning;
-      panelNodes.notice.appendChild(warningBlock);
+      if (panelNodes.footerNotice) {
+        panelNodes.footerNotice.appendChild(warningIndicator);
+      } else {
+        const warningBlock = document.createElement('div');
+
+        warningBlock.className = 'dbvc-ve-panel__notice-block is-warning';
+        warningBlock.textContent = warning;
+        panelNodes.notice.appendChild(warningBlock);
+      }
     }
 
     if (editMessage) {
@@ -6981,7 +7296,15 @@
 
       label.appendChild(checkbox);
       label.appendChild(text);
-      panelNodes.notice.appendChild(label);
+      if (panelNodes.footerNotice) {
+        panelNodes.footerNotice.appendChild(label);
+      } else {
+        panelNodes.notice.appendChild(label);
+      }
+    }
+
+    if (panelNodes.footerNotice && panelNodes.footerNotice.children.length) {
+      panelNodes.footerNotice.hidden = false;
     }
   }
 
@@ -7353,6 +7676,10 @@
     panelNodes.entityLinks.innerHTML = '';
     panelNodes.meta.innerHTML = '';
     panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
     panelNodes.fieldLabel.textContent = '';
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
     panelNodes.fieldWrap.firstChild.textContent = strings().panelLoading || 'Loading field details...';
@@ -7429,6 +7756,10 @@
     panelNodes.entityLinks.innerHTML = '';
     panelNodes.meta.innerHTML = '';
     panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
     panelNodes.fieldLabel.textContent = '';
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
     panelNodes.fieldWrap.firstChild.textContent = strings().panelLoading || 'Loading field details…';
@@ -7524,16 +7855,20 @@
       const syncGroup = getActiveSyncGroup();
       const sourceGroup = getActiveSourceGroup();
       const activeContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
+      const activeMissingMedia = isMissingMediaMarker(state.activeNode);
       const canDeferReload = activeContext === 'query_collection';
       const shouldReloadAfterSave = activeContext === 'gallery_collection'
+        || activeMissingMedia
         || (activeContext === 'query_collection' && saveOptions.reloadAfterSave !== false);
       const saveSummaryMessage = formatSaveSummary(saveResult);
       let successMessage = saveSummaryMessage || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.'));
 
       if (shouldReloadAfterSave) {
-        successMessage = activeContext === 'query_collection'
+        successMessage = activeMissingMedia
+          ? (strings().panelMediaReloading || 'Image saved. Reloading page…')
+          : (activeContext === 'query_collection'
           ? (strings().panelCollectionReloading || 'Connected items saved. Reloading page…')
-          : (strings().panelGalleryReloading || 'Gallery saved. Reloading page…');
+          : (strings().panelGalleryReloading || 'Gallery saved. Reloading page…'));
       } else if (canDeferReload) {
         successMessage = strings().panelCollectionSavedNoReload || 'Connected items saved. Reload when ready to refresh this query loop.';
       }

@@ -30,6 +30,7 @@
 - repeater scalar subfield editing
 - flexible content scalar subfield editing
 - image/media support
+- missing/conditional Bricks image media badges that anchor to a safe parent/container when a proven empty image source prevents the image element from rendering
 - structured repeater/flexible subfields
 - draggable, closable session-persistent overlay panel UX
 - revision restore UX
@@ -68,6 +69,8 @@
 - Goal: add a collapsible nested list in `dbvc-ve-statusbar__meta` so users can review all marked fields on the current page without hovering every element.
 - Recommended shape: keep the statusbar compact by default, add a `Review fields` toggle, then render owner/source grouped rows with `Locate` and `Open` actions.
 - Data contract: extend the startup public map with shallow, safe index metadata. Do not use full descriptor hydration on page load and do not expose field values in the public map.
+- Current runtime state: passive statusbar refreshes preserve `.dbvc-ve-field-index.scrollTop`, and the expanded review list now clusters field item accordions under immediate parent sections such as ACF group fields, row container roots, field groups, option pages, or native-loop labels using existing public index metadata first. The earlier redundant source subgroup summary/toggle layer has been removed, so item summaries now carry the field label and marked-field count in one row.
+- Follow-up: add safe group-label metadata only if live testing shows humanized field names are insufficient.
 - Initial grouping order:
   - current entity fields
   - related posts

@@ -309,6 +309,83 @@ Current status:
 - nested ACF group ancestry is now preserved through descriptor metadata, row traversal, and live sync identity so grouped descendants can be resumed from a stable contract baseline
 - ordered gallery replacement is now enabled for direct Bricks gallery collections, including stable repeater and flexible row descendants, and the same safe flexible field set is now widened across shared post/term/user/option owners through the explicit `shared_flexible_layout` contract
 
+### Planned tranche: missing or conditional Bricks image/media markers
+
+Problem:
+- Bricks image/background elements only receive Visual Editor media badges today when the element renders and exposes a direct image source/background attribute.
+- Some templates intentionally conditionally hide or skip the image element when the source field is empty, especially inside Bricks query-loop cards, repeater rows, and flexible-content rows.
+- In those cases the editable source can be valid and safely writable, but there is no rendered `<figure>`, `<img>`, or background wrapper to carry `data-dbvc-ve`.
+
+Goal:
+- surface an actionable media badge on the nearest safe visible parent/container when a proven Bricks image element is missing because the underlying image/media source is empty or the element condition prevented render output.
+- reuse the existing `media_reference` panel and ACF image / featured-image save contracts.
+- keep source ownership/path strict for current owners, loop-owned posts, repeater rows, and flexible layouts.
+
+Source shapes for the first slice:
+- Bricks image element with `settings.image.useDynamicData` mapped to a supported direct media source:
+  - ACF `image` field
+  - post `featured_image`
+- render context expected to be `image_src`
+- owner/path already resolvable through the existing resolver stack:
+  - current post/page/CPT
+  - concrete loop-owned post
+  - stable repeater row
+  - stable flexible layout
+  - nested group descendants where source/path metadata is already proven
+
+Deferred source shapes:
+- galleries and multi-image collections
+- ambiguous image projections that are not direct image source bindings
+- relationship/post_object/taxonomy selector fields rendered as image projections
+- shared option fallback media unless the owner contract is explicit and acknowledged
+- arbitrary CSS/background conditions without a proven Bricks image/background dynamic-data setting
+- creating repeater/flexible rows or changing row/layout lifecycle to make space for the image
+
+Recommended implementation design:
+1. Capture missing-media candidates during normal element instrumentation:
+   - when `DynamicDataInspector::inspectImageSettings()` classifies a Bricks image/background source, keep a lightweight candidate record keyed by element ID, setting key, source expression, expected render context, owner/path seed, and loop signature.
+   - do not register synthetic descriptors for unsupported or ambiguous image projections.
+2. Register a synthetic descriptor only after resolver classification succeeds:
+   - status can be editable only if the existing resolver/save contract would already be writable for the same image source if rendered normally.
+   - render metadata should include `context = image_src` or `background_image`, plus a new marker hint such as `missing_media_anchor = true`.
+   - skip normal rendered-value verification because the element is absent, but require resolver value to be empty or missing before surfacing the missing-media marker.
+3. Inject a hidden marker if final HTML lacks the descriptor token:
+   - first try the exact Bricks image element occurrence by `brxe-{element_id}` when a wrapper exists but the inner image does not.
+   - if the element is fully absent because of a Bricks condition, anchor after a safe nearby structural marker:
+     - nearest rendered ancestor/container recorded from element metadata, if present in final HTML
+     - loop item root or row wrapper when loop context is active
+     - as a last safe fallback, a hidden marker appended inside the nearest parent Bricks container, never `body`
+   - mark the synthetic node with a dedicated data flag such as `data-dbvc-ve-missing-media="1"` so CSS/JS can position a container badge without making a fake visible image.
+4. Frontend badge behavior:
+   - mount a container-style badge labelled from the media source, for example `Add Image`, `Add Featured Image`, or the ACF field label.
+   - keep the dashed outline on the parent/container using a distinct empty-media style, not the text empty-field pulse.
+   - opening the panel should use the existing media reference UI and Media Library flow.
+5. Save behavior:
+   - saving without reload can update descriptor state, but cannot reliably render an absent Bricks element that was removed by a server-side condition.
+   - default primary action should be `Save and Reload` for missing-media markers unless the marker was attached to an existing image wrapper that can be patched in place.
+   - after reload, Bricks should render the image element normally and the marker should become a regular `image_src` marker.
+
+Safety requirements:
+- never infer an image source from DOM proximity alone.
+- never surface a writable missing-media marker unless the Bricks element settings and resolver prove the exact source field/owner/path.
+- do not allow stale row/layout descriptors to save if the repeater/flexible row no longer exists.
+- do not place multiple synthetic missing-media badges for the same owner/source/row when Bricks repeats the same element ID across cards; include owner/path/loop signature in the synthetic seed.
+- conditionally hidden elements that are not empty-source cases should stay inspect-only or hidden until the condition source itself is editable through a separate contract.
+
+Current implementation state:
+- First guarded runtime slice is implemented for empty direct `image_src` / `background_image` descriptors backed by an existing ACF image or post featured-image save contract.
+- When Bricks emits no image markup, the descriptor is retained only if the backend media value resolves empty; non-empty hidden/conditional image values remain unsurfaced rather than becoming writable from proximity.
+- The marker anchors to the configured Bricks parent element by matching the final DOM class `brxe-{parent_element_id}` while descriptors continue to store unprefixed Bricks IDs.
+- The frontend uses `data-dbvc-ve-missing-media="1"` to show a media badge and forces reload after save so Bricks can render the missing image element normally.
+- Still deferred: conditional image elements whose source already has a value, parent-fallback search beyond the immediate configured parent, gallery-missing placeholders, and synthetic row/layout creation for missing containers.
+
+Validation targets:
+- current post ACF image field that renders no image when empty
+- query-loop card post with missing featured image
+- native repeater row image subfield where one row has no image
+- flexible-content image subfield inside a row/layout that conditionally hides the Bricks image element
+- background image dynamic-data source with an empty ACF image field
+
 ### Immediate next implementation order
 
 Do not start with broad flexible-content query-loop writes.

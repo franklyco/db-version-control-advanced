@@ -685,6 +685,9 @@ Implementation steps:
 Implementation status:
 - Steps 1-4 are implemented for `post-taxonomy`.
 - Runtime probe `/private/tmp/dbvc_ve_native_post_taxonomy_probe.php` confirmed a synthetic native `post-taxonomy` root for `category` resolves to editable `post_terms_collection`, badge `Category Terms`, and a writable `post_terms_collection` contract.
+- Overlay query-collection badge grouping now treats `post_terms_collection` as owner-scoped first, so repeated card instances with the same Bricks element/query ID can each surface their own term-management badge for their own owner post.
+- Native taxonomy element descriptors now carry a rendered-post owner hint in the inspection expression/source candidate. This lets repeated Bricks post cards resolve to each card post when Bricks does not expose a full query-loop context during the attributes hook.
+- `post_terms_collection` markers are allowed to use the standard hover/focus badge as a fallback instead of being hidden behind container-only query-collection badges, so outlined term elements remain actionable even if a container-level badge cannot be placed.
 - Live browser QA is still open for marker placement, panel load, term search, no-reload save, optional reload, and rendered term chip updates.
 
 ## Acceptance For The First Slice

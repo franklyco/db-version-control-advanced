@@ -29,8 +29,9 @@ Existing frontend status UI:
 - field index state lives in:
   - `state.fieldIndexOpen`
   - `state.fieldIndexFilter`
-  - `state.fieldIndexOpenSubgroups`
+  - `state.fieldIndexOpenSections`
   - `state.fieldIndexOpenItems`
+  - `state.fieldIndexScrollTop`
 - `renderStatusBarMeta()` renders marker count, `Review fields`, filters, grouped field index rows, `Locate`, and `Open`
 - statusbar click actions use `data-dbvc-ve-statusbar-action`
 - `.dbvc-ve-panel` remains the actual field editor and collection editor
@@ -106,7 +107,7 @@ Keep the existing statusbar state and renderer intact, but mount it inside a new
 Requirements:
 
 - keep `updateStatusBar()` as the only writer for status count, message, and active edit link during the first migration
-- preserve field index grouping, filters, open subgroup/item state, and `Locate`/`Open`
+- preserve field index grouping, filters, open section/item state, internal scroll position, and `Locate`/`Open`
 - preserve `data-dbvc-ve-statusbar-action` handling until toolbar actions are stable
 - keep old `.dbvc-ve-statusbar` CSS selectors aliased or scoped so existing statusbar behavior can be restored quickly
 - avoid moving descriptor hydration into toolbar boot
@@ -338,7 +339,7 @@ Keep these separate from:
 - descriptor cache
 - selected marker
 - panel open/drag state
-- field index open subgroup/item state
+- field index open section/item state and scroll position
 - save-in-progress state
 
 This separation keeps toolbar UI reversible and avoids turning the toolbar into a second descriptor store.
@@ -438,7 +439,7 @@ First-slice implementation notes:
 
 - `.dbvc-ve-statusbar` is still the status, message, active-link, and field-index renderer.
 - The statusbar now parks inside the toolbar and moves into an upward toolbar popover when the status or review action opens.
-- `Review fields` opens the existing field index through the current `state.fieldIndexOpen` path, so filters, subgroup/item state, `Locate`, and `Open` continue to use the same handlers.
+- `Review fields` opens the existing field index through the current `state.fieldIndexOpen` path, so filters, section/item state, scroll preservation, `Locate`, and `Open` continue to use the same handlers.
 - Save/session messages are mirrored into a compact toolbar message strip when the popover is closed.
 
 ### Phase 3: Go To Object Popover
