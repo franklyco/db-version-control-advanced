@@ -49,7 +49,7 @@ class DBVC_Import_Scenario_Term implements DBVC_Import_Scenario
     private function normalize_payload(array $payload, string $taxonomy, array $file): array
     {
         $slug = isset($payload['slug']) ? sanitize_title($payload['slug']) : '';
-        $incoming_uid = isset($payload['vf_object_uid']) ? trim((string) $payload['vf_object_uid']) : '';
+        $incoming_uid = $this->extract_entity_uid($payload);
         $resolved_uid = $incoming_uid;
         $term = null;
 
@@ -57,7 +57,7 @@ class DBVC_Import_Scenario_Term implements DBVC_Import_Scenario
             $term = get_term_by('slug', $slug, $taxonomy);
         }
 
-        if ($term && ! is_wp_error($term) && class_exists('DBVC_Sync_Taxonomies')) {
+        if ($term && ! is_wp_error($term) && $resolved_uid === '' && class_exists('DBVC_Sync_Taxonomies')) {
             $term_uid = DBVC_Sync_Taxonomies::ensure_term_uid($term->term_id, $taxonomy);
             if ($term_uid !== '') {
                 $resolved_uid = $term_uid;
@@ -70,6 +70,9 @@ class DBVC_Import_Scenario_Term implements DBVC_Import_Scenario
 
         if (! isset($payload['meta']) || ! is_array($payload['meta'])) {
             $payload['meta'] = [];
+        }
+        if ($resolved_uid !== '') {
+            $payload['meta']['vf_object_uid'] = [$resolved_uid];
         }
 
         if (empty($payload['meta']['dbvc_term_history'])) {
@@ -84,9 +87,45 @@ class DBVC_Import_Scenario_Term implements DBVC_Import_Scenario
                 'status'          => ($term && ! is_wp_error($term)) ? 'existing' : 'unknown',
                 'vf_object_uid'   => $resolved_uid,
             ]];
+        } elseif ($resolved_uid !== '' && is_array($payload['meta']['dbvc_term_history'])) {
+            if (isset($payload['meta']['dbvc_term_history'][0]) && is_array($payload['meta']['dbvc_term_history'][0])) {
+                $payload['meta']['dbvc_term_history'][0]['vf_object_uid'] = $resolved_uid;
+            } else {
+                $payload['meta']['dbvc_term_history']['vf_object_uid'] = $resolved_uid;
+            }
         }
 
         return $payload;
+    }
+
+    private function extract_entity_uid(array $payload): string
+    {
+        $candidates = [
+            $payload['vf_object_uid'] ?? '',
+            $payload['dbvc_object_uid'] ?? '',
+            $payload['meta']['vf_object_uid'] ?? '',
+        ];
+
+        if (isset($payload['meta']['dbvc_term_history'])) {
+            $history = $payload['meta']['dbvc_term_history'];
+            if (is_array($history) && isset($history[0]) && is_array($history[0])) {
+                $candidates[] = $history[0]['vf_object_uid'] ?? '';
+            } elseif (is_array($history)) {
+                $candidates[] = $history['vf_object_uid'] ?? '';
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            if (is_array($candidate)) {
+                $candidate = reset($candidate);
+            }
+            $uid = is_string($candidate) ? trim($candidate) : '';
+            if ($uid !== '') {
+                return $uid;
+            }
+        }
+
+        return '';
     }
 }
 

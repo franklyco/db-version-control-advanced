@@ -214,6 +214,105 @@ Existing tests cover important packet and endpoint paths, including transfer pac
 - Apply receipt persistence before auto-clear.
 - Agent-facing JSON output for preflight and CLI commands.
 
+## Second-Pass Reconciliation Against Existing Plans
+
+This section compares the audit findings with existing enhancement and architecture docs so the minor update does not collide with work already planned elsewhere.
+
+### Configuration Portability Is The Best Safety Model
+
+`docs/DBVC_CONFIGURATION_PORTABILITY_TOOL_IMPLEMENTATION_GUIDE.md` already describes and partially implements a stronger import model:
+
+- safe zip extraction before trust
+- staged import sessions
+- validation before diff generation
+- compatibility warnings
+- apply preflight
+- provider-level sanitization
+- backup before first write
+- rollback
+- partial failure reporting
+
+The core Proposal/diff update should reuse these principles. It should not create a second safety vocabulary.
+
+Planning impact:
+
+- Add proposal preflight before apply.
+- Add durable apply receipts.
+- Add explicit skip and block reasons.
+- Add safe extraction parity.
+- Consider rollback only after receipts and pre-apply snapshots are reliable.
+
+### Cross-Site Transfer Packets Already Depend On Proposal Review
+
+`docs/CROSS_SITE_ENTITY_PACKET_IMPLEMENTATION_GUIDE.md` intentionally routes destination-side packet intake through the existing proposal upload, review, resolver, and apply flow. Transfer packets also already surface `origin`, `selection`, `requirements`, `warnings`, and a transfer-specific `preflight` payload.
+
+Planning impact:
+
+- Do not replace transfer preflight fields.
+- General proposal preflight must wrap or extend transfer packet warnings, not overwrite them.
+- Preserve additive manifest metadata.
+- Preserve new-entity gating for transfer packets.
+- Include transfer packets in proposal preflight tests.
+
+### Media Sync Docs Confirm Resolver Importance But Are Partly Stale
+
+`docs/media-sync-design.md` describes resolver decisions, media bundle transport, and blocking conflict overlays. It also still references `dbvc-manifest.json` in places while the active proposal importer expects `manifest.json`.
+
+Planning impact:
+
+- The plan should treat resolver output as part of preflight.
+- Docs must be corrected after behavior is locked.
+- A single media plan should be authoritative before apply.
+- The plan should not leave users guessing between resolver, reconciler, and legacy media sync output.
+
+### Admin App Refactor Should Stay Separate
+
+`docs/admin-app-refactor-plan.md` correctly identifies the React admin app monolith. That refactor is valuable, but coupling it to backend correctness fixes would increase release risk.
+
+Planning impact:
+
+- Backend service boundaries should land first.
+- UI should consume new preflight/status fields with minimal current-bundle changes.
+- The larger frontend source refactor can follow behind a feature flag.
+
+### Universal Upload And Legacy Upload Plans Must Not Be Collapsed
+
+`docs/ROADMAP.md` and `docs/legacy-upload-immediate-import-plan.md` preserve multiple upload paths:
+
+- legacy sync-folder upload
+- targeted immediate post import
+- proposal ZIP review
+- transfer-packet upload
+- future universal intake
+
+Planning impact:
+
+- Do not merge these flows as part of the Proposal/diff stabilization release.
+- The minor update should improve proposal review/apply contracts only.
+- Universal intake can later route into proposal preflight when review is desired.
+
+### Masking Docs Confirm The Intended Reviewer Contract
+
+`docs/meta-masking.md` expects proposal masking decisions to affect posts, terms, and media labels inside review. The code path for post masking is covered better than the term apply path.
+
+Planning impact:
+
+- Term masking must be fixed before claiming term parity.
+- Masking must be represented in preflight and apply receipts.
+- Reverting masking decisions should remain available and test-covered.
+
+## Additional Second-Pass Findings
+
+| ID | Severity | Area | Finding | Evidence | Impact | Proposed Direction |
+| --- | --- | --- | --- | --- | --- | --- |
+| F19 | P0 | Decision safety | Opening an entity drawer can prune stored decisions to empty when no valid diff paths are available. | `get_proposal_entity()` falls back to proposed data as current, builds an empty diff, then calls `prune_entity_decisions_for_paths()`. | Missing or stale snapshots can erase reviewer selections just by viewing an entity. | Only prune when a trusted snapshot/current source exists, or when preflight confirms the path set is authoritative. |
+| F20 | P0 | Path safety | A strict proposal ID sanitizer exists but is not used consistently by all routes, CLI helpers, and import/apply paths. | `sanitize_proposal_id()` is used in upload/delete, while several handlers and `DBVC_Sync_Posts::import_backup()` use `sanitize_text_field()`. | Filesystem reads/writes can resolve differently across paths and are harder to reason about. | Move strict proposal ID validation into a repository/helper used everywhere, including `DBVC_Backup_Manager`. |
+| F21 | P1 | Resolver consistency | Resolver context differs between proposal list, entity list, and apply fallback paths. | `get_proposals()` passes proposal ID, bundle metadata, and manifest dir; `get_proposal_entities()` omits that context. | Media statuses and bundle previews can diverge between screens. | Create one resolver summary builder used by list, detail, preflight, and apply. |
+| F22 | P1 | Apply confirmation | Apply is protected by capability checks and UI confirmation, but the REST apply route does not require a server-side preflight token or explicit confirmation field. | `apply_proposal()` accepts mode flags and proceeds through import. | Agents or custom clients can bypass the intended review confirmation semantics. | Add an additive preflight token/confirm field first, then decide whether to require it in a later release. |
+| F23 | P1 | Transfer compatibility | Generic proposal preflight could accidentally duplicate or hide transfer-packet warnings if not designed carefully. | Transfer packets already expose `preflight`, `warnings`, `origin`, `selection`, and `requirements`. | Transfer review could regress while stabilizing core proposals. | Treat transfer preflight as an input to generic proposal preflight and preserve existing fields. |
+| F24 | P2 | Rollback model | Core proposal apply has snapshots and logs, but no first-class apply-session backup/rollback equivalent to configuration portability. | Configuration portability captures backups before writes; proposal apply currently returns import results and may clear decisions. | Failed or partial applies are harder to recover or explain. | Start with apply receipts and pre-apply current snapshots; defer full rollback until write scopes are fully modeled. |
+| F25 | P2 | Debug noise | Some import/export paths still emit raw `error_log()` diagnostics and legacy comments near proposal-critical code. | `import_post_from_json()` and export helpers contain direct debugging logs around Bricks/backslash handling. | Proposal apply logs can be noisy and harder for agents to parse. | Move proposal-relevant diagnostics to structured logger paths and leave low-level debugging behind explicit flags. |
+
 ## Recommended Minor Update Scope
 
 ### Must Fix First
@@ -223,6 +322,8 @@ Existing tests cover important packet and endpoint paths, including transfer pac
 - F03 no-op bulk diff fallback.
 - F06 zip entry preflight.
 - F07 proposal ID normalization.
+- F19 decision pruning without a trusted diff source.
+- F20 strict proposal ID normalization across all entry points.
 
 ### Should Fix In Same Minor
 
@@ -230,6 +331,8 @@ Existing tests cover important packet and endpoint paths, including transfer pac
 - Add visible missing-snapshot/stale-snapshot state.
 - Add durable apply receipt before decision auto-clear.
 - Clarify partial versus full apply semantics for non-post entities.
+- Unify resolver context between proposal list, entity list, detail, preflight, and apply.
+- Preserve transfer packet `origin`, `selection`, `requirements`, `warnings`, and preflight fields.
 - Update docs for `manifest.json` and current storage paths.
 
 ### Can Defer

@@ -390,14 +390,15 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
                 ? sanitize_title($item['term_slug'])
                 : (isset($item['slug']) ? sanitize_title($item['slug']) : '');
 
-            if ($vf_object_uid !== '' && class_exists('DBVC_Database')) {
-                $record = DBVC_Database::get_entity_by_uid($vf_object_uid);
-                if ($record && ! empty($record->object_id) && is_string($record->object_type) && strpos($record->object_type, 'term:') === 0) {
-                    $candidate = get_term((int) $record->object_id, $taxonomy);
-                    if ($candidate && ! is_wp_error($candidate)) {
-                        return (int) $candidate->term_id;
-                    }
+            if ($vf_object_uid !== '' && class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'find_term_id_by_uid')) {
+                $found = DBVC_Sync_Posts::find_term_id_by_uid($vf_object_uid, $taxonomy);
+                if ($found) {
+                    return (int) $found;
                 }
+            }
+
+            if ($vf_object_uid !== '' && class_exists('DBVC_Sync_Posts') && ! DBVC_Sync_Posts::is_uid_fallback_matching_allowed()) {
+                return null;
             }
 
             if ($term_id) {

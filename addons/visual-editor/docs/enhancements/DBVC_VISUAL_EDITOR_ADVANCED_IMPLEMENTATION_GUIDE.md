@@ -394,6 +394,65 @@ Current implementation state:
 - Writable gallery descriptors now use `media_gallery_reference`; readonly gallery descriptors use `media_gallery_preview`.
 - Still deferred: conditional image/gallery elements whose source already has a value, ancestor recovery when Bricks exposes no parent-chain metadata at all, and synthetic row/layout creation for missing containers.
 
+### Planned tranche: no-reload media clear/removal DOM patching
+
+Goal:
+- when a user clears a rendered media field and clicks no-reload `Save`, make the visible page reflect that empty saved value immediately instead of leaving a broken or stale image/video shell until reload.
+- preserve the existing working Bricks `image-gallery` behavior: selected images, removed gallery items, and drag/drop ordering must continue to live-update through `patchGalleryCollectionNode()` and must not be converted to the single-media removal path.
+
+Source shapes in scope:
+- rendered `image_src` descriptors backed by the existing ACF image or featured-image contracts.
+- rendered `background_image` descriptors backed by the existing ACF image or featured-image contracts.
+- future rendered video/media descriptors only after a dedicated resolver/render context proves the owner, media field, and mutation contract.
+
+Out of scope:
+- Bricks `image-gallery` collection replacement/reordering. Existing `gallery_collection` live patching stays separate and must remain the only code path for gallery clear/remove/reorder.
+- missing-media markers with `data-dbvc-ve-missing-media="1"`; these still require reload because there is no stable rendered media target to remove or rebuild.
+- condition-skipped media whose backend source is non-empty.
+- deleting the marked Visual Editor target node itself when doing so would remove the descriptor token and break the open panel/session.
+- guessing parent containers from visual proximity.
+
+Implementation rules:
+1. Add a narrow frontend helper, separate from `patchGalleryCollectionNode()`, for cleared single-media render contexts.
+   - It should run only when `context` is `image_src` or `background_image`.
+   - It should trigger only when the saved value resolves to an empty attachment ID and empty render URL.
+   - It must not run for `gallery_collection`.
+2. For `image_src`:
+   - find the actual rendered media child, preferring `img`, then `picture`, then a future explicit video selector only when a video descriptor exists.
+   - remove or hide the media child, not the marked wrapper, when the wrapper carries `data-dbvc-ve`.
+   - if the marked node itself is the `<img>`, preserve it with a Visual Editor clear-state class and remove `src/srcset/sizes/alt` rather than removing the node from the DOM.
+   - keep `data-dbvc-ve`, source group, sync group, and display-value metadata on a connected node so badges and the active descriptor remain stable after save.
+3. For `background_image`:
+   - clear `style.backgroundImage`.
+   - add a clear-state class on the marked node so the visible badge/outline can still anchor to an element with dimensions.
+   - do not remove the background wrapper because it often carries layout, overlay, or content children.
+4. For non-empty single-media saves:
+   - keep the current no-reload patch behavior: update `src/srcset/sizes/alt` for images and `background-image` for background markers.
+   - if a previous clear-state class exists, remove it once a non-empty media value is saved.
+5. For gallery saves:
+   - keep the current `gallery_collection` branch untouched.
+   - `Clear gallery` should continue to render an empty gallery wrapper through `patchGalleryCollectionNode()` by emptying/rebuilding the wrapper children from the saved ordered list.
+   - `Add images`, `Replace gallery`, thumbnail remove, move earlier/later, and desktop drag/drop sorting must keep using the existing gallery item normalization and ordered attachment-ID save payload.
+6. Save UX:
+   - no-reload `Save` can patch rendered single-media clear states immediately and close the panel.
+   - `Save and Reload` remains available for exact Bricks rebuild behavior, conditional wrappers, lightboxes, picture/source markup, and any theme/Bricks script that needs server-rendered markup.
+   - if a cleared rendered media field is inside a query/repeater/flexible context, the DOM patch must only touch nodes in the same descriptor sync/source group.
+
+Current implementation state:
+- Implemented for rendered `image_src` and `background_image` descriptors only.
+- Clearing a rendered image removes the child `img`/`picture` when the Visual Editor marker is on a wrapper; if the media node itself carries the marker, the node stays connected and its media attributes are cleared so the descriptor target remains stable.
+- Clearing a rendered background image clears `style.backgroundImage` and applies the same clear-state marker class to keep the badge anchor visible.
+- Re-adding a single image without reload can recreate a lightweight live `<img>` inside the existing wrapper; `Save and Reload` remains the path for exact Bricks picture/lightbox markup.
+- The `gallery_collection` branch is intentionally unchanged and still uses `patchGalleryCollectionNode()` for add/replace/remove/reorder/clear gallery behavior.
+
+Validation before implementation is complete:
+- direct rendered ACF image: select replacement, no-reload save; then clear image, no-reload save; then add image again without reload.
+- rendered featured image: same replace/clear/add loop.
+- background image: replace, clear, and add back without reload while preserving wrapper dimensions.
+- populated Bricks `image-gallery` element `xxrpfg` on `/vertical/websites-for-contractors/`: verify add, replace, remove item, clear gallery, move buttons, drag/drop ordering, no-reload `Save`, and `Save and Reload` still work exactly as they do now.
+- missing-media marker: confirm clear/removal helper does not run and reload remains required.
+- repeated/query-loop cards: confirm clearing one card image does not hide another card image that shares the same Bricks element ID but has a different owner/source group.
+
 Validation targets:
 - current post ACF image field that renders no image when empty
 - query-loop card post with missing featured image

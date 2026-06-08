@@ -647,7 +647,7 @@ Implementation slices:
 2. Add `PostTermsCollectionResolver` for read/search/validate/save using WordPress term APIs. Implemented.
 3. Add explicit mutation contracts and acknowledgement labels for current-owner and loop-owned post term collection saves. Implemented.
 4. Reuse the existing reference-collection panel with term-specific copy and grouped term rows. Implemented with minimal term-specific panel copy.
-5. Add empty-loop handling only after non-empty term-loop root markers are confirmed. WIP/live QA.
+5. Add empty-loop handling only after non-empty term-loop root markers are confirmed. Implemented for Bricks empty element renders when resolver classification proves one owner post, one taxonomy, and an empty assigned-term set; live browser QA remains open.
 6. Later, consider ACF `taxonomy` field-backed query roots as a separate branch because those mutate an ACF field, not native post term relationships.
 
 Initial live examples to inspect:
@@ -656,7 +656,8 @@ Initial live examples to inspect:
 
 Validation note:
 - `/private/tmp/dbvc_ve_post_terms_collection_probe.php` classified a real `filter-tag` current-post term loop candidate as editable, resolved `post_terms_collection`, returned badge `Filter Tag Terms`, confirmed the mutation contract is writable, and found searchable term results.
-- Status: WIP while live browser testing validates marker placement, no-reload save, optional reload, and rendered chip updates.
+- Empty current-post term loops now reuse the synthetic empty-query marker path: when Bricks emits no loop-root markup, the empty element render registers a `post_terms_collection` descriptor from saved query settings only after resolver classification proves one concrete owner post, one taxonomy, and an empty assigned-term set.
+- Status: live browser testing still needs to validate marker placement, panel load, no-reload save, optional reload, and rendered chip updates.
 
 ## Native Bricks Taxonomy/Terms Elements
 

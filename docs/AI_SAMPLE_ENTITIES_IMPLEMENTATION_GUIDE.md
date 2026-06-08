@@ -399,7 +399,7 @@ Status: `CLOSED`
 - [x] Lock sample package vs submission package boundary.
 - [x] Lock canonical JSON direction around DBVC importer-compatible shapes.
 - [x] Lock create-and-update package support.
-- [x] Lock update precedence as `vf_object_uid`, then slug, then numeric ID.
+- [x] Lock update precedence as `vf_object_uid` first; slug and numeric ID are fallback paths only for UID-less updates or explicitly enabled legacy fallback matching.
 - [x] Lock ACF discovery strategy around local `acf-json` first, runtime ACF second.
 - [x] Lock dedicated AI preflight review surface as an explicit workstream.
 - [x] Capture pre-implementation decisions in the foundation spec.

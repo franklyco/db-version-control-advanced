@@ -67,6 +67,20 @@
    - Legacy upload area now offers an immediate-import toggle for post JSON uploads that preserves the current sync folder contents and imports only the routed post file(s) from the current request.
    - Added a targeted post-only import helper in `DBVC_Sync_Posts` so the upload flow no longer has to call `import_all()` and rescan the entire sync folder.
    - Upload routing reports now include immediate-import counts and per-file outcomes, while the upload notice distinguishes plain uploads from upload-plus-import runs.
+20. **UID Preservation Import Fix**
+   - Non-empty incoming `vf_object_uid` values from entity JSON are treated as authoritative during post import, taxonomy normalization, upload routing, and Entity Editor import/export cycles.
+   - Post import now reads `meta.vf_object_uid` when top-level UID is absent and keeps rewritten top-level, history, and meta UID fields aligned to the authoritative UID.
+   - Taxonomy normalization and upload routing only use local slug-matched UIDs when incoming JSON has no UID, preventing destination/local UIDs from replacing source UIDs.
+   - Entity Editor partial/full imports explicitly stamp matched posts/terms with the incoming UID before auto-export, so slug fallback cannot re-export a local UID.
+21. **UID Fallback Hardening Toggle**
+   - Added `dbvc_allow_uid_fallback_matching` under Configure -> Import Defaults and the legacy import form.
+   - When disabled, UID-bearing imports that do not match a local UID no longer fall back to local IDs, slugs, or reference fallbacks before applying changes.
+   - The fallback remains available for intentional legacy imports by enabling the checkbox.
+22. **Import Identity Documentation Cleanup**
+   - Added `docs/import-identity-matching.md` as the current source of truth for UID preservation, strict fallback behavior, and flow-specific matching rules.
+   - Archived the completed implementation note at `docs/archive/import-uid-preservation-hardening-2026-05-25.md`.
+   - Updated roadmap, README, Entity Editor, term, and legacy upload docs so they no longer describe UID fallback as always-on behavior.
+
 ## Remaining / Next Steps
 1. **PlanMapper Addon Planning**
    - Define the addon bootstrap, menu placement, CPT/data model, board columns, and public frontend rendering contract for a true built-in Kanban board inside DBVC.
@@ -92,6 +106,7 @@
    - Decide whether large assets should lazy-load to avoid blocking entity review.
 7. **Documentation & CLI**
    - Keep README/handoff updated as new workflows (taxonomy entities, official collections) become available.
+   - Keep import identity behavior centralized in `docs/import-identity-matching.md` when future importer surfaces add new match paths.
 8. **Meta Field Masking Workflow**
    - ✅ Ship an “Apply masking rules” button above the All Entities table that auto-applies configured post/term meta masking directives (Tools panel, batching, undo).
    - ✅ Allow reviewers to pick ignore, auto-accept & suppress, or override behaviors via a bulk selector, with override inputs and help tooltips pointing into `docs/meta-masking.md`.

@@ -13,7 +13,7 @@ Legacy full-site export/import and WP-CLI commands continue to ship for automati
 ## Feature Highlights
 
 - **Proposal-driven review** – Upload proposal zips, see resolver metrics, and diff entities inside the React UI. Accept/Keep individual fields, bulk-apply sections, or reject the entity entirely. Drawer-based review keeps context with keyboard & screen-reader support.
-- **Identity layer + diff engine** – Posts, pages, and custom post types are stamped with stable `vf_object_uid` identifiers, allowing cross-environment comparisons. Diffs are grouped by section (content, meta, taxonomies, media references) to make large payloads easier to scan.
+- **Identity layer + diff engine** – Posts, pages, custom post types, and taxonomy terms are stamped with stable `vf_object_uid` identifiers, allowing cross-environment comparisons. UID-bearing imports match by UID first, and the legacy ID/slug fallback pass is opt-in so staging/production syncs do not overwrite the wrong local entity.
 - **New entity gating** – Newly introduced entities are flagged automatically. Reviewers must explicitly “Accept new” before they can be applied, and the importer respects those decisions to prevent surprise inserts.
 - **Duplicate detection & cleanup** – Resolver preflight checks manifest entities against the local site. If duplicate slugs or conflicting manifests are detected an overlay blocks review until reviewers select a canonical entry.
 - **Deterministic media resolver** – Each proposal captures attachment hashes, bundle paths, and resolver decisions. Reviewers can reuse, download, skip, or remap attachments, then persist those decisions per proposal or globally. Resolver bulk tools target conflicts by reason or path, and bundles guarantee offline parity.
@@ -95,6 +95,7 @@ CLI commands continue to export menus and options automatically, respect chunked
 - **Media Bundling Controls** – regenerate bundles, clear caches, and inspect bundle metrics.
 - **Resolver Rule Management** – manage stored resolver decisions (`dbvc_resolver_decisions`), export/import CSVs, or prune stale entries.
 - **Auto-clear Decisions** – automatically purge `dbvc_proposal_decisions` once an apply finishes so future proposals start clean.
+- **UID Fallback Matching** – keep disabled for normal environment syncs. Enable only for intentional legacy JSON imports where local UID records are missing and ID/slug fallback is accepted.
 
 ## Data & Storage
 
@@ -165,4 +166,4 @@ Use those docs as the shortest resume path before reopening the larger V2 planni
 - **Meta masking presets** – add a toolbar button above the All Entities table that auto-applies configured meta-field/post/term meta masking rules to any live proposal, letting reviewers ignore, auto-accept & suppress, or override masked fields with a single click while updating Needs Review / Unresolved meta labels automatically—keep existing export-time masking behavior untouched and explain the options via tooltips that contain help text plus links to the masking docs.
 - **Official collections** – curated “official” bundles that can be re-exported on demand remain on the backlog.
 
-This repository includes in-depth implementation notes under `handoff.md`, progress tracking inside `docs/progress-summary.md`, meta masking tooltip/help text plus implementation plan inside `docs/meta-masking.md` and `docs/meta-masking-plan.md`, and media transport design details inside `docs/media-sync-design.md`.
+This repository includes in-depth implementation notes under `handoff.md`, progress tracking inside `docs/progress-summary.md`, import identity matching rules inside `docs/import-identity-matching.md`, meta masking tooltip/help text plus implementation plan inside `docs/meta-masking.md` and `docs/meta-masking-plan.md`, and media transport design details inside `docs/media-sync-design.md`.

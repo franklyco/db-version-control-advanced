@@ -25,6 +25,96 @@ class DBVC_Sync_Taxonomies
 	}
 
 	/**
+	 * Extract the authoritative entity UID carried by a term JSON payload.
+	 *
+	 * @param array<string,mixed> $data
+	 * @return string
+	 */
+	private static function extract_entity_uid_from_term_payload(array $data): string
+	{
+		$candidates = [
+			$data['vf_object_uid'] ?? '',
+			$data['dbvc_object_uid'] ?? '',
+			$data['meta']['vf_object_uid'] ?? '',
+		];
+
+		if (isset($data['meta']['dbvc_term_history'])) {
+			$history = $data['meta']['dbvc_term_history'];
+			if (is_array($history) && isset($history[0]) && is_array($history[0])) {
+				$candidates[] = $history[0]['vf_object_uid'] ?? '';
+			} elseif (is_array($history)) {
+				$candidates[] = $history['vf_object_uid'] ?? '';
+			}
+		}
+
+		foreach ($candidates as $candidate) {
+			if (is_array($candidate)) {
+				$candidate = reset($candidate);
+			}
+			$uid = is_string($candidate) ? trim($candidate) : '';
+			if ($uid !== '') {
+				return $uid;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * @return bool
+	 */
+	private static function allow_uid_fallback_matching(): bool
+	{
+		if (class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'is_uid_fallback_matching_allowed')) {
+			return DBVC_Sync_Posts::is_uid_fallback_matching_allowed();
+		}
+
+		return get_option('dbvc_allow_uid_fallback_matching', '0') === '1';
+	}
+
+	/**
+	 * @param string $uid
+	 * @param string $taxonomy
+	 * @return \WP_Term|null
+	 */
+	private static function find_term_by_uid(string $uid, string $taxonomy): ?\WP_Term
+	{
+		$uid = trim($uid);
+		$taxonomy = sanitize_key($taxonomy);
+		if ($uid === '' || $taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+			return null;
+		}
+
+		if (class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'find_term_id_by_uid')) {
+			$term_id = DBVC_Sync_Posts::find_term_id_by_uid($uid, $taxonomy);
+			if ($term_id) {
+				$term = get_term((int) $term_id, $taxonomy);
+				if ($term && ! is_wp_error($term) && $term instanceof \WP_Term) {
+					return $term;
+				}
+			}
+		}
+
+		$terms = get_terms([
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => false,
+			'number'     => 1,
+			'meta_query' => [
+				[
+					'key'   => 'vf_object_uid',
+					'value' => $uid,
+				],
+			],
+		]);
+
+		if (is_wp_error($terms) || empty($terms) || ! isset($terms[0]) || ! $terms[0] instanceof \WP_Term) {
+			return null;
+		}
+
+		return $terms[0];
+	}
+
+	/**
 	 * Ensure taxonomy directory is shielded.
 	 *
 	 * @since 1.3.0
@@ -687,7 +777,7 @@ public static function ensure_directory_security($path)
 
 				$changed = false;
 				$slug = sanitize_title($data['slug']);
-				$incoming_uid = isset($data['vf_object_uid']) ? trim((string) $data['vf_object_uid']) : '';
+				$incoming_uid = self::extract_entity_uid_from_term_payload($data);
 				$resolved_uid = $incoming_uid;
 				$term = null;
 
@@ -695,9 +785,9 @@ public static function ensure_directory_security($path)
 					$term = get_term_by('slug', $slug, $taxonomy);
 				}
 
-				if ($term && ! is_wp_error($term)) {
+				if ($term && ! is_wp_error($term) && $resolved_uid === '') {
 					$term_uid = self::ensure_term_uid($term->term_id, $taxonomy);
-					if ($term_uid !== '' && $term_uid !== $resolved_uid) {
+					if ($term_uid !== '') {
 						$resolved_uid = $term_uid;
 						$changed = true;
 					}
@@ -706,13 +796,24 @@ public static function ensure_directory_security($path)
 					$changed = true;
 				}
 
-				if ($resolved_uid !== $incoming_uid) {
+				$current_top_uid = isset($data['vf_object_uid']) ? trim((string) $data['vf_object_uid']) : '';
+				if ($resolved_uid !== '' && $current_top_uid !== $resolved_uid) {
 					$data['vf_object_uid'] = $resolved_uid;
 					$changed = true;
 				}
 
 				if (! isset($data['meta']) || ! is_array($data['meta'])) {
 					$data['meta'] = [];
+					$changed = true;
+				}
+
+				$current_meta_uid = $data['meta']['vf_object_uid'] ?? '';
+				if (is_array($current_meta_uid)) {
+					$current_meta_uid = reset($current_meta_uid);
+				}
+				$current_meta_uid = is_string($current_meta_uid) ? trim($current_meta_uid) : '';
+				if ($resolved_uid !== '' && $current_meta_uid !== $resolved_uid) {
+					$data['meta']['vf_object_uid'] = [$resolved_uid];
 					$changed = true;
 				}
 
@@ -731,6 +832,20 @@ public static function ensure_directory_security($path)
 				if (! isset($data['meta']['dbvc_term_history']) || empty($data['meta']['dbvc_term_history'])) {
 					$data['meta']['dbvc_term_history'] = [$history];
 					$changed = true;
+				} elseif ($resolved_uid !== '' && is_array($data['meta']['dbvc_term_history'])) {
+					if (isset($data['meta']['dbvc_term_history'][0]) && is_array($data['meta']['dbvc_term_history'][0])) {
+						$history_uid = isset($data['meta']['dbvc_term_history'][0]['vf_object_uid']) ? trim((string) $data['meta']['dbvc_term_history'][0]['vf_object_uid']) : '';
+						if ($history_uid !== $resolved_uid) {
+							$data['meta']['dbvc_term_history'][0]['vf_object_uid'] = $resolved_uid;
+							$changed = true;
+						}
+					} else {
+						$history_uid = isset($data['meta']['dbvc_term_history']['vf_object_uid']) ? trim((string) $data['meta']['dbvc_term_history']['vf_object_uid']) : '';
+						if ($history_uid !== $resolved_uid) {
+							$data['meta']['dbvc_term_history']['vf_object_uid'] = $resolved_uid;
+							$changed = true;
+						}
+					}
 				}
 
 				if ($changed) {
@@ -780,12 +895,27 @@ public static function ensure_directory_security($path)
 			return new \WP_Error('dbvc_term_invalid_json', __('Invalid taxonomy JSON payload.', 'dbvc'));
 		}
 
-		$incoming_uid = isset($data['vf_object_uid']) ? trim((string) $data['vf_object_uid']) : '';
+		$incoming_uid = self::extract_entity_uid_from_term_payload($data);
 		$slug        = sanitize_title($data['slug']);
 		$name        = sanitize_text_field($data['name'] ?? $slug);
 		$description = isset($data['description']) ? wp_kses_post($data['description']) : '';
 
-		$term = get_term_by('slug', $slug, $taxonomy);
+		$term = null;
+		if ($incoming_uid !== '') {
+			$term = self::find_term_by_uid($incoming_uid, $taxonomy);
+			if (! $term && ! self::allow_uid_fallback_matching()) {
+				$slug_match = ($slug !== '' && taxonomy_exists($taxonomy)) ? get_term_by('slug', $slug, $taxonomy) : null;
+				if ($slug_match && ! is_wp_error($slug_match)) {
+					return new \WP_Error(
+						'dbvc_term_uid_unmatched_fallback_disabled',
+						__('The incoming term UID was not found locally and UID fallback matching is disabled.', 'dbvc')
+					);
+				}
+			}
+		}
+		if (! $term && ($incoming_uid === '' || self::allow_uid_fallback_matching())) {
+			$term = get_term_by('slug', $slug, $taxonomy);
+		}
 		$args = [
 			'description' => $description,
 		];
@@ -842,6 +972,7 @@ public static function ensure_directory_security($path)
 		if (! isset($data['meta']) || ! is_array($data['meta'])) {
 			$data['meta'] = [];
 		}
+		$data['meta']['vf_object_uid'] = [$effective_uid];
 		$data['meta']['dbvc_term_history'] = [$history];
 
 		if (isset($data['meta']) && is_array($data['meta'])) {

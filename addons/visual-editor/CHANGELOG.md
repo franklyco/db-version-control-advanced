@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added no-reload media saves for rendered Visual Editor image, background-image, and gallery markers: the panel now offers `Save` plus `Save and Reload`, patches the visible DOM after no-reload saves, and keeps missing/conditional media markers reload-only.
+- Added no-reload clear-state DOM patching for rendered single image and background-image media fields while keeping Bricks image-gallery live add/remove/reorder patching on the existing gallery-specific path.
 - Added desktop drag-and-drop sorting for editable Visual Editor gallery thumbnails while preserving the existing move earlier/later buttons and ordered attachment-ID save payload.
 - Added a dedicated Visual Editor submenu settings page and frontend content visibility exclusions for internal/non-content post types and taxonomies, defaulting to `bricks_template`, `template_tag`, and `template_bundle`; exclusions now apply to page-context support, descriptor/session surfacing, Go To Object search, connected-item searches, linked-term searches, and Shared Globals target fields while preserving hidden excluded ACF reference IDs during full collection saves.
 - Added the first missing/conditional Bricks image media marker slice: empty direct ACF image or featured-image sources can now register a normal media descriptor even when Bricks emits no image markup, then anchor an `Add Image` / `Add Featured Image` badge to the configured parent element and reload after save so Bricks can rebuild the missing image element.
@@ -16,6 +17,7 @@
 - Implemented the first Toolbar 2.0 shell slice: the Visual Editor now renders a bottom-center toolbar, parks the existing statusbar inside an upward status/review popover, mirrors status messages while closed, and keeps the active-object edit link available.
 - Added a Toolbar 2.0 enhancement implementation guide for migrating the bottom-corner statusbar into a bottom-center Visual Editor toolbar with upward field review, object navigation, shared-global collection management, active-object links, and guarded phased rollout rules.
 - Added the first post-owned linked-term collection editor slice for nested Bricks `objectType: term` loops using `current_post_term`, with a dedicated `post_terms_collection` source/resolver, term search, and current/loop-owned post-term save contracts separate from ACF taxonomy fields.
+- Added guarded empty-loop marker support for post-owned linked-term collections when Bricks emits no term-loop root markup, limited to proven owner-post/taxonomy descriptors whose assigned term set is empty.
 - Added guarded Bricks native `post-taxonomy` element handling so elements with one explicit taxonomy can surface the same post-term collection editor for the current or loop-owned post.
 - Fixed repeated `post_terms_collection` badge grouping so cards sharing the same Bricks taxonomy element/query ID can each surface a separate owner-scoped term editor badge.
 - Added rendered-post owner hints and hover-badge fallback for native `post-taxonomy` markers so repeated Bricks post cards can edit each card post's assigned terms even when the container-level badge grouping is insufficient.

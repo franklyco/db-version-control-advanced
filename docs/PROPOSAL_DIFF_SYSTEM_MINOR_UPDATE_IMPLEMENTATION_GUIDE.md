@@ -2,7 +2,11 @@
 
 Date: 2026-05-23
 
-Related audit: `docs/PROPOSAL_DIFF_SYSTEM_AUDIT_2026_05.md`
+Related docs:
+
+- `docs/PROPOSAL_DIFF_SYSTEM_AUDIT_2026_05.md`
+- `docs/PROPOSAL_DIFF_V2_DEPENDENCY_MANIFEST_2026_05.md`
+- `docs/PROPOSAL_DIFF_V2_GATED_ROLLOUT_PLAN.md`
 
 Status: proposal only. No code changes have been made for this guide.
 
@@ -19,6 +23,27 @@ The update should preserve existing REST route shapes where practical and focus 
 - clarifying documentation and workflow semantics
 - creating narrow service boundaries that make future work safer
 
+## Second-Pass Planning Reconciliation
+
+This guide has been reconciled against:
+
+- `docs/DBVC_ENGINE_INVENTORY.md`
+- `docs/ROADMAP.md`
+- `docs/admin-app-refactor-plan.md`
+- `docs/media-sync-design.md`
+- `docs/meta-masking.md`
+- `docs/legacy-upload-immediate-import-plan.md`
+- `docs/CROSS_SITE_ENTITY_PACKET_IMPLEMENTATION_GUIDE.md`
+- `docs/DBVC_CONFIGURATION_PORTABILITY_TOOL_IMPLEMENTATION_GUIDE.md`
+
+The strongest reusable model is configuration portability: safe extraction, staged review, compatibility warnings, apply preflight, backup-before-write, provider-level apply, rollback, and explicit partial failure reporting. The core Proposal/diff update should adopt those principles in the proposal domain without forcing a full rewrite.
+
+The strongest compatibility constraint is transfer packets. Cross-site entity packets intentionally reuse proposal upload, review, resolver, and apply. Generic proposal preflight must preserve existing transfer packet fields and warnings.
+
+The strongest simplification decision is this:
+
+> Preflight becomes the contract boundary. The UI, CLI, agents, and apply route should all ask the same service what will happen before anything writes.
+
 ## Non-Goals
 
 - Do not rewrite the whole admin app in this release.
@@ -26,6 +51,79 @@ The update should preserve existing REST route shapes where practical and focus 
 - Do not expand into Visual Editor, Bricks portability, AI packages, or Content Collector work.
 - Do not make official collections part of the first stabilization pass unless explicitly scoped.
 - Do not change proposal bundle format in a breaking way.
+- Do not merge legacy upload, targeted immediate import, transfer packet intake, and proposal review into one universal intake in this release.
+- Do not make every entity type path-diffable in this release.
+- Do not require a new frontend build architecture to land backend safety fixes.
+
+## Simplified Target Model
+
+The minor update should simplify the system around five contracts.
+
+### 1. Proposal Bundle Contract
+
+A proposal bundle is immutable review input after upload.
+
+- `manifest.json` is authoritative for proposal contents.
+- Entity payloads are read-only review inputs.
+- Maintenance operations, such as duplicate cleanup, must be explicit and logged.
+- Upload validation must happen before registration.
+
+### 2. Snapshot Contract
+
+Path-level diff requires a trusted current-state source.
+
+- If a live snapshot exists and matches the entity identity, path-level review is allowed.
+- If no snapshot exists, show `snapshot_missing`.
+- If a snapshot is stale or cannot be trusted, show `snapshot_stale` or `snapshot_untrusted`.
+- Do not prune stored decisions from an empty diff unless the diff source is trusted.
+
+### 3. Decision Contract
+
+Accepted decisions are the only default write contract.
+
+- Existing posts/CPTs can use path-level decisions.
+- New posts/CPTs require explicit `accept_new`.
+- Existing terms can use path-level decisions only after term masking/apply coverage is fixed.
+- New terms require explicit `accept_new`.
+- Options, option groups, menus, and broad third-party entities require whole-entity acceptance or explicit preflight warning until path-level apply is proven.
+- Unsupported or ambiguous entities remain inspect-only.
+
+### 4. Preflight Contract
+
+Preflight answers the operational question before apply:
+
+- what will be created
+- what will be updated
+- what will be skipped
+- why each skip happens
+- what media will do
+- what masking will do
+- what warnings are blocking versus informational
+- what receipt or snapshot evidence will be written
+
+Preflight should be deterministic, machine-readable, and safe to run repeatedly.
+
+### 5. Receipt Contract
+
+Apply must leave evidence.
+
+- Record user, timestamp, proposal ID, mode, manifest checksum, decision revision, resolver revision, preflight summary, write results, media results, skipped reasons, and errors.
+- Write the receipt before clearing active decisions.
+- Keep active decision auto-clear behavior only after the receipt exists.
+
+## Entity Apply Contract Matrix
+
+| Entity type | Current behavior | Minor-update contract | Notes |
+| --- | --- | --- | --- |
+| Existing post/CPT | Path-level decisions apply through `import_post_from_json()`. | Keep path-level decisions. Require trusted diff source for bulk stamping and pruning. | This is the best-supported path. |
+| New post/CPT | Requires `accept_new`; creation then treats required fields as accepted. | Keep explicit `accept_new`; include whitelist/status/create setting checks in preflight. | Receipt should record created ID and UID mapping. |
+| Existing term | Path-level decisions exist, but masking path has a defect. | Support after term masking fix and tests. Until then, preflight should flag term masking risk. | Parent updates and term meta need explicit skip reasons. |
+| New term | Requires `accept_new` and term creation setting. | Keep explicit `accept_new`; preflight must show taxonomy existence and term creation setting. | Transfer packets depend on this path. |
+| Options | Full apply can update option payloads. | Require whole-entity acceptance or block with warning until granular option decisions exist. | Aligns with roadmap item for granular options controls. |
+| Option groups | Imported through option-group helper. | Require whole-entity acceptance or block with warning. | Do not silently apply through full mode. |
+| Menus | Imported through existing menu importer. | Require whole-entity acceptance or block with warning. | Menu writes are high-impact and hard to partially roll back. |
+| Third-party | Imported if third-party portability class exists. | Require provider-declared preflight capability and whole-entity acceptance. | Avoid generic assumptions. |
+| Media | Resolver/reconciler plus legacy sync may all participate. | One authoritative media plan in preflight; receipt records final actions. | Preserve resolver decisions and bundle metadata. |
 
 ## Compatibility Rules
 
@@ -35,6 +133,30 @@ The update should preserve existing REST route shapes where practical and focus 
 4. Add new response fields rather than replacing current fields when possible.
 5. If decisions are auto-cleared after apply, write an apply receipt first.
 6. Prefer additive CLI commands and JSON output over changing default human output.
+7. Preserve transfer packet `origin`, `selection`, `requirements`, `warnings`, and existing transfer `preflight` fields.
+8. Preserve legacy upload and targeted immediate-import behavior.
+9. Preserve current UI apply behavior while adding server-side preflight and receipts; require stricter server-side confirmation only after a compatibility period.
+
+## Do-Not-Break Baseline
+
+Before changing behavior, capture tests or smoke checks for:
+
+- proposal upload with a normal `manifest.json`
+- transfer packet upload and destination warnings
+- proposal list resolver metrics
+- entity list diff counts
+- entity drawer diff and decision controls
+- bulk accept, unaccept, and keep removal
+- masking apply and revert
+- resolver decision save, reset, global rule import/export
+- partial apply for existing posts
+- full apply for existing posts
+- new post acceptance and creation
+- term review and term apply
+- duplicate cleanup modal path
+- CLI proposal list, upload, apply, recapture, and duplicate cleanup
+
+If a baseline cannot be tested yet, document that explicitly before implementation starts.
 
 ## Phase 0: Safety Fixes
 
@@ -166,6 +288,59 @@ Acceptance:
 - Invalid proposal IDs are rejected consistently.
 - Existing normal proposal IDs remain valid.
 
+### 0.6 Stop Unsafe Decision Pruning
+
+Problem:
+
+- Entity detail currently prunes stored decisions after building a diff.
+- When current state falls back to proposed payload because the snapshot is missing, the diff can be empty and existing decisions can be removed by viewing the entity.
+
+Implementation:
+
+- Make diff source explicit: `snapshot`, `live_current`, `proposed_fallback`, or `missing`.
+- Only prune decisions when the diff source is trusted and authoritative.
+- If the diff source is `proposed_fallback` or `missing`, return a warning and leave stored decisions untouched.
+- Add tests proving decisions survive entity drawer load when no snapshot exists.
+
+Files likely involved:
+
+- `admin/class-admin-app.php`
+- future `includes/Dbvc/Proposal/DiffService.php`
+- proposal decision endpoint tests
+
+Acceptance:
+
+- Viewing an entity cannot erase reviewer decisions when current-state evidence is missing.
+- Decision pruning still removes stale paths when a trusted diff proves they are stale.
+
+### 0.7 Unify Resolver Context
+
+Problem:
+
+- Proposal list, entity list, detail, and apply do not all call the media resolver with the same proposal context.
+
+Implementation:
+
+- Add one resolver summary helper used by:
+  - proposal list
+  - entity list
+  - entity detail where needed
+  - proposal preflight
+  - apply receipt
+- Always pass proposal ID, manifest directory, bundle metadata, and dry-run/remote policy explicitly.
+- Include resolver freshness and source context in preflight output.
+
+Files likely involved:
+
+- `admin/class-admin-app.php`
+- `includes/class-sync-posts.php`
+- future `includes/Dbvc/Proposal/PreflightService.php`
+
+Acceptance:
+
+- Resolver status does not change merely because the user moved from proposal list to entity list.
+- Preflight and apply receipt can explain media actions from one authoritative resolver report.
+
 ## Phase 1: Proposal Service Boundaries
 
 This phase should reduce risk without changing behavior.
@@ -188,6 +363,7 @@ Responsibilities:
 - locate entity payloads safely
 - locate snapshot payloads
 - expose manifest checksum and mtimes
+- provide safe proposal deletion and maintenance path helpers
 
 Keep out:
 
@@ -213,6 +389,7 @@ Responsibilities:
 - return missing snapshot and stale snapshot states
 - build path summaries for REST and CLI
 - expose a reusable `resolveActionablePaths()` method for bulk decisions
+- decide whether a diff source is trusted enough for decision pruning
 
 Acceptance:
 
@@ -238,12 +415,39 @@ Responsibilities:
 - update status summary
 - export/import decisions
 - track a simple decision revision or updated timestamp
+- preserve decisions when a requested mutation is skipped
 
 Acceptance:
 
 - Existing option keys remain readable.
 - REST response fields remain compatible.
 - Skipped/stale decision writes can return structured reasons.
+
+### 1.4 Add Upload Validator
+
+Purpose:
+
+- Pull proposal ZIP and manifest validation out of the admin controller and match the safer configuration portability extraction pattern.
+
+Suggested class:
+
+- `includes/Dbvc/Proposal/UploadValidator.php`
+
+Responsibilities:
+
+- preflight zip entries before extraction
+- locate `manifest.json`
+- validate manifest shape
+- validate payload paths
+- validate media bundle asset paths
+- validate duplicate entities
+- return structured issues and warnings
+
+Acceptance:
+
+- `import_proposal_from_zip()` delegates validation without changing route behavior.
+- Unsafe zip entries are rejected before extraction.
+- Transfer packet additive metadata remains accepted.
 
 ## Phase 2: Preflight and Apply Receipts
 
@@ -271,6 +475,8 @@ Response should include:
 - blocking errors
 - warnings
 - exact apply plan for partial and full modes
+- transfer packet `origin`, `selection`, `requirements`, existing transfer warnings, and transfer-specific preflight
+- preflight revision or token if the release chooses to add server-side apply confirmation
 
 Use cases:
 
@@ -278,6 +484,15 @@ Use cases:
 - agent review before apply
 - CLI `wp dbvc proposal preflight --format=json`
 - automated smoke tests
+
+Rules:
+
+- Preflight must be read-only.
+- Preflight must not capture snapshots by itself.
+- Preflight must not prune decisions.
+- Preflight must not write resolver decisions.
+- Preflight must not mutate proposal status.
+- Preflight may report that a snapshot recapture is required.
 
 ### 2.2 Add Apply Dry Run
 
@@ -318,6 +533,27 @@ Acceptance:
 - Auto-clear can remain enabled without losing evidence.
 - UI and CLI can show last apply receipt.
 
+### 2.4 Add Server-Side Apply Confirmation Without Breaking Existing Clients
+
+Purpose:
+
+- Align proposal apply with the stronger confirmation model used by configuration portability without breaking existing UI and CLI flows immediately.
+
+Implementation:
+
+- First release:
+  - accept optional `confirm_apply` and `preflight_token`
+  - include warnings when they are missing
+  - log whether apply was preflight-confirmed
+- Later release, if desired:
+  - require `confirm_apply` for full apply
+  - require a fresh preflight token for high-impact non-post entities
+
+Acceptance:
+
+- Existing clients still work in the first stabilization release.
+- New UI and CLI paths can opt into stricter confirmation immediately.
+
 ## Phase 3: Human and Agent Workflow Improvements
 
 ### 3.1 UI Improvements
@@ -343,6 +579,7 @@ Suggested commands or flags:
 - `wp dbvc proposal decisions export <id>`
 - `wp dbvc proposal decisions import <id> <file>`
 - `wp dbvc proposal receipt <id> --format=json`
+- `wp dbvc proposal validate <id> --format=json`
 
 Agent-specific requirements:
 
@@ -364,6 +601,7 @@ Update docs after code behavior is agreed:
 - Add partial/full apply behavior table by entity type.
 - Add masking behavior examples for posts and terms.
 - Add agent workflow examples using CLI JSON output.
+- Update media sync docs to stop referring to `dbvc-manifest.json` for active proposal bundles unless describing legacy behavior.
 
 ## Phase 4: Performance and Scale
 
@@ -419,6 +657,7 @@ Backend additions:
 - `includes/Dbvc/Proposal/PreflightService.php`
 - `includes/Dbvc/Proposal/UploadValidator.php`
 - `includes/Dbvc/Proposal/ApplyReceiptStore.php`
+- `includes/Dbvc/Proposal/ResolverSummaryService.php`
 
 Backend modifications:
 
@@ -430,6 +669,8 @@ Backend modifications:
   - fix term masking
   - expose import plan data or apply receipt hooks
   - clarify non-post partial behavior
+- `includes/class-backup-manager.php`
+  - use strict proposal ID normalization for public backup/proposal operations where the input is a proposal folder
 - `commands/class-wp-cli-commands.php`
   - fix cleanup confirmation
   - add JSON preflight/inspect/receipt commands
@@ -460,15 +701,20 @@ Add or extend tests for:
 - proposal ID normalization
 - diff path generation with live snapshot
 - diff path generation with missing snapshot
+- entity drawer load does not prune decisions when the snapshot is missing
+- entity drawer load prunes stale decisions only with a trusted diff source
 - new entity whole-entity decision behavior
 - bulk accept/unaccept with actionable paths
 - stale bulk decision skip reason
+- resolver status consistency across proposal list, entity list, and preflight
 - term masking on field and meta updates
 - partial apply for post entities
 - partial apply behavior for term and non-post entities
 - full apply gating for options and menus
 - apply receipt persistence
 - resolver decision identity based on stable media fields
+- transfer packet preflight compatibility
+- legacy upload immediate-import regression guard if shared helpers are touched
 
 ### Existing Tests To Run
 
@@ -481,6 +727,13 @@ vendor/bin/phpunit --filter EntityEditorEndpointsTest
 ```
 
 Then run any new proposal-specific tests added in the update.
+
+Also run transfer/configuration tests when shared upload/preflight helpers are touched:
+
+```bash
+vendor/bin/phpunit --filter TransferPacketWorkflowTest
+vendor/bin/phpunit --filter ConfigurationPortabilityExportPackageTest
+```
 
 ### Syntax and Diff Checks
 
@@ -531,12 +784,31 @@ The release is ready when:
 - the known CLI, term masking, and bulk diff path defects are fixed
 - upload rejects unsafe zip entries before extraction
 - invalid proposal IDs fail consistently
+- viewing entity details cannot clear decisions when snapshots are missing
+- resolver summaries are consistent across list, detail, preflight, and apply receipt
 - preflight can explain the exact apply plan
 - skipped entities and paths have explicit reasons
 - successful apply writes a durable receipt before decision cleanup
 - partial/full apply differences are visible to users and agents
+- transfer packet warnings and metadata still render and remain machine-readable
 - docs match current manifest names and storage paths
 - targeted proposal tests pass
+
+## Revision Safety Checklist
+
+Do not start implementation until each item has an owner or a deliberate defer decision:
+
+- Identify every route and CLI command that accepts `proposal_id`.
+- Decide the strict proposal ID regex and migration policy for existing folders.
+- Define the trusted diff source states.
+- Define when decision pruning is allowed.
+- Define the entity apply contract matrix in code comments or tests.
+- Define the preflight response schema.
+- Define receipt storage location and retention.
+- Define how transfer packet preflight is nested inside generic proposal preflight.
+- Define how resolver summaries are cached or recomputed.
+- Define server-side confirmation compatibility period.
+- Define rollback as deferred or in scope.
 
 ## Deferred Work
 

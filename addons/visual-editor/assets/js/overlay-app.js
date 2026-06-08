@@ -1167,6 +1167,156 @@
     };
   }
 
+  function isEmptyMediaReferenceRenderData(renderData) {
+    if (!renderData || typeof renderData !== 'object') {
+      return true;
+    }
+
+    return !(Number(renderData.attachmentId || 0) || String(renderData.src || '') || String(renderData.fullUrl || ''));
+  }
+
+  function resolveImageMediaNode(node) {
+    if (!node || node.nodeType !== 1) {
+      return null;
+    }
+
+    if (node.matches && (node.matches('img') || node.matches('picture'))) {
+      return node;
+    }
+
+    const picture = node.querySelector ? node.querySelector('picture') : null;
+    if (picture) {
+      return picture;
+    }
+
+    return node.querySelector ? node.querySelector('img') : null;
+  }
+
+  function resolveImageElement(mediaNode) {
+    if (!mediaNode || mediaNode.nodeType !== 1) {
+      return null;
+    }
+
+    if (mediaNode.matches && mediaNode.matches('img')) {
+      return mediaNode;
+    }
+
+    return mediaNode.querySelector ? mediaNode.querySelector('img') : null;
+  }
+
+  function clearImageElementAttributes(imageNode, attribute) {
+    if (!imageNode) {
+      return;
+    }
+
+    const primaryAttribute = attribute || 'src';
+
+    imageNode.removeAttribute(primaryAttribute);
+    if (primaryAttribute !== 'src') {
+      imageNode.removeAttribute('src');
+    }
+    imageNode.removeAttribute('srcset');
+    imageNode.removeAttribute('sizes');
+    imageNode.removeAttribute('alt');
+  }
+
+  function rememberClearedMediaClassName(markerNode, mediaNode) {
+    if (!markerNode || !markerNode.dataset || !mediaNode || !mediaNode.className || typeof mediaNode.className !== 'string') {
+      return;
+    }
+
+    const className = mediaNode.className
+      .split(/\s+/)
+      .filter(function (name) {
+        return name && name !== 'dbvc-ve-media-cleared' && name !== 'dbvc-ve-media-cleared-self';
+      })
+      .join(' ');
+
+    if (className) {
+      markerNode.dataset.dbvcVeClearedMediaClassName = className;
+    }
+  }
+
+  function clearRenderedImageMediaNode(node, attribute) {
+    if (!node || node.nodeType !== 1) {
+      return;
+    }
+
+    const mediaNode = resolveImageMediaNode(node);
+    const imageNode = resolveImageElement(mediaNode);
+
+    node.classList.add('dbvc-ve-media-cleared');
+    if (node.dataset) {
+      node.dataset.dbvcVeDisplayValue = '';
+    }
+
+    if (!mediaNode) {
+      scheduleBadgeLayout();
+      return;
+    }
+
+    if (imageNode) {
+      clearImageElementAttributes(imageNode, attribute);
+    }
+
+    if (mediaNode === node || mediaNode.hasAttribute('data-dbvc-ve') || (mediaNode.querySelector && mediaNode.querySelector('[data-dbvc-ve]'))) {
+      scheduleBadgeLayout();
+      return;
+    }
+
+    rememberClearedMediaClassName(node, imageNode || mediaNode);
+    mediaNode.remove();
+    scheduleBadgeLayout();
+  }
+
+  function restoreClearedMediaState(node) {
+    if (!node || node.nodeType !== 1) {
+      return;
+    }
+
+    node.classList.remove('dbvc-ve-media-cleared', 'dbvc-ve-media-cleared-self');
+    node.removeAttribute('aria-hidden');
+
+    if (node.querySelectorAll) {
+      node.querySelectorAll('.dbvc-ve-media-cleared-self').forEach(function (item) {
+        item.classList.remove('dbvc-ve-media-cleared-self');
+        item.removeAttribute('aria-hidden');
+      });
+    }
+  }
+
+  function ensureRenderedImageElement(node) {
+    if (!node || node.nodeType !== 1) {
+      return null;
+    }
+
+    const existing = resolveImageElement(resolveImageMediaNode(node));
+    if (existing) {
+      return existing;
+    }
+
+    const image = document.createElement('img');
+    const rememberedClass = node.dataset && node.dataset.dbvcVeClearedMediaClassName
+      ? String(node.dataset.dbvcVeClearedMediaClassName)
+      : '';
+
+    image.className = rememberedClass || 'dbvc-ve-live-media-image';
+
+    if (node.matches && node.matches('picture')) {
+      node.appendChild(image);
+      return image;
+    }
+
+    const picture = node.querySelector ? node.querySelector('picture') : null;
+    if (picture) {
+      picture.appendChild(image);
+      return image;
+    }
+
+    node.appendChild(image);
+    return image;
+  }
+
   function normalizeGalleryItems(value, descriptor) {
     const items = Array.isArray(value)
       ? value
@@ -7840,9 +7990,18 @@
 
     if (context === 'image_src') {
       const attribute = getDescriptorRenderAttribute(descriptor, node) || 'src';
-      const imageNode = node.matches && node.matches('img') ? node : node.querySelector('img');
       const renderData = resolveMediaReferenceRenderData(currentValue, descriptor);
       const nextSrc = renderData.src || nextValue;
+      const shouldClearMedia = !nextSrc && isEmptyMediaReferenceRenderData(renderData);
+
+      if (shouldClearMedia) {
+        clearRenderedImageMediaNode(node, attribute);
+        return;
+      }
+
+      restoreClearedMediaState(node);
+
+      const imageNode = ensureRenderedImageElement(node);
 
       if (imageNode) {
         if (nextSrc) {
@@ -7878,8 +8037,10 @@
     if (context === 'background_image') {
       const renderData = resolveMediaReferenceRenderData(currentValue, descriptor);
       const nextBackground = renderData.src || nextValue;
+      const shouldClearMedia = !nextBackground && isEmptyMediaReferenceRenderData(renderData);
 
       node.style.backgroundImage = nextBackground ? `url("${nextBackground.replace(/"/g, '\\"')}")` : '';
+      node.classList.toggle('dbvc-ve-media-cleared', shouldClearMedia);
       node.dataset.dbvcVeDisplayValue = normalizeValue(nextBackground);
       scheduleBadgeLayout();
       return;

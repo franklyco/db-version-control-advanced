@@ -159,7 +159,7 @@ Working checklist for Entity Editor implementation. Mirrors the phase plan from 
 ---
 
 ## Phase 5 — Partial Import (matched fields/meta merge)
-- [x] Implement matcher (UID → history → slug+subtype)
+- [x] Implement matcher (UID → history, then slug+subtype only when no UID is present or UID fallback matching is explicitly enabled)
 - [x] Block import if none/ambiguous matches
 - [x] Implement non-destructive update:
   - [x] update core fields present in JSON
@@ -183,7 +183,8 @@ Working checklist for Entity Editor implementation. Mirrors the phase plan from 
 
 **Phase notes / risks (updated end-of-phase)**
 - Added `Save + Partial Import` endpoint + UI action with lock-token enforcement.
-- Matcher precedence now follows UID/history first, then slug+subtype, with hard blocks for zero/ambiguous matches.
+- Matcher precedence now follows UID/history first, then slug+subtype only when the JSON has no UID or `dbvc_allow_uid_fallback_matching` is explicitly enabled.
+- UID-bearing JSON with an unmatched UID blocks slug fallback by default; see `docs/import-identity-matching.md`.
 - Non-destructive import updates only JSON-present fields/meta/taxonomies and runs export normalization after apply.
 - Risk: taxonomy export currently uses `DBVC_Sync_Taxonomies::export_selected_taxonomies()`, which may be broader than per-term export.
 
@@ -248,6 +249,7 @@ Working checklist for Entity Editor implementation. Mirrors the phase plan from 
 - Added a dedicated manual QA script/checklist document for security, lock, partial-import, and full-replace validation.
 - Added a concise usage/limitations doc to support Phase 7 rollout and onboarding.
 - Added PHPUnit coverage for Entity Editor permission/path validation and full-replace pre-snapshot behavior.
+- Added regression coverage for UID fallback-enabled preservation and fallback-disabled slug blocking.
 
 ---
 
@@ -262,6 +264,7 @@ Priority legend: `P1` critical reliability, `P2` important hardening, `P3` quali
 - [x] `P2` Expand lint script coverage to include `src/admin-entity-editor/**`.
 - [x] `P2` Ensure default PHPUnit suite executes Entity Editor tests without requiring explicit file path.
 - [ ] `P2` Complete remaining Phase 7 security/hardening checks (capability + nonce + path restrictions + path leakage audit).
+- [x] `P2` Add regression coverage for Entity Editor full-replace UID preservation and strict unmatched-UID fallback blocking.
 - [ ] `P2` Run large-sync-tree performance verification and document baseline timings.
 - [ ] `P2` Add automated frontend behavior tests for search navigation and modal interactions (parent modal + full replace modal coexistence).
 - [ ] `P3` Remove legacy `initialRoute`/hash-route remnants no longer needed after standalone Entity Editor page split.

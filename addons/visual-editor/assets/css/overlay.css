@@ -2226,6 +2226,19 @@ body.dbvc-ve-active [data-dbvc-ve-missing-media="1"].dbvc-ve-target {
   outline-color: var(--dbvc-ve-color--empty);
 }
 
+body.dbvc-ve-active [data-dbvc-ve].dbvc-ve-target.dbvc-ve-media-cleared {
+  min-width: 48px;
+  min-height: 48px;
+  background: var(--dbvc-ve-color--empty);
+  outline-color: var(--dbvc-ve-color--empty);
+}
+
+body.dbvc-ve-active .dbvc-ve-live-media-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
 body.dbvc-ve-active .dbvc-ve-live-gallery-item img {
   display: block;
   max-width: 100%;

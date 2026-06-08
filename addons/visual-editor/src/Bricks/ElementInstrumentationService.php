@@ -190,6 +190,29 @@ final class ElementInstrumentationService
             'query_vars' => $query_vars,
         ];
 
+        $this->registerSyntheticEmptyQueryCollectionDescriptor($inspection, $element_id, $element_id, $element_name, '_empty_query', '');
+    }
+
+    /**
+     * Register a query-collection descriptor when Bricks rendered no loop root markup.
+     * Callers must provide inspection evidence from saved Bricks query settings or final
+     * query vars; classification still proves the writable source before registration.
+     *
+     * @param array<string, mixed> $inspection
+     * @param string               $element_id
+     * @param string               $element_uid
+     * @param string               $element_name
+     * @param string               $attribute_key
+     * @param string               $seed_signature
+     * @return void
+     */
+    private function registerSyntheticEmptyQueryCollectionDescriptor(array $inspection, $element_id, $element_uid, $element_name, $attribute_key = '_empty_query', $seed_signature = '')
+    {
+        $element_id = sanitize_text_field((string) $element_id);
+        if ($element_id === '') {
+            return;
+        }
+
         $page_context = $this->page_context->resolve();
         if (empty($page_context['isSupported'])) {
             return;
@@ -198,6 +221,11 @@ final class ElementInstrumentationService
         $classification = $this->resolvers->classifyCandidate($inspection, $page_context);
         $status = isset($classification['status']) ? (string) $classification['status'] : 'unsupported';
         if (! in_array($status, ['editable', 'readonly'], true)) {
+            return;
+        }
+
+        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
+        if (empty($source['query_result_empty'])) {
             return;
         }
 
@@ -211,7 +239,6 @@ final class ElementInstrumentationService
                 'acf_object_id' => $entity_id,
             ];
         $loop_context = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : [];
-        $source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
         $scope = isset($classification['scope']) ? (string) $classification['scope'] : 'current_entity';
         $source_group = $this->buildSourceGroup($entity, $source);
         $sync_group = $this->buildSyncGroup($entity, $source, 'query_collection');
@@ -219,15 +246,27 @@ final class ElementInstrumentationService
         $owner_descriptor = $this->buildOwnerDescriptor($entity, $scope, $page_descriptor, $loop_context);
         $path_descriptor = $this->buildPathDescriptor($source);
         $mutation_descriptor = $this->buildMutationDescriptor($source, 'query_collection', $scope, $status, $path_descriptor, $loop_context);
+        $loop_signature = $seed_signature !== ''
+            ? sanitize_text_field((string) $seed_signature)
+            : $this->loops->getSignature($loop_context);
+        $element_uid = sanitize_text_field((string) $element_uid);
+        if ($element_uid === '') {
+            $element_uid = $element_id;
+        }
+
         $seed = implode('|', [
-            $element_id,
+            $element_uid,
             sanitize_key((string) $element_name),
-            'query',
-            'query.derived:' . $element_id,
-            '',
+            isset($inspection['setting_key']) ? sanitize_key((string) $inspection['setting_key']) : 'query',
+            isset($inspection['expression']) ? sanitize_text_field((string) $inspection['expression']) : '',
+            $loop_signature,
         ]);
         $token = isset($this->instrumented[$seed]) ? $this->instrumented[$seed] : $this->registry->createToken($seed);
         $this->instrumented[$seed] = $token;
+
+        if (isset($this->descriptors[$token])) {
+            return;
+        }
 
         $descriptor = new EditableDescriptor(
             $token,
@@ -237,16 +276,24 @@ final class ElementInstrumentationService
             [
                 'template_id' => 0,
                 'element_id' => $element_id,
-                'element_uid' => $element_id,
+                'element_uid' => $element_uid,
                 'element_name' => sanitize_key((string) $element_name),
-                'setting_key' => 'query',
-                'attribute_key' => '_empty_query',
+                'setting_key' => isset($inspection['setting_key']) ? sanitize_key((string) $inspection['setting_key']) : 'query',
+                'attribute_key' => sanitize_text_field((string) $attribute_key),
                 'context' => 'query_collection',
                 'attribute' => '',
                 'source_group' => $source_group,
                 'sync_group' => $sync_group,
-                'loop_signature' => '',
+                'loop_signature' => $loop_signature,
                 'loop' => $loop_context,
+                'rendered_value' => '',
+                'resolved_value' => '',
+                'rendered_text' => '',
+                'resolved_text' => '',
+                'display_key' => 'default',
+                'display_mode' => 'text',
+                'render_verified' => true,
+                'value_match' => true,
             ],
             $source,
             isset($classification['ui']) && is_array($classification['ui']) ? $classification['ui'] : [],
@@ -515,6 +562,7 @@ final class ElementInstrumentationService
         $this->rememberNativeQueryElement($element);
 
         if ($element_html === '') {
+            $this->maybeRegisterEmptyPostTermsCollectionDescriptorForElement($element);
             $this->maybeRegisterMissingMediaDescriptorForElement($element);
 
             foreach ($this->findElementDescriptors($element) as $descriptor) {
@@ -588,6 +636,59 @@ final class ElementInstrumentationService
         }
 
         return $content;
+    }
+
+    /**
+     * Bricks can render an empty current-post term loop as comments/placeholders only.
+     * Register a descriptor from saved query settings only when the resolver proves one
+     * owner post, one taxonomy, and an empty assigned-term set.
+     *
+     * @param object $element
+     * @return void
+     */
+    private function maybeRegisterEmptyPostTermsCollectionDescriptorForElement($element)
+    {
+        if (! is_object($element)) {
+            return;
+        }
+
+        foreach ($this->findElementDescriptors($element) as $descriptor) {
+            if (! $descriptor instanceof EditableDescriptor) {
+                continue;
+            }
+
+            if (($descriptor->render['context'] ?? '') === 'query_collection'
+                && ($descriptor->source['type'] ?? '') === 'post_terms_collection') {
+                return;
+            }
+        }
+
+        $settings = isset($element->settings) && is_array($element->settings) ? $element->settings : [];
+        $query = isset($settings['query']) && is_array($settings['query']) ? $settings['query'] : [];
+        $query_object_type = isset($query['objectType']) ? sanitize_key((string) $query['objectType']) : '';
+        if (empty($settings['hasLoop']) || $query_object_type !== 'term') {
+            return;
+        }
+
+        $inspection = $this->inspectPostTermsCollectionLoopRoot($settings, $element);
+        if (empty($inspection['supported'])) {
+            return;
+        }
+
+        $inspection['query_result_empty'] = true;
+
+        $element_ids = $this->resolveElementIds($element);
+        $element_id = isset($element_ids[0]) ? sanitize_text_field((string) $element_ids[0]) : '';
+        if ($element_id === '') {
+            return;
+        }
+
+        $element_uid = isset($element->uid)
+            ? sanitize_text_field((string) $element->uid)
+            : $element_id;
+        $element_name = isset($element->name) ? sanitize_key((string) $element->name) : '';
+
+        $this->registerSyntheticEmptyQueryCollectionDescriptor($inspection, $element_id, $element_uid, $element_name, '_empty_query', '');
     }
 
     /**
@@ -2571,7 +2672,7 @@ final class ElementInstrumentationService
         $source_type = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : '';
 
         return $render_context === 'query_collection'
-            && $source_type === 'acf_collection_field'
+            && in_array($source_type, ['acf_collection_field', 'post_terms_collection'], true)
             && ! empty($descriptor->source['query_result_empty']);
     }
 

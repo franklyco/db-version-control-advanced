@@ -185,6 +185,17 @@ class DBVC_Sync_Posts
     }
 
     /**
+     * Whether imports may fall back to ID/slug matching when an incoming UID is present but unmatched.
+     *
+     * @return bool
+     */
+    public static function is_uid_fallback_matching_allowed(): bool
+    {
+        $allowed = get_option('dbvc_allow_uid_fallback_matching', '0') === '1';
+        return (bool) apply_filters('dbvc_allow_uid_fallback_matching', $allowed);
+    }
+
+    /**
      * Resolve the local post ID for a given original ID.
      *
      * @param int $original_id
@@ -196,10 +207,13 @@ class DBVC_Sync_Posts
         $entity_uid  = is_string($entity_uid) ? trim($entity_uid) : '';
 
         $use_uid_matching = (get_option('dbvc_prefer_entity_uids', '0') === '1');
-        if ($entity_uid !== '' && ($use_uid_matching || $original_id === 0)) {
+        if ($entity_uid !== '' && ($use_uid_matching || $original_id === 0 || ! self::is_uid_fallback_matching_allowed())) {
             $by_uid = self::find_post_id_by_uid($entity_uid, $post_type);
             if ($by_uid) {
                 return $by_uid;
+            }
+            if (! self::is_uid_fallback_matching_allowed()) {
+                return null;
             }
         }
 
@@ -235,6 +249,13 @@ class DBVC_Sync_Posts
             if ($found) {
                 $post_id = $found;
                 $match_source = 'uid';
+            }
+
+            if (! $post_id && ! self::is_uid_fallback_matching_allowed()) {
+                return [
+                    'post_id'      => null,
+                    'match_source' => 'uid_unmatched',
+                ];
             }
         }
 
@@ -1983,6 +2004,58 @@ HT;
     }
 
     /**
+     * Locate a local term by entity UID (database row or term meta).
+     *
+     * @param string $entity_uid
+     * @param string $taxonomy
+     * @return int|null
+     */
+    public static function find_term_id_by_uid($entity_uid, $taxonomy = '')
+    {
+        $entity_uid = trim((string) $entity_uid);
+        $taxonomy   = sanitize_key((string) $taxonomy);
+        if ($entity_uid === '') {
+            return null;
+        }
+
+        if (class_exists('DBVC_Database')) {
+            $record = DBVC_Database::get_entity_by_uid($entity_uid);
+            if ($record && ! empty($record->object_id) && is_string($record->object_type) && strpos($record->object_type, 'term:') === 0) {
+                $record_taxonomy = sanitize_key(substr($record->object_type, 5));
+                if ($taxonomy === '' || $record_taxonomy === '' || $record_taxonomy === $taxonomy) {
+                    $candidate = get_term((int) $record->object_id, $record_taxonomy ?: $taxonomy);
+                    if ($candidate && ! is_wp_error($candidate)) {
+                        return (int) $candidate->term_id;
+                    }
+                }
+            }
+        }
+
+        if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
+            return null;
+        }
+
+        $terms = get_terms([
+            'taxonomy'   => $taxonomy,
+            'hide_empty' => false,
+            'number'     => 1,
+            'fields'     => 'ids',
+            'meta_query' => [
+                [
+                    'key'   => 'vf_object_uid',
+                    'value' => $entity_uid,
+                ],
+            ],
+        ]);
+
+        if (is_wp_error($terms) || empty($terms)) {
+            return null;
+        }
+
+        return (int) $terms[0];
+    }
+
+    /**
      * Attempt to locate a local term for an imported entity.
      *
      * @param array $context
@@ -2002,12 +2075,19 @@ HT;
         $match_source = 'none';
         $local_id     = null;
 
-        if ($vf_object_uid !== '' && class_exists('DBVC_Database')) {
-            $record = DBVC_Database::get_entity_by_uid($vf_object_uid);
-            if ($record && ! empty($record->object_id) && is_string($record->object_type) && strpos($record->object_type, 'term:') === 0) {
-                $local_id = (int) $record->object_id;
+        if ($vf_object_uid !== '') {
+            $found = self::find_term_id_by_uid($vf_object_uid, $taxonomy);
+            if ($found) {
+                $local_id = $found;
                 $match_source = 'uid';
             }
+        }
+
+        if ($vf_object_uid !== '' && ! $local_id && ! self::is_uid_fallback_matching_allowed()) {
+            return [
+                'term_id'      => null,
+                'match_source' => 'uid_unmatched',
+            ];
         }
 
         if (! $local_id && $term_id) {
@@ -2746,6 +2826,42 @@ $acf_relationship_fields = [
     }
 
     /**
+     * Extract the authoritative entity UID carried by a post JSON payload.
+     *
+     * @param array<string,mixed> $json
+     * @return string
+     */
+    private static function extract_entity_uid_from_post_payload(array $json): string
+    {
+        $candidates = [
+            $json['vf_object_uid'] ?? '',
+            $json['dbvc_object_uid'] ?? '',
+            $json['meta']['vf_object_uid'] ?? '',
+        ];
+
+        if (isset($json['meta']['dbvc_post_history'])) {
+            $history = $json['meta']['dbvc_post_history'];
+            if (is_array($history) && isset($history[0]) && is_array($history[0])) {
+                $candidates[] = $history[0]['vf_object_uid'] ?? '';
+            } elseif (is_array($history)) {
+                $candidates[] = $history['vf_object_uid'] ?? '';
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            if (is_array($candidate)) {
+                $candidate = reset($candidate);
+            }
+            $uid = is_string($candidate) ? trim($candidate) : '';
+            if ($uid !== '') {
+                return $uid;
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Build import posts from Json
      * Added: 08-12-2025
      */
@@ -2772,11 +2888,9 @@ $acf_relationship_fields = [
 
         $original_id = absint($json['ID']);
         $post_type = sanitize_text_field($json['post_type']);
-        $incoming_entity_uid = $entity_uid ?? ($json['vf_object_uid'] ?? '');
-        if ($incoming_entity_uid === '' && isset($json['meta']['dbvc_post_history']['vf_object_uid'])) {
-            $incoming_entity_uid = $json['meta']['dbvc_post_history']['vf_object_uid'];
-        }
-        $incoming_entity_uid = is_string($incoming_entity_uid) ? trim($incoming_entity_uid) : '';
+        $incoming_entity_uid = is_string($entity_uid) && trim($entity_uid) !== ''
+            ? trim($entity_uid)
+            : self::extract_entity_uid_from_post_payload($json);
         $normalized_mode = ($filename_mode !== null) ? self::normalize_filename_mode($filename_mode) : null;
 
         if (! self::import_filename_matches_mode($normalized_mode, $filepath, $post_type, $json)) {
@@ -2804,11 +2918,14 @@ $acf_relationship_fields = [
             $resolved_post_id = self::find_post_id_by_uid($incoming_entity_uid, $post_type);
         }
 
-        $existing = $resolved_post_id ? get_post($resolved_post_id) : get_post($original_id);
+        $allow_uid_fallback = self::is_uid_fallback_matching_allowed();
+        $existing = $resolved_post_id
+            ? get_post($resolved_post_id)
+            : (($incoming_entity_uid === '' || $allow_uid_fallback) ? get_post($original_id) : null);
         if ($resolved_post_id && $existing) {
             self::$imported_post_id_map[$original_id] = (int) $existing->ID;
         }
-        if (! $existing && $original_id && $original_id !== $resolved_post_id) {
+        if (! $existing && $original_id && $original_id !== $resolved_post_id && ($incoming_entity_uid === '' || $allow_uid_fallback)) {
             $existing = get_post($original_id);
         }
         if ($existing && $incoming_entity_uid !== '') {
@@ -3091,6 +3208,10 @@ $acf_relationship_fields = [
                 $stored_entity_uid = self::ensure_post_uid($post_id);
             }
             $json['vf_object_uid'] = $stored_entity_uid;
+            if (! isset($json['meta']) || ! is_array($json['meta'])) {
+                $json['meta'] = [];
+            }
+            $json['meta']['vf_object_uid'] = [$stored_entity_uid];
         }
 
         $did_apply = $did_apply_post_fields || $did_apply_meta || $did_apply_tax;

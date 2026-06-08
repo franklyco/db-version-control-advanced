@@ -60,6 +60,10 @@ Manual QA checklist for Entity Editor security and behavior validation.
 - Verify only JSON-present meta keys changed.
 - Verify meta keys absent from JSON are preserved.
 - Verify operation blocks with actionable message on zero/ambiguous match.
+- With `dbvc_allow_uid_fallback_matching` disabled, change the JSON `vf_object_uid` to a non-matching value while keeping the same slug.
+  - Expected: operation blocks instead of falling back to slug.
+- Enable `dbvc_allow_uid_fallback_matching` only in a disposable test environment and repeat the slug case.
+  - Expected: fallback is allowed and the local entity UID is aligned to the incoming UID.
 
 ---
 

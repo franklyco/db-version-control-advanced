@@ -51,7 +51,9 @@ Last updated: 2026-04-09
 ## Create and Update Flow
 
 - Upload a create-only or mixed create/update AI package.
-- Confirm update entities resolve in priority order: `vf_object_uid`, slug, then numeric ID.
+- Confirm update entities resolve by `vf_object_uid` first.
+- Confirm update entities without a UID can still resolve through approved slug/numeric ID paths.
+- Confirm update entities with a stale/unmatched UID block instead of falling back unless `dbvc_allow_uid_fallback_matching` is intentionally enabled for the QA environment.
 - Confirm newly created entities receive post-import parent, taxonomy, and supported ACF relationship backfill when referenced elsewhere in the same package.
 
 ## ACF Coverage

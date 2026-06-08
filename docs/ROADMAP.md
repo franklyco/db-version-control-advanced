@@ -54,11 +54,12 @@
    - Verify full-domain map support.
    - Document setup prerequisites, generated files, auth/config needs, and whether it should become a first-class Codex skill in this repo.
 ## In Progress
-- Triage and stabilize import/export edge cases across posts, terms, and media.
+- Continue targeted import/export edge-case triage outside the now-closed UID preservation and fallback-hardening workstream.
 - Temporary 5-minute FTP upload window toggle in Configure > Import Settings (still requires additional testing).
-- Complete manual QA for the new targeted upload immediate-import flow in the legacy upload area (`docs/legacy-upload-immediate-import-plan.md`).
+- Complete manual QA for the targeted upload immediate-import flow in the legacy upload area, including the strict UID fallback behavior (`docs/legacy-upload-immediate-import-plan.md`).
 
 ## Shipped (Recent)
+- UID preservation and fallback hardening for core imports, including the default-off `dbvc_allow_uid_fallback_matching` option and current behavior docs (`docs/import-identity-matching.md`).
 - Entity Editor `New From Raw JSON` intake for DBVC post/CPT and term payloads, including preview, canonical sync write, staged-only mode, create-or-update mode, and direct handoff back into the normal Entity Editor flow (`docs/ENTITY_EDITOR_ENHANCEMENTS.md`).
 - Targeted upload immediate import for post JSON, including upload-area toggle, targeted post-only import helper, and combined routing/import report output.
 - Smart routing for flat JSON uploads into the sync folder.

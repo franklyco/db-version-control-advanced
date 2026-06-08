@@ -1267,6 +1267,8 @@ final class DBVC_Entity_Editor_Indexer
             }
         }
 
+        self::sync_post_entity_uid($post_id, $post_type, $uid);
+
         if (class_exists('DBVC_Sync_Posts')) {
             $post = get_post($post_id);
             if ($post instanceof \WP_Post) {
@@ -1351,6 +1353,8 @@ final class DBVC_Entity_Editor_Indexer
                 $counts['meta_keys_updated']++;
             }
         }
+
+        self::sync_term_entity_uid($term_id, $taxonomy, $uid);
 
         if (class_exists('DBVC_Sync_Taxonomies')) {
             DBVC_Sync_Taxonomies::export_selected_taxonomies();
@@ -1459,6 +1463,8 @@ final class DBVC_Entity_Editor_Indexer
             self::replace_post_meta_value($post_id, $meta_key, $meta_value);
             $counts['meta_keys_updated']++;
         }
+
+        self::sync_post_entity_uid($post_id, $post_type, $uid);
 
         if (isset($decoded['tax_input']) && is_array($decoded['tax_input']) && ! empty($decoded['tax_input'])) {
             $tax_subset = [];
@@ -1590,6 +1596,8 @@ final class DBVC_Entity_Editor_Indexer
             $counts['meta_keys_updated']++;
         }
 
+        self::sync_term_entity_uid($term_id, $taxonomy, $uid);
+
         if (class_exists('DBVC_Sync_Taxonomies')) {
             DBVC_Sync_Taxonomies::export_selected_taxonomies();
         }
@@ -1623,6 +1631,9 @@ final class DBVC_Entity_Editor_Indexer
         $sources = [];
         if ($uid !== '') {
             $sources[] = ['source' => 'uid', 'ids' => self::find_post_ids_by_uid($uid, $post_type)];
+            if (! self::allow_uid_fallback_matching()) {
+                return self::resolve_single_candidate($sources, 'post');
+            }
         }
         if ($slug !== '' && $post_type !== '') {
             $sources[] = ['source' => 'slug', 'ids' => self::find_post_ids_by_slug($slug, $post_type)];
@@ -1646,12 +1657,27 @@ final class DBVC_Entity_Editor_Indexer
         $sources = [];
         if ($uid !== '') {
             $sources[] = ['source' => 'uid', 'ids' => self::find_term_ids_by_uid($uid, $taxonomy)];
+            if (! self::allow_uid_fallback_matching()) {
+                return self::resolve_single_candidate($sources, 'term');
+            }
         }
         if ($slug !== '' && $taxonomy !== '') {
             $sources[] = ['source' => 'slug', 'ids' => self::find_term_ids_by_slug($slug, $taxonomy)];
         }
 
         return self::resolve_single_candidate($sources, 'term');
+    }
+
+    /**
+     * @return bool
+     */
+    private static function allow_uid_fallback_matching()
+    {
+        if (class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'is_uid_fallback_matching_allowed')) {
+            return DBVC_Sync_Posts::is_uid_fallback_matching_allowed();
+        }
+
+        return get_option('dbvc_allow_uid_fallback_matching', '0') === '1';
     }
 
     /**
@@ -1846,17 +1872,84 @@ final class DBVC_Entity_Editor_Indexer
         if ($uid === '' && isset($decoded['dbvc_object_uid'])) {
             $uid = (string) $decoded['dbvc_object_uid'];
         }
+        if ($uid === '' && isset($decoded['meta']) && is_array($decoded['meta']) && isset($decoded['meta']['vf_object_uid'])) {
+            $meta_uid = $decoded['meta']['vf_object_uid'];
+            if (is_array($meta_uid)) {
+                $meta_uid = reset($meta_uid);
+            }
+            $uid = is_string($meta_uid) ? (string) $meta_uid : '';
+        }
         if ($uid === '' && isset($decoded['meta']) && is_array($decoded['meta']) && isset($decoded['meta']['dbvc_post_history']) && is_array($decoded['meta']['dbvc_post_history'])) {
-            $uid = isset($decoded['meta']['dbvc_post_history']['vf_object_uid']) ? (string) $decoded['meta']['dbvc_post_history']['vf_object_uid'] : '';
+            $post_history = $decoded['meta']['dbvc_post_history'];
+            if (isset($post_history[0]) && is_array($post_history[0]) && isset($post_history[0]['vf_object_uid'])) {
+                $uid = (string) $post_history[0]['vf_object_uid'];
+            } elseif (isset($post_history['vf_object_uid'])) {
+                $uid = (string) $post_history['vf_object_uid'];
+            }
         }
         if ($uid === '' && isset($decoded['meta']) && is_array($decoded['meta']) && isset($decoded['meta']['dbvc_term_history'])) {
             $term_history = $decoded['meta']['dbvc_term_history'];
             if (is_array($term_history) && isset($term_history[0]) && is_array($term_history[0]) && isset($term_history[0]['vf_object_uid'])) {
                 $uid = (string) $term_history[0]['vf_object_uid'];
+            } elseif (is_array($term_history) && isset($term_history['vf_object_uid'])) {
+                $uid = (string) $term_history['vf_object_uid'];
             }
         }
 
         return trim($uid);
+    }
+
+    /**
+     * @param int    $post_id
+     * @param string $post_type
+     * @param string $uid
+     * @return void
+     */
+    private static function sync_post_entity_uid($post_id, $post_type, $uid)
+    {
+        $post_id = (int) $post_id;
+        $uid = trim((string) $uid);
+        if ($post_id <= 0 || $uid === '') {
+            return;
+        }
+
+        update_post_meta($post_id, 'vf_object_uid', $uid);
+
+        if (class_exists('DBVC_Database')) {
+            DBVC_Database::upsert_entity([
+                'entity_uid'    => $uid,
+                'object_id'     => $post_id,
+                'object_type'   => sanitize_key($post_type ?: (string) get_post_type($post_id)),
+                'object_status' => get_post_status($post_id),
+            ]);
+        }
+    }
+
+    /**
+     * @param int    $term_id
+     * @param string $taxonomy
+     * @param string $uid
+     * @return void
+     */
+    private static function sync_term_entity_uid($term_id, $taxonomy, $uid)
+    {
+        $term_id = (int) $term_id;
+        $taxonomy = sanitize_key((string) $taxonomy);
+        $uid = trim((string) $uid);
+        if ($term_id <= 0 || $taxonomy === '' || $uid === '') {
+            return;
+        }
+
+        update_term_meta($term_id, 'vf_object_uid', $uid);
+
+        if (class_exists('DBVC_Database')) {
+            DBVC_Database::upsert_entity([
+                'entity_uid'    => $uid,
+                'object_id'     => $term_id,
+                'object_type'   => 'term:' . $taxonomy,
+                'object_status' => null,
+            ]);
+        }
     }
 
     /**
