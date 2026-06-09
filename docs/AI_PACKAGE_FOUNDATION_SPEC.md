@@ -1126,9 +1126,10 @@ Rules:
 - update-intent entities must resolve to a local match before import
 - update matching precedence is:
   1. `vf_object_uid`
-  2. slug
-  3. numeric ID
+  2. slug, only when no UID is present or UID fallback matching is explicitly enabled
+  3. numeric ID, only when no UID is present or UID fallback matching is explicitly enabled
 - if an update-intent entity cannot be matched, that entity is blocked
+- if an update-intent entity includes a stale/unmatched UID, do not silently fall back to slug/ID under the default core import policy
 - sample package templates for net-new entities should not emit `vf_object_uid`
 - submission packages may include `vf_object_uid` only for update-intent entities
 

@@ -28,7 +28,8 @@ Brief usage notes for the DBVC Entity Editor.
 
 - `Save + Partial Import`
   - Saves JSON first.
-  - Matches one local entity (UID/history first, then slug+subtype).
+  - Matches one local entity by UID/history first. If JSON contains a UID and fallback matching is disabled, an unmatched UID blocks slug fallback.
+  - Falls back to slug+subtype only when the JSON has no UID or the `dbvc_allow_uid_fallback_matching` option is explicitly enabled.
   - Updates only JSON-present core fields/meta/taxonomies.
   - Does not delete missing meta keys.
 
@@ -52,3 +53,7 @@ Brief usage notes for the DBVC Entity Editor.
 
 - Full replace confirmation modal does not currently include preflight delete-count preview; counts are returned after operation.
 - CodeMirror JSON editor/linting is not yet integrated; editor currently uses textarea.
+
+## Related Docs
+
+- `docs/import-identity-matching.md`

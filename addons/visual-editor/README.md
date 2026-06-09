@@ -54,6 +54,10 @@ Current status:
 - readonly and locked panel states now include a dedicated context summary so the notice area can name the exact entity and source field that remain out of save scope
 - save responses now carry structured entity/source/save summaries so the open panel and status bar can confirm exactly what was updated instead of falling back to a generic success message
 - the frontend status bar now includes a direct editor link for the current page owner by default and switches to the active field owner while a specific marker is open in the panel
+- Toolbar 2.0 now provides a bottom-center Visual Editor control surface with status/review, Go To Object navigation, and Shared Globals launchers while reusing the existing panel and descriptor contracts
+- the expanded Review Fields index now preserves its internal scroll position across passive descriptor/status refreshes and groups field item accordions under parent sections such as ACF group fields, row containers, field groups, option pages, or native loop labels, without the previous redundant source subgroup toggle
+- the Shared Globals launcher exposes configured option-owned ACF `relationship` / `post_object` fields, defaulting to `settings_globals_default_posts`, with additional option field names managed from the Visual Editor add-on settings area; page-discovered fallback query loops stay in the regular field review/status flow
+- DBVC now includes a dedicated Visual Editor submenu settings page, and the same settings can exclude internal/non-content post types or taxonomies from frontend Visual Editor surfaces; defaults omit Bricks template content (`bricks_template`, `template_tag`, `template_bundle`)
 - descriptor sessions and hydrated payloads now carry a formal Descriptor V2 shape with explicit page, owner, loop, path, and mutation-contract metadata for advanced loop-owned and nested-field planning
 - Visual Editor saves now write to dedicated journal tables (`dbvc_ve_change_sets`, `dbvc_ve_change_items`) so future loop-owned and flexible-content mutation paths have durable per-path history and rollback-oriented write scaffolding
 - save requests now run through an explicit mutation-contract layer so supported current, shared, repeater-row, and loop-owned save paths are formalized instead of relying only on loose scope checks
@@ -164,3 +168,4 @@ This addon now lives inside the DBVC repo at:
 - `docs/enhancements/DBVC_VISUAL_EDITOR_REPEATER_IMPLEMENTATION_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md`
+- `docs/enhancements/DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md`

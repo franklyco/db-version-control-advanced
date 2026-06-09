@@ -36,6 +36,12 @@ That is enough for a first owner-type grouped index, but not enough for rich par
 
 Do not solve this by using `hydrate=1` on page load. Full descriptor hydration for every marker would reverse the recent performance improvements.
 
+Current issue audit:
+- `renderStatusBarMeta()` snapshots open section/item state before replacing `dbvc-ve-statusbar__meta` with new markup, and now also snapshots the scroll position of `.dbvc-ve-field-index`.
+- `cacheDescriptorPayload()` and `mergeSessionDescriptors()` call `scheduleFieldIndexRefresh()` while the index is open, so lazy descriptor enrichment, shared-global descriptor merges, panel opens, saves, and session/status updates can rebuild the index while the user is scrolling it.
+- Because the scrollable `.dbvc-ve-field-index` node is replaced, the browser resets its `scrollTop` to `0`, which matches the observed jump back to the top.
+- The fix should preserve scroll state for refreshes that do not intentionally change the filter or close/reopen the index, and should clamp the restored value when the filtered/grouped content becomes shorter.
+
 ## Recommended Data Contract
 
 Extend `EditableRegistry::exportPublicMap()` with a small, safe `index` payload per token.
@@ -324,29 +330,47 @@ Second-slice condensation notes:
 - The frontend index now aggregates marker rows into item-level accordions under each category/source group.
 - Related post/term fields, shared options fields, native loop fields, and repeater/flexible row fields are condensed behind one item toggle before exposing individual marker rows.
 
-Third-slice subgroup UX notes:
-- `dbvc-ve-field-index__subgroup` details now default collapsed so category-level review stays compact.
-- Each category group includes `Expand all` and `Collapse all` controls for its source subgroups.
-- Individual source subgroups remain independently toggleable through their `<summary>`.
-- Current singular post/term/user metadata subgroups are prioritized before native-loop/archive/related-style subgroups within the current entity area.
+Third-slice owner/source organization notes:
+- `dbvc-ve-field-index__subgroup` is now a structural wrapper only; its redundant summary toggle was removed after parent sections were introduced.
+- Each category group includes `Expand all` and `Collapse all` controls for its parent sections.
+- Field item accordions are the primary nested toggles under each section, and their summary row keeps the field label and marked-field count on one line.
+- Current singular post/term/user metadata groups are prioritized before native-loop/archive/related-style groups within the current entity area.
 
 Fourth-slice state preservation notes:
-- Open subgroup keys are snapshotted before the statusbar index re-renders.
+- Open section keys are snapshotted before the statusbar index re-renders.
 - Open item-level accordions are also snapshotted so the exact nested editing context survives panel refreshes.
-- Save/status updates restore the same open subgroup and item state instead of reverting to the default collapsed state.
-- Collapsing and reopening the whole field index preserves subgroup/item state for the current page session.
+- Save/status updates restore the same open section and item state instead of reverting to the default state.
+- Collapsing and reopening the whole field index preserves section/item state for the current page session.
 
 Fifth-slice lazy enrichment notes:
 - Field-index rows now merge in cached descriptor payload summaries when a field has already been opened or prefetched.
 - Enrichment can improve owner labels, field labels, input hints, and source detail lines without enabling full startup hydration.
 - Descriptor cache updates schedule a lightweight statusbar refresh only when the field index is open.
-- Subgroup keys are stable and separate from display labels so hydrated titles do not collapse the current subgroup.
+- Structural subgroup and item keys are stable and separate from display labels so hydrated titles do not collapse the current field context.
 
 Sixth-slice filter notes:
 - The expanded field index includes client-side filters for `All`, `Editable`, `Shared`, `Related`, and `Inspect-only`.
 - Filter counts are calculated from the full live marker/session entry set, not only the currently filtered view.
 - Filtering runs before the grouping model is built, so condensed owner/source/item grouping remains unchanged per filtered subset.
 - Empty filtered states show a lightweight message and do not mutate marker, descriptor, or save state.
+
+Minor Enhancement Phase 8: Scroll-stable parent ACF group sections:
+- Status: implemented, including follow-up cleanup that removed the redundant source subgroup summary toggle.
+- Goal: improve the expanded field index so it remains scroll-stable during lazy refreshes and clusters field item accordions under their nearest ACF parent group, such as `Hero`, `Intro`, or `Benefits`, without changing descriptor authority or save behavior.
+- Exact source shape: all descriptors already eligible for the public field index; ACF-backed descriptors with `index.groupPath`, `index.parentFieldName`, `index.containerType`, `index.fieldGroupTitle`, or native-query metadata get section grouping, while non-ACF and ungrouped descriptors stay in an `Ungrouped` or existing owner/source bucket.
+- Current code paths: `scheduleFieldIndexRefresh()`, `captureFieldIndexOpenState()`, `renderStatusBarMeta()`, `buildFieldIndexModel()`, `resolveFieldIndexSection()`, `resolveFieldIndexSubGroup()`, `resolveFieldIndexSubGroupKey()`, `renderFieldIndexSectionMarkup()`, `renderFieldIndexSubgroupMarkup()`, and `renderFieldIndexMarkup()` in `assets/js/overlay-app.js`; `.dbvc-ve-field-index`, `.dbvc-ve-field-index__group`, `.dbvc-ve-field-index__section`, `.dbvc-ve-field-index__subgroup`, and `.dbvc-ve-field-index__item-title` in `assets/css/overlay.css`; `EditableRegistry::exportPublicIndexSummary()` only if a later slice needs safe group-label metadata.
+- Descriptor metadata: first implementation should use the existing shallow public fields only. Section keys should be deterministic from owner top group, entity identity, container root, immediate group path segment, and native-query ancestry where present. Section labels should prefer a safe group label when available, then a humanized immediate group field name, then a contextual fallback such as `Current Fields`, `Option Fields`, or `Ungrouped`.
+- Optional metadata: add a shallow `groupLabelPath` or `sectionLabel` only if ACF field labels can be derived server-side without exposing field values, warnings, save payloads, nonces, or full descriptor objects.
+- Resolver classification changes: none. Grouping must not influence editability, readonly status, owner scope, descriptor lookup, or mutation eligibility.
+- Mutation contract requirements: none. `Locate` and `Open` continue to use the existing token-based action path, with no bulk actions, section-level saves, or inferred ACF writes.
+- UI/badge/panel impact: preserve top-level owner/source groups and filters; add an intermediate visual section between each top-level group and the field item accordions; render section headings as compact unframed bands with counts; remove the redundant source subgroup summary/toggle layer; keep item summaries as single-row label/count rows; preserve existing section and item open-state behavior; capture and restore `.dbvc-ve-field-index.scrollTop` across passive refreshes.
+- Intentional scroll resets: reset scroll when the user changes the filter, closes/reopens the review popover, or explicitly locates a marker.
+- Save and rollback risk: low because this is client-side review UI only. Primary regression risk is hiding markers under unstable section keys or losing section/item open state. Rollback should be one JS/CSS slice; keep scroll-state preservation independently if validated.
+- Live template/page examples: singular page with grouped current-owner ACF fields such as `Hero`, `Intro`, and `Benefits`; singular CPT with repeater/flexible descendants inside grouped fields; page with shared option fields; page with related post fields rendered through native relationship/post-object loops; taxonomy archive with current-term grouped fields; archive template with option-backed fields and archive loop descendants.
+- Docs to update: this plan, `DBVC_VISUAL_EDITOR_PHASES.md`, `README.md` and `CHANGELOG.md` only after implementation ships, and `docs/qa/TEST_LOG.md` after browser/manual validation.
+- Validation to run: scroll below the first viewport and trigger passive refreshes through descriptor open/prefetch; confirm scroll position is preserved; change filters and confirm scroll resets intentionally; expand/collapse sections and field items; confirm grouped counts equal row totals; confirm the redundant subgroup summary is absent; confirm item summary label/count stay on one row; confirm `Locate` and `Open` still work for cached and uncached descriptors; confirm marker surfacing, badge labels, panel load, descriptor payload, and save request behavior are unchanged.
+- First-slice implementation notes: `renderStatusBarMeta()` now captures/restores `.dbvc-ve-field-index.scrollTop` across passive refreshes and intentionally resets scroll when the review surface opens or filters change. `buildFieldIndexModel()` now inserts a client-side `dbvc-ve-field-index__section` layer between top-level owner groups and field item accordions, using current public metadata first: immediate `groupPath` segment, then row container root, then field-group title/option page, then native loop label, then a general fallback. The follow-up cleanup keeps `dbvc-ve-field-index__subgroup` as a non-toggle structural wrapper, removes `.dbvc-ve-field-index__subgroup-summary`, and renders each `dbvc-ve-field-index__item-title` as a single-row label/count summary. No resolver, descriptor authority, save contract, or startup hydration behavior changed.
+- Follow-up: add safe server-side group label metadata only if live template testing shows humanized ACF names are not clear enough.
 
 Defer:
 - text search

@@ -861,8 +861,10 @@ final class ResolverRegistry
      */
     private function classifyPostTermsCollectionField(array $candidate, array $page_context)
     {
-        if (empty($candidate['query_current_post_term'])) {
-            return $this->buildUnsupported('Linked-term collection editing is only enabled for Bricks current-post term query roots.');
+        $is_native_terms_element = ! empty($candidate['native_terms_element'])
+            || (isset($candidate['query_source']) && sanitize_key((string) $candidate['query_source']) === 'bricks_native_post_taxonomy_element');
+        if (empty($candidate['query_current_post_term']) && ! $is_native_terms_element) {
+            return $this->buildUnsupported('Linked-term collection editing is only enabled for Bricks current-post term query roots or native post taxonomy elements.');
         }
 
         $taxonomy = isset($candidate['taxonomy']) ? sanitize_key((string) $candidate['taxonomy']) : '';
@@ -875,6 +877,9 @@ final class ResolverRegistry
         $page_post_type = isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '';
         $loop_context = $this->loops->resolve();
         $loop_export = [];
+        $owner_post_id_hint = $is_native_terms_element && isset($candidate['owner_post_id_hint'])
+            ? absint($candidate['owner_post_id_hint'])
+            : 0;
 
         if ($this->loops->supportsRelatedPostEditing($loop_context)) {
             $entity = isset($loop_context['effective_owner_entity']) && is_array($loop_context['effective_owner_entity'])
@@ -882,6 +887,15 @@ final class ResolverRegistry
                 : [];
             $scope = $page_entity_id > 0 && absint($entity['id'] ?? 0) === $page_entity_id ? 'current_entity' : 'related_entity';
             $loop_export = $this->loops->export($loop_context);
+        } elseif ($owner_post_id_hint > 0 && get_post_type($owner_post_id_hint)) {
+            $owner_post_type = sanitize_key((string) get_post_type($owner_post_id_hint));
+            $entity = [
+                'type' => 'post',
+                'id' => $owner_post_id_hint,
+                'subtype' => $owner_post_type,
+                'acf_object_id' => $owner_post_id_hint,
+            ];
+            $scope = $page_entity_id > 0 && $owner_post_id_hint === $page_entity_id ? 'current_entity' : 'related_entity';
         } elseif ($page_entity_type === 'post' && $page_entity_id > 0) {
             $entity = [
                 'type' => 'post',
@@ -914,6 +928,11 @@ final class ResolverRegistry
             $taxonomy_label
         );
         $term_ids = $this->getPostTermCollectionIds($post_id, $taxonomy);
+        $query_source = $is_native_terms_element ? 'bricks_native_post_taxonomy_element' : 'bricks_current_post_term';
+        $query_object_type = isset($candidate['query_object_type']) ? sanitize_key((string) $candidate['query_object_type']) : '';
+        if ($query_object_type === '') {
+            $query_object_type = $is_native_terms_element ? 'post-taxonomy' : 'term';
+        }
 
         return [
             'status' => 'editable',
@@ -927,7 +946,7 @@ final class ResolverRegistry
             'loop' => $loop_export,
             'source' => [
                 'type' => 'post_terms_collection',
-                'expression' => isset($candidate['expression']) ? sanitize_text_field((string) $candidate['expression']) : 'query.objectType:term',
+                'expression' => isset($candidate['expression']) ? sanitize_text_field((string) $candidate['expression']) : ($is_native_terms_element ? 'element.taxonomy:' . $taxonomy : 'query.objectType:term'),
                 'expression_args' => [],
                 'field_name' => $taxonomy,
                 'field_key' => '',
@@ -941,8 +960,8 @@ final class ResolverRegistry
                 'reference_multiple' => true,
                 'reference_min' => 0,
                 'reference_max' => 0,
-                'query_source' => 'bricks_current_post_term',
-                'query_object_type' => 'term',
+                'query_source' => $query_source,
+                'query_object_type' => $query_object_type,
                 'query_element_id' => isset($candidate['query_element_id']) ? sanitize_text_field((string) $candidate['query_element_id']) : '',
                 'query_element_label' => isset($candidate['query_element_label']) ? sanitize_text_field((string) $candidate['query_element_label']) : '',
                 'query_section_label' => isset($candidate['query_section_label']) ? sanitize_text_field((string) $candidate['query_section_label']) : '',
@@ -955,9 +974,9 @@ final class ResolverRegistry
                 'taxonomy' => $taxonomy,
                 'taxonomy_label' => $taxonomy_label,
                 'native_query_active' => true,
-                'native_query_kind' => 'post_terms',
+                'native_query_kind' => $is_native_terms_element ? 'post_taxonomy_element' : 'post_terms',
                 'native_query_selector' => $taxonomy,
-                'native_query_object_type' => 'term',
+                'native_query_object_type' => $query_object_type,
                 'native_query_field_name' => $taxonomy,
                 'native_query_field_type' => 'taxonomy',
                 'parent_native_query_active' => false,
@@ -976,7 +995,7 @@ final class ResolverRegistry
                 'label' => $badge_label,
                 'badgeLabel' => $badge_label,
                 'input' => 'reference_collection',
-                'warning' => $this->buildPostTermsCollectionWarning($taxonomy_label, $scope),
+                'warning' => $this->buildPostTermsCollectionWarning($taxonomy_label, $scope, $query_source),
                 'allowMultiple' => true,
                 'maxSelections' => 0,
             ],
@@ -2332,19 +2351,37 @@ final class ResolverRegistry
     /**
      * @param string $taxonomy_label
      * @param string $scope
+     * @param string $query_source
      * @return string
      */
-    private function buildPostTermsCollectionWarning($taxonomy_label, $scope)
+    private function buildPostTermsCollectionWarning($taxonomy_label, $scope, $query_source = 'bricks_current_post_term')
     {
         $taxonomy_label = sanitize_text_field((string) $taxonomy_label);
+        $query_source = sanitize_key((string) $query_source);
         if ($taxonomy_label === '') {
             $taxonomy_label = __('taxonomy', 'dbvc');
         }
 
         if ($scope === 'related_entity') {
+            if ($query_source === 'bricks_native_post_taxonomy_element') {
+                return sprintf(
+                    /* translators: %s: taxonomy label */
+                    __('This Bricks taxonomy element is driven by the %s terms assigned to the related post card. Saving here updates that related post, not the current page.', 'dbvc'),
+                    $taxonomy_label
+                );
+            }
+
             return sprintf(
                 /* translators: %s: taxonomy label */
                 __('This nested term query is driven by the %s terms assigned to the related post card. Saving here updates that related post, not the current page.', 'dbvc'),
+                $taxonomy_label
+            );
+        }
+
+        if ($query_source === 'bricks_native_post_taxonomy_element') {
+            return sprintf(
+                /* translators: %s: taxonomy label */
+                __('This Bricks taxonomy element is driven by the %s terms assigned to the current post. Saving here updates that post-term relationship list.', 'dbvc'),
                 $taxonomy_label
             );
         }
@@ -2511,7 +2548,7 @@ final class ResolverRegistry
     private function resolveReadonlyAcfInputType($field_type, $allow_multiple, $render_context = '')
     {
         if ($field_type === 'gallery') {
-            return 'media_gallery_reference';
+            return 'media_gallery_preview';
         }
 
         if ($field_type === 'image') {
@@ -2566,7 +2603,7 @@ final class ResolverRegistry
         }
 
         if ($field_type === 'gallery') {
-            return 'media_gallery_preview';
+            return 'media_gallery_reference';
         }
 
         if ($allow_multiple) {

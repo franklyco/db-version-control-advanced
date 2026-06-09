@@ -18,7 +18,8 @@
   - Duplicate manifest UI is term-aware, treating term entries the same as posts while displaying UID/slug/type metadata.
 
 - **Importer**
-  - Core import path (`DBVC_Sync_Posts::import_backup`) matches terms via UID → taxonomy/slug → taxonomy/ID → `entity_refs` fallback.
+  - Core import path (`DBVC_Sync_Posts::import_backup`) matches terms via UID first. If an incoming UID is present but not found locally, taxonomy/slug, taxonomy/ID, and `entity_refs` fallback are blocked unless `dbvc_allow_uid_fallback_matching` is explicitly enabled.
+  - Term JSON without a UID can still use the legacy taxonomy/slug, taxonomy/ID, and `entity_refs` fallback paths.
   - Existing terms only update when reviewers have Accept/Keep decisions (mirrors post behavior); reopen automation respects `__dbvc_new_entity__`.
   - Parent relationships resolve via UID/slug/ID; if the parent isn’t available at import time, the child queues a “pending parent” entry that is replayed after the import completes.
   - Detailed term logging is available (when logging is enabled) via the new “Include term-specific events in import logs” toggle under **Configure → Import**.
@@ -40,7 +41,7 @@
    - Adds `entity_refs` to manifest + `entities.jsonl` (UID/slug/ID fallbacks).
    - Captures `parent_uid` where available, ensuring parents are referenceable across environments.
 2. **Importer**
-   - `identify_local_term()` consumes `entity_refs` to resolve existing terms even when only slug/ID data is present.
+   - `identify_local_term()` resolves UID-bearing terms by UID before any fallback and consumes `entity_refs` only when UID fallback policy allows it.
    - `apply_term_entity()` handles Accept/Keep gating, term meta, and defers parent assignment via a queue when needed.
    - Logging hooks (`log_term_import`) describe successes, skips, failures, and parent resolution events.
 3. **React Admin UI**
@@ -66,6 +67,7 @@
 
 ## Notes & Edge Cases
 - **Slug conflicts:** Duplicate slugs across taxonomies still need reviewer intervention; the duplicate modal now displays term metadata to help resolve collisions quickly.
+- **UID conflicts:** UID-bearing term JSON does not fall through to slug/ID matching by default when the UID is not found locally. Keep `dbvc_allow_uid_fallback_matching` disabled for environment syncs.
 - **CLI parity:** WP-CLI imports reuse the same code path; enable logging to trace term events when running automated jobs.
 - **Performance:** Large taxonomies may produce many entities; virtualization and search/filtering are already handled, but keep an eye on parent queues during large imports.
 - **Legacy proposals:** Term snapshots landed after 1.3.4. Re-upload older proposal zips, invoke `DBVC_Snapshot_Manager::capture_for_proposal($proposal_id, $manifest)`, or run `wp dbvc proposals list --recapture-snapshots=<ids>` so reopened reviews diff against the current site instead of treating every term as new.

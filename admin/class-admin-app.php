@@ -6281,16 +6281,22 @@ final class DBVC_Admin_App
 
         $match_source = 'none';
         $local_id     = null;
+        $allow_identity_fallback = true;
 
-        if ($vf_object_uid !== '' && class_exists('DBVC_Database')) {
-            $record = DBVC_Database::get_entity_by_uid($vf_object_uid);
-            if ($record && ! empty($record->object_id) && is_string($record->object_type) && strpos($record->object_type, 'term:') === 0) {
-                $local_id = (int) $record->object_id;
+        if ($vf_object_uid !== '' && class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'find_term_id_by_uid')) {
+            $found = DBVC_Sync_Posts::find_term_id_by_uid($vf_object_uid, $taxonomy);
+            if ($found) {
+                $local_id = (int) $found;
                 $match_source = 'uid';
             }
         }
 
-        if (! $local_id && $term_id) {
+        if ($vf_object_uid !== '' && ! $local_id && class_exists('DBVC_Sync_Posts') && ! DBVC_Sync_Posts::is_uid_fallback_matching_allowed()) {
+            $match_source = 'uid_unmatched';
+            $allow_identity_fallback = false;
+        }
+
+        if ($allow_identity_fallback && ! $local_id && $term_id) {
             $term = get_term($term_id);
             if ($term && ! is_wp_error($term)) {
                 $local_id = (int) $term->term_id;
@@ -6298,7 +6304,7 @@ final class DBVC_Admin_App
             }
         }
 
-        if (! $local_id && $slug !== '' && $taxonomy && taxonomy_exists($taxonomy)) {
+        if ($allow_identity_fallback && ! $local_id && $slug !== '' && $taxonomy && taxonomy_exists($taxonomy)) {
             $term = get_term_by('slug', $slug, $taxonomy);
             if ($term && ! is_wp_error($term)) {
                 $local_id = (int) $term->term_id;

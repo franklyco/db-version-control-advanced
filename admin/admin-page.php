@@ -208,9 +208,13 @@ function dbvc_render_export_page()
   $media_preserve_names   = get_option(DBVC_Media_Sync::OPTION_PRESERVE_NAMES, '1');
   $media_preview_enabled  = get_option(DBVC_Media_Sync::OPTION_PREVIEW_ENABLED, '0');
   $media_allow_external   = get_option(DBVC_Media_Sync::OPTION_ALLOW_EXTERNAL, '0');
+  $media_hydration_settings = class_exists('\Dbvc\Media\Hydration\Settings')
+    ? \Dbvc\Media\Hydration\Settings::get_all()
+    : [];
   $import_require_review  = get_option('dbvc_import_require_review', '0');
   $force_reapply_new_posts = get_option('dbvc_force_reapply_new_posts', '0');
   $prefer_entity_uids     = get_option('dbvc_prefer_entity_uids', '0');
+  $allow_uid_fallback_matching = get_option('dbvc_allow_uid_fallback_matching', '0');
   $sync_ftp_window_until  = function_exists('dbvc_get_sync_ftp_window_until')
     ? dbvc_get_sync_ftp_window_until()
     : 0;
@@ -635,6 +639,9 @@ function dbvc_render_export_page()
     $prefer_entity_uids = ! empty($_POST['dbvc_prefer_entity_uids']) ? '1' : '0';
     update_option('dbvc_prefer_entity_uids', $prefer_entity_uids);
 
+    $allow_uid_fallback_matching = ! empty($_POST['dbvc_allow_uid_fallback_matching']) ? '1' : '0';
+    update_option('dbvc_allow_uid_fallback_matching', $allow_uid_fallback_matching);
+
     // --- FTP Upload Window ---
     if (isset($_POST['dbvc_sync_ftp_window_action'])) {
       $ftp_action = sanitize_key(wp_unslash($_POST['dbvc_sync_ftp_window_action']));
@@ -703,6 +710,10 @@ function dbvc_render_export_page()
         $bundle_chunk = 10;
       }
       update_option(DBVC_Media_Sync::OPTION_BUNDLE_CHUNK, $bundle_chunk);
+
+      if (class_exists('\Dbvc\Media\Hydration\Settings')) {
+        $media_hydration_settings = \Dbvc\Media\Hydration\Settings::save_from_post((array) $_POST);
+      }
 
       $config_feedback['media']['success'][] = esc_html__('Media handling settings saved.', 'dbvc');
     }
@@ -1284,6 +1295,9 @@ function dbvc_render_export_page()
 
       $prefer_entity_uids = ! empty($_POST['dbvc_prefer_entity_uids']) ? '1' : '0';
       update_option('dbvc_prefer_entity_uids', $prefer_entity_uids);
+
+      $allow_uid_fallback_matching = ! empty($_POST['dbvc_allow_uid_fallback_matching']) ? '1' : '0';
+      update_option('dbvc_allow_uid_fallback_matching', $allow_uid_fallback_matching);
 
       if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
         DBVC_Sync_Logger::log_import('Manual import requested', [
@@ -1913,22 +1927,27 @@ function dbvc_render_export_page()
   }
 
   $has_upload_redirect_state = isset($_GET['dbvc_upload']) && sanitize_key(wp_unslash($_GET['dbvc_upload'])) !== '';
+  $has_media_hydration_upload_state = isset($_GET['dbvc_media_hydration_upload']) && sanitize_key(wp_unslash($_GET['dbvc_media_hydration_upload'])) !== '';
   $has_upload_report_dismiss = (
     (isset($_GET['dbvc_sync_report']) && sanitize_key(wp_unslash($_GET['dbvc_sync_report'])) === 'dismiss')
     || (isset($_GET['dbvc_ai_report']) && sanitize_key(wp_unslash($_GET['dbvc_ai_report'])) === 'dismiss')
+    || (isset($_GET['dbvc_media_hydration_report']) && sanitize_key(wp_unslash($_GET['dbvc_media_hydration_report'])) === 'dismiss')
   );
   $has_retained_upload_report = false;
 
   if (! $has_upload_redirect_state && ! $has_upload_report_dismiss && $active_main_tab === 'tab-import' && $active_import_subtab === 'dbvc-import-content') {
     $retained_sync_report = get_option('dbvc_sync_upload_report');
     $retained_ai_report   = get_option('dbvc_ai_upload_report');
-    $has_retained_upload_report = is_array($retained_sync_report) || is_array($retained_ai_report);
+    $retained_media_hydration_report = class_exists('\Dbvc\Media\Hydration\AdminUploadController')
+      ? get_option(\Dbvc\Media\Hydration\AdminUploadController::REPORT_OPTION)
+      : false;
+    $has_retained_upload_report = is_array($retained_sync_report) || is_array($retained_ai_report) || is_array($retained_media_hydration_report);
   }
 
   if (
     $active_main_tab === 'tab-import'
     && $active_import_subtab === 'dbvc-import-content'
-    && ($has_upload_redirect_state || $has_upload_report_dismiss || $has_retained_upload_report)
+    && ($has_upload_redirect_state || $has_media_hydration_upload_state || $has_upload_report_dismiss || $has_retained_upload_report)
   ) {
     $active_import_subtab = 'dbvc-import-upload';
   }
@@ -2059,6 +2078,13 @@ function dbvc_render_export_page()
                     <?php esc_html_e('Prefer entity UIDs when matching posts', 'dbvc'); ?>
                   </label><br>
                   <small><?php esc_html_e('When enabled, DBVC attempts UID-based matching before falling back to IDs or slugs. Disable when importing unrelated JSON dumps.', 'dbvc'); ?></small>
+                </p>
+                <p>
+                  <label>
+                    <input type="checkbox" name="dbvc_allow_uid_fallback_matching" value="1" <?php checked($allow_uid_fallback_matching, '1'); ?> />
+                    <?php esc_html_e('Allow ID/slug fallback when an incoming UID is not found', 'dbvc'); ?>
+                  </label><br>
+                  <small><?php esc_html_e('Leave disabled for staging/production syncs so a source UID cannot be applied to the wrong local entity by matching an ID or slug.', 'dbvc'); ?></small>
                 </p>
 <?php if (class_exists('DBVC_Media_Sync')) : ?>
                 <fieldset class="dbvc-media-import-options" style="margin:1rem 0;">
@@ -2191,6 +2217,29 @@ function dbvc_render_export_page()
                 <?php submit_button(__('Upload', 'dbvc'), 'secondary'); ?>
               </form>
 
+<?php if (class_exists('\Dbvc\Media\Hydration\AdminUploadController')) : ?>
+              <form method="post" enctype="multipart/form-data" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dbvc-media-hydration-upload-form">
+                <?php wp_nonce_field(\Dbvc\Media\Hydration\AdminUploadController::NONCE_ACTION, \Dbvc\Media\Hydration\AdminUploadController::NONCE_FIELD); ?>
+                <input type="hidden" name="action" value="<?php echo esc_attr(\Dbvc\Media\Hydration\AdminUploadController::ACTION); ?>" />
+                <h2><?php esc_html_e('Upload Media Hydration Package', 'dbvc'); ?></h2>
+                <p><?php esc_html_e('Upload a DBVC media mirror ZIP from the canonical site. The package is staged for preflight only; no media files are hydrated during upload.', 'dbvc'); ?></p>
+                <p>
+                  <input type="file" name="dbvc_media_hydration_package_zip" accept=".zip" required />
+                </p>
+                <p>
+                  <label for="dbvc-media-hydration-upload-package-id"><strong><?php esc_html_e('Package ID', 'dbvc'); ?></strong></label><br>
+                  <input type="text" id="dbvc-media-hydration-upload-package-id" name="dbvc_media_hydration_package_id" class="regular-text" placeholder="<?php echo esc_attr__('Optional; defaults to ZIP filename', 'dbvc'); ?>" />
+                </p>
+                <p>
+                  <label>
+                    <input type="checkbox" name="dbvc_media_hydration_overwrite_package" value="1" />
+                    <?php esc_html_e('Overwrite an existing staged package with the same ID', 'dbvc'); ?>
+                  </label>
+                </p>
+                <?php submit_button(__('Upload Media Package', 'dbvc'), 'secondary'); ?>
+              </form>
+<?php endif; ?>
+
               <?php
               if (isset($_GET['dbvc_sync_report']) && $_GET['dbvc_sync_report'] === 'dismiss') {
                 delete_option('dbvc_sync_upload_report');
@@ -2198,7 +2247,66 @@ function dbvc_render_export_page()
               if (isset($_GET['dbvc_ai_report']) && $_GET['dbvc_ai_report'] === 'dismiss') {
                 delete_option('dbvc_ai_upload_report');
               }
+              if (isset($_GET['dbvc_media_hydration_report']) && $_GET['dbvc_media_hydration_report'] === 'dismiss' && class_exists('\Dbvc\Media\Hydration\AdminUploadController')) {
+                delete_option(\Dbvc\Media\Hydration\AdminUploadController::REPORT_OPTION);
+              }
               $upload_state = isset($_GET['dbvc_upload']) ? sanitize_key(wp_unslash($_GET['dbvc_upload'])) : '';
+              $media_hydration_upload_report = class_exists('\Dbvc\Media\Hydration\AdminUploadController')
+                ? get_option(\Dbvc\Media\Hydration\AdminUploadController::REPORT_OPTION)
+                : false;
+              if (is_array($media_hydration_upload_report) && (($media_hydration_upload_report['mode'] ?? '') === 'media_hydration_package')) :
+                $media_hydration_upload_status = (string) ($media_hydration_upload_report['status'] ?? 'error');
+                $media_hydration_result = isset($media_hydration_upload_report['result']) && is_array($media_hydration_upload_report['result'])
+                  ? $media_hydration_upload_report['result']
+                  : [];
+                $media_hydration_stats = isset($media_hydration_result['stats']) && is_array($media_hydration_result['stats'])
+                  ? $media_hydration_result['stats']
+                  : [];
+                $media_hydration_message = (string) ($media_hydration_upload_report['message'] ?? '');
+                $media_hydration_dismiss_url = add_query_arg('dbvc_media_hydration_report', 'dismiss', admin_url('admin.php?page=dbvc-export'));
+              ?>
+                <div class="notice <?php echo $media_hydration_upload_status === 'success' ? 'notice-success' : 'notice-error'; ?> dbvc-media-hydration-upload-report">
+                  <p><strong><?php echo esc_html($media_hydration_upload_status === 'success' ? __('Media hydration package staged', 'dbvc') : __('Media hydration package upload failed', 'dbvc')); ?></strong></p>
+                  <?php if ($media_hydration_message !== '') : ?>
+                    <p><?php echo esc_html($media_hydration_message); ?></p>
+                  <?php endif; ?>
+                  <?php if ($media_hydration_upload_status === 'success') : ?>
+                    <p>
+                      <?php esc_html_e('Package ID:', 'dbvc'); ?>
+                      <code><?php echo esc_html((string) ($media_hydration_result['package_id'] ?? '')); ?></code>
+                    </p>
+                    <p>
+                      <?php esc_html_e('Manifest path for preflight:', 'dbvc'); ?><br>
+                      <code class="dbvc-media-hydration-upload-report__path"><?php echo esc_html((string) ($media_hydration_result['manifest_path'] ?? '')); ?></code>
+                    </p>
+                    <p>
+                      <?php
+                      echo esc_html(
+                        sprintf(
+                          __('Extracted %1$d package entries, including %2$d media files (%3$d bytes).', 'dbvc'),
+                          (int) ($media_hydration_stats['entries'] ?? 0),
+                          (int) ($media_hydration_stats['media_files'] ?? 0),
+                          (int) ($media_hydration_stats['bytes'] ?? 0)
+                        )
+                      );
+                      ?>
+                    </p>
+                    <p>
+                      <a class="button" href="<?php echo esc_url(admin_url('admin.php?page=dbvc-export#dbvc-config-media')); ?>">
+                        <?php esc_html_e('Open Media Hydration Preflight', 'dbvc'); ?>
+                      </a>
+                    </p>
+                  <?php else : ?>
+                    <?php if (! empty($media_hydration_upload_report['error_code'])) : ?>
+                      <p><code><?php echo esc_html((string) $media_hydration_upload_report['error_code']); ?></code></p>
+                    <?php endif; ?>
+                  <?php endif; ?>
+                  <p>
+                    <a href="<?php echo esc_url($media_hydration_dismiss_url . '#dbvc-import-upload'); ?>"><?php esc_html_e('Dismiss media package report', 'dbvc'); ?></a>
+                  </p>
+                </div>
+              <?php endif; ?>
+              <?php
               $ai_upload_report = get_option('dbvc_ai_upload_report');
               if (is_array($ai_upload_report) && (($ai_upload_report['mode'] ?? '') === 'ai_package')) :
                 $ai_report_counts = isset($ai_upload_report['counts']) && is_array($ai_upload_report['counts'])
@@ -3593,6 +3701,14 @@ document.addEventListener('DOMContentLoaded', function () {
               </p>
 
               <p>
+                <label>
+                  <input type="checkbox" name="dbvc_allow_uid_fallback_matching" value="1" <?php checked($allow_uid_fallback_matching, '1'); ?> />
+                  <?php esc_html_e('Allow ID/slug fallback when an incoming UID is not found', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('Keep this disabled for environment syncs. Enable only for legacy JSON where UIDs are missing locally and ID/slug fallback is intentionally accepted.', 'dbvc'); ?></small>
+              </p>
+
+              <p>
                 <label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
                 <select name="dbvc_new_post_status" id="dbvc_new_post_status">
                   <?php
@@ -4220,6 +4336,170 @@ document.addEventListener('DOMContentLoaded', function () {
           <input type="number" name="dbvc_media_bundle_chunk" id="dbvc_media_bundle_chunk" value="<?php echo esc_attr(DBVC_Media_Sync::get_bundle_chunk_size()); ?>" min="10" step="10" style="width:140px;" />
           <small><?php esc_html_e('Number of media files to copy per batch when building bundles.', 'dbvc'); ?></small>
         </p>
+
+        <?php if (class_exists('\Dbvc\Media\Hydration\Settings')) : ?>
+          <?php
+          $hydration_settings = $media_hydration_settings ?: \Dbvc\Media\Hydration\Settings::get_all();
+          $hydration_mime_groups = (array) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_ALLOWED_MIME_GROUPS] ?? []);
+          $hydration_enabled = (string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_ENABLED] ?? '0') === '1';
+          ?>
+          <hr>
+          <h3><?php esc_html_e('Media Hydration', 'dbvc'); ?></h3>
+          <p class="description"><?php esc_html_e('Hydrate missing physical files for existing Media Library attachment records on cloned targets. This does not create duplicate attachments or alter attachment IDs.', 'dbvc'); ?></p>
+
+          <p>
+            <label>
+              <input type="checkbox" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_ENABLED); ?>" value="1" <?php checked((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_ENABLED] ?? '0'), '1'); ?> />
+              <?php esc_html_e('Enable media hydration workflow', 'dbvc'); ?>
+            </label>
+          </p>
+
+          <p>
+            <label for="dbvc_media_hydration_source"><strong><?php esc_html_e('Hydration source', 'dbvc'); ?></strong></label><br>
+            <select name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_SOURCE); ?>" id="dbvc_media_hydration_source">
+              <?php foreach (\Dbvc\Media\Hydration\Settings::allowed_sources() as $source_key) : ?>
+                <option value="<?php echo esc_attr($source_key); ?>" <?php selected((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_SOURCE] ?? ''), $source_key); ?>>
+                  <?php echo esc_html($source_key === 'bundle_first' ? __('Bundle first', 'dbvc') : __('Bundle/package only', 'dbvc')); ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </p>
+
+          <p>
+            <label for="dbvc_media_hydration_match_policy"><strong><?php esc_html_e('Match policy', 'dbvc'); ?></strong></label><br>
+            <select name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_MATCH_POLICY); ?>" id="dbvc_media_hydration_match_policy">
+              <?php foreach (\Dbvc\Media\Hydration\Settings::allowed_match_policies() as $policy_key) : ?>
+                <option value="<?php echo esc_attr($policy_key); ?>" <?php selected((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_MATCH_POLICY] ?? ''), $policy_key); ?>>
+                  <?php echo esc_html($policy_key === 'uid_then_path' ? __('UID, then path', 'dbvc') : __('Same ID, then UID', 'dbvc')); ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </p>
+
+          <p>
+            <label for="dbvc_media_hydration_metadata_policy"><strong><?php esc_html_e('Metadata policy', 'dbvc'); ?></strong></label><br>
+            <select name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_METADATA_POLICY); ?>" id="dbvc_media_hydration_metadata_policy">
+              <?php foreach (\Dbvc\Media\Hydration\Settings::allowed_metadata_policies() as $policy_key) : ?>
+                <option value="<?php echo esc_attr($policy_key); ?>" <?php selected((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_METADATA_POLICY] ?? ''), $policy_key); ?>>
+                  <?php echo esc_html($policy_key === 'skip' ? __('Skip metadata repair', 'dbvc') : __('Regenerate missing metadata', 'dbvc')); ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </p>
+
+          <p>
+            <label for="dbvc_media_hydration_batch_size"><strong><?php esc_html_e('Hydration batch size', 'dbvc'); ?></strong></label><br>
+            <input type="number" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_BATCH_SIZE); ?>" id="dbvc_media_hydration_batch_size" value="<?php echo esc_attr((int) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_BATCH_SIZE] ?? 50)); ?>" min="1" max="500" step="1" style="width:140px;" />
+          </p>
+
+          <p>
+            <strong><?php esc_html_e('Allowed MIME groups', 'dbvc'); ?></strong><br>
+            <?php foreach (\Dbvc\Media\Hydration\Settings::allowed_mime_groups() as $group_key) : ?>
+              <label style="display:inline-block; margin-right:1rem;">
+                <input type="checkbox" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_ALLOWED_MIME_GROUPS); ?>[]" value="<?php echo esc_attr($group_key); ?>" <?php checked(in_array($group_key, $hydration_mime_groups, true)); ?> />
+                <?php echo esc_html(ucfirst($group_key)); ?>
+              </label>
+            <?php endforeach; ?>
+          </p>
+
+          <p>
+            <label>
+              <input type="checkbox" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_REQUIRE_DRY_RUN); ?>" value="1" <?php checked((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_REQUIRE_DRY_RUN] ?? '1'), '1'); ?> />
+              <?php esc_html_e('Require dry run before apply', 'dbvc'); ?>
+            </label><br>
+            <label>
+              <input type="checkbox" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_RECEIPTS_ENABLED); ?>" value="1" <?php checked((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_RECEIPTS_ENABLED] ?? '1'), '1'); ?> />
+              <?php esc_html_e('Save hydration receipts', 'dbvc'); ?>
+            </label><br>
+            <label>
+              <input type="checkbox" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_STRICT_HASHES); ?>" value="1" <?php checked((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_STRICT_HASHES] ?? '1'), '1'); ?> />
+              <?php esc_html_e('Require strict source hashes', 'dbvc'); ?>
+            </label><br>
+            <label>
+              <input type="checkbox" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_CLONE_CONFIRMATION); ?>" value="1" <?php checked((string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_CLONE_CONFIRMATION] ?? '1'), '1'); ?> />
+              <?php esc_html_e('Require cloned attachment IDs for in-place hydration', 'dbvc'); ?>
+            </label>
+          </p>
+
+          <p>
+            <label for="dbvc_media_hydration_lock_timeout_minutes"><strong><?php esc_html_e('Apply lock timeout minutes', 'dbvc'); ?></strong></label><br>
+            <input type="number" name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_LOCK_TIMEOUT_MINUTES); ?>" id="dbvc_media_hydration_lock_timeout_minutes" value="<?php echo esc_attr((int) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_LOCK_TIMEOUT_MINUTES] ?? 30)); ?>" min="1" max="1440" step="1" style="width:140px;" />
+          </p>
+
+          <div
+            id="dbvc-media-hydration-workflow"
+            class="dbvc-media-hydration-workflow"
+            data-dbvc-rest-root="<?php echo esc_url_raw(rest_url('dbvc/v1/')); ?>"
+            data-dbvc-rest-nonce="<?php echo esc_attr(wp_create_nonce('wp_rest')); ?>"
+            data-dbvc-media-hydration-enabled="<?php echo $hydration_enabled ? '1' : '0'; ?>"
+          >
+            <h4><?php esc_html_e('Hydration Workflow', 'dbvc'); ?></h4>
+            <?php if (! $hydration_enabled) : ?>
+              <p class="description dbvc-media-hydration-workflow__notice"><?php esc_html_e('Enable and save media hydration settings to use these workflow actions.', 'dbvc'); ?></p>
+            <?php endif; ?>
+            <div class="dbvc-media-hydration-workflow__grid">
+              <div class="dbvc-media-hydration-workflow__panel">
+                <h5><?php esc_html_e('Inventory', 'dbvc'); ?></h5>
+                <p>
+                  <label for="dbvc-media-hydration-inventory-limit"><?php esc_html_e('Limit', 'dbvc'); ?></label><br>
+                  <input type="number" id="dbvc-media-hydration-inventory-limit" value="<?php echo esc_attr((int) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_BATCH_SIZE] ?? 50)); ?>" min="1" max="500" step="1" />
+                </p>
+                <button type="button" class="button" data-dbvc-media-hydration-action="inventory" <?php disabled(! $hydration_enabled); ?>><?php esc_html_e('Run Inventory', 'dbvc'); ?></button>
+              </div>
+
+              <div class="dbvc-media-hydration-workflow__panel">
+                <h5><?php esc_html_e('Package Export', 'dbvc'); ?></h5>
+                <p>
+                  <label for="dbvc-media-hydration-package-id"><?php esc_html_e('Package ID', 'dbvc'); ?></label><br>
+                  <input type="text" id="dbvc-media-hydration-package-id" placeholder="media-mirror" />
+                </p>
+                <p>
+                  <label>
+                    <input type="checkbox" id="dbvc-media-hydration-include-files" checked />
+                    <?php esc_html_e('Include original files', 'dbvc'); ?>
+                  </label>
+                </p>
+                <p>
+                  <label>
+                    <input type="checkbox" id="dbvc-media-hydration-create-zip" checked />
+                    <?php esc_html_e('Create ZIP for transfer', 'dbvc'); ?>
+                  </label>
+                </p>
+                <button type="button" class="button" data-dbvc-media-hydration-action="export" <?php disabled(! $hydration_enabled); ?>><?php esc_html_e('Export Package', 'dbvc'); ?></button>
+              </div>
+
+              <div class="dbvc-media-hydration-workflow__panel">
+                <h5><?php esc_html_e('Preflight', 'dbvc'); ?></h5>
+                <p>
+                  <label for="dbvc-media-hydration-manifest-path"><?php esc_html_e('Manifest path', 'dbvc'); ?></label><br>
+                  <input type="text" id="dbvc-media-hydration-manifest-path" class="regular-text" />
+                </p>
+                <p>
+                  <label for="dbvc-media-hydration-plan-id"><?php esc_html_e('Saved plan ID', 'dbvc'); ?></label><br>
+                  <input type="text" id="dbvc-media-hydration-plan-id" class="regular-text" readonly />
+                </p>
+                <button type="button" class="button" data-dbvc-media-hydration-action="preflight" <?php disabled(! $hydration_enabled); ?>><?php esc_html_e('Run Preflight', 'dbvc'); ?></button>
+              </div>
+
+              <div class="dbvc-media-hydration-workflow__panel">
+                <h5><?php esc_html_e('Apply', 'dbvc'); ?></h5>
+                <p>
+                  <label>
+                    <input type="checkbox" id="dbvc-media-hydration-confirm-apply" />
+                    <?php esc_html_e('Confirm hydrate existing media', 'dbvc'); ?>
+                  </label>
+                </p>
+                <button type="button" class="button button-primary" data-dbvc-media-hydration-action="apply" <?php disabled(! $hydration_enabled); ?>><?php esc_html_e('Apply Hydration', 'dbvc'); ?></button>
+              </div>
+            </div>
+            <p id="dbvc-media-hydration-download" class="dbvc-media-hydration-workflow__download" hidden>
+              <a id="dbvc-media-hydration-download-link" class="button button-secondary" href="#">
+                <?php esc_html_e('Download ZIP', 'dbvc'); ?>
+              </a>
+            </p>
+            <pre id="dbvc-media-hydration-output" class="dbvc-media-hydration-workflow__output" aria-live="polite"></pre>
+          </div>
+        <?php endif; ?>
 
         <?php if ($media_clear_url && $media_clear_url !== '#') : ?>
           <p>
@@ -5047,6 +5327,19 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     .dbvc-media-preview { margin:1.5rem 0; padding:1rem; border:1px solid #dcdcde; border-radius:4px; background:#fff; }
     .dbvc-media-preview__table { margin-top:1rem; }
     .dbvc-media-preview__blocked-list { margin:0.75rem 0 0 1.25rem; list-style:disc; }
+    .dbvc-media-hydration-workflow { margin:1rem 0 1.5rem; padding:1rem 1.25rem; border:1px solid #dcdcde; border-radius:4px; background:#fff; }
+    .dbvc-media-hydration-workflow h4 { margin:0 0 0.75rem; }
+    .dbvc-media-hydration-workflow h5 { margin:0 0 0.5rem; }
+    .dbvc-media-hydration-workflow__grid { display:grid; gap:1rem; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); }
+    .dbvc-media-hydration-workflow__panel { border-top:1px solid #e2e4e7; padding-top:0.75rem; }
+    .dbvc-media-hydration-workflow__panel p { margin:0 0 0.75rem; }
+    .dbvc-media-hydration-workflow__panel input[type="number"] { max-width:120px; }
+    .dbvc-media-hydration-workflow__output { display:none; margin:1rem 0 0; max-height:320px; overflow:auto; white-space:pre-wrap; background:#f6f7f7; border:1px solid #dcdcde; border-radius:4px; padding:0.75rem; }
+    .dbvc-media-hydration-workflow__output.has-output { display:block; }
+    .dbvc-media-hydration-workflow__output.is-error { border-color:#d63638; background:#fff8f8; }
+    .dbvc-media-hydration-workflow__download { margin:1rem 0 0; }
+    .dbvc-media-hydration-upload-form { margin:1.5rem 0; padding-top:1.25rem; border-top:1px solid #dcdcde; }
+    .dbvc-media-hydration-upload-report__path { display:block; max-width:100%; overflow:auto; white-space:pre-wrap; word-break:break-all; padding:0.35rem 0.5rem; }
     .dbvc-backup-pagination { display:flex; align-items:center; gap:0.75rem; margin:0.75rem 0; }
     .dbvc-logging-controls { border-top:1px solid #dcdcde; padding-top:1.5rem; margin-top:1.5rem; }
     .dbvc-docs { display:flex; flex-direction:column; gap:1.5rem; }
@@ -5331,7 +5624,182 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
         }
       }
 
+      function initMediaHydrationWorkflow() {
+        const wrap = document.getElementById('dbvc-media-hydration-workflow');
+        if (!wrap || !window.fetch) {
+          return;
+        }
+
+        const restRoot = (wrap.getAttribute('data-dbvc-rest-root') || wrap.getAttribute('data-rest-root') || '').replace(/\/$/, '');
+        const nonce = wrap.getAttribute('data-dbvc-rest-nonce') || wrap.getAttribute('data-rest-nonce') || '';
+        const workflowEnabled = wrap.getAttribute('data-dbvc-media-hydration-enabled') === '1';
+        const output = document.getElementById('dbvc-media-hydration-output');
+        const manifestPath = document.getElementById('dbvc-media-hydration-manifest-path');
+        const planId = document.getElementById('dbvc-media-hydration-plan-id');
+        const inventoryLimit = document.getElementById('dbvc-media-hydration-inventory-limit');
+        const packageId = document.getElementById('dbvc-media-hydration-package-id');
+        const includeFiles = document.getElementById('dbvc-media-hydration-include-files');
+        const createZip = document.getElementById('dbvc-media-hydration-create-zip');
+        const confirmApply = document.getElementById('dbvc-media-hydration-confirm-apply');
+        const downloadWrap = document.getElementById('dbvc-media-hydration-download');
+        const downloadLink = document.getElementById('dbvc-media-hydration-download-link');
+
+        function show(payload, isError) {
+          if (!output) {
+            return;
+          }
+          output.textContent = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
+          output.classList.add('has-output');
+          output.classList.toggle('is-error', !!isError);
+        }
+
+        function setDownloadUrl(url) {
+          if (!downloadWrap || !downloadLink) {
+            return;
+          }
+          if (!url) {
+            downloadWrap.hidden = true;
+            downloadLink.setAttribute('href', '#');
+            return;
+          }
+          downloadLink.setAttribute('href', url);
+          downloadWrap.hidden = false;
+        }
+
+        function endpoint(path) {
+          return restRoot + '/' + String(path || '').replace(/^\//, '');
+        }
+
+        function api(path, options) {
+          const opts = options || {};
+          const headers = {
+            'X-WP-Nonce': nonce,
+            'Accept': 'application/json'
+          };
+          if (opts.body) {
+            headers['Content-Type'] = 'application/json';
+          }
+
+          return fetch(endpoint(path), {
+            method: opts.method || 'GET',
+            headers: headers,
+            credentials: 'same-origin',
+            body: opts.body ? JSON.stringify(opts.body) : undefined
+          }).then(function(response) {
+            return response.json().catch(function() {
+              return {};
+            }).then(function(data) {
+              if (!response.ok) {
+                const message = data && data.message ? data.message : <?php echo wp_json_encode(__('Request failed.', 'dbvc')); ?>;
+                throw { message: message, data: data, status: response.status };
+              }
+              return data;
+            });
+          });
+        }
+
+        function setBusy(button, busy) {
+          if (!button) {
+            return;
+          }
+          button.disabled = !!busy;
+          button.classList.toggle('is-busy', !!busy);
+        }
+
+        function run(button, callback) {
+          setBusy(button, true);
+          setDownloadUrl('');
+          show(<?php echo wp_json_encode(__('Working...', 'dbvc')); ?>, false);
+          callback().then(function(data) {
+            show(data, false);
+          }).catch(function(error) {
+            show(error && error.data ? error.data : (error && error.message ? error.message : <?php echo wp_json_encode(__('Request failed.', 'dbvc')); ?>), true);
+          }).finally(function() {
+            setBusy(button, false);
+          });
+        }
+
+        wrap.querySelectorAll('[data-dbvc-media-hydration-action]').forEach(function(button) {
+          button.addEventListener('click', function() {
+            const action = button.getAttribute('data-dbvc-media-hydration-action');
+
+            if (!workflowEnabled) {
+              show(<?php echo wp_json_encode(__('Enable and save media hydration settings before running workflow actions.', 'dbvc')); ?>, true);
+              return;
+            }
+
+            if (action === 'inventory') {
+              run(button, function() {
+                const limit = inventoryLimit ? Math.max(1, parseInt(inventoryLimit.value || '50', 10)) : 50;
+                return api('media-hydration/inventory?limit=' + encodeURIComponent(String(limit)));
+              });
+              return;
+            }
+
+            if (action === 'export') {
+              run(button, function() {
+                return api('media-hydration/package/export', {
+                  method: 'POST',
+                  body: {
+                    package_id: packageId ? packageId.value : '',
+                    include_files: includeFiles ? includeFiles.checked : true,
+                    create_zip: createZip ? createZip.checked : true
+                  }
+                }).then(function(data) {
+                  if (manifestPath && data && data.manifest_path) {
+                    manifestPath.value = data.manifest_path;
+                  }
+                  if (data && data.download_url) {
+                    setDownloadUrl(data.download_url);
+                  }
+                  return data;
+                });
+              });
+              return;
+            }
+
+            if (action === 'preflight') {
+              run(button, function() {
+                return api('media-hydration/preflight', {
+                  method: 'POST',
+                  body: {
+                    manifest_path: manifestPath ? manifestPath.value : '',
+                    save_plan: true,
+                    save_receipt: false
+                  }
+                }).then(function(data) {
+                  if (planId && data && data.saved_plan && data.saved_plan.plan_id) {
+                    planId.value = data.saved_plan.plan_id;
+                  }
+                  return data;
+                });
+              });
+              return;
+            }
+
+            if (action === 'apply') {
+              if (!confirmApply || !confirmApply.checked) {
+                show(<?php echo wp_json_encode(__('Confirm hydration apply before continuing.', 'dbvc')); ?>, true);
+                return;
+              }
+
+              run(button, function() {
+                return api('media-hydration/apply', {
+                  method: 'POST',
+                  body: {
+                    manifest_path: manifestPath ? manifestPath.value : '',
+                    plan_id: planId ? planId.value : '',
+                    confirm: 'hydrate-existing-media'
+                  }
+                });
+              });
+            }
+          });
+        });
+      }
+
       relocateAiReviewPanel();
+      initMediaHydrationWorkflow();
     })();
 
     jQuery(function($) {

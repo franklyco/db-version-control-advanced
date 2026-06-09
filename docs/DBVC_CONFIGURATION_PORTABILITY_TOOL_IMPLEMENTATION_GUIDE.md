@@ -299,7 +299,7 @@ This is the starting registry inventory. Phase 1 must turn this into executable 
 | Core filename/import policy | `dbvc_export_filename_format`, `dbvc_import_filename_format`, `dbvc_use_slug_in_filenames` | yes | Keep legacy flag in sync. |
 | Core sync path | `dbvc_sync_path` | prompt | Site-local path. Do not apply silently. |
 | FTP upload window | `dbvc_sync_ftp_window_until` | no | Runtime state, never portable. |
-| Import defaults | `dbvc_allow_new_posts`, `dbvc_new_post_status`, `dbvc_new_post_types_whitelist`, `dbvc_import_require_review`, `dbvc_force_reapply_new_posts`, `dbvc_prefer_entity_uids`, `dbvc_diff_ignore_paths` | yes | Whitelists need target validation. |
+| Import defaults | `dbvc_allow_new_posts`, `dbvc_new_post_status`, `dbvc_new_post_types_whitelist`, `dbvc_import_require_review`, `dbvc_force_reapply_new_posts`, `dbvc_prefer_entity_uids`, `dbvc_allow_uid_fallback_matching`, `dbvc_diff_ignore_paths` | yes | Whitelists need target validation. UID fallback matching should stay disabled for staging/production sync profiles unless legacy JSON fallback is intentional. |
 | Mirror domain | `dbvc_mirror_domain`, `dbvc_export_use_mirror_domain`, `dbvc_strip_domain_urls` | prompt | Environment-specific URL behavior. |
 | Masking defaults | `dbvc_mask_defaults_meta_keys`, `dbvc_mask_defaults_subkeys`, `dbvc_mask_post_fields`, `dbvc_auto_export_mask_mode`, `dbvc_auto_export_mask_placeholder` | yes | Safe if reviewed. |
 | Runtime export mask selections | `dbvc_export_last_mask_mode`, `dbvc_mask_action`, `dbvc_mask_meta_keys`, `dbvc_mask_subkeys`, `dbvc_mask_placeholder` | advanced | Some are last-run state. Default exclude except explicit advanced profile. |

@@ -4,6 +4,7 @@
 
 ### Handoffs
 - `handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md`
+- `handoffs/DBVC_VISUAL_EDITOR_HANDOFF_2026_05_24.md`
 
 ### Enhancements
 - `enhancements/DBVC_VISUAL_EDITOR_MVP.md`

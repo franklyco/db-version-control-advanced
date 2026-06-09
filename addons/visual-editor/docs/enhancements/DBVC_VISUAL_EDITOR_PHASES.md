@@ -1,5 +1,12 @@
 # DBVC Visual Editor Phases
 
+## Thread Status Snapshot - 2026-05-23
+- Toolbar 2.0 is now the active Visual Editor chrome direction: bottom-center dock, upward status/review popover, Go To Object navigation, Shared Globals launcher, active-object edit link, and mode exit control.
+- Shared Globals is intentionally scoped to configured option-owned ACF `relationship` / `post_object` fields. The default configured field is `settings_globals_default_posts`; current-page fallback query-loop descriptors stay in the normal status/review flow.
+- The panel warning UX has moved from tall top warning blocks to compact footer warning icons with typed context (`Shared`, `Related`, `Query Loop collection`, `Current Post`) and tooltip/title/ARIA warning text. Shared/related acknowledgement controls now sit near Save / Save and Reload.
+- Overlay styling has been consolidated around Visual Editor design tokens while preserving editable element outlines and badge source colors.
+- Browser/live QA still needs to confirm shared global save, tooltip hover/focus behavior, and large connected-items list scrolling in the actual editor.
+
 ## Phase 1
 - activation
 - Bricks instrumentation
@@ -30,6 +37,7 @@
 - repeater scalar subfield editing
 - flexible content scalar subfield editing
 - image/media support
+- missing/conditional Bricks image media badges that anchor to a safe parent/container when a proven empty image source prevents the image element from rendering
 - structured repeater/flexible subfields
 - draggable, closable session-persistent overlay panel UX
 - revision restore UX
@@ -68,6 +76,8 @@
 - Goal: add a collapsible nested list in `dbvc-ve-statusbar__meta` so users can review all marked fields on the current page without hovering every element.
 - Recommended shape: keep the statusbar compact by default, add a `Review fields` toggle, then render owner/source grouped rows with `Locate` and `Open` actions.
 - Data contract: extend the startup public map with shallow, safe index metadata. Do not use full descriptor hydration on page load and do not expose field values in the public map.
+- Current runtime state: passive statusbar refreshes preserve `.dbvc-ve-field-index.scrollTop`, and the expanded review list now clusters field item accordions under immediate parent sections such as ACF group fields, row container roots, field groups, option pages, or native-loop labels using existing public index metadata first. The earlier redundant source subgroup summary/toggle layer has been removed, so item summaries now carry the field label and marked-field count in one row.
+- Follow-up: add safe group-label metadata only if live testing shows humanized field names are insufficient.
 - Initial grouping order:
   - current entity fields
   - related posts
@@ -87,6 +97,48 @@
   - virtualized list rendering
   - persisted expanded group state
   - bulk actions
+
+## Toolbar 2.0 UX Tranche
+- Dedicated guide: `DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md`.
+- Goal: replace the bottom-corner `dbvc-ve-statusbar` presentation with a bottom-center Visual Editor toolbar that hosts status, field review, object navigation, shared/global collection launchers, active object links, and session/mode controls.
+- Recommended shape: fixed dark compact dock, icon-first controls with accessible labels, circular satellite buttons, and upward-opening popovers that reuse current statusbar, field index, descriptor hydration, panel, and collection-editor contracts.
+- Migration rule: move the existing statusbar into the toolbar through a compatibility wrapper first. Preserve marker counts, save/session messages, field index filters/state, `Locate`, `Open`, and active-owner edit links before retiring the old statusbar root.
+- Go To Object: navigation-only popover for capability-aware post and term search. It must not expose descriptor payloads, field values, or mutable save targets.
+- Shared Globals: configured option-owned ACF `relationship` / `post_object` fields from the Visual Editor settings allowlist only. Writable configured globals require exact ACF metadata, option capability, shared acknowledgement, the existing shared collection mutation contract, and reload-after-save behavior. Current-page fallback query-loop descriptors remain in the status/review flow and do not appear in the Shared Globals popover.
+- Current runtime state: first toolbar shell slice is implemented. The existing `dbvc-ve-statusbar` renderer is parked inside the toolbar and opens upward for status/review so current marker counts, field index filters/state, `Locate`, `Open`, active-owner edit links, and save/session messages stay on the existing code path. Go To Object is implemented as navigation-only capped post/term search with capability filtering and explicit frontend/backend links. Shared Globals is implemented for configured option fields, defaulting to `settings_globals_default_posts`; configured fields are attached to the active session as toolbar-scoped descriptors and open through the existing connected-items panel/save flow.
+- Recommended first implementation slice:
+  - toolbar shell behind a reversible migration path
+  - shared upward popover manager
+  - statusbar/field-index popover parity
+  - active object edit-link button parity
+- Deferred:
+  - object search writes or arbitrary URL navigation
+  - generic options editing
+  - shared global writes before inspectable inventory and exact collection contracts
+  - row/layout lifecycle mutation
+  - cross-page live DOM patching after shared global saves
+
+## Add-on Settings and Frontend Exclusions Tranche
+- Dedicated guide section: `DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md` -> `Add-on Settings Submenu and Exclusions`.
+- Goal: give Visual Editor its own DBVC submenu settings page while preserving the existing Configure -> Add-ons settings source of truth, then allow site admins to exclude internal or non-content post types/taxonomies from every frontend Visual Editor surface.
+- Default exclusions:
+  - post types: `bricks_template`
+  - taxonomies: `template_tag`, `template_bundle`
+- Exclusion surfaces:
+  - page-context support checks for singular, CPT archive, and taxonomy archive entry points
+  - request/session descriptor registration and public-map export
+  - Go To Object post/term search
+  - descriptor-scoped connected-item and linked-term searches
+  - Toolbar Shared Globals configured-field inventory
+- Save safety rule: excluded selected values must not be silently deleted just because the panel hides them. Full replacement collection saves must preserve excluded stored IDs that were hidden from the editor UI.
+- Current runtime state: implementation slice added a Visual Editor submenu page, content visibility settings, centralized exclusion helpers, descriptor/session filtering, object/reference search filtering, shared-global target filtering, page-context guards, and hidden-excluded-ID preservation for ACF reference collection saves.
+- Validation focus:
+  - settings page saves and reflects values
+  - excluded `bricks_template`, `template_tag`, and `template_bundle` do not appear in Go To Object
+  - excluded taxonomy archives do not activate Visual Editor
+  - connected-items searches omit excluded post types
+  - linked-term searches omit excluded taxonomies
+  - mixed relationship fields preserve hidden excluded IDs on save
 
 ## Current Hold Context
 - The next paused advanced-data follow-up is nested ACF group and deeper flexible/repeater descendant save verification, not marker discovery.
@@ -120,9 +172,10 @@
   - use the native loop expansion plan as the runtime ordering source of truth before opening later mutation branches
   - stable flexible row mutation is now widened across shared post/term/user/option owners for the existing safe flexible field set, including gallery descendants when Bricks renders a direct gallery collection
   - direct gallery collections now support ordered Media Library replacement for top-level, repeater-row, and flexible-row ACF gallery fields, with page reload after save so Bricks can rebuild gallery markup cleanly
+  - empty/conditional direct Bricks gallery collections now share the missing-media parent-anchor path when the ACF gallery source resolves empty, with `Add Gallery` badge treatment and reload-after-save
   - current WIP/paused items on the user side:
     - shared non-current post flexible descendants through `shared_flexible_layout`
-    - direct/repeater/flexible gallery collection replacement flow
+    - populated direct/repeater/flexible gallery collection replacement browser flow
   - current active collection-editor slice:
     - current-owner native ACF `relationship` query roots can now surface as `Edit Connected` container markers instead of only descendant field markers
     - current-owner native ACF `post_object` query roots can now use that same connected-items container contract
@@ -153,7 +206,8 @@
   - nested-group matching now also applies to exact shared-option fallback collections and explicit seed-current-field targets, with grouped metadata preserved before shared-option or seed contracts become writable
   - source-summary details now expose trusted raw grouped selectors when they differ from normalized field names, so panel/status QA can verify the exact flattened ACF selector behind nested-group collection badges
   - current-owner empty derived query loops use a narrow first-slice plan: explicit ACF source evidence, concrete target post type, empty stored target subset, synthetic descriptor registration from captured query-vars, hidden marker injection after the Bricks loop-start comment or query-trail placeholder, and the existing filtered-subset save contract for adding the first connected item; raw `post__in` IDs outside the target post type are preserved as non-target IDs
-  - post-owned linked-term collections are now planned as a separate branch from ACF connected posts: Bricks `objectType: term` roots with `current_post_term` and exactly one taxonomy can map to the owner post's assigned terms through a dedicated `post_terms_collection` contract
+  - post-owned linked-term collections are now WIP/live QA as a separate branch from ACF connected posts: Bricks `objectType: term` roots with `current_post_term` and exactly one taxonomy can map to the owner post's assigned terms through a dedicated `post_terms_collection` contract
+  - Bricks native taxonomy/terms elements such as `post-taxonomy` are planned as the next guarded branch: one explicit element taxonomy, current or concrete loop-owned post owner, marker on the element root, and the existing `post_terms_collection` save contract
 - deferred within the collection-editor branch:
   - custom Query Editor fallback branch writes beyond exact shared-option target-CPT/full-field matches and the narrow explicit current-page seed action, including recent-post fallbacks, empty shared-option fallback branches, and ambiguous branch selection
   - shared connected-item collections

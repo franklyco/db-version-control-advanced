@@ -52,7 +52,7 @@ To avoid hidden behavior differences between upload-driven imports and the legac
 
 - `Only import new or modified posts`
 
-Immediate import should also note that it reuses the existing legacy post-matching behavior, including entity UID matching when the uploaded JSON contains `vf_object_uid`.
+Immediate import should also note that it reuses the existing legacy post-matching behavior. Uploaded JSON with `vf_object_uid` matches by UID first; if the UID is not found locally, ID/slug fallback is blocked unless `dbvc_allow_uid_fallback_matching` is explicitly enabled.
 
 ## Implementation Guide
 
@@ -64,7 +64,7 @@ Tasks:
 
 - Add the primary checkbox and description text under the existing dry-run control.
 - Add a conditional subordinate checkbox for smart import.
-- Add helper text clarifying that entity UID matching is already reused when the uploaded JSON includes `vf_object_uid`.
+- Add helper text clarifying that entity UID matching is reused when the uploaded JSON includes `vf_object_uid`, and that unmatched-UID fallback is controlled by `dbvc_allow_uid_fallback_matching`.
 - Ensure labels make it clear the fast path is for uploaded post JSON files only.
 - Keep the existing upload action, nonce, and file input unchanged.
 
@@ -155,7 +155,7 @@ Checklist:
 - [x] New targeted import helper added to `DBVC_Sync_Posts`.
 - [x] Helper imports only provided post file paths.
 - [x] Smart-import flag is honored in the targeted path.
-- [x] UID-matching behavior is reused automatically from the legacy importer path.
+- [x] UID-matching behavior is reused automatically from the legacy importer path, including the strict unmatched-UID fallback gate.
 - [x] Helper returns a structured per-file result payload.
 
 ### 6. Extend upload reporting and notices
@@ -228,8 +228,10 @@ Required scenarios:
    - Expect no immediate import branch.
 7. Immediate import with smart import enabled.
    - Expect unchanged files to skip by `_dbvc_import_hash`.
-8. Immediate import with UID matching enabled.
+8. Immediate import with UID matching.
    - Expect uploaded JSON with `vf_object_uid` to match the intended local entity when available.
+   - Expect unmatched UID + matching slug to skip/block fallback while `dbvc_allow_uid_fallback_matching` is disabled.
+   - Enable `dbvc_allow_uid_fallback_matching` only in a disposable QA pass and verify the legacy fallback path is restored.
 
 Checklist:
 
@@ -239,7 +241,7 @@ Checklist:
 - [ ] Mixed-scenario routing verified.
 - [ ] Dry-run and ZIP guardrails verified.
 - [ ] Smart-import behavior verified in the new path.
-- [ ] UID-matching behavior verified in the new path.
+- [ ] UID-matching and unmatched-UID fallback-toggle behavior verified in the new path.
 
 ## Suggested Task Order
 
@@ -267,7 +269,7 @@ Checklist:
 - [x] Sync-folder wipe bypassed only for immediate-import JSON requests.
 - [x] Routed post-file collection implemented.
 - [x] Targeted import helper implemented.
-- [x] Smart-import control wired into targeted import and legacy UID matching preserved.
+- [x] Smart-import control wired into targeted import and strict legacy UID matching preserved.
 - [x] Upload report and notices extended for import outcomes.
 - [x] Logging/activity coverage added.
 - [ ] Manual QA completed across the required scenarios.

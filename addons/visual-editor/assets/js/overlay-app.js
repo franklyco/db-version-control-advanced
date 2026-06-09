@@ -22,10 +22,25 @@
     touchSuppressToken: '',
     touchClickSuppressUntil: 0,
     statusBarState: null,
+    toolbarNode: null,
+    toolbarPopoverNode: null,
+    toolbarStatusbarParkingNode: null,
+    toolbarOpenPanel: '',
+    toolbarTriggerNode: null,
+    toolbarEventsBound: false,
+    toolbarObjectSearchRequestId: 0,
+    toolbarObjectSearchTimer: 0,
+    toolbarObjectSearchType: 'all',
+    toolbarObjectSearchTerm: '',
+    toolbarSharedGlobalsRequestId: 0,
+    toolbarSharedGlobalsByToken: {},
     fieldIndexOpen: false,
     fieldIndexFilter: 'all',
-    fieldIndexOpenSubgroups: new Set(),
+    fieldIndexScrollTop: 0,
+    fieldIndexResetScroll: false,
+    fieldIndexOpenSections: new Set(),
     fieldIndexOpenItems: new Set(),
+    fieldIndexSectionStateCaptured: false,
     fieldIndexRefreshFrame: 0,
     panelOpen: false,
     panelPosition: null,
@@ -270,6 +285,49 @@
     state.sessionLastRefreshAt = Date.now();
     cacheDescriptorHydrations(session.descriptorHydrations);
     scheduleViewportPrefetch();
+  }
+
+  function mergeSessionDescriptors(descriptors) {
+    if (!descriptors || typeof descriptors !== 'object') {
+      return;
+    }
+
+    if (!state.session || typeof state.session !== 'object') {
+      return;
+    }
+
+    if (!state.session.descriptors || typeof state.session.descriptors !== 'object') {
+      state.session.descriptors = {};
+    }
+
+    Object.keys(descriptors).forEach(function (token) {
+      if (!token || !descriptors[token] || typeof descriptors[token] !== 'object') {
+        return;
+      }
+
+      state.session.descriptors[token] = descriptors[token];
+    });
+
+    scheduleFieldIndexRefresh();
+  }
+
+  function mergeSharedGlobalInventory(result) {
+    if (!result || typeof result !== 'object') {
+      return;
+    }
+
+    mergeSessionDescriptors(result.descriptors);
+    cacheDescriptorHydrations(result.descriptorHydrations);
+
+    if (Array.isArray(result.fields)) {
+      result.fields.forEach(function (field) {
+        if (!field || typeof field !== 'object' || !field.token) {
+          return;
+        }
+
+        state.toolbarSharedGlobalsByToken[String(field.token)] = field;
+      });
+    }
   }
 
   function handleExpiredSession(error) {
@@ -749,6 +807,10 @@
     return context === 'image_src' || context === 'background_image';
   }
 
+  function canPatchRenderContextWithoutReload(context) {
+    return isMediaRenderContext(context) || context === 'gallery_collection';
+  }
+
   function getDescriptorSourceGroup(descriptor, node) {
     if (descriptor && descriptor.render && typeof descriptor.render.source_group === 'string' && descriptor.render.source_group) {
       return descriptor.render.source_group;
@@ -828,6 +890,18 @@
     return descriptor && typeof descriptor.input === 'string'
       ? descriptor.input
       : '';
+  }
+
+  function isMissingMediaMarker(node) {
+    return Boolean(node && node.dataset && node.dataset.dbvcVeMissingMedia === '1');
+  }
+
+  function getMissingMediaKind(node) {
+    if (!isMissingMediaMarker(node)) {
+      return '';
+    }
+
+    return node.dataset.dbvcVeMissingMediaKind === 'gallery' ? 'gallery' : 'image';
   }
 
   function getDescriptorQuerySource(descriptor) {
@@ -1093,6 +1167,156 @@
     };
   }
 
+  function isEmptyMediaReferenceRenderData(renderData) {
+    if (!renderData || typeof renderData !== 'object') {
+      return true;
+    }
+
+    return !(Number(renderData.attachmentId || 0) || String(renderData.src || '') || String(renderData.fullUrl || ''));
+  }
+
+  function resolveImageMediaNode(node) {
+    if (!node || node.nodeType !== 1) {
+      return null;
+    }
+
+    if (node.matches && (node.matches('img') || node.matches('picture'))) {
+      return node;
+    }
+
+    const picture = node.querySelector ? node.querySelector('picture') : null;
+    if (picture) {
+      return picture;
+    }
+
+    return node.querySelector ? node.querySelector('img') : null;
+  }
+
+  function resolveImageElement(mediaNode) {
+    if (!mediaNode || mediaNode.nodeType !== 1) {
+      return null;
+    }
+
+    if (mediaNode.matches && mediaNode.matches('img')) {
+      return mediaNode;
+    }
+
+    return mediaNode.querySelector ? mediaNode.querySelector('img') : null;
+  }
+
+  function clearImageElementAttributes(imageNode, attribute) {
+    if (!imageNode) {
+      return;
+    }
+
+    const primaryAttribute = attribute || 'src';
+
+    imageNode.removeAttribute(primaryAttribute);
+    if (primaryAttribute !== 'src') {
+      imageNode.removeAttribute('src');
+    }
+    imageNode.removeAttribute('srcset');
+    imageNode.removeAttribute('sizes');
+    imageNode.removeAttribute('alt');
+  }
+
+  function rememberClearedMediaClassName(markerNode, mediaNode) {
+    if (!markerNode || !markerNode.dataset || !mediaNode || !mediaNode.className || typeof mediaNode.className !== 'string') {
+      return;
+    }
+
+    const className = mediaNode.className
+      .split(/\s+/)
+      .filter(function (name) {
+        return name && name !== 'dbvc-ve-media-cleared' && name !== 'dbvc-ve-media-cleared-self';
+      })
+      .join(' ');
+
+    if (className) {
+      markerNode.dataset.dbvcVeClearedMediaClassName = className;
+    }
+  }
+
+  function clearRenderedImageMediaNode(node, attribute) {
+    if (!node || node.nodeType !== 1) {
+      return;
+    }
+
+    const mediaNode = resolveImageMediaNode(node);
+    const imageNode = resolveImageElement(mediaNode);
+
+    node.classList.add('dbvc-ve-media-cleared');
+    if (node.dataset) {
+      node.dataset.dbvcVeDisplayValue = '';
+    }
+
+    if (!mediaNode) {
+      scheduleBadgeLayout();
+      return;
+    }
+
+    if (imageNode) {
+      clearImageElementAttributes(imageNode, attribute);
+    }
+
+    if (mediaNode === node || mediaNode.hasAttribute('data-dbvc-ve') || (mediaNode.querySelector && mediaNode.querySelector('[data-dbvc-ve]'))) {
+      scheduleBadgeLayout();
+      return;
+    }
+
+    rememberClearedMediaClassName(node, imageNode || mediaNode);
+    mediaNode.remove();
+    scheduleBadgeLayout();
+  }
+
+  function restoreClearedMediaState(node) {
+    if (!node || node.nodeType !== 1) {
+      return;
+    }
+
+    node.classList.remove('dbvc-ve-media-cleared', 'dbvc-ve-media-cleared-self');
+    node.removeAttribute('aria-hidden');
+
+    if (node.querySelectorAll) {
+      node.querySelectorAll('.dbvc-ve-media-cleared-self').forEach(function (item) {
+        item.classList.remove('dbvc-ve-media-cleared-self');
+        item.removeAttribute('aria-hidden');
+      });
+    }
+  }
+
+  function ensureRenderedImageElement(node) {
+    if (!node || node.nodeType !== 1) {
+      return null;
+    }
+
+    const existing = resolveImageElement(resolveImageMediaNode(node));
+    if (existing) {
+      return existing;
+    }
+
+    const image = document.createElement('img');
+    const rememberedClass = node.dataset && node.dataset.dbvcVeClearedMediaClassName
+      ? String(node.dataset.dbvcVeClearedMediaClassName)
+      : '';
+
+    image.className = rememberedClass || 'dbvc-ve-live-media-image';
+
+    if (node.matches && node.matches('picture')) {
+      node.appendChild(image);
+      return image;
+    }
+
+    const picture = node.querySelector ? node.querySelector('picture') : null;
+    if (picture) {
+      picture.appendChild(image);
+      return image;
+    }
+
+    node.appendChild(image);
+    return image;
+  }
+
   function normalizeGalleryItems(value, descriptor) {
     const items = Array.isArray(value)
       ? value
@@ -1133,6 +1357,120 @@
         title: String(item.title || '')
       };
     }).filter(Boolean);
+  }
+
+  function copyClassName(source, fallback) {
+    return source && typeof source.className === 'string' && source.className
+      ? source.className
+      : fallback;
+  }
+
+  function patchGalleryCollectionNode(node, value, descriptor) {
+    if (!node) {
+      return 0;
+    }
+
+    const items = normalizeGalleryItems(value, descriptor);
+    const existingChildren = Array.from(node.children || []);
+    const existingItem = existingChildren[0] || null;
+    const existingFigure = existingItem && existingItem.matches && existingItem.matches('figure')
+      ? existingItem
+      : (existingItem && existingItem.querySelector ? existingItem.querySelector('figure') : null);
+    const existingAnchor = existingItem && existingItem.querySelector ? existingItem.querySelector('a') : null;
+    const existingImage = existingItem && existingItem.querySelector ? existingItem.querySelector('img') : null;
+    const usesListItems = ['UL', 'OL'].indexOf(node.tagName) !== -1;
+    const itemTag = usesListItems ? 'li' : 'figure';
+    const itemClassName = copyClassName(existingItem, 'dbvc-ve-live-gallery-item');
+    const figureClassName = existingFigure && existingFigure !== existingItem ? copyClassName(existingFigure, '') : '';
+    const anchorClassName = copyClassName(existingAnchor, '');
+    const imageClassName = copyClassName(existingImage, '');
+
+    node.innerHTML = '';
+
+    items.forEach(function (item) {
+      const id = Number(item && item.id || 0) || 0;
+      const url = item && (item.renderUrl || item.url) ? String(item.renderUrl || item.url) : '';
+      const fullUrl = item && item.url ? String(item.url) : url;
+
+      if (!url) {
+        return;
+      }
+
+      const itemNode = document.createElement(itemTag);
+      let imageParent = itemNode;
+
+      itemNode.className = itemClassName;
+      itemNode.classList.add('dbvc-ve-live-gallery-item');
+
+      if (id > 0) {
+        itemNode.dataset.id = String(id);
+      }
+
+      if (usesListItems) {
+        const figure = document.createElement('figure');
+
+        if (figureClassName) {
+          figure.className = figureClassName;
+        }
+
+        itemNode.appendChild(figure);
+        imageParent = figure;
+      }
+
+      if (existingAnchor) {
+        const anchor = document.createElement('a');
+
+        anchor.href = fullUrl || url;
+        if (anchorClassName) {
+          anchor.className = anchorClassName;
+        }
+        if (existingAnchor.target) {
+          anchor.target = existingAnchor.target;
+        }
+        if (existingAnchor.rel) {
+          anchor.rel = existingAnchor.rel;
+        }
+
+        imageParent.appendChild(anchor);
+        imageParent = anchor;
+      }
+
+      const image = document.createElement('img');
+
+      image.src = url;
+      image.alt = item && item.alt ? String(item.alt) : '';
+      image.loading = 'lazy';
+      image.decoding = 'async';
+
+      if (imageClassName) {
+        image.className = imageClassName;
+      }
+
+      imageParent.appendChild(image);
+      node.appendChild(itemNode);
+    });
+
+    return items.length;
+  }
+
+  function mergeGalleryItems(existingItems, addedItems) {
+    const items = [];
+    const seen = new Set();
+
+    [existingItems, addedItems].forEach(function (group) {
+      normalizeGalleryItems(group || []).forEach(function (item) {
+        const id = Number(item.id || 0) || 0;
+
+        if (!id || seen.has(id)) {
+          return;
+        }
+
+        seen.add(id);
+        items.push(item);
+      });
+    });
+
+    return items;
   }
 
   function mapMediaSelectionToGalleryItem(data, descriptor) {
@@ -1425,9 +1763,13 @@
 
   function ensureStatusBar() {
     let bar = document.querySelector('.dbvc-ve-statusbar');
+    const mount = getStatusBarMountNode();
 
     if (bar) {
       bindStatusBarEvents(bar);
+      if (mount && bar.parentNode !== mount) {
+        mount.appendChild(bar);
+      }
       return bar;
     }
 
@@ -1441,7 +1783,7 @@
     ].join('');
 
     bindStatusBarEvents(bar);
-    document.body.appendChild(bar);
+    mount.appendChild(bar);
 
     return bar;
   }
@@ -1491,6 +1833,911 @@
     return `<a class="dbvc-ve-statusbar__link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label || link.url)}</a>`;
   }
 
+  function getToolbarString(key, fallback) {
+    const value = strings()[key];
+
+    return typeof value === 'string' && value ? value : fallback;
+  }
+
+  function renderToolbarIcon(name) {
+    const attrs = 'aria-hidden="true" focusable="false" viewBox="0 0 24 24"';
+    const common = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    const filled = 'fill="currentColor"';
+    const icons = {
+      status: `<svg ${attrs}><path ${filled} d="M8 5a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Zm8 0a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Z"/></svg>`,
+      layers: `<svg ${attrs}><path ${common} d="m12 3 8 4-8 4-8-4 8-4Z"/><path ${common} d="m4 12 8 4 8-4"/><path ${common} d="m4 17 8 4 8-4"/></svg>`,
+      search: `<svg ${attrs}><circle ${common} cx="11" cy="11" r="6"/><path ${common} d="m16 16 4 4"/></svg>`,
+      globe: `<svg ${attrs}><circle ${common} cx="12" cy="12" r="9"/><path ${common} d="M3 12h18"/><path ${common} d="M12 3c2.5 2.7 3.5 5.7 3.5 9s-1 6.3-3.5 9c-2.5-2.7-3.5-5.7-3.5-9S9.5 5.7 12 3Z"/></svg>`,
+      edit: `<svg ${attrs}><path ${common} d="M4 20h16"/><path ${common} d="m6 16 1-4 9-9 4 4-9 9-4 1Z"/><path ${common} d="m14 5 4 4"/></svg>`,
+      more: `<svg ${attrs}><circle ${filled} cx="5" cy="12" r="1.8"/><circle ${filled} cx="12" cy="12" r="1.8"/><circle ${filled} cx="19" cy="12" r="1.8"/></svg>`,
+      power: `<svg ${attrs}><path ${common} d="M12 2v10"/><path ${common} d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>`
+    };
+
+    return icons[name] || icons.more;
+  }
+
+  function createToolbarButtonMarkup(action, icon, label, extraClass, disabled) {
+    const classes = ['dbvc-ve-toolbar__button'];
+
+    if (extraClass) {
+      classes.push(extraClass);
+    }
+
+    return [
+      `<button type="button" class="${classes.join(' ')}" data-dbvc-ve-toolbar-action="${escapeHtml(action)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${disabled ? ' disabled aria-disabled="true"' : ''}>`,
+      renderToolbarIcon(icon),
+      '<span class="dbvc-ve-toolbar__count" aria-hidden="true"></span>',
+      '</button>'
+    ].join('');
+  }
+
+  function getToolbarToggleUrl() {
+    const value = window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.toggleUrl;
+
+    return typeof value === 'string' && value ? value : '';
+  }
+
+  function bindToolbarEvents(toolbar) {
+    if (!toolbar || toolbar.dataset.toolbarBound === '1') {
+      return;
+    }
+
+    toolbar.dataset.toolbarBound = '1';
+    toolbar.addEventListener('click', handleToolbarClick);
+
+    if (!state.toolbarEventsBound) {
+      state.toolbarEventsBound = true;
+      document.addEventListener('pointerdown', handleToolbarOutsidePointerDown, true);
+      document.addEventListener('keydown', handleToolbarKeydown, true);
+    }
+  }
+
+  function ensureToolbar() {
+    if (state.toolbarNode && state.toolbarNode.isConnected) {
+      return state.toolbarNode;
+    }
+
+    let toolbar = document.querySelector('.dbvc-ve-toolbar');
+
+    if (!toolbar) {
+      const toolbarLabel = getToolbarString('toolbarLabel', 'Visual Editor toolbar');
+      const statusLabel = getToolbarString('toolbarStatus', 'Visual Editor status');
+      const reviewLabel = getToolbarString('toolbarReviewFields', 'Review fields');
+      const goObjectLabel = getToolbarString('toolbarGoToObject', 'Go to object');
+      const sharedGlobalsLabel = getToolbarString('toolbarSharedGlobals', 'Shared globals');
+      const moreLabel = getToolbarString('toolbarMore', 'More options');
+      const editLabel = getToolbarString('toolbarEditObject', 'Edit object');
+      const exitLabel = getToolbarString('toolbarExitMode', 'Exit Visual Editor');
+      const toggleUrl = getToolbarToggleUrl();
+
+      toolbar = document.createElement('div');
+      toolbar.className = 'dbvc-ve-toolbar';
+      toolbar.setAttribute('role', 'toolbar');
+      toolbar.setAttribute('aria-label', toolbarLabel);
+      toolbar.innerHTML = [
+        createToolbarButtonMarkup('status', 'status', statusLabel, 'dbvc-ve-toolbar__button--satellite', false),
+        '<div class="dbvc-ve-toolbar__dock">',
+        createToolbarButtonMarkup('review-fields', 'layers', reviewLabel, 'dbvc-ve-toolbar__button--dock', false),
+        createToolbarButtonMarkup('go-object', 'search', goObjectLabel, 'dbvc-ve-toolbar__button--dock', false),
+        createToolbarButtonMarkup('shared-globals', 'globe', sharedGlobalsLabel, 'dbvc-ve-toolbar__button--dock', false),
+        createToolbarButtonMarkup('overflow', 'more', moreLabel, 'dbvc-ve-toolbar__button--dock', true),
+        '</div>',
+        `<a class="dbvc-ve-toolbar__button dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__edit-link is-disabled" data-dbvc-ve-toolbar-action="edit-object" aria-label="${escapeHtml(editLabel)}" title="${escapeHtml(editLabel)}" target="_blank" rel="noopener noreferrer" aria-disabled="true">${renderToolbarIcon('edit')}</a>`,
+        toggleUrl
+          ? `<a class="dbvc-ve-toolbar__button dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__button--power" data-dbvc-ve-toolbar-action="toggle-mode" aria-label="${escapeHtml(exitLabel)}" title="${escapeHtml(exitLabel)}" href="${escapeHtml(toggleUrl)}">${renderToolbarIcon('power')}</a>`
+          : createToolbarButtonMarkup('toggle-mode', 'power', exitLabel, 'dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__button--power', true),
+        '<div class="dbvc-ve-toolbar__message" hidden></div>',
+        '<div class="dbvc-ve-toolbar-popover" role="dialog" aria-modal="false" hidden>',
+        '  <div class="dbvc-ve-toolbar-popover__header">',
+        '    <div class="dbvc-ve-toolbar-popover__title" id="dbvc-ve-toolbar-popover-title"></div>',
+        `    <button type="button" class="dbvc-ve-toolbar-popover__close" data-dbvc-ve-toolbar-action="close-popover" aria-label="${escapeHtml(strings().panelCancel || 'Close')}">×</button>`,
+        '  </div>',
+        '  <div class="dbvc-ve-toolbar-popover__body"></div>',
+        '</div>',
+        '<div class="dbvc-ve-toolbar__statusbar-parking" hidden></div>'
+      ].join('');
+
+      document.body.appendChild(toolbar);
+    }
+
+    state.toolbarNode = toolbar;
+    state.toolbarPopoverNode = toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    state.toolbarStatusbarParkingNode = toolbar.querySelector('.dbvc-ve-toolbar__statusbar-parking');
+    bindToolbarEvents(toolbar);
+    syncToolbarState(state.statusBarState || {});
+
+    return toolbar;
+  }
+
+  function getToolbarPopoverBody() {
+    const toolbar = ensureToolbar();
+
+    return toolbar.querySelector('.dbvc-ve-toolbar-popover__body');
+  }
+
+  function getStatusBarMountNode() {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const body = toolbar.querySelector('.dbvc-ve-toolbar-popover__body');
+
+    if (popover && body && !popover.hidden && (state.toolbarOpenPanel === 'status' || state.toolbarOpenPanel === 'review-fields')) {
+      return body;
+    }
+
+    return state.toolbarStatusbarParkingNode || toolbar.querySelector('.dbvc-ve-toolbar__statusbar-parking') || document.body;
+  }
+
+  function clearToolbarPopoverBody(body, keepNode) {
+    if (!body) {
+      return;
+    }
+
+    Array.from(body.childNodes).forEach(function (node) {
+      if (node !== keepNode) {
+        node.remove();
+      }
+    });
+  }
+
+  function openStatusBarToolbarPopover(options) {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const title = toolbar.querySelector('.dbvc-ve-toolbar-popover__title');
+    const body = getToolbarPopoverBody();
+    const expandIndex = Boolean(options && options.expandIndex);
+    const wasReviewOpen = state.toolbarOpenPanel === 'review-fields';
+
+    state.toolbarOpenPanel = expandIndex ? 'review-fields' : 'status';
+    state.toolbarTriggerNode = options && options.trigger ? options.trigger : null;
+
+    state.fieldIndexOpen = expandIndex;
+    if (expandIndex && !wasReviewOpen) {
+      requestFieldIndexScrollReset();
+    }
+
+    if (popover) {
+      popover.hidden = false;
+      popover.setAttribute('aria-labelledby', 'dbvc-ve-toolbar-popover-title');
+    }
+
+    if (title) {
+      title.textContent = expandIndex
+        ? getToolbarString('toolbarReviewFields', 'Review fields')
+        : getToolbarString('toolbarStatus', 'Visual Editor status');
+    }
+
+    const bar = ensureStatusBar();
+    clearToolbarPopoverBody(body, bar);
+    if (body && bar.parentNode !== body) {
+      body.appendChild(bar);
+    }
+
+    updateToolbarExpandedState();
+    updateStatusBar({});
+  }
+
+  function getToolbarObjectSearchFilterOptions() {
+    return [
+      {
+        key: 'all',
+        label: getToolbarString('toolbarObjectFilterAll', 'All')
+      },
+      {
+        key: 'post',
+        label: getToolbarString('toolbarObjectFilterPosts', 'Posts')
+      },
+      {
+        key: 'term',
+        label: getToolbarString('toolbarObjectFilterTerms', 'Terms')
+      }
+    ];
+  }
+
+  function buildCurrentObjectShortcut() {
+    const bootstrap = window.DBVCVisualEditorBootstrap || {};
+    const pageContext = bootstrap.pageContext && typeof bootstrap.pageContext === 'object' ? bootstrap.pageContext : {};
+    const editLink = normalizeStatusBarLink(bootstrap.currentEditLink || null);
+    const url = pageContext.url ? String(pageContext.url) : '';
+    const entityType = pageContext.entityType ? String(pageContext.entityType) : '';
+    const entityId = Number(pageContext.entityId || 0) || 0;
+
+    if (!url && !editLink) {
+      return null;
+    }
+
+    return {
+      objectType: entityType === 'term' ? 'term' : 'post',
+      id: entityId,
+      title: getToolbarString('toolbarObjectCurrent', 'Current object'),
+      typeLabel: entityType === 'term'
+        ? getToolbarString('toolbarObjectCurrentTerm', 'Current term')
+        : getToolbarString('toolbarObjectCurrentPage', 'Current page'),
+      status: '',
+      frontendUrl: url,
+      backendUrl: editLink && editLink.url ? editLink.url : '',
+      canEdit: Boolean(editLink && editLink.url)
+    };
+  }
+
+  function renderObjectSearchItem(item) {
+    const object = item && typeof item === 'object' ? item : {};
+    const title = object.title ? String(object.title) : `#${Number(object.id || 0) || ''}`;
+    const typeLabel = object.typeLabel ? String(object.typeLabel) : (object.objectType ? String(object.objectType) : '');
+    const status = object.status ? String(object.status) : '';
+    const meta = [typeLabel, status].filter(Boolean).join(' / ');
+    const frontendUrl = object.frontendUrl ? String(object.frontendUrl) : '';
+    const backendUrl = object.backendUrl ? String(object.backendUrl) : '';
+    const primaryUrl = frontendUrl || backendUrl;
+    const primaryLabel = frontendUrl
+      ? getToolbarString('toolbarObjectOpenFrontend', 'Open')
+      : getToolbarString('toolbarObjectOpenBackend', 'Edit');
+
+    return [
+      '<div class="dbvc-ve-toolbar-object__row">',
+      '  <div class="dbvc-ve-toolbar-object__row-text">',
+      `    <div class="dbvc-ve-toolbar-object__row-title">${escapeHtml(title)}</div>`,
+      meta ? `    <div class="dbvc-ve-toolbar-object__row-meta">${escapeHtml(meta)}</div>` : '',
+      '  </div>',
+      '  <div class="dbvc-ve-toolbar-object__row-actions">',
+      primaryUrl ? `    <a class="dbvc-ve-toolbar-object__action" href="${escapeHtml(primaryUrl)}">${escapeHtml(primaryLabel)}</a>` : '',
+      backendUrl && backendUrl !== primaryUrl ? `    <a class="dbvc-ve-toolbar-object__action" href="${escapeHtml(backendUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(getToolbarString('toolbarObjectEditBackend', 'Edit'))}</a>` : '',
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderObjectSearchResults(body, items, message) {
+    const results = body ? body.querySelector('.dbvc-ve-toolbar-object__results') : null;
+    const shortcuts = body ? body.querySelector('.dbvc-ve-toolbar-object__shortcuts') : null;
+
+    if (!results) {
+      return;
+    }
+
+    if (shortcuts) {
+      const current = buildCurrentObjectShortcut();
+      shortcuts.innerHTML = current
+        ? [
+          `<div class="dbvc-ve-toolbar-object__section-title">${escapeHtml(getToolbarString('toolbarObjectCurrentLabel', 'Current'))}</div>`,
+          renderObjectSearchItem(current)
+        ].join('')
+        : '';
+    }
+
+    if (message) {
+      results.innerHTML = `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(message)}</div>`;
+      return;
+    }
+
+    if (!Array.isArray(items) || !items.length) {
+      results.innerHTML = `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(getToolbarString('toolbarObjectNoResults', 'No matching objects were found.'))}</div>`;
+      return;
+    }
+
+    results.innerHTML = [
+      `<div class="dbvc-ve-toolbar-object__section-title">${escapeHtml(getToolbarString('toolbarObjectResults', 'Results'))}</div>`,
+      items.map(renderObjectSearchItem).join('')
+    ].join('');
+  }
+
+  function performToolbarObjectSearch(body) {
+    const search = state.toolbarObjectSearchTerm;
+    const objectType = state.toolbarObjectSearchType;
+    const requestId = state.toolbarObjectSearchRequestId + 1;
+
+    state.toolbarObjectSearchRequestId = requestId;
+    renderObjectSearchResults(body, [], getToolbarString('toolbarObjectSearching', 'Searching...'));
+
+    window.DBVCVisualEditorApi.searchObjects(search, objectType)
+      .then(function (result) {
+        if (requestId !== state.toolbarObjectSearchRequestId || state.toolbarOpenPanel !== 'go-object') {
+          return;
+        }
+
+        renderObjectSearchResults(body, result && Array.isArray(result.items) ? result.items : [], '');
+      })
+      .catch(function (error) {
+        if (requestId !== state.toolbarObjectSearchRequestId) {
+          return;
+        }
+
+        renderObjectSearchResults(body, [], error && error.message ? error.message : getToolbarString('toolbarObjectSearchFailed', 'Object search failed.'));
+      });
+  }
+
+  function scheduleToolbarObjectSearch(body) {
+    if (state.toolbarObjectSearchTimer) {
+      window.clearTimeout(state.toolbarObjectSearchTimer);
+    }
+
+    state.toolbarObjectSearchTimer = window.setTimeout(function () {
+      state.toolbarObjectSearchTimer = 0;
+      performToolbarObjectSearch(body);
+    }, 180);
+  }
+
+  function openObjectSearchToolbarPopover(options) {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const title = toolbar.querySelector('.dbvc-ve-toolbar-popover__title');
+    const body = getToolbarPopoverBody();
+    const filters = getToolbarObjectSearchFilterOptions();
+
+    state.toolbarOpenPanel = 'go-object';
+    state.toolbarTriggerNode = options && options.trigger ? options.trigger : null;
+    state.fieldIndexOpen = false;
+
+    if (state.toolbarObjectSearchType === '') {
+      state.toolbarObjectSearchType = 'all';
+    }
+
+    if (popover) {
+      popover.hidden = false;
+      popover.setAttribute('aria-labelledby', 'dbvc-ve-toolbar-popover-title');
+    }
+
+    if (title) {
+      title.textContent = getToolbarString('toolbarGoToObject', 'Go to object');
+    }
+
+    if (body) {
+      body.innerHTML = [
+        '<div class="dbvc-ve-toolbar-object">',
+        '  <div class="dbvc-ve-toolbar-object__filters">',
+        filters.map(function (filter) {
+          const active = filter.key === state.toolbarObjectSearchType;
+
+          return `<button type="button" class="dbvc-ve-toolbar-object__filter${active ? ' is-active' : ''}" data-dbvc-ve-object-filter="${escapeHtml(filter.key)}" aria-pressed="${active ? 'true' : 'false'}">${escapeHtml(filter.label)}</button>`;
+        }).join(''),
+        '  </div>',
+        `  <input type="search" class="dbvc-ve-toolbar-object__search" value="${escapeHtml(state.toolbarObjectSearchTerm)}" placeholder="${escapeHtml(getToolbarString('toolbarObjectSearchPlaceholder', 'Search posts and terms...'))}">`,
+        '  <div class="dbvc-ve-toolbar-object__shortcuts"></div>',
+        '  <div class="dbvc-ve-toolbar-object__results"></div>',
+        '</div>'
+      ].join('');
+
+      const input = body.querySelector('.dbvc-ve-toolbar-object__search');
+
+      body.querySelectorAll('[data-dbvc-ve-object-filter]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          state.toolbarObjectSearchType = button.getAttribute('data-dbvc-ve-object-filter') || 'all';
+          openObjectSearchToolbarPopover({ trigger: state.toolbarTriggerNode });
+        });
+      });
+
+      if (input) {
+        input.addEventListener('input', function () {
+          state.toolbarObjectSearchTerm = input.value.trim();
+          scheduleToolbarObjectSearch(body);
+        });
+
+        window.setTimeout(function () {
+          input.focus();
+          input.select();
+        }, 0);
+      }
+
+      renderObjectSearchResults(body, [], '');
+      performToolbarObjectSearch(body);
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function buildSessionDescriptorEntry(token, domOrder) {
+    if (!token
+      || !state.session
+      || !state.session.descriptors
+      || typeof state.session.descriptors !== 'object'
+      || !state.session.descriptors[token]
+      || typeof state.session.descriptors[token] !== 'object') {
+      return null;
+    }
+
+    const descriptor = state.session.descriptors[token] || {};
+    const cached = getCachedDescriptorPayload(token);
+    const hydratedDescriptor = cached && cached.descriptor && typeof cached.descriptor === 'object' ? cached.descriptor : null;
+    const sourceSummary = cached && cached.sourceSummary && typeof cached.sourceSummary === 'object' ? cached.sourceSummary : null;
+    const entitySummary = cached && cached.entitySummary && typeof cached.entitySummary === 'object' ? cached.entitySummary : null;
+    const publicIndex = descriptor.index && typeof descriptor.index === 'object' ? descriptor.index : {};
+    const source = hydratedDescriptor && hydratedDescriptor.source && typeof hydratedDescriptor.source === 'object' ? hydratedDescriptor.source : {};
+    const index = Object.assign({}, publicIndex);
+    const entity = descriptor.entity && typeof descriptor.entity === 'object' ? descriptor.entity : {};
+    const hydratedEntity = hydratedDescriptor && hydratedDescriptor.entity && typeof hydratedDescriptor.entity === 'object'
+      ? hydratedDescriptor.entity
+      : null;
+
+    if (!index.sourceContext && source.source_context) {
+      index.sourceContext = String(source.source_context);
+    }
+
+    if (!index.fieldName && source.field_name) {
+      index.fieldName = String(source.field_name);
+    }
+
+    if (!index.fieldType && source.field_type) {
+      index.fieldType = String(source.field_type);
+    }
+
+    if ((!Array.isArray(index.fieldGroupOptionPages) || !index.fieldGroupOptionPages.length)
+      && Array.isArray(source.field_group_option_pages)) {
+      index.fieldGroupOptionPages = source.field_group_option_pages.slice();
+    }
+
+    if (!index.fieldGroupTitle && source.field_group_title) {
+      index.fieldGroupTitle = String(source.field_group_title);
+    }
+
+    return {
+      token,
+      status: hydratedDescriptor && typeof hydratedDescriptor.status === 'string' && hydratedDescriptor.status
+        ? hydratedDescriptor.status
+        : (typeof descriptor.status === 'string' && descriptor.status ? descriptor.status : 'editable'),
+      scope: hydratedDescriptor && typeof hydratedDescriptor.scope === 'string' && hydratedDescriptor.scope
+        ? hydratedDescriptor.scope
+        : (typeof descriptor.scope === 'string' && descriptor.scope ? descriptor.scope : 'current_entity'),
+      label: sourceSummary && sourceSummary.label
+        ? String(sourceSummary.label)
+        : (hydratedDescriptor && hydratedDescriptor.ui && hydratedDescriptor.ui.label
+          ? String(hydratedDescriptor.ui.label)
+          : (descriptor.label ? String(descriptor.label) : (strings().fieldIndexFieldFallback || 'Field'))),
+      input: hydratedDescriptor && hydratedDescriptor.ui && hydratedDescriptor.ui.input
+        ? String(hydratedDescriptor.ui.input)
+        : (descriptor.input ? String(descriptor.input) : ''),
+      entity: Object.assign({}, entity, hydratedEntity || {}),
+      sourceSummary,
+      entitySummary,
+      index,
+      domOrder
+    };
+  }
+
+  function isConfiguredSharedGlobalCandidate(entry) {
+    const index = entry && entry.index && typeof entry.index === 'object' ? entry.index : {};
+    const inventory = entry && state.toolbarSharedGlobalsByToken && state.toolbarSharedGlobalsByToken[entry.token]
+      ? state.toolbarSharedGlobalsByToken[entry.token]
+      : null;
+    const fieldType = index.fieldType
+      ? String(index.fieldType)
+      : (inventory && inventory.fieldType ? String(inventory.fieldType) : '');
+
+    if (!inventory && index.sourceContext !== 'toolbar_shared_global_option') {
+      return false;
+    }
+
+    return fieldType === 'relationship'
+      || fieldType === 'post_object';
+  }
+
+  function getSharedGlobalEntries() {
+    const tokens = new Set();
+
+    Object.keys(state.toolbarSharedGlobalsByToken || {}).forEach(function (token) {
+      if (token) {
+        tokens.add(token);
+      }
+    });
+
+    if (state.session && state.session.descriptors && typeof state.session.descriptors === 'object') {
+      Object.keys(state.session.descriptors).forEach(function (token) {
+        const entry = buildSessionDescriptorEntry(token, Number.MAX_SAFE_INTEGER);
+
+        if (entry && isConfiguredSharedGlobalCandidate(entry)) {
+          tokens.add(token);
+        }
+      });
+    }
+
+    return Array.from(tokens)
+      .map(function (token) {
+        return buildSessionDescriptorEntry(token, Number.MAX_SAFE_INTEGER);
+      })
+      .filter(function (entry) {
+        return entry && isConfiguredSharedGlobalCandidate(entry);
+      })
+      .sort(function (left, right) {
+        const leftField = left.index && left.index.fieldName ? String(left.index.fieldName) : left.label;
+        const rightField = right.index && right.index.fieldName ? String(right.index.fieldName) : right.label;
+
+        return leftField.localeCompare(rightField);
+      });
+  }
+
+  function getSharedGlobalGroupLabel(entry) {
+    const index = entry && entry.index && typeof entry.index === 'object' ? entry.index : {};
+    const inventory = entry && state.toolbarSharedGlobalsByToken && state.toolbarSharedGlobalsByToken[entry.token]
+      ? state.toolbarSharedGlobalsByToken[entry.token]
+      : null;
+    const optionPageList = Array.isArray(index.fieldGroupOptionPages) && index.fieldGroupOptionPages.length
+      ? index.fieldGroupOptionPages
+      : (inventory && Array.isArray(inventory.optionPages) ? inventory.optionPages : []);
+    const optionPages = optionPageList.length
+      ? optionPageList.filter(Boolean).join(', ')
+      : '';
+
+    return optionPages
+      || index.fieldGroupTitle
+      || (inventory && inventory.fieldGroupTitle)
+      || getToolbarString('toolbarSharedGlobals', 'Shared globals');
+  }
+
+  function renderSharedGlobalEntry(entry) {
+    const index = entry.index && typeof entry.index === 'object' ? entry.index : {};
+    const inventory = state.toolbarSharedGlobalsByToken && state.toolbarSharedGlobalsByToken[entry.token]
+      ? state.toolbarSharedGlobalsByToken[entry.token]
+      : null;
+    const fieldType = index.fieldType
+      ? String(index.fieldType)
+      : (inventory && inventory.fieldType ? String(inventory.fieldType) : '');
+    const status = inventory && inventory.configured
+      || index.sourceContext === 'toolbar_shared_global_option'
+      ? getToolbarString('toolbarSharedGlobalConfigured', 'Configured global')
+      : getToolbarString('toolbarSharedGlobalInspectOnly', 'Inspect only');
+    const itemCount = inventory && typeof inventory.itemCount === 'number'
+      ? `${inventory.itemCount} ${inventory.itemCount === 1 ? 'item' : 'items'}`
+      : '';
+    const details = [
+      fieldType,
+      index.fieldName ? String(index.fieldName) : '',
+      itemCount,
+      status
+    ].filter(Boolean).join(' / ');
+    const label = entry.label || (inventory && inventory.label) || index.label || getToolbarString('fieldIndexFieldFallback', 'Field');
+
+    return [
+      '<div class="dbvc-ve-toolbar-shared__row">',
+      '  <div class="dbvc-ve-toolbar-shared__row-text">',
+      `    <div class="dbvc-ve-toolbar-shared__row-title">${escapeHtml(label)}</div>`,
+      details ? `    <div class="dbvc-ve-toolbar-shared__row-meta">${escapeHtml(details)}</div>` : '',
+      '  </div>',
+      '  <div class="dbvc-ve-toolbar-shared__row-actions">',
+      `    <button type="button" class="dbvc-ve-toolbar-shared__action" data-dbvc-ve-toolbar-shared-open="${escapeHtml(entry.token)}">${escapeHtml(getToolbarString('fieldIndexOpen', 'Open'))}</button>`,
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderSharedGlobalsMarkup(entries, options) {
+    const renderOptions = options && typeof options === 'object' ? options : {};
+    const warnings = Array.isArray(renderOptions.warnings) ? renderOptions.warnings : [];
+
+    if (!entries.length) {
+      return [
+        '<div class="dbvc-ve-toolbar-shared">',
+        renderOptions.loading ? `<div class="dbvc-ve-toolbar-shared__notice">${escapeHtml(getToolbarString('toolbarSharedGlobalsLoading', 'Loading shared globals...'))}</div>` : '',
+        warnings.length ? `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(warnings.join(' '))}</div>` : '',
+        `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(getToolbarString('toolbarSharedGlobalsEmpty', 'No configured shared global relationship or post object fields are available.'))}</div>`,
+        '</div>'
+      ].join('');
+    }
+
+    const groups = new Map();
+
+    entries.forEach(function (entry) {
+      const label = getSharedGlobalGroupLabel(entry);
+      const key = label.toLowerCase();
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          label,
+          entries: []
+        });
+      }
+
+      groups.get(key).entries.push(entry);
+    });
+
+    return [
+      '<div class="dbvc-ve-toolbar-shared">',
+      `<div class="dbvc-ve-toolbar-shared__notice">${escapeHtml(getToolbarString('toolbarSharedGlobalsNotice', 'Configured sitewide option-owned relationship/post_object fields are listed here with verified ACF metadata. Saving updates the global fallback field itself, uses shared acknowledgement, and reloads after save.'))}</div>`,
+      warnings.length ? `<div class="dbvc-ve-toolbar-object__empty">${escapeHtml(warnings.join(' '))}</div>` : '',
+      Array.from(groups.values()).map(function (group) {
+        return [
+          `<div class="dbvc-ve-toolbar-object__section-title">${escapeHtml(group.label)}</div>`,
+          group.entries.map(renderSharedGlobalEntry).join('')
+        ].join('');
+      }).join(''),
+      '</div>'
+    ].join('');
+  }
+
+  function openSharedGlobalsToolbarPopover(options) {
+    const toolbar = ensureToolbar();
+    const popover = state.toolbarPopoverNode || toolbar.querySelector('.dbvc-ve-toolbar-popover');
+    const title = toolbar.querySelector('.dbvc-ve-toolbar-popover__title');
+    const body = getToolbarPopoverBody();
+
+    state.toolbarOpenPanel = 'shared-globals';
+    state.toolbarTriggerNode = options && options.trigger ? options.trigger : null;
+    state.fieldIndexOpen = false;
+
+    if (popover) {
+      popover.hidden = false;
+      popover.setAttribute('aria-labelledby', 'dbvc-ve-toolbar-popover-title');
+    }
+
+    if (title) {
+      title.textContent = getToolbarString('toolbarSharedGlobals', 'Shared globals');
+    }
+
+    if (body) {
+      body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries());
+      bindSharedGlobalsToolbarActions(body);
+      loadConfiguredSharedGlobals(body);
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function bindSharedGlobalsToolbarActions(body) {
+    if (!body) {
+      return;
+    }
+
+    body.querySelectorAll('[data-dbvc-ve-toolbar-shared-open]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const token = button.getAttribute('data-dbvc-ve-toolbar-shared-open') || '';
+
+        closeToolbarPopover();
+
+        if (findMarkerByToken(token)) {
+          locateFieldIndexMarker(token, true);
+          return;
+        }
+
+        openToolbarDescriptorPanel(token);
+      });
+    });
+  }
+
+  function loadConfiguredSharedGlobals(body) {
+    const sessionId = getSessionId();
+    const requestId = state.toolbarSharedGlobalsRequestId + 1;
+
+    state.toolbarSharedGlobalsRequestId = requestId;
+
+    if (!body || !sessionId || !window.DBVCVisualEditorApi || typeof window.DBVCVisualEditorApi.getSharedGlobalFields !== 'function') {
+      return;
+    }
+
+    body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries(), { loading: true });
+    bindSharedGlobalsToolbarActions(body);
+
+    window.DBVCVisualEditorApi.getSharedGlobalFields(sessionId)
+      .then(function (result) {
+        if (state.toolbarSharedGlobalsRequestId !== requestId || state.toolbarOpenPanel !== 'shared-globals') {
+          return;
+        }
+
+        mergeSharedGlobalInventory(result);
+        body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries(), {
+          warnings: result && Array.isArray(result.warnings) ? result.warnings : []
+        });
+        bindSharedGlobalsToolbarActions(body);
+      })
+      .catch(function (error) {
+        if (isSessionExpiredError(error)) {
+          handleExpiredSession(error);
+        }
+
+        if (state.toolbarSharedGlobalsRequestId !== requestId || state.toolbarOpenPanel !== 'shared-globals') {
+          return;
+        }
+
+        body.innerHTML = renderSharedGlobalsMarkup(getSharedGlobalEntries(), {
+          warnings: [error && error.message ? error.message : getToolbarString('toolbarSharedGlobalsFailed', 'Shared globals could not be loaded.')]
+        });
+        bindSharedGlobalsToolbarActions(body);
+      });
+  }
+
+  function closeToolbarPopover() {
+    const toolbar = state.toolbarNode;
+    const popover = state.toolbarPopoverNode;
+
+    if (state.toolbarObjectSearchTimer) {
+      window.clearTimeout(state.toolbarObjectSearchTimer);
+      state.toolbarObjectSearchTimer = 0;
+    }
+
+    state.toolbarObjectSearchRequestId += 1;
+    state.toolbarSharedGlobalsRequestId += 1;
+    state.toolbarOpenPanel = '';
+    state.toolbarTriggerNode = null;
+
+    if (popover) {
+      popover.hidden = true;
+    }
+
+    if (toolbar) {
+      const parking = state.toolbarStatusbarParkingNode || toolbar.querySelector('.dbvc-ve-toolbar__statusbar-parking');
+      const bar = toolbar.querySelector('.dbvc-ve-statusbar');
+
+      if (parking && bar && bar.parentNode !== parking) {
+        parking.appendChild(bar);
+      }
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function updateToolbarExpandedState() {
+    const toolbar = state.toolbarNode;
+
+    if (!toolbar) {
+      return;
+    }
+
+    toolbar.classList.toggle('is-popover-open', Boolean(state.toolbarOpenPanel));
+    toolbar.querySelectorAll('[data-dbvc-ve-toolbar-action]').forEach(function (node) {
+      const action = node.getAttribute('data-dbvc-ve-toolbar-action') || '';
+      const expanded = action === state.toolbarOpenPanel;
+
+      if (action === 'status' || action === 'review-fields') {
+        node.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      }
+    });
+  }
+
+  function syncToolbarState(nextState) {
+    const toolbar = state.toolbarNode && state.toolbarNode.isConnected
+      ? state.toolbarNode
+      : document.querySelector('.dbvc-ve-toolbar');
+
+    if (!toolbar) {
+      return;
+    }
+
+    const statusButton = toolbar.querySelector('[data-dbvc-ve-toolbar-action="status"]');
+    const reviewButton = toolbar.querySelector('[data-dbvc-ve-toolbar-action="review-fields"]');
+    const editLink = toolbar.querySelector('[data-dbvc-ve-toolbar-action="edit-object"]');
+    const message = toolbar.querySelector('.dbvc-ve-toolbar__message');
+    const count = typeof nextState.count === 'number' ? nextState.count : null;
+    const countText = count !== null ? String(count) : '';
+    const statusText = nextState.message
+      ? String(nextState.message)
+      : [strings().modeActive || 'Visual Editor active', getStatusBarCountText(count)].filter(Boolean).join(' / ');
+
+    toolbar.dataset.state = nextState.kind || 'active';
+
+    [statusButton, reviewButton].forEach(function (button) {
+      if (!button) {
+        return;
+      }
+
+      button.dataset.state = nextState.kind || 'active';
+      button.title = statusText || button.getAttribute('aria-label') || '';
+      const countNode = button.querySelector('.dbvc-ve-toolbar__count');
+      if (countNode) {
+        countNode.textContent = countText;
+        countNode.hidden = count === null;
+      }
+    });
+
+    if (editLink) {
+      const link = normalizeStatusBarLink(nextState.editLink || null);
+      const label = link && link.label ? link.label : getToolbarString('toolbarEditObject', 'Edit object');
+
+      editLink.setAttribute('aria-label', label);
+      editLink.title = label;
+
+      if (link && link.url) {
+        editLink.href = link.url;
+        editLink.classList.remove('is-disabled');
+        editLink.setAttribute('aria-disabled', 'false');
+      } else {
+        editLink.removeAttribute('href');
+        editLink.classList.add('is-disabled');
+        editLink.setAttribute('aria-disabled', 'true');
+      }
+    }
+
+    if (message) {
+      message.textContent = nextState.message || '';
+      message.hidden = !nextState.message;
+    }
+
+    updateToolbarExpandedState();
+  }
+
+  function handleToolbarClick(event) {
+    const actionNode = event.target && typeof event.target.closest === 'function'
+      ? event.target.closest('[data-dbvc-ve-toolbar-action]')
+      : null;
+
+    if (!actionNode) {
+      return;
+    }
+
+    const action = actionNode.getAttribute('data-dbvc-ve-toolbar-action') || '';
+
+    if (actionNode.disabled || actionNode.getAttribute('aria-disabled') === 'true') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (action === 'edit-object' || action === 'toggle-mode') {
+      closeToolbarPopover();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (action === 'close-popover') {
+      const trigger = state.toolbarTriggerNode;
+      closeToolbarPopover();
+      if (trigger && typeof trigger.focus === 'function') {
+        trigger.focus();
+      }
+      return;
+    }
+
+    if (action === 'status') {
+      if (state.toolbarOpenPanel === 'status') {
+        closeToolbarPopover();
+      } else {
+        openStatusBarToolbarPopover({ trigger: actionNode, expandIndex: false });
+      }
+      return;
+    }
+
+    if (action === 'review-fields') {
+      if (state.toolbarOpenPanel === 'review-fields') {
+        closeToolbarPopover();
+      } else {
+        openStatusBarToolbarPopover({ trigger: actionNode, expandIndex: true });
+      }
+      return;
+    }
+
+    if (action === 'go-object') {
+      if (state.toolbarOpenPanel === 'go-object') {
+        closeToolbarPopover();
+      } else {
+        openObjectSearchToolbarPopover({ trigger: actionNode });
+      }
+      return;
+    }
+
+    if (action === 'shared-globals') {
+      if (state.toolbarOpenPanel === 'shared-globals') {
+        closeToolbarPopover();
+      } else {
+        openSharedGlobalsToolbarPopover({ trigger: actionNode });
+      }
+    }
+  }
+
+  function handleToolbarOutsidePointerDown(event) {
+    if (!state.toolbarOpenPanel) {
+      return;
+    }
+
+    const target = event.target;
+
+    if (!target || isWpMediaModalElement(target)) {
+      return;
+    }
+
+    if (target.closest && target.closest('.dbvc-ve-toolbar')) {
+      return;
+    }
+
+    closeToolbarPopover();
+  }
+
+  function handleToolbarKeydown(event) {
+    if (!state.toolbarOpenPanel || event.key !== 'Escape') {
+      return;
+    }
+
+    closeToolbarPopover();
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   function bindStatusBarEvents(bar) {
     if (!bar || bar.dataset.fieldIndexBound === '1') {
       return;
@@ -1517,12 +2764,13 @@
 
     if (action === 'toggle-field-index') {
       state.fieldIndexOpen = !state.fieldIndexOpen;
+      requestFieldIndexScrollReset();
       updateStatusBar({});
       return;
     }
 
-    if (action === 'expand-field-subgroups' || action === 'collapse-field-subgroups') {
-      setFieldIndexSubgroupsOpen(actionNode, action === 'expand-field-subgroups');
+    if (action === 'expand-field-sections' || action === 'collapse-field-sections') {
+      setFieldIndexSectionsOpen(actionNode, action === 'expand-field-sections');
       return;
     }
 
@@ -1557,10 +2805,13 @@
 
   function setFieldIndexFilter(filter) {
     state.fieldIndexFilter = normalizeFieldIndexFilter(filter);
+    state.fieldIndexOpenSections = new Set();
+    state.fieldIndexSectionStateCaptured = false;
+    requestFieldIndexScrollReset();
     updateStatusBar({});
   }
 
-  function setFieldIndexSubgroupsOpen(actionNode, open) {
+  function setFieldIndexSectionsOpen(actionNode, open) {
     const group = actionNode && typeof actionNode.closest === 'function'
       ? actionNode.closest('.dbvc-ve-field-index__group')
       : null;
@@ -1572,11 +2823,52 @@
       return;
     }
 
-    root.querySelectorAll('.dbvc-ve-field-index__subgroup').forEach(function (node) {
+    root.querySelectorAll('.dbvc-ve-field-index__section').forEach(function (node) {
       node.open = Boolean(open);
     });
 
     captureFieldIndexOpenState();
+  }
+
+  function requestFieldIndexScrollReset() {
+    state.fieldIndexScrollTop = 0;
+    state.fieldIndexResetScroll = true;
+  }
+
+  function getFieldIndexScrollNode() {
+    const bar = document.querySelector('.dbvc-ve-statusbar');
+
+    return bar ? bar.querySelector('.dbvc-ve-field-index') : null;
+  }
+
+  function captureFieldIndexScrollState() {
+    const indexNode = getFieldIndexScrollNode();
+
+    if (!indexNode) {
+      return state.fieldIndexScrollTop || 0;
+    }
+
+    state.fieldIndexScrollTop = Math.max(0, Number(indexNode.scrollTop) || 0);
+
+    return state.fieldIndexScrollTop;
+  }
+
+  function restoreFieldIndexScrollState() {
+    const indexNode = getFieldIndexScrollNode();
+
+    if (!indexNode) {
+      state.fieldIndexResetScroll = false;
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, indexNode.scrollHeight - indexNode.clientHeight);
+    const nextScrollTop = state.fieldIndexResetScroll
+      ? 0
+      : Math.min(Math.max(0, state.fieldIndexScrollTop || 0), maxScrollTop);
+
+    indexNode.scrollTop = nextScrollTop;
+    state.fieldIndexScrollTop = nextScrollTop;
+    state.fieldIndexResetScroll = false;
   }
 
   function scheduleFieldIndexRefresh() {
@@ -1592,18 +2884,20 @@
 
   function captureFieldIndexOpenState() {
     const bar = document.querySelector('.dbvc-ve-statusbar');
-    const openSubgroups = new Set();
+    const openSections = new Set();
     const openItems = new Set();
+    let sectionCount = 0;
 
     if (!bar || !bar.querySelector('.dbvc-ve-field-index')) {
       return;
     }
 
-    bar.querySelectorAll('.dbvc-ve-field-index__subgroup[data-subgroup-key]').forEach(function (node) {
-      const key = node.getAttribute('data-subgroup-key') || '';
+    bar.querySelectorAll('.dbvc-ve-field-index__section[data-section-key]').forEach(function (node) {
+      const key = node.getAttribute('data-section-key') || '';
 
+      sectionCount += 1;
       if (key && node.open) {
-        openSubgroups.add(key);
+        openSections.add(key);
       }
     });
 
@@ -1615,7 +2909,10 @@
       }
     });
 
-    state.fieldIndexOpenSubgroups = openSubgroups;
+    if (sectionCount > 0) {
+      state.fieldIndexOpenSections = openSections;
+      state.fieldIndexSectionStateCaptured = true;
+    }
     state.fieldIndexOpenItems = openItems;
   }
 
@@ -2147,6 +3444,98 @@
     ].join('::');
   }
 
+  function getFieldIndexGroupPath(index) {
+    return Array.isArray(index && index.groupPath)
+      ? index.groupPath.map(function (segment) {
+          return String(segment || '').trim();
+        }).filter(Boolean)
+      : [];
+  }
+
+  function resolveFieldIndexUngroupedSectionLabel(entry) {
+    const entity = entry && entry.entity ? entry.entity : {};
+
+    if (entity.type === 'option') {
+      return strings().fieldIndexOptionFields || 'Option fields';
+    }
+
+    if (isArchiveIndexEntry(entry)) {
+      return strings().fieldIndexArchiveFields || 'Archive fields';
+    }
+
+    if (entry && entry.status === 'readonly') {
+      return strings().fieldIndexInspectOnly || 'Inspect-only fields';
+    }
+
+    return strings().fieldIndexGeneralFields || 'General fields';
+  }
+
+  function resolveFieldIndexSection(entry) {
+    const index = entry && entry.index ? entry.index : {};
+    const groupPath = getFieldIndexGroupPath(index);
+    const immediateGroup = groupPath.length ? groupPath[0] : '';
+    const parentFieldName = index.parentFieldName ? String(index.parentFieldName) : '';
+    const containerType = index.containerType ? String(index.containerType) : '';
+    const optionPages = Array.isArray(index.fieldGroupOptionPages)
+      ? index.fieldGroupOptionPages.map(humanizeIdentifier).filter(Boolean).join(', ')
+      : '';
+    const nativeLabel = formatNativeQueryLabel(index);
+
+    if (immediateGroup) {
+      return {
+        key: `acf-group:${immediateGroup}`,
+        label: humanizeIdentifier(immediateGroup) || immediateGroup,
+        priority: 0
+      };
+    }
+
+    if (parentFieldName && containerType) {
+      return {
+        key: `container:${containerType}:${parentFieldName}`,
+        label: [
+          humanizeIdentifier(parentFieldName) || parentFieldName,
+          humanizeIdentifier(containerType)
+        ].filter(Boolean).join(' / '),
+        priority: 3
+      };
+    }
+
+    if (index.fieldGroupTitle || optionPages) {
+      const label = index.fieldGroupTitle ? String(index.fieldGroupTitle) : optionPages;
+
+      return {
+        key: `field-group:${label}`,
+        label,
+        priority: 5
+      };
+    }
+
+    if (nativeLabel) {
+      return {
+        key: [
+          'native',
+          nativeLabel,
+          index.nativeQueryKind || '',
+          index.nativeQuerySelector || '',
+          index.parentNativeQueryKind || '',
+          index.parentNativeQuerySelector || ''
+        ].join(':'),
+        label: nativeLabel,
+        priority: 8
+      };
+    }
+
+    return {
+      key: 'ungrouped',
+      label: resolveFieldIndexUngroupedSectionLabel(entry),
+      priority: 20
+    };
+  }
+
+  function summarizeFieldIndexSection(section) {
+    return getStatusBarCountText(section && typeof section.count === 'number' ? section.count : 0);
+  }
+
   function summarizeFieldIndexItem(item) {
     const count = item && Array.isArray(item.entries) ? item.entries.length : 0;
     const readonly = item.entries.filter(function (entry) {
@@ -2170,6 +3559,8 @@
 
     entries.forEach(function (entry) {
       const top = resolveFieldIndexTopGroup(entry);
+      const sectionMeta = resolveFieldIndexSection(entry);
+      const sectionKey = `${top.key}:${sectionMeta.key}`;
       const subLabel = resolveFieldIndexSubGroup(entry);
       const subKey = `${top.key}:${resolveFieldIndexSubGroupKey(entry)}`;
       let group = groups.get(top.key);
@@ -2181,14 +3572,30 @@
           order: top.order,
           domOrder: entry.domOrder,
           count: 0,
-          subgroups: new Map()
+          sections: new Map()
         };
         groups.set(top.key, group);
       } else {
         group.domOrder = Math.min(group.domOrder, entry.domOrder);
       }
 
-      let subgroup = group.subgroups.get(subKey);
+      let section = group.sections.get(sectionKey);
+      if (!section) {
+        section = {
+          key: sectionKey,
+          label: sectionMeta.label,
+          domOrder: entry.domOrder,
+          priority: sectionMeta.priority,
+          count: 0,
+          subgroups: new Map()
+        };
+        group.sections.set(sectionKey, section);
+      } else {
+        section.domOrder = Math.min(section.domOrder, entry.domOrder);
+        section.priority = Math.min(section.priority, sectionMeta.priority);
+      }
+
+      let subgroup = section.subgroups.get(subKey);
       if (!subgroup) {
         subgroup = {
           key: subKey,
@@ -2198,7 +3605,7 @@
           count: 0,
           items: new Map()
         };
-        group.subgroups.set(subKey, subgroup);
+        section.subgroups.set(subKey, subgroup);
       } else {
         subgroup.domOrder = Math.min(subgroup.domOrder, entry.domOrder);
         subgroup.priority = Math.min(subgroup.priority, getFieldIndexSubgroupPriority(entry));
@@ -2219,6 +3626,7 @@
       }
 
       group.count += 1;
+      section.count += 1;
       subgroup.count += 1;
       item.entries.push(entry);
     });
@@ -2230,27 +3638,37 @@
           || left.label.localeCompare(right.label);
       })
       .map(function (group) {
-        group.subgroups = Array.from(group.subgroups.values())
+        group.sections = Array.from(group.sections.values())
           .sort(function (left, right) {
             return left.priority - right.priority
               || left.domOrder - right.domOrder
               || left.label.localeCompare(right.label);
           })
-          .map(function (subgroup) {
-            subgroup.items = Array.from(subgroup.items.values())
+          .map(function (section) {
+            section.subgroups = Array.from(section.subgroups.values())
               .sort(function (left, right) {
-                return left.domOrder - right.domOrder || left.label.localeCompare(right.label);
+                return left.priority - right.priority
+                  || left.domOrder - right.domOrder
+                  || left.label.localeCompare(right.label);
               })
-              .map(function (item) {
-                item.entries = item.entries.sort(function (left, right) {
-                  return left.domOrder - right.domOrder
-                    || resolveFieldIndexSourceLabel(left).localeCompare(resolveFieldIndexSourceLabel(right));
-                });
+              .map(function (subgroup) {
+                subgroup.items = Array.from(subgroup.items.values())
+                  .sort(function (left, right) {
+                    return left.domOrder - right.domOrder || left.label.localeCompare(right.label);
+                  })
+                  .map(function (item) {
+                    item.entries = item.entries.sort(function (left, right) {
+                      return left.domOrder - right.domOrder
+                        || resolveFieldIndexSourceLabel(left).localeCompare(resolveFieldIndexSourceLabel(right));
+                    });
 
-                return item;
+                    return item;
+                  });
+
+                return subgroup;
               });
 
-            return subgroup;
+            return section;
           });
 
         return group;
@@ -2316,12 +3734,39 @@
     ].join('');
   }
 
-  function renderFieldIndexSubgroupControlsMarkup() {
+  function renderFieldIndexSectionControlsMarkup() {
     return [
-      '<div class="dbvc-ve-field-index__subgroup-controls">',
-      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="expand-field-subgroups">${escapeHtml(strings().fieldIndexExpandAll || 'Expand all')}</button>`,
-      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="collapse-field-subgroups">${escapeHtml(strings().fieldIndexCollapseAll || 'Collapse all')}</button>`,
+      '<div class="dbvc-ve-field-index__section-controls">',
+      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="expand-field-sections">${escapeHtml(strings().fieldIndexExpandAll || 'Expand all')}</button>`,
+      `  <button type="button" class="dbvc-ve-field-index__control" data-dbvc-ve-statusbar-action="collapse-field-sections">${escapeHtml(strings().fieldIndexCollapseAll || 'Collapse all')}</button>`,
       '</div>'
+    ].join('');
+  }
+
+  function renderFieldIndexSubgroupMarkup(subgroup) {
+    return [
+      `<div class="dbvc-ve-field-index__subgroup" data-subgroup-key="${escapeHtml(subgroup.key)}">`,
+      '  <div class="dbvc-ve-field-index__items">',
+      subgroup.items.map(renderFieldIndexItemMarkup).join(''),
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderFieldIndexSectionMarkup(section) {
+    const isOpen = !state.fieldIndexSectionStateCaptured
+      || (state.fieldIndexOpenSections && state.fieldIndexOpenSections.has(section.key));
+
+    return [
+      `<details class="dbvc-ve-field-index__section" data-section-key="${escapeHtml(section.key)}"${isOpen ? ' open' : ''}>`,
+      '  <summary class="dbvc-ve-field-index__section-summary">',
+      `    <span>${escapeHtml(section.label)}</span>`,
+      `    <span>${escapeHtml(summarizeFieldIndexSection(section))}</span>`,
+      '  </summary>',
+      '  <div class="dbvc-ve-field-index__subgroups">',
+      section.subgroups.map(renderFieldIndexSubgroupMarkup).join(''),
+      '  </div>',
+      '</details>'
     ].join('');
   }
 
@@ -2375,20 +3820,9 @@
         return [
           '<details class="dbvc-ve-field-index__group" open>',
           `  <summary class="dbvc-ve-field-index__group-summary"><span>${escapeHtml(group.label)}</span><span>${escapeHtml(getStatusBarCountText(group.count))}</span></summary>`,
-          '  <div class="dbvc-ve-field-index__subgroups">',
-          renderFieldIndexSubgroupControlsMarkup(),
-          group.subgroups.map(function (subgroup) {
-            const isOpen = state.fieldIndexOpenSubgroups && state.fieldIndexOpenSubgroups.has(subgroup.key);
-
-            return [
-              `<details class="dbvc-ve-field-index__subgroup" data-subgroup-key="${escapeHtml(subgroup.key)}"${isOpen ? ' open' : ''}>`,
-              `  <summary class="dbvc-ve-field-index__subgroup-summary"><span>${escapeHtml(subgroup.label)}</span><span>${escapeHtml(getStatusBarCountText(subgroup.count))}</span></summary>`,
-              '  <div class="dbvc-ve-field-index__items">',
-              subgroup.items.map(renderFieldIndexItemMarkup).join(''),
-              '  </div>',
-              '</details>'
-            ].join('');
-          }).join(''),
+          '  <div class="dbvc-ve-field-index__sections">',
+          renderFieldIndexSectionControlsMarkup(),
+          group.sections.map(renderFieldIndexSectionMarkup).join(''),
           '  </div>',
           '</details>'
         ].join('');
@@ -2399,6 +3833,11 @@
 
   function renderStatusBarMeta(meta, nextState) {
     captureFieldIndexOpenState();
+    if (state.fieldIndexResetScroll) {
+      state.fieldIndexScrollTop = 0;
+    } else {
+      captureFieldIndexScrollState();
+    }
 
     const countText = getStatusBarCountText(nextState.count);
     const hasIndex = Boolean(state.session && state.session.descriptors && Object.keys(state.session.descriptors).length);
@@ -2409,6 +3848,7 @@
 
     if (!countText && !hasIndex) {
       meta.textContent = '';
+      state.fieldIndexResetScroll = false;
       return;
     }
 
@@ -2419,6 +3859,12 @@
       '</div>',
       expanded ? renderFieldIndexMarkup() : ''
     ].join('');
+
+    if (expanded) {
+      restoreFieldIndexScrollState();
+    } else {
+      state.fieldIndexResetScroll = false;
+    }
   }
 
   function findMarkerByToken(token) {
@@ -2568,9 +4014,12 @@
     const sourceGroup = getDescriptorSourceGroup(descriptor, marker);
     const expression = source.expression ? String(source.expression) : '';
     const badgeLabel = getDescriptorBadgeLabel(descriptor, marker);
+    const isPostTermsCollection = source.type === 'post_terms_collection';
 
     return [
-      queryElementId || nativeSelector || sourceGroup || expression || getMarkerToken(marker),
+      isPostTermsCollection
+        ? (sourceGroup || getMarkerToken(marker) || queryElementId || nativeSelector || expression)
+        : (queryElementId || nativeSelector || sourceGroup || expression || getMarkerToken(marker)),
       badgeLabel || getQueryCollectionContainerBadgeLabel(marker)
     ].join(':');
   }
@@ -2585,6 +4034,13 @@
     }
 
     return badgeLabel || strings().badgeConnected || 'Edit Connected';
+  }
+
+  function isPostTermsCollectionMarker(marker) {
+    const descriptor = lookupDescriptorForNode(marker);
+    const source = descriptor && descriptor.source ? descriptor.source : {};
+
+    return source.type === 'post_terms_collection';
   }
 
   function normalizeBricksDomId(id) {
@@ -3348,6 +4804,12 @@
     badge.className = 'dbvc-ve-badge';
     badge.dataset.token = token;
 
+    if (isMissingMediaMarker(node)) {
+      badge.classList.add('dbvc-ve-badge--connected');
+      badge.textContent = badgeLabel || strings().panelMediaChoose || 'Add Image';
+      return badge;
+    }
+
     if (badgeLabel && context === 'query_collection' && status === 'readonly') {
       badge.classList.add('dbvc-ve-badge--readonly');
       badge.textContent = strings().panelInspectOnly || strings().inspectLabel || 'Inspect only';
@@ -3501,7 +4963,7 @@
       return;
     }
 
-    if (shouldMountQueryCollectionContainerBadge(target)) {
+    if (shouldMountQueryCollectionContainerBadge(target) && !isPostTermsCollectionMarker(target)) {
       hideSharedBadge();
       return;
     }
@@ -3575,6 +5037,7 @@
     links.innerHTML = createStatusBarLinkMarkup(nextState.editLink);
     links.hidden = !nextState.editLink;
     message.textContent = nextState.message || '';
+    syncToolbarState(nextState);
   }
 
   function clampPanelPosition(position, panel) {
@@ -3778,6 +5241,7 @@
       '  <div class="dbvc-ve-panel__field-wrap"></div>',
       '</div>',
       '<div class="dbvc-ve-panel__status"></div>',
+      '<div class="dbvc-ve-panel__footer-notice" hidden></div>',
       '<div class="dbvc-ve-panel__actions">',
       '  <button type="button" class="dbvc-ve-panel__button dbvc-ve-panel__button--secondary" data-action="close"></button>',
       '  <button type="button" class="dbvc-ve-panel__button dbvc-ve-panel__button--secondary" data-action="save-no-reload" hidden></button>',
@@ -3816,6 +5280,7 @@
       fieldLabel: panel.querySelector('.dbvc-ve-panel__field-label'),
       fieldWrap: panel.querySelector('.dbvc-ve-panel__field-wrap'),
       status: panel.querySelector('.dbvc-ve-panel__status'),
+      footerNotice: panel.querySelector('.dbvc-ve-panel__footer-notice'),
       closeButton: panel.querySelector('[data-action="close"]'),
       saveNoReloadButton: panel.querySelector('[data-action="save-no-reload"]'),
       saveButton: panel.querySelector('[data-action="save"]')
@@ -3842,6 +5307,10 @@
     panelNodes.entityLinks.innerHTML = '';
     panelNodes.meta.innerHTML = '';
     panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
     panelNodes.fieldLabel.textContent = '';
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
     panelNodes.fieldWrap.firstChild.textContent = strings().panelReady || 'Select a marker to inspect and edit it.';
@@ -4589,8 +6058,30 @@
     });
   }
 
-  function renderGalleryPreviewItems(grid, meta, items) {
+  function reorderGalleryItems(items, fromIndex, toIndex) {
     const normalized = Array.isArray(items) ? items : [];
+    const from = Number(fromIndex);
+    const to = Number(toIndex);
+
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || from < 0 || to < 0 || from >= normalized.length || to >= normalized.length) {
+      return null;
+    }
+
+    const nextItems = normalized.slice();
+    const item = nextItems.splice(from, 1)[0];
+
+    nextItems.splice(to, 0, item);
+
+    return nextItems;
+  }
+
+  function renderGalleryPreviewItems(grid, meta, items, options) {
+    const normalized = Array.isArray(items) ? items : [];
+    const controls = options && typeof options === 'object' ? options : {};
+    const editable = Boolean(controls.editable);
+    const disabled = Boolean(controls.disabled);
+    const draggable = editable && !disabled && normalized.length > 1 && typeof controls.onReorder === 'function';
+    let draggedIndex = null;
 
     grid.innerHTML = '';
     meta.textContent = normalized.length === 1
@@ -4602,7 +6093,7 @@
       return;
     }
 
-    normalized.forEach(function (item) {
+    normalized.forEach(function (item, index) {
       const url = item && (item.renderUrl || item.url) ? String(item.renderUrl || item.url) : '';
 
       if (!url) {
@@ -4615,7 +6106,130 @@
       figure.className = 'dbvc-ve-panel__gallery-item';
       image.src = url;
       image.alt = item && item.alt ? String(item.alt) : '';
+      image.draggable = false;
       figure.appendChild(image);
+
+      if (draggable) {
+        figure.draggable = true;
+        figure.classList.add('is-draggable');
+        figure.title = strings().panelGalleryDragToReorder || 'Drag to reorder gallery image';
+        figure.setAttribute('aria-grabbed', 'false');
+
+        figure.addEventListener('dragstart', function (event) {
+          if (event.target && typeof event.target.closest === 'function' && event.target.closest('.dbvc-ve-panel__gallery-action')) {
+            event.preventDefault();
+            return;
+          }
+
+          draggedIndex = index;
+          figure.classList.add('is-dragging');
+          figure.setAttribute('aria-grabbed', 'true');
+
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(index));
+          }
+        });
+        figure.addEventListener('dragover', function (event) {
+          if (draggedIndex === null || draggedIndex === index) {
+            return;
+          }
+
+          event.preventDefault();
+          figure.classList.add('is-drop-target');
+
+          if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'move';
+          }
+        });
+        figure.addEventListener('dragleave', function (event) {
+          if (event.relatedTarget && figure.contains(event.relatedTarget)) {
+            return;
+          }
+
+          figure.classList.remove('is-drop-target');
+        });
+        figure.addEventListener('drop', function (event) {
+          let fromIndex = draggedIndex;
+
+          event.preventDefault();
+          figure.classList.remove('is-drop-target');
+
+          if (event.dataTransfer) {
+            const transferredValue = event.dataTransfer.getData('text/plain');
+            const transferredIndex = transferredValue === '' ? null : Number(transferredValue);
+
+            if (Number.isInteger(transferredIndex)) {
+              fromIndex = transferredIndex;
+            }
+          }
+
+          if (fromIndex === null || fromIndex === index) {
+            return;
+          }
+
+          controls.onReorder(fromIndex, index);
+        });
+        figure.addEventListener('dragend', function () {
+          draggedIndex = null;
+          figure.classList.remove('is-dragging');
+          figure.setAttribute('aria-grabbed', 'false');
+
+          grid.querySelectorAll('.dbvc-ve-panel__gallery-item.is-drop-target').forEach(function (itemNode) {
+            itemNode.classList.remove('is-drop-target');
+          });
+        });
+      }
+
+      if (editable) {
+        const actions = document.createElement('div');
+        const moveUpButton = document.createElement('button');
+        const moveDownButton = document.createElement('button');
+        const removeButton = document.createElement('button');
+        const itemLabel = item && item.title ? String(item.title) : `#${Number(item && item.id || 0) || index + 1}`;
+
+        actions.className = 'dbvc-ve-panel__gallery-actions';
+        moveUpButton.type = 'button';
+        moveDownButton.type = 'button';
+        removeButton.type = 'button';
+        moveUpButton.className = 'dbvc-ve-panel__gallery-action';
+        moveDownButton.className = 'dbvc-ve-panel__gallery-action';
+        removeButton.className = 'dbvc-ve-panel__gallery-action dbvc-ve-panel__gallery-action--danger';
+        moveUpButton.textContent = '↑';
+        moveDownButton.textContent = '↓';
+        removeButton.textContent = '×';
+        moveUpButton.title = strings().panelGalleryMoveEarlier || 'Move earlier';
+        moveDownButton.title = strings().panelGalleryMoveLater || 'Move later';
+        removeButton.title = strings().panelGalleryRemove || 'Remove image';
+        moveUpButton.setAttribute('aria-label', `${moveUpButton.title}: ${itemLabel}`);
+        moveDownButton.setAttribute('aria-label', `${moveDownButton.title}: ${itemLabel}`);
+        removeButton.setAttribute('aria-label', `${removeButton.title}: ${itemLabel}`);
+        moveUpButton.disabled = disabled || index === 0;
+        moveDownButton.disabled = disabled || index >= normalized.length - 1;
+        removeButton.disabled = disabled;
+
+        moveUpButton.addEventListener('click', function () {
+          if (controls.onMove) {
+            controls.onMove(index, -1);
+          }
+        });
+        moveDownButton.addEventListener('click', function () {
+          if (controls.onMove) {
+            controls.onMove(index, 1);
+          }
+        });
+        removeButton.addEventListener('click', function () {
+          if (controls.onRemove) {
+            controls.onRemove(index);
+          }
+        });
+
+        actions.appendChild(moveUpButton);
+        actions.appendChild(moveDownButton);
+        actions.appendChild(removeButton);
+        figure.appendChild(actions);
+      }
+
       grid.appendChild(figure);
     });
   }
@@ -4656,84 +6270,120 @@
   function createMediaGalleryReferenceController(value, descriptor) {
     const wrapper = document.createElement('div');
     const buttonRow = document.createElement('div');
-    const chooseButton = document.createElement('button');
+    const addButton = document.createElement('button');
+    const replaceButton = document.createElement('button');
     const clearButton = document.createElement('button');
     const meta = document.createElement('div');
     const grid = document.createElement('div');
-    const fields = [chooseButton, clearButton];
+    const fields = [addButton, replaceButton, clearButton];
     let currentItems = normalizeGalleryItems(value, descriptor);
-    let mediaFrame = null;
+    let disabledState = false;
 
     wrapper.className = 'dbvc-ve-panel__stack';
     buttonRow.className = 'dbvc-ve-panel__toolbar';
     meta.className = 'dbvc-ve-panel__media-meta';
     grid.className = 'dbvc-ve-panel__gallery-preview';
-    chooseButton.type = 'button';
-    chooseButton.className = 'dbvc-ve-panel__toolbar-button';
+    addButton.type = 'button';
+    addButton.className = 'dbvc-ve-panel__toolbar-button';
+    replaceButton.type = 'button';
+    replaceButton.className = 'dbvc-ve-panel__toolbar-button';
     clearButton.type = 'button';
     clearButton.className = 'dbvc-ve-panel__toolbar-button';
 
     function render(nextItems) {
       currentItems = normalizeGalleryItems(nextItems, descriptor);
-      chooseButton.textContent = currentItems.length
-        ? (strings().panelGalleryReplace || 'Replace gallery selection')
+      addButton.textContent = currentItems.length
+        ? (strings().panelGalleryAdd || 'Add images')
         : (strings().panelGalleryChoose || 'Choose gallery images');
+      replaceButton.textContent = strings().panelGalleryReplace || 'Replace gallery';
+      replaceButton.hidden = !currentItems.length;
       clearButton.textContent = strings().panelGalleryClear || 'Clear gallery';
-      clearButton.disabled = !currentItems.length;
-      renderGalleryPreviewItems(grid, meta, currentItems);
+      addButton.disabled = disabledState;
+      replaceButton.disabled = disabledState || !currentItems.length;
+      clearButton.disabled = disabledState || !currentItems.length;
+      renderGalleryPreviewItems(grid, meta, currentItems, {
+        editable: true,
+        disabled: disabledState,
+        onMove(index, direction) {
+          const nextItems = reorderGalleryItems(currentItems, index, index + direction);
+
+          if (nextItems) {
+            render(nextItems);
+          }
+        },
+        onReorder(fromIndex, toIndex) {
+          const nextItems = reorderGalleryItems(currentItems, fromIndex, toIndex);
+
+          if (nextItems) {
+            render(nextItems);
+          }
+        },
+        onRemove(index) {
+          const nextItems = currentItems.slice();
+
+          nextItems.splice(index, 1);
+          render(nextItems);
+        }
+      });
     }
 
-    function openMediaFrame() {
+    function openMediaFrame(mode) {
       if (!supportsWpMedia()) {
         return;
       }
 
-      if (!mediaFrame) {
-        mediaFrame = window.wp.media({
-          title: strings().panelGalleryFrameTitle || 'Select gallery images',
-          button: {
-            text: strings().panelGalleryFrameButton || 'Use selected images'
-          },
-          library: {
-            type: 'image'
-          },
-          multiple: true
-        });
-        bindMediaFramePrefetchState(mediaFrame);
+      const mediaFrame = window.wp.media({
+        title: mode === 'add'
+          ? (strings().panelGalleryAddFrameTitle || strings().panelGalleryFrameTitle || 'Add gallery images')
+          : (strings().panelGalleryFrameTitle || 'Select gallery images'),
+        button: {
+          text: mode === 'add'
+            ? (strings().panelGalleryAddFrameButton || strings().panelGalleryFrameButton || 'Add selected images')
+            : (strings().panelGalleryFrameButton || 'Use selected images')
+        },
+        library: {
+          type: 'image'
+        },
+        multiple: true
+      });
+      bindMediaFramePrefetchState(mediaFrame);
 
-        mediaFrame.on('select', function () {
-          const selection = mediaFrame.state().get('selection');
-          const items = [];
+      mediaFrame.on('select', function () {
+        const selection = mediaFrame.state().get('selection');
+        const items = [];
 
-          if (selection && typeof selection.each === 'function') {
-            selection.each(function (attachment) {
-              const data = attachment ? attachment.toJSON() : null;
+        if (selection && typeof selection.each === 'function') {
+          selection.each(function (attachment) {
+            const data = attachment ? attachment.toJSON() : null;
 
-              if (!data) {
-                return;
-              }
+            if (!data) {
+              return;
+            }
 
-              items.push(mapMediaSelectionToGalleryItem(data, descriptor));
-            });
-          }
+            items.push(mapMediaSelectionToGalleryItem(data, descriptor));
+          });
+        }
 
-          render(items);
-        });
-      }
+        render(mode === 'add' ? mergeGalleryItems(currentItems, items) : items);
+      });
 
       mediaFrame.open();
     }
 
     render(value);
 
-    chooseButton.addEventListener('click', function () {
-      openMediaFrame();
+    addButton.addEventListener('click', function () {
+      openMediaFrame('add');
+    });
+    replaceButton.addEventListener('click', function () {
+      openMediaFrame('replace');
     });
     clearButton.addEventListener('click', function () {
       render([]);
     });
 
-    buttonRow.appendChild(chooseButton);
+    buttonRow.appendChild(addButton);
+    buttonRow.appendChild(replaceButton);
     buttonRow.appendChild(clearButton);
     wrapper.appendChild(buttonRow);
     wrapper.appendChild(meta);
@@ -4750,14 +6400,12 @@
         render(nextValue);
       },
       focus() {
-        chooseButton.focus();
+        addButton.focus();
       },
       setDisabled(disabled) {
-        const isDisabled = Boolean(disabled);
+        disabledState = Boolean(disabled);
 
-        fields.forEach(function (field) {
-          field.disabled = isDisabled;
-        });
+        render(currentItems);
       }
     });
   }
@@ -5916,8 +7564,11 @@
     const acknowledgementType = state.activeAcknowledgementType;
     const entityType = getDescriptorEntityType(state.activeDescriptor);
     const renderContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
-    const canNoReloadSave = renderContext === 'query_collection' && status !== 'readonly';
-    const isReloadOnlyContext = renderContext === 'gallery_collection';
+    const isMissingMedia = isMissingMediaMarker(state.activeNode);
+    const canNoReloadSave = !isMissingMedia
+      && status !== 'readonly'
+      && (renderContext === 'query_collection' || canPatchRenderContextWithoutReload(renderContext));
+    const offersReloadSave = canNoReloadSave || isMissingMedia;
     const disabled = !canEdit || (needsSharedAck && !state.sharedScopeAcknowledged);
 
     if (panelNodes.saveNoReloadButton) {
@@ -5932,7 +7583,7 @@
       return;
     }
 
-    if (canNoReloadSave || isReloadOnlyContext) {
+    if (offersReloadSave) {
       panelNodes.saveButton.textContent = strings().panelSaveAndReload || 'Save and Reload';
     } else if (needsSharedAck && acknowledgementType === 'related') {
       panelNodes.saveButton.textContent = resolveRelatedSaveLabel(entityType);
@@ -5943,6 +7594,79 @@
     }
 
     panelNodes.saveButton.disabled = disabled;
+  }
+
+  function resolvePanelNoticeIndicatorType(descriptor) {
+    const scope = getDescriptorScope(descriptor, state.activeNode);
+    const renderContext = getDescriptorRenderContext(descriptor, state.activeNode);
+
+    if (scope === 'shared_entity') {
+      return 'shared';
+    }
+
+    if (scope === 'related_entity') {
+      return 'related';
+    }
+
+    if (renderContext === 'query_collection') {
+      return 'query';
+    }
+
+    return 'current';
+  }
+
+  function resolvePanelNoticeIndicatorLabel(type) {
+    if (type === 'shared') {
+      return strings().panelNoticeTypeShared || 'Shared';
+    }
+
+    if (type === 'related') {
+      return strings().panelNoticeTypeRelated || 'Related';
+    }
+
+    if (type === 'query') {
+      return strings().panelNoticeTypeQuery || 'Query Loop collection';
+    }
+
+    return strings().panelNoticeTypeCurrent || 'Current Post';
+  }
+
+  function renderPanelNoticeIndicatorIcon(type) {
+    const attrs = 'aria-hidden="true" focusable="false" viewBox="0 0 24 24"';
+    const common = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+
+    if (type === 'shared') {
+      return `<svg ${attrs}><circle ${common} cx="12" cy="12" r="9"/><path ${common} d="M3 12h18"/><path ${common} d="M12 3c2.5 2.8 3.5 5.8 3.5 9s-1 6.2-3.5 9c-2.5-2.8-3.5-5.8-3.5-9s1-6.2 3.5-9Z"/></svg>`;
+    }
+
+    if (type === 'related') {
+      return `<svg ${attrs}><path ${common} d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path ${common} d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"/></svg>`;
+    }
+
+    if (type === 'query') {
+      return `<svg ${attrs}><path ${common} d="M4 6h16"/><path ${common} d="M4 12h16"/><path ${common} d="M4 18h16"/><circle fill="currentColor" cx="7" cy="6" r="1.6"/><circle fill="currentColor" cx="17" cy="12" r="1.6"/><circle fill="currentColor" cx="10" cy="18" r="1.6"/></svg>`;
+    }
+
+    return `<svg ${attrs}><path ${common} d="M7 3h7l4 4v14H7z"/><path ${common} d="M14 3v5h5"/><path ${common} d="M10 13h6"/><path ${common} d="M10 17h4"/></svg>`;
+  }
+
+  function createPanelWarningIndicator(descriptor, warning) {
+    const type = resolvePanelNoticeIndicatorType(descriptor);
+    const label = resolvePanelNoticeIndicatorLabel(type);
+    const button = document.createElement('button');
+
+    button.type = 'button';
+    button.className = 'dbvc-ve-panel__notice-indicator';
+    button.dataset.noticeType = type;
+    button.title = warning;
+    button.setAttribute('aria-label', `${label}: ${warning}`);
+    button.innerHTML = [
+      renderPanelNoticeIndicatorIcon(type),
+      `<span class="dbvc-ve-panel__notice-indicator-label">${escapeHtml(label)}</span>`,
+      `<span class="dbvc-ve-panel__notice-tooltip" role="tooltip">${escapeHtml(warning)}</span>`
+    ].join('');
+
+    return button;
   }
 
   function renderPanelNotice(result, panelNodes, canEdit) {
@@ -5957,6 +7681,10 @@
     const entityType = getDescriptorEntityType(descriptor);
 
     panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
 
     if (!warning && !editMessage && !requiresSharedAck && !noticeSummary) {
       return;
@@ -5985,11 +7713,17 @@
     }
 
     if (warning) {
-      const warningBlock = document.createElement('div');
+      const warningIndicator = createPanelWarningIndicator(descriptor, warning);
 
-      warningBlock.className = 'dbvc-ve-panel__notice-block is-warning';
-      warningBlock.textContent = warning;
-      panelNodes.notice.appendChild(warningBlock);
+      if (panelNodes.footerNotice) {
+        panelNodes.footerNotice.appendChild(warningIndicator);
+      } else {
+        const warningBlock = document.createElement('div');
+
+        warningBlock.className = 'dbvc-ve-panel__notice-block is-warning';
+        warningBlock.textContent = warning;
+        panelNodes.notice.appendChild(warningBlock);
+      }
     }
 
     if (editMessage) {
@@ -6020,7 +7754,15 @@
 
       label.appendChild(checkbox);
       label.appendChild(text);
-      panelNodes.notice.appendChild(label);
+      if (panelNodes.footerNotice) {
+        panelNodes.footerNotice.appendChild(label);
+      } else {
+        panelNodes.notice.appendChild(label);
+      }
+    }
+
+    if (panelNodes.footerNotice && panelNodes.footerNotice.children.length) {
+      panelNodes.footerNotice.hidden = false;
     }
   }
 
@@ -6248,9 +7990,18 @@
 
     if (context === 'image_src') {
       const attribute = getDescriptorRenderAttribute(descriptor, node) || 'src';
-      const imageNode = node.matches && node.matches('img') ? node : node.querySelector('img');
       const renderData = resolveMediaReferenceRenderData(currentValue, descriptor);
       const nextSrc = renderData.src || nextValue;
+      const shouldClearMedia = !nextSrc && isEmptyMediaReferenceRenderData(renderData);
+
+      if (shouldClearMedia) {
+        clearRenderedImageMediaNode(node, attribute);
+        return;
+      }
+
+      restoreClearedMediaState(node);
+
+      const imageNode = ensureRenderedImageElement(node);
 
       if (imageNode) {
         if (nextSrc) {
@@ -6279,20 +8030,26 @@
       }
 
       node.dataset.dbvcVeDisplayValue = normalizeValue(nextSrc);
+      scheduleBadgeLayout();
       return;
     }
 
     if (context === 'background_image') {
       const renderData = resolveMediaReferenceRenderData(currentValue, descriptor);
       const nextBackground = renderData.src || nextValue;
+      const shouldClearMedia = !nextBackground && isEmptyMediaReferenceRenderData(renderData);
 
       node.style.backgroundImage = nextBackground ? `url("${nextBackground.replace(/"/g, '\\"')}")` : '';
+      node.classList.toggle('dbvc-ve-media-cleared', shouldClearMedia);
       node.dataset.dbvcVeDisplayValue = normalizeValue(nextBackground);
+      scheduleBadgeLayout();
       return;
     }
 
     if (context === 'gallery_collection') {
+      patchGalleryCollectionNode(node, currentValue, descriptor);
       node.dataset.dbvcVeDisplayValue = normalizeValue(nextValue);
+      scheduleBadgeLayout();
       return;
     }
 
@@ -6332,6 +8089,12 @@
 
             return getDescriptorRenderContext(descriptor, node) === activeContext
               && getDescriptorMediaSize(descriptor) === activeMediaSize;
+          }
+
+          if (activeContext === 'gallery_collection') {
+            const descriptor = lookupDescriptorForNode(node);
+
+            return getDescriptorRenderContext(descriptor, node) === 'gallery_collection';
           }
 
           return true;
@@ -6374,6 +8137,90 @@
     });
   }
 
+  async function openToolbarDescriptorPanel(token) {
+    const panelNodes = getPanelNodes();
+    const cached = getCachedDescriptorPayload(token);
+    let session = state.session;
+
+    if (!token) {
+      return;
+    }
+
+    setPanelOpen(true);
+    destroyActiveController();
+    state.activeController = null;
+    panelNodes.panel.dataset.state = 'loading';
+    panelNodes.title.textContent = strings().panelTitle || 'Edit field';
+    panelNodes.entityType.textContent = '';
+    panelNodes.entityLinks.innerHTML = '';
+    panelNodes.meta.innerHTML = '';
+    panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
+    panelNodes.fieldLabel.textContent = '';
+    panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
+    panelNodes.fieldWrap.firstChild.textContent = strings().panelLoading || 'Loading field details...';
+    panelNodes.status.textContent = '';
+    panelNodes.saveNoReloadButton.hidden = true;
+    panelNodes.saveNoReloadButton.disabled = true;
+    panelNodes.saveButton.disabled = true;
+    schedulePanelViewportClamp();
+
+    state.activeNode = null;
+    state.activeDescriptor = null;
+    state.activeRequiresSharedScopeAck = false;
+    state.activeAcknowledgementType = 'none';
+    state.sharedScopeAcknowledged = false;
+    state.touchSelectionToken = token;
+    clearDescriptorPrefetch();
+
+    if (shouldRefreshSessionBeforeAction()) {
+      try {
+        session = await refreshSession({ silent: true });
+      } catch (error) {
+        panelNodes.panel.dataset.state = 'error';
+        panelNodes.status.textContent = error && error.message ? error.message : getSessionExpiredMessage();
+        schedulePanelViewportClamp();
+        window.console.error(error);
+        return;
+      }
+    }
+
+    if (!session || !session.sessionId) {
+      panelNodes.panel.dataset.state = 'error';
+      panelNodes.status.textContent = getSessionExpiredMessage();
+      schedulePanelViewportClamp();
+      return;
+    }
+
+    if (cached && cached.ok && cached.descriptor) {
+      cached.sourceMismatch = false;
+      cached.renderedValue = cached.displayValue || '';
+      state.activeDescriptor = cached.descriptor;
+      renderEditorPanel(cached);
+      return;
+    }
+
+    try {
+      const result = await loadDescriptorPayload(session.sessionId, token);
+      result.sourceMismatch = false;
+      result.renderedValue = result.displayValue || '';
+      state.activeDescriptor = result.descriptor;
+      renderEditorPanel(result);
+    } catch (error) {
+      if (isSessionExpiredError(error)) {
+        handleExpiredSession(error);
+      }
+
+      panelNodes.panel.dataset.state = 'error';
+      panelNodes.status.textContent = error && error.message ? error.message : (strings().descriptorMissing || 'Descriptor not found.');
+      schedulePanelViewportClamp();
+      window.console.error(error);
+    }
+  }
+
   async function openEditor(node, session) {
     const token = getMarkerToken(node);
     const panelNodes = getPanelNodes();
@@ -6388,6 +8235,10 @@
     panelNodes.entityLinks.innerHTML = '';
     panelNodes.meta.innerHTML = '';
     panelNodes.notice.innerHTML = '';
+    if (panelNodes.footerNotice) {
+      panelNodes.footerNotice.innerHTML = '';
+      panelNodes.footerNotice.hidden = true;
+    }
     panelNodes.fieldLabel.textContent = '';
     panelNodes.fieldWrap.innerHTML = '<div class="dbvc-ve-panel__placeholder"></div>';
     panelNodes.fieldWrap.firstChild.textContent = strings().panelLoading || 'Loading field details…';
@@ -6447,7 +8298,7 @@
     const saveOptions = options && typeof options === 'object' ? options : {};
     const panelNodes = getPanelNodes();
 
-    if (!state.session || !state.activeNode || !state.activeDescriptor || !state.activeController) {
+    if (!state.session || !state.activeDescriptor || !state.activeController) {
       return;
     }
 
@@ -6483,23 +8334,35 @@
       const syncGroup = getActiveSyncGroup();
       const sourceGroup = getActiveSourceGroup();
       const activeContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
-      const canDeferReload = activeContext === 'query_collection';
-      const shouldReloadAfterSave = activeContext === 'gallery_collection'
-        || (activeContext === 'query_collection' && saveOptions.reloadAfterSave !== false);
+      const activeMissingMedia = isMissingMediaMarker(state.activeNode);
+      const canPatchWithoutReload = !activeMissingMedia && canPatchRenderContextWithoutReload(activeContext);
+      const canDeferReload = activeContext === 'query_collection' || canPatchWithoutReload;
+      const shouldReloadAfterSave = activeMissingMedia
+        || ((activeContext === 'query_collection' || canPatchWithoutReload) && saveOptions.reloadAfterSave !== false);
       const saveSummaryMessage = formatSaveSummary(saveResult);
       let successMessage = saveSummaryMessage || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.'));
 
       if (shouldReloadAfterSave) {
-        successMessage = activeContext === 'query_collection'
-          ? (strings().panelCollectionReloading || 'Connected items saved. Reloading page…')
-          : (strings().panelGalleryReloading || 'Gallery saved. Reloading page…');
+        if (activeContext === 'query_collection') {
+          successMessage = strings().panelCollectionReloading || 'Connected items saved. Reloading page…';
+        } else if (activeContext === 'gallery_collection' || (activeMissingMedia && getMissingMediaKind(state.activeNode) === 'gallery')) {
+          successMessage = strings().panelGalleryReloading || 'Gallery saved. Reloading page…';
+        } else {
+          successMessage = strings().panelMediaReloading || 'Image saved. Reloading page…';
+        }
       } else if (canDeferReload) {
-        successMessage = strings().panelCollectionSavedNoReload || 'Connected items saved. Reload when ready to refresh this query loop.';
+        if (activeContext === 'gallery_collection') {
+          successMessage = strings().panelGallerySavedNoReload || 'Gallery saved. Reload when ready to rebuild the full gallery markup.';
+        } else if (isMediaRenderContext(activeContext)) {
+          successMessage = strings().panelMediaSavedNoReload || 'Image saved and updated on the page.';
+        } else {
+          successMessage = strings().panelCollectionSavedNoReload || 'Connected items saved. Reload when ready to refresh this query loop.';
+        }
       }
 
       updateCachedDescriptors(syncGroup, sourceGroup, saveResult);
       applyCollectionStateToCachedDescriptors(saveResult);
-      if (!shouldReloadAfterSave && !canDeferReload) {
+      if (!shouldReloadAfterSave && (canPatchWithoutReload || !canDeferReload)) {
         syncSavedDisplayValues(syncGroup, sourceGroup, saveResult);
       }
       state.activeController.setValue(saveResult.value);
@@ -6559,6 +8422,7 @@
     }
 
     document.body.classList.add('dbvc-ve-active');
+    ensureToolbar();
     ensureStatusBar();
     ensureEditorPanel();
     ensureBadgeLayer();

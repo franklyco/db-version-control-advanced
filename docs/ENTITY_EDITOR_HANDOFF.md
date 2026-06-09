@@ -233,8 +233,10 @@ Do not parse the entire sync folder on every request in production sites with ma
 Order of precedence (confirm DBVC standards):
 1. **DBVC UID** field (strongest)
 2. **DBVC history mapping** meta fields (if exists)
-3. **slug + subtype**
+3. **slug + subtype**, only when the JSON has no UID or the `dbvc_allow_uid_fallback_matching` option is explicitly enabled
 4. Avoid title/name match unless DBVC already supports it with clear disambiguation UI
+
+Current behavior is centralized in `docs/import-identity-matching.md`: UID-bearing JSON must not fall back to a different local entity by slug/ID when fallback matching is disabled.
 
 If multiple matches found:
 - Show a blocking error with candidates and require user action (or a selection UI) before import.
@@ -396,7 +398,7 @@ Add minimal bootstrapping in the DBVC main loader:
 - [ ] Add lock handling (transient lock) and UI feedback
 
 ### Phase 5 — Partial Import (matched fields/meta merge)
-- [ ] Implement matcher (UID → history → slug+subtype)
+- [ ] Implement matcher (UID → history, then slug+subtype only when no UID is present or UID fallback matching is explicitly enabled)
 - [ ] Block import if none/ambiguous matches
 - [ ] Implement non-destructive update:
   - [ ] update core fields present in JSON

@@ -80,6 +80,19 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/BundleManager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Resolver.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Reconciler.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/FileStateService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/LibraryInventoryService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MirrorManifestBuilder.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationPlanner.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/Hydrator.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationReceiptStore.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationLock.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationPlanStore.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/Settings.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageImportService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/RestController.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/AdminUploadController.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageDownloadController.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Official/Collections.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Settings.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Storage.php';
@@ -113,6 +126,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/class-sync-posts.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-taxonomies.php';
 require_once DBVC_PLUGIN_PATH . 'includes/hooks.php';
 require_once DBVC_PLUGIN_PATH . 'commands/class-wp-cli-commands.php';
+require_once DBVC_PLUGIN_PATH . 'commands/class-media-hydration-cli.php';
 require_once DBVC_PLUGIN_PATH . 'admin/class-admin-app.php';
 require_once DBVC_PLUGIN_PATH . 'admin/class-entity-editor-app.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/bricks-addon.php';
@@ -169,6 +183,7 @@ DBVC_Bricks_Addon::bootstrap();
 DBVC_Bricks_Portability::bootstrap();
 DBVC_Visual_Editor_Addon::bootstrap();
 \Dbvc\AiPackage\OpenAiModelCatalogService::init();
+\Dbvc\Media\Hydration\RestController::init();
 if (class_exists('DBVC_CC_Addon_Bootstrap')) {
 	DBVC_CC_Addon_Bootstrap::bootstrap();
 }
@@ -189,6 +204,8 @@ if (is_admin()) {
 		DBVC_AI_Tools_Page::init();
 	}
 	\Dbvc\ConfigurationPortability\AdminPage::init();
+	\Dbvc\Media\Hydration\AdminUploadController::init();
+	\Dbvc\Media\Hydration\PackageDownloadController::init();
 }
 
 DBVC_Database::init();
