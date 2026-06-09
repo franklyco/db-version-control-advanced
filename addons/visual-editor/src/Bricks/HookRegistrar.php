@@ -4,6 +4,7 @@ namespace Dbvc\VisualEditor\Bricks;
 
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Context\PageContextResolver;
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
 use Dbvc\VisualEditor\Resolvers\ResolverRegistry;
 
@@ -35,17 +36,23 @@ final class HookRegistrar
     private $loops;
 
     /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
+    /**
      * @var ElementInstrumentationService|null
      */
     private $service = null;
 
-    public function __construct(EditModeState $edit_mode, EditableRegistry $registry, PageContextResolver $page_context, ResolverRegistry $resolvers, ?LoopContextResolver $loops = null)
+    public function __construct(EditModeState $edit_mode, EditableRegistry $registry, PageContextResolver $page_context, ResolverRegistry $resolvers, ?LoopContextResolver $loops = null, ?PerformanceProfiler $profiler = null)
     {
         $this->edit_mode = $edit_mode;
         $this->registry = $registry;
         $this->page_context = $page_context;
         $this->resolvers = $resolvers;
-        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver();
+        $this->profiler = $profiler;
+        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver(null, $profiler);
     }
 
     /**
@@ -81,7 +88,7 @@ final class HookRegistrar
         }
 
         if (! ($this->service instanceof ElementInstrumentationService)) {
-            $this->service = new ElementInstrumentationService($this->registry, $this->page_context, $this->resolvers, $this->loops);
+            $this->service = new ElementInstrumentationService($this->registry, $this->page_context, $this->resolvers, $this->loops, $this->profiler);
         }
 
         add_filter('bricks/posts/query_vars', [$this->service, 'capturePostQueryVars'], 30, 4);

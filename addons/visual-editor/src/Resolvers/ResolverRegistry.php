@@ -5,6 +5,7 @@ namespace Dbvc\VisualEditor\Resolvers;
 use Dbvc\VisualEditor\Bricks\AcfFieldContextResolver;
 use Dbvc\VisualEditor\Bricks\LoopContextResolver;
 use Dbvc\VisualEditor\Bricks\NativeAcfQueryResolver;
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Registry\EditableDescriptor;
 
 final class ResolverRegistry
@@ -29,10 +30,36 @@ final class ResolverRegistry
      */
     private $native_acf_queries;
 
-    public function __construct(?AcfFieldContextResolver $acf_context = null, ?LoopContextResolver $loops = null, ?NativeAcfQueryResolver $native_acf_queries = null)
+    /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $acf_field_objects_cache = [];
+
+    /**
+     * @var array<string, array<int, array<string, mixed>>>
+     */
+    private $derived_query_collection_field_candidates_cache = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    private $derived_query_collection_candidate_value_cache = [];
+
+    /**
+     * @var array<int, string>
+     */
+    private $post_type_cache = [];
+
+    public function __construct(?AcfFieldContextResolver $acf_context = null, ?LoopContextResolver $loops = null, ?NativeAcfQueryResolver $native_acf_queries = null, ?PerformanceProfiler $profiler = null)
     {
-        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver();
-        $this->acf_context = $acf_context instanceof AcfFieldContextResolver ? $acf_context : new AcfFieldContextResolver($this->loops);
+        $this->profiler = $profiler;
+        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver(null, $profiler);
+        $this->acf_context = $acf_context instanceof AcfFieldContextResolver ? $acf_context : new AcfFieldContextResolver($this->loops, $profiler);
         $this->native_acf_queries = $native_acf_queries instanceof NativeAcfQueryResolver ? $native_acf_queries : new NativeAcfQueryResolver();
 
         $instances = [
@@ -65,15 +92,36 @@ final class ResolverRegistry
      */
     public function resolve(EditableDescriptor $descriptor)
     {
+        $started_at = $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()
+            ? $this->profiler->startTimer()
+            : 0.0;
         $resolver_name = isset($descriptor->resolver['name']) ? (string) $descriptor->resolver['name'] : '';
         if ($resolver_name !== '' && isset($this->resolvers[$resolver_name])) {
+            if ($started_at > 0) {
+                $this->profiler->recordDuration('resolver.resolve', $started_at, [
+                    'resolver' => $resolver_name,
+                ]);
+            }
+
             return $this->resolvers[$resolver_name];
         }
 
         foreach ($this->resolvers as $resolver) {
             if ($resolver->supports($descriptor)) {
+                if ($started_at > 0) {
+                    $this->profiler->recordDuration('resolver.resolve', $started_at, [
+                        'resolver' => $resolver->name(),
+                    ]);
+                }
+
                 return $resolver;
             }
+        }
+
+        if ($started_at > 0) {
+            $this->profiler->recordDuration('resolver.resolve', $started_at, [
+                'resolver' => 'unsupported',
+            ]);
         }
 
         return $this->resolvers['unsupported'];
@@ -85,6 +133,33 @@ final class ResolverRegistry
      * @return array<string, mixed>
      */
     public function classifyCandidate(array $candidate, array $page_context)
+    {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            $source_type = isset($candidate['source_type']) ? sanitize_key((string) $candidate['source_type']) : '';
+            $started_at = $this->profiler->startTimer();
+            $classification = $this->classifyCandidateUnprofiled($candidate, $page_context);
+            $status = isset($classification['status']) ? sanitize_key((string) $classification['status']) : 'unsupported';
+            $scope = isset($classification['scope']) ? sanitize_key((string) $classification['scope']) : '';
+            $resolver = isset($classification['resolver']['name']) ? sanitize_key((string) $classification['resolver']['name']) : '';
+            $this->profiler->recordDuration('resolver.classify_candidate', $started_at, [
+                'source' => $source_type !== '' ? $source_type : 'unknown',
+                'status' => $status,
+                'scope' => $scope !== '' ? $scope : 'none',
+                'resolver' => $resolver !== '' ? $resolver : 'none',
+            ]);
+
+            return $classification;
+        }
+
+        return $this->classifyCandidateUnprofiled($candidate, $page_context);
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function classifyCandidateUnprofiled(array $candidate, array $page_context)
     {
         if (empty($page_context['isSupported'])) {
             return $this->buildUnsupported('Missing current entity context.');
@@ -1059,7 +1134,7 @@ final class ResolverRegistry
             return $this->buildUnsupported('Native Bricks include/post__in controls require saved ACF dynamic-tag evidence before Visual Editor can safely mutate an ACF source field.');
         }
 
-        $field_objects = get_field_objects($entity_id, false, true);
+        $field_objects = $this->getAcfFieldObjectsForObject($entity_id);
         if (! is_array($field_objects) || empty($field_objects)) {
             return $this->buildUnsupported('No current-owner ACF fields were available for derived Bricks query collection inspection.');
         }
@@ -1087,8 +1162,10 @@ final class ResolverRegistry
             return $this->buildUnsupported('Empty derived Bricks query collections require explicit current-owner ACF source evidence.');
         }
 
+        $field_candidates = $this->buildDerivedQueryCollectionFieldCandidates($field_objects, $entity_id);
+        $match_started_at = $this->startResolverProfileTimer();
         $matches = [];
-        foreach ($this->buildDerivedQueryCollectionFieldCandidates($field_objects, $entity_id) as $field_candidate) {
+        foreach ($field_candidates as $field_candidate) {
             $field = isset($field_candidate['field']) && is_array($field_candidate['field']) ? $field_candidate['field'] : [];
             $field_type = isset($field_candidate['field_type']) ? sanitize_key((string) $field_candidate['field_type']) : '';
             if ($field_type === '') {
@@ -1134,6 +1211,14 @@ final class ResolverRegistry
                 ];
             }
         }
+        $this->recordResolverProfileDuration('resolver.derived_query.match_current_owner', $match_started_at, [
+            'empty' => $is_empty_query ? 'yes' : 'no',
+            'target' => $target_post_type !== '' ? 'typed' : 'mixed',
+        ]);
+        $this->recordResolverProfileValue('resolver.derived_query.match_count', count($matches), [
+            'scope' => 'current_owner',
+            'target' => $target_post_type !== '' ? 'typed' : 'mixed',
+        ]);
 
         if (count($matches) !== 1) {
             if ($query_editor_active) {
@@ -1327,7 +1412,14 @@ final class ResolverRegistry
      */
     private function classifyDerivedBricksQueryReadonlyBranch(array $candidate, array $page_context, array $query_vars, array $query_ids, $target_post_type, array $query_result_post_types, array $query_dynamic_field_hints, array $query_editor_field_hints, array $query_editor_option_field_hints, array $query_editor_explicit_field_hints)
     {
-        $option_match = $this->matchDerivedQueryOptionFallbackField($query_editor_option_field_hints, $target_post_type, $query_result_post_types, $query_ids);
+        $branch_started_at = $this->startResolverProfileTimer();
+        $option_match = $this->profileResolverStep('resolver.derived_query.option_fallback_match', function () use ($query_editor_option_field_hints, $target_post_type, $query_result_post_types, $query_ids) {
+            return $this->matchDerivedQueryOptionFallbackField($query_editor_option_field_hints, $target_post_type, $query_result_post_types, $query_ids);
+        }, [
+            'target' => $target_post_type !== '' ? 'typed' : 'mixed',
+            'hints' => empty($query_editor_option_field_hints) ? 'none' : 'present',
+        ]);
+
         if (! empty($option_match)) {
             $option_field = isset($option_match['field']) && is_array($option_match['field']) ? $option_match['field'] : [];
             $option_field['_dbvc_stored_ids'] = isset($option_match['stored_ids']) && is_array($option_match['stored_ids'])
@@ -1337,6 +1429,32 @@ final class ResolverRegistry
                 $option_field['_dbvc_field_context'] = $option_match['field_context'];
             }
 
+            $classification = $this->profileResolverStep('resolver.derived_query.fallback_classification_build', function () use ($candidate, $page_context, $query_vars, $query_ids, $target_post_type, $query_result_post_types, $query_dynamic_field_hints, $query_editor_field_hints, $query_editor_option_field_hints, $query_editor_explicit_field_hints, $option_field) {
+                return $this->buildFallbackDerivedBricksQueryCollectionClassification(
+                    $candidate,
+                    $page_context,
+                    $query_vars,
+                    $query_ids,
+                    $target_post_type,
+                    $query_result_post_types,
+                    $query_dynamic_field_hints,
+                    $query_editor_field_hints,
+                    $query_editor_option_field_hints,
+                    $query_editor_explicit_field_hints,
+                    $option_field,
+                    'shared_option_fallback_exact_match'
+                );
+            }, [
+                'branch' => 'shared_option_fallback_exact_match',
+            ]);
+            $this->recordResolverProfileDuration('resolver.derived_query.readonly_branch', $branch_started_at, [
+                'branch' => 'shared_option_fallback_exact_match',
+            ]);
+
+            return $classification;
+        }
+
+        $classification = $this->profileResolverStep('resolver.derived_query.fallback_classification_build', function () use ($candidate, $page_context, $query_vars, $query_ids, $target_post_type, $query_result_post_types, $query_dynamic_field_hints, $query_editor_field_hints, $query_editor_option_field_hints, $query_editor_explicit_field_hints) {
             return $this->buildFallbackDerivedBricksQueryCollectionClassification(
                 $candidate,
                 $page_context,
@@ -1348,25 +1466,17 @@ final class ResolverRegistry
                 $query_editor_field_hints,
                 $query_editor_option_field_hints,
                 $query_editor_explicit_field_hints,
-                $option_field,
-                'shared_option_fallback_exact_match'
+                [],
+                'query_editor_post_in_unmatched'
             );
-        }
+        }, [
+            'branch' => 'query_editor_post_in_unmatched',
+        ]);
+        $this->recordResolverProfileDuration('resolver.derived_query.readonly_branch', $branch_started_at, [
+            'branch' => 'query_editor_post_in_unmatched',
+        ]);
 
-        return $this->buildFallbackDerivedBricksQueryCollectionClassification(
-            $candidate,
-            $page_context,
-            $query_vars,
-            $query_ids,
-            $target_post_type,
-            $query_result_post_types,
-            $query_dynamic_field_hints,
-            $query_editor_field_hints,
-            $query_editor_option_field_hints,
-            $query_editor_explicit_field_hints,
-            [],
-            'query_editor_post_in_unmatched'
-        );
+        return $classification;
     }
 
     /**
@@ -1389,14 +1499,19 @@ final class ResolverRegistry
             return [];
         }
 
-        $field_objects = get_field_objects('option', false, true);
-        if (! is_array($field_objects) || empty($field_objects)) {
-            return [];
-        }
+        $field_candidates = $this->buildDerivedQueryCollectionHintedFieldCandidates($field_hints, 'option');
+        if (empty($field_candidates) || ! $this->derivedQueryCandidatesCoverHints($field_candidates, $field_hints)) {
+            $field_objects = $this->getAcfFieldObjectsForObject('option');
+            if (! is_array($field_objects) || empty($field_objects)) {
+                return [];
+            }
 
+            $field_candidates = $this->buildDerivedQueryCollectionFieldCandidates($field_objects, 'option');
+        }
+        $match_started_at = $this->startResolverProfileTimer();
         $matches = [];
 
-        foreach ($this->buildDerivedQueryCollectionFieldCandidates($field_objects, 'option') as $field_candidate) {
+        foreach ($field_candidates as $field_candidate) {
             $field = isset($field_candidate['field']) && is_array($field_candidate['field']) ? $field_candidate['field'] : [];
             $field_type = isset($field_candidate['field_type']) ? sanitize_key((string) $field_candidate['field_type']) : '';
             if ($field_type === '') {
@@ -1442,6 +1557,13 @@ final class ResolverRegistry
                 ];
             }
         }
+        $this->recordResolverProfileDuration('resolver.derived_query.option_fallback_match_loop', $match_started_at, [
+            'target' => $target_post_type !== '' ? 'typed' : 'mixed',
+        ]);
+        $this->recordResolverProfileValue('resolver.derived_query.match_count', count($matches), [
+            'scope' => 'option_fallback',
+            'target' => $target_post_type !== '' ? 'typed' : 'mixed',
+        ]);
 
         return count($matches) === 1 ? $matches[0] : [];
     }
@@ -1534,14 +1656,19 @@ final class ResolverRegistry
         $allow_multiple = ! empty($field) ? $this->isReferenceMultiple($field) : true;
         $max = ! empty($field) ? $this->resolveReferenceMaxSelections($field) : 0;
         $min = ! empty($field) ? $this->resolveReferenceMinSelections($field) : 0;
-        $seed_current_field = $this->buildDerivedQueryCurrentOwnerSeedContext(
-            $is_option_fallback,
-            $page_context,
-            $query_editor_field_hints,
-            $target_post_type,
-            $query_result_post_types,
-            $query_ids
-        );
+        $seed_current_field = $this->profileResolverStep('resolver.derived_query.seed_context', function () use ($is_option_fallback, $page_context, $query_editor_field_hints, $target_post_type, $query_result_post_types, $query_ids, $branch_state) {
+            return $this->buildDerivedQueryCurrentOwnerSeedContext(
+                $is_option_fallback,
+                $page_context,
+                $query_editor_field_hints,
+                $target_post_type,
+                $query_result_post_types,
+                $query_ids
+            );
+        }, [
+            'branch' => $branch_state,
+            'hints' => empty($query_editor_field_hints) ? 'none' : 'present',
+        ]);
 
         return [
             'status' => $is_option_fallback_writable ? 'editable' : 'readonly',
@@ -1681,14 +1808,16 @@ final class ResolverRegistry
             return [];
         }
 
-        $field_objects = get_field_objects($entity_id, false, true);
+        $field_objects = $this->getAcfFieldObjectsForObject($entity_id);
         if (! is_array($field_objects) || empty($field_objects)) {
             return [];
         }
 
+        $field_candidates = $this->buildDerivedQueryCollectionFieldCandidates($field_objects, $entity_id);
+        $match_started_at = $this->startResolverProfileTimer();
         $matches = [];
 
-        foreach ($this->buildDerivedQueryCollectionFieldCandidates($field_objects, $entity_id) as $field_candidate) {
+        foreach ($field_candidates as $field_candidate) {
             $field = isset($field_candidate['field']) && is_array($field_candidate['field']) ? $field_candidate['field'] : [];
             $field_name = isset($field_candidate['field_name']) ? sanitize_key((string) $field_candidate['field_name']) : '';
             if ($field_name === '') {
@@ -1747,6 +1876,13 @@ final class ResolverRegistry
                 'existing_target_ids' => $existing_target_ids,
             ];
         }
+        $this->recordResolverProfileDuration('resolver.derived_query.seed_match_loop', $match_started_at, [
+            'target' => $target_post_type !== '' ? 'typed' : 'mixed',
+        ]);
+        $this->recordResolverProfileValue('resolver.derived_query.match_count', count($matches), [
+            'scope' => 'seed_context',
+            'target' => $target_post_type !== '' ? 'typed' : 'mixed',
+        ]);
 
         if (count($matches) !== 1) {
             return [];
@@ -1958,7 +2094,20 @@ final class ResolverRegistry
     {
         $candidates = [];
         $acf_object_id = $this->normalizeAcfObjectIdForRead($acf_object_id);
+        $object_tag = $this->summarizeAcfObjectIdForProfile($acf_object_id);
+        $cache_key = $this->buildResolverCacheKey('derived_candidates', $acf_object_id);
+        if (array_key_exists($cache_key, $this->derived_query_collection_field_candidates_cache)) {
+            $this->incrementResolverProfileCounter('resolver.derived_query.candidate_cache_hit', 1, [
+                'object' => $object_tag,
+            ]);
 
+            return $this->derived_query_collection_field_candidates_cache[$cache_key];
+        }
+
+        $this->incrementResolverProfileCounter('resolver.derived_query.candidate_cache_miss', 1, [
+            'object' => $object_tag,
+        ]);
+        $started_at = $this->startResolverProfileTimer();
         foreach ($field_objects as $field) {
             if (! is_array($field)) {
                 continue;
@@ -1974,7 +2123,141 @@ final class ResolverRegistry
             );
         }
 
+        $this->derived_query_collection_field_candidates_cache[$cache_key] = $candidates;
+        $this->recordResolverProfileDuration('resolver.derived_query.candidate_build', $started_at, [
+            'object' => $object_tag,
+        ]);
+        $this->recordResolverProfileValue('resolver.derived_query.candidate_count', count($candidates), [
+            'object' => $object_tag,
+        ]);
+
         return $candidates;
+    }
+
+    /**
+     * @param array<int, string> $field_hints
+     * @param int|string         $acf_object_id
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildDerivedQueryCollectionHintedFieldCandidates(array $field_hints, $acf_object_id)
+    {
+        if (! function_exists('get_field_object')) {
+            return [];
+        }
+
+        $acf_object_id = $this->normalizeAcfObjectIdForRead($acf_object_id);
+        if ($acf_object_id === '' || $acf_object_id === 0) {
+            return [];
+        }
+
+        $field_hints = array_values(array_unique(array_filter(array_map('sanitize_key', $field_hints))));
+        if (empty($field_hints)) {
+            return [];
+        }
+
+        $object_tag = $this->summarizeAcfObjectIdForProfile($acf_object_id);
+        $cache_key = $this->buildResolverCacheKey('derived_hinted_candidates', [
+            'object' => $acf_object_id,
+            'hints' => $field_hints,
+        ]);
+        if (array_key_exists($cache_key, $this->derived_query_collection_field_candidates_cache)) {
+            $this->incrementResolverProfileCounter('resolver.derived_query.hinted_candidate_cache_hit', 1, [
+                'object' => $object_tag,
+            ]);
+
+            return $this->derived_query_collection_field_candidates_cache[$cache_key];
+        }
+
+        $this->incrementResolverProfileCounter('resolver.derived_query.hinted_candidate_cache_miss', 1, [
+            'object' => $object_tag,
+        ]);
+        $started_at = $this->startResolverProfileTimer();
+        $candidates = [];
+        $seen = [];
+
+        foreach ($field_hints as $field_hint) {
+            $field = get_field_object($field_hint, $acf_object_id, false, true);
+            if (! is_array($field)) {
+                continue;
+            }
+
+            $field_type = isset($field['type']) ? sanitize_key((string) $field['type']) : '';
+            if (! in_array($field_type, ['relationship', 'post_object'], true)) {
+                continue;
+            }
+
+            $raw_field_name = isset($field['name']) && is_scalar($field['name']) ? (string) $field['name'] : '';
+            $field_name = sanitize_key($raw_field_name);
+            if ($field_name === '' || $field_name !== $field_hint) {
+                continue;
+            }
+
+            $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+            $dedupe_key = $field_key !== '' ? $field_key : $field_name;
+            if ($dedupe_key === '' || isset($seen[$dedupe_key])) {
+                continue;
+            }
+
+            $seen[$dedupe_key] = true;
+            $stored_value = $this->readDerivedQueryCollectionCandidateValue($acf_object_id, [
+                $raw_field_name,
+                $field_hint,
+                $field_key,
+            ]);
+            $candidate_field = $field;
+            $candidate_field['name'] = $field_name;
+
+            $candidates[] = [
+                'field' => $candidate_field,
+                'field_name' => $field_name,
+                'field_key' => $field_key,
+                'field_selector' => $field_name,
+                'field_selector_raw' => $this->normalizeAcfSelectorForSource($raw_field_name),
+                'leaf_field_name' => $field_name,
+                'leaf_field_key' => $field_key,
+                'field_type' => $field_type,
+                'reference_post_types' => $this->normalizeStringList($field['post_type'] ?? []),
+                'group_path' => [],
+                'group_key_path' => [],
+                'stored_value' => $stored_value,
+                'hint_names' => $this->buildDerivedQueryCollectionCandidateHintNames($raw_field_name, $field_name, $raw_field_name, $field_name),
+            ];
+        }
+
+        $this->derived_query_collection_field_candidates_cache[$cache_key] = $candidates;
+        $this->recordResolverProfileDuration('resolver.derived_query.hinted_candidate_build', $started_at, [
+            'object' => $object_tag,
+        ]);
+        $this->recordResolverProfileValue('resolver.derived_query.hinted_candidate_count', count($candidates), [
+            'object' => $object_tag,
+        ]);
+
+        return $candidates;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $field_candidates
+     * @param array<int, string>               $field_hints
+     * @return bool
+     */
+    private function derivedQueryCandidatesCoverHints(array $field_candidates, array $field_hints)
+    {
+        $uncovered = array_fill_keys(array_values(array_unique(array_filter(array_map('sanitize_key', $field_hints)))), true);
+        if (empty($uncovered) || empty($field_candidates)) {
+            return false;
+        }
+
+        foreach ($field_candidates as $field_candidate) {
+            $hint_names = isset($field_candidate['hint_names']) && is_array($field_candidate['hint_names'])
+                ? array_values(array_filter(array_map('sanitize_key', $field_candidate['hint_names'])))
+                : [];
+
+            foreach ($hint_names as $hint_name) {
+                unset($uncovered[$hint_name]);
+            }
+        }
+
+        return empty($uncovered);
     }
 
     /**
@@ -2124,8 +2407,27 @@ final class ResolverRegistry
             return null;
         }
 
+        $object_tag = $this->summarizeAcfObjectIdForProfile($acf_object_id);
+        $cache_key = $this->buildResolverCacheKey('derived_candidate_value', [
+            'object' => $acf_object_id,
+            'selectors' => array_values(array_filter(array_map('strval', $selectors))),
+        ]);
+        if (array_key_exists($cache_key, $this->derived_query_collection_candidate_value_cache)) {
+            $this->incrementResolverProfileCounter('resolver.derived_query.candidate_value_cache_hit', 1, [
+                'object' => $object_tag,
+            ]);
+
+            return $this->derived_query_collection_candidate_value_cache[$cache_key];
+        }
+
+        $this->incrementResolverProfileCounter('resolver.derived_query.candidate_value_cache_miss', 1, [
+            'object' => $object_tag,
+        ]);
+        $started_at = $this->startResolverProfileTimer();
         $fallback_value = null;
         $has_fallback = false;
+        $found_reference_value = false;
+        $value = null;
         foreach ($selectors as $selector) {
             $selector = is_scalar($selector) ? trim((string) $selector) : '';
             if ($selector === '') {
@@ -2139,11 +2441,22 @@ final class ResolverRegistry
             }
 
             if (! empty($this->normalizeReferenceIdList($value))) {
-                return $value;
+                $found_reference_value = true;
+                break;
             }
         }
 
-        return $has_fallback ? $fallback_value : null;
+        if (! $found_reference_value) {
+            $value = $has_fallback ? $fallback_value : null;
+        }
+
+        $this->derived_query_collection_candidate_value_cache[$cache_key] = $value;
+        $this->recordResolverProfileDuration('resolver.derived_query.candidate_value_read', $started_at, [
+            'object' => $object_tag,
+            'result' => $found_reference_value ? 'non_empty' : 'fallback',
+        ]);
+
+        return $value;
     }
 
     /**
@@ -2206,12 +2519,188 @@ final class ResolverRegistry
         $filtered = [];
         foreach ($ids as $id) {
             $id = absint($id);
-            if ($id > 0 && get_post_type($id) === $post_type) {
+            if ($id > 0 && $this->getPostTypeForId($id) === $post_type) {
                 $filtered[] = $id;
             }
         }
 
         return array_values($filtered);
+    }
+
+    /**
+     * @param int|string $acf_object_id
+     * @return array<string, mixed>
+     */
+    private function getAcfFieldObjectsForObject($acf_object_id)
+    {
+        if (! function_exists('get_field_objects')) {
+            return [];
+        }
+
+        $acf_object_id = $this->normalizeAcfObjectIdForRead($acf_object_id);
+        if ($acf_object_id === '' || $acf_object_id === 0) {
+            return [];
+        }
+
+        $object_tag = $this->summarizeAcfObjectIdForProfile($acf_object_id);
+        $cache_key = $this->buildResolverCacheKey('acf_field_objects', $acf_object_id);
+        if (array_key_exists($cache_key, $this->acf_field_objects_cache)) {
+            $this->incrementResolverProfileCounter('resolver.acf_field_objects_cache_hit', 1, [
+                'object' => $object_tag,
+            ]);
+
+            return $this->acf_field_objects_cache[$cache_key];
+        }
+
+        $this->incrementResolverProfileCounter('resolver.acf_field_objects_cache_miss', 1, [
+            'object' => $object_tag,
+        ]);
+        $started_at = $this->startResolverProfileTimer();
+        $field_objects = get_field_objects($acf_object_id, false, true);
+        $field_objects = is_array($field_objects) ? $field_objects : [];
+        $this->acf_field_objects_cache[$cache_key] = $field_objects;
+        $this->recordResolverProfileDuration('resolver.acf_field_objects_read', $started_at, [
+            'object' => $object_tag,
+        ]);
+        $this->recordResolverProfileValue('resolver.acf_field_objects_count', count($field_objects), [
+            'object' => $object_tag,
+        ]);
+
+        return $field_objects;
+    }
+
+    /**
+     * @param int $post_id
+     * @return string
+     */
+    private function getPostTypeForId($post_id)
+    {
+        $post_id = absint($post_id);
+        if ($post_id <= 0) {
+            return '';
+        }
+
+        if (array_key_exists($post_id, $this->post_type_cache)) {
+            return $this->post_type_cache[$post_id];
+        }
+
+        $post_type = get_post_type($post_id);
+        $this->post_type_cache[$post_id] = is_string($post_type) ? sanitize_key($post_type) : '';
+
+        return $this->post_type_cache[$post_id];
+    }
+
+    /**
+     * @param string               $name
+     * @param callable             $callback
+     * @param array<string, mixed> $tags
+     * @return mixed
+     */
+    private function profileResolverStep($name, callable $callback, array $tags = [])
+    {
+        if ($this->profiler instanceof PerformanceProfiler) {
+            return $this->profiler->measure($name, $callback, $tags);
+        }
+
+        return $callback();
+    }
+
+    /**
+     * @return float
+     */
+    private function startResolverProfileTimer()
+    {
+        if (! $this->profiler instanceof PerformanceProfiler) {
+            return 0.0;
+        }
+
+        return $this->profiler->startTimer();
+    }
+
+    /**
+     * @param string               $name
+     * @param float                $started_at
+     * @param array<string, mixed> $tags
+     * @return void
+     */
+    private function recordResolverProfileDuration($name, $started_at, array $tags = [])
+    {
+        if (! $this->profiler instanceof PerformanceProfiler) {
+            return;
+        }
+
+        $this->profiler->recordDuration($name, $started_at, $tags);
+    }
+
+    /**
+     * @param string               $name
+     * @param int                  $amount
+     * @param array<string, mixed> $tags
+     * @return void
+     */
+    private function incrementResolverProfileCounter($name, $amount = 1, array $tags = [])
+    {
+        if (! $this->profiler instanceof PerformanceProfiler) {
+            return;
+        }
+
+        $this->profiler->increment($name, $amount, $tags);
+    }
+
+    /**
+     * @param string               $name
+     * @param mixed                $value
+     * @param array<string, mixed> $tags
+     * @return void
+     */
+    private function recordResolverProfileValue($name, $value, array $tags = [])
+    {
+        if (! $this->profiler instanceof PerformanceProfiler) {
+            return;
+        }
+
+        $this->profiler->recordValue($name, $value, $tags);
+    }
+
+    /**
+     * @param int|string $acf_object_id
+     * @return string
+     */
+    private function summarizeAcfObjectIdForProfile($acf_object_id)
+    {
+        if (is_numeric($acf_object_id)) {
+            return 'post';
+        }
+
+        $acf_object_id = sanitize_text_field((string) $acf_object_id);
+        if ($acf_object_id === 'option' || $acf_object_id === 'options') {
+            return 'option';
+        }
+
+        if (strpos($acf_object_id, 'user_') === 0) {
+            return 'user';
+        }
+
+        if (preg_match('/^[a-z0-9_]+_[0-9]+$/i', $acf_object_id)) {
+            return 'term';
+        }
+
+        return 'other';
+    }
+
+    /**
+     * @param string $namespace
+     * @param mixed  $value
+     * @return string
+     */
+    private function buildResolverCacheKey($namespace, $value)
+    {
+        $encoded = wp_json_encode($value);
+        if (! is_string($encoded)) {
+            $encoded = serialize($value);
+        }
+
+        return hash('sha256', sanitize_key((string) $namespace) . '|' . $encoded);
     }
 
     /**

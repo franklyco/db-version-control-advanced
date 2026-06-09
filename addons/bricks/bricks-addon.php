@@ -36,13 +36,8 @@ final class DBVC_Bricks_Addon
         self::maybe_migrate_settings();
         self::ensure_defaults();
         self::refresh_runtime_registration();
-        if (class_exists('DBVC_Bricks_Onboarding')) {
-            DBVC_Bricks_Onboarding::persist_local_transport_state('bootstrap');
-            DBVC_Bricks_Onboarding::run_client_onboarding_tick('bootstrap');
-        }
-        if (class_exists('DBVC_Bricks_Command_Queue')) {
-            DBVC_Bricks_Command_Queue::run_client_pull_tick('bootstrap');
-        }
+        // Transport ticks are intentionally kept out of normal plugin bootstrap.
+        // They run from explicit configure saves and the scheduled job below.
     }
 
     /**

@@ -168,4 +168,5 @@ This addon now lives inside the DBVC repo at:
 - `docs/enhancements/DBVC_VISUAL_EDITOR_REPEATER_IMPLEMENTATION_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md`
+- `docs/enhancements/DBVC_VISUAL_EDITOR_PERFORMANCE_UPGRADE_GUIDE.md`
 - `docs/enhancements/DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md`

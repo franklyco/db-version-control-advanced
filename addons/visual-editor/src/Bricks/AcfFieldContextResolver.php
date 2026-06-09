@@ -2,6 +2,8 @@
 
 namespace Dbvc\VisualEditor\Bricks;
 
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
+
 final class AcfFieldContextResolver
 {
     /**
@@ -9,9 +11,15 @@ final class AcfFieldContextResolver
      */
     private $loops;
 
-    public function __construct(?LoopContextResolver $loops = null)
+    /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
+    public function __construct(?LoopContextResolver $loops = null, ?PerformanceProfiler $profiler = null)
     {
-        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver();
+        $this->profiler = $profiler;
+        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver(null, $profiler);
     }
 
     /**
@@ -20,6 +28,26 @@ final class AcfFieldContextResolver
      * @return array<string, mixed>
      */
     public function resolve(array $candidate, array $page_context)
+    {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            $started_at = $this->profiler->startTimer();
+            $result = $this->resolveUnprofiled($candidate, $page_context);
+            $this->profiler->recordDuration('acf_context.resolve', $started_at, [
+                'ok' => empty($result['ok']) ? 'no' : 'yes',
+            ]);
+
+            return $result;
+        }
+
+        return $this->resolveUnprofiled($candidate, $page_context);
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function resolveUnprofiled(array $candidate, array $page_context)
     {
         if (empty($page_context['isSupported'])) {
             return [

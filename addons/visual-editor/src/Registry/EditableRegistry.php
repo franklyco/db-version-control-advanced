@@ -3,6 +3,7 @@
 namespace Dbvc\VisualEditor\Registry;
 
 use Dbvc\VisualEditor\Context\PageContextResolver;
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 
 final class EditableRegistry
 {
@@ -10,11 +11,17 @@ final class EditableRegistry
     private const DEFAULT_SESSION_TTL = 28800;
     private const MIN_SESSION_TTL = 300;
     private const MAX_SESSION_TTL = 172800;
+    private const DESCRIPTOR_STORAGE_GZIP_JSON_BASE64 = 'gzip_json_base64_v1';
 
     /**
      * @var PageContextResolver
      */
     private $page_context;
+
+    /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
 
     /**
      * @var array<string, EditableDescriptor>
@@ -31,9 +38,10 @@ final class EditableRegistry
      */
     private $public_entity_label_cache = [];
 
-    public function __construct(PageContextResolver $page_context)
+    public function __construct(PageContextResolver $page_context, ?PerformanceProfiler $profiler = null)
     {
         $this->page_context = $page_context;
+        $this->profiler = $profiler;
     }
 
     /**
@@ -43,11 +51,28 @@ final class EditableRegistry
     public function add(EditableDescriptor $descriptor)
     {
         if ($this->isDescriptorExcluded($descriptor)) {
+            if ($this->profiler instanceof PerformanceProfiler) {
+                $this->profiler->increment('registry.descriptors.excluded', 1, [
+                    'status' => isset($descriptor->status) ? (string) $descriptor->status : 'unknown',
+                    'scope' => isset($descriptor->scope) ? (string) $descriptor->scope : 'unknown',
+                ]);
+            }
+
             return;
         }
 
         $this->descriptors[$descriptor->token] = $descriptor;
         $this->getSessionId();
+
+        if ($this->profiler instanceof PerformanceProfiler) {
+            $source = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : 'unknown';
+            $this->profiler->increment('registry.descriptors.added', 1, [
+                'status' => isset($descriptor->status) ? (string) $descriptor->status : 'unknown',
+                'scope' => isset($descriptor->scope) ? (string) $descriptor->scope : 'unknown',
+                'source' => $source !== '' ? $source : 'unknown',
+            ]);
+            $this->profiler->recordValue('registry.descriptors.active', count($this->descriptors));
+        }
     }
 
     /**
@@ -62,6 +87,11 @@ final class EditableRegistry
         }
 
         unset($this->descriptors[$token]);
+
+        if ($this->profiler instanceof PerformanceProfiler) {
+            $this->profiler->increment('registry.descriptors.removed');
+            $this->profiler->recordValue('registry.descriptors.active', count($this->descriptors));
+        }
     }
 
     /**
@@ -94,33 +124,66 @@ final class EditableRegistry
             return;
         }
 
+        $started_at = $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()
+            ? $this->profiler->startTimer()
+            : 0.0;
         $page_context = $this->page_context->resolve();
         if (empty($page_context['isSupported'])) {
             return;
         }
 
+        $filter_started_at = $this->startProfileTimer();
+        $persisted_descriptors = $this->filterExcludedDescriptors($this->descriptors);
+        $this->recordProfileDuration('registry.persist.filter_descriptors', $filter_started_at);
+
+        $public_map_started_at = $this->startProfileTimer();
+        $public_map = $this->exportPublicMap($persisted_descriptors);
+        $this->recordProfileDuration('registry.persist.export_public_map', $public_map_started_at);
+
+        $descriptor_payload_started_at = $this->startProfileTimer();
+        $descriptor_payloads = array_map(
+            static function (EditableDescriptor $descriptor) {
+                return $descriptor->toArray();
+            },
+            $persisted_descriptors
+        );
+        $this->recordProfileDuration('registry.persist.export_descriptors', $descriptor_payload_started_at);
+
+        $encoding_started_at = $this->startProfileTimer();
+        $encoded_descriptors = $this->encodeSessionDescriptors($descriptor_payloads);
+        $this->recordProfileDuration('registry.persist.encode_descriptors', $encoding_started_at);
+
         $payload = [
             'session_id' => $this->getSessionId(),
             'user_id' => get_current_user_id(),
             'page_context' => $page_context,
-            'descriptors' => array_map(
-                static function (EditableDescriptor $descriptor) {
-                    return $descriptor->toArray();
-                },
-                $this->filterExcludedDescriptors($this->descriptors)
-            ),
-            'public_map' => $this->exportPublicMap($this->filterExcludedDescriptors($this->descriptors)),
+            'public_map' => $public_map,
             'created_at' => time(),
         ];
+        if (! empty($encoded_descriptors)) {
+            $payload = array_merge($payload, $encoded_descriptors);
+        } else {
+            $payload['descriptors'] = $descriptor_payloads;
+        }
 
+        $write_started_at = $this->startProfileTimer();
         set_transient($this->getTransientKey($this->session_id), $payload, $this->getSessionTtl());
+        $this->recordProfileDuration('registry.persist.set_transient', $write_started_at);
+
+        if ($this->profiler instanceof PerformanceProfiler && $started_at > 0) {
+            $this->profiler->recordDuration('registry.persist_session', $started_at);
+            $this->profiler->recordValue('registry.persisted_descriptors', count($persisted_descriptors));
+            $this->profiler->recordValue('registry.public_map_entries', count($public_map));
+            $this->recordSessionPayloadProfileValues($payload, $descriptor_payloads, $public_map);
+        }
     }
 
     /**
      * @param string $session_id
+     * @param bool   $include_descriptors
      * @return array<string, mixed>
      */
-    public function loadSession($session_id)
+    public function loadSession($session_id, $include_descriptors = true)
     {
         $session_id = $this->normalizeSessionId($session_id);
         if ($session_id === '') {
@@ -136,7 +199,12 @@ final class EditableRegistry
             return [];
         }
 
-        set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
+        $this->maybeRefreshSessionTtl($session_id, $payload);
+        if ($include_descriptors) {
+            $payload['descriptors'] = $this->extractSessionDescriptors($payload);
+        } else {
+            unset($payload['descriptors']);
+        }
 
         return $payload;
     }
@@ -160,13 +228,84 @@ final class EditableRegistry
     }
 
     /**
+     * @return int
+     */
+    private function getSessionRefreshInterval()
+    {
+        $ttl = $this->getSessionTtl();
+        $default = min(300, max(30, (int) floor($ttl / 4)));
+        $interval = (int) apply_filters('dbvc_visual_editor_session_refresh_interval', $default);
+        $max_interval = max(30, (int) floor($ttl / 2));
+
+        if ($interval < 30) {
+            return 30;
+        }
+
+        if ($interval > $max_interval) {
+            return $max_interval;
+        }
+
+        return $interval;
+    }
+
+    /**
+     * @return float
+     */
+    private function startProfileTimer()
+    {
+        return $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()
+            ? $this->profiler->startTimer()
+            : 0.0;
+    }
+
+    /**
+     * @param string $name
+     * @param float  $started_at
+     * @return void
+     */
+    private function recordProfileDuration($name, $started_at)
+    {
+        if (! ($this->profiler instanceof PerformanceProfiler) || ! $this->profiler->isEnabled()) {
+            return;
+        }
+
+        $this->profiler->recordDuration((string) $name, $started_at);
+    }
+
+    /**
+     * @param string               $session_id
+     * @param array<string, mixed> $payload
+     * @return void
+     */
+    private function maybeRefreshSessionTtl($session_id, array &$payload)
+    {
+        $session_id = $this->normalizeSessionId($session_id);
+        if ($session_id === '') {
+            return;
+        }
+
+        $now = time();
+        $last_refresh = isset($payload['refreshed_at']) ? absint($payload['refreshed_at']) : 0;
+        if ($last_refresh <= 0) {
+            $last_refresh = isset($payload['created_at']) ? absint($payload['created_at']) : 0;
+        }
+
+        if ($last_refresh > 0 && ($now - $last_refresh) < $this->getSessionRefreshInterval()) {
+            return;
+        }
+
+        $payload['refreshed_at'] = $now;
+        set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
+    }
+
+    /**
      * @param string $session_id
      * @param string $token
      * @return EditableDescriptor|null
      */
     public function getDescriptorFromSession($session_id, $token)
     {
-        $session = $this->loadSession($session_id);
+        $session = $this->loadSession($session_id, true);
         $descriptors = isset($session['descriptors']) && is_array($session['descriptors']) ? $session['descriptors'] : [];
         $token = sanitize_key((string) $token);
 
@@ -185,7 +324,7 @@ final class EditableRegistry
      */
     public function getDescriptorsFromSession($session_id)
     {
-        $session = $this->loadSession($session_id);
+        $session = $this->loadSession($session_id, true);
         $descriptors = isset($session['descriptors']) && is_array($session['descriptors']) ? $session['descriptors'] : [];
         $resolved = [];
 
@@ -217,7 +356,7 @@ final class EditableRegistry
             return false;
         }
 
-        $payload = $this->loadSession($session_id);
+        $payload = $this->loadSession($session_id, true);
         if (empty($payload)) {
             return false;
         }
@@ -228,7 +367,6 @@ final class EditableRegistry
         }
 
         $descriptors[$descriptor->token] = $descriptor->toArray();
-        $payload['descriptors'] = $descriptors;
         $resolved = [];
 
         foreach ($descriptors as $token => $item) {
@@ -245,6 +383,7 @@ final class EditableRegistry
         }
 
         $payload['public_map'] = $this->exportPublicMap($resolved);
+        $this->storeSessionDescriptors($payload, $descriptors);
 
         set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
 
@@ -263,14 +402,13 @@ final class EditableRegistry
             return false;
         }
 
-        $payload = $this->loadSession($session_id);
+        $payload = $this->loadSession($session_id, true);
         if (empty($payload)) {
             return false;
         }
 
         $descriptors = isset($payload['descriptors']) && is_array($payload['descriptors']) ? $payload['descriptors'] : [];
         $descriptors[$descriptor->token] = $descriptor->toArray();
-        $payload['descriptors'] = $descriptors;
         $resolved = [];
 
         foreach ($descriptors as $token => $item) {
@@ -287,10 +425,149 @@ final class EditableRegistry
         }
 
         $payload['public_map'] = $this->exportPublicMap($resolved);
+        $this->storeSessionDescriptors($payload, $descriptors);
 
         set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
 
         return true;
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $descriptors
+     * @return array<string, mixed>
+     */
+    private function encodeSessionDescriptors(array $descriptors)
+    {
+        if (! function_exists('gzencode') || empty($descriptors)) {
+            return [];
+        }
+
+        $json = wp_json_encode($descriptors);
+        if (! is_string($json) || $json === '') {
+            return [];
+        }
+
+        $compressed = gzencode($json, $this->getDescriptorCompressionLevel());
+        if (! is_string($compressed) || $compressed === '') {
+            return [];
+        }
+
+        return [
+            'descriptor_storage' => self::DESCRIPTOR_STORAGE_GZIP_JSON_BASE64,
+            'descriptor_count' => count($descriptors),
+            'descriptors_blob' => base64_encode($compressed),
+        ];
+    }
+
+    /**
+     * @return int
+     */
+    private function getDescriptorCompressionLevel()
+    {
+        $level = (int) apply_filters('dbvc_visual_editor_session_descriptor_compression_level', 4);
+
+        if ($level < 1) {
+            return 1;
+        }
+
+        if ($level > 9) {
+            return 9;
+        }
+
+        return $level;
+    }
+
+    /**
+     * @param array<string, mixed>                $payload
+     * @param array<string, array<string, mixed>> $descriptor_payloads
+     * @param array<string, array<string, mixed>> $public_map
+     * @return void
+     */
+    private function recordSessionPayloadProfileValues(array $payload, array $descriptor_payloads, array $public_map)
+    {
+        if (! ($this->profiler instanceof PerformanceProfiler) || ! $this->profiler->isEnabled()) {
+            return;
+        }
+
+        $payload_json_started_at = $this->profiler->startTimer();
+        $payload_json = wp_json_encode($payload);
+        $this->profiler->recordDuration('registry.persist.profile_payload_json', $payload_json_started_at);
+        $this->profiler->recordValue('registry.session_payload_bytes', is_string($payload_json) ? strlen($payload_json) : 0);
+
+        $descriptor_json_started_at = $this->profiler->startTimer();
+        $descriptor_json = wp_json_encode($descriptor_payloads);
+        $this->profiler->recordDuration('registry.persist.profile_descriptor_json', $descriptor_json_started_at);
+        $this->profiler->recordValue('registry.session_descriptor_bytes', is_string($descriptor_json) ? strlen($descriptor_json) : 0);
+
+        $public_map_json_started_at = $this->profiler->startTimer();
+        $public_map_json = wp_json_encode($public_map);
+        $this->profiler->recordDuration('registry.persist.profile_public_map_json', $public_map_json_started_at);
+        $this->profiler->recordValue('registry.session_public_map_bytes', is_string($public_map_json) ? strlen($public_map_json) : 0);
+        $this->profiler->recordValue('registry.session_descriptor_blob_bytes', isset($payload['descriptors_blob']) && is_string($payload['descriptors_blob']) ? strlen($payload['descriptors_blob']) : 0);
+        $this->profiler->recordValue('registry.session_descriptor_compression_level', $this->getDescriptorCompressionLevel());
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, array<string, mixed>>
+     */
+    private function extractSessionDescriptors(array $payload)
+    {
+        if (isset($payload['descriptors']) && is_array($payload['descriptors'])) {
+            return $payload['descriptors'];
+        }
+
+        $storage = isset($payload['descriptor_storage']) ? sanitize_key((string) $payload['descriptor_storage']) : '';
+        $blob = isset($payload['descriptors_blob']) && is_string($payload['descriptors_blob']) ? $payload['descriptors_blob'] : '';
+        if ($storage !== self::DESCRIPTOR_STORAGE_GZIP_JSON_BASE64 || $blob === '' || ! function_exists('gzdecode')) {
+            return [];
+        }
+
+        $compressed = base64_decode($blob, true);
+        if (! is_string($compressed) || $compressed === '') {
+            return [];
+        }
+
+        $json = gzdecode($compressed);
+        if (! is_string($json) || $json === '') {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        return array_filter(
+            $decoded,
+            static function ($item) {
+                return is_array($item);
+            }
+        );
+    }
+
+    /**
+     * @param array<string, mixed>                $payload
+     * @param array<string, array<string, mixed>> $descriptors
+     * @return void
+     */
+    private function storeSessionDescriptors(array &$payload, array $descriptors)
+    {
+        unset(
+            $payload['descriptors'],
+            $payload['descriptor_storage'],
+            $payload['descriptor_count'],
+            $payload['descriptors_blob']
+        );
+
+        $encoded = $this->encodeSessionDescriptors($descriptors);
+        if (! empty($encoded)) {
+            $payload = array_merge($payload, $encoded);
+
+            return;
+        }
+
+        $payload['descriptors'] = $descriptors;
     }
 
     /**
@@ -311,7 +588,7 @@ final class EditableRegistry
                 continue;
             }
 
-            $map[$token] = [
+            $map[$token] = $this->compactPublicMapArray([
                 'token' => (string) $token,
                 'status' => (string) $descriptor->status,
                 'scope' => (string) $descriptor->scope,
@@ -320,10 +597,59 @@ final class EditableRegistry
                 'input' => isset($descriptor->ui['input']) ? (string) $descriptor->ui['input'] : 'text',
                 'entity' => $this->exportPublicEntitySummary($descriptor),
                 'index' => $this->exportPublicIndexSummary($descriptor),
-            ];
+            ]);
         }
 
         return $map;
+    }
+
+    /**
+     * @param array<string|int, mixed> $values
+     * @return array<string|int, mixed>
+     */
+    private function compactPublicMapArray(array $values)
+    {
+        $is_list = $this->isListArray($values);
+        $compacted = [];
+
+        foreach ($values as $key => $value) {
+            if (is_array($value)) {
+                $value = $this->compactPublicMapArray($value);
+            }
+
+            if ($this->shouldOmitPublicMapValue($value)) {
+                continue;
+            }
+
+            $compacted[$key] = $value;
+        }
+
+        return $is_list ? array_values($compacted) : $compacted;
+    }
+
+    /**
+     * @param mixed $value
+     * @return bool
+     */
+    private function shouldOmitPublicMapValue($value)
+    {
+        return $value === ''
+            || $value === null
+            || $value === false
+            || (is_array($value) && empty($value));
+    }
+
+    /**
+     * @param array<string|int, mixed> $values
+     * @return bool
+     */
+    private function isListArray(array $values)
+    {
+        if (empty($values)) {
+            return true;
+        }
+
+        return array_keys($values) === range(0, count($values) - 1);
     }
 
     /**
@@ -333,10 +659,11 @@ final class EditableRegistry
     private function exportPublicEntitySummary(EditableDescriptor $descriptor)
     {
         $entity = isset($descriptor->entity) && is_array($descriptor->entity) ? $descriptor->entity : [];
+        $id = isset($entity['id']) ? absint($entity['id']) : 0;
 
         return [
             'type' => isset($entity['type']) ? sanitize_key((string) $entity['type']) : '',
-            'id' => isset($entity['id']) ? absint($entity['id']) : 0,
+            'id' => $id > 0 ? $id : null,
             'subtype' => isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '',
             'label' => $this->resolvePublicEntityLabel($entity),
         ];
@@ -353,6 +680,8 @@ final class EditableRegistry
         $owner = isset($descriptor->owner) && is_array($descriptor->owner) ? $descriptor->owner : [];
         $render = isset($descriptor->render) && is_array($descriptor->render) ? $descriptor->render : [];
         $row_index = $this->firstArrayValue($path, $source, 'rowIndex', 'row_index');
+        $owner_id = isset($owner['id']) ? absint($owner['id']) : 0;
+        $page_entity_id = isset($owner['pageEntityId']) ? absint($owner['pageEntityId']) : 0;
 
         return [
             'sourceType' => $this->sanitizeArrayKeyValue($source, 'type'),
@@ -382,12 +711,12 @@ final class EditableRegistry
             'renderAttribute' => $this->sanitizeArrayTextValue($render, 'attribute'),
             'owner' => [
                 'type' => $this->sanitizeArrayKeyValue($owner, 'type'),
-                'id' => isset($owner['id']) ? absint($owner['id']) : 0,
+                'id' => $owner_id > 0 ? $owner_id : null,
                 'subtype' => $this->sanitizeArrayKeyValue($owner, 'subtype'),
                 'scope' => $this->sanitizeArrayKeyValue($owner, 'scope'),
                 'isCurrentPageEntity' => ! empty($owner['isCurrentPageEntity']),
                 'isLoopOwned' => ! empty($owner['isLoopOwned']),
-                'pageEntityId' => isset($owner['pageEntityId']) ? absint($owner['pageEntityId']) : 0,
+                'pageEntityId' => $page_entity_id > 0 ? $page_entity_id : null,
             ],
         ];
     }

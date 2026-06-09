@@ -45,6 +45,19 @@
 - runtime profiling and performance instrumentation
 - optional materialized inventory cache only if profiling proves request-time classification is the bottleneck
 
+## Performance Upgrade Tranche
+- Dedicated guide: `DBVC_VISUAL_EDITOR_PERFORMANCE_UPGRADE_GUIDE.md`.
+- Goal: make frontend field loading and editing feel near live without weakening render-time source verification, server-side descriptor authority, or mutation-contract safety.
+- Current audit summary: startup is already public-map-only with on-demand descriptor hydration, in-flight request reuse, active-marker dwell prefetch, and bounded viewport-aware warmup. Remaining likely bottlenecks are unmeasured PHP render/classification cost, repeated ACF/Bricks lookups, eager WordPress editor/media assets, single-token descriptor prefetch requests, broad marker scans, query-collection badge remount work, and full public-map session refreshes used as keepalive.
+- Recommended order:
+  - add disabled-by-default server/frontend profiling
+  - add request-local memoization for page context, loop context, ACF provider tags, field objects, field inventories, and derived-query value lookups
+  - add capped batch descriptor hydration and a minimal session touch endpoint
+  - replace repeated browser marker scans with a maintained token-to-node map
+  - profile heavy editor/media asset loading before introducing late-load or prediction behavior
+  - introduce a materialized inventory layer only after profiling proves request-time classification is the bottleneck
+- Inventory rule: a DB table can be used for fast runtime hints and sync-path JSON can be used for reviewable artifacts, but neither may store request tokens, skip live render verification, or make descriptors writable by itself.
+
 ## Phase 4
 - relationship collection editing
 - advanced query-loop owner coverage beyond the current safe related-post slice

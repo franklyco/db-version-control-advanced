@@ -101,7 +101,7 @@ final class SharedGlobalFieldsController
         }
 
         $session_id = sanitize_key((string) $request['session_id']);
-        $session = $this->registry->loadSession($session_id);
+        $session = $this->registry->loadSession($session_id, false);
 
         if (empty($session)) {
             return new WP_REST_Response(

@@ -248,6 +248,10 @@ final class DBVC_Bricks_Onboarding
      */
     public static function run_client_onboarding_tick($context = 'cron')
     {
+        $context = sanitize_key((string) $context);
+        if (self::is_page_load_onboarding_context($context)) {
+            return ['ok' => false, 'reason' => 'page_load_context_disabled', 'context' => $context];
+        }
         if (! class_exists('DBVC_Bricks_Addon')) {
             return ['ok' => false, 'reason' => 'runtime_missing'];
         }
@@ -310,7 +314,7 @@ final class DBVC_Bricks_Onboarding
                 update_option('dbvc_bricks_intro_handshake_token', sanitize_text_field((string) $result['handshake_token']));
             }
             self::append_diagnostics('intro_retry_success', [
-                'context' => sanitize_key((string) $context),
+                'context' => $context,
                 'site_uid' => $site_uid,
                 'attempts' => $attempts,
                 'state' => $handshake_state,
@@ -337,7 +341,7 @@ final class DBVC_Bricks_Onboarding
         }
         $saved = self::upsert_transport_state($site_uid, $payload);
         self::append_diagnostics($attempts >= $max_attempts ? 'intro_retry_exhausted' : 'intro_retry_failed', [
-            'context' => sanitize_key((string) $context),
+            'context' => $context,
             'site_uid' => $site_uid,
             'attempts' => $attempts,
             'max_attempts' => $max_attempts,
@@ -345,6 +349,20 @@ final class DBVC_Bricks_Onboarding
             'next_retry_at' => (string) ($saved['next_retry_at'] ?? ''),
         ]);
         return ['ok' => false, 'state' => (string) ($saved['handshake_state'] ?? 'PENDING_INTRO'), 'attempts' => $attempts, 'error_code' => $error_code];
+    }
+
+    /**
+     * @param string $context
+     * @return bool
+     */
+    private static function is_page_load_onboarding_context($context)
+    {
+        $context = sanitize_key((string) $context);
+        if (! in_array($context, ['bootstrap', 'runtime', 'page_load', 'frontend', 'template_redirect', 'wp_loaded'], true)) {
+            return false;
+        }
+
+        return ! (bool) apply_filters('dbvc_bricks_onboarding_allow_page_load_context', false, $context);
     }
 
     /**

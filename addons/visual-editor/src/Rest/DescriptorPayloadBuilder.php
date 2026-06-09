@@ -2,6 +2,7 @@
 
 namespace Dbvc\VisualEditor\Rest;
 
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
 use Dbvc\VisualEditor\Presentation\DescriptorSummaryBuilder;
 use Dbvc\VisualEditor\Registry\EditableDescriptor;
@@ -30,12 +31,18 @@ final class DescriptorPayloadBuilder
      */
     private $contracts;
 
-    public function __construct(ResolverRegistry $resolvers, CapabilityManager $capabilities, DescriptorSummaryBuilder $summaries, MutationContractService $contracts)
+    /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
+    public function __construct(ResolverRegistry $resolvers, CapabilityManager $capabilities, DescriptorSummaryBuilder $summaries, MutationContractService $contracts, ?PerformanceProfiler $profiler = null)
     {
         $this->resolvers = $resolvers;
         $this->capabilities = $capabilities;
         $this->summaries = $summaries;
         $this->contracts = $contracts;
+        $this->profiler = $profiler;
     }
 
     /**
@@ -43,6 +50,28 @@ final class DescriptorPayloadBuilder
      * @return array<string, mixed>
      */
     public function build(EditableDescriptor $descriptor)
+    {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            $started_at = $this->profiler->startTimer();
+            $payload = $this->buildUnprofiled($descriptor);
+            $this->profiler->recordDuration('rest.descriptor_payload.build', $started_at, [
+                'status' => isset($descriptor->status) ? (string) $descriptor->status : 'unknown',
+                'scope' => isset($descriptor->scope) ? (string) $descriptor->scope : 'unknown',
+                'resolver' => isset($descriptor->resolver['name']) ? (string) $descriptor->resolver['name'] : 'unknown',
+                'input' => isset($descriptor->ui['input']) ? (string) $descriptor->ui['input'] : 'unknown',
+            ]);
+
+            return $payload;
+        }
+
+        return $this->buildUnprofiled($descriptor);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<string, mixed>
+     */
+    private function buildUnprofiled(EditableDescriptor $descriptor)
     {
         $resolver = $this->resolvers->resolve($descriptor);
         $current_value = $resolver->getValue($descriptor);
@@ -81,6 +110,9 @@ final class DescriptorPayloadBuilder
      */
     public function buildMany(array $descriptors)
     {
+        $started_at = $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()
+            ? $this->profiler->startTimer()
+            : 0.0;
         $payloads = [];
 
         foreach ($descriptors as $token => $descriptor) {
@@ -89,6 +121,11 @@ final class DescriptorPayloadBuilder
             }
 
             $payloads[sanitize_key((string) $token)] = $this->build($descriptor);
+        }
+
+        if ($this->profiler instanceof PerformanceProfiler && $started_at > 0) {
+            $this->profiler->recordDuration('rest.descriptor_payload.build_many', $started_at);
+            $this->profiler->recordValue('rest.descriptor_payload.count', count($payloads));
         }
 
         return $payloads;

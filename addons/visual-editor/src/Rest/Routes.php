@@ -4,6 +4,7 @@ namespace Dbvc\VisualEditor\Rest;
 
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Context\PageContextResolver;
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
 use Dbvc\VisualEditor\Presentation\DescriptorSummaryBuilder;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
@@ -56,6 +57,11 @@ final class Routes
      */
     private $summaries;
 
+    /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
     public function __construct(
         EditableRegistry $registry,
         ResolverRegistry $resolvers,
@@ -63,7 +69,8 @@ final class Routes
         EditModeState $edit_mode,
         PageContextResolver $page_context,
         CapabilityManager $capabilities,
-        DescriptorSummaryBuilder $summaries
+        DescriptorSummaryBuilder $summaries,
+        ?PerformanceProfiler $profiler = null
     ) {
         $this->registry = $registry;
         $this->resolvers = $resolvers;
@@ -72,6 +79,7 @@ final class Routes
         $this->page_context = $page_context;
         $this->capabilities = $capabilities;
         $this->summaries = $summaries;
+        $this->profiler = $profiler;
     }
 
     /**
@@ -96,7 +104,7 @@ final class Routes
     public function registerRoutes()
     {
         $contracts = new MutationContractService();
-        $payloads = new DescriptorPayloadBuilder($this->resolvers, $this->capabilities, $this->summaries, $contracts);
+        $payloads = new DescriptorPayloadBuilder($this->resolvers, $this->capabilities, $this->summaries, $contracts, $this->profiler);
 
         (new SessionController($this->registry, $this->edit_mode, $this->page_context, $this->capabilities, $payloads))->register();
         (new DescriptorController($this->registry, $payloads, $this->edit_mode, $this->capabilities))->register();

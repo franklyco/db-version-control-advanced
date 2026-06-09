@@ -22,6 +22,7 @@ final class Settings
     public const OPTION_RECEIPTS_ENABLED = 'dbvc_media_hydration_receipts_enabled';
     public const OPTION_STRICT_HASHES = 'dbvc_media_hydration_strict_hashes';
     public const OPTION_CLONE_CONFIRMATION = 'dbvc_media_hydration_clone_confirmation';
+    public const OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS = 'dbvc_media_hydration_normalize_media_urls_to_https';
     public const OPTION_LOCK_TIMEOUT_MINUTES = 'dbvc_media_hydration_lock_timeout_minutes';
 
     private const DEFAULTS = [
@@ -36,6 +37,7 @@ final class Settings
         self::OPTION_RECEIPTS_ENABLED => '1',
         self::OPTION_STRICT_HASHES => '1',
         self::OPTION_CLONE_CONFIRMATION => '1',
+        self::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS => '0',
         self::OPTION_LOCK_TIMEOUT_MINUTES => 30,
     ];
 
@@ -56,6 +58,7 @@ final class Settings
             self::OPTION_RECEIPTS_ENABLED => self::get_bool(self::OPTION_RECEIPTS_ENABLED),
             self::OPTION_STRICT_HASHES => self::get_bool(self::OPTION_STRICT_HASHES),
             self::OPTION_CLONE_CONFIRMATION => self::get_bool(self::OPTION_CLONE_CONFIRMATION),
+            self::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS => self::get_bool(self::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS),
             self::OPTION_LOCK_TIMEOUT_MINUTES => self::get_lock_timeout_minutes(),
         ];
     }
@@ -73,6 +76,7 @@ final class Settings
         update_option(self::OPTION_RECEIPTS_ENABLED, ! empty($data[self::OPTION_RECEIPTS_ENABLED]) ? '1' : '0');
         update_option(self::OPTION_STRICT_HASHES, ! empty($data[self::OPTION_STRICT_HASHES]) ? '1' : '0');
         update_option(self::OPTION_CLONE_CONFIRMATION, ! empty($data[self::OPTION_CLONE_CONFIRMATION]) ? '1' : '0');
+        update_option(self::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS, ! empty($data[self::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS]) ? '1' : '0');
 
         update_option(self::OPTION_SOURCE, self::sanitize_allowed_key($data[self::OPTION_SOURCE] ?? '', self::allowed_sources(), (string) self::DEFAULTS[self::OPTION_SOURCE]));
         update_option(self::OPTION_MATCH_POLICY, self::sanitize_allowed_key($data[self::OPTION_MATCH_POLICY] ?? '', self::allowed_match_policies(), (string) self::DEFAULTS[self::OPTION_MATCH_POLICY]));

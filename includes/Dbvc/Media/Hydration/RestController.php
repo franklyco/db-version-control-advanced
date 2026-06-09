@@ -70,11 +70,37 @@ final class RestController
 
         register_rest_route(
             self::REST_NAMESPACE,
+            '/media-hydration/packages',
+            [
+                'methods' => \WP_REST_Server::READABLE,
+                'callback' => [$this, 'packages'],
+                'permission_callback' => [$this, 'can_manage'],
+                'args' => [
+                    'limit' => ['required' => false, 'sanitize_callback' => 'absint'],
+                ],
+            ]
+        );
+
+        register_rest_route(
+            self::REST_NAMESPACE,
             '/media-hydration/package/export',
             [
                 'methods' => \WP_REST_Server::CREATABLE,
                 'callback' => [$this, 'package_export'],
                 'permission_callback' => [$this, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            self::REST_NAMESPACE,
+            '/media-hydration/receipts',
+            [
+                'methods' => \WP_REST_Server::READABLE,
+                'callback' => [$this, 'receipts'],
+                'permission_callback' => [$this, 'can_manage'],
+                'args' => [
+                    'limit' => ['required' => false, 'sanitize_callback' => 'absint'],
+                ],
             ]
         );
     }
@@ -182,6 +208,43 @@ final class RestController
         }
 
         return rest_ensure_response($result);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function packages($request)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        return rest_ensure_response(PackageRegistry::list_packages([
+            'limit' => absint($request->get_param('limit')),
+        ]));
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function receipts($request)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $limit = absint($request->get_param('limit'));
+        if ($limit <= 0) {
+            $limit = 25;
+        }
+
+        return rest_ensure_response([
+            'receipts' => HydrationReceiptStore::list_recent($limit),
+        ]);
     }
 
     /**
@@ -352,6 +415,7 @@ final class RestController
             'limit' => isset($params['limit']) ? absint($params['limit']) : $batch_size,
             'offset' => isset($params['offset']) ? absint($params['offset']) : 0,
             'repair_metadata' => isset($params['repair_metadata']) ? rest_sanitize_boolean($params['repair_metadata']) : $metadata_policy !== 'skip',
+            'normalize_media_urls_to_https' => isset($params['normalize_media_urls_to_https']) ? rest_sanitize_boolean($params['normalize_media_urls_to_https']) : Settings::get_bool(Settings::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS) === '1',
             'overwrite_existing' => false,
         ];
     }
