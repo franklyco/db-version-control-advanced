@@ -66,6 +66,7 @@
 
   const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
   const PERFORMANCE_PREFIX = 'dbvc.ve.';
+  const BADGE_HIDE_DELAY_MS = 500;
 
   function supportsPerformanceTimings() {
     return Boolean(
@@ -941,6 +942,48 @@
     }
 
     return '';
+  }
+
+  function getDescriptorTextProjection(descriptor, node) {
+    if (descriptor && descriptor.render && typeof descriptor.render.text_projection === 'string' && descriptor.render.text_projection) {
+      return descriptor.render.text_projection;
+    }
+
+    if (node && node.dataset && typeof node.dataset.dbvcVeTextProjection === 'string' && node.dataset.dbvcVeTextProjection) {
+      return node.dataset.dbvcVeTextProjection;
+    }
+
+    return '';
+  }
+
+  function getDescriptorTextTemplate(descriptor) {
+    return descriptor
+      && descriptor.render
+      && typeof descriptor.render.text_template === 'string'
+      && descriptor.render.text_template
+      ? descriptor.render.text_template
+      : '';
+  }
+
+  function getDescriptorTextExpression(descriptor) {
+    return descriptor
+      && descriptor.render
+      && typeof descriptor.render.text_expression === 'string'
+      && descriptor.render.text_expression
+      ? descriptor.render.text_expression
+      : '';
+  }
+
+  function hasHydratedDescriptorForNode(node, descriptor) {
+    if (!node || !descriptor || !descriptor.token) {
+      return false;
+    }
+
+    if (state.activeDescriptor && state.activeDescriptor.token === descriptor.token) {
+      return true;
+    }
+
+    return Boolean(getCachedDescriptorPayload(descriptor.token));
   }
 
   function lookupDescriptorForNode(node) {
@@ -1857,6 +1900,41 @@
     return normalizeValue(displayValue);
   }
 
+  function projectDisplayValueForDescriptor(descriptor, displayValue, displayMode) {
+    const mode = displayMode || 'text';
+    const value = typeof displayValue === 'string' ? displayValue : '';
+
+    if (!descriptor || getDescriptorTextProjection(descriptor, null) !== 'single_embedded') {
+      return {
+        value,
+        mode
+      };
+    }
+
+    const template = getDescriptorTextTemplate(descriptor);
+    const expression = getDescriptorTextExpression(descriptor);
+
+    if (!template || !expression || template.indexOf(expression) === -1) {
+      return {
+        value,
+        mode
+      };
+    }
+
+    const projectedValue = template.split(expression).join(mode === 'html' ? value : escapeHtml(value));
+
+    return {
+      value: projectedValue,
+      mode: 'html'
+    };
+  }
+
+  function extractProjectedDisplayText(descriptor, displayValue, displayMode) {
+    const projected = projectDisplayValueForDescriptor(descriptor, displayValue, displayMode);
+
+    return extractDisplayText(projected.value, projected.mode);
+  }
+
   function formatSaveSummary(saveResult) {
     const summary = saveResult && saveResult.saveSummary && typeof saveResult.saveSummary === 'object'
       ? saveResult.saveSummary
@@ -1930,7 +2008,7 @@
     }
 
     const renderedValue = getNodeDisplayValue(node, result && result.descriptor);
-    const displayValue = extractDisplayText(result.displayValue, result.displayMode);
+    const displayValue = extractProjectedDisplayText(result && result.descriptor, result.displayValue, result.displayMode);
 
     if (!renderedValue && !displayValue) {
       return false;
@@ -4540,7 +4618,7 @@
       clearDescriptorPrefetch();
       scheduleViewportPrefetch();
       scheduleBadgeLayout();
-    }, 90);
+    }, BADGE_HIDE_DELAY_MS);
   }
 
   function resolveMarkerNodeFromTarget(target) {
@@ -6054,6 +6132,149 @@
     });
   }
 
+  function formatCompositeChildSource(child) {
+    const summary = child && child.sourceSummary && typeof child.sourceSummary === 'object'
+      ? child.sourceSummary
+      : {};
+    const entity = child && child.entitySummary && typeof child.entitySummary === 'object'
+      ? child.entitySummary
+      : {};
+    const parts = [];
+
+    if (child && child.status) {
+      parts.push(String(child.status));
+    }
+
+    if (child && child.scope) {
+      parts.push(String(child.scope).replace(/_/g, ' '));
+    }
+
+    if (entity.typeLabel || entity.title) {
+      parts.push([entity.typeLabel, entity.title].filter(Boolean).join(': '));
+    }
+
+    if (summary.summary) {
+      parts.push(String(summary.summary));
+    } else if (summary.fieldName) {
+      parts.push(String(summary.fieldName));
+    }
+
+    return parts.filter(Boolean).join(' / ');
+  }
+
+  function createCompositeTextController(value, descriptor, result) {
+    const wrapper = document.createElement('div');
+    const previewBlock = document.createElement('div');
+    const previewLabel = document.createElement('div');
+    const preview = document.createElement('pre');
+    const templateBlock = document.createElement('details');
+    const templateSummary = document.createElement('summary');
+    const templateBody = document.createElement('pre');
+    const list = document.createElement('div');
+    const composite = result && result.compositeText && typeof result.compositeText === 'object'
+      ? result.compositeText
+      : {};
+    const children = Array.isArray(composite.children) ? composite.children : [];
+    const previewText = typeof composite.previewText === 'string'
+      ? composite.previewText
+      : (typeof value === 'string' ? value : '');
+    const template = typeof composite.template === 'string'
+      ? composite.template
+      : (descriptor && descriptor.source && typeof descriptor.source.template === 'string' ? descriptor.source.template : '');
+
+    wrapper.className = 'dbvc-ve-panel__composite';
+    previewBlock.className = 'dbvc-ve-panel__composite-preview';
+    previewLabel.className = 'dbvc-ve-panel__composite-label';
+    previewLabel.textContent = strings().panelCompositePreview || 'Reconstructed preview';
+    preview.className = 'dbvc-ve-panel__preview dbvc-ve-panel__composite-preview-text';
+    preview.textContent = previewText;
+    previewBlock.appendChild(previewLabel);
+    previewBlock.appendChild(preview);
+    wrapper.appendChild(previewBlock);
+
+    templateBlock.className = 'dbvc-ve-panel__composite-template';
+    templateSummary.className = 'dbvc-ve-panel__meta-summary';
+    templateSummary.textContent = strings().panelCompositeTemplate || 'Original Bricks template';
+    templateBody.className = 'dbvc-ve-panel__preview dbvc-ve-panel__composite-template-text';
+    templateBody.textContent = template;
+    templateBlock.appendChild(templateSummary);
+    templateBlock.appendChild(templateBody);
+    wrapper.appendChild(templateBlock);
+
+    list.className = 'dbvc-ve-panel__composite-list';
+
+    if (!children.length) {
+      const empty = document.createElement('div');
+
+      empty.className = 'dbvc-ve-panel__placeholder';
+      empty.textContent = strings().panelCompositeEmpty || 'No child dynamic fields were resolved for this mixed text element.';
+      list.appendChild(empty);
+    }
+
+    children.forEach(function (child) {
+      const row = document.createElement('div');
+      const header = document.createElement('div');
+      const title = document.createElement('div');
+      const expression = document.createElement('code');
+      const badge = document.createElement('span');
+      const valueNode = document.createElement('pre');
+      const meta = document.createElement('div');
+      const warning = document.createElement('div');
+      const displayText = extractDisplayText(child && child.displayValue, child && child.displayMode);
+      const label = child && child.label ? String(child.label) : (strings().fieldIndexFieldFallback || 'Field');
+      const sourceMeta = formatCompositeChildSource(child);
+      const status = child && child.status ? String(child.status) : 'unsupported';
+
+      row.className = 'dbvc-ve-panel__composite-child';
+      row.dataset.status = status;
+      header.className = 'dbvc-ve-panel__composite-child-header';
+      title.className = 'dbvc-ve-panel__composite-child-title';
+      expression.className = 'dbvc-ve-panel__composite-expression';
+      badge.className = 'dbvc-ve-panel__composite-child-badge';
+      valueNode.className = 'dbvc-ve-panel__composite-child-value';
+      meta.className = 'dbvc-ve-panel__composite-child-meta';
+      warning.className = 'dbvc-ve-panel__composite-child-warning';
+
+      title.textContent = label;
+      expression.textContent = child && child.expression ? String(child.expression) : '';
+      badge.textContent = child && child.canEdit
+        ? (strings().panelCompositeChildReady || 'Source editable')
+        : (status === 'readonly' ? (strings().panelInspectOnly || 'Inspect only') : (strings().panelLocked || 'Locked'));
+      valueNode.textContent = displayText || '';
+      meta.textContent = sourceMeta;
+      warning.textContent = child && child.warning ? String(child.warning) : '';
+
+      header.appendChild(title);
+      header.appendChild(badge);
+      row.appendChild(header);
+      if (expression.textContent) {
+        row.appendChild(expression);
+      }
+      row.appendChild(valueNode);
+      if (meta.textContent) {
+        row.appendChild(meta);
+      }
+      if (warning.textContent) {
+        row.appendChild(warning);
+      }
+      list.appendChild(row);
+    });
+
+    wrapper.appendChild(list);
+
+    return createNoopLifecycle({
+      element: wrapper,
+      getValue() {
+        return value;
+      },
+      setValue() {},
+      focus() {
+        preview.scrollIntoView({ block: 'nearest' });
+      },
+      setDisabled() {}
+    });
+  }
+
   function renderMediaPreviewImage(preview, url, alt) {
     preview.innerHTML = '';
 
@@ -7551,8 +7772,10 @@
     });
   }
 
-  function createFieldController(inputType, value, descriptor) {
+  function createFieldController(inputType, value, descriptor, result) {
     switch (inputType) {
+      case 'composite_text':
+        return createCompositeTextController(value, descriptor, result);
       case 'reference_collection_preview':
         return createReferenceCollectionPreviewController(value, descriptor);
       case 'readonly_preview':
@@ -7951,7 +8174,7 @@
     const descriptor = result.descriptor;
     const panelNodes = getPanelNodes();
     const inputType = (descriptor.ui && descriptor.ui.input) || 'text';
-    const controller = createFieldController(inputType, result.currentValue, descriptor);
+    const controller = createFieldController(inputType, result.currentValue, descriptor, result);
     const canEdit = Boolean(result.canEdit) && !result.sourceMismatch;
     let statusMessage = '';
 
@@ -8245,25 +8468,28 @@
       return;
     }
 
+    const projected = projectDisplayValueForDescriptor(descriptor, nextValue, mode);
+    const patchValue = projected.value;
+    const patchMode = projected.mode;
     const children = Array.from(node.childNodes);
 
     children.forEach(function (child) {
       node.removeChild(child);
     });
 
-    if (mode === 'html') {
+    if (patchMode === 'html') {
       const wrapper = document.createElement('div');
 
-      wrapper.innerHTML = nextValue;
+      wrapper.innerHTML = patchValue;
 
       while (wrapper.firstChild) {
         node.appendChild(wrapper.firstChild);
       }
     } else {
-      node.appendChild(document.createTextNode(nextValue));
+      node.appendChild(document.createTextNode(patchValue));
     }
 
-    node.dataset.dbvcVeDisplayValue = extractDisplayText(nextValue, mode);
+    node.dataset.dbvcVeDisplayValue = extractDisplayText(patchValue, patchMode);
     scheduleBadgeLayout();
   }
 
@@ -8316,6 +8542,12 @@
 
     nodes.forEach(function (node) {
       const descriptor = lookupDescriptorForNode(node);
+      if (getDescriptorRenderContext(descriptor, node) === 'text'
+        && getDescriptorTextProjection(descriptor, node) === 'single_embedded'
+        && !hasHydratedDescriptorForNode(node, descriptor)) {
+        return;
+      }
+
       const projection = resolveDisplayProjection(descriptor, saveResult);
       const payload = descriptor ? getCachedDescriptorPayload(descriptor.token) : null;
 

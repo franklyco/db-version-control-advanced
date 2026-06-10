@@ -56,6 +56,7 @@ final class CoreImportExportProvider extends AbstractOptionDomainProvider
                     'dbvc_force_reapply_new_posts',
                     'dbvc_prefer_entity_uids',
                     'dbvc_allow_uid_fallback_matching',
+                    'dbvc_localize_bricks_entity_references',
                     'dbvc_diff_ignore_paths',
                 ],
             ],
@@ -102,6 +103,7 @@ final class CoreImportExportProvider extends AbstractOptionDomainProvider
             'dbvc_force_reapply_new_posts' => Field::bool('dbvc_force_reapply_new_posts', __('Force reapply accepted new posts', 'dbvc'), 'import_defaults', '0'),
             'dbvc_prefer_entity_uids' => Field::bool('dbvc_prefer_entity_uids', __('Prefer entity UIDs', 'dbvc'), 'import_defaults', '0'),
             'dbvc_allow_uid_fallback_matching' => Field::bool('dbvc_allow_uid_fallback_matching', __('Allow UID-unmatched ID/slug fallback', 'dbvc'), 'import_defaults', '0'),
+            'dbvc_localize_bricks_entity_references' => Field::bool('dbvc_localize_bricks_entity_references', __('Localize Bricks entity references', 'dbvc'), 'import_defaults', '1'),
             'dbvc_diff_ignore_paths' => Field::textarea('dbvc_diff_ignore_paths', __('Diff ignore paths', 'dbvc'), 'import_defaults'),
             'dbvc_mirror_domain' => Field::url(
                 'dbvc_mirror_domain',

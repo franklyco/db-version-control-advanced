@@ -82,7 +82,7 @@ final class DescriptorPayloadBuilder
             && ! empty($contract_summary['writable'])
             && $this->capabilities->canEditDescriptor($descriptor);
 
-        return [
+        $payload = [
             'descriptorVersion' => isset($descriptor->mutation['version']) ? absint($descriptor->mutation['version']) : 1,
             'descriptor' => $descriptor->toArray(),
             'currentValue' => $current_value,
@@ -102,6 +102,12 @@ final class DescriptorPayloadBuilder
             'sourceSummary' => $source_summary,
             'noticeSummary' => $this->summaries->buildNoticeSummary($descriptor, $can_edit, $entity_summary, $source_summary),
         ];
+
+        if ((isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : '') === 'composite_text') {
+            $payload['compositeText'] = $this->buildCompositeTextPayload($descriptor);
+        }
+
+        return $payload;
     }
 
     /**
@@ -145,6 +151,11 @@ final class DescriptorPayloadBuilder
         $entity_type = isset($descriptor->entity['type']) ? (string) $descriptor->entity['type'] : '';
         $scope = isset($descriptor->scope) ? (string) $descriptor->scope : 'current_entity';
         $status = isset($descriptor->status) ? (string) $descriptor->status : 'unsupported';
+        $source_type = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : '';
+
+        if ($source_type === 'composite_text') {
+            return __('This mixed Bricks text element contains multiple dynamic sources. It is inspect-only until Visual Editor has a rollback-safe batch save contract for composite fields.', 'dbvc');
+        }
 
         if ($status === 'readonly') {
             if ($scope === 'related_entity') {
@@ -179,6 +190,128 @@ final class DescriptorPayloadBuilder
         }
 
         return __('This field can be inspected here, but your account cannot save it.', 'dbvc');
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<string, mixed>
+     */
+    private function buildCompositeTextPayload(EditableDescriptor $descriptor)
+    {
+        $source = isset($descriptor->source) && is_array($descriptor->source) ? $descriptor->source : [];
+        $children = isset($source['children']) && is_array($source['children']) ? array_values($source['children']) : [];
+        $segments = isset($source['segments']) && is_array($source['segments']) ? array_values($source['segments']) : [];
+        $child_payloads = [];
+        $display_by_index = [];
+
+        foreach ($children as $child) {
+            if (! is_array($child)) {
+                continue;
+            }
+
+            $index = isset($child['index']) ? absint($child['index']) : count($child_payloads);
+            $payload = [
+                'index' => $index,
+                'expression' => isset($child['expression']) ? sanitize_text_field((string) $child['expression']) : '',
+                'supported' => ! empty($child['supported']),
+                'status' => isset($child['status']) ? sanitize_key((string) $child['status']) : 'unsupported',
+                'scope' => isset($child['scope']) ? sanitize_key((string) $child['scope']) : 'current_entity',
+                'label' => isset($child['label']) ? sanitize_text_field((string) $child['label']) : __('Field', 'dbvc'),
+                'input' => isset($child['input']) ? sanitize_key((string) $child['input']) : 'readonly_preview',
+                'warning' => isset($child['warning']) ? sanitize_text_field((string) $child['warning']) : '',
+                'entity' => isset($child['entity']) && is_array($child['entity']) ? $child['entity'] : [],
+                'source' => isset($child['source']) && is_array($child['source']) ? $child['source'] : [],
+                'currentValue' => '',
+                'displayValue' => '',
+                'displayMode' => 'text',
+                'sourceSummary' => [],
+                'entitySummary' => [],
+                'canEdit' => false,
+            ];
+
+            if (! empty($child['descriptor']) && is_array($child['descriptor'])) {
+                $child_descriptor = EditableDescriptor::fromArray($child['descriptor']);
+                $child_resolver = $this->resolvers->resolve($child_descriptor);
+                $child_current_value = $child_resolver->getValue($child_descriptor);
+                $child_display_value = $child_resolver->getDisplayValue($child_descriptor, $child_current_value);
+                $child_contract_summary = $this->contracts->buildSummary($child_descriptor);
+
+                $payload['descriptor'] = $child_descriptor->toArray();
+                $payload['currentValue'] = $child_current_value;
+                $payload['displayValue'] = $child_display_value;
+                $payload['displayMode'] = $child_resolver->getDisplayMode($child_descriptor);
+                $payload['sourceSummary'] = $this->summaries->buildSourceSummary($child_descriptor);
+                $payload['entitySummary'] = $this->summaries->buildEntitySummary($child_descriptor);
+                $payload['saveContractSummary'] = $child_contract_summary;
+                $payload['canEdit'] = $child_descriptor->status === 'editable'
+                    && ! empty($child_contract_summary['writable'])
+                    && $this->capabilities->canEditDescriptor($child_descriptor);
+                $display_by_index[$index] = $this->stringifyCompositeDisplayValue($child_display_value);
+            } elseif ($payload['expression'] !== '') {
+                $display_by_index[$index] = $payload['expression'];
+            }
+
+            $child_payloads[] = $payload;
+        }
+
+        return [
+            'template' => isset($source['template']) ? wp_kses_post((string) $source['template']) : '',
+            'segments' => $segments,
+            'children' => $child_payloads,
+            'previewText' => $this->buildCompositePreviewText($segments, $display_by_index),
+            'dynamicCount' => isset($source['dynamic_count']) ? absint($source['dynamic_count']) : count($children),
+            'supportedChildCount' => isset($source['supported_child_count']) ? absint($source['supported_child_count']) : count($child_payloads),
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function stringifyCompositeDisplayValue($value)
+    {
+        if (is_array($value) || is_object($value)) {
+            $json = wp_json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+            return is_string($json) ? $json : '';
+        }
+
+        return is_scalar($value) || $value === null ? (string) $value : '';
+    }
+
+    /**
+     * @param array<int, mixed> $segments
+     * @param array<int, string> $display_by_index
+     * @return string
+     */
+    private function buildCompositePreviewText(array $segments, array $display_by_index)
+    {
+        $preview = '';
+
+        foreach ($segments as $segment) {
+            if (! is_array($segment)) {
+                continue;
+            }
+
+            $type = isset($segment['type']) ? sanitize_key((string) $segment['type']) : '';
+            if ($type === 'literal') {
+                $preview .= isset($segment['text']) ? (string) $segment['text'] : '';
+                continue;
+            }
+
+            if ($type === 'dynamic') {
+                $index = isset($segment['index']) ? absint($segment['index']) : null;
+                $preview .= $index !== null && isset($display_by_index[$index])
+                    ? $display_by_index[$index]
+                    : (isset($segment['expression']) ? (string) $segment['expression'] : '');
+            }
+        }
+
+        $preview = preg_replace('/<br\s*\/?>/i', "\n", $preview);
+        $preview = wp_strip_all_tags(is_string($preview) ? $preview : '', true);
+        $preview = html_entity_decode((string) $preview, ENT_QUOTES, 'UTF-8');
+
+        return trim($preview);
     }
 
     /**

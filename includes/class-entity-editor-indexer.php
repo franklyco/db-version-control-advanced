@@ -672,6 +672,17 @@ final class DBVC_Entity_Editor_Indexer
         ];
     }
 
+    /**
+     * Resolve a sync-relative entity file path for read/import operations.
+     *
+     * @param string $relative_path
+     * @return string|\WP_Error
+     */
+    public static function resolve_entity_file_path_for_import($relative_path)
+    {
+        return self::resolve_entity_file_path($relative_path);
+    }
+
 
     /**
      * Save entity JSON content after validation, backup, and atomic write.
@@ -1746,7 +1757,13 @@ final class DBVC_Entity_Editor_Indexer
         if (class_exists('DBVC_Database')) {
             $record = DBVC_Database::get_entity_by_uid($uid);
             if (is_object($record) && ! empty($record->object_id)) {
-                $ids[] = (int) $record->object_id;
+                $candidate = get_post((int) $record->object_id);
+                if (
+                    $candidate instanceof \WP_Post &&
+                    ($post_type === '' || $candidate->post_type === $post_type)
+                ) {
+                    $ids[] = (int) $candidate->ID;
+                }
             }
         }
 
@@ -1812,7 +1829,10 @@ final class DBVC_Entity_Editor_Indexer
         if (class_exists('DBVC_Database')) {
             $record = DBVC_Database::get_entity_by_uid($uid);
             if (is_object($record) && ! empty($record->object_id) && isset($record->object_type) && (string) $record->object_type === 'term:' . $taxonomy) {
-                $ids[] = (int) $record->object_id;
+                $term = get_term((int) $record->object_id, $taxonomy);
+                if ($term && ! is_wp_error($term)) {
+                    $ids[] = (int) $term->term_id;
+                }
             }
         }
 

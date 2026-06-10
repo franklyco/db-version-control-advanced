@@ -178,6 +178,10 @@ final class ResolverRegistry
             return $this->classifyArchiveField($candidate, $page_context);
         }
 
+        if ($source_type === 'composite_text') {
+            return $this->classifyCompositeText($candidate, $page_context);
+        }
+
         if ($source_type === 'acf_field') {
             return $this->classifyAcfField($candidate, $page_context);
         }
@@ -588,6 +592,155 @@ final class ResolverRegistry
                 'label' => __('Archive Title', 'dbvc'),
                 'input' => 'readonly_preview',
                 'warning' => __('This archive title is a derived Bricks/WordPress value and is inspect-only. Edit the underlying term, post type labels, or archive options fields that feed the title instead.', 'dbvc'),
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function classifyCompositeText(array $candidate, array $page_context)
+    {
+        $children = isset($candidate['children']) && is_array($candidate['children']) ? array_values($candidate['children']) : [];
+        $segments = isset($candidate['segments']) && is_array($candidate['segments']) ? array_values($candidate['segments']) : [];
+        if (count($children) < 2 || empty($segments)) {
+            return $this->buildUnsupported('Composite text inspection requires at least two dynamic tags.');
+        }
+
+        $page_entity = $this->buildCompositePageEntity($page_context);
+        $loop_context = $this->loops->resolve();
+        $loop_export = $this->loops->export($loop_context);
+        $classified_children = [];
+        $resolved_child_entities = [];
+        $usable_children = 0;
+        $has_related = false;
+        $has_shared = false;
+
+        foreach ($children as $child) {
+            if (! is_array($child)) {
+                continue;
+            }
+
+            $child_index = isset($child['index']) ? absint($child['index']) : count($classified_children);
+            $expression = isset($child['expression']) ? sanitize_text_field((string) $child['expression']) : '';
+            $child_candidate = isset($child['candidate']) && is_array($child['candidate']) ? $child['candidate'] : [];
+            $child_payload = [
+                'index' => $child_index,
+                'expression' => $expression,
+                'supported' => false,
+                'status' => 'unsupported',
+                'scope' => 'current_entity',
+                'label' => __('Unsupported dynamic tag', 'dbvc'),
+                'input' => 'readonly_preview',
+                'warning' => __('This dynamic tag is visible in the mixed Bricks text template, but Visual Editor cannot resolve it to a safe field contract yet.', 'dbvc'),
+            ];
+
+            if (! empty($child_candidate['supported'])) {
+                $classification = $this->classifyCandidateUnprofiled($child_candidate, $page_context);
+                $child_status = isset($classification['status']) ? sanitize_key((string) $classification['status']) : 'unsupported';
+                $child_scope = isset($classification['scope']) ? sanitize_key((string) $classification['scope']) : 'current_entity';
+                $child_ui = isset($classification['ui']) && is_array($classification['ui']) ? $classification['ui'] : [];
+                $child_source = isset($classification['source']) && is_array($classification['source']) ? $classification['source'] : [];
+                $child_entity = isset($classification['entity']) && is_array($classification['entity']) ? $classification['entity'] : [];
+                $child_resolver = isset($classification['resolver']) && is_array($classification['resolver']) ? $classification['resolver'] : [];
+                $child_loop = isset($classification['loop']) && is_array($classification['loop']) ? $classification['loop'] : $loop_export;
+
+                $child_payload = [
+                    'index' => $child_index,
+                    'expression' => $expression,
+                    'supported' => in_array($child_status, ['editable', 'readonly'], true),
+                    'status' => $child_status,
+                    'scope' => $child_scope,
+                    'label' => isset($child_ui['label']) ? sanitize_text_field((string) $child_ui['label']) : __('Field', 'dbvc'),
+                    'input' => isset($child_ui['input']) ? sanitize_key((string) $child_ui['input']) : 'readonly_preview',
+                    'warning' => isset($child_ui['warning']) ? sanitize_text_field((string) $child_ui['warning']) : '',
+                    'entity' => $this->compactCompositeChildEntity($child_entity),
+                    'source' => $this->compactCompositeChildSource($child_source),
+                    'resolver' => $child_resolver,
+                    'loop' => $child_loop,
+                ];
+
+                if (in_array($child_status, ['editable', 'readonly'], true)) {
+                    $usable_children++;
+                    $resolved_child_entities[] = $child_entity;
+                    if ($child_scope === 'related_entity') {
+                        $has_related = true;
+                    } elseif ($child_scope === 'shared_entity') {
+                        $has_shared = true;
+                    }
+
+                    $child_descriptor = new EditableDescriptor(
+                        'composite_child_' . md5($expression . '|' . $child_index . '|' . wp_json_encode($child_source)),
+                        $child_status,
+                        $child_scope,
+                        $child_entity,
+                        [
+                            'template_id' => 0,
+                            'element_id' => '',
+                            'element_uid' => '',
+                            'element_name' => '',
+                            'setting_key' => isset($child_candidate['setting_key']) ? sanitize_key((string) $child_candidate['setting_key']) : '',
+                            'attribute_key' => '',
+                            'context' => isset($child_candidate['render_context']) ? sanitize_key((string) $child_candidate['render_context']) : 'text',
+                            'attribute' => isset($child_candidate['render_attribute']) ? sanitize_key((string) $child_candidate['render_attribute']) : '',
+                            'text_projection' => 'composite_child',
+                            'text_expression' => $expression,
+                            'loop' => $child_loop,
+                        ],
+                        $child_source,
+                        $child_ui,
+                        $child_resolver,
+                        $this->buildCompositePageDescriptor($page_context),
+                        $child_entity,
+                        $child_loop
+                    );
+                    $child_payload['descriptor'] = $child_descriptor->toArray();
+                }
+            }
+
+            $classified_children[] = $child_payload;
+        }
+
+        if ($usable_children < 1) {
+            return $this->buildUnsupported('Composite text inspection could not resolve any child dynamic tags to safe field sources.');
+        }
+
+        $scope = $has_shared ? 'shared_entity' : ($has_related ? 'related_entity' : 'current_entity');
+        $parent_entity = $this->resolveCompositeParentEntity($page_entity, $resolved_child_entities);
+        $template = isset($candidate['template']) ? wp_kses_post((string) $candidate['template']) : '';
+        $dynamic_count = isset($candidate['dynamic_count']) ? absint($candidate['dynamic_count']) : count($children);
+
+        return [
+            'status' => 'readonly',
+            'scope' => $scope,
+            'entity' => $parent_entity,
+            'loop' => $loop_export,
+            'source' => [
+                'type' => 'composite_text',
+                'expression' => isset($candidate['expression']) ? sanitize_text_field((string) $candidate['expression']) : 'composite_text',
+                'field_name' => 'composite_text',
+                'field_key' => '',
+                'field_type' => 'composite_text',
+                'source_context' => 'bricks_mixed_dynamic_text',
+                'template' => $template,
+                'segments' => $this->normalizeCompositeSegments($segments),
+                'children' => $classified_children,
+                'dynamic_count' => $dynamic_count,
+                'supported_child_count' => $usable_children,
+                'page_post_type' => isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '',
+                'page_taxonomy' => isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '',
+            ],
+            'resolver' => [
+                'name' => 'native_readonly',
+                'version' => 1,
+            ],
+            'ui' => [
+                'label' => __('Mixed dynamic text', 'dbvc'),
+                'badgeLabel' => __('Inspect Text', 'dbvc'),
+                'input' => 'composite_text',
+                'warning' => __('This Bricks text element contains multiple dynamic sources. It is inspect-only until the composite batch-save contract is enabled.', 'dbvc'),
             ],
         ];
     }
@@ -2787,6 +2940,226 @@ final class ResolverRegistry
                 'warning' => (string) $warning,
             ],
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function buildCompositePageEntity(array $page_context)
+    {
+        $entity_type = isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : 'post';
+        $entity_id = isset($page_context['entityId']) ? absint($page_context['entityId']) : 0;
+        $post_type = isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '';
+        $taxonomy = isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '';
+
+        if ($entity_type === 'term') {
+            return [
+                'type' => 'term',
+                'id' => $entity_id,
+                'subtype' => $taxonomy,
+                'taxonomy' => $taxonomy,
+                'acf_object_id' => $taxonomy !== '' && $entity_id > 0 ? $taxonomy . '_' . $entity_id : '',
+            ];
+        }
+
+        if ($entity_type === 'user') {
+            return [
+                'type' => 'user',
+                'id' => $entity_id,
+                'subtype' => '',
+                'acf_object_id' => $entity_id > 0 ? 'user_' . $entity_id : '',
+            ];
+        }
+
+        return [
+            'type' => 'post',
+            'id' => $entity_id,
+            'subtype' => $post_type,
+            'acf_object_id' => $entity_id,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function buildCompositePageDescriptor(array $page_context)
+    {
+        return [
+            'type' => isset($page_context['entityType']) ? sanitize_key((string) $page_context['entityType']) : '',
+            'id' => isset($page_context['entityId']) ? absint($page_context['entityId']) : 0,
+            'subtype' => isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '',
+            'taxonomy' => isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '',
+            'archiveType' => isset($page_context['archiveType']) ? sanitize_key((string) $page_context['archiveType']) : '',
+            'archiveKey' => isset($page_context['archiveKey']) ? sanitize_text_field((string) $page_context['archiveKey']) : '',
+            'isArchive' => ! empty($page_context['isArchive']),
+            'isPostTypeArchive' => ! empty($page_context['isPostTypeArchive']),
+            'isTaxonomyArchive' => ! empty($page_context['isTaxonomyArchive']),
+            'url' => isset($page_context['url']) ? esc_url_raw((string) $page_context['url']) : '',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $entity
+     * @return array<string, mixed>
+     */
+    private function compactCompositeChildEntity(array $entity)
+    {
+        $type = isset($entity['type']) ? sanitize_key((string) $entity['type']) : '';
+        $subtype = isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '';
+        $taxonomy = isset($entity['taxonomy']) ? sanitize_key((string) $entity['taxonomy']) : $subtype;
+        $acf_object_id = isset($entity['acf_object_id']) ? sanitize_text_field((string) $entity['acf_object_id']) : '';
+
+        return array_filter([
+            'type' => $type,
+            'id' => isset($entity['id']) ? absint($entity['id']) : 0,
+            'subtype' => $subtype,
+            'taxonomy' => $taxonomy,
+            'acf_object_id' => $acf_object_id,
+        ], static function ($value) {
+            return $value !== '' && $value !== 0;
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $fallback_entity
+     * @param array<int, array<string, mixed>> $child_entities
+     * @return array<string, mixed>
+     */
+    private function resolveCompositeParentEntity(array $fallback_entity, array $child_entities)
+    {
+        $resolved = null;
+        $resolved_signature = '';
+
+        foreach ($child_entities as $entity) {
+            if (! is_array($entity) || empty($entity)) {
+                continue;
+            }
+
+            $type = isset($entity['type']) ? sanitize_key((string) $entity['type']) : '';
+            $id = isset($entity['id']) ? absint($entity['id']) : 0;
+            $subtype = isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '';
+            $acf_object_id = isset($entity['acf_object_id']) ? sanitize_text_field((string) $entity['acf_object_id']) : '';
+            $signature = implode('|', [$type, (string) $id, $subtype, $acf_object_id]);
+
+            if ($type === '' || ($id <= 0 && $acf_object_id === '')) {
+                continue;
+            }
+
+            if ($resolved === null) {
+                $resolved = $entity;
+                $resolved_signature = $signature;
+                continue;
+            }
+
+            if ($signature !== $resolved_signature) {
+                return $fallback_entity;
+            }
+        }
+
+        return is_array($resolved) ? $resolved : $fallback_entity;
+    }
+
+    /**
+     * @param array<string, mixed> $source
+     * @return array<string, mixed>
+     */
+    private function compactCompositeChildSource(array $source)
+    {
+        $keys = [
+            'type',
+            'expression',
+            'field_name',
+            'field_key',
+            'field_selector',
+            'field_selector_raw',
+            'leaf_field_name',
+            'leaf_field_key',
+            'field_type',
+            'source_context',
+            'field_group_key',
+            'field_group_title',
+            'return_format',
+            'container_type',
+            'parent_field_name',
+            'parent_field_key',
+            'parent_field_selector',
+            'row_index',
+            'layout_key',
+            'layout_name',
+            'group_path',
+            'group_key_path',
+            'nested_repeater_path',
+            'native_query_kind',
+            'native_query_selector',
+            'native_query_object_type',
+            'native_query_field_name',
+            'parent_native_query_kind',
+            'parent_native_query_selector',
+            'parent_native_query_object_type',
+            'parent_native_query_field_name',
+            'native_query_ancestry',
+        ];
+        $compact = [];
+
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $source)) {
+                continue;
+            }
+
+            $value = $source[$key];
+            if (is_array($value)) {
+                $compact[$key] = $value;
+            } elseif (is_numeric($value)) {
+                $compact[$key] = absint($value);
+            } elseif (is_scalar($value) || $value === null) {
+                $string = sanitize_text_field((string) $value);
+                if ($string !== '') {
+                    $compact[$key] = $string;
+                }
+            }
+        }
+
+        return $compact;
+    }
+
+    /**
+     * @param array<int, mixed> $segments
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeCompositeSegments(array $segments)
+    {
+        $normalized = [];
+
+        foreach ($segments as $segment) {
+            if (! is_array($segment)) {
+                continue;
+            }
+
+            $type = isset($segment['type']) ? sanitize_key((string) $segment['type']) : '';
+            if ($type === 'literal') {
+                $text = isset($segment['text']) ? wp_kses_post((string) $segment['text']) : '';
+                if ($text !== '') {
+                    $normalized[] = [
+                        'type' => 'literal',
+                        'text' => $text,
+                    ];
+                }
+                continue;
+            }
+
+            if ($type === 'dynamic') {
+                $normalized[] = [
+                    'type' => 'dynamic',
+                    'index' => isset($segment['index']) ? absint($segment['index']) : count($normalized),
+                    'expression' => isset($segment['expression']) ? sanitize_text_field((string) $segment['expression']) : '',
+                    'supported' => ! empty($segment['supported']),
+                ];
+            }
+        }
+
+        return $normalized;
     }
 
     /**

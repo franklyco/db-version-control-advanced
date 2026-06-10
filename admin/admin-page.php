@@ -215,6 +215,7 @@ function dbvc_render_export_page()
   $force_reapply_new_posts = get_option('dbvc_force_reapply_new_posts', '0');
   $prefer_entity_uids     = get_option('dbvc_prefer_entity_uids', '0');
   $allow_uid_fallback_matching = get_option('dbvc_allow_uid_fallback_matching', '0');
+  $localize_bricks_entity_references = get_option('dbvc_localize_bricks_entity_references', '1');
   $sync_ftp_window_until  = function_exists('dbvc_get_sync_ftp_window_until')
     ? dbvc_get_sync_ftp_window_until()
     : 0;
@@ -641,6 +642,9 @@ function dbvc_render_export_page()
 
     $allow_uid_fallback_matching = ! empty($_POST['dbvc_allow_uid_fallback_matching']) ? '1' : '0';
     update_option('dbvc_allow_uid_fallback_matching', $allow_uid_fallback_matching);
+
+    $localize_bricks_entity_references = ! empty($_POST['dbvc_localize_bricks_entity_references']) ? '1' : '0';
+    update_option('dbvc_localize_bricks_entity_references', $localize_bricks_entity_references);
 
     // --- FTP Upload Window ---
     if (isset($_POST['dbvc_sync_ftp_window_action'])) {
@@ -1298,6 +1302,9 @@ function dbvc_render_export_page()
 
       $allow_uid_fallback_matching = ! empty($_POST['dbvc_allow_uid_fallback_matching']) ? '1' : '0';
       update_option('dbvc_allow_uid_fallback_matching', $allow_uid_fallback_matching);
+
+      $localize_bricks_entity_references = ! empty($_POST['dbvc_localize_bricks_entity_references']) ? '1' : '0';
+      update_option('dbvc_localize_bricks_entity_references', $localize_bricks_entity_references);
 
       if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
         DBVC_Sync_Logger::log_import('Manual import requested', [
@@ -2085,6 +2092,13 @@ function dbvc_render_export_page()
                     <?php esc_html_e('Allow ID/slug fallback when an incoming UID is not found', 'dbvc'); ?>
                   </label><br>
                   <small><?php esc_html_e('Leave disabled for staging/production syncs so a source UID cannot be applied to the wrong local entity by matching an ID or slug.', 'dbvc'); ?></small>
+                </p>
+                <p>
+                  <label>
+                    <input type="checkbox" name="dbvc_localize_bricks_entity_references" value="1" <?php checked($localize_bricks_entity_references, '1'); ?> />
+                    <?php esc_html_e('Localize known Bricks entity references during import', 'dbvc'); ?>
+                  </label><br>
+                  <small><?php esc_html_e('Rewrites supported Bricks template settings, such as preview post IDs, to matching local entity IDs when DBVC can prove the target object.', 'dbvc'); ?></small>
                 </p>
 <?php if (class_exists('DBVC_Media_Sync')) : ?>
                 <fieldset class="dbvc-media-import-options" style="margin:1rem 0;">
@@ -3705,7 +3719,15 @@ document.addEventListener('DOMContentLoaded', function () {
                   <input type="checkbox" name="dbvc_allow_uid_fallback_matching" value="1" <?php checked($allow_uid_fallback_matching, '1'); ?> />
                   <?php esc_html_e('Allow ID/slug fallback when an incoming UID is not found', 'dbvc'); ?>
                 </label><br>
-                <small><?php esc_html_e('Keep this disabled for environment syncs. Enable only for legacy JSON where UIDs are missing locally and ID/slug fallback is intentionally accepted.', 'dbvc'); ?></small>
+                  <small><?php esc_html_e('Keep this disabled for environment syncs. Enable only for legacy JSON where UIDs are missing locally and ID/slug fallback is intentionally accepted.', 'dbvc'); ?></small>
+                </p>
+
+              <p>
+                <label>
+                  <input type="checkbox" name="dbvc_localize_bricks_entity_references" value="1" <?php checked($localize_bricks_entity_references, '1'); ?> />
+                  <?php esc_html_e('Localize known Bricks entity references during import', 'dbvc'); ?>
+                </label><br>
+                <small><?php esc_html_e('Rewrites supported Bricks template settings, such as preview post IDs, to matching local entity IDs when DBVC can prove the target object.', 'dbvc'); ?></small>
               </p>
 
               <p>

@@ -826,6 +826,9 @@ final class RawJsonIntakeService
     {
         $entity_id = (int) $entity_id;
         $post = $entity_id > 0 ? get_post($entity_id) : null;
+        if (! ($post instanceof \WP_Post)) {
+            $entity_id = 0;
+        }
 
         return [
             'status'       => $entity_id > 0 ? 'matched' : 'none',
@@ -848,6 +851,9 @@ final class RawJsonIntakeService
     {
         $entity_id = (int) $entity_id;
         $term = $entity_id > 0 ? get_term($entity_id, $taxonomy) : null;
+        if (! $term || \is_wp_error($term)) {
+            $entity_id = 0;
+        }
 
         return [
             'status'       => $entity_id > 0 ? 'matched' : 'none',
@@ -892,7 +898,13 @@ final class RawJsonIntakeService
         if (\class_exists('DBVC_Database')) {
             $record = \DBVC_Database::get_entity_by_uid($uid);
             if (\is_object($record) && ! empty($record->object_id)) {
-                $ids[] = (int) $record->object_id;
+                $candidate = get_post((int) $record->object_id);
+                if (
+                    $candidate instanceof \WP_Post &&
+                    ($post_type === '' || $candidate->post_type === $post_type)
+                ) {
+                    $ids[] = (int) $candidate->ID;
+                }
             }
         }
 
@@ -964,7 +976,10 @@ final class RawJsonIntakeService
                 isset($record->object_type) &&
                 (string) $record->object_type === 'term:' . $taxonomy
             ) {
-                $ids[] = (int) $record->object_id;
+                $term = get_term((int) $record->object_id, $taxonomy);
+                if ($term && ! \is_wp_error($term)) {
+                    $ids[] = (int) $term->term_id;
+                }
             }
         }
 

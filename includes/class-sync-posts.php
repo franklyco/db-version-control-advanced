@@ -3103,6 +3103,20 @@ $acf_relationship_fields = [
             $json['ID'] = $post_id;
         }
 
+        $bricks_reference_localization = [];
+        if (class_exists('\Dbvc\EntityReferences\BricksReferenceMapper')) {
+            $localized = \Dbvc\EntityReferences\BricksReferenceMapper::localize_post_payload(
+                $json,
+                self::$imported_post_id_map
+            );
+            if (is_array($localized) && isset($localized['payload']) && is_array($localized['payload'])) {
+                $json = $localized['payload'];
+                $bricks_reference_localization = isset($localized['results']) && is_array($localized['results'])
+                    ? $localized['results']
+                    : [];
+            }
+        }
+
         // Import meta
         if (! is_wp_error($post_id) && isset($json['meta']) && is_array($json['meta'])) {
 
@@ -3113,6 +3127,7 @@ $acf_relationship_fields = [
                 '_bricks_page_footer_2',
                 '_bricks_page_css',
                 '_bricks_page_custom_code',
+                '_bricks_template_settings',
             ]);
 
             // Temporarily disable sanitize callbacks for these keys (defensive)
@@ -3242,6 +3257,9 @@ $acf_relationship_fields = [
             'status'           => ($post_id === $original_id) ? 'existing' : 'imported',
             'vf_object_uid'    => $stored_entity_uid,
         ];
+        if (! empty($bricks_reference_localization)) {
+            $post_history['bricks_reference_localization'] = $bricks_reference_localization;
+        }
         update_post_meta($post_id, 'dbvc_post_history', $post_history);
         $json['meta']['dbvc_post_history'] = $post_history;
 
@@ -3504,6 +3522,13 @@ $acf_relationship_fields = [
 
         if (get_option('dbvc_export_sort_meta', '0') === '1' && isset($data['meta']) && is_array($data['meta']) && function_exists('dbvc_sort_array_recursive')) {
             $data['meta'] = dbvc_sort_array_recursive($data['meta']);
+        }
+
+        if (class_exists('\Dbvc\EntityReferences\BricksReferenceMapper')) {
+            $dbvc_entity_references = \Dbvc\EntityReferences\BricksReferenceMapper::collect_post_references($data, true);
+            if (! empty($dbvc_entity_references)) {
+                $data['dbvc_entity_references'] = $dbvc_entity_references;
+            }
         }
 
         // FINAL: Lossless normalize ONLY (no unslash).

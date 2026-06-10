@@ -609,6 +609,26 @@ final class DBVC_Admin_App
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/sync-file-import/preview',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'preview_entity_editor_sync_file_import'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/sync-file-import/commit',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'commit_entity_editor_sync_file_import'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
     }
 
     /**
@@ -2356,6 +2376,54 @@ final class DBVC_Admin_App
         $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
 
         $result = \Dbvc\EntityEditor\RawJsonIntakeService::commit($content, $mode, get_current_user_id());
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: Preview importing an existing Entity Editor sync JSON file.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function preview_entity_editor_sync_file_import(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\SyncFileImportService')) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_unavailable', __('Sync file import service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $paths = $params['paths'] ?? ($params['path'] ?? []);
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
+
+        $preview = \Dbvc\EntityEditor\SyncFileImportService::preview($paths, $mode);
+        if (is_wp_error($preview)) {
+            return $preview;
+        }
+
+        return new \WP_REST_Response($preview);
+    }
+
+    /**
+     * REST: Import an existing Entity Editor sync JSON file.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function commit_entity_editor_sync_file_import(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\SyncFileImportService')) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_unavailable', __('Sync file import service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $paths = $params['paths'] ?? ($params['path'] ?? []);
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
+
+        $result = \Dbvc\EntityEditor\SyncFileImportService::commit($paths, $mode, get_current_user_id());
         if (is_wp_error($result)) {
             return $result;
         }

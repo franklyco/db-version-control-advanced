@@ -102,12 +102,13 @@ final class LoopContextResolver
 
         $query_id = sanitize_text_field((string) $query_id);
         $looping_query_ids = $this->getActiveLoopingQueryIds();
-        $cache_key = $this->buildResolvedContextCacheKey($query_id, $looping_query_ids);
+        $loop_snapshots = $this->buildLoopRuntimeSnapshots($looping_query_ids);
+        $cache_key = $this->buildResolvedContextCacheKey($query_id, $looping_query_ids, $loop_snapshots);
         if ($cache_key !== '' && isset($this->resolved_context_cache[$cache_key]) && is_array($this->resolved_context_cache[$cache_key])) {
             return $this->resolved_context_cache[$cache_key];
         }
 
-        $contexts = $this->buildDecoratedLoopContexts($looping_query_ids);
+        $contexts = $this->buildDecoratedLoopContexts($looping_query_ids, $loop_snapshots);
 
         if (! isset($contexts[$query_id]) || empty($contexts[$query_id])) {
             $context = [
@@ -143,11 +144,12 @@ final class LoopContextResolver
     }
 
     /**
-     * @param string            $query_id
-     * @param array<int, string> $looping_query_ids
+     * @param string                                      $query_id
+     * @param array<int, string>                          $looping_query_ids
+     * @param array<string, array<string, mixed>>          $loop_snapshots
      * @return string
      */
-    private function buildResolvedContextCacheKey($query_id, array $looping_query_ids)
+    private function buildResolvedContextCacheKey($query_id, array $looping_query_ids, array $loop_snapshots = [])
     {
         $query_id = sanitize_text_field((string) $query_id);
         if ($query_id === '' || empty($looping_query_ids)) {
@@ -172,22 +174,17 @@ final class LoopContextResolver
                 continue;
             }
 
-            $loop_object_type = method_exists('\\Bricks\\Query', 'get_loop_object_type')
-                ? sanitize_key((string) \Bricks\Query::get_loop_object_type($looping_query_id))
-                : '';
-            $loop_object_id = method_exists('\\Bricks\\Query', 'get_loop_object_id')
-                ? absint(\Bricks\Query::get_loop_object_id($looping_query_id))
-                : 0;
-            $loop_index = method_exists('\\Bricks\\Query', 'get_loop_index')
-                ? $this->normalizeScalar(\Bricks\Query::get_loop_index($looping_query_id))
-                : '';
-            $query_element_id = method_exists('\\Bricks\\Query', 'get_query_element_id')
-                ? sanitize_text_field((string) \Bricks\Query::get_query_element_id($looping_query_id))
-                : '';
-            $runtime_query_object_type = method_exists('\\Bricks\\Query', 'get_query_object_type')
-                ? sanitize_key((string) \Bricks\Query::get_query_object_type($looping_query_id))
-                : '';
-            $query_object_type = $this->resolveEffectiveQueryObjectType($query_element_id, $runtime_query_object_type);
+            $snapshot = isset($loop_snapshots[$looping_query_id]) && is_array($loop_snapshots[$looping_query_id])
+                ? $loop_snapshots[$looping_query_id]
+                : [];
+            $loop_object_type = isset($snapshot['loop_object_type']) ? sanitize_key((string) $snapshot['loop_object_type']) : '';
+            $loop_object_id = isset($snapshot['loop_object_id']) ? absint($snapshot['loop_object_id']) : 0;
+            $loop_index = isset($snapshot['loop_index']) ? $this->normalizeScalar($snapshot['loop_index']) : '';
+            $query_element_id = isset($snapshot['query_element_id']) ? sanitize_text_field((string) $snapshot['query_element_id']) : '';
+            $runtime_query_object_type = isset($snapshot['runtime_query_object_type']) ? sanitize_key((string) $snapshot['runtime_query_object_type']) : '';
+            $query_object_type = isset($snapshot['query_object_type'])
+                ? sanitize_key((string) $snapshot['query_object_type'])
+                : $this->resolveEffectiveQueryObjectType($query_element_id, $runtime_query_object_type);
 
             $parts[] = implode(':', [
                 $looping_query_id,
@@ -234,35 +231,32 @@ final class LoopContextResolver
     }
 
     /**
-     * @param string $query_id
+     * @param string               $query_id
+     * @param array<string, mixed> $snapshot
      * @return array<string, mixed>
      */
-    private function buildLoopContext($query_id)
+    private function buildLoopContext($query_id, array $snapshot = [])
     {
         $query_id = sanitize_text_field((string) $query_id);
         if ($query_id === '') {
             return [];
         }
 
-        $loop_object_type = method_exists('\\Bricks\\Query', 'get_loop_object_type')
-            ? sanitize_key((string) \Bricks\Query::get_loop_object_type($query_id))
-            : '';
-        $loop_object_id = method_exists('\\Bricks\\Query', 'get_loop_object_id')
-            ? absint(\Bricks\Query::get_loop_object_id($query_id))
-            : 0;
-        $loop_index = method_exists('\\Bricks\\Query', 'get_loop_index')
-            ? $this->normalizeScalar(\Bricks\Query::get_loop_index($query_id))
-            : '';
-        $query_element_id = method_exists('\\Bricks\\Query', 'get_query_element_id')
-            ? sanitize_text_field((string) \Bricks\Query::get_query_element_id($query_id))
-            : '';
-        $runtime_query_object_type = method_exists('\\Bricks\\Query', 'get_query_object_type')
-            ? sanitize_key((string) \Bricks\Query::get_query_object_type($query_id))
-            : '';
-        $query_object_type = $this->resolveEffectiveQueryObjectType($query_element_id, $runtime_query_object_type);
-        $loop_object = method_exists('\\Bricks\\Query', 'get_loop_object')
-            ? \Bricks\Query::get_loop_object($query_id)
-            : null;
+        if (empty($snapshot)) {
+            $snapshot = $this->buildLoopRuntimeSnapshot($query_id);
+        }
+
+        $loop_object_type = isset($snapshot['loop_object_type']) ? sanitize_key((string) $snapshot['loop_object_type']) : '';
+        $loop_object_id = isset($snapshot['loop_object_id']) ? absint($snapshot['loop_object_id']) : 0;
+        $loop_index = isset($snapshot['loop_index']) ? $this->normalizeScalar($snapshot['loop_index']) : '';
+        $query_element_id = isset($snapshot['query_element_id']) ? sanitize_text_field((string) $snapshot['query_element_id']) : '';
+        $runtime_query_object_type = isset($snapshot['runtime_query_object_type']) ? sanitize_key((string) $snapshot['runtime_query_object_type']) : '';
+        $query_object_type = isset($snapshot['query_object_type'])
+            ? sanitize_key((string) $snapshot['query_object_type'])
+            : $this->resolveEffectiveQueryObjectType($query_element_id, $runtime_query_object_type);
+        $loop_object = array_key_exists('loop_object', $snapshot)
+            ? $snapshot['loop_object']
+            : (method_exists('\\Bricks\\Query', 'get_loop_object') ? \Bricks\Query::get_loop_object($query_id) : null);
         $owner_entity = $this->mapLoopObjectToEntity($loop_object_type, $loop_object_id, $loop_object, $query_object_type);
 
         return [
@@ -499,13 +493,84 @@ final class LoopContextResolver
      * @param array<int, string> $looping_query_ids
      * @return array<string, array<string, mixed>>
      */
-    private function buildDecoratedLoopContexts(array $looping_query_ids)
+    private function buildLoopRuntimeSnapshots(array $looping_query_ids)
+    {
+        $snapshots = [];
+        foreach ($looping_query_ids as $query_id) {
+            $query_id = sanitize_text_field((string) $query_id);
+            if ($query_id === '') {
+                continue;
+            }
+
+            $snapshots[$query_id] = $this->buildLoopRuntimeSnapshot($query_id);
+        }
+
+        return $snapshots;
+    }
+
+    /**
+     * @param string $query_id
+     * @param bool   $include_loop_object
+     * @return array<string, mixed>
+     */
+    private function buildLoopRuntimeSnapshot($query_id, $include_loop_object = false)
+    {
+        $query_id = sanitize_text_field((string) $query_id);
+        if ($query_id === '') {
+            return [];
+        }
+
+        $loop_object_type = method_exists('\\Bricks\\Query', 'get_loop_object_type')
+            ? sanitize_key((string) \Bricks\Query::get_loop_object_type($query_id))
+            : '';
+        $loop_object_id = method_exists('\\Bricks\\Query', 'get_loop_object_id')
+            ? absint(\Bricks\Query::get_loop_object_id($query_id))
+            : 0;
+        $loop_index = method_exists('\\Bricks\\Query', 'get_loop_index')
+            ? $this->normalizeScalar(\Bricks\Query::get_loop_index($query_id))
+            : '';
+        $query_element_id = method_exists('\\Bricks\\Query', 'get_query_element_id')
+            ? sanitize_text_field((string) \Bricks\Query::get_query_element_id($query_id))
+            : '';
+        $runtime_query_object_type = method_exists('\\Bricks\\Query', 'get_query_object_type')
+            ? sanitize_key((string) \Bricks\Query::get_query_object_type($query_id))
+            : '';
+        $query_object_type = $this->resolveEffectiveQueryObjectType($query_element_id, $runtime_query_object_type);
+
+        $snapshot = [
+            'loop_object_type' => $loop_object_type,
+            'loop_object_id' => $loop_object_id,
+            'loop_index' => $loop_index,
+            'query_element_id' => $query_element_id,
+            'runtime_query_object_type' => $runtime_query_object_type,
+            'query_object_type' => $query_object_type,
+        ];
+
+        if ($include_loop_object) {
+            $snapshot['loop_object'] = method_exists('\\Bricks\\Query', 'get_loop_object')
+                ? \Bricks\Query::get_loop_object($query_id)
+                : null;
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @param array<int, string>                 $looping_query_ids
+     * @param array<string, array<string, mixed>> $loop_snapshots
+     * @return array<string, array<string, mixed>>
+     */
+    private function buildDecoratedLoopContexts(array $looping_query_ids, array $loop_snapshots = [])
     {
         $contexts = [];
         $inherited_owner = [];
 
         foreach (array_reverse($looping_query_ids) as $query_id) {
-            $context = $this->buildLoopContext((string) $query_id);
+            $query_id = sanitize_text_field((string) $query_id);
+            $snapshot = isset($loop_snapshots[$query_id]) && is_array($loop_snapshots[$query_id])
+                ? $loop_snapshots[$query_id]
+                : [];
+            $context = $this->buildLoopContext($query_id, $snapshot);
             if (empty($context)) {
                 continue;
             }

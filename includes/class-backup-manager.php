@@ -121,6 +121,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
                 $third_party_object_type = '';
                 $third_party_uid = '';
                 $third_party_label = '';
+                $dbvc_entity_references = [];
                 $media_refs       = [
                     'meta'    => [],
                     'content' => [],
@@ -185,6 +186,15 @@ if (! class_exists('DBVC_Backup_Manager')) {
                         'tax_input'     => $decoded['tax_input'] ?? [],
                         'path'          => $relative,
                     ];
+
+                    if (
+                        isset($decoded['dbvc_entity_references'])
+                        && class_exists('\Dbvc\EntityReferences\BricksReferenceMapper')
+                    ) {
+                        $dbvc_entity_references = array_values(
+                            \Dbvc\EntityReferences\BricksReferenceMapper::normalize_references($decoded['dbvc_entity_references'])
+                        );
+                    }
                 } elseif (strpos($relative, 'options/') === 0) {
                     $item_type = 'options_group';
                     $meta = isset($decoded['meta']) && is_array($decoded['meta']) ? $decoded['meta'] : [];
@@ -341,6 +351,13 @@ if (! class_exists('DBVC_Backup_Manager')) {
                     $entry['entity_refs'] = $entity_refs;
                     if (is_array($entity_payload)) {
                         $entity_payload['entity_refs'] = $entity_refs;
+                    }
+                }
+
+                if (! empty($dbvc_entity_references)) {
+                    $entry['dbvc_entity_references'] = $dbvc_entity_references;
+                    if (is_array($entity_payload)) {
+                        $entity_payload['dbvc_entity_references'] = $dbvc_entity_references;
                     }
                 }
 

@@ -371,6 +371,8 @@ Local profiler findings from the first live pass:
 - The first request-local memoization pass caches decorated active loop contexts by current Bricks loop state, caches native ACF query field definitions, and caches derived Query Editor collection field objects/candidates/values/post-type lookups. This preserved marker parity, reduced `/our-process/` active loop-context time from about 248 ms to about 99 ms, reduced `/vertical/dentists/` active loop-context time from about 518 ms to about 103 ms, and reduced `/vertical/dentists/` derived query-collection inspection from about 347 ms to about 3 ms after cache warmup. A follow-up profile split showed the remaining cold readonly branch was an all-options ACF field inventory read, not the option match loop itself.
 - The first session-persistence pass stores full descriptor arrays as gzip-compressed JSON while keeping the public map plain, and public session reads now skip descriptor decoding. This preserved descriptor hydration parity, reduced `/our-process/` stored session payload from about 2.5 MB to about 534 KB, reduced `/vertical/dentists/` from about 2.45 MB to about 450 KB, and cut persistence time on those fixtures to roughly 85-100 ms. Session TTL refresh writes are now throttled by `dbvc_visual_editor_session_refresh_interval` instead of rewriting the transient on every load.
 - The public-map compaction pass keeps the browser-facing map readable but recursively omits empty public fields. On `/our-process/`, the measured public map dropped from about 375.8 KB to 241.7 KB, and the overall compressed session payload dropped from the earlier roughly 534 KB checkpoint to about 399.7 KB. The descriptor compression level is now filterable through `dbvc_visual_editor_session_descriptor_compression_level`; gzip level 4 remains the default because level 1 saved little total persistence time while inflating the descriptor blob.
+- The final render repair follow-up replaces the expensive full-content opening-tag regex fallback with the same bounded opening-tag window scanner used by the fast path, reuses the already-found opening-tag match across the existing-marker check and injection, and caches unchanged-content token checks inside one finalization pass. Marker parity held on `/gallery/` (8/8), `/our-process/` (333 markers / 366 descriptors / 7 query markers), and `/vertical/dentists/` (264 markers / 261 descriptors / 15 query markers). The full `/our-process/` final repair pass dropped from the earlier roughly 207-214 ms checkpoint to about 60-61 ms; `/vertical/dentists/` dropped from roughly 55 ms to about 24 ms.
+- The active loop/instrumentation follow-up adds a request-local descriptor index keyed by Bricks element UID so `verifyRenderedElement()` can skip loop resolution and full descriptor scans for elements that never registered descriptors. It also snapshots Bricks loop getter values once per `LoopContextResolver::resolve()` call and reuses that snapshot for the context cache key and decorated context build. On `/our-process/`, active loop-context resolve calls dropped from 1330 to 884 while marker parity held. On `/vertical/dentists/`, active loop-context resolve calls were 529 with marker parity held. The remaining large max timing in those probes appears as a single shared Bricks/ACF outlier across classification spans rather than repeated verification scans.
 - The readonly derived-query follow-up splits the remaining cold branch into measurable profiler spans and adds a direct option-hint fast path before scanning every ACF option field. Direct hinted option fields must resolve as `relationship` or `post_object` and the resolved field name must match the hint; grouped/nested hints that need ancestry metadata still fall back to the existing full candidate scan. On `/vertical/dentists/`, marker parity held at 264 markers / 261 descriptors / 15 query markers while `resolver.derived_query.readonly_branch` dropped from about 176 ms to about 2.3 ms, `resolver.derived_query.option_fallback_match` dropped from about 176 ms to about 2.1 ms, and `resolver.acf_field_objects_read{object:option}` disappeared from the profile.
 - The frontend timing follow-up is local-only observability. It does not send metrics to WordPress yet, but it gives browser QA a concrete timing surface for initial overlay boot, cold panel open, warm panel open, descriptor prefetch, and save latency.
 - A more aggressive token-present skip was rejected because it reduced `/our-process/` marker count from 333 to 329, proving repeated-token/occurrence handling still needs the existing repair path.
@@ -410,8 +412,11 @@ Recommended caches:
 Current implementation note:
 
 - `LoopContextResolver` now caches decorated loop contexts by current Bricks loop state and clears that cache when remembered native ACF query object types change.
+- `LoopContextResolver` now builds one sanitized Bricks loop runtime snapshot per active query id for each resolve call and reuses it for both the cache key and decorated context build, avoiding duplicate Bricks getter calls without caching owner state across loop rows.
 - `NativeAcfQueryResolver` now caches native ACF query field definitions and resolved query metadata by selector/object id.
 - `ResolverRegistry` now caches ACF field objects, derived Query Editor relationship/post_object candidate lists, candidate source values, and repeated post-type lookups for the current request.
+- `ElementInstrumentationService` now indexes request descriptors by Bricks element UID so render verification only resolves the current loop signature after the element is known to have matching descriptors.
+- `ElementInstrumentationService::finalizeRenderedData()` now uses bounded opening-tag window scans for cached repair fallback instead of a full-content regex, and reuses per-pass opening-tag/token lookups while clearing those caches whenever HTML mutation shifts offsets.
 - `EditableRegistry` now stores session descriptors in a compressed descriptor blob when zlib is available, leaves `public_map` directly readable for initial frontend boot, and throttles transient TTL refresh writes.
 
 Guardrails:
@@ -492,6 +497,8 @@ Current implementation note:
 - `api-client.js` exposes `touchSession()` and `getDescriptors()`.
 - `overlay-app.js` now uses touch-only refreshes for keepalive, focus/visibility return, and stale pre-action checks when a session is already present.
 - Viewport prefetch now dispatches up to four tokens per batch request, while explicit hover/open descriptor loads still use the existing single-token path and reuse any matching in-flight batch promise.
+- Authenticated local endpoint timing on `/our-process/` showed the full public-map session response at about 390.9 KB, the `touch` response at 92 bytes, a 4-token descriptor batch at about 30.2 KB, and one single descriptor at about 8.1 KB. Browser network-panel confirmation of actual prefetch request counts remains pending.
+- Authenticated in-app browser DOM QA confirmed `https://dbvc-codexchanges.local/our-process/` loaded with Visual Editor active, a session bootstrap present, and rendered markers. The current browser automation sandbox still does not expose network capture or Resource Timing, so true viewport-prefetch request counts remain a manual DevTools/browser-network QA item rather than a claimed automated measurement.
 
 ### Phase 3. Browser marker map and badge work reduction
 
@@ -509,6 +516,7 @@ Recommended frontend changes:
 - Cache loop comment anchors by query element id.
 - Cache query-collection badge grouping until marker set changes.
 - Throttle query-collection badge remounts with one animation frame plus a minimum timer.
+- Keep the shared edit badge visible for a short hover-leave grace period, currently 500ms, so users can move from large rounded images/cards to the badge without it disappearing before click.
 - Add a `ResizeObserver` for badge targets if live testing shows scroll/resize reflow is still noisy.
 - Add field-index virtualization only after row count proves it is needed.
 
@@ -972,6 +980,7 @@ Validation:
 
 - Disabled-by-default server profiling is implemented, including final render-data repair substep timings for anchor checks, exact existing-marker skips, cached injection, missing-media fallback, marker-token checks, gallery duplicate cleanup, opening-tag regex scans, and cached offset shifting.
 - Request-local resolver/loop/query memoization and compressed descriptor session storage are implemented.
+- ACF field-context resolution now has request-local caches for Bricks ACF provider tags, parsed dynamic expressions, exact `get_field_object()` lookups, ACF field/group definitions, options-page maps, owner entity mapping, and nested container row/field reads. Field-object lookups intentionally preserve raw selectors because grouped ACF selectors can be mixed-case.
 - Public session maps are compacted before persistence, and session persistence profiling now exposes the cost split between map export, descriptor compression, and the transient write.
 - Phase 2 REST round-trip reduction is started: a minimal touch endpoint avoids re-downloading the public marker map for idle/focus/pre-action session refresh, and a capped batch descriptor endpoint lets viewport prefetch hydrate nearby markers in small groups.
 - Direct option-field hints avoid the cold all-option-field scan in the narrow derived Query Editor option-fallback branch.
@@ -980,17 +989,44 @@ Validation:
 
 Latest read-only probe checkpoints:
 
-- `php /private/tmp/dbvc_ve_perf_probe.php 86`: 8 markers / 8 descriptors, final repair under 1 ms, 9.3 KB session payload, 4.5 KB public map, and 4.3 KB descriptor blob.
-- `php /private/tmp/dbvc_ve_perf_probe.php 24732`: 333 markers / 366 descriptors / 7 query-collection markers, full final repair about 207 ms, 399.8 KB session payload, 241.7 KB public map, 155.0 KB descriptor blob, and `set_transient` about 30 ms on the latest run.
-- `php /private/tmp/dbvc_ve_perf_probe.php 23690`: 264 markers / 261 descriptors / 15 query-collection markers, full final repair about 56 ms, 374.1 KB session payload, 233.9 KB public map, 137.7 KB descriptor blob, and `set_transient` about 46 ms.
+- `php /private/tmp/dbvc_ve_perf_probe.php 86`: 8 markers / 8 descriptors, final repair about 0.3 ms, 9.3 KB session payload, 4.5 KB public map, and 4.3 KB descriptor blob.
+- `php /private/tmp/dbvc_ve_perf_probe.php 24732`: 333 markers / 366 descriptors / 7 query-collection markers, full final repair about 65.4 ms, 399.5 KB session payload, 241.7 KB public map, 154.8 KB descriptor blob, and `set_transient` about 32 ms on the latest run.
+- `php /private/tmp/dbvc_ve_perf_probe.php 23690`: 264 markers / 261 descriptors / 15 query-collection markers, full final repair about 31.1 ms, 374.3 KB session payload, 233.9 KB public map, 137.7 KB descriptor blob, and `set_transient` about 36.7 ms.
 
 Remaining measured server-side costs:
 
-- Session persistence still varies around 70-90 ms on marker-heavy pages after public-map compaction. The transient write is now the largest measured substep at roughly 30-50 ms, with public-map export and descriptor compression making up most of the remaining cost.
+- Session persistence still varies around 79-85 ms on marker-heavy pages after public-map compaction. The transient write is the largest measured substep in many runs, but local values still vary from roughly 30-50 ms, with public-map export and descriptor compression making up most of the remaining cost.
 - Descriptor payload hydration remains roughly 40-60 ms when all descriptors are hydrated in one probe; user-facing cost is lower when lazy hydration and bounded viewport prefetch avoid full-page hydration.
-- Active loop-context/instrumentation work remains visible on marker-heavy pages. On `/our-process/`, active loop context is still roughly 90-110 ms and final render repair is still roughly 207-218 ms, so these should be targeted before adding persistent inventory.
-- The touch and batch descriptor endpoints still need authenticated browser timing confirmation to verify lower keepalive payloads and fewer viewport-prefetch network requests.
+- Active loop-context and ACF instrumentation work remain visible on marker-heavy pages. The latest heavy probes show active loop context around 109-142 ms and ACF context around 111-159 ms, but those totals include one noisy local outlier of about 70-106 ms. Final render repair is materially lower than the original baseline, now about 65 ms on `/our-process/` and 31 ms on `/vertical/dentists/`.
+- The touch and batch descriptor endpoints still need manual authenticated browser timing confirmation to verify lower keepalive payloads and fewer viewport-prefetch network requests in DevTools.
 - Browser-authenticated frontend timing confirmation remains pending because the in-app browser smoke did not load an authenticated Visual Editor session.
+
+## Manual DevTools Network QA
+
+Run this from a browser where you are logged into WordPress and the Visual Editor is active:
+
+1. Open `https://dbvc-codexchanges.local/our-process/`.
+2. Open DevTools -> Network, enable `Fetch/XHR`, and filter for `visual-editor`.
+3. Reload the page. Expect one initial session/public-map request. This can be a few hundred KB on marker-heavy pages.
+4. Wait for the keepalive interval or switch away/back to the tab. Expect `POST .../session/{id}/touch` responses around 100 bytes, not another full session/public-map download.
+5. Hover or open a visible field. If it was not prefetched yet, one descriptor request is acceptable.
+6. Scroll through a marker-heavy section. Viewport warmup should use `POST .../descriptors` batch requests with a small `tokens` array, not a long stream of one-token descriptor GETs.
+7. Confirm no Visual Editor request returns `401`, `403`, or `404`.
+8. In the Console, optional frontend timing check:
+
+```js
+performance.getEntriesByType('measure')
+  .filter((entry) => entry.name.startsWith('dbvc.ve.'))
+  .map((entry) => [entry.name, Math.round(entry.duration)])
+```
+
+Record:
+
+- Initial session/public-map response size.
+- `touch` response size.
+- Number of descriptor batch requests after scrolling one viewport.
+- Whether an explicit panel open reused a prefetched descriptor or fired a new single descriptor request.
+- Any failed Visual Editor REST requests.
 
 ## Success Targets
 

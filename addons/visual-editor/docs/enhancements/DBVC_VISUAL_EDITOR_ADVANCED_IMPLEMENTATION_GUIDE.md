@@ -14,11 +14,11 @@ This phase is specifically about:
 ## Current Reality
 
 Today the addon only marks narrow, render-verifiable cases:
-- exact single-tag text-like bindings
+- exact single-tag text-like bindings and one supported embedded dynamic tag inside a text-like setting
 - exact single-tag link URL bindings
 - direct safe loop-owned field editing for concrete queried post, term, and user owners
 
-If a repeater, flexible layout, relationship collection, or complex query-loop node is not getting `data-dbvc-ve`, that is expected under the current implementation.
+If a repeater, flexible layout, relationship collection, multi-token text setting, or complex query-loop node is not getting `data-dbvc-ve`, that is expected under the current implementation.
 
 For the recent native ACF loop hardening patches and the code-level consolidation map that should turn them into true universal handling, see [../knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md](../knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md).
 
@@ -308,6 +308,175 @@ Current status:
 - flexible text-like, WYSIWYG, choice, link, and image descendants are now writable through the flexible contract layer for current owners, loop-owned related owners, and shared term/user/option owners
 - nested ACF group ancestry is now preserved through descriptor metadata, row traversal, and live sync identity so grouped descendants can be resumed from a stable contract baseline
 - ordered gallery replacement is now enabled for direct Bricks gallery collections, including stable repeater and flexible row descendants, and the same safe flexible field set is now widened across shared post/term/user/option owners through the explicit `shared_flexible_layout` contract
+
+### Phase B2: composite mixed dynamic text fields
+
+Problem:
+- Bricks text-like elements often combine multiple dynamic fields with static labels, separators, line breaks, and inline HTML.
+- Example:
+
+```json
+{
+  "id": "ullocp",
+  "label": "Location Text",
+  "name": "text-basic",
+  "settings": {
+    "text": "{acf_listing_location_label}<br>{acf_listing_address}<br>{acf_listing_city}, {acf_listing_region} {acf_listing_postal_code}"
+  }
+}
+```
+
+- The rendered element is one visible text block, but the editable sources are five separate ACF fields.
+- Treating the whole rendered string as one editable value would require brittle string parsing on save and could write to the wrong source when values, separators, or formatting change.
+
+Goal:
+- surface one Visual Editor marker on the rendered Bricks element.
+- open one panel that edits multiple proven child fields at once.
+- keep each child field tied to its own resolver, owner, field path, mutation contract, acknowledgement state, and save result.
+- reconstruct the visible text from the original Bricks template only after the child saves succeed.
+
+Source shapes for the first slice:
+- Bricks text-like settings whose saved value contains two or more dynamic tags plus optional static text/HTML.
+- Supported first-pass element/settings:
+  - `text-basic.settings.text`
+  - `heading.settings.text`
+  - button/link label text where the label is a text projection, not the URL contract
+  - other text-like Bricks controls only after they already use the same direct text instrumentation path
+- Supported dynamic tags:
+  - ACF scalar/text-like fields that the existing resolver can already classify and save as a normal single-field descriptor
+  - current-owner, related-owner, shared-owner, repeater-row, flexible-layout, and grouped descendants only when each child already has a proven existing save contract
+- Supported static template pieces:
+  - plain text
+  - whitespace
+  - punctuation
+  - `<br>`
+  - simple inline wrappers such as `<strong>`, `<em>`, `<span>`, and similar markup that can be preserved as static template text
+
+Deferred source shapes:
+- arbitrary user editing of the whole rendered string with automatic reverse-splitting into fields
+- mixed dynamic text in attributes, CSS, custom classes, data attributes, query settings, or URL controls
+- relationship/post_object/taxonomy/gallery/image fields embedded as text unless a dedicated scalar display/save projection is proven
+- unknown providers such as `{echo:...}`, shortcodes, third-party dynamic tags, or Bricks computed tags inside a writable composite save
+- composite text whose rendered output cannot be verified against the template in field order
+- composite fields that require creating/removing repeater rows, flexible layouts, or relationship items
+- multi-owner `Save All` without explicit grouped acknowledgement and rollback behavior
+
+Recommended descriptor model:
+1. Register a parent composite descriptor for the rendered element.
+   - `render.context = composite_text`
+   - `input = composite_text`
+   - parent descriptor is a UI/container descriptor, not a direct mutation target
+   - parent marker owns the one DOM badge and panel entry point
+2. Parse the Bricks setting into ordered template segments.
+   - literal segments preserve static text and static inline HTML
+   - dynamic segments preserve the raw expression, occurrence index, setting key, and normalized render order
+   - repeated references to the same field should share one child editor while all occurrences update in preview
+3. Create or reference one child descriptor per unique editable source.
+   - each child descriptor keeps the existing resolver classification, owner entity, field key/name, group/repeater/flexible path, mutation contract, and current display value
+   - children should carry `composite_parent_token`, `composite_occurrences`, and `text_projection = composite_child`
+   - unsupported child tags stay visible in the preview/source summary as locked segments and must not receive editable controls
+4. Keep bootstrap light.
+   - the public marker map should expose only the parent composite marker summary
+   - full child descriptors should hydrate when the panel opens, reusing existing descriptor cache and in-flight request reuse
+   - do not add one DOM marker per child field inside the same text node
+
+Resolver and instrumentation changes:
+1. Extend `DynamicDataInspector` with a template parser separate from `extractSingleEmbeddedExpression()`.
+   - keep the existing single embedded path unchanged for the simple one-field case
+   - return a composite inspection only when two or more supported dynamic expressions are present
+   - reject or lock unsupported expressions instead of pretending they are editable
+2. Extend `ElementInstrumentationService` to register a composite parent descriptor.
+   - run each dynamic segment through the same classification path used by single-field text descriptors
+   - preserve loop context, native ACF loop ancestry, grouped selectors, field keys, and source/sync groups per child
+   - parent source group should be a composite hash of element UID, setting key, template hash, loop signature, and child source groups
+3. Add render verification for composites.
+   - project current child display values back through the saved template
+   - compare normalized rendered text/HTML to the actual Bricks fragment in the same order
+   - allow empty child values when the template and owner/path are proven, but do not make the composite writable if ordering or static separators cannot be verified
+   - if verification fails, surface inspect-only with clear source evidence rather than editable controls
+
+Panel and UI behavior:
+1. Open one panel for the composite parent.
+   - title from the Bricks element label, for example `Location Text`
+   - show a compact preview of the reconstructed text
+   - render one control per editable child field
+   - group controls by owner when multiple owners are present
+   - show locked/inspect-only rows for unsupported tags so the user understands why part of the text cannot be edited
+2. Field controls should use existing input modes.
+   - text, textarea, number, select, WYSIWYG, link, image, and collection controls should only appear when that child descriptor already supports the same input as a standalone marker
+   - first implementation should favor scalar text-like fields and defer heavier structured controls unless the panel layout can handle them cleanly
+3. Save affordances:
+   - `Save All` is the primary action when all editable child fields pass preflight
+   - optional per-field save can be added later, but should not be the first path if it creates confusing partial page states
+   - shared/related/loop-owned children must reuse the same acknowledgement copy and warning icons already used by standalone fields
+   - if children span different owners or scopes, the panel should require explicit acknowledgement per non-current owner group before saving
+
+Save and rollback design:
+1. Do not reverse-parse the rendered string.
+   - save payload should send child token/value pairs, never the full rendered composite text as the source of truth
+2. Add a batch preflight before any write.
+   - validate session token, capabilities, nonce, child descriptor tokens, mutation contracts, owner/path freshness, and stale source state for every child
+   - reject the batch before writing if any editable child fails validation
+3. Use a single Visual Editor change set for a successful `Save All`.
+   - one change set for the composite save
+   - one change item per child field mutation
+   - store the parent composite token and child token list in journal context
+4. Rollback requirements:
+   - preferred implementation: use the existing journal recorder and rollback values so a later child failure can restore earlier child writes
+   - if rollback is not ready for a child contract, that child should be excluded from `Save All` and remain standalone/inspect-only
+   - never leave the UI claiming the composite saved when only some child writes succeeded
+5. Post-save DOM patching:
+   - after all child saves succeed, reconstruct the element's inner content from the saved template and returned child display values
+   - patch only the marked element for no-reload saves
+   - fall back to `Save and Reload` when the composite contains WYSIWYG/block HTML, unsupported dynamic providers, conditionally rendered segments, or any child whose display projection cannot be safely rebuilt client-side
+
+Similar scenarios to include in QA:
+- address blocks with line breaks and punctuation
+- price/rent strings such as `$ {acf_price} / month` or `{acf_price} {acf_price_period}`
+- contact rows such as `{acf_phone} | {acf_email}`
+- icon/list rows where a static label wraps one field and a second field follows
+- repeated same-field references such as `{acf_city}, {acf_region} - serving {acf_city}`
+- mixed empty/non-empty child values that leave static punctuation or blank lines
+- composite text inside related post cards where all child owners are the loop-owned post
+- composite text inside repeater/flexible rows where every child shares the same row/layout path
+- composites that mix current-owner and related/shared fields; these should group by owner and require acknowledgement before any batch save
+- one unsupported dynamic tag plus several supported ACF tags; first slice should inspect or partially lock rather than silently ignore the unsupported segment
+- nested group selectors with mixed casing, preserving raw selectors just like `benefits_section_benefitsContent_related_items`
+
+Validation targets:
+- `frameworkflo-live` listing template example:
+  - `{acf_listing_location_label}<br>{acf_listing_address}<br>{acf_listing_city}, {acf_listing_region} {acf_listing_postal_code}`
+  - all five child ACF fields should resolve as current-owner children on listing post `107582`
+- same-site single embedded regression fixtures:
+  - `Bathrooms: {acf_listing_property_details_bathrooms}` should remain on the existing single embedded path, not be forced into composite mode
+  - `<strong>Property type</strong><br>{acf_listing_property_details_property_type}` should remain supported as one embedded child
+- `dbvc-codexchanges.local` text-heavy pages:
+  - current-post scalar ACF text composites
+  - related-post query-loop card composites
+  - repeater/flexible row composites where stable row/layout metadata already exists
+
+Implementation order:
+1. Add parser-only tests for composite template segmentation.
+2. Register inspect-only composite parent descriptors with child source summaries, no save.
+3. Add panel rendering for composite preview and locked/editable child rows.
+4. Enable editable children only when every child can reuse an existing scalar save contract and the batch preflight passes.
+5. Add the batch save endpoint or service wrapper, backed by one journal change set and per-child change items.
+6. Add no-reload DOM patching for safe scalar composites; keep `Save and Reload` available and preferred for complex HTML projections.
+7. Browser QA marker surfacing, panel hydration, `Save All`, partial-failure handling, no-reload patch, reload-after-save, and session-refresh behavior.
+
+Current implementation state:
+- The first inspect-only slice is implemented for Bricks text-like settings with two or more supported dynamic expressions.
+- `DynamicDataInspector` now preserves ordered literal/dynamic template segments and child ACF candidates while leaving existing pure and single-embedded tag paths unchanged.
+- Composite parent descriptors classify as readonly `native_readonly` / `composite_text`; the parent marker owns the one DOM badge and panel entry point.
+- Child candidates are classified through the existing resolver path and exposed in the descriptor payload as source/value evidence only. Child fields may be individually save-capable elsewhere, but this composite panel does not write them yet.
+- The panel renders reconstructed preview text, the original Bricks template, and one source row per child descriptor. Save controls are intentionally absent for this input mode.
+- Batch save, rollback/journal grouping, owner-group acknowledgement, no-reload composite DOM patching, unsupported-tag partial locking, and browser save QA remain follow-up work.
+
+Docs to update during implementation:
+- `CHANGELOG.md`
+- `docs/qa/TEST_LOG.md`
+- `docs/qa/QA_CHECKLIST.md`
+- this guide's current-state notes once each sub-slice moves from planned to implemented
 
 ### Planned tranche: missing or conditional Bricks image/media/gallery markers
 

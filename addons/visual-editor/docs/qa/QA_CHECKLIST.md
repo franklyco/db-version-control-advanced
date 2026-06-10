@@ -17,6 +17,7 @@
 - [ ] Repeater row markers stay distinct per row and do not collide across nested related-post loops
 - [ ] Direct flexible descendants with stable row + layout identity surface honest markers and path metadata
 - [ ] Single dynamic tags wrapped by one empty HTML node still instrument when otherwise supported
+- [ ] Multi-tag Bricks text settings surface one readonly composite marker with child source summaries, not one marker per child token
 - [ ] Generic unsupported Bricks loop types do not receive false editable markers
 - [ ] `universal_cta_options` Site Settings link-group fields stay read-only in Visual Editor
 
@@ -52,3 +53,4 @@
 - [ ] Repeater-backed fields show parent repeater and row metadata in the modal source summary
 - [ ] Flexible-backed fields show parent flexible field, row, and layout metadata in the modal source summary
 - [ ] Shared options-page fields keep shared warnings distinct from related-post loop warnings
+- [ ] Composite text panels show reconstructed preview, original template, child source rows, and no save controls until batch save is implemented
