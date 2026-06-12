@@ -19,6 +19,10 @@ final class DBVC_Bricks_Command_Queue
     public const DEFAULT_RETRY_BASE_SECONDS = 60;
     public const MAX_CLIENT_NONCES = 1000;
     public const RECENT_PULL_WINDOW_SECONDS = 900;
+    private const CLIENT_PULL_LOCK_TRANSIENT = 'dbvc_bricks_client_pull_tick_lock';
+    private const CLIENT_PULL_LAST_RUN_OPTION = 'dbvc_bricks_client_pull_last_run_at';
+    private const CLIENT_PULL_LOCK_SECONDS = 120;
+    private const CLIENT_PULL_MIN_INTERVAL_SECONDS = 300;
 
     /**
      * @return array<string, array<string, mixed>>
@@ -1167,6 +1171,10 @@ final class DBVC_Bricks_Command_Queue
      */
     public static function run_client_pull_tick($context = 'cron')
     {
+        $context = sanitize_key((string) $context);
+        if (self::is_page_load_pull_context($context)) {
+            return ['ok' => false, 'reason' => 'page_load_context_disabled', 'context' => $context];
+        }
         if (! class_exists('DBVC_Bricks_Addon')) {
             return ['ok' => false, 'reason' => 'runtime_missing'];
         }
@@ -1183,94 +1191,197 @@ final class DBVC_Bricks_Command_Queue
         if ($site_uid === '') {
             $site_uid = 'site_' . get_current_blog_id();
         }
-        $pull = self::pull_remote_envelopes($site_uid, 10);
-        if (is_wp_error($pull)) {
-            self::append_diagnostic('command_client_pull_failed', [
-                'site_uid' => $site_uid,
-                'context' => sanitize_key((string) $context),
-                'error_code' => (string) $pull->get_error_code(),
-                'message' => (string) $pull->get_error_message(),
-            ]);
-            return ['ok' => false, 'reason' => 'pull_failed', 'error_code' => (string) $pull->get_error_code()];
+
+        $throttle = self::get_client_pull_throttle_result($context);
+        if (! empty($throttle['throttled'])) {
+            return [
+                'ok' => false,
+                'reason' => 'pull_throttled',
+                'next_allowed_at' => (string) ($throttle['next_allowed_at'] ?? ''),
+            ];
         }
-        $items = isset($pull['items']) && is_array($pull['items']) ? $pull['items'] : [];
-        if (empty($items)) {
-            return ['ok' => true, 'site_uid' => $site_uid, 'processed' => 0];
+        if (! self::acquire_client_pull_lock($context)) {
+            return ['ok' => false, 'reason' => 'pull_locked'];
         }
 
-        $processed = 0;
-        $applied = 0;
-        $failed = 0;
-        foreach ($items as $item) {
-            if (! is_array($item)) {
-                continue;
+        try {
+            self::mark_client_pull_attempt();
+
+            $pull = self::pull_remote_envelopes($site_uid, 10);
+            if (is_wp_error($pull)) {
+                self::append_diagnostic('command_client_pull_failed', [
+                    'site_uid' => $site_uid,
+                    'context' => $context,
+                    'error_code' => (string) $pull->get_error_code(),
+                    'message' => (string) $pull->get_error_message(),
+                ]);
+                return ['ok' => false, 'reason' => 'pull_failed', 'error_code' => (string) $pull->get_error_code()];
             }
-            $processed++;
-            $envelope_id = sanitize_key((string) ($item['envelope_id'] ?? ''));
-            if ($envelope_id === '') {
-                continue;
-            }
-            if (self::is_envelope_processed($envelope_id)) {
-                self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_APPLIED, ['receipt_id' => 'replay_skip']);
-                continue;
+            $items = isset($pull['items']) && is_array($pull['items']) ? $pull['items'] : [];
+            if (empty($items)) {
+                return ['ok' => true, 'site_uid' => $site_uid, 'processed' => 0];
             }
 
-            $verification = self::verify_client_envelope($item, $site_uid);
-            if (is_wp_error($verification)) {
-                self::append_diagnostic('command_client_envelope_failed', [
+            $processed = 0;
+            $applied = 0;
+            $failed = 0;
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $processed++;
+                $envelope_id = sanitize_key((string) ($item['envelope_id'] ?? ''));
+                if ($envelope_id === '') {
+                    continue;
+                }
+                if (self::is_envelope_processed($envelope_id)) {
+                    self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_APPLIED, ['receipt_id' => 'replay_skip']);
+                    continue;
+                }
+
+                $verification = self::verify_client_envelope($item, $site_uid);
+                if (is_wp_error($verification)) {
+                    self::append_diagnostic('command_client_envelope_failed', [
+                        'site_uid' => $site_uid,
+                        'envelope_id' => $envelope_id,
+                        'error_code' => (string) $verification->get_error_code(),
+                        'error_message' => (string) $verification->get_error_message(),
+                    ]);
+                    self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_FAILED, [
+                        'error_code' => (string) $verification->get_error_code(),
+                        'error_message' => (string) $verification->get_error_message(),
+                    ]);
+                    $failed++;
+                    continue;
+                }
+
+                $run = self::execute_client_envelope($item, $site_uid);
+                if (is_wp_error($run)) {
+                    self::append_diagnostic('command_client_envelope_failed', [
+                        'site_uid' => $site_uid,
+                        'envelope_id' => $envelope_id,
+                        'error_code' => (string) $run->get_error_code(),
+                        'error_message' => (string) $run->get_error_message(),
+                    ]);
+                    self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_FAILED, [
+                        'error_code' => (string) $run->get_error_code(),
+                        'error_message' => (string) $run->get_error_message(),
+                    ]);
+                    $failed++;
+                    continue;
+                }
+
+                self::mark_envelope_processed($envelope_id);
+                self::append_diagnostic('command_client_envelope_applied', [
                     'site_uid' => $site_uid,
                     'envelope_id' => $envelope_id,
-                    'error_code' => (string) $verification->get_error_code(),
-                    'error_message' => (string) $verification->get_error_message(),
+                    'receipt_id' => (string) ($run['receipt_id'] ?? ''),
                 ]);
-                self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_FAILED, [
-                    'error_code' => (string) $verification->get_error_code(),
-                    'error_message' => (string) $verification->get_error_message(),
-                ]);
-                $failed++;
-                continue;
+                self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_APPLIED, $run);
+                $applied++;
             }
 
-            $run = self::execute_client_envelope($item, $site_uid);
-            if (is_wp_error($run)) {
-                self::append_diagnostic('command_client_envelope_failed', [
-                    'site_uid' => $site_uid,
-                    'envelope_id' => $envelope_id,
-                    'error_code' => (string) $run->get_error_code(),
-                    'error_message' => (string) $run->get_error_message(),
-                ]);
-                self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_FAILED, [
-                    'error_code' => (string) $run->get_error_code(),
-                    'error_message' => (string) $run->get_error_message(),
-                ]);
-                $failed++;
-                continue;
-            }
-
-            self::mark_envelope_processed($envelope_id);
-            self::append_diagnostic('command_client_envelope_applied', [
+            self::append_diagnostic('command_client_pull_processed', [
                 'site_uid' => $site_uid,
-                'envelope_id' => $envelope_id,
-                'receipt_id' => (string) ($run['receipt_id'] ?? ''),
+                'context' => $context,
+                'processed' => $processed,
+                'applied' => $applied,
+                'failed' => $failed,
             ]);
-            self::ack_remote_envelope($site_uid, $envelope_id, self::STATE_APPLIED, $run);
-            $applied++;
+
+            return [
+                'ok' => true,
+                'site_uid' => $site_uid,
+                'processed' => $processed,
+                'applied' => $applied,
+                'failed' => $failed,
+            ];
+        } finally {
+            self::release_client_pull_lock();
+        }
+    }
+
+    /**
+     * @param string $context
+     * @return bool
+     */
+    private static function is_page_load_pull_context($context)
+    {
+        $context = sanitize_key((string) $context);
+        if (! in_array($context, ['bootstrap', 'runtime', 'page_load', 'frontend', 'template_redirect', 'wp_loaded'], true)) {
+            return false;
         }
 
-        self::append_diagnostic('command_client_pull_processed', [
-            'site_uid' => $site_uid,
-            'context' => sanitize_key((string) $context),
-            'processed' => $processed,
-            'applied' => $applied,
-            'failed' => $failed,
-        ]);
+        return ! (bool) apply_filters('dbvc_bricks_command_pull_allow_page_load_context', false, $context);
+    }
+
+    /**
+     * @param string $context
+     * @return array<string, mixed>
+     */
+    private static function get_client_pull_throttle_result($context)
+    {
+        $context = sanitize_key((string) $context);
+        if (in_array($context, ['configure_save', 'manual', 'manual_reset_rerun', 'phpunit'], true)) {
+            return ['throttled' => false];
+        }
+
+        $interval = (int) apply_filters('dbvc_bricks_command_pull_min_interval_seconds', self::CLIENT_PULL_MIN_INTERVAL_SECONDS, $context);
+        if ($interval <= 0) {
+            return ['throttled' => false];
+        }
+
+        $last_run_at = (string) get_option(self::CLIENT_PULL_LAST_RUN_OPTION, '');
+        $last_run_ts = $last_run_at !== '' ? strtotime($last_run_at) : false;
+        if ($last_run_ts === false || $last_run_ts <= 0) {
+            return ['throttled' => false];
+        }
+
+        $next_allowed_ts = $last_run_ts + $interval;
+        if ($next_allowed_ts <= time()) {
+            return ['throttled' => false];
+        }
+
         return [
-            'ok' => true,
-            'site_uid' => $site_uid,
-            'processed' => $processed,
-            'applied' => $applied,
-            'failed' => $failed,
+            'throttled' => true,
+            'next_allowed_at' => gmdate('c', $next_allowed_ts),
         ];
+    }
+
+    /**
+     * @param string $context
+     * @return bool
+     */
+    private static function acquire_client_pull_lock($context)
+    {
+        if ((string) get_transient(self::CLIENT_PULL_LOCK_TRANSIENT) !== '') {
+            return false;
+        }
+
+        $lock_seconds = max(15, (int) apply_filters('dbvc_bricks_command_pull_lock_seconds', self::CLIENT_PULL_LOCK_SECONDS, sanitize_key((string) $context)));
+        set_transient(self::CLIENT_PULL_LOCK_TRANSIENT, sanitize_key((string) $context) . '|' . gmdate('c'), $lock_seconds);
+        return true;
+    }
+
+    /**
+     * @return void
+     */
+    private static function release_client_pull_lock()
+    {
+        delete_transient(self::CLIENT_PULL_LOCK_TRANSIENT);
+    }
+
+    /**
+     * @return void
+     */
+    private static function mark_client_pull_attempt()
+    {
+        if (get_option(self::CLIENT_PULL_LAST_RUN_OPTION, false) === false) {
+            add_option(self::CLIENT_PULL_LAST_RUN_OPTION, gmdate('c'), '', false);
+            return;
+        }
+
+        update_option(self::CLIENT_PULL_LAST_RUN_OPTION, gmdate('c'), false);
     }
 
     /**

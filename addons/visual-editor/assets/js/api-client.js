@@ -35,6 +35,44 @@
       });
     },
 
+    getDescriptors(sessionId, tokens) {
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/descriptors`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce
+        },
+        body: JSON.stringify({ tokens: Array.isArray(tokens) ? tokens : [] })
+      }).then(async (response) => {
+        const data = await response.json().catch(function () {
+          return null;
+        });
+
+        if (response.ok) {
+          return data;
+        }
+
+        throw new Error((data && data.message) || `Visual Editor descriptor batch request failed (${response.status}).`);
+      });
+    },
+
+    touchSession(sessionId) {
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/touch`, {
+        method: 'POST',
+        headers: { 'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce }
+      }).then(async (response) => {
+        const data = await response.json().catch(function () {
+          return null;
+        });
+
+        if (response.ok) {
+          return data;
+        }
+
+        throw new Error((data && data.message) || `Visual Editor session touch failed (${response.status}).`);
+      });
+    },
+
     searchReferences(sessionId, token, search) {
       const params = new URLSearchParams();
 

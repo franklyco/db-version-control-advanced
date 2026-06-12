@@ -20,6 +20,15 @@ Brief usage notes for the DBVC Entity Editor.
   - Supports `Create only`, `Create or Update Matched`, and `Stage JSON Only`.
   - Can auto-open the resulting sync file in the normal Entity Editor modal after success.
 
+- `Import as New`
+  - Appears on unmatched post/CPT and term rows that already exist as JSON files in the sync folder.
+  - Opens a preview modal before any database write.
+  - Creates selected live WordPress entities through the existing DBVC post or term importer when preflight passes.
+  - Supports up to 25 selected files per request.
+  - Blocks live matches, creation-disabled settings, unsupported payloads, and older duplicate sync files.
+  - Renames the imported source JSON to the final canonical filename after the new local ID is known.
+  - Keeps the result visible after commit and refreshes the Entity Editor index.
+
 - `Save JSON`
   - Validates JSON.
   - Creates backup.
@@ -51,9 +60,11 @@ Brief usage notes for the DBVC Entity Editor.
 
 ## Known limitations
 
+- `Import as New` supports post/CPT and taxonomy term JSON only; media, menu, and option JSON are intentionally excluded.
 - Full replace confirmation modal does not currently include preflight delete-count preview; counts are returned after operation.
 - CodeMirror JSON editor/linting is not yet integrated; editor currently uses textarea.
 
 ## Related Docs
 
 - `docs/import-identity-matching.md`
+- `docs/ENTITY_EDITOR_SYNC_FILE_IMPORT_IMPLEMENTATION_GUIDE.md`

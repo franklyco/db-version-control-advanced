@@ -47,6 +47,10 @@ final class NativeReadonlyResolver implements ResolverInterface
             return $this->getArchiveTitle($descriptor);
         }
 
+        if ($source_type === 'composite_text') {
+            return isset($descriptor->source['template']) ? (string) $descriptor->source['template'] : '';
+        }
+
         if (($descriptor->render['context'] ?? '') === 'query_collection'
             && in_array($source_type, ['acf_collection_field', 'derived_query_collection'], true)) {
             return $this->getQueryCollectionValue($descriptor);

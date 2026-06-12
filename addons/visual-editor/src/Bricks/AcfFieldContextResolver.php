@@ -2,6 +2,8 @@
 
 namespace Dbvc\VisualEditor\Bricks;
 
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
+
 final class AcfFieldContextResolver
 {
     /**
@@ -9,9 +11,75 @@ final class AcfFieldContextResolver
      */
     private $loops;
 
-    public function __construct(?LoopContextResolver $loops = null)
+    /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
+    /**
+     * @var array<string, object|null>
+     */
+    private $provider_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $provider_tags_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $parsed_expression_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $tag_lookup_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>|false>
+     */
+    private $field_object_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>|false>
+     */
+    private $acf_field_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>|false>
+     */
+    private $acf_field_group_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $options_object_context_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>|null
+     */
+    private $acf_options_pages_cache = null;
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $entity_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private $container_field_definition_cache = [];
+
+    /**
+     * @var array<string, array<int, mixed>>
+     */
+    private $raw_container_rows_cache = [];
+
+    public function __construct(?LoopContextResolver $loops = null, ?PerformanceProfiler $profiler = null)
     {
-        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver();
+        $this->profiler = $profiler;
+        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver(null, $profiler);
     }
 
     /**
@@ -20,6 +88,26 @@ final class AcfFieldContextResolver
      * @return array<string, mixed>
      */
     public function resolve(array $candidate, array $page_context)
+    {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            $started_at = $this->profiler->startTimer();
+            $result = $this->resolveUnprofiled($candidate, $page_context);
+            $this->profiler->recordDuration('acf_context.resolve', $started_at, [
+                'ok' => empty($result['ok']) ? 'no' : 'yes',
+            ]);
+
+            return $result;
+        }
+
+        return $this->resolveUnprofiled($candidate, $page_context);
+    }
+
+    /**
+     * @param array<string, mixed> $candidate
+     * @param array<string, mixed> $page_context
+     * @return array<string, mixed>
+     */
+    private function resolveUnprofiled(array $candidate, array $page_context)
     {
         if (empty($page_context['isSupported'])) {
             return [
@@ -75,9 +163,7 @@ final class AcfFieldContextResolver
         }
 
         $field_name = isset($candidate['field_name']) ? sanitize_key((string) $candidate['field_name']) : '';
-        $field = $field_name !== '' && function_exists('get_field_object')
-            ? get_field_object($field_name, $acf_object_id, false, false)
-            : false;
+        $field = $field_name !== '' ? $this->getFieldObject($field_name, $acf_object_id) : false;
 
         if (! is_array($field)) {
             if (empty($repeater_context) && empty($flexible_context) && ! empty($tag_object['duplicate'])) {
@@ -167,28 +253,41 @@ final class AcfFieldContextResolver
      */
     private function locateTag($expression)
     {
+        $cache_key = hash('sha256', (string) $expression);
+        if (array_key_exists($cache_key, $this->tag_lookup_cache)) {
+            return $this->tag_lookup_cache[$cache_key];
+        }
+
         $provider = $this->getProvider('acf');
         if (! $provider || ! method_exists($provider, 'get_tags')) {
+            $this->tag_lookup_cache[$cache_key] = [];
+
             return [];
         }
 
         $parsed = $this->parseExpression($expression);
         $tag = isset($parsed['tag']) ? sanitize_key((string) $parsed['tag']) : '';
         if ($tag === '') {
+            $this->tag_lookup_cache[$cache_key] = [];
+
             return [];
         }
 
-        $tags = $provider->get_tags();
+        $tags = $this->getProviderTags('acf', $provider);
         if (! is_array($tags) || ! isset($tags[$tag]) || ! is_array($tags[$tag])) {
+            $this->tag_lookup_cache[$cache_key] = [];
+
             return [];
         }
 
-        return [
+        $this->tag_lookup_cache[$cache_key] = [
             'provider' => $provider,
             'tag' => $tag,
             'args' => isset($parsed['args']) && is_array($parsed['args']) ? $parsed['args'] : [],
             'tag_object' => $tags[$tag],
         ];
+
+        return $this->tag_lookup_cache[$cache_key];
     }
 
     /**
@@ -197,14 +296,48 @@ final class AcfFieldContextResolver
      */
     private function getProvider($provider_name)
     {
-        if (! class_exists('\\Bricks\\Integrations\\Dynamic_Data\\Providers')
-            || ! method_exists('\\Bricks\\Integrations\\Dynamic_Data\\Providers', 'get_registered_provider')) {
+        $provider_name = sanitize_key((string) $provider_name);
+        if ($provider_name === '') {
             return null;
         }
 
-        $provider = \Bricks\Integrations\Dynamic_Data\Providers::get_registered_provider((string) $provider_name);
+        if (array_key_exists($provider_name, $this->provider_cache)) {
+            return is_object($this->provider_cache[$provider_name]) ? $this->provider_cache[$provider_name] : null;
+        }
 
-        return is_object($provider) ? $provider : null;
+        if (! class_exists('\\Bricks\\Integrations\\Dynamic_Data\\Providers')
+            || ! method_exists('\\Bricks\\Integrations\\Dynamic_Data\\Providers', 'get_registered_provider')) {
+            $this->provider_cache[$provider_name] = null;
+
+            return null;
+        }
+
+        $provider = \Bricks\Integrations\Dynamic_Data\Providers::get_registered_provider($provider_name);
+        $this->provider_cache[$provider_name] = is_object($provider) ? $provider : null;
+
+        return is_object($this->provider_cache[$provider_name]) ? $this->provider_cache[$provider_name] : null;
+    }
+
+    /**
+     * @param string $provider_name
+     * @param object $provider
+     * @return array<string, mixed>
+     */
+    private function getProviderTags($provider_name, $provider)
+    {
+        $provider_name = sanitize_key((string) $provider_name);
+        if ($provider_name === '' || ! is_object($provider) || ! method_exists($provider, 'get_tags')) {
+            return [];
+        }
+
+        if (isset($this->provider_tags_cache[$provider_name]) && is_array($this->provider_tags_cache[$provider_name])) {
+            return $this->provider_tags_cache[$provider_name];
+        }
+
+        $tags = $provider->get_tags();
+        $this->provider_tags_cache[$provider_name] = is_array($tags) ? $tags : [];
+
+        return $this->provider_tags_cache[$provider_name];
     }
 
     /**
@@ -214,32 +347,137 @@ final class AcfFieldContextResolver
     private function parseExpression($expression)
     {
         $expression = trim((string) $expression);
+        $cache_key = hash('sha256', $expression);
+        if (isset($this->parsed_expression_cache[$cache_key]) && is_array($this->parsed_expression_cache[$cache_key])) {
+            return $this->parsed_expression_cache[$cache_key];
+        }
+
         $inner = preg_replace('/^\{|\}$/', '', $expression);
         $inner = is_string($inner) ? trim($inner) : '';
 
         if ($inner === '') {
-            return [
+            $this->parsed_expression_cache[$cache_key] = [
                 'tag' => '',
                 'args' => [],
             ];
+
+            return $this->parsed_expression_cache[$cache_key];
         }
 
         if (class_exists('\\Bricks\\Integrations\\Dynamic_Data\\Dynamic_Data_Parser')) {
             $parser = new \Bricks\Integrations\Dynamic_Data\Dynamic_Data_Parser();
             $parsed = $parser->parse($inner);
 
-            return [
+            $this->parsed_expression_cache[$cache_key] = [
                 'tag' => isset($parsed['tag']) ? (string) $parsed['tag'] : '',
                 'args' => isset($parsed['args']) && is_array($parsed['args']) ? $parsed['args'] : [],
             ];
+
+            return $this->parsed_expression_cache[$cache_key];
         }
 
         $parts = explode(':', $inner);
 
-        return [
+        $this->parsed_expression_cache[$cache_key] = [
             'tag' => isset($parts[0]) ? (string) $parts[0] : '',
             'args' => array_slice($parts, 1),
         ];
+
+        return $this->parsed_expression_cache[$cache_key];
+    }
+
+    /**
+     * @param string $identifier
+     * @param mixed  $acf_object_id
+     * @return array<string, mixed>|false
+     */
+    private function getFieldObject($identifier, $acf_object_id)
+    {
+        if (! function_exists('get_field_object')) {
+            return false;
+        }
+
+        $identifier = trim((string) $identifier);
+        if ($identifier === '') {
+            return false;
+        }
+
+        $cache_key = hash('sha256', $identifier . '|' . $this->normalizeAcfObjectIdForCache($acf_object_id));
+        if (array_key_exists($cache_key, $this->field_object_cache)) {
+            return $this->field_object_cache[$cache_key];
+        }
+
+        $field = get_field_object($identifier, $acf_object_id, false, false);
+        $this->field_object_cache[$cache_key] = is_array($field) ? $field : false;
+
+        return $this->field_object_cache[$cache_key];
+    }
+
+    /**
+     * @param string $field_key
+     * @return array<string, mixed>|false
+     */
+    private function getAcfField($field_key)
+    {
+        if (! function_exists('acf_get_field')) {
+            return false;
+        }
+
+        $field_key = sanitize_key((string) $field_key);
+        if ($field_key === '') {
+            return false;
+        }
+
+        if (array_key_exists($field_key, $this->acf_field_cache)) {
+            return $this->acf_field_cache[$field_key];
+        }
+
+        $field = acf_get_field($field_key);
+        $this->acf_field_cache[$field_key] = is_array($field) ? $field : false;
+
+        return $this->acf_field_cache[$field_key];
+    }
+
+    /**
+     * @param string $group_key
+     * @return array<string, mixed>|false
+     */
+    private function getAcfFieldGroup($group_key)
+    {
+        if (! function_exists('acf_get_field_group')) {
+            return false;
+        }
+
+        $group_key = sanitize_key((string) $group_key);
+        if ($group_key === '') {
+            return false;
+        }
+
+        if (array_key_exists($group_key, $this->acf_field_group_cache)) {
+            return $this->acf_field_group_cache[$group_key];
+        }
+
+        $group = acf_get_field_group($group_key);
+        $this->acf_field_group_cache[$group_key] = is_array($group) ? $group : false;
+
+        return $this->acf_field_group_cache[$group_key];
+    }
+
+    /**
+     * @param mixed $acf_object_id
+     * @return string
+     */
+    private function normalizeAcfObjectIdForCache($acf_object_id)
+    {
+        if (is_numeric($acf_object_id)) {
+            return (string) absint($acf_object_id);
+        }
+
+        if (is_scalar($acf_object_id) || $acf_object_id === null) {
+            return sanitize_text_field((string) $acf_object_id);
+        }
+
+        return hash('sha256', (string) wp_json_encode($acf_object_id));
     }
 
     /**
@@ -316,9 +554,14 @@ final class AcfFieldContextResolver
      */
     private function mapAcfObjectIdToEntity($acf_object_id, $page_post_id)
     {
+        $cache_key = hash('sha256', $this->normalizeAcfObjectIdForCache($acf_object_id) . '|' . (string) absint($page_post_id));
+        if (isset($this->entity_cache[$cache_key]) && is_array($this->entity_cache[$cache_key])) {
+            return $this->entity_cache[$cache_key];
+        }
+
         $options_context = $this->resolveOptionsObjectContext($acf_object_id);
         if (! empty($options_context)) {
-            return [
+            $this->entity_cache[$cache_key] = [
                 'type' => 'option',
                 'id' => 'option',
                 'subtype' => 'option',
@@ -326,20 +569,26 @@ final class AcfFieldContextResolver
                 'option_page_slug' => isset($options_context['option_page_slug']) ? sanitize_key((string) $options_context['option_page_slug']) : '',
                 'option_page_label' => isset($options_context['option_page_label']) ? sanitize_text_field((string) $options_context['option_page_label']) : '',
             ];
+
+            return $this->entity_cache[$cache_key];
         }
 
         if (is_numeric($acf_object_id)) {
             $post_id = absint($acf_object_id);
             if ($post_id <= 0) {
+                $this->entity_cache[$cache_key] = [];
+
                 return [];
             }
 
-            return [
+            $this->entity_cache[$cache_key] = [
                 'type' => 'post',
                 'id' => $post_id,
                 'subtype' => $post_id === $page_post_id ? (string) get_post_type($post_id) : (string) get_post_type($post_id),
                 'acf_object_id' => $post_id,
             ];
+
+            return $this->entity_cache[$cache_key];
         }
 
         $acf_object_id = (string) $acf_object_id;
@@ -350,23 +599,27 @@ final class AcfFieldContextResolver
             if ($term && ! is_wp_error($term) && ! empty($term->taxonomy)) {
                 $taxonomy = sanitize_key((string) $term->taxonomy);
 
-                return [
+                $this->entity_cache[$cache_key] = [
                     'type' => 'term',
                     'id' => $term_id,
                     'subtype' => $taxonomy,
                     'taxonomy' => $taxonomy,
                     'acf_object_id' => $acf_object_id,
                 ];
+
+                return $this->entity_cache[$cache_key];
             }
         }
 
         if (preg_match('/^user_(\d+)$/', $acf_object_id, $matches)) {
-            return [
+            $this->entity_cache[$cache_key] = [
                 'type' => 'user',
                 'id' => absint($matches[1]),
                 'subtype' => 'user',
                 'acf_object_id' => $acf_object_id,
             ];
+
+            return $this->entity_cache[$cache_key];
         }
 
         if (preg_match('/^([A-Za-z0-9_-]+)_(\d+)$/', $acf_object_id, $matches)) {
@@ -374,17 +627,21 @@ final class AcfFieldContextResolver
             $term_id = absint($matches[2]);
 
             if ($taxonomy !== '' && $term_id > 0 && taxonomy_exists($taxonomy)) {
-                return [
+                $this->entity_cache[$cache_key] = [
                     'type' => 'term',
                     'id' => $term_id,
                     'subtype' => $taxonomy,
                     'taxonomy' => $taxonomy,
                     'acf_object_id' => $acf_object_id,
                 ];
+
+                return $this->entity_cache[$cache_key];
             }
         }
 
-        return [];
+        $this->entity_cache[$cache_key] = [];
+
+        return $this->entity_cache[$cache_key];
     }
 
     /**
@@ -398,16 +655,25 @@ final class AcfFieldContextResolver
         }
 
         $raw_object_id = trim((string) $acf_object_id);
+        $cache_key = hash('sha256', $raw_object_id);
+        if (isset($this->options_object_context_cache[$cache_key]) && is_array($this->options_object_context_cache[$cache_key])) {
+            return $this->options_object_context_cache[$cache_key];
+        }
+
         if ($raw_object_id === '') {
+            $this->options_object_context_cache[$cache_key] = [];
+
             return [];
         }
 
         if ($raw_object_id === 'option' || $raw_object_id === 'options') {
-            return [
+            $this->options_object_context_cache[$cache_key] = [
                 'acf_object_id' => $raw_object_id === 'options' ? 'options' : 'option',
                 'option_page_slug' => '',
                 'option_page_label' => '',
             ];
+
+            return $this->options_object_context_cache[$cache_key];
         }
 
         $pages = $this->getAcfOptionsPages();
@@ -430,37 +696,45 @@ final class AcfFieldContextResolver
             );
 
             if (in_array($raw_object_id, $candidates, true)) {
-                return [
+                $this->options_object_context_cache[$cache_key] = [
                     'acf_object_id' => $raw_object_id,
                     'option_page_slug' => sanitize_key((string) $slug),
                     'option_page_label' => $this->resolveOptionsPageLabel($slug, $page),
                 ];
+
+                return $this->options_object_context_cache[$cache_key];
             }
         }
 
         if (strpos($raw_object_id, 'options_') === 0) {
             $slug = sanitize_key(substr($raw_object_id, 8));
             if ($slug !== '') {
-                return [
+                $this->options_object_context_cache[$cache_key] = [
                     'acf_object_id' => $raw_object_id,
                     'option_page_slug' => $slug,
                     'option_page_label' => ucwords(str_replace(['-', '_'], ' ', $slug)),
                 ];
+
+                return $this->options_object_context_cache[$cache_key];
             }
         }
 
         if (strpos($raw_object_id, 'acf-options-') === 0) {
             $slug = sanitize_key(substr($raw_object_id, 12));
             if ($slug !== '') {
-                return [
+                $this->options_object_context_cache[$cache_key] = [
                     'acf_object_id' => $raw_object_id,
                     'option_page_slug' => $slug,
                     'option_page_label' => ucwords(str_replace(['-', '_'], ' ', $slug)),
                 ];
+
+                return $this->options_object_context_cache[$cache_key];
             }
         }
 
-        return [];
+        $this->options_object_context_cache[$cache_key] = [];
+
+        return $this->options_object_context_cache[$cache_key];
     }
 
     /**
@@ -468,13 +742,21 @@ final class AcfFieldContextResolver
      */
     private function getAcfOptionsPages()
     {
+        if (is_array($this->acf_options_pages_cache)) {
+            return $this->acf_options_pages_cache;
+        }
+
         if (! function_exists('acf_get_options_pages')) {
-            return [];
+            $this->acf_options_pages_cache = [];
+
+            return $this->acf_options_pages_cache;
         }
 
         $pages_raw = acf_get_options_pages();
         if (! is_array($pages_raw)) {
-            return [];
+            $this->acf_options_pages_cache = [];
+
+            return $this->acf_options_pages_cache;
         }
 
         $pages = [];
@@ -498,7 +780,9 @@ final class AcfFieldContextResolver
             $pages[$slug] = $page;
         }
 
-        return $pages;
+        $this->acf_options_pages_cache = $pages;
+
+        return $this->acf_options_pages_cache;
     }
 
     /**
@@ -591,11 +875,11 @@ final class AcfFieldContextResolver
     private function fieldHasOptionsPageLocation(array $field)
     {
         $group_key = $this->resolveAcfFieldGroupKey($field);
-        if ($group_key === '' || ! function_exists('acf_get_field_group')) {
+        if ($group_key === '') {
             return false;
         }
 
-        $group = acf_get_field_group($group_key);
+        $group = $this->getAcfFieldGroup($group_key);
         if (! is_array($group) || empty($group['location']) || ! is_array($group['location'])) {
             return false;
         }
@@ -639,11 +923,7 @@ final class AcfFieldContextResolver
                 return $parent;
             }
 
-            if (! function_exists('acf_get_field')) {
-                break;
-            }
-
-            $parent_field = acf_get_field($parent);
+            $parent_field = $this->getAcfField($parent);
             if (! is_array($parent_field) || empty($parent_field['parent'])) {
                 break;
             }
@@ -1211,23 +1491,31 @@ final class AcfFieldContextResolver
             array_filter(
                 array_unique(
                     [
-                        isset($container_context['parent_field_selector']) ? sanitize_key((string) $container_context['parent_field_selector']) : '',
-                        isset($container_context['parent_field_name']) ? sanitize_key((string) $container_context['parent_field_name']) : '',
-                        isset($container_context['parent_field_key']) ? sanitize_key((string) $container_context['parent_field_key']) : '',
+                        isset($container_context['parent_field_selector']) ? trim((string) $container_context['parent_field_selector']) : '',
+                        isset($container_context['parent_field_name']) ? trim((string) $container_context['parent_field_name']) : '',
+                        isset($container_context['parent_field_key']) ? trim((string) $container_context['parent_field_key']) : '',
                     ]
                 )
             )
         );
         $identifiers = $this->expandContainerFieldDefinitionIdentifiers($identifiers);
+        $cache_key = hash('sha256', implode('|', $identifiers) . '|' . $this->normalizeAcfObjectIdForCache($acf_object_id));
+        if (isset($this->container_field_definition_cache[$cache_key]) && is_array($this->container_field_definition_cache[$cache_key])) {
+            return $this->container_field_definition_cache[$cache_key];
+        }
 
         foreach ($identifiers as $identifier) {
-            $field = get_field_object($identifier, $acf_object_id, false, false);
+            $field = $this->getFieldObject($identifier, $acf_object_id);
             if (is_array($field) && ! empty($field)) {
-                return $field;
+                $this->container_field_definition_cache[$cache_key] = $field;
+
+                return $this->container_field_definition_cache[$cache_key];
             }
         }
 
-        return [];
+        $this->container_field_definition_cache[$cache_key] = [];
+
+        return $this->container_field_definition_cache[$cache_key];
     }
 
     /**
@@ -1244,15 +1532,15 @@ final class AcfFieldContextResolver
         $expanded = [];
 
         foreach ($identifiers as $identifier) {
-            $identifier = sanitize_key((string) $identifier);
+            $identifier = trim((string) $identifier);
             if ($identifier === '') {
                 continue;
             }
 
             $expanded[] = $identifier;
 
-            if (preg_match('/_(field_[a-z0-9]+)$/', $identifier, $matches)) {
-                $expanded[] = sanitize_key((string) $matches[1]);
+            if (preg_match('/_(field_[A-Za-z0-9]+)$/', $identifier, $matches)) {
+                $expanded[] = (string) $matches[1];
             }
         }
 
@@ -1436,22 +1724,30 @@ final class AcfFieldContextResolver
             array_filter(
                 array_unique(
                     [
-                        isset($container_context['parent_field_selector']) ? sanitize_key((string) $container_context['parent_field_selector']) : '',
-                        isset($container_context['parent_field_name']) ? sanitize_key((string) $container_context['parent_field_name']) : '',
-                        isset($container_context['parent_field_key']) ? sanitize_key((string) $container_context['parent_field_key']) : '',
+                        isset($container_context['parent_field_selector']) ? trim((string) $container_context['parent_field_selector']) : '',
+                        isset($container_context['parent_field_name']) ? trim((string) $container_context['parent_field_name']) : '',
+                        isset($container_context['parent_field_key']) ? trim((string) $container_context['parent_field_key']) : '',
                     ]
                 )
             )
         );
+        $cache_key = hash('sha256', implode('|', $identifiers) . '|' . $this->normalizeAcfObjectIdForCache($acf_object_id));
+        if (isset($this->raw_container_rows_cache[$cache_key]) && is_array($this->raw_container_rows_cache[$cache_key])) {
+            return $this->raw_container_rows_cache[$cache_key];
+        }
 
         foreach ($identifiers as $identifier) {
             $rows = get_field($identifier, $acf_object_id, false);
             if (is_array($rows) && ! empty($rows)) {
-                return $rows;
+                $this->raw_container_rows_cache[$cache_key] = $rows;
+
+                return $this->raw_container_rows_cache[$cache_key];
             }
         }
 
-        return [];
+        $this->raw_container_rows_cache[$cache_key] = [];
+
+        return $this->raw_container_rows_cache[$cache_key];
     }
 
     /**

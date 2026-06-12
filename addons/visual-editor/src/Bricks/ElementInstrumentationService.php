@@ -3,6 +3,7 @@
 namespace Dbvc\VisualEditor\Bricks;
 
 use Dbvc\VisualEditor\Context\PageContextResolver;
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Registry\EditableDescriptor;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
 use Dbvc\VisualEditor\Resolvers\ResolverRegistry;
@@ -37,6 +38,11 @@ final class ElementInstrumentationService
     private $loops;
 
     /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
+    /**
      * @var array<string, string>
      */
     private $instrumented = [];
@@ -52,6 +58,11 @@ final class ElementInstrumentationService
     private $descriptors = [];
 
     /**
+     * @var array<string, array<string, EditableDescriptor>>
+     */
+    private $descriptors_by_element_uid = [];
+
+    /**
      * @var array<string, array<string, mixed>>
      */
     private $post_query_vars_by_element = [];
@@ -61,13 +72,14 @@ final class ElementInstrumentationService
      */
     private $element_metadata_by_id = [];
 
-    public function __construct(EditableRegistry $registry, PageContextResolver $page_context, ResolverRegistry $resolvers, ?LoopContextResolver $loops = null)
+    public function __construct(EditableRegistry $registry, PageContextResolver $page_context, ResolverRegistry $resolvers, ?LoopContextResolver $loops = null, ?PerformanceProfiler $profiler = null)
     {
         $this->registry = $registry;
         $this->page_context = $page_context;
         $this->resolvers = $resolvers;
+        $this->profiler = $profiler;
         $this->inspector = new DynamicDataInspector();
-        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver();
+        $this->loops = $loops instanceof LoopContextResolver ? $loops : new LoopContextResolver(null, $profiler);
     }
 
     /**
@@ -78,8 +90,32 @@ final class ElementInstrumentationService
      */
     public function instrumentAttributes($attributes, $key, $element)
     {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            return $this->profiler->measure('bricks.instrument_attributes', function () use ($attributes, $key, $element) {
+                return $this->instrumentAttributesUnprofiled($attributes, $key, $element);
+            }, [
+                'key' => is_scalar($key) ? (string) $key : 'unknown',
+                'element' => is_object($element) && isset($element->name) ? (string) $element->name : 'unknown',
+            ]);
+        }
+
+        return $this->instrumentAttributesUnprofiled($attributes, $key, $element);
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @param object               $element
+     * @return array<string, mixed>
+     */
+    private function instrumentAttributesUnprofiled($attributes, $key, $element)
+    {
         if (! is_array($attributes) || ! is_string($key) || $key === '') {
             return is_array($attributes) ? $attributes : [];
+        }
+
+        if ($this->profiler instanceof PerformanceProfiler) {
+            $this->profiler->increment('bricks.attribute_groups.inspected');
         }
 
         $this->rememberElementMetadata($element);
@@ -306,7 +342,7 @@ final class ElementInstrumentationService
         );
 
         $this->registry->add($descriptor);
-        $this->descriptors[$token] = $descriptor;
+        $this->rememberDescriptor($descriptor);
     }
 
     /**
@@ -440,6 +476,27 @@ final class ElementInstrumentationService
      */
     private function instrumentInspection(array $attributes, $key, $element, array $inspection)
     {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            return $this->profiler->measure('bricks.instrument_inspection', function () use ($attributes, $key, $element, $inspection) {
+                return $this->instrumentInspectionUnprofiled($attributes, $key, $element, $inspection);
+            }, [
+                'context' => isset($inspection['render_context']) ? (string) $inspection['render_context'] : 'unknown',
+                'source' => isset($inspection['source_type']) ? (string) $inspection['source_type'] : 'unknown',
+            ]);
+        }
+
+        return $this->instrumentInspectionUnprofiled($attributes, $key, $element, $inspection);
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @param string               $key
+     * @param object               $element
+     * @param array<string, mixed> $inspection
+     * @return array<string, mixed>
+     */
+    private function instrumentInspectionUnprofiled(array $attributes, $key, $element, array $inspection)
+    {
         if (empty($inspection['supported'])) {
             return $attributes;
         }
@@ -489,26 +546,32 @@ final class ElementInstrumentationService
         $path_descriptor = $this->buildPathDescriptor($source);
         $mutation_descriptor = $this->buildMutationDescriptor($source, $render_context, $scope, $status, $path_descriptor, $loop_context);
 
+        $render_descriptor = [
+            'template_id' => 0,
+            'element_id' => isset($element->id) ? sanitize_text_field((string) $element->id) : '',
+            'element_uid' => isset($element->uid) ? sanitize_text_field((string) $element->uid) : (isset($element->id) ? sanitize_text_field((string) $element->id) : ''),
+            'element_name' => isset($element->name) ? sanitize_key((string) $element->name) : '',
+            'parent_element_id' => $this->resolveElementParentId($element),
+            'setting_key' => isset($inspection['setting_key']) ? sanitize_key((string) $inspection['setting_key']) : '',
+            'attribute_key' => sanitize_text_field($key),
+            'context' => $render_context !== '' ? $render_context : 'text',
+            'attribute' => $render_attribute,
+            'source_group' => $source_group,
+            'sync_group' => $sync_group,
+            'loop_signature' => $this->loops->getSignature($loop_context),
+            'loop' => $loop_context,
+        ];
+        $text_projection_descriptor = $this->buildTextProjectionDescriptor($inspection);
+        if (! empty($text_projection_descriptor)) {
+            $render_descriptor = array_merge($render_descriptor, $text_projection_descriptor);
+        }
+
         $descriptor = new EditableDescriptor(
             $token,
             $status,
             $scope,
             $entity,
-            [
-                'template_id' => 0,
-                'element_id' => isset($element->id) ? sanitize_text_field((string) $element->id) : '',
-                'element_uid' => isset($element->uid) ? sanitize_text_field((string) $element->uid) : (isset($element->id) ? sanitize_text_field((string) $element->id) : ''),
-                'element_name' => isset($element->name) ? sanitize_key((string) $element->name) : '',
-                'parent_element_id' => $this->resolveElementParentId($element),
-                'setting_key' => isset($inspection['setting_key']) ? sanitize_key((string) $inspection['setting_key']) : '',
-                'attribute_key' => sanitize_text_field($key),
-                'context' => $render_context !== '' ? $render_context : 'text',
-                'attribute' => $render_attribute,
-                'source_group' => $source_group,
-                'sync_group' => $sync_group,
-                'loop_signature' => $this->loops->getSignature($loop_context),
-                'loop' => $loop_context,
-            ],
+            $render_descriptor,
             $source,
             isset($classification['ui']) && is_array($classification['ui']) ? $classification['ui'] : [],
             isset($classification['resolver']) && is_array($classification['resolver']) ? $classification['resolver'] : [],
@@ -520,7 +583,16 @@ final class ElementInstrumentationService
         );
 
         $this->registry->add($descriptor);
-        $this->descriptors[$token] = $descriptor;
+        $this->rememberDescriptor($descriptor);
+
+        if ($this->profiler instanceof PerformanceProfiler) {
+            $this->profiler->increment('bricks.descriptors.instrumented', 1, [
+                'status' => $status,
+                'scope' => $scope,
+                'context' => $render_context,
+                'source' => isset($source['type']) ? (string) $source['type'] : 'unknown',
+            ]);
+        }
 
         if (! isset($attributes[$key]) || ! is_array($attributes[$key])) {
             $attributes[$key] = [];
@@ -534,6 +606,9 @@ final class ElementInstrumentationService
         $attributes[$key]['data-dbvc-ve-context'] = $descriptor->render['context'];
         $attributes[$key]['data-dbvc-ve-badge-label'] = isset($descriptor->ui['badgeLabel']) ? sanitize_text_field((string) $descriptor->ui['badgeLabel']) : '';
         $attributes[$key]['data-dbvc-ve-input'] = isset($descriptor->ui['input']) ? sanitize_key((string) $descriptor->ui['input']) : '';
+        if (! empty($descriptor->render['text_projection'])) {
+            $attributes[$key]['data-dbvc-ve-text-projection'] = sanitize_key((string) $descriptor->render['text_projection']);
+        }
         if (! empty($descriptor->source['query_element_id'])) {
             $attributes[$key]['data-dbvc-ve-query-element-id'] = sanitize_text_field((string) $descriptor->source['query_element_id']);
         }
@@ -553,6 +628,25 @@ final class ElementInstrumentationService
      * @return string
      */
     public function verifyRenderedElement($element_html, $element)
+    {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            return $this->profiler->measure('bricks.verify_rendered_element', function () use ($element_html, $element) {
+                return $this->verifyRenderedElementUnprofiled($element_html, $element);
+            }, [
+                'empty_html' => is_string($element_html) && $element_html === '' ? 'yes' : 'no',
+                'element' => is_object($element) && isset($element->name) ? (string) $element->name : 'unknown',
+            ]);
+        }
+
+        return $this->verifyRenderedElementUnprofiled($element_html, $element);
+    }
+
+    /**
+     * @param string $element_html
+     * @param object $element
+     * @return string
+     */
+    private function verifyRenderedElementUnprofiled($element_html, $element)
     {
         if (! is_string($element_html) || ! is_object($element)) {
             return is_string($element_html) ? $element_html : '';
@@ -601,6 +695,25 @@ final class ElementInstrumentationService
      */
     public function finalizeRenderedData($content, $post = null, $area = null)
     {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            return $this->profiler->measure('bricks.finalize_rendered_data', function () use ($content, $post, $area) {
+                return $this->finalizeRenderedDataUnprofiled($content, $post, $area);
+            }, [
+                'descriptors' => (string) count($this->descriptors),
+            ]);
+        }
+
+        return $this->finalizeRenderedDataUnprofiled($content, $post, $area);
+    }
+
+    /**
+     * @param string $content
+     * @param mixed  $post
+     * @param mixed  $area
+     * @return string
+     */
+    private function finalizeRenderedDataUnprofiled($content, $post = null, $area = null)
+    {
         unset($post, $area);
 
         if (! is_string($content) || $content === '' || empty($this->descriptors)) {
@@ -608,34 +721,224 @@ final class ElementInstrumentationService
         }
 
         $occurrences = [];
+        $element_tag_matches = [];
+        $opening_tag_match_cache = [];
+        $marker_token_presence = [];
+        $profile_enabled = $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled();
+
+        if ($profile_enabled) {
+            $this->profiler->recordValue('bricks.finalize.content_bytes', strlen($content));
+            $this->profiler->recordValue('bricks.finalize.descriptor_count', count($this->descriptors));
+        }
 
         foreach ($this->descriptors as $descriptor) {
             if (! $descriptor instanceof EditableDescriptor) {
                 continue;
             }
 
+            if ($profile_enabled) {
+                $this->profiler->increment('bricks.finalize.descriptors.considered');
+            }
+
             $element_id = isset($descriptor->render['element_id']) ? sanitize_key((string) $descriptor->render['element_id']) : '';
             if ($element_id === '') {
+                if ($profile_enabled) {
+                    $this->profiler->increment('bricks.finalize.descriptors.skipped_missing_element');
+                }
+                continue;
+            }
+
+            $anchor_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
+            $may_contain_anchor = $this->contentMayContainDescriptorAnchor($content, $descriptor, $element_id);
+            if ($profile_enabled) {
+                $this->profiler->recordDuration('bricks.finalize.anchor_check', $anchor_started_at);
+            }
+
+            if (! $may_contain_anchor) {
+                if ($profile_enabled) {
+                    $this->profiler->increment('bricks.finalize.descriptors.skipped_missing_anchor');
+                }
                 continue;
             }
 
             $index = isset($occurrences[$element_id]) ? (int) $occurrences[$element_id] : 0;
+            $token_check_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
+            $current_occurrence_match = $this->findOpeningTagMatchForFinalize(
+                $content,
+                $element_id,
+                $index,
+                $element_tag_matches,
+                $opening_tag_match_cache
+            );
+            $current_occurrence_has_marker = $this->openingTagMatchContainsMarkerToken($current_occurrence_match, $descriptor->token);
+            if ($profile_enabled) {
+                $this->profiler->recordDuration('bricks.finalize.pre_marker_token_check', $token_check_started_at);
+            }
+
+            $render_context = isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : '';
+            if ($current_occurrence_has_marker && $render_context !== 'gallery_collection') {
+                if ($profile_enabled) {
+                    $this->profiler->increment('bricks.finalize.descriptors.skipped_existing_marker');
+                }
+
+                $occurrences[$element_id] = $index + 1;
+                continue;
+            }
+
             $before_injection = $content;
-            $content = $this->injectMarkerIntoElementOccurrence($content, $descriptor, $element_id, $index);
-            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+            $injection_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
+            $content = $this->injectMarkerIntoCachedElementOccurrence(
+                $content,
+                $descriptor,
+                $element_id,
+                $index,
+                $element_tag_matches,
+                $current_occurrence_match
+            );
+            if ($profile_enabled) {
+                $this->profiler->recordDuration('bricks.finalize.cached_injection', $injection_started_at);
+                $this->profiler->increment(
+                    $before_injection === $content
+                        ? 'bricks.finalize.cached_injection_missed'
+                        : 'bricks.finalize.cached_injection_mutated'
+                );
+            }
+            if ($before_injection !== $content) {
+                $opening_tag_match_cache = [];
+                $marker_token_presence = [];
+            }
+
+            $token_check_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
+            $contains_marker_token = $before_injection === $content
+                ? $this->contentContainsMarkerTokenCached($content, $descriptor->token, $marker_token_presence)
+                : true;
+            if ($profile_enabled && $before_injection === $content) {
+                $this->profiler->recordDuration('bricks.finalize.marker_token_check', $token_check_started_at);
+            }
+
+            if ($before_injection === $content && ! $contains_marker_token) {
+                $before_fallback = $content;
+                $fallback_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
                 $content = $this->injectMissingMediaMarkerIntoParentOccurrence($content, $descriptor, $index);
+                if ($profile_enabled) {
+                    $this->profiler->recordDuration('bricks.finalize.missing_media_fallback', $fallback_started_at);
+                }
+                if ($before_fallback !== $content) {
+                    if ($profile_enabled) {
+                        $this->profiler->increment('bricks.finalize.missing_media_fallback_mutated');
+                    }
+                    $element_tag_matches = [];
+                    $opening_tag_match_cache = [];
+                    $marker_token_presence = [];
+                }
             }
-            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+
+            $token_check_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
+            $contains_marker_token = $before_injection === $content
+                ? $this->contentContainsMarkerTokenCached($content, $descriptor->token, $marker_token_presence)
+                : true;
+            if ($profile_enabled && $before_injection === $content) {
+                $this->profiler->recordDuration('bricks.finalize.marker_token_check', $token_check_started_at);
+            }
+
+            if ($before_injection === $content && ! $contains_marker_token) {
+                $before_fallback = $content;
+                $fallback_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
                 $content = $this->injectEmptyQueryCollectionMarkerAfterLoopComment($content, $descriptor, $element_id, $index);
+                if ($profile_enabled) {
+                    $this->profiler->recordDuration('bricks.finalize.loop_comment_fallback', $fallback_started_at);
+                }
+                if ($before_fallback !== $content) {
+                    if ($profile_enabled) {
+                        $this->profiler->increment('bricks.finalize.loop_comment_fallback_mutated');
+                    }
+                    $element_tag_matches = [];
+                    $opening_tag_match_cache = [];
+                    $marker_token_presence = [];
+                }
             }
-            if ($before_injection === $content && ! $this->contentContainsMarkerToken($content, $descriptor->token)) {
+
+            $token_check_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
+            $contains_marker_token = $before_injection === $content
+                ? $this->contentContainsMarkerTokenCached($content, $descriptor->token, $marker_token_presence)
+                : true;
+            if ($profile_enabled && $before_injection === $content) {
+                $this->profiler->recordDuration('bricks.finalize.marker_token_check', $token_check_started_at);
+            }
+
+            if ($before_injection === $content && ! $contains_marker_token) {
+                $before_fallback = $content;
+                $fallback_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
                 $content = $this->injectEmptyQueryCollectionMarkerAfterQueryTrail($content, $descriptor, $element_id, $index);
+                if ($profile_enabled) {
+                    $this->profiler->recordDuration('bricks.finalize.query_trail_fallback', $fallback_started_at);
+                }
+                if ($before_fallback !== $content) {
+                    if ($profile_enabled) {
+                        $this->profiler->increment('bricks.finalize.query_trail_fallback_mutated');
+                    }
+                    $element_tag_matches = [];
+                    $opening_tag_match_cache = [];
+                    $marker_token_presence = [];
+                }
             }
+            $before_strip = $content;
+            $strip_started_at = $profile_enabled ? $this->profiler->startTimer() : 0.0;
             $content = $this->stripDuplicateGalleryCollectionMarkers($content, $descriptor);
+            if ($profile_enabled) {
+                $this->profiler->recordDuration('bricks.finalize.gallery_duplicate_strip', $strip_started_at);
+            }
+            if ($before_strip !== $content) {
+                if ($profile_enabled) {
+                    $this->profiler->increment('bricks.finalize.gallery_duplicate_strip_mutated');
+                }
+                $element_tag_matches = [];
+                $opening_tag_match_cache = [];
+                $marker_token_presence = [];
+            }
             $occurrences[$element_id] = $index + 1;
         }
 
         return $content;
+    }
+
+    /**
+     * Keep the render-data repair pass bounded by skipping descriptors whose possible
+     * element, empty-loop, or missing-media anchors are absent from this content chunk.
+     *
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_id
+     * @return bool
+     */
+    private function contentMayContainDescriptorAnchor($content, EditableDescriptor $descriptor, $element_id)
+    {
+        $content = (string) $content;
+        $element_id = sanitize_key((string) $element_id);
+        if ($content === '' || $element_id === '') {
+            return false;
+        }
+
+        if (strpos($content, 'brxe-' . $element_id) !== false) {
+            return true;
+        }
+
+        if ($this->isEmptyQueryCollectionDescriptor($descriptor)
+            && (strpos($content, 'brx-loop-start-' . $element_id) !== false
+                || strpos($content, 'data-query-element-id="' . $element_id . '"') !== false
+                || strpos($content, "data-query-element-id='" . $element_id . "'") !== false)) {
+            return true;
+        }
+
+        if ($this->isMissingMediaDescriptor($descriptor)) {
+            foreach ($this->resolveMissingMediaAnchorElementIds($descriptor) as $anchor_element_id) {
+                if ($anchor_element_id !== '' && strpos($content, 'brxe-' . $anchor_element_id) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1690,6 +1993,35 @@ final class ElementInstrumentationService
     }
 
     /**
+     * @param array<string, mixed> $inspection
+     * @return array<string, string>
+     */
+    private function buildTextProjectionDescriptor(array $inspection)
+    {
+        $projection = isset($inspection['text_projection']) ? sanitize_key((string) $inspection['text_projection']) : '';
+        if ($projection !== 'single_embedded') {
+            return [];
+        }
+
+        $template = isset($inspection['text_template']) && is_scalar($inspection['text_template'])
+            ? wp_kses_post((string) $inspection['text_template'])
+            : '';
+        $expression = isset($inspection['text_expression']) && is_scalar($inspection['text_expression'])
+            ? trim((string) $inspection['text_expression'])
+            : '';
+
+        if ($template === '' || $expression === '' || strpos($template, $expression) === false) {
+            return [];
+        }
+
+        return [
+            'text_projection' => $projection,
+            'text_template' => $template,
+            'text_expression' => $expression,
+        ];
+    }
+
+    /**
      * When Bricks reuses a native loop signature for a later repeated row, avoid collapsing
      * the later descriptor into the earlier token. The first occurrence keeps the canonical
      * seed; later repeats get a stable occurrence suffix for this render pass.
@@ -1837,6 +2169,54 @@ final class ElementInstrumentationService
     }
 
     /**
+     * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function usesSingleEmbeddedTextProjection(EditableDescriptor $descriptor)
+    {
+        return (isset($descriptor->render['context']) ? sanitize_key((string) $descriptor->render['context']) : 'text') === 'text'
+            && (isset($descriptor->render['text_projection']) ? sanitize_key((string) $descriptor->render['text_projection']) : '') === 'single_embedded'
+            && ! empty($descriptor->render['text_template'])
+            && ! empty($descriptor->render['text_expression']);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $display_value
+     * @return string
+     */
+    private function projectSingleEmbeddedTextDisplay(EditableDescriptor $descriptor, $display_value)
+    {
+        if (! $this->usesSingleEmbeddedTextProjection($descriptor)) {
+            return (string) $display_value;
+        }
+
+        $template = (string) $descriptor->render['text_template'];
+        $expression = (string) $descriptor->render['text_expression'];
+
+        if ($template === '' || $expression === '' || strpos($template, $expression) === false) {
+            return (string) $display_value;
+        }
+
+        return str_replace($expression, (string) $display_value, $template);
+    }
+
+    /**
+     * @param EditableDescriptor   $descriptor
+     * @param array<string, string> $display_payload
+     * @param string               $fallback_text
+     * @return string
+     */
+    private function resolveProjectedComparableDisplayText(EditableDescriptor $descriptor, array $display_payload, $fallback_text)
+    {
+        $display_value = array_key_exists('value', $display_payload)
+            ? (string) $display_payload['value']
+            : (string) $fallback_text;
+
+        return $this->extractComparableText($this->projectSingleEmbeddedTextDisplay($descriptor, $display_value));
+    }
+
+    /**
      * @param string $left
      * @param string $right
      * @return bool
@@ -1947,14 +2327,16 @@ final class ElementInstrumentationService
             $payload = [
                 'key' => $key,
                 'mode' => $mode,
+                'value' => is_scalar($value) || $value === null ? (string) $value : '',
                 'text' => $text,
             ];
+            $projected_text = $this->resolveProjectedComparableDisplayText($descriptor, $payload, $text);
 
             if ($fallback === null) {
                 $fallback = $payload;
             }
 
-            if ($this->valuesMatchForDescriptor($rendered_text, $text, $descriptor)) {
+            if ($this->valuesMatchForDescriptor($rendered_text, $projected_text, $descriptor)) {
                 return $payload;
             }
         }
@@ -2010,11 +2392,12 @@ final class ElementInstrumentationService
         $rendered_value = $this->extractComparableRenderValue($rendered_fragment, $descriptor);
         $display_payload = $this->resolveDisplayPayload($resolver, $descriptor, $raw_value, $rendered_value);
         $resolved_value = isset($display_payload['text']) ? (string) $display_payload['text'] : '';
+        $projected_resolved_value = $this->resolveProjectedComparableDisplayText($descriptor, $display_payload, $resolved_value);
         $display_key = isset($display_payload['key']) ? (string) $display_payload['key'] : 'default';
         $display_mode = isset($display_payload['mode']) ? (string) $display_payload['mode'] : $resolver->getDisplayMode($descriptor);
         $rebound = null;
 
-        if ($descriptor->status === 'editable' && ! $this->valuesMatchForDescriptor($rendered_value, $resolved_value, $descriptor)) {
+        if ($descriptor->status === 'editable' && ! $this->valuesMatchForDescriptor($rendered_value, $projected_resolved_value, $descriptor)) {
             $rebound = $this->attemptUniqueRowRebind($resolver, $descriptor, $rendered_value);
 
             if (is_array($rebound)) {
@@ -2022,19 +2405,21 @@ final class ElementInstrumentationService
                 $raw_value = $rebound['raw_value'];
                 $display_payload = $rebound['display_payload'];
                 $resolved_value = isset($display_payload['text']) ? (string) $display_payload['text'] : '';
+                $projected_resolved_value = $this->resolveProjectedComparableDisplayText($descriptor, $display_payload, $resolved_value);
                 $display_key = isset($display_payload['key']) ? (string) $display_payload['key'] : 'default';
                 $display_mode = isset($display_payload['mode']) ? (string) $display_payload['mode'] : $resolver->getDisplayMode($descriptor);
             }
         }
 
         $descriptor->render['rendered_value'] = $rendered_value;
-        $descriptor->render['resolved_value'] = $resolved_value;
+        $descriptor->render['resolved_value'] = $projected_resolved_value;
         $descriptor->render['rendered_text'] = $rendered_value;
-        $descriptor->render['resolved_text'] = $resolved_value;
+        $descriptor->render['resolved_text'] = $projected_resolved_value;
+        $descriptor->render['field_resolved_text'] = $resolved_value;
         $descriptor->render['display_key'] = $display_key;
         $descriptor->render['display_mode'] = $display_mode;
         $descriptor->render['render_verified'] = true;
-        $descriptor->render['value_match'] = $this->valuesMatchForDescriptor($rendered_value, $resolved_value, $descriptor);
+        $descriptor->render['value_match'] = $this->valuesMatchForDescriptor($rendered_value, $projected_resolved_value, $descriptor);
 
         if ($descriptor->status === 'editable' && ! $descriptor->render['value_match']) {
             $descriptor->status = 'unsupported';
@@ -2208,6 +2593,7 @@ final class ElementInstrumentationService
                 $rendered_value
             );
             $candidate_text = isset($candidate_display['text']) ? (string) $candidate_display['text'] : '';
+            $candidate_text = $this->resolveProjectedComparableDisplayText($descriptor, $candidate_display, $candidate_text);
 
             if (! $this->valuesMatch($rendered_value, $candidate_text)) {
                 continue;
@@ -2278,16 +2664,18 @@ final class ElementInstrumentationService
             return [];
         }
 
+        $candidates = isset($this->descriptors_by_element_uid[$element_uid]) && is_array($this->descriptors_by_element_uid[$element_uid])
+            ? $this->descriptors_by_element_uid[$element_uid]
+            : [];
+        if (empty($candidates)) {
+            return [];
+        }
+
         $current_loop_signature = $this->loops->getSignature($this->loops->resolve());
         $matched = [];
 
-        foreach ($this->descriptors as $descriptor) {
+        foreach ($candidates as $descriptor) {
             if (! $descriptor instanceof EditableDescriptor) {
-                continue;
-            }
-
-            $descriptor_uid = isset($descriptor->render['element_uid']) ? (string) $descriptor->render['element_uid'] : (string) ($descriptor->render['element_id'] ?? '');
-            if ($descriptor_uid !== $element_uid) {
                 continue;
             }
 
@@ -2305,6 +2693,75 @@ final class ElementInstrumentationService
     }
 
     /**
+     * @param EditableDescriptor $descriptor
+     * @return void
+     */
+    private function rememberDescriptor(EditableDescriptor $descriptor)
+    {
+        $token = sanitize_key((string) $descriptor->token);
+        if ($token === '') {
+            return;
+        }
+
+        $this->descriptors[$token] = $descriptor;
+        $element_uid = $this->resolveDescriptorElementUid($descriptor);
+        if ($element_uid === '') {
+            return;
+        }
+
+        if (! isset($this->descriptors_by_element_uid[$element_uid])) {
+            $this->descriptors_by_element_uid[$element_uid] = [];
+        }
+
+        $this->descriptors_by_element_uid[$element_uid][$token] = $descriptor;
+    }
+
+    /**
+     * @param string $token
+     * @return void
+     */
+    private function forgetDescriptor($token)
+    {
+        $token = sanitize_key((string) $token);
+        if ($token === '') {
+            return;
+        }
+
+        $descriptor = isset($this->descriptors[$token]) && $this->descriptors[$token] instanceof EditableDescriptor
+            ? $this->descriptors[$token]
+            : null;
+        if ($descriptor instanceof EditableDescriptor) {
+            $element_uid = $this->resolveDescriptorElementUid($descriptor);
+            if ($element_uid !== '' && isset($this->descriptors_by_element_uid[$element_uid][$token])) {
+                unset($this->descriptors_by_element_uid[$element_uid][$token]);
+                if (empty($this->descriptors_by_element_uid[$element_uid])) {
+                    unset($this->descriptors_by_element_uid[$element_uid]);
+                }
+            }
+        }
+
+        unset($this->descriptors[$token]);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function resolveDescriptorElementUid(EditableDescriptor $descriptor)
+    {
+        $element_uid = isset($descriptor->render['element_uid'])
+            ? sanitize_text_field((string) $descriptor->render['element_uid'])
+            : '';
+        if ($element_uid !== '') {
+            return $element_uid;
+        }
+
+        return isset($descriptor->render['element_id'])
+            ? sanitize_text_field((string) $descriptor->render['element_id'])
+            : '';
+    }
+
+    /**
      * @param string $seed
      * @param string $token
      * @return void
@@ -2312,7 +2769,8 @@ final class ElementInstrumentationService
     private function dropDescriptor($seed, $token)
     {
         $this->registry->remove($token);
-        unset($this->descriptors[$token], $this->instrumented[$seed]);
+        $this->forgetDescriptor($token);
+        unset($this->instrumented[$seed]);
     }
 
     /**
@@ -2334,7 +2792,7 @@ final class ElementInstrumentationService
         }
 
         $this->registry->remove($token);
-        unset($this->descriptors[$token]);
+        $this->forgetDescriptor($token);
     }
 
     /**
@@ -2352,6 +2810,7 @@ final class ElementInstrumentationService
         $clean = preg_replace('/\sdata-dbvc-ve-attribute="[^"]*"/', '', (string) $clean, 1);
         $clean = preg_replace('/\sdata-dbvc-ve-badge-label(?:="[^"]*")?/', '', (string) $clean, 1);
         $clean = preg_replace('/\sdata-dbvc-ve-input="[^"]*"/', '', (string) $clean, 1);
+        $clean = preg_replace('/\sdata-dbvc-ve-text-projection="[^"]*"/', '', (string) $clean, 1);
 
         return is_string($clean) ? $clean : (string) $element_html;
     }
@@ -2546,6 +3005,181 @@ final class ElementInstrumentationService
      * @param EditableDescriptor $descriptor
      * @param string             $element_id
      * @param int                $occurrence_index
+     * @param array<string, array<int, array<string, mixed>>> $element_tag_matches
+     * @param array<string, mixed> $prefetched_match
+     * @return string
+     */
+    private function injectMarkerIntoCachedElementOccurrence($content, EditableDescriptor $descriptor, $element_id, $occurrence_index, array &$element_tag_matches, array $prefetched_match = [])
+    {
+        $element_id = sanitize_key((string) $element_id);
+        if ($element_id === '') {
+            return $content;
+        }
+
+        if (! empty($prefetched_match)) {
+            $updated_content = $this->injectMarkerIntoOpeningTagMatch($content, $descriptor, $prefetched_match, $element_tag_matches);
+            if ($updated_content !== $content) {
+                return $updated_content;
+            }
+        }
+
+        $fast_match = $this->findBricksElementOpeningTagWindow($content, $element_id, $occurrence_index);
+        if (! empty($fast_match)) {
+            return $this->injectMarkerIntoOpeningTagMatch($content, $descriptor, $fast_match, $element_tag_matches);
+        }
+
+        if (! isset($element_tag_matches[$element_id])) {
+            $element_tag_matches[$element_id] = $this->findBricksElementOpeningTagMatches($content, $element_id);
+        }
+
+        $match = isset($element_tag_matches[$element_id][$occurrence_index]) && is_array($element_tag_matches[$element_id][$occurrence_index])
+            ? $element_tag_matches[$element_id][$occurrence_index]
+            : [];
+        if (empty($match)) {
+            return $content;
+        }
+
+        $content_string = (string) $content;
+        $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+        $offset = isset($match['offset']) ? (int) $match['offset'] : 0;
+        if (! $this->openingTagMatchIsCurrent($content_string, $tag, $offset)) {
+            $element_tag_matches[$element_id] = $this->findBricksElementOpeningTagMatches($content_string, $element_id);
+            $match = isset($element_tag_matches[$element_id][$occurrence_index]) && is_array($element_tag_matches[$element_id][$occurrence_index])
+                ? $element_tag_matches[$element_id][$occurrence_index]
+                : [];
+            $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+            $offset = isset($match['offset']) ? (int) $match['offset'] : 0;
+
+            if (! $this->openingTagMatchIsCurrent($content_string, $tag, $offset)) {
+                $updated_content = $this->injectMarkerIntoElementOccurrence($content, $descriptor, $element_id, $occurrence_index);
+                if ($updated_content !== $content) {
+                    $element_tag_matches = [];
+                }
+
+                return $updated_content;
+            }
+        }
+
+        if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
+            return $content;
+        }
+
+        $updated_tag = $this->appendMarkerAttributesToTag($tag, $descriptor);
+        if ($updated_tag === $tag) {
+            return $content;
+        }
+
+        $updated_content = substr($content_string, 0, $offset)
+            . $updated_tag
+            . substr($content_string, $offset + strlen($tag));
+
+        $delta = strlen($updated_tag) - strlen($tag);
+        if ($delta !== 0) {
+            $this->shiftCachedElementOpeningTagOffsets($element_tag_matches, $offset, $delta);
+        }
+
+        if (isset($element_tag_matches[$element_id][$occurrence_index])) {
+            $element_tag_matches[$element_id][$occurrence_index]['tag'] = $updated_tag;
+        }
+
+        return $updated_content;
+    }
+
+    /**
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param array<string, mixed> $match
+     * @param array<string, array<int, array<string, mixed>>> $element_tag_matches
+     * @return string
+     */
+    private function injectMarkerIntoOpeningTagMatch($content, EditableDescriptor $descriptor, array $match, array &$element_tag_matches)
+    {
+        $content_string = (string) $content;
+        $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+        $offset = isset($match['offset']) ? (int) $match['offset'] : 0;
+        if (! $this->openingTagMatchIsCurrent($content_string, $tag, $offset)) {
+            return $content;
+        }
+
+        if ($tag === '' || strpos($tag, 'data-dbvc-ve=') !== false) {
+            return $content;
+        }
+
+        $updated_tag = $this->appendMarkerAttributesToTag($tag, $descriptor);
+        if ($updated_tag === $tag) {
+            return $content;
+        }
+
+        $updated_content = substr($content_string, 0, $offset)
+            . $updated_tag
+            . substr($content_string, $offset + strlen($tag));
+
+        $element_tag_matches = [];
+
+        return $updated_content;
+    }
+
+    /**
+     * @param string $content
+     * @param string $tag
+     * @param int    $offset
+     * @return bool
+     */
+    private function openingTagMatchIsCurrent($content, $tag, $offset)
+    {
+        $tag = (string) $tag;
+        $offset = (int) $offset;
+        if ($tag === '' || $offset < 0) {
+            return false;
+        }
+
+        return substr((string) $content, $offset, strlen($tag)) === $tag;
+    }
+
+    /**
+     * @param array<string, array<int, array<string, mixed>>> $element_tag_matches
+     * @param int $replacement_offset
+     * @param int $delta
+     * @return void
+     */
+    private function shiftCachedElementOpeningTagOffsets(array &$element_tag_matches, $replacement_offset, $delta)
+    {
+        $started_at = $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()
+            ? $this->profiler->startTimer()
+            : 0.0;
+        $replacement_offset = (int) $replacement_offset;
+        $delta = (int) $delta;
+        if ($delta === 0) {
+            return;
+        }
+
+        foreach ($element_tag_matches as $element_id => $matches) {
+            if (! is_array($matches)) {
+                continue;
+            }
+
+            foreach ($matches as $index => $match) {
+                if (! is_array($match) || ! isset($match['offset'])) {
+                    continue;
+                }
+
+                $offset = (int) $match['offset'];
+                if ($offset > $replacement_offset) {
+                    $element_tag_matches[$element_id][$index]['offset'] = $offset + $delta;
+                }
+            }
+        }
+
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            $this->profiler->recordDuration('bricks.finalize.offset_shift', $started_at);
+        }
+    }
+
+    /**
+     * @param string             $content
+     * @param EditableDescriptor $descriptor
+     * @param string             $element_id
+     * @param int                $occurrence_index
      * @return string
      */
     private function injectMarkerIntoElementOccurrence($content, EditableDescriptor $descriptor, $element_id, $occurrence_index)
@@ -2660,6 +3294,184 @@ final class ElementInstrumentationService
 
         return strpos((string) $content, 'data-dbvc-ve="' . $token . '"') !== false
             || strpos((string) $content, "data-dbvc-ve='" . $token . "'") !== false;
+    }
+
+    /**
+     * @param string                $content
+     * @param string                $token
+     * @param array<string, bool>   $marker_token_presence
+     * @return bool
+     */
+    private function contentContainsMarkerTokenCached($content, $token, array &$marker_token_presence)
+    {
+        $token = esc_attr((string) $token);
+        if ($token === '') {
+            return false;
+        }
+
+        if (array_key_exists($token, $marker_token_presence)) {
+            return (bool) $marker_token_presence[$token];
+        }
+
+        $contains = $this->contentContainsMarkerToken($content, $token);
+        $marker_token_presence[$token] = $contains;
+
+        return $contains;
+    }
+
+    /**
+     * @param string                                                   $content
+     * @param string                                                   $element_id
+     * @param int                                                      $occurrence_index
+     * @param array<string, array<int, array<string, mixed>>>          $element_tag_matches
+     * @param array<string, array<string, mixed>>                      $opening_tag_match_cache
+     * @return array<string, mixed>
+     */
+    private function findOpeningTagMatchForFinalize($content, $element_id, $occurrence_index, array &$element_tag_matches, array &$opening_tag_match_cache)
+    {
+        $element_id = sanitize_key((string) $element_id);
+        $occurrence_index = max(0, (int) $occurrence_index);
+        if ($element_id === '') {
+            return [];
+        }
+
+        $cache_key = $element_id . ':' . (string) $occurrence_index;
+        if (isset($opening_tag_match_cache[$cache_key]) && is_array($opening_tag_match_cache[$cache_key])) {
+            $match = $opening_tag_match_cache[$cache_key];
+            $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+            $offset = isset($match['offset']) ? (int) $match['offset'] : 0;
+            if ($this->openingTagMatchIsCurrent($content, $tag, $offset)) {
+                return $match;
+            }
+
+            unset($opening_tag_match_cache[$cache_key]);
+        }
+
+        $match = $this->findBricksElementOpeningTagWindow($content, $element_id, $occurrence_index);
+        if (empty($match)) {
+            if (! isset($element_tag_matches[$element_id])) {
+                $element_tag_matches[$element_id] = $this->findBricksElementOpeningTagMatches($content, $element_id);
+            }
+
+            $match = isset($element_tag_matches[$element_id][$occurrence_index]) && is_array($element_tag_matches[$element_id][$occurrence_index])
+                ? $element_tag_matches[$element_id][$occurrence_index]
+                : [];
+        }
+
+        if (! empty($match)) {
+            $opening_tag_match_cache[$cache_key] = $match;
+        }
+
+        return $match;
+    }
+
+    /**
+     * @param array<string, mixed> $match
+     * @param string               $token
+     * @return bool
+     */
+    private function openingTagMatchContainsMarkerToken(array $match, $token)
+    {
+        $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+        $token = esc_attr((string) $token);
+        if ($tag === '' || $token === '') {
+            return false;
+        }
+
+        return strpos($tag, 'data-dbvc-ve="' . $token . '"') !== false
+            || strpos($tag, "data-dbvc-ve='" . $token . "'") !== false;
+    }
+
+    /**
+     * @param string $content
+     * @param string $element_id
+     * @param int    $occurrence_index
+     * @param string $token
+     * @return bool
+     */
+    private function elementOccurrenceAlreadyHasMarkerToken($content, $element_id, $occurrence_index, $token)
+    {
+        $match = $this->findBricksElementOpeningTagWindow($content, $element_id, $occurrence_index);
+        if (empty($match)) {
+            return false;
+        }
+
+        $tag = isset($match['tag']) ? (string) $match['tag'] : '';
+        $token = esc_attr((string) $token);
+        if ($tag === '' || $token === '') {
+            return false;
+        }
+
+        return strpos($tag, 'data-dbvc-ve="' . $token . '"') !== false
+            || strpos($tag, "data-dbvc-ve='" . $token . "'") !== false;
+    }
+
+    /**
+     * Fast single-occurrence opening tag lookup used before the heavier full-page
+     * regex repair path. It only returns a match when the class hit is inside an
+     * opening tag with a class attribute containing the target Bricks element id.
+     *
+     * @param string $content
+     * @param string $element_id
+     * @param int    $occurrence_index
+     * @return array<string, mixed>
+     */
+    private function findBricksElementOpeningTagWindow($content, $element_id, $occurrence_index)
+    {
+        $content_string = (string) $content;
+        $element_id = sanitize_key((string) $element_id);
+        $occurrence_index = max(0, (int) $occurrence_index);
+        if ($content_string === '' || $element_id === '') {
+            return [];
+        }
+
+        $needle = 'brxe-' . $element_id;
+        $needle_length = strlen($needle);
+        $content_length = strlen($content_string);
+        $search_offset = 0;
+        $seen = 0;
+
+        while ($search_offset < $content_length) {
+            $class_position = strpos($content_string, $needle, $search_offset);
+            if ($class_position === false) {
+                return [];
+            }
+
+            $window_start = max(0, $class_position - 4096);
+            $prefix = substr($content_string, $window_start, $class_position - $window_start);
+            $relative_tag_start = strrpos($prefix, '<');
+            $tag_end = strpos($content_string, '>', $class_position);
+            if ($relative_tag_start === false || $tag_end === false) {
+                $search_offset = $class_position + $needle_length;
+                continue;
+            }
+
+            $tag_start = $window_start + $relative_tag_start;
+            if ($tag_end < $tag_start || $tag_end - $tag_start > 8192) {
+                $search_offset = $class_position + $needle_length;
+                continue;
+            }
+
+            $tag = substr($content_string, $tag_start, $tag_end - $tag_start + 1);
+            if (! is_string($tag)
+                || ! preg_match('/^<[A-Za-z][A-Za-z0-9:-]*(?:\s|>)/', $tag)
+                || ! preg_match('/\bclass=(["\'])(?:(?:(?!\1).)*)\b' . preg_quote($needle, '/') . '\b(?:(?:(?!\1).)*)\1/s', $tag)) {
+                $search_offset = $class_position + $needle_length;
+                continue;
+            }
+
+            if ($seen === $occurrence_index) {
+                return [
+                    'tag' => $tag,
+                    'offset' => $tag_start,
+                ];
+            }
+
+            $seen++;
+            $search_offset = $tag_end + 1;
+        }
+
+        return [];
     }
 
     /**
@@ -2802,7 +3614,7 @@ final class ElementInstrumentationService
         }
 
         foreach ($this->resolveMissingMediaAnchorElementIds($descriptor) as $anchor_element_id) {
-            $match = $this->findBricksElementOpeningTagMatch($content, $anchor_element_id, $occurrence_index);
+            $match = $this->findBricksElementOpeningTagWindow($content, $anchor_element_id, $occurrence_index);
             if (empty($match)) {
                 continue;
             }
@@ -2864,29 +3676,90 @@ final class ElementInstrumentationService
     /**
      * @param string $content
      * @param string $element_id
+     * @return array<int, array<string, mixed>>
+     */
+    private function findBricksElementOpeningTagMatches($content, $element_id)
+    {
+        $started_at = $this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()
+            ? $this->profiler->startTimer()
+            : 0.0;
+        $content_string = (string) $content;
+        $element_id = sanitize_key((string) $element_id);
+        if ($content_string === '' || $element_id === '') {
+            return [];
+        }
+
+        $needle = 'brxe-' . $element_id;
+        $needle_length = strlen($needle);
+        $content_length = strlen($content_string);
+        $search_offset = 0;
+        $opening_tags = [];
+
+        while ($search_offset < $content_length) {
+            $class_position = strpos($content_string, $needle, $search_offset);
+            if ($class_position === false) {
+                break;
+            }
+
+            $window_start = max(0, $class_position - 4096);
+            $prefix = substr($content_string, $window_start, $class_position - $window_start);
+            $relative_tag_start = strrpos($prefix, '<');
+            $tag_end = strpos($content_string, '>', $class_position);
+            if ($relative_tag_start === false || $tag_end === false) {
+                $search_offset = $class_position + $needle_length;
+                continue;
+            }
+
+            $tag_start = $window_start + $relative_tag_start;
+            if ($tag_end < $tag_start || $tag_end - $tag_start > 8192) {
+                $search_offset = $class_position + $needle_length;
+                continue;
+            }
+
+            $tag = substr($content_string, $tag_start, $tag_end - $tag_start + 1);
+            if (! is_string($tag)
+                || ! preg_match('/^<[A-Za-z][A-Za-z0-9:-]*(?:\s|>)/', $tag)
+                || ! preg_match('/\bclass=(["\'])(?:(?:(?!\1).)*)\b' . preg_quote($needle, '/') . '\b(?:(?:(?!\1).)*)\1/s', $tag)) {
+                $search_offset = $class_position + $needle_length;
+                continue;
+            }
+
+            $opening_tags[] = [
+                'tag' => $tag,
+                'offset' => $tag_start,
+            ];
+
+            $search_offset = $tag_end + 1;
+        }
+
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            $this->profiler->recordDuration('bricks.finalize.find_opening_tags', $started_at);
+            $this->profiler->increment(
+                empty($opening_tags)
+                    ? 'bricks.finalize.find_opening_tags_missed'
+                    : 'bricks.finalize.find_opening_tags_matched'
+            );
+            if (! empty($opening_tags)) {
+                $this->profiler->increment('bricks.finalize.opening_tag_matches', count($opening_tags));
+            }
+        }
+
+        return $opening_tags;
+    }
+
+    /**
+     * @param string $content
+     * @param string $element_id
      * @param int    $occurrence_index
      * @return array<string, mixed>
      */
     private function findBricksElementOpeningTagMatch($content, $element_id, $occurrence_index)
     {
-        $element_id = sanitize_key((string) $element_id);
-        if ($element_id === '') {
-            return [];
-        }
+        $matches = $this->findBricksElementOpeningTagMatches($content, $element_id);
 
-        $pattern = '/<([A-Za-z][A-Za-z0-9:-]*)([^>]*\bclass=(["\'])(?:(?:(?!\3).)*)\bbrxe-' . preg_quote($element_id, '/') . '\b(?:(?:(?!\3).)*)\3[^>]*)>/s';
-        if (! preg_match_all($pattern, (string) $content, $matches, PREG_OFFSET_CAPTURE)) {
-            return [];
-        }
-
-        if (! isset($matches[0][$occurrence_index][0], $matches[0][$occurrence_index][1])) {
-            return [];
-        }
-
-        return [
-            'tag' => (string) $matches[0][$occurrence_index][0],
-            'offset' => (int) $matches[0][$occurrence_index][1],
-        ];
+        return isset($matches[$occurrence_index]) && is_array($matches[$occurrence_index])
+            ? $matches[$occurrence_index]
+            : [];
     }
 
     /**
@@ -2979,6 +3852,9 @@ final class ElementInstrumentationService
 
         if (! empty($descriptor->render['attribute'])) {
             $attributes['data-dbvc-ve-attribute'] = (string) $descriptor->render['attribute'];
+        }
+        if (! empty($descriptor->render['text_projection'])) {
+            $attributes['data-dbvc-ve-text-projection'] = sanitize_key((string) $descriptor->render['text_projection']);
         }
 
         foreach ($extra_attributes as $name => $value) {

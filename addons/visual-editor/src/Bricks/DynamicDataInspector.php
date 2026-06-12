@@ -49,6 +49,23 @@ final class DynamicDataInspector
                     return $candidate;
                 }
             }
+
+            $embedded_expression = $this->extractSingleEmbeddedExpression($value);
+            if ($embedded_expression !== '') {
+                $candidate = $this->inspectExpression($embedded_expression, $setting_key);
+                if (! empty($candidate['supported'])) {
+                    $candidate['text_projection'] = 'single_embedded';
+                    $candidate['text_template'] = $value;
+                    $candidate['text_expression'] = $embedded_expression;
+
+                    return $candidate;
+                }
+            }
+
+            $composite_candidate = $this->inspectCompositeTextTemplate($value, $setting_key);
+            if (! empty($composite_candidate['supported'])) {
+                return $composite_candidate;
+            }
         }
 
         $link_candidate = $this->inspectLinkSettings($settings);
@@ -82,6 +99,145 @@ final class DynamicDataInspector
         }
 
         return isset($matches[2]) ? trim((string) $matches[2]) : '';
+    }
+
+    /**
+     * @param string $value
+     * @return string
+     */
+    private function extractSingleEmbeddedExpression($value)
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (! preg_match_all('/\{[^{}]+\}/', $value, $matches)) {
+            return '';
+        }
+
+        $expressions = isset($matches[0]) && is_array($matches[0]) ? array_values($matches[0]) : [];
+        if (count($expressions) !== 1) {
+            return '';
+        }
+
+        $expression = trim((string) $expressions[0]);
+        if ($expression === '' || $expression === $value) {
+            return '';
+        }
+
+        return $expression;
+    }
+
+    /**
+     * @param string $value
+     * @param string $setting_key
+     * @return array<string, mixed>
+     */
+    private function inspectCompositeTextTemplate($value, $setting_key)
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        if (! preg_match_all('/\{[^{}]+\}/', $value, $matches, PREG_OFFSET_CAPTURE)) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $expressions = isset($matches[0]) && is_array($matches[0]) ? array_values($matches[0]) : [];
+        if (count($expressions) < 2) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        $segments = [];
+        $children = [];
+        $supported_children = 0;
+        $cursor = 0;
+        $dynamic_index = 0;
+
+        foreach ($expressions as $match) {
+            if (! is_array($match) || count($match) < 2) {
+                continue;
+            }
+
+            $expression = trim((string) $match[0]);
+            $offset = max(0, (int) $match[1]);
+            $length = strlen((string) $match[0]);
+
+            if ($offset > $cursor) {
+                $literal = substr($value, $cursor, $offset - $cursor);
+                if ($literal !== '') {
+                    $segments[] = [
+                        'type' => 'literal',
+                        'text' => $literal,
+                    ];
+                }
+            }
+
+            $candidate = $this->inspectExpression($expression, $setting_key);
+            $is_supported = ! empty($candidate['supported']);
+            if ($is_supported) {
+                $supported_children++;
+            }
+
+            $child = [
+                'index' => $dynamic_index,
+                'expression' => $expression,
+                'supported' => $is_supported,
+            ];
+
+            if ($is_supported) {
+                $child['candidate'] = $candidate;
+            }
+
+            $children[] = $child;
+            $segments[] = [
+                'type' => 'dynamic',
+                'index' => $dynamic_index,
+                'expression' => $expression,
+                'supported' => $is_supported,
+            ];
+
+            $cursor = $offset + $length;
+            $dynamic_index++;
+        }
+
+        if ($cursor < strlen($value)) {
+            $literal = substr($value, $cursor);
+            if ($literal !== '') {
+                $segments[] = [
+                    'type' => 'literal',
+                    'text' => $literal,
+                ];
+            }
+        }
+
+        if ($supported_children < 2) {
+            return [
+                'supported' => false,
+            ];
+        }
+
+        return [
+            'supported' => true,
+            'setting_key' => $setting_key,
+            'source_type' => 'composite_text',
+            'expression' => 'composite_text:' . md5($value),
+            'template' => $value,
+            'segments' => $segments,
+            'children' => $children,
+            'dynamic_count' => count($children),
+            'supported_child_count' => $supported_children,
+            'render_context' => 'composite_text',
+            'render_attribute' => '',
+        ];
     }
 
     /**

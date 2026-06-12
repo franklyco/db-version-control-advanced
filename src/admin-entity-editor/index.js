@@ -90,6 +90,13 @@ const getRawIntakeActionLabel = (action) => {
 	return 'create new entity';
 };
 
+const getSyncImportActionLabel = (action) => {
+	if (action === 'create') return 'create new entity';
+	if (action === 'created') return 'created entity';
+	if (action === 'blocked') return 'blocked';
+	return 'preview';
+};
+
 const EntityEditorApp = () => {
 	const [entityIndex, setEntityIndex] = useState([]);
 	const [entityIndexStats, setEntityIndexStats] = useState(null);
@@ -141,6 +148,13 @@ const EntityEditorApp = () => {
 	const [rawIntakeCommitBusy, setRawIntakeCommitBusy] = useState(false);
 	const [rawIntakeError, setRawIntakeError] = useState('');
 	const [rawIntakePreview, setRawIntakePreview] = useState(null);
+	const [syncImportOpen, setSyncImportOpen] = useState(false);
+	const [syncImportPath, setSyncImportPath] = useState('');
+	const [syncImportPaths, setSyncImportPaths] = useState([]);
+	const [syncImportPreviewBusy, setSyncImportPreviewBusy] = useState(false);
+	const [syncImportCommitBusy, setSyncImportCommitBusy] = useState(false);
+	const [syncImportError, setSyncImportError] = useState('');
+	const [syncImportPreview, setSyncImportPreview] = useState(null);
 	const entityEditorTextareaRef = useRef(null);
 
 	const entityPerPage = 20;
@@ -421,6 +435,16 @@ const EntityEditorApp = () => {
 		setRawIntakePreview(null);
 	}, []);
 
+	const closeSyncImportModal = useCallback(() => {
+		setSyncImportOpen(false);
+		setSyncImportPath('');
+		setSyncImportPaths([]);
+		setSyncImportPreviewBusy(false);
+		setSyncImportCommitBusy(false);
+		setSyncImportError('');
+		setSyncImportPreview(null);
+	}, []);
+
 	const previewRawIntake = useCallback(async () => {
 		setRawIntakePreviewBusy(true);
 		setRawIntakeError('');
@@ -437,6 +461,57 @@ const EntityEditorApp = () => {
 			setRawIntakePreviewBusy(false);
 		}
 	}, [rawIntakeDraft, rawIntakeMode]);
+
+	const openSyncImportPreview = useCallback(async (paths) => {
+		const normalizedPaths = (Array.isArray(paths) ? paths : [paths])
+			.map((path) => (path || '').toString())
+			.filter(Boolean);
+		if (!normalizedPaths.length) return;
+		setSyncImportOpen(true);
+		setSyncImportPath(normalizedPaths[0] || '');
+		setSyncImportPaths(normalizedPaths);
+		setSyncImportPreview(null);
+		setSyncImportError('');
+		setSyncImportPreviewBusy(true);
+		try {
+			const data = await apiPost('entity-editor/sync-file-import/preview', {
+				paths: normalizedPaths,
+				mode: 'create_only',
+			});
+			setSyncImportPreview(data);
+		} catch (error) {
+			setSyncImportError(error?.message || 'Failed to preview sync-file import');
+			setSyncImportPreview(error?.body?.data?.preview || null);
+		} finally {
+			setSyncImportPreviewBusy(false);
+		}
+	}, []);
+
+	const commitSyncImport = useCallback(async () => {
+		const paths = syncImportPaths.length ? syncImportPaths : (syncImportPath ? [syncImportPath] : []);
+		if (!paths.length) return;
+		setSyncImportCommitBusy(true);
+		setSyncImportError('');
+		try {
+			const data = await apiPost('entity-editor/sync-file-import/commit', {
+				paths,
+				mode: 'create_only',
+			});
+			const summary = data?.summary || {};
+			setSyncImportPreview(data);
+			setEntityIndexNotice(
+				`Sync-file import complete: created ${summary?.created ?? 0}, blocked ${summary?.blocked ?? 0}, skipped ${summary?.skipped ?? 0}, errors ${summary?.errors ?? 0}.`
+			);
+			setEntityIndexError('');
+			setEntityIndexErrorItems([]);
+			await loadEntityIndex(true);
+		} catch (error) {
+			setSyncImportError(error?.message || 'Failed to import sync file');
+			setSyncImportPreview(error?.body?.data?.preview || syncImportPreview);
+		} finally {
+			setSyncImportCommitBusy(false);
+		}
+	}, [loadEntityIndex, syncImportPath, syncImportPaths, syncImportPreview]);
 
 	const commitRawIntake = useCallback(async () => {
 		setRawIntakeCommitBusy(true);
@@ -538,10 +613,11 @@ const EntityEditorApp = () => {
 	);
 	const allFilteredSelected = filteredEntityPaths.length > 0 && selectedFilteredCount === filteredEntityPaths.length;
 	const allPagedSelected = pagedEntityPaths.length > 0 && pagedEntityPaths.every((path) => selectedEntityPathSet.has(path));
-	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy;
+	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy || syncImportPreviewBusy || syncImportCommitBusy;
 	const entityBulkActionNeedsSelection = entityBulkAction === 'download_selected'
 		|| entityBulkAction === 'remove_selected'
-		|| entityBulkAction === 'clear_selection';
+		|| entityBulkAction === 'clear_selection'
+		|| entityBulkAction === 'preview_import_selected';
 	const entityBulkActionDisabled = !entityBulkAction
 		|| busyAny
 		|| (entityBulkAction === 'select_filtered' && (!filteredEntityPaths.length || allFilteredSelected))
@@ -771,11 +847,17 @@ const EntityEditorApp = () => {
 			return;
 		}
 
+		if (entityBulkAction === 'preview_import_selected') {
+			await openSyncImportPreview(selectedEntityPaths);
+			setEntityBulkAction('');
+			return;
+		}
+
 		if (entityBulkAction === 'remove_selected') {
 			await removeSelectedEntityFiles();
 			setEntityBulkAction('');
 		}
-	}, [entityBulkAction, removeSelectedEntityFiles, selectedEntityPaths.length, selectedFilteredCount, filteredEntityPaths.length, allFilteredSelected]);
+	}, [entityBulkAction, openSyncImportPreview, removeSelectedEntityFiles, selectedEntityPaths, selectedEntityPaths.length, selectedFilteredCount, filteredEntityPaths.length, allFilteredSelected]);
 
 	const canNavigateEntitySearch = !!normalizedEntityEditorSearch && entityEditorSearchMatches.length > 0;
 	const transferPreviewSelection = transferPreviewData?.selection?.summary || {};
@@ -790,6 +872,20 @@ const EntityEditorApp = () => {
 	const rawIntakeBlocking = Array.isArray(rawIntakePreview?.blocking) ? rawIntakePreview.blocking : [];
 	const rawIntakeAvailable = rawIntakePreview?.available_actions || {};
 	const rawIntakeCanCommit = !!rawIntakePreview && !!rawIntakeAvailable?.[rawIntakeMode] && rawIntakeBlocking.length === 0;
+	const syncImportItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
+	const syncImportSummary = syncImportPreview?.summary || {};
+	const syncImportCreatableCount = syncImportItems.reduce((count, item) => {
+		const blocking = Array.isArray(item?.blocking) ? item.blocking : [];
+		return count + (!item?.created && !!item?.available_actions?.create_only && blocking.length === 0 ? 1 : 0);
+	}, 0);
+	const syncImportCanCommit = syncImportCreatableCount > 0;
+
+	const canOfferSyncFileImport = (item) => {
+		if (!item?.relative_path || !['post', 'term'].includes(item?.entity_kind)) return false;
+		if (item?.matched_wp?.id) return false;
+		if (item?.is_duplicate && !item?.is_canonical_duplicate) return false;
+		return true;
+	};
 
 	const handleEntityEditorSearchChange = (value) => {
 		setEntityEditorSearch(value);
@@ -926,6 +1022,7 @@ const EntityEditorApp = () => {
 								<option value="deselect_filtered">Deselect filtered</option>
 								<option value="clear_selection">Clear selection</option>
 								<option value="download_selected">Download selected</option>
+								<option value="preview_import_selected">Preview import selected</option>
 								<option value="remove_selected">Remove selected</option>
 							</select>
 						</label>
@@ -1020,6 +1117,18 @@ const EntityEditorApp = () => {
 										>
 											Edit JSON
 										</button>
+										{canOfferSyncFileImport(item) && (
+											<button
+												type="button"
+												className="button button-small"
+												onClick={() => openSyncImportPreview(item.relative_path)}
+												disabled={busyAny}
+												title="Preview creating a new live WordPress entity from this sync JSON file"
+												style={{ marginLeft: '6px' }}
+											>
+												Import as New
+											</button>
+										)}
 									</td>
 									<td>{item.subtype || '—'}</td>
 									<td>
@@ -1303,6 +1412,124 @@ const EntityEditorApp = () => {
 						<div className="notice notice-warning">
 							<p>Transfer preview modal is unavailable in this WordPress build.</p>
 							<button type="button" className="button" onClick={closeTransferPreview}>Close</button>
+						</div>
+					))
+				)}
+
+				{syncImportOpen && (
+					(Modal ? (
+						<Modal title="Import Sync JSON" onRequestClose={closeSyncImportModal} className="dbvc-entity-editor-modal" overlayClassName="dbvc-entity-editor-modal-overlay">
+							<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor">
+								<p className="description">
+									Preview creates unmatched post/CPT or term entities from JSON files that already exist in the DBVC sync folder.
+								</p>
+								{syncImportPreviewBusy && (
+									<p style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Spinner /> Checking sync file…</p>
+								)}
+								{syncImportError && (
+									<div className="notice notice-error" style={{ marginTop: '12px' }}>
+										<p>{syncImportError}</p>
+									</div>
+								)}
+								{syncImportItems.length > 0 && (
+									<div style={{ marginTop: '12px' }}>
+										<div className="notice notice-info">
+											<p>
+												Selected: {syncImportSummary?.requested ?? syncImportItems.length}
+												{' · '}Creatable: {syncImportSummary?.creatable ?? syncImportCreatableCount}
+												{' · '}Created: {syncImportSummary?.created ?? 0}
+												{' · '}Blocked: {syncImportSummary?.blocked ?? 0}
+												{' · '}Skipped: {syncImportSummary?.skipped ?? 0}
+												{' · '}Errors: {syncImportSummary?.errors ?? 0}
+											</p>
+										</div>
+										<div style={{ display: 'grid', gap: '10px' }}>
+											{syncImportItems.map((item, itemIndex) => {
+												const itemWarnings = Array.isArray(item?.warnings) ? item.warnings : [];
+												const itemBlocking = Array.isArray(item?.blocking) ? item.blocking : [];
+												const action = item?.created ? 'created' : (item?.action || item?.detected_action);
+												return (
+													<div key={`${item?.relative_path || item?.source_relative_path || 'sync-import'}-${itemIndex}`} className={`notice ${itemBlocking.length ? 'notice-error' : (itemWarnings.length ? 'notice-warning' : 'notice-info')}`} style={{ margin: 0 }}>
+														<p>
+															<strong>{item?.title || item?.relative_path || 'Sync JSON'}</strong>
+															{' · '}Subtype: {item?.subtype || '—'}
+															{' · '}Action: {getSyncImportActionLabel(action)}
+														</p>
+														<p>
+															Slug: {item?.slug || '—'}
+															{' · '}UID: {item?.uid || '—'}
+														</p>
+														<p>Source sync file: {item?.source_relative_path || item?.relative_path || '—'}</p>
+														{item?.source_relative_path && item?.relative_path && item.source_relative_path !== item.relative_path && (
+															<p>Canonical sync file: {item.relative_path}</p>
+														)}
+														{item?.match?.status === 'matched' && (
+															<p>
+																Matched live entity:{' '}
+																{item?.match?.edit_url ? (
+																	<a href={item.match.edit_url}>
+																		{item?.match?.kind || 'entity'} #{item?.match?.id || 0}
+																	</a>
+																) : (
+																	<span>{item?.match?.kind || 'entity'} #{item?.match?.id || 0}</span>
+																)}
+																{' · '}match source: {item?.match?.match_source || 'unknown'}
+															</p>
+														)}
+														{item?.wp_entity?.status === 'matched' && (
+															<p>
+																Created live entity:{' '}
+																{item?.wp_entity?.edit_url ? (
+																	<a href={item.wp_entity.edit_url}>
+																		{item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}
+																	</a>
+																) : (
+																	<span>{item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}</span>
+																)}
+															</p>
+														)}
+														{itemWarnings.length > 0 && (
+															<ul style={{ marginLeft: '18px' }}>
+																{itemWarnings.map((warning, index) => (
+																	<li key={`${warning?.code || 'warning'}-${index}`}>{warning?.message || 'Warning'}</li>
+																))}
+															</ul>
+														)}
+														{itemBlocking.length > 0 && (
+															<ul style={{ marginLeft: '18px' }}>
+																{itemBlocking.map((blocker, index) => (
+																	<li key={`${blocker?.code || 'blocked'}-${index}`}>{blocker?.message || 'Blocked'}</li>
+																))}
+															</ul>
+														)}
+													</div>
+												);
+											})}
+										</div>
+										{syncImportItems.length > 25 && (
+											<div className="notice notice-warning">
+												<p>Only 25 files can be imported in one request.</p>
+											</div>
+										)}
+									</div>
+								)}
+								<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
+									<Button variant="tertiary" onClick={closeSyncImportModal} disabled={syncImportPreviewBusy || syncImportCommitBusy}>
+										Close
+									</Button>
+									<Button variant="secondary" onClick={() => openSyncImportPreview(syncImportPaths.length ? syncImportPaths : syncImportPath)} disabled={(!syncImportPath && !syncImportPaths.length) || syncImportPreviewBusy || syncImportCommitBusy} isBusy={syncImportPreviewBusy}>
+										Refresh Preview
+									</Button>
+									<Button variant="primary" onClick={commitSyncImport} disabled={!syncImportCanCommit || syncImportPreviewBusy || syncImportCommitBusy} isBusy={syncImportCommitBusy}>
+										Create {syncImportCreatableCount} {syncImportCreatableCount === 1 ? 'Entity' : 'Entities'}
+									</Button>
+								</div>
+							</div>
+						</Modal>
+					) : (
+						<div className="notice notice-warning">
+							<p>Sync-file import modal is unavailable in this WordPress build.</p>
+							<button type="button" className="button" onClick={closeSyncImportModal}>Close</button>
 						</div>
 					))
 				)}

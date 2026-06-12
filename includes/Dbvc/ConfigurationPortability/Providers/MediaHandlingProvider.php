@@ -116,6 +116,7 @@ final class MediaHandlingProvider extends AbstractOptionDomainProvider
             HydrationSettings::OPTION_RECEIPTS_ENABLED => Field::bool(HydrationSettings::OPTION_RECEIPTS_ENABLED, __('Save media hydration receipts', 'dbvc'), 'media_hydration', '1'),
             HydrationSettings::OPTION_STRICT_HASHES => Field::bool(HydrationSettings::OPTION_STRICT_HASHES, __('Require strict hydration hashes', 'dbvc'), 'media_hydration', '1'),
             HydrationSettings::OPTION_CLONE_CONFIRMATION => Field::bool(HydrationSettings::OPTION_CLONE_CONFIRMATION, __('Require cloned attachment IDs', 'dbvc'), 'media_hydration', '1'),
+            HydrationSettings::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS => Field::bool(HydrationSettings::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS, __('Normalize hydrated media URLs to HTTPS', 'dbvc'), 'media_hydration', '0'),
             HydrationSettings::OPTION_LOCK_TIMEOUT_MINUTES => Field::integer(HydrationSettings::OPTION_LOCK_TIMEOUT_MINUTES, __('Hydration lock timeout minutes', 'dbvc'), 'media_hydration', 30, 1, 1440),
         ];
     }

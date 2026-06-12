@@ -51,6 +51,29 @@ final class DescriptorSummaryBuilder
         $field_group_option_pages = isset($source['field_group_option_pages']) && is_array($source['field_group_option_pages'])
             ? array_values(array_filter(array_map('sanitize_key', $source['field_group_option_pages'])))
             : [];
+
+        if ($type === 'composite_text') {
+            $supported_child_count = isset($source['supported_child_count']) ? absint($source['supported_child_count']) : 0;
+            $dynamic_count = isset($source['dynamic_count']) ? absint($source['dynamic_count']) : $supported_child_count;
+            $parts = ['composite_text'];
+            if ($dynamic_count > 0) {
+                $parts[] = 'dynamic-tags:' . $dynamic_count;
+            }
+            if ($supported_child_count > 0) {
+                $parts[] = 'resolved-fields:' . $supported_child_count;
+            }
+
+            return [
+                'label' => $label,
+                'type' => $type,
+                'fieldName' => 'composite_text',
+                'fieldSelectorRaw' => '',
+                'parentFieldName' => '',
+                'expression' => '',
+                'summary' => implode(' / ', $parts),
+            ];
+        }
+
         $path = isset($descriptor->path) && is_array($descriptor->path) ? $descriptor->path : [];
         $container_type = isset($path['containerType']) ? sanitize_key((string) $path['containerType']) : (isset($source['container_type']) ? sanitize_key((string) $source['container_type']) : '');
         $parent_field_name = isset($path['rootFieldName']) ? sanitize_key((string) $path['rootFieldName']) : (isset($source['parent_field_name']) ? sanitize_key((string) $source['parent_field_name']) : '');

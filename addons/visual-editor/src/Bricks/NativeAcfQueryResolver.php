@@ -10,6 +10,16 @@ final class NativeAcfQueryResolver
     private static $field_path_index = null;
 
     /**
+     * @var array<string, array<string, mixed>>
+     */
+    private static $field_definition_cache = [];
+
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private static $query_resolution_cache = [];
+
+    /**
      * @param string               $query_object_type
      * @param array<string, mixed> $owner_entity
      * @return array<string, mixed>
@@ -26,6 +36,12 @@ final class NativeAcfQueryResolver
             return [];
         }
 
+        $acf_object_id = $this->resolveAcfObjectId($owner_entity);
+        $cache_key = $this->buildCacheKey($query_object_type, $acf_object_id);
+        if (isset(self::$query_resolution_cache[$cache_key]) && is_array(self::$query_resolution_cache[$cache_key])) {
+            return self::$query_resolution_cache[$cache_key];
+        }
+
         $field = $this->resolveFieldDefinition($selector, $owner_entity);
         $field_name = isset($field['name']) ? sanitize_key((string) $field['name']) : '';
         $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
@@ -34,7 +50,7 @@ final class NativeAcfQueryResolver
             ? array_values(array_filter(array_map('sanitize_key', $field['_dbvc_selector_path'])))
             : array_values(array_filter(explode('_', $selector)));
 
-        return [
+        self::$query_resolution_cache[$cache_key] = [
             'active' => true,
             'source' => 'acf_native_query',
             'objectType' => $query_object_type,
@@ -47,6 +63,8 @@ final class NativeAcfQueryResolver
             'supportsConcreteOwner' => in_array($field_type, ['relationship', 'post_object', 'taxonomy'], true),
             'isRepeaterLike' => in_array($field_type, ['repeater', 'flexible_content'], true),
         ];
+
+        return self::$query_resolution_cache[$cache_key];
     }
 
     /**
@@ -78,6 +96,11 @@ final class NativeAcfQueryResolver
     {
         $field = [];
         $acf_object_id = $this->resolveAcfObjectId($owner_entity);
+        $cache_key = $this->buildCacheKey($selector, $acf_object_id);
+        if (isset(self::$field_definition_cache[$cache_key]) && is_array(self::$field_definition_cache[$cache_key])) {
+            return self::$field_definition_cache[$cache_key];
+        }
+
         $selector_candidates = array_values(array_unique(array_filter([
             $selector,
             $this->buildUnderscoreAlias($selector),
@@ -108,6 +131,8 @@ final class NativeAcfQueryResolver
         }
 
         if (empty($field)) {
+            self::$field_definition_cache[$cache_key] = [];
+
             return [];
         }
 
@@ -115,7 +140,19 @@ final class NativeAcfQueryResolver
             ? $field['_dbvc_selector_path']
             : array_values(array_filter(explode('_', $selector)));
 
+        self::$field_definition_cache[$cache_key] = $field;
+
         return $field;
+    }
+
+    /**
+     * @param string $selector
+     * @param string $acf_object_id
+     * @return string
+     */
+    private function buildCacheKey($selector, $acf_object_id)
+    {
+        return hash('sha256', sanitize_key((string) $selector) . '|' . sanitize_text_field((string) $acf_object_id));
     }
 
     /**

@@ -19,15 +19,20 @@ Implemented initial foundations:
 - Guarded WP-CLI apply for local mirror packages: `--apply` requires `--confirm=hydrate-existing-media`, hydrates existing attachment rows only, verifies package hashes, avoids overwrites by default, and runs WordPress attachment metadata repair when enabled.
 - Configure > Media Handling settings for enabling the workflow, source mode, matching policy, metadata policy, MIME group scope, batch size, receipts, strict hashes, clone confirmation, and apply lock timeout.
 - Basic Configure > Media Handling workflow controls for inventory, package export, preflight, and apply.
+- Configure > Media Handling apply progress UI with client-driven chunked REST apply, a progress bar, cumulative batch counters, and a stop-after-current-batch control.
 - Import/Upload tab media hydration package upload for ZIP packages, with safe extraction into `sync/media-mirrors/<package-id>/`.
+- Staged package discovery and selection in the Media Hydration workflow, so admins can choose uploaded/exported packages without pasting filesystem paths.
+- Preflight review summary/table rendering in the admin workflow before Apply.
+- Receipt listing and secure JSON receipt downloads from the Media Hydration workflow.
 - Secure source-side media mirror ZIP download links after package export. Downloads are served through an admin-post action with `manage_options`, nonce verification, package-ID validation, and containment under the DBVC media mirror root.
 - Permission-aware REST endpoints for inventory, preflight planning, package export, and guarded apply. Preflight/package/apply are blocked until media hydration is enabled in DBVC settings.
 - File-backed JSON receipts and a global apply lock for write runs.
 - Saved dry-run plan IDs for REST preflight/apply acknowledgement, with manifest checksum verification.
+- Optional HTTPS normalization for exact Media Library URLs encountered during hydration apply. When enabled, DBVC rewrites known `http://` media references for the hydrated attachment to the target attachment's `https://` URL in attachment GUIDs, post content fields, and post meta using serialization-aware updates.
 
 Not implemented yet:
 
-- Rich admin workflow UI for selecting staged packages, reviewing plan rows, launching apply, and downloading receipts.
+- Retry failed items only.
 - Asynchronous job orchestration.
 - Remote-source hydration.
 - New attachment creation for non-cloned targets.
@@ -522,14 +527,24 @@ Suggested dry-run summary buckets:
 Add routes under `dbvc/v1`, all gated by `manage_options`:
 
 - Implemented: `GET /media-hydration/inventory`
+- Implemented: `GET /media-hydration/packages`
+  - Lists staged media mirror packages under the DBVC media mirror root.
+  - Returns package ID, manifest path, package directory, source-site metadata, attachment counts, file-included state, ZIP availability, and secure ZIP download URL when available.
 - Implemented: `POST /media-hydration/preflight`
+  - Admin UI renders summary chips plus a bounded review table from the returned plan rows before Apply.
 - Implemented: `POST /media-hydration/package/export`
 - Implemented: `POST /media-hydration/apply`
+  - Accepts `offset` and `limit` for chunked apply runs.
+  - Returns `pagination` and `progress` fields with `processed_this_batch`, `processed_total`, `next_offset`, `remaining`, `total_plan_items`, `percent`/`progress_percent`, and `has_more`.
+  - The admin UI loops over this endpoint until `has_more` is false or the operator clicks Stop after current batch.
+- Implemented: `GET /media-hydration/receipts`
+  - Lists recent plan/apply receipts with secure admin-post download URLs.
 - Future: `GET /media-hydration/jobs/{job_id}`
 - Future: `POST /media-hydration/jobs/{job_id}/run`
 - Future: `POST /media-hydration/jobs/{job_id}/retry`
 - Future: `GET /media-hydration/jobs/{job_id}/receipt`
 - Implemented as admin-post form: target-side media hydration ZIP package upload under Import/Upload.
+- Implemented as admin-post download: media hydration receipt JSON downloads by receipt ID, with `manage_options`, nonce verification, and containment under the receipt root.
 
 Keep these separate from `/proposals/{proposal_id}/resolver` until a later phase needs a shared screen.
 
@@ -688,6 +703,9 @@ Tasks:
 - Add dry-run and run controls.
 - Add job progress polling.
 - Add receipt download.
+- Add staged package selector to avoid manual manifest path entry.
+- Add bounded preflight review table with status filters and summary counts.
+- Add optional `http://` to `https://` media URL normalization setting for exact Media Library URLs only.
 - Add retry failed items.
 - Add clear old media hydration receipts with nonce/capability checks.
 - Keep REST/admin handlers as thin delegators to the hydration services.
@@ -698,6 +716,7 @@ Tests:
 - Dry run can be executed without writes.
 - Apply requires a dry-run plan when configured.
 - Failed rows are visible and retryable.
+- HTTPS normalization updates only known media references and preserves serialized post meta.
 
 Exit criteria:
 

@@ -226,6 +226,7 @@ Recommended runtime limits:
 
 Status:
 - implemented at baseline hover/focus/touch-selection level
+- passive hover hide now uses a 500ms grace delay so users can move from large or rounded editable elements to the shared badge without racing the hide timer
 - real-device polish is still pending
 
 Formalize:
@@ -233,6 +234,7 @@ Formalize:
 - keyboard focus behavior
 - touch selection behavior
 - active panel vs passive hover behavior
+- keep the hover-leave badge grace delay long enough for image/card targets with large border radii, currently 500ms
 - how shared/related/inspect-only states are announced visually
 
 ### Slice 4b. Statusbar field index

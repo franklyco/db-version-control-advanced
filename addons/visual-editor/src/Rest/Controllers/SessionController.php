@@ -65,6 +65,16 @@ final class SessionController
                 'callback' => [$this, 'handle'],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/visual-editor/session/(?P<session_id>[A-Za-z0-9_-]+)/touch',
+            [
+                'methods' => 'POST',
+                'permission_callback' => [$this, 'canAccess'],
+                'callback' => [$this, 'handleTouch'],
+            ]
+        );
     }
 
     /**
@@ -102,7 +112,7 @@ final class SessionController
         }
 
         $session_id = sanitize_key((string) $request['session_id']);
-        $session = $this->registry->loadSession($session_id);
+        $session = $this->registry->loadSession($session_id, false);
 
         if (empty($session)) {
             return new WP_REST_Response(
@@ -131,6 +141,58 @@ final class SessionController
                     : $this->page_context->resolve(),
                 'descriptors' => isset($session['public_map']) && is_array($session['public_map']) ? $session['public_map'] : [],
                 'descriptorHydrations' => $hydrations,
+            ]
+        );
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function handleTouch($request)
+    {
+        if (! ($request instanceof WP_REST_Request)) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => __('Invalid request.', 'dbvc'),
+                ],
+                400
+            );
+        }
+
+        if (! $this->edit_mode->isRestRequestAuthorized()) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => __('Visual Editor mode is not active.', 'dbvc'),
+                ],
+                403
+            );
+        }
+
+        $session_id = sanitize_key((string) $request['session_id']);
+        $session = $this->registry->loadSession($session_id, false);
+
+        if (empty($session)) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => __('Visual Editor session expired. Refresh the page to continue editing.', 'dbvc'),
+                    'active' => true,
+                    'serverTime' => time(),
+                ],
+                404
+            );
+        }
+
+        return new WP_REST_Response(
+            [
+                'ok' => true,
+                'active' => true,
+                'sessionId' => $session_id,
+                'ttl' => $this->registry->getSessionTtl(),
+                'serverTime' => time(),
             ]
         );
     }

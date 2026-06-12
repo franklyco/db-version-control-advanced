@@ -58,6 +58,16 @@ final class DescriptorController
                 'callback' => [$this, 'handle'],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/visual-editor/session/(?P<session_id>[A-Za-z0-9_-]+)/descriptors',
+            [
+                'methods' => 'POST',
+                'permission_callback' => [$this, 'canAccess'],
+                'callback' => [$this, 'handleBatch'],
+            ]
+        );
     }
 
     /**
@@ -128,5 +138,143 @@ final class DescriptorController
         return new WP_REST_Response(
             array_merge(['ok' => true], $payload)
         );
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function handleBatch($request)
+    {
+        if (! ($request instanceof WP_REST_Request)) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => __('Invalid request.', 'dbvc'),
+                ],
+                400
+            );
+        }
+
+        if (! $this->edit_mode->isRestRequestAuthorized()) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => __('Visual Editor mode is not active.', 'dbvc'),
+                ],
+                403
+            );
+        }
+
+        $session_id = sanitize_key((string) $request['session_id']);
+        $tokens = $this->getBatchTokens($request);
+
+        if (empty($tokens)) {
+            return new WP_REST_Response(
+                [
+                    'ok' => true,
+                    'sessionId' => $session_id,
+                    'descriptorHydrations' => [],
+                    'missingTokens' => [],
+                    'requested' => 0,
+                    'found' => 0,
+                ]
+            );
+        }
+
+        $session = $this->registry->loadSession($session_id);
+
+        if (empty($session)) {
+            return new WP_REST_Response(
+                [
+                    'ok' => false,
+                    'message' => __('Visual Editor session expired. Refresh the page to continue editing.', 'dbvc'),
+                ],
+                404
+            );
+        }
+
+        $descriptor_payloads = isset($session['descriptors']) && is_array($session['descriptors']) ? $session['descriptors'] : [];
+        $descriptors = [];
+        $missing_tokens = [];
+
+        foreach ($tokens as $token) {
+            if (! isset($descriptor_payloads[$token]) || ! is_array($descriptor_payloads[$token])) {
+                $missing_tokens[] = $token;
+                continue;
+            }
+
+            $descriptor = EditableDescriptor::fromArray($descriptor_payloads[$token]);
+            if ($descriptor->token === '') {
+                $missing_tokens[] = $token;
+                continue;
+            }
+
+            $descriptors[$token] = $descriptor;
+        }
+
+        $hydrations = $this->payloads->buildMany($descriptors);
+        foreach ($tokens as $token) {
+            if (! isset($hydrations[$token]) && ! in_array($token, $missing_tokens, true)) {
+                $missing_tokens[] = $token;
+            }
+        }
+
+        return new WP_REST_Response(
+            [
+                'ok' => true,
+                'sessionId' => $session_id,
+                'descriptorHydrations' => $hydrations,
+                'missingTokens' => $missing_tokens,
+                'requested' => count($tokens),
+                'found' => count($hydrations),
+            ]
+        );
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return array<int, string>
+     */
+    private function getBatchTokens(WP_REST_Request $request)
+    {
+        $raw_tokens = $request->get_param('tokens');
+        if (! is_array($raw_tokens)) {
+            return [];
+        }
+
+        $tokens = [];
+        $limit = $this->getBatchTokenLimit();
+        foreach ($raw_tokens as $raw_token) {
+            $token = sanitize_key((string) $raw_token);
+            if ($token === '') {
+                continue;
+            }
+
+            $tokens[$token] = true;
+            if (count($tokens) >= $limit) {
+                break;
+            }
+        }
+
+        return array_keys($tokens);
+    }
+
+    /**
+     * @return int
+     */
+    private function getBatchTokenLimit()
+    {
+        $limit = (int) apply_filters('dbvc_visual_editor_descriptor_batch_limit', 10);
+
+        if ($limit < 1) {
+            return 1;
+        }
+
+        if ($limit > 25) {
+            return 25;
+        }
+
+        return $limit;
     }
 }

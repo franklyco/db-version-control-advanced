@@ -56,6 +56,7 @@ final class Hydrator
      *   @type bool $require_hashes     Require package files to match manifest SHA-256 hashes. Default true.
      *   @type bool $overwrite_existing Replace existing target files. Default false.
      *   @type bool $repair_metadata    Regenerate attachment metadata when planned. Default true.
+     *   @type bool $normalize_media_urls_to_https Rewrite exact http media URL references to https. Default false.
      *   @type int  $limit              Max planned items to apply in this run. Default 100, max 500.
      *   @type int  $offset             Planned item offset. Default 0.
      * }
@@ -87,7 +88,13 @@ final class Hydrator
         }
         $limit = min($limit, self::MAX_LIMIT);
 
+        $total_items = count($items);
         $selected = array_slice($items, $offset, $limit, true);
+        $selected_count = count($selected);
+        $processed_total = min($total_items, $offset + $selected_count);
+        $remaining = max(0, $total_items - $processed_total);
+        $has_more = $processed_total < $total_items;
+        $progress_percent = $total_items > 0 ? round(($processed_total / $total_items) * 100, 2) : 100.0;
         $summary = self::empty_apply_summary();
         $report_items = [];
 
@@ -109,13 +116,30 @@ final class Hydrator
                 'require_hashes' => array_key_exists('require_hashes', $args) ? (bool) $args['require_hashes'] : true,
                 'overwrite_existing' => ! empty($args['overwrite_existing']),
                 'repair_metadata' => array_key_exists('repair_metadata', $args) ? (bool) $args['repair_metadata'] : true,
+                'normalize_media_urls_to_https' => ! empty($args['normalize_media_urls_to_https']),
             ],
             'pagination' => [
                 'offset' => $offset,
                 'limit' => $limit,
-                'selected' => count($selected),
-                'total_plan_items' => count($items),
-                'has_more' => ($offset + $limit) < count($items),
+                'selected' => $selected_count,
+                'processed_this_batch' => $selected_count,
+                'processed_total' => $processed_total,
+                'next_offset' => $processed_total,
+                'remaining' => $remaining,
+                'total_plan_items' => $total_items,
+                'progress_percent' => $progress_percent,
+                'has_more' => $has_more,
+            ],
+            'progress' => [
+                'offset' => $offset,
+                'limit' => $limit,
+                'processed_this_batch' => $selected_count,
+                'processed_total' => $processed_total,
+                'next_offset' => $processed_total,
+                'remaining' => $remaining,
+                'total_plan_items' => $total_items,
+                'percent' => $progress_percent,
+                'has_more' => $has_more,
             ],
             'plan_summary' => isset($plan['summary']) && is_array($plan['summary']) ? $plan['summary'] : [],
             'summary' => $summary,
@@ -131,6 +155,19 @@ final class Hydrator
      * @return array<string,mixed>
      */
     private static function apply_item(array $item, array $entry, array $package, array $args): array
+    {
+        $result = self::apply_item_without_url_normalization($item, $entry, $package, $args);
+        return self::maybe_normalize_https_urls($result, $entry, $args);
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param array<string,mixed> $entry
+     * @param array<string,string> $package
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>
+     */
+    private static function apply_item_without_url_normalization(array $item, array $entry, array $package, array $args): array
     {
         $action = (string) ($item['planned_action'] ?? 'block');
         $target_id = isset($item['target_id']) ? absint($item['target_id']) : 0;
@@ -172,6 +209,34 @@ final class Hydrator
 
         $result['result'] = 'blocked';
         $result['reason'] = (string) ($item['reason'] ?? 'planned_action_blocked');
+        return $result;
+    }
+
+    /**
+     * @param array<string,mixed> $result
+     * @param array<string,mixed> $entry
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>
+     */
+    private static function maybe_normalize_https_urls(array $result, array $entry, array $args): array
+    {
+        if (empty($args['normalize_media_urls_to_https']) || ! class_exists(__NAMESPACE__ . '\MediaUrlHttpsNormalizer')) {
+            return $result;
+        }
+
+        $target_id = isset($result['target_id']) ? absint($result['target_id']) : 0;
+        if ($target_id <= 0 || get_post_type($target_id) !== 'attachment') {
+            return $result;
+        }
+
+        $result_state = (string) ($result['result'] ?? '');
+        if (! in_array($result_state, ['hydrated', 'metadata_repaired', 'skipped'], true)) {
+            return $result;
+        }
+
+        $normalization = MediaUrlHttpsNormalizer::normalize_attachment($target_id, $entry);
+        $result['https_url_normalization'] = $normalization;
+
         return $result;
     }
 
@@ -289,7 +354,17 @@ final class Hydrator
         }
 
         require_once ABSPATH . 'wp-admin/includes/image.php';
-        $metadata = wp_generate_attachment_metadata($target_id, $path);
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+
+        try {
+            $metadata = wp_generate_attachment_metadata($target_id, $path);
+        } catch (\Throwable $throwable) {
+            $result['result'] = 'error';
+            $result['reason'] = 'metadata_generation_failed';
+            $result['error_message'] = $throwable->getMessage();
+            return $result;
+        }
+
         if (is_wp_error($metadata)) {
             $result['result'] = 'error';
             $result['reason'] = $metadata->get_error_code();
@@ -481,6 +556,7 @@ final class Hydrator
             'blocked' => 0,
             'errors' => 0,
             'bytes' => 0,
+            'https_url_replacements' => 0,
         ];
     }
 
@@ -511,6 +587,10 @@ final class Hydrator
 
         if (isset($item['bytes'])) {
             $summary['bytes'] += (int) $item['bytes'];
+        }
+
+        if (isset($item['https_url_normalization']) && is_array($item['https_url_normalization'])) {
+            $summary['https_url_replacements'] += (int) ($item['https_url_normalization']['replacements'] ?? 0);
         }
     }
 

@@ -71,6 +71,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/class-database.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-options-groups.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-master-settings.php';
 require_once DBVC_PLUGIN_PATH . 'includes/functions.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityReferences/BricksReferenceMapper.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-logger.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-backup-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-snapshot-manager.php';
@@ -89,10 +90,13 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationReceiptS
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationLock.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/HydrationPlanStore.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/Settings.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageRegistry.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MediaUrlHttpsNormalizer.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageImportService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/RestController.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/AdminUploadController.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageDownloadController.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/ReceiptDownloadController.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Official/Collections.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Settings.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/Storage.php';
@@ -117,6 +121,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageValida
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageImporter.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackagePostImportResolver.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/RawJsonIntakeService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/SyncFileImportService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Transfer/EntityPacketBuilder.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-export-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-import-router.php';
@@ -206,6 +211,7 @@ if (is_admin()) {
 	\Dbvc\ConfigurationPortability\AdminPage::init();
 	\Dbvc\Media\Hydration\AdminUploadController::init();
 	\Dbvc\Media\Hydration\PackageDownloadController::init();
+	\Dbvc\Media\Hydration\ReceiptDownloadController::init();
 }
 
 DBVC_Database::init();

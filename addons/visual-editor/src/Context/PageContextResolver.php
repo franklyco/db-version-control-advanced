@@ -2,12 +2,38 @@
 
 namespace Dbvc\VisualEditor\Context;
 
+use Dbvc\VisualEditor\Performance\PerformanceProfiler;
+
 final class PageContextResolver
 {
+    /**
+     * @var PerformanceProfiler|null
+     */
+    private $profiler;
+
+    public function __construct(?PerformanceProfiler $profiler = null)
+    {
+        $this->profiler = $profiler;
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function resolve()
+    {
+        if ($this->profiler instanceof PerformanceProfiler && $this->profiler->isEnabled()) {
+            return $this->profiler->measure('page_context.resolve', function () {
+                return $this->resolveUnprofiled();
+            });
+        }
+
+        return $this->resolveUnprofiled();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveUnprofiled()
     {
         $entity_id = get_queried_object_id();
         $is_singular = is_singular() && $entity_id > 0;

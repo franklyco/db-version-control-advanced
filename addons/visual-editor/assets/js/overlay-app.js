@@ -59,11 +59,85 @@
     viewportPrefetchIdleHandle: 0,
     viewportPrefetchTimer: 0,
     viewportPrefetchInFlight: 0,
+    performanceMeasureId: 0,
     queryCollectionBadgeRefreshTimer: 0,
     queryCollectionBadgeObserver: null
   };
 
   const PANEL_POSITION_STORAGE_KEY = 'dbvc-ve-panel-position';
+  const PERFORMANCE_PREFIX = 'dbvc.ve.';
+  const BADGE_HIDE_DELAY_MS = 500;
+
+  function supportsPerformanceTimings() {
+    return Boolean(
+      window.performance
+        && typeof window.performance.mark === 'function'
+        && typeof window.performance.measure === 'function'
+    );
+  }
+
+  function normalizePerformanceName(name) {
+    return String(name || 'step')
+      .replace(/[^a-z0-9_.:-]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'step';
+  }
+
+  function createPerformanceSpan(name) {
+    if (!supportsPerformanceTimings()) {
+      return { end: function () {} };
+    }
+
+    const normalized = normalizePerformanceName(name);
+    const id = `${Date.now()}.${++state.performanceMeasureId}`;
+    const startName = `${PERFORMANCE_PREFIX}${normalized}.start.${id}`;
+    const endName = `${PERFORMANCE_PREFIX}${normalized}.end.${id}`;
+    let ended = false;
+
+    try {
+      window.performance.mark(startName);
+    } catch (error) {
+      return { end: function () {} };
+    }
+
+    return {
+      end: function () {
+        if (ended) {
+          return;
+        }
+
+        ended = true;
+        try {
+          window.performance.mark(endName);
+          window.performance.measure(`${PERFORMANCE_PREFIX}${normalized}`, startName, endName);
+          if (typeof window.performance.clearMarks === 'function') {
+            window.performance.clearMarks(startName);
+            window.performance.clearMarks(endName);
+          }
+        } catch (error) {}
+      }
+    };
+  }
+
+  function measurePerformance(name, callback) {
+    const span = createPerformanceSpan(name);
+
+    try {
+      const result = callback();
+      if (result && typeof result.finally === 'function') {
+        return result.finally(function () {
+          span.end();
+        });
+      }
+
+      span.end();
+
+      return result;
+    } catch (error) {
+      span.end();
+      throw error;
+    }
+  }
 
   function strings() {
     return (window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.strings) || {};
@@ -148,7 +222,7 @@
       return;
     }
 
-    state.descriptorCache[payload.descriptor.token] = clonePayload(payload);
+    state.descriptorCache[payload.descriptor.token] = clonePayload(Object.assign({ ok: true }, payload));
     scheduleFieldIndexRefresh();
   }
 
@@ -207,6 +281,10 @@
   }
 
   function getViewportPrefetchCycleBudget() {
+    return 4;
+  }
+
+  function getViewportPrefetchBatchSize() {
     return 4;
   }
 
@@ -356,6 +434,8 @@
     const bootstrapSessionId = window.DBVCVisualEditorBootstrap && window.DBVCVisualEditorBootstrap.sessionId
       ? String(window.DBVCVisualEditorBootstrap.sessionId)
       : '';
+    const currentSessionId = getSessionId();
+    const touchOnly = Boolean(options && options.touchOnly && currentSessionId);
 
     if (!bootstrapSessionId) {
       return Promise.reject(new Error(getSessionExpiredMessage()));
@@ -365,8 +445,20 @@
       return state.sessionKeepaliveInFlight;
     }
 
-    state.sessionKeepaliveInFlight = window.DBVCVisualEditorApi.getSession(bootstrapSessionId)
+    state.sessionKeepaliveInFlight = (touchOnly
+      ? window.DBVCVisualEditorApi.touchSession(currentSessionId)
+      : window.DBVCVisualEditorApi.getSession(bootstrapSessionId))
       .then(function (session) {
+        if (touchOnly) {
+          state.sessionExpired = false;
+          state.sessionLastRefreshAt = Date.now();
+
+          return state.session || {
+            ok: true,
+            sessionId: currentSessionId
+          };
+        }
+
         syncSessionPayload(session);
         return session;
       })
@@ -395,13 +487,13 @@
 
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible' && !state.sessionExpired) {
-        refreshSession({ silent: true }).catch(function () {});
+        refreshSession({ silent: true, touchOnly: true }).catch(function () {});
       }
     });
 
     window.addEventListener('focus', function () {
       if (!state.sessionExpired) {
-        refreshSession({ silent: true }).catch(function () {});
+        refreshSession({ silent: true, touchOnly: true }).catch(function () {});
       }
     });
   }
@@ -419,7 +511,7 @@
         return;
       }
 
-      refreshSession({ silent: true }).catch(function () {});
+      refreshSession({ silent: true, touchOnly: true }).catch(function () {});
     }, getSessionKeepaliveMs());
   }
 
@@ -551,15 +643,21 @@
       });
   }
 
-  function queueViewportPrefetch(token) {
+  function queueViewportPrefetchBatch(tokens) {
     const sessionId = getSessionId();
-    if (!sessionId || !isViewportPrefetchCandidate(token)) {
+    const batchTokens = Array.isArray(tokens)
+      ? tokens.filter(function (token) {
+          return isViewportPrefetchCandidate(token);
+        })
+      : [];
+
+    if (!sessionId || !batchTokens.length) {
       return;
     }
 
     state.viewportPrefetchInFlight += 1;
 
-    loadDescriptorPayload(sessionId, token)
+    loadDescriptorPayloadBatch(sessionId, batchTokens)
       .catch(function () {})
       .finally(function () {
         state.viewportPrefetchInFlight = Math.max(0, state.viewportPrefetchInFlight - 1);
@@ -568,6 +666,9 @@
   }
 
   function pumpViewportPrefetchQueue(deadline) {
+    const span = createPerformanceSpan('prefetch.pump');
+
+    try {
     state.viewportPrefetchIdleHandle = 0;
     state.viewportPrefetchTimer = 0;
 
@@ -588,17 +689,27 @@
         break;
       }
 
-      const token = state.viewportPrefetchQueue.shift();
-      if (!isViewportPrefetchCandidate(token)) {
-        continue;
+      const batchTokens = [];
+      while (state.viewportPrefetchQueue.length && batchTokens.length < getViewportPrefetchBatchSize() && dispatched < getViewportPrefetchCycleBudget()) {
+        const token = state.viewportPrefetchQueue.shift();
+        if (!isViewportPrefetchCandidate(token)) {
+          continue;
+        }
+
+        batchTokens.push(token);
+        dispatched += 1;
       }
 
-      dispatched += 1;
-      queueViewportPrefetch(token);
+      if (batchTokens.length) {
+        queueViewportPrefetchBatch(batchTokens);
+      }
     }
 
     if ((state.viewportPrefetchQueue.length || state.viewportPrefetchInFlight) && !shouldPauseViewportPrefetch()) {
       scheduleViewportPrefetch();
+    }
+    } finally {
+      span.end();
     }
   }
 
@@ -626,6 +737,9 @@
   }
 
   function startViewportPrefetch(markers) {
+    const span = createPerformanceSpan('prefetch.setup');
+
+    try {
     if (!supportsViewportPrefetch()) {
       return;
     }
@@ -658,6 +772,9 @@
         state.viewportPrefetchObserver.observe(node);
       }
     });
+    } finally {
+      span.end();
+    }
   }
 
   function loadDescriptorPayload(sessionId, token) {
@@ -674,6 +791,8 @@
     if (state.descriptorRequests[token]) {
       return state.descriptorRequests[token].then(clonePayload);
     }
+
+    const descriptorRequestSpan = createPerformanceSpan('descriptor_request');
 
     state.descriptorRequests[token] = window.DBVCVisualEditorApi.getDescriptor(sessionId, token)
       .then(function (result) {
@@ -693,10 +812,70 @@
         throw error;
       })
       .finally(function () {
+        descriptorRequestSpan.end();
         delete state.descriptorRequests[token];
       });
 
     return state.descriptorRequests[token].then(clonePayload);
+  }
+
+  function loadDescriptorPayloadBatch(sessionId, tokens) {
+    const requestTokens = [];
+    const seen = new Set();
+
+    (Array.isArray(tokens) ? tokens : []).forEach(function (token) {
+      const normalizedToken = String(token || '').trim();
+      if (!normalizedToken || seen.has(normalizedToken) || getCachedDescriptorPayload(normalizedToken) || state.descriptorRequests[normalizedToken]) {
+        return;
+      }
+
+      seen.add(normalizedToken);
+      requestTokens.push(normalizedToken);
+    });
+
+    if (!sessionId || !requestTokens.length) {
+      return Promise.resolve({});
+    }
+
+    const descriptorRequestSpan = createPerformanceSpan('descriptor_batch_request');
+
+    const batchRequest = window.DBVCVisualEditorApi.getDescriptors(sessionId, requestTokens)
+      .then(function (result) {
+        if (!result || !result.ok || !result.descriptorHydrations || typeof result.descriptorHydrations !== 'object') {
+          throw new Error(strings().descriptorMissing || 'Descriptor not found.');
+        }
+
+        cacheDescriptorHydrations(result.descriptorHydrations);
+
+        return result.descriptorHydrations;
+      })
+      .catch(function (error) {
+        if (isSessionExpiredError(error)) {
+          handleExpiredSession(error);
+        }
+
+        throw error;
+      })
+      .finally(function () {
+        descriptorRequestSpan.end();
+        requestTokens.forEach(function (token) {
+          delete state.descriptorRequests[token];
+        });
+      });
+
+    requestTokens.forEach(function (token) {
+      state.descriptorRequests[token] = batchRequest.then(function (hydrations) {
+        const payload = hydrations && hydrations[token] ? Object.assign({ ok: true }, hydrations[token]) : null;
+        if (!payload || !payload.descriptor) {
+          throw new Error(strings().descriptorMissing || 'Descriptor not found.');
+        }
+
+        return payload;
+      });
+      state.descriptorRequests[token].catch(function () {});
+    });
+
+    return batchRequest;
   }
 
   function scheduleDescriptorPrefetch(node) {
@@ -763,6 +942,48 @@
     }
 
     return '';
+  }
+
+  function getDescriptorTextProjection(descriptor, node) {
+    if (descriptor && descriptor.render && typeof descriptor.render.text_projection === 'string' && descriptor.render.text_projection) {
+      return descriptor.render.text_projection;
+    }
+
+    if (node && node.dataset && typeof node.dataset.dbvcVeTextProjection === 'string' && node.dataset.dbvcVeTextProjection) {
+      return node.dataset.dbvcVeTextProjection;
+    }
+
+    return '';
+  }
+
+  function getDescriptorTextTemplate(descriptor) {
+    return descriptor
+      && descriptor.render
+      && typeof descriptor.render.text_template === 'string'
+      && descriptor.render.text_template
+      ? descriptor.render.text_template
+      : '';
+  }
+
+  function getDescriptorTextExpression(descriptor) {
+    return descriptor
+      && descriptor.render
+      && typeof descriptor.render.text_expression === 'string'
+      && descriptor.render.text_expression
+      ? descriptor.render.text_expression
+      : '';
+  }
+
+  function hasHydratedDescriptorForNode(node, descriptor) {
+    if (!node || !descriptor || !descriptor.token) {
+      return false;
+    }
+
+    if (state.activeDescriptor && state.activeDescriptor.token === descriptor.token) {
+      return true;
+    }
+
+    return Boolean(getCachedDescriptorPayload(descriptor.token));
   }
 
   function lookupDescriptorForNode(node) {
@@ -1679,6 +1900,41 @@
     return normalizeValue(displayValue);
   }
 
+  function projectDisplayValueForDescriptor(descriptor, displayValue, displayMode) {
+    const mode = displayMode || 'text';
+    const value = typeof displayValue === 'string' ? displayValue : '';
+
+    if (!descriptor || getDescriptorTextProjection(descriptor, null) !== 'single_embedded') {
+      return {
+        value,
+        mode
+      };
+    }
+
+    const template = getDescriptorTextTemplate(descriptor);
+    const expression = getDescriptorTextExpression(descriptor);
+
+    if (!template || !expression || template.indexOf(expression) === -1) {
+      return {
+        value,
+        mode
+      };
+    }
+
+    const projectedValue = template.split(expression).join(mode === 'html' ? value : escapeHtml(value));
+
+    return {
+      value: projectedValue,
+      mode: 'html'
+    };
+  }
+
+  function extractProjectedDisplayText(descriptor, displayValue, displayMode) {
+    const projected = projectDisplayValueForDescriptor(descriptor, displayValue, displayMode);
+
+    return extractDisplayText(projected.value, projected.mode);
+  }
+
   function formatSaveSummary(saveResult) {
     const summary = saveResult && saveResult.saveSummary && typeof saveResult.saveSummary === 'object'
       ? saveResult.saveSummary
@@ -1752,7 +2008,7 @@
     }
 
     const renderedValue = getNodeDisplayValue(node, result && result.descriptor);
-    const displayValue = extractDisplayText(result.displayValue, result.displayMode);
+    const displayValue = extractProjectedDisplayText(result && result.descriptor, result.displayValue, result.displayMode);
 
     if (!renderedValue && !displayValue) {
       return false;
@@ -4362,7 +4618,7 @@
       clearDescriptorPrefetch();
       scheduleViewportPrefetch();
       scheduleBadgeLayout();
-    }, 90);
+    }, BADGE_HIDE_DELAY_MS);
   }
 
   function resolveMarkerNodeFromTarget(target) {
@@ -5876,6 +6132,149 @@
     });
   }
 
+  function formatCompositeChildSource(child) {
+    const summary = child && child.sourceSummary && typeof child.sourceSummary === 'object'
+      ? child.sourceSummary
+      : {};
+    const entity = child && child.entitySummary && typeof child.entitySummary === 'object'
+      ? child.entitySummary
+      : {};
+    const parts = [];
+
+    if (child && child.status) {
+      parts.push(String(child.status));
+    }
+
+    if (child && child.scope) {
+      parts.push(String(child.scope).replace(/_/g, ' '));
+    }
+
+    if (entity.typeLabel || entity.title) {
+      parts.push([entity.typeLabel, entity.title].filter(Boolean).join(': '));
+    }
+
+    if (summary.summary) {
+      parts.push(String(summary.summary));
+    } else if (summary.fieldName) {
+      parts.push(String(summary.fieldName));
+    }
+
+    return parts.filter(Boolean).join(' / ');
+  }
+
+  function createCompositeTextController(value, descriptor, result) {
+    const wrapper = document.createElement('div');
+    const previewBlock = document.createElement('div');
+    const previewLabel = document.createElement('div');
+    const preview = document.createElement('pre');
+    const templateBlock = document.createElement('details');
+    const templateSummary = document.createElement('summary');
+    const templateBody = document.createElement('pre');
+    const list = document.createElement('div');
+    const composite = result && result.compositeText && typeof result.compositeText === 'object'
+      ? result.compositeText
+      : {};
+    const children = Array.isArray(composite.children) ? composite.children : [];
+    const previewText = typeof composite.previewText === 'string'
+      ? composite.previewText
+      : (typeof value === 'string' ? value : '');
+    const template = typeof composite.template === 'string'
+      ? composite.template
+      : (descriptor && descriptor.source && typeof descriptor.source.template === 'string' ? descriptor.source.template : '');
+
+    wrapper.className = 'dbvc-ve-panel__composite';
+    previewBlock.className = 'dbvc-ve-panel__composite-preview';
+    previewLabel.className = 'dbvc-ve-panel__composite-label';
+    previewLabel.textContent = strings().panelCompositePreview || 'Reconstructed preview';
+    preview.className = 'dbvc-ve-panel__preview dbvc-ve-panel__composite-preview-text';
+    preview.textContent = previewText;
+    previewBlock.appendChild(previewLabel);
+    previewBlock.appendChild(preview);
+    wrapper.appendChild(previewBlock);
+
+    templateBlock.className = 'dbvc-ve-panel__composite-template';
+    templateSummary.className = 'dbvc-ve-panel__meta-summary';
+    templateSummary.textContent = strings().panelCompositeTemplate || 'Original Bricks template';
+    templateBody.className = 'dbvc-ve-panel__preview dbvc-ve-panel__composite-template-text';
+    templateBody.textContent = template;
+    templateBlock.appendChild(templateSummary);
+    templateBlock.appendChild(templateBody);
+    wrapper.appendChild(templateBlock);
+
+    list.className = 'dbvc-ve-panel__composite-list';
+
+    if (!children.length) {
+      const empty = document.createElement('div');
+
+      empty.className = 'dbvc-ve-panel__placeholder';
+      empty.textContent = strings().panelCompositeEmpty || 'No child dynamic fields were resolved for this mixed text element.';
+      list.appendChild(empty);
+    }
+
+    children.forEach(function (child) {
+      const row = document.createElement('div');
+      const header = document.createElement('div');
+      const title = document.createElement('div');
+      const expression = document.createElement('code');
+      const badge = document.createElement('span');
+      const valueNode = document.createElement('pre');
+      const meta = document.createElement('div');
+      const warning = document.createElement('div');
+      const displayText = extractDisplayText(child && child.displayValue, child && child.displayMode);
+      const label = child && child.label ? String(child.label) : (strings().fieldIndexFieldFallback || 'Field');
+      const sourceMeta = formatCompositeChildSource(child);
+      const status = child && child.status ? String(child.status) : 'unsupported';
+
+      row.className = 'dbvc-ve-panel__composite-child';
+      row.dataset.status = status;
+      header.className = 'dbvc-ve-panel__composite-child-header';
+      title.className = 'dbvc-ve-panel__composite-child-title';
+      expression.className = 'dbvc-ve-panel__composite-expression';
+      badge.className = 'dbvc-ve-panel__composite-child-badge';
+      valueNode.className = 'dbvc-ve-panel__composite-child-value';
+      meta.className = 'dbvc-ve-panel__composite-child-meta';
+      warning.className = 'dbvc-ve-panel__composite-child-warning';
+
+      title.textContent = label;
+      expression.textContent = child && child.expression ? String(child.expression) : '';
+      badge.textContent = child && child.canEdit
+        ? (strings().panelCompositeChildReady || 'Source editable')
+        : (status === 'readonly' ? (strings().panelInspectOnly || 'Inspect only') : (strings().panelLocked || 'Locked'));
+      valueNode.textContent = displayText || '';
+      meta.textContent = sourceMeta;
+      warning.textContent = child && child.warning ? String(child.warning) : '';
+
+      header.appendChild(title);
+      header.appendChild(badge);
+      row.appendChild(header);
+      if (expression.textContent) {
+        row.appendChild(expression);
+      }
+      row.appendChild(valueNode);
+      if (meta.textContent) {
+        row.appendChild(meta);
+      }
+      if (warning.textContent) {
+        row.appendChild(warning);
+      }
+      list.appendChild(row);
+    });
+
+    wrapper.appendChild(list);
+
+    return createNoopLifecycle({
+      element: wrapper,
+      getValue() {
+        return value;
+      },
+      setValue() {},
+      focus() {
+        preview.scrollIntoView({ block: 'nearest' });
+      },
+      setDisabled() {}
+    });
+  }
+
   function renderMediaPreviewImage(preview, url, alt) {
     preview.innerHTML = '';
 
@@ -6732,7 +7131,7 @@
 
     try {
       if (shouldRefreshSessionBeforeAction()) {
-        await refreshSession({ silent: true });
+        await refreshSession({ silent: true, touchOnly: true });
       }
 
       const result = await window.DBVCVisualEditorApi.seedCurrentField(state.session.sessionId, token, {
@@ -7373,8 +7772,10 @@
     });
   }
 
-  function createFieldController(inputType, value, descriptor) {
+  function createFieldController(inputType, value, descriptor, result) {
     switch (inputType) {
+      case 'composite_text':
+        return createCompositeTextController(value, descriptor, result);
       case 'reference_collection_preview':
         return createReferenceCollectionPreviewController(value, descriptor);
       case 'readonly_preview':
@@ -7767,10 +8168,13 @@
   }
 
   function renderEditorPanel(result) {
+    const span = createPerformanceSpan('panel.render');
+
+    try {
     const descriptor = result.descriptor;
     const panelNodes = getPanelNodes();
     const inputType = (descriptor.ui && descriptor.ui.input) || 'text';
-    const controller = createFieldController(inputType, result.currentValue, descriptor);
+    const controller = createFieldController(inputType, result.currentValue, descriptor, result);
     const canEdit = Boolean(result.canEdit) && !result.sourceMismatch;
     let statusMessage = '';
 
@@ -7828,10 +8232,15 @@
     if (canEdit) {
       controller.focus();
     }
+    } finally {
+      span.end();
+    }
   }
 
   function findMarkers() {
-    return Array.from(document.querySelectorAll('[data-dbvc-ve]'));
+    return measurePerformance('markers.scan', function () {
+      return Array.from(document.querySelectorAll('[data-dbvc-ve]'));
+    });
   }
 
   function getMarkerCount() {
@@ -7839,6 +8248,9 @@
   }
 
   function recoverQueryCollectionMarkersFromSession() {
+    const span = createPerformanceSpan('markers.recover_query_collections');
+
+    try {
     if (!state.session || !state.session.descriptors || typeof state.session.descriptors !== 'object') {
       return;
     }
@@ -7880,6 +8292,9 @@
         marker.setAttribute('data-dbvc-ve-input', descriptor.input);
       }
     });
+    } finally {
+      span.end();
+    }
   }
 
   function mountMarkerNode(node) {
@@ -8053,25 +8468,28 @@
       return;
     }
 
+    const projected = projectDisplayValueForDescriptor(descriptor, nextValue, mode);
+    const patchValue = projected.value;
+    const patchMode = projected.mode;
     const children = Array.from(node.childNodes);
 
     children.forEach(function (child) {
       node.removeChild(child);
     });
 
-    if (mode === 'html') {
+    if (patchMode === 'html') {
       const wrapper = document.createElement('div');
 
-      wrapper.innerHTML = nextValue;
+      wrapper.innerHTML = patchValue;
 
       while (wrapper.firstChild) {
         node.appendChild(wrapper.firstChild);
       }
     } else {
-      node.appendChild(document.createTextNode(nextValue));
+      node.appendChild(document.createTextNode(patchValue));
     }
 
-    node.dataset.dbvcVeDisplayValue = extractDisplayText(nextValue, mode);
+    node.dataset.dbvcVeDisplayValue = extractDisplayText(patchValue, patchMode);
     scheduleBadgeLayout();
   }
 
@@ -8124,6 +8542,12 @@
 
     nodes.forEach(function (node) {
       const descriptor = lookupDescriptorForNode(node);
+      if (getDescriptorRenderContext(descriptor, node) === 'text'
+        && getDescriptorTextProjection(descriptor, node) === 'single_embedded'
+        && !hasHydratedDescriptorForNode(node, descriptor)) {
+        return;
+      }
+
       const projection = resolveDisplayProjection(descriptor, saveResult);
       const payload = descriptor ? getCachedDescriptorPayload(descriptor.token) : null;
 
@@ -8141,7 +8565,9 @@
     const panelNodes = getPanelNodes();
     const cached = getCachedDescriptorPayload(token);
     let session = state.session;
+    const span = createPerformanceSpan('panel.open.toolbar');
 
+    try {
     if (!token) {
       return;
     }
@@ -8178,7 +8604,7 @@
 
     if (shouldRefreshSessionBeforeAction()) {
       try {
-        session = await refreshSession({ silent: true });
+        session = await refreshSession({ silent: true, touchOnly: true });
       } catch (error) {
         panelNodes.panel.dataset.state = 'error';
         panelNodes.status.textContent = error && error.message ? error.message : getSessionExpiredMessage();
@@ -8219,13 +8645,18 @@
       schedulePanelViewportClamp();
       window.console.error(error);
     }
+    } finally {
+      span.end();
+    }
   }
 
   async function openEditor(node, session) {
     const token = getMarkerToken(node);
     const panelNodes = getPanelNodes();
     const cached = getCachedDescriptorPayload(token);
+    const span = createPerformanceSpan('panel.open.marker');
 
+    try {
     setPanelOpen(true);
     destroyActiveController();
     state.activeController = null;
@@ -8258,7 +8689,7 @@
 
     if (shouldRefreshSessionBeforeAction()) {
       try {
-        session = await refreshSession({ silent: true });
+        session = await refreshSession({ silent: true, touchOnly: true });
       } catch (error) {
         panelNodes.panel.dataset.state = 'error';
         panelNodes.status.textContent = error && error.message ? error.message : getSessionExpiredMessage();
@@ -8292,6 +8723,9 @@
       schedulePanelViewportClamp();
       window.console.error(error);
     }
+    } finally {
+      span.end();
+    }
   }
 
   async function handleSave(options) {
@@ -8324,10 +8758,11 @@
     }
     state.activeController.setDisabled(true);
     state.saveInFlight = true;
+    const span = createPerformanceSpan('save.request');
 
     try {
       if (shouldRefreshSessionBeforeAction()) {
-        await refreshSession({ silent: true });
+        await refreshSession({ silent: true, touchOnly: true });
       }
 
       const saveResult = await window.DBVCVisualEditorApi.save(state.session.sessionId, token, value, acknowledgeSharedScope);
@@ -8409,6 +8844,7 @@
 
       window.console.error(error);
     } finally {
+      span.end();
       state.saveInFlight = false;
       if (!state.reloadPending) {
         scheduleViewportPrefetch();
@@ -8417,6 +8853,9 @@
   }
 
   async function mount() {
+    const bootSpan = createPerformanceSpan('overlay_boot');
+
+    try {
     if (!window.DBVCVisualEditorBootstrap || !window.DBVCVisualEditorBootstrap.active) {
       return;
     }
@@ -8442,7 +8881,9 @@
     let session;
 
     try {
-      session = await window.DBVCVisualEditorApi.getSession(DBVCVisualEditorBootstrap.sessionId);
+      session = await measurePerformance('session.public_map_request', function () {
+        return window.DBVCVisualEditorApi.getSession(DBVCVisualEditorBootstrap.sessionId);
+      });
     } catch (error) {
       window.console.error(error);
     }
@@ -8457,7 +8898,9 @@
       return;
     }
 
-    syncSessionPayload(session);
+    measurePerformance('session.public_map_sync', function () {
+      syncSessionPayload(session);
+    });
     recoverQueryCollectionMarkersFromSession();
     const mountedMarkers = findMarkers();
     startSessionKeepalive();
@@ -8473,14 +8916,21 @@
       message: ''
     });
 
-    mountedMarkers.forEach(mountMarkerNode);
+    measurePerformance('markers.mount', function () {
+      mountedMarkers.forEach(mountMarkerNode);
+    });
 
-    mountQueryCollectionContainerBadges(mountedMarkers);
+    measurePerformance('badges.query_collection_mount', function () {
+      mountQueryCollectionContainerBadges(mountedMarkers);
+    });
     startQueryCollectionBadgeObserver();
     [250, 1000, 2500].forEach(function (delay) {
       window.setTimeout(refreshQueryCollectionBadges, delay);
     });
     scheduleBadgeLayout();
+    } finally {
+      bootSpan.end();
+    }
   }
 
   if (document.readyState === 'loading') {
