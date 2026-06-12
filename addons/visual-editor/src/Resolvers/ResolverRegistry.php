@@ -711,6 +711,12 @@ final class ResolverRegistry
         $parent_entity = $this->resolveCompositeParentEntity($page_entity, $resolved_child_entities);
         $template = isset($candidate['template']) ? wp_kses_post((string) $candidate['template']) : '';
         $dynamic_count = isset($candidate['dynamic_count']) ? absint($candidate['dynamic_count']) : count($children);
+        $unsupported_child_count = isset($candidate['unsupported_child_count'])
+            ? absint($candidate['unsupported_child_count'])
+            : max(0, $dynamic_count - $usable_children);
+        $warning = $unsupported_child_count > 0
+            ? __('This Bricks text element contains multiple dynamic sources. Some tags are locked because Visual Editor cannot resolve them to safe field contracts yet. The composite is inspect-only until the batch-save contract is enabled.', 'dbvc')
+            : __('This Bricks text element contains multiple dynamic sources. It is inspect-only until the composite batch-save contract is enabled.', 'dbvc');
 
         return [
             'status' => 'readonly',
@@ -729,6 +735,7 @@ final class ResolverRegistry
                 'children' => $classified_children,
                 'dynamic_count' => $dynamic_count,
                 'supported_child_count' => $usable_children,
+                'unsupported_child_count' => $unsupported_child_count,
                 'page_post_type' => isset($page_context['postType']) ? sanitize_key((string) $page_context['postType']) : '',
                 'page_taxonomy' => isset($page_context['taxonomy']) ? sanitize_key((string) $page_context['taxonomy']) : '',
             ],
@@ -740,7 +747,7 @@ final class ResolverRegistry
                 'label' => __('Mixed dynamic text', 'dbvc'),
                 'badgeLabel' => __('Inspect Text', 'dbvc'),
                 'input' => 'composite_text',
-                'warning' => __('This Bricks text element contains multiple dynamic sources. It is inspect-only until the composite batch-save contract is enabled.', 'dbvc'),
+                'warning' => $warning,
             ],
         ];
     }

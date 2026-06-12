@@ -155,6 +155,291 @@ final class MutationService
     }
 
     /**
+     * @param EditableDescriptor $parent_descriptor
+     * @param array<int, array<string, mixed>> $items
+     * @param array<string, mixed> $batch_context
+     * @return array<string, mixed>
+     */
+    public function mutateBatch(EditableDescriptor $parent_descriptor, array $items, array $batch_context = [])
+    {
+        if (empty($items)) {
+            return [
+                'ok' => false,
+                'message' => __('No fields were provided for the batch save.', 'dbvc'),
+            ];
+        }
+
+        $prepared = [];
+
+        foreach (array_values($items) as $index => $item) {
+            $descriptor = isset($item['descriptor']) && $item['descriptor'] instanceof EditableDescriptor ? $item['descriptor'] : null;
+            if (! $descriptor) {
+                return [
+                    'ok' => false,
+                    'message' => __('A batch save field descriptor is missing.', 'dbvc'),
+                    'failedIndex' => $index,
+                    'stage' => 'preflight',
+                ];
+            }
+
+            if ($descriptor->status !== 'editable') {
+                return [
+                    'ok' => false,
+                    'message' => __('One of the batch save fields is not editable.', 'dbvc'),
+                    'failedIndex' => $index,
+                    'stage' => 'preflight',
+                ];
+            }
+
+            $resolver = $this->resolvers->resolve($descriptor);
+            if ($resolver->name() === 'unsupported') {
+                return [
+                    'ok' => false,
+                    'message' => __('One of the batch save fields is not in the save allowlist.', 'dbvc'),
+                    'failedIndex' => $index,
+                    'stage' => 'preflight',
+                ];
+            }
+
+            $value = array_key_exists('value', $item) ? $item['value'] : null;
+            $old_value = $resolver->getValue($descriptor);
+            if (array_key_exists('expectedValue', $item) && ! $this->valuesMatchForStaleCheck($old_value, $item['expectedValue'])) {
+                return [
+                    'ok' => false,
+                    'message' => __('Composite save was blocked because one child field changed after this panel was loaded. Reload the field details and try again.', 'dbvc'),
+                    'failedIndex' => $index,
+                    'stage' => 'stale',
+                ];
+            }
+
+            $validation = $this->validator->validate($resolver, $descriptor, $value);
+            if (empty($validation['ok'])) {
+                return [
+                    'ok' => false,
+                    'message' => isset($validation['message']) ? (string) $validation['message'] : __('Batch field validation failed.', 'dbvc'),
+                    'failedIndex' => $index,
+                    'stage' => 'preflight',
+                ];
+            }
+
+            $prepared[] = [
+                'index' => $index,
+                'descriptor' => $descriptor,
+                'resolver' => $resolver,
+                'oldValue' => $old_value,
+                'value' => $this->sanitizer->sanitize($resolver, $descriptor, $value),
+            ];
+        }
+
+        $change_set_id = $this->journal instanceof ChangeJournalRecorder
+            ? $this->journal->startBatch($parent_descriptor, 'composite_text', $batch_context)
+            : 0;
+        $completed = [];
+
+        foreach ($prepared as $item) {
+            $descriptor = $item['descriptor'];
+            $resolver = $item['resolver'];
+            $result = $resolver->save($descriptor, $item['value']);
+            if (empty($result['ok'])) {
+                $message = isset($result['message']) ? (string) $result['message'] : __('Batch field save failed.', 'dbvc');
+                $rollback = $this->rollbackBatchItems($completed, $change_set_id);
+
+                if ($this->journal instanceof ChangeJournalRecorder) {
+                    $this->journal->recordBatchItem(
+                        $change_set_id,
+                        $descriptor,
+                        $resolver->name(),
+                        $item['oldValue'],
+                        $item['value'],
+                        'failed',
+                        $message,
+                        [
+                            'batch' => $batch_context,
+                            'index' => $item['index'],
+                        ]
+                    );
+                    $this->journal->finishBatch($change_set_id, 'failed', $message);
+                }
+
+                return [
+                    'ok' => false,
+                    'message' => empty($rollback['failed'])
+                        ? sprintf(
+                            /* translators: %s: save failure message */
+                            __('Composite batch save failed before completion and earlier fields were rolled back. %s', 'dbvc'),
+                            $message
+                        )
+                        : sprintf(
+                            /* translators: %s: save failure message */
+                            __('Composite batch save failed and one or more rollback writes also failed. Review the affected fields before continuing. %s', 'dbvc'),
+                            $message
+                        ),
+                    'failedIndex' => $item['index'],
+                    'stage' => 'write',
+                    'changeSetId' => $change_set_id,
+                    'rollback' => $rollback,
+                ];
+            }
+
+            $current_value = array_key_exists('value', $result) ? $result['value'] : $resolver->getValue($descriptor);
+            $completed[] = [
+                'index' => $item['index'],
+                'descriptor' => $descriptor,
+                'resolver' => $resolver,
+                'oldValue' => $item['oldValue'],
+                'newValue' => $current_value,
+                'journal' => isset($result['journal']) && is_array($result['journal']) ? $result['journal'] : [],
+            ];
+        }
+
+        $children = [];
+        foreach ($completed as $item) {
+            $descriptor = $item['descriptor'];
+            $resolver = $item['resolver'];
+            $display_value = $resolver->getDisplayValue($descriptor, $item['newValue']);
+            $display_mode = $resolver->getDisplayMode($descriptor);
+            $entity_summary = $this->summaries->buildEntitySummary($descriptor);
+            $source_summary = $this->summaries->buildSourceSummary($descriptor);
+
+            if ($this->journal instanceof ChangeJournalRecorder) {
+                $this->journal->recordBatchItem(
+                    $change_set_id,
+                    $descriptor,
+                    $resolver->name(),
+                    $item['oldValue'],
+                    $item['newValue'],
+                    'completed',
+                    '',
+                    array_merge(
+                        [
+                            'batch' => $batch_context,
+                            'index' => $item['index'],
+                        ],
+                        $item['journal']
+                    )
+                );
+            }
+
+            $this->audit->log($descriptor, $item['oldValue'], $item['newValue']);
+            $this->cache->invalidate($descriptor);
+
+            $children[] = [
+                'index' => $item['index'],
+                'token' => $descriptor->token,
+                'value' => $item['newValue'],
+                'displayValue' => $display_value,
+                'displayMode' => $display_mode,
+                'displayCandidates' => $this->resolveDisplayCandidates($resolver, $descriptor, $item['newValue']),
+                'entitySummary' => $entity_summary,
+                'sourceSummary' => $source_summary,
+                'saveSummary' => $this->summaries->buildSaveSummary($descriptor, $entity_summary, $source_summary),
+            ];
+        }
+
+        if ($this->journal instanceof ChangeJournalRecorder) {
+            $this->journal->finishBatch($change_set_id, 'completed');
+        }
+
+        return [
+            'ok' => true,
+            'status' => 'saved',
+            'token' => $parent_descriptor->token,
+            'changeSetId' => $change_set_id,
+            'children' => $children,
+            'message' => __('Composite fields saved successfully.', 'dbvc'),
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $completed
+     * @param int $change_set_id
+     * @return array<string, mixed>
+     */
+    private function rollbackBatchItems(array $completed, $change_set_id)
+    {
+        $rolled_back = [];
+        $failed = [];
+
+        foreach (array_reverse($completed) as $item) {
+            $descriptor = $item['descriptor'];
+            $resolver = $item['resolver'];
+            $result = $resolver->save($descriptor, $item['oldValue']);
+            $ok = ! empty($result['ok']);
+            $status = $ok ? 'rolled_back' : 'rollback_failed';
+            $message = isset($result['message']) ? (string) $result['message'] : '';
+
+            if ($this->journal instanceof ChangeJournalRecorder) {
+                $this->journal->recordBatchItem(
+                    $change_set_id,
+                    $descriptor,
+                    $resolver->name(),
+                    $item['oldValue'],
+                    $item['newValue'],
+                    $status,
+                    $message,
+                    [
+                        'index' => $item['index'],
+                        'rollbackAttempted' => true,
+                    ]
+                );
+            }
+
+            $entry = [
+                'index' => $item['index'],
+                'token' => $descriptor->token,
+                'ok' => $ok,
+            ];
+
+            if ($ok) {
+                $rolled_back[] = $entry;
+            } else {
+                $entry['message'] = $message !== '' ? $message : __('Rollback write failed.', 'dbvc');
+                $failed[] = $entry;
+            }
+        }
+
+        return [
+            'rolledBack' => array_values($rolled_back),
+            'failed' => array_values($failed),
+        ];
+    }
+
+    /**
+     * @param mixed $current_value
+     * @param mixed $expected_value
+     * @return bool
+     */
+    private function valuesMatchForStaleCheck($current_value, $expected_value)
+    {
+        return $this->normalizeValueForStaleCheck($current_value) === $this->normalizeValueForStaleCheck($expected_value);
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalizeValueForStaleCheck($value)
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        $encoded = function_exists('wp_json_encode')
+            ? wp_json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            : json_encode($value);
+
+        return is_string($encoded) ? $encoded : '';
+    }
+
+    /**
      * @param object             $resolver
      * @param EditableDescriptor $descriptor
      * @param mixed              $value

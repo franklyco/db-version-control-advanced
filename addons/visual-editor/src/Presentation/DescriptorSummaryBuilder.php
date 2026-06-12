@@ -55,12 +55,18 @@ final class DescriptorSummaryBuilder
         if ($type === 'composite_text') {
             $supported_child_count = isset($source['supported_child_count']) ? absint($source['supported_child_count']) : 0;
             $dynamic_count = isset($source['dynamic_count']) ? absint($source['dynamic_count']) : $supported_child_count;
+            $unsupported_child_count = isset($source['unsupported_child_count'])
+                ? absint($source['unsupported_child_count'])
+                : max(0, $dynamic_count - $supported_child_count);
             $parts = ['composite_text'];
             if ($dynamic_count > 0) {
                 $parts[] = 'dynamic-tags:' . $dynamic_count;
             }
             if ($supported_child_count > 0) {
                 $parts[] = 'resolved-fields:' . $supported_child_count;
+            }
+            if ($unsupported_child_count > 0) {
+                $parts[] = 'locked-tags:' . $unsupported_child_count;
             }
 
             return [

@@ -5751,6 +5751,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
         const actionButtons = Array.from(wrap.querySelectorAll('[data-dbvc-media-hydration-action]'));
         let applyStopRequested = false;
         let resumeOffset = 0;
+        let resumeRetryReceiptId = '';
         let lastProgressPercent = 0;
         let cumulativeSummary = emptyCumulativeSummary();
         let lastPreflightItems = [];
@@ -5787,6 +5788,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
 
         function resetApplyState() {
           resumeOffset = 0;
+          resumeRetryReceiptId = '';
           lastProgressPercent = 0;
           cumulativeSummary = emptyCumulativeSummary();
         }
@@ -5921,6 +5923,9 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           if (stopButton) {
             stopButton.disabled = !allowStop;
           }
+          wrap.querySelectorAll('[data-dbvc-media-hydration-retry-receipt]').forEach(function(retryButton) {
+            retryButton.disabled = !!busy || !workflowEnabled;
+          });
         }
 
         function endpoint(path) {
@@ -6116,7 +6121,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
             table.className = 'widefat striped';
             const thead = document.createElement('thead');
             const headRow = document.createElement('tr');
-            ['<?php echo esc_js(__('Type', 'dbvc')); ?>', '<?php echo esc_js(__('Created', 'dbvc')); ?>', '<?php echo esc_js(__('Items', 'dbvc')); ?>', '<?php echo esc_js(__('Result', 'dbvc')); ?>', '<?php echo esc_js(__('Receipt', 'dbvc')); ?>'].forEach(function(label) {
+            ['<?php echo esc_js(__('Type', 'dbvc')); ?>', '<?php echo esc_js(__('Created', 'dbvc')); ?>', '<?php echo esc_js(__('Items', 'dbvc')); ?>', '<?php echo esc_js(__('Result', 'dbvc')); ?>', '<?php echo esc_js(__('Receipt / Actions', 'dbvc')); ?>'].forEach(function(label) {
               const th = document.createElement('th');
               th.textContent = label;
               headRow.appendChild(th);
@@ -6131,7 +6136,8 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
               appendCell(row, receipt.type);
               appendCell(row, receipt.created_at || receipt.modified_at);
               appendCell(row, summary.items || summary.needs_hydration || 0);
-              appendCell(row, 'hydrated ' + intValue(summary.hydrated, 0) + ', blocked ' + intValue(summary.blocked, 0) + ', errors ' + intValue(summary.errors, 0));
+              const retryable = intValue(summary.retryable, 0);
+              appendCell(row, 'hydrated ' + intValue(summary.hydrated, 0) + ', blocked ' + intValue(summary.blocked, 0) + ', errors ' + intValue(summary.errors, 0) + ', retryable ' + retryable);
               const linkCell = document.createElement('td');
               if (receipt.download_url) {
                 const link = document.createElement('a');
@@ -6141,6 +6147,18 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
                 linkCell.appendChild(link);
               } else {
                 linkCell.textContent = text(receipt.receipt_id);
+              }
+              if (text(receipt.type) === 'apply' && retryable > 0 && receipt.receipt_id) {
+                const retryButton = document.createElement('button');
+                retryButton.type = 'button';
+                retryButton.className = 'button button-small dbvc-media-hydration-retry-failed';
+                retryButton.setAttribute('data-dbvc-media-hydration-retry-receipt', text(receipt.receipt_id));
+                retryButton.textContent = <?php echo wp_json_encode(__('Retry Failed', 'dbvc')); ?>;
+                retryButton.addEventListener('click', function() {
+                  runApply(retryButton, text(receipt.receipt_id));
+                });
+                linkCell.appendChild(document.createTextNode(' '));
+                linkCell.appendChild(retryButton);
               }
               row.appendChild(linkCell);
               tbody.appendChild(row);
@@ -6169,15 +6187,20 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           });
         }
 
-        function applyBatch(offset) {
+        function applyBatch(offset, retryReceiptId) {
+          const body = {
+            manifest_path: manifestPath ? manifestPath.value : '',
+            plan_id: planId ? planId.value : '',
+            confirm: 'hydrate-existing-media',
+            offset: offset
+          };
+          if (retryReceiptId) {
+            body.retry_receipt_id = retryReceiptId;
+          }
+
           return api('media-hydration/apply', {
             method: 'POST',
-            body: {
-              manifest_path: manifestPath ? manifestPath.value : '',
-              plan_id: planId ? planId.value : '',
-              confirm: 'hydrate-existing-media',
-              offset: offset
-            }
+            body: body
           }).then(function(data) {
             const progress = updateProgressFromReport(data, applyStopRequested ? progressLabels.stopping : progressLabels.hydrating);
             resumeOffset = progress.nextOffset;
@@ -6193,29 +6216,32 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
               };
             }
 
-            return applyBatch(progress.nextOffset);
+            return applyBatch(progress.nextOffset, retryReceiptId);
           });
         }
 
-        function runApply(button) {
+        function runApply(button, retryReceiptId) {
           if (!confirmApply || !confirmApply.checked) {
             show(<?php echo wp_json_encode(__('Confirm hydration apply before continuing.', 'dbvc')); ?>, true);
             return;
           }
 
+          const activeRetryReceiptId = retryReceiptId || resumeRetryReceiptId;
           applyStopRequested = false;
           cumulativeSummary = emptyCumulativeSummary();
+          resumeRetryReceiptId = activeRetryReceiptId;
           setDownloadUrl('');
-          setProgress(0, progressLabels.hydrating, resumeOffset > 0 ? <?php echo wp_json_encode(__('Resuming from saved offset.', 'dbvc')); ?> : <?php echo wp_json_encode(__('Starting hydration.', 'dbvc')); ?>, formatCounts());
-          show(<?php echo wp_json_encode(__('Hydration is running...', 'dbvc')); ?>, false);
+          setProgress(0, progressLabels.hydrating, resumeOffset > 0 ? <?php echo wp_json_encode(__('Resuming from saved offset.', 'dbvc')); ?> : (activeRetryReceiptId ? <?php echo wp_json_encode(__('Retrying failed items.', 'dbvc')); ?> : <?php echo wp_json_encode(__('Starting hydration.', 'dbvc')); ?>), formatCounts());
+          show(activeRetryReceiptId ? <?php echo wp_json_encode(__('Failed-item retry is running...', 'dbvc')); ?> : <?php echo wp_json_encode(__('Hydration is running...', 'dbvc')); ?>, false);
           setWorkflowBusy(button, true, true);
 
-          applyBatch(Math.max(0, resumeOffset)).then(function(data) {
+          applyBatch(Math.max(0, resumeOffset), activeRetryReceiptId).then(function(data) {
             if (applyStopRequested) {
               setProgress(extractProgress(data).percent, progressLabels.stopped, <?php echo wp_json_encode(__('Stopped after the current batch. Click Apply Hydration to continue.', 'dbvc')); ?>, formatCounts());
               show({
                 status: 'stopped',
                 next_offset: resumeOffset,
+                retry_receipt_id: activeRetryReceiptId,
                 cumulative_summary: cumulativeSummary,
                 last_report: data
               }, false);
@@ -6224,6 +6250,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
             }
 
             resumeOffset = 0;
+            resumeRetryReceiptId = '';
             setProgress(100, progressLabels.completed, <?php echo wp_json_encode(__('Hydration completed.', 'dbvc')); ?>, formatCounts());
             show({
               status: 'completed',

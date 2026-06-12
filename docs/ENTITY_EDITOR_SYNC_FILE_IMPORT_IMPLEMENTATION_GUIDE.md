@@ -1,8 +1,8 @@
 # Entity Editor Sync File Import Implementation Guide
 
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
-Status: `P3 IMPLEMENTED; P4+ HARDENING PLANNED`
+Status: `P5 AUTOMATED COVERAGE IMPLEMENTED; MANUAL QA RECOMMENDED`
 
 ## Objective
 
@@ -28,8 +28,10 @@ Implemented on 2026-06-09:
 - selected rows can be bulk-previewed with `Preview import selected`
 - import preflight reads through Entity Editor safe path helpers and blocks live matches, creation-disabled settings, missing post types, unsupported payloads, and noncanonical duplicate rows
 - commit delegates creation to `DBVC_Sync_Posts::import_post_from_json()`
+- commit delegates term creation to `DBVC_Sync_Taxonomies::import_term_json_file()`
 - commit suppresses normal auto-export hooks during the import call so DBVC does not generate a second canonical JSON file
 - commit moves the importer-updated source JSON to the final canonical filename after the new local ID is known
+- preview coverage now includes permission denial, invalid JSON, excluded paths, unsupported payloads, creation-disabled settings, whitelist blocking, stale duplicate blocking, bulk partial failures, and term creation
 - successful commits return the created WP entity and rebuild the Entity Editor index in the UI
 
 ## Original Gap
@@ -532,7 +534,7 @@ Exit criteria:
 
 ### P4. Duplicate And Canonical File Handling
 
-Status: `PARTIAL`
+Status: `CLOSED 2026-06-10`
 
 Tasks:
 
@@ -544,10 +546,11 @@ Tasks:
 Exit criteria:
 
 - duplicate sync files cannot accidentally create or update the wrong entity
+- PHPUnit confirms stale duplicate rows are blocked while the canonical duplicate row remains importable
 
 ### P5. Documentation And QA Closure
 
-Status: `PARTIAL`
+Status: `AUTOMATED COVERAGE CLOSED 2026-06-10; BROWSER QA OPEN`
 
 Tasks:
 
@@ -560,6 +563,7 @@ Exit criteria:
 
 - docs match shipped behavior
 - tests cover create success, creation disabled, matched blocked, invalid JSON, and bulk partial failure
+- browser QA confirms the wp-admin modal, row affordance, and index refresh on a real LocalWP site
 
 ## Test Plan
 
@@ -571,11 +575,13 @@ Coverage:
 
 - preview requires `manage_options`
 - preview blocks invalid JSON
+- preview blocks excluded paths
 - preview blocks unsupported entity kind
 - preview blocks matched post by UID
 - preview blocks matched post by slug/subtype
 - preview blocks post creation when `dbvc_allow_new_posts` is disabled
 - preview blocks post type outside whitelist
+- preview blocks stale duplicate files while allowing the canonical duplicate file
 - commit creates an unmatched post from an existing sync file
 - commit preserves incoming UID
 - commit returns created WP entity metadata

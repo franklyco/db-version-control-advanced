@@ -227,6 +227,8 @@ final class DescriptorPayloadBuilder
                 'sourceSummary' => [],
                 'entitySummary' => [],
                 'canEdit' => false,
+                'saveReady' => false,
+                'blockReason' => __('This dynamic tag is locked because it does not resolve to a Visual Editor save contract.', 'dbvc'),
             ];
 
             if (! empty($child['descriptor']) && is_array($child['descriptor'])) {
@@ -246,8 +248,12 @@ final class DescriptorPayloadBuilder
                 $payload['canEdit'] = $child_descriptor->status === 'editable'
                     && ! empty($child_contract_summary['writable'])
                     && $this->capabilities->canEditDescriptor($child_descriptor);
+                $payload['saveReady'] = $payload['canEdit'];
+                $payload['blockReason'] = $this->buildCompositeChildBlockReason($child_descriptor, $child_contract_summary, $payload['canEdit']);
                 $display_by_index[$index] = $this->stringifyCompositeDisplayValue($child_display_value);
             } elseif ($payload['expression'] !== '') {
+                $payload['currentValue'] = $payload['expression'];
+                $payload['displayValue'] = $payload['expression'];
                 $display_by_index[$index] = $payload['expression'];
             }
 
@@ -261,7 +267,156 @@ final class DescriptorPayloadBuilder
             'previewText' => $this->buildCompositePreviewText($segments, $display_by_index),
             'dynamicCount' => isset($source['dynamic_count']) ? absint($source['dynamic_count']) : count($children),
             'supportedChildCount' => isset($source['supported_child_count']) ? absint($source['supported_child_count']) : count($child_payloads),
+            'unsupportedChildCount' => isset($source['unsupported_child_count']) ? absint($source['unsupported_child_count']) : 0,
+            'saveReadiness' => $this->buildCompositeSaveReadiness($child_payloads),
         ];
+    }
+
+    /**
+     * @param EditableDescriptor    $descriptor
+     * @param array<string, mixed>  $contract_summary
+     * @param bool                  $can_edit
+     * @return string
+     */
+    private function buildCompositeChildBlockReason(EditableDescriptor $descriptor, array $contract_summary, $can_edit)
+    {
+        if ($can_edit) {
+            return '';
+        }
+
+        if ($descriptor->status !== 'editable') {
+            return __('This child source is inspect-only in the current Visual Editor contract.', 'dbvc');
+        }
+
+        if (empty($contract_summary['writable'])) {
+            return $this->contracts->getUnsupportedMessage($descriptor);
+        }
+
+        return __('Your account cannot save this child source from the Visual Editor.', 'dbvc');
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $children
+     * @return array<string, mixed>
+     */
+    private function buildCompositeSaveReadiness(array $children)
+    {
+        $dynamic_count = count($children);
+        $ready_children = 0;
+        $blocked_children = 0;
+        $unsupported_children = 0;
+        $acknowledgement_types = [];
+        $owner_groups = [];
+        $blockers = [];
+
+        foreach ($children as $child) {
+            if (! is_array($child)) {
+                continue;
+            }
+
+            $status = isset($child['status']) ? sanitize_key((string) $child['status']) : 'unsupported';
+            $save_ready = ! empty($child['saveReady']);
+            $reason = isset($child['blockReason']) ? sanitize_text_field((string) $child['blockReason']) : '';
+
+            if ($save_ready) {
+                $ready_children++;
+            } else {
+                $blocked_children++;
+                if ($reason !== '') {
+                    $blockers[] = $reason;
+                }
+            }
+
+            if ($status === 'unsupported' || empty($child['descriptor'])) {
+                $unsupported_children++;
+            }
+
+            $contract = isset($child['saveContractSummary']) && is_array($child['saveContractSummary'])
+                ? $child['saveContractSummary']
+                : [];
+            $ack_type = isset($contract['acknowledgementType']) ? sanitize_key((string) $contract['acknowledgementType']) : 'none';
+            if (! empty($contract['requiresAcknowledgement']) && $ack_type !== '' && $ack_type !== 'none') {
+                $acknowledgement_types[$ack_type] = true;
+            }
+
+            $entity = isset($child['entitySummary']) && is_array($child['entitySummary'])
+                ? $child['entitySummary']
+                : (isset($child['entity']) && is_array($child['entity']) ? $child['entity'] : []);
+            $scope = isset($child['scope']) ? sanitize_key((string) $child['scope']) : 'current_entity';
+            $entity_type = isset($entity['type']) ? sanitize_key((string) $entity['type']) : '';
+            $entity_id = isset($entity['id']) ? absint($entity['id']) : 0;
+            $entity_subtype = isset($entity['subtype']) ? sanitize_key((string) $entity['subtype']) : '';
+            $owner_key = implode(':', [$scope, $entity_type, $entity_subtype, $entity_id]);
+
+            if (! isset($owner_groups[$owner_key])) {
+                $owner_groups[$owner_key] = [
+                    'scope' => $scope,
+                    'type' => $entity_type,
+                    'id' => $entity_id,
+                    'subtype' => $entity_subtype,
+                    'title' => isset($entity['title']) ? sanitize_text_field((string) $entity['title']) : '',
+                    'count' => 0,
+                ];
+            }
+
+            $owner_groups[$owner_key]['count']++;
+        }
+
+        $blockers = array_values(array_unique(array_filter($blockers)));
+        $child_contracts_ready = $dynamic_count > 0 && $ready_children === $dynamic_count;
+        $batch_inputs_ready = $child_contracts_ready && $unsupported_children === 0 && $this->areCompositeBatchInputsAllowed($children);
+        $status = $batch_inputs_ready ? 'ready' : ($child_contracts_ready ? 'ready_pending_ui' : 'blocked');
+
+        return [
+            'status' => $status,
+            'canBatchSave' => $batch_inputs_ready,
+            'childContractsReady' => $child_contracts_ready,
+            'readyChildCount' => $ready_children,
+            'blockedChildCount' => $blocked_children,
+            'unsupportedChildCount' => $unsupported_children,
+            'dynamicCount' => $dynamic_count,
+            'requiresAcknowledgementTypes' => array_values(array_keys($acknowledgement_types)),
+            'ownerGroups' => array_values($owner_groups),
+            'blockers' => $blockers,
+            'message' => $batch_inputs_ready
+                ? __('All child sources have scalar save contracts. Review the owner acknowledgement before saving this mixed text element.', 'dbvc')
+                : ($child_contracts_ready
+                    ? __('All child sources have save contracts, but one or more controls need a dedicated composite editor before batch save is enabled.', 'dbvc')
+                    : __('Composite batch save is blocked until every child source has a writable Visual Editor save contract.', 'dbvc')),
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $children
+     * @return bool
+     */
+    private function areCompositeBatchInputsAllowed(array $children)
+    {
+        foreach ($children as $child) {
+            if (! is_array($child)) {
+                return false;
+            }
+
+            if (empty($child['saveReady']) || empty($child['descriptor']) || ! is_array($child['descriptor'])) {
+                return false;
+            }
+
+            $input = isset($child['input']) ? sanitize_key((string) $child['input']) : '';
+            if (in_array($input, ['text', 'textarea', 'number', 'url', 'email'], true)) {
+                continue;
+            }
+
+            if ($input === 'select') {
+                $descriptor = EditableDescriptor::fromArray($child['descriptor']);
+                if (empty($descriptor->ui['allowMultiple'])) {
+                    continue;
+                }
+            }
+
+            return false;
+        }
+
+        return ! empty($children);
     }
 
     /**

@@ -24,6 +24,7 @@ Implemented initial foundations:
 - Staged package discovery and selection in the Media Hydration workflow, so admins can choose uploaded/exported packages without pasting filesystem paths.
 - Preflight review summary/table rendering in the admin workflow before Apply.
 - Receipt listing and secure JSON receipt downloads from the Media Hydration workflow.
+- Receipt-scoped failed-item retry from the Media Hydration workflow. Retry reuses the same manifest/preflight/apply safety gates and limits the run to source attachment IDs recorded as failed in a prior apply receipt.
 - Secure source-side media mirror ZIP download links after package export. Downloads are served through an admin-post action with `manage_options`, nonce verification, package-ID validation, and containment under the DBVC media mirror root.
 - Permission-aware REST endpoints for inventory, preflight planning, package export, and guarded apply. Preflight/package/apply are blocked until media hydration is enabled in DBVC settings.
 - File-backed JSON receipts and a global apply lock for write runs.
@@ -32,7 +33,6 @@ Implemented initial foundations:
 
 Not implemented yet:
 
-- Retry failed items only.
 - Asynchronous job orchestration.
 - Remote-source hydration.
 - New attachment creation for non-cloned targets.
@@ -535,6 +535,7 @@ Add routes under `dbvc/v1`, all gated by `manage_options`:
 - Implemented: `POST /media-hydration/package/export`
 - Implemented: `POST /media-hydration/apply`
   - Accepts `offset` and `limit` for chunked apply runs.
+  - Accepts `retry_receipt_id` to run only failed source attachment IDs from a prior apply receipt.
   - Returns `pagination` and `progress` fields with `processed_this_batch`, `processed_total`, `next_offset`, `remaining`, `total_plan_items`, `percent`/`progress_percent`, and `has_more`.
   - The admin UI loops over this endpoint until `has_more` is false or the operator clicks Stop after current batch.
 - Implemented: `GET /media-hydration/receipts`
@@ -706,7 +707,7 @@ Tasks:
 - Add staged package selector to avoid manual manifest path entry.
 - Add bounded preflight review table with status filters and summary counts.
 - Add optional `http://` to `https://` media URL normalization setting for exact Media Library URLs only.
-- Add retry failed items.
+- Add retry failed items from apply receipts.
 - Add clear old media hydration receipts with nonce/capability checks.
 - Keep REST/admin handlers as thin delegators to the hydration services.
 

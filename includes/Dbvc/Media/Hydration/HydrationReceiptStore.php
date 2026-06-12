@@ -135,6 +135,62 @@ final class HydrationReceiptStore
     }
 
     /**
+     * @param string $receipt_id
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function read(string $receipt_id)
+    {
+        $path = self::resolve_receipt_path($receipt_id);
+        if (is_wp_error($path)) {
+            return $path;
+        }
+
+        $raw = file_get_contents($path);
+        if (! is_string($raw) || trim($raw) === '') {
+            return new \WP_Error('dbvc_media_hydration_receipt_empty', __('Media hydration receipt is empty.', 'dbvc'), ['status' => 400]);
+        }
+
+        $payload = json_decode($raw, true);
+        if (! is_array($payload)) {
+            return new \WP_Error('dbvc_media_hydration_receipt_invalid_json', __('Media hydration receipt is not valid JSON.', 'dbvc'), ['status' => 400]);
+        }
+
+        $payload['_receipt_path'] = $path;
+        return $payload;
+    }
+
+    /**
+     * @param string $receipt_id
+     * @return int[]|\WP_Error
+     */
+    public static function failed_source_ids(string $receipt_id)
+    {
+        $payload = self::read($receipt_id);
+        if (is_wp_error($payload)) {
+            return $payload;
+        }
+
+        $receipt = isset($payload['receipt']) && is_array($payload['receipt']) ? $payload['receipt'] : [];
+        if ((string) ($receipt['type'] ?? '') !== 'apply') {
+            return new \WP_Error('dbvc_media_hydration_retry_requires_apply_receipt', __('Only media hydration apply receipts can be retried.', 'dbvc'), ['status' => 400]);
+        }
+
+        $ids = [];
+        foreach ((array) ($payload['items'] ?? []) as $item) {
+            if (! is_array($item) || ! self::is_retry_candidate($item)) {
+                continue;
+            }
+
+            $source_id = isset($item['source_id']) ? absint($item['source_id']) : 0;
+            if ($source_id > 0) {
+                $ids[] = $source_id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * @return string|\WP_Error
      */
     public static function base_dir()
@@ -188,6 +244,7 @@ final class HydrationReceiptStore
                 'metadata_repaired' => (int) ($summary['metadata_repaired'] ?? 0),
                 'blocked' => (int) ($summary['blocked'] ?? $plan_summary['blocked'] ?? 0),
                 'errors' => (int) ($summary['errors'] ?? 0),
+                'retryable' => self::count_retryable_items(is_array($payload) ? $payload : []),
                 'needs_hydration' => (int) ($plan_summary['needs_hydration'] ?? 0),
                 'needs_metadata_repair' => (int) ($plan_summary['needs_metadata_repair'] ?? 0),
             ],
@@ -223,6 +280,41 @@ final class HydrationReceiptStore
         if (! file_exists($index)) {
             file_put_contents($index, "<?php\n// Silence is golden.\n");
         }
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return int
+     */
+    private static function count_retryable_items(array $payload): int
+    {
+        $receipt = isset($payload['receipt']) && is_array($payload['receipt']) ? $payload['receipt'] : [];
+        if ((string) ($receipt['type'] ?? '') !== 'apply') {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ((array) ($payload['items'] ?? []) as $item) {
+            if (is_array($item) && self::is_retry_candidate($item)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @return bool
+     */
+    private static function is_retry_candidate(array $item): bool
+    {
+        $result = (string) ($item['result'] ?? '');
+        if ($result === 'error' || $result === 'blocked') {
+            return true;
+        }
+
+        return (string) ($item['metadata_result'] ?? '') === 'metadata_error';
     }
 
     private static function path_starts_with(string $path, string $base): bool

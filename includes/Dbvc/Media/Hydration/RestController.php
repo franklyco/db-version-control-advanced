@@ -287,6 +287,11 @@ final class RestController
             }
         }
 
+        $retry_args = $this->retry_args_from_params($params);
+        if (is_wp_error($retry_args)) {
+            return $retry_args;
+        }
+
         $package_root = isset($params['package_root']) && (string) $params['package_root'] !== ''
             ? $this->normalize_package_root((string) $params['package_root'])
             : dirname($manifest_path);
@@ -303,15 +308,23 @@ final class RestController
         }
 
         try {
-            $report = Hydrator::apply_from_manifest_file($manifest_path, $this->apply_args_from_settings($params) + [
+            $apply_args = $this->apply_args_from_settings($params) + [
                 'package_root' => $package_root,
-            ]);
+            ] + $retry_args;
+            $report = Hydrator::apply_from_manifest_file($manifest_path, $apply_args);
         } finally {
             HydrationLock::release((string) ($lock['token'] ?? ''));
         }
 
         if (is_wp_error($report)) {
             return $report;
+        }
+
+        if (! empty($retry_args['retry_receipt_id'])) {
+            $report['retry'] = [
+                'receipt_id' => (string) $retry_args['retry_receipt_id'],
+                'source_id_count' => count((array) ($retry_args['source_ids'] ?? [])),
+            ];
         }
 
         if (Settings::get_bool(Settings::OPTION_RECEIPTS_ENABLED) === '1') {
@@ -417,6 +430,32 @@ final class RestController
             'repair_metadata' => isset($params['repair_metadata']) ? rest_sanitize_boolean($params['repair_metadata']) : $metadata_policy !== 'skip',
             'normalize_media_urls_to_https' => isset($params['normalize_media_urls_to_https']) ? rest_sanitize_boolean($params['normalize_media_urls_to_https']) : Settings::get_bool(Settings::OPTION_NORMALIZE_MEDIA_URLS_TO_HTTPS) === '1',
             'overwrite_existing' => false,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     * @return array<string,mixed>|\WP_Error
+     */
+    private function retry_args_from_params(array $params)
+    {
+        $receipt_id = isset($params['retry_receipt_id']) ? sanitize_file_name((string) $params['retry_receipt_id']) : '';
+        if ($receipt_id === '') {
+            return [];
+        }
+
+        $source_ids = HydrationReceiptStore::failed_source_ids($receipt_id);
+        if (is_wp_error($source_ids)) {
+            return $source_ids;
+        }
+
+        if (empty($source_ids)) {
+            return new \WP_Error('dbvc_media_hydration_retry_no_failed_items', __('The selected media hydration receipt has no failed items to retry.', 'dbvc'), ['status' => 400]);
+        }
+
+        return [
+            'retry_receipt_id' => $receipt_id,
+            'source_ids' => $source_ids,
         ];
     }
 

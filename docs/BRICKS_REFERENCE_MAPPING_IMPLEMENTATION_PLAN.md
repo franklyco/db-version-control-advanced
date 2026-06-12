@@ -2,7 +2,7 @@
 
 Date: 2026-06-09
 
-Status: proposal only. No code changes have been made for this guide.
+Status: initial backend implementation in progress. Core export/import support exists for Bricks `templatePreviewPostId` and `templatePreviewTerm` references; proposal preflight UI and broader Bricks condition/query rules remain pending.
 
 Related docs:
 
@@ -104,8 +104,9 @@ Phase 1 should support only high-confidence paths:
 | Path | Kind | Notes |
 | --- | --- | --- |
 | `meta._bricks_template_settings.*.templatePreviewPostId` | post | Resolve by UID first, then post type + slug. Preserve string value if Bricks stored a string. |
+| `meta._bricks_template_settings.*.templatePreviewTerm` | term | Resolve scoped `taxonomy::term_id` values by UID first, then taxonomy + slug. Preserve Bricks `taxonomy::local_id` format. |
 | `meta._bricks_template_settings.*.templateConditions.*` concrete single post selectors | post | Add only after local fixture confirms exact Bricks shape. |
-| `meta._bricks_template_settings.*.templateConditions.*` concrete term selectors | term | Add only after local fixture confirms exact taxonomy/value shape. |
+| `meta._bricks_template_settings.*.templateConditions.*` concrete term selectors | term | Add only after local fixture confirms concrete condition selectors. Current local fixtures show `taxonomy::all` archive conditions, which should not be localized. |
 
 Keep all other Bricks content/query settings inspect-only until fixtures prove their exact storage shape.
 

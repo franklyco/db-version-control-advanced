@@ -97,6 +97,8 @@ const getSyncImportActionLabel = (action) => {
 	return 'preview';
 };
 
+const getEntityImportStatusRank = (item) => (item?.matched_wp?.id ? 1 : 0);
+
 const EntityEditorApp = () => {
 	const [entityIndex, setEntityIndex] = useState([]);
 	const [entityIndexStats, setEntityIndexStats] = useState(null);
@@ -576,13 +578,19 @@ const EntityEditorApp = () => {
 	const sortedEntityIndex = useMemo(() => {
 		const list = [...filteredEntityIndex];
 		const getValue = (item, key) => {
+			if (key === 'import_status') return getEntityImportStatusRank(item);
 			if (key === 'mtime') return Number(item?.mtime || 0);
 			return (item?.[key] || '').toString().toLowerCase();
 		};
 		list.sort((a, b) => {
 			const left = getValue(a, entitySort.key);
 			const right = getValue(b, entitySort.key);
-			if (left === right) return 0;
+			if (left === right) {
+				const leftPath = (a?.relative_path || '').toString().toLowerCase();
+				const rightPath = (b?.relative_path || '').toString().toLowerCase();
+				if (leftPath === rightPath) return 0;
+				return leftPath > rightPath ? 1 : -1;
+			}
 			const direction = left > right ? 1 : -1;
 			return entitySort.direction === 'asc' ? direction : direction * -1;
 		});
@@ -613,6 +621,10 @@ const EntityEditorApp = () => {
 	);
 	const allFilteredSelected = filteredEntityPaths.length > 0 && selectedFilteredCount === filteredEntityPaths.length;
 	const allPagedSelected = pagedEntityPaths.length > 0 && pagedEntityPaths.every((path) => selectedEntityPathSet.has(path));
+	const unimportedEntityCount = useMemo(
+		() => entityIndex.reduce((count, item) => count + (getEntityImportStatusRank(item) === 0 ? 1 : 0), 0),
+		[entityIndex]
+	);
 	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy || syncImportPreviewBusy || syncImportCommitBusy;
 	const entityBulkActionNeedsSelection = entityBulkAction === 'download_selected'
 		|| entityBulkAction === 'remove_selected'
@@ -964,7 +976,9 @@ const EntityEditorApp = () => {
 			</div>
 			<section className="dbvc-entity-editor-shell">
 				<h2>Entity index</h2>
-				<p className="description">Showing {sortedEntityIndex.length} indexed entities from sync (posts + terms only).</p>
+				<p className="description">
+					Showing {sortedEntityIndex.length} indexed entities from sync (posts + terms only). Unimported: {unimportedEntityCount}.
+				</p>
 				{entityIndexError && (
 					<div className="notice notice-error">
 						<p>{entityIndexError}</p>
@@ -1074,7 +1088,7 @@ const EntityEditorApp = () => {
 									/>
 								</th>
 								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('entity_kind')}>Kind{entitySort.key === 'entity_kind' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
-								<th>Matched WP</th>
+								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('import_status')}>Import status{entitySort.key === 'import_status' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
 								<th>Actions</th>
 								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('subtype')}>Subtype{entitySort.key === 'subtype' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
 								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('title')}>Title{entitySort.key === 'title' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
@@ -1105,8 +1119,15 @@ const EntityEditorApp = () => {
 									<td>{item.entity_kind || '—'}</td>
 									<td>
 										{item.matched_wp?.id ? (
-											<a href={item.matched_wp?.edit_url || '#'}>{item.matched_wp?.kind || 'wp'} #{item.matched_wp?.id}</a>
-										) : '—'}
+											<>
+												<span className="dbvc-badge dbvc-badge--accept">Imported</span>
+												<div>
+													<a href={item.matched_wp?.edit_url || '#'}>{item.matched_wp?.kind || 'wp'} #{item.matched_wp?.id}</a>
+												</div>
+											</>
+										) : (
+											<span className="dbvc-badge dbvc-badge--pending">Not imported</span>
+										)}
 									</td>
 									<td>
 										<button

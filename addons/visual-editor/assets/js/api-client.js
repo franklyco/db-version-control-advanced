@@ -158,6 +158,39 @@
       });
     },
 
+    saveComposite(sessionId, token, values, options) {
+      const payload = Object.assign({
+        values: Array.isArray(values) ? values : [],
+        baseValues: [],
+        acknowledgeCompositeScope: false,
+        acknowledgements: {}
+      }, options || {});
+
+      return fetch(`${DBVCVisualEditorBootstrap.restBase}/session/${encodeURIComponent(sessionId)}/composite-save/${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-WP-Nonce': DBVCVisualEditorBootstrap.nonce
+        },
+        body: JSON.stringify(payload)
+      }).then(async (response) => {
+        const data = await response.json().catch(function () {
+          return null;
+        });
+
+        if (response.ok) {
+          return data;
+        }
+
+        const error = new Error((data && data.message) || `Visual Editor composite save request failed (${response.status}).`);
+
+        error.status = response.status;
+        error.data = data;
+
+        throw error;
+      });
+    },
+
     seedCurrentField(sessionId, token, options) {
       const payload = Object.assign({
         acknowledgeSeed: true,
