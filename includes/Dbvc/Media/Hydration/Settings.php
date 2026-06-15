@@ -18,6 +18,7 @@ final class Settings
     public const OPTION_METADATA_POLICY = 'dbvc_media_hydration_metadata_policy';
     public const OPTION_ALLOWED_MIME_GROUPS = 'dbvc_media_hydration_allowed_mime_groups';
     public const OPTION_BATCH_SIZE = 'dbvc_media_hydration_batch_size';
+    public const OPTION_EXECUTION_MODE = 'dbvc_media_hydration_execution_mode';
     public const OPTION_REQUIRE_DRY_RUN = 'dbvc_media_hydration_require_dry_run';
     public const OPTION_RECEIPTS_ENABLED = 'dbvc_media_hydration_receipts_enabled';
     public const OPTION_STRICT_HASHES = 'dbvc_media_hydration_strict_hashes';
@@ -33,6 +34,7 @@ final class Settings
         self::OPTION_METADATA_POLICY => 'regenerate_missing',
         self::OPTION_ALLOWED_MIME_GROUPS => ['image', 'video', 'audio', 'font', 'document', 'other'],
         self::OPTION_BATCH_SIZE => 50,
+        self::OPTION_EXECUTION_MODE => 'browser_chunks',
         self::OPTION_REQUIRE_DRY_RUN => '1',
         self::OPTION_RECEIPTS_ENABLED => '1',
         self::OPTION_STRICT_HASHES => '1',
@@ -54,6 +56,7 @@ final class Settings
             self::OPTION_METADATA_POLICY => self::get_metadata_policy(),
             self::OPTION_ALLOWED_MIME_GROUPS => self::get_allowed_mime_groups(),
             self::OPTION_BATCH_SIZE => self::get_batch_size(),
+            self::OPTION_EXECUTION_MODE => self::get_execution_mode(),
             self::OPTION_REQUIRE_DRY_RUN => self::get_bool(self::OPTION_REQUIRE_DRY_RUN),
             self::OPTION_RECEIPTS_ENABLED => self::get_bool(self::OPTION_RECEIPTS_ENABLED),
             self::OPTION_STRICT_HASHES => self::get_bool(self::OPTION_STRICT_HASHES),
@@ -84,6 +87,7 @@ final class Settings
         update_option(self::OPTION_METADATA_POLICY, self::sanitize_allowed_key($data[self::OPTION_METADATA_POLICY] ?? '', self::allowed_metadata_policies(), (string) self::DEFAULTS[self::OPTION_METADATA_POLICY]));
         update_option(self::OPTION_ALLOWED_MIME_GROUPS, self::sanitize_mime_groups($data[self::OPTION_ALLOWED_MIME_GROUPS] ?? []));
         update_option(self::OPTION_BATCH_SIZE, self::sanitize_int($data[self::OPTION_BATCH_SIZE] ?? self::DEFAULTS[self::OPTION_BATCH_SIZE], 1, 500, (int) self::DEFAULTS[self::OPTION_BATCH_SIZE]));
+        update_option(self::OPTION_EXECUTION_MODE, self::sanitize_allowed_key($data[self::OPTION_EXECUTION_MODE] ?? '', self::allowed_execution_modes(), (string) self::DEFAULTS[self::OPTION_EXECUTION_MODE]));
         update_option(self::OPTION_LOCK_TIMEOUT_MINUTES, self::sanitize_int($data[self::OPTION_LOCK_TIMEOUT_MINUTES] ?? self::DEFAULTS[self::OPTION_LOCK_TIMEOUT_MINUTES], 1, 1440, (int) self::DEFAULTS[self::OPTION_LOCK_TIMEOUT_MINUTES]));
 
         return self::get_all();
@@ -132,6 +136,11 @@ final class Settings
         return self::sanitize_int(get_option(self::OPTION_BATCH_SIZE, self::DEFAULTS[self::OPTION_BATCH_SIZE]), 1, 500, (int) self::DEFAULTS[self::OPTION_BATCH_SIZE]);
     }
 
+    public static function get_execution_mode(): string
+    {
+        return self::sanitize_allowed_key(get_option(self::OPTION_EXECUTION_MODE, self::DEFAULTS[self::OPTION_EXECUTION_MODE]), self::allowed_execution_modes(), (string) self::DEFAULTS[self::OPTION_EXECUTION_MODE]);
+    }
+
     public static function get_lock_timeout_minutes(): int
     {
         return self::sanitize_int(get_option(self::OPTION_LOCK_TIMEOUT_MINUTES, self::DEFAULTS[self::OPTION_LOCK_TIMEOUT_MINUTES]), 1, 1440, (int) self::DEFAULTS[self::OPTION_LOCK_TIMEOUT_MINUTES]);
@@ -175,6 +184,14 @@ final class Settings
     public static function allowed_mime_groups(): array
     {
         return ['image', 'video', 'audio', 'font', 'document', 'other'];
+    }
+
+    /**
+     * @return string[]
+     */
+    public static function allowed_execution_modes(): array
+    {
+        return ['browser_chunks', 'background_job'];
     }
 
     /**

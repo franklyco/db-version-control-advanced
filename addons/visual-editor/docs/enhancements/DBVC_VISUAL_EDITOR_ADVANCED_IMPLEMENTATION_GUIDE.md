@@ -626,7 +626,7 @@ Validation before implementation is complete:
 - direct rendered ACF image: select replacement, no-reload save; then clear image, no-reload save; then add image again without reload.
 - rendered featured image: same replace/clear/add loop.
 - background image: replace, clear, and add back without reload while preserving wrapper dimensions.
-- populated Bricks `image-gallery` element `xxrpfg` on `/vertical/websites-for-contractors/`: verify add, replace, remove item, clear gallery, move buttons, drag/drop ordering, no-reload `Save`, and `Save and Reload` still work exactly as they do now.
+- populated Bricks `image-gallery` element `xxrpfg` on `/vertical/websites-for-contractors/`: user QA on 2026-06-13 confirmed add, replace, remove item, move/reorder, and no-reload `Save` still work as before after the single-media clear patch. Re-check `Save and Reload` only if gallery-specific code changes again.
 - missing-media marker: confirm clear/removal helper does not run and reload remains required.
 - repeated/query-loop cards: confirm clearing one card image does not hide another card image that shares the same Bricks element ID but has a different owner/source group.
 
@@ -642,6 +642,12 @@ Validation targets:
 Concrete gallery fixtures:
 - Populated gallery: `https://dbvc-codexchanges.local/vertical/websites-for-contractors/` uses `FLO-Verticals-Single` template `26763`, Bricks image-gallery element `xxrpfg`, and ACF gallery field `gallery_section_gallery` with five stored attachment IDs.
 - Empty/condition-skipped gallery gap: `https://dbvc-codexchanges.local/vertical/dentists/` uses the same template and field with an empty value; current render probes show Bricks emits no `xxrpfg` markup and no Visual Editor marker because the element is skipped before the current render hooks can register a descriptor.
+
+Current validation status:
+- `xxrpfg` gallery regression check is closed by user QA on 2026-06-13 for add/replace/remove/reorder/no-reload save.
+- Read-only render probes on 2026-06-13 confirmed server-side marker coverage for rendered `image_src` paths on `/vertical/websites-for-contractors/` and `/our-process/`, and one concrete `background_image` marker on `/service-areas/ohio/akron/` from template `120111`, element `117a72`, term `437`, field `vf_service_area_hero_image`.
+- Direct rendered ACF image, featured image, and background-image replace/clear/add-back browser checks remain open because the in-app browser session was not authenticated and could not load Visual Editor assets or markers.
+- Missing-media markers remain reload-only by design; confirm the single-media clear helper stays limited to rendered `image_src` and `background_image` markers.
 
 ### Immediate next implementation order
 

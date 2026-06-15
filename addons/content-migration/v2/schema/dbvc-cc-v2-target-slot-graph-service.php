@@ -35,7 +35,9 @@ final class DBVC_CC_V2_Target_Slot_Graph_Service
             return $context;
         }
 
-        $catalog_bundle = DBVC_CC_V2_Target_Field_Catalog_Service::get_instance()->get_catalog($context['domain'], true);
+        $catalog_bundle = $force_rebuild
+            ? DBVC_CC_V2_Target_Field_Catalog_Service::get_instance()->build_catalog($context['domain'], true)
+            : DBVC_CC_V2_Target_Field_Catalog_Service::get_instance()->get_catalog($context['domain'], true);
         if (is_wp_error($catalog_bundle)) {
             return $catalog_bundle;
         }
@@ -43,7 +45,7 @@ final class DBVC_CC_V2_Target_Slot_Graph_Service
         $catalog = isset($catalog_bundle['catalog']) && is_array($catalog_bundle['catalog']) ? $catalog_bundle['catalog'] : [];
         $payload = $this->build_payload($context, $catalog_bundle, $catalog);
 
-        $existing = $this->read_json_file($context['target_slot_graph_file']);
+        $existing = $force_rebuild ? null : $this->read_json_file($context['target_slot_graph_file']);
         if (
             ! $force_rebuild
             && is_array($existing)
@@ -131,6 +133,9 @@ final class DBVC_CC_V2_Target_Slot_Graph_Service
         $groups = isset($acf_catalog['groups']) && is_array($acf_catalog['groups']) ? $acf_catalog['groups'] : [];
         $provider_status = isset($catalog['field_context_provider']) && is_array($catalog['field_context_provider'])
             ? $catalog['field_context_provider']
+            : [];
+        $object_type_context_provider = isset($catalog['object_type_context_provider']) && is_array($catalog['object_type_context_provider'])
+            ? $catalog['object_type_context_provider']
             : [];
 
         $slots = [];
@@ -245,6 +250,7 @@ final class DBVC_CC_V2_Target_Slot_Graph_Service
                 [
                     'catalog_fingerprint' => isset($catalog_bundle['catalog_fingerprint']) ? (string) $catalog_bundle['catalog_fingerprint'] : '',
                     'provider_status' => $provider_status,
+                    'object_type_context_provider' => $object_type_context_provider,
                     'slots' => $slots,
                 ],
                 JSON_UNESCAPED_SLASHES
@@ -259,6 +265,7 @@ final class DBVC_CC_V2_Target_Slot_Graph_Service
             'catalog_fingerprint' => isset($catalog_bundle['catalog_fingerprint']) ? (string) $catalog_bundle['catalog_fingerprint'] : '',
             'slot_graph_fingerprint' => $slot_graph_fingerprint,
             'field_context_provider' => $provider_status,
+            'object_type_context_provider' => $object_type_context_provider,
             'source_artifacts' => [
                 'target_field_catalog_file' => $context['target_field_catalog_file'],
                 'target_field_catalog_relative_path' => $this->get_domain_relative_path($context['target_field_catalog_file'], $context['domain_dir']),

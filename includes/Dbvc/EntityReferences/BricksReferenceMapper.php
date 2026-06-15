@@ -91,7 +91,29 @@ final class BricksReferenceMapper
      */
     public static function localize_post_payload(array $payload, array $source_to_local_post_ids = []): array
     {
-        if (! self::is_enabled()) {
+        return self::localize_post_payload_internal($payload, $source_to_local_post_ids, true);
+    }
+
+    /**
+     * Dry-run known Bricks ID reference localization for proposal/preflight display.
+     *
+     * @param array<string,mixed> $payload
+     * @param array<int,int>      $source_to_local_post_ids
+     * @return array{payload:array<string,mixed>,results:array<int,array<string,mixed>>}
+     */
+    public static function preflight_post_payload(array $payload, array $source_to_local_post_ids = []): array
+    {
+        return self::localize_post_payload_internal($payload, $source_to_local_post_ids, false);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<int,int>      $source_to_local_post_ids
+     * @return array{payload:array<string,mixed>,results:array<int,array<string,mixed>>}
+     */
+    private static function localize_post_payload_internal(array $payload, array $source_to_local_post_ids = [], bool $respect_enabled = true): array
+    {
+        if ($respect_enabled && ! self::is_enabled()) {
             return [
                 'payload' => $payload,
                 'results' => [],

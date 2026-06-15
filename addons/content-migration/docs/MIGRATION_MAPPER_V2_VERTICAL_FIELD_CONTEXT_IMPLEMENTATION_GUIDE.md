@@ -23,8 +23,8 @@ Use this guide for implementation rules, file ownership, and delivery boundaries
 9. Reuse the current V2 artifacts and inspector or package surfaces where practical.
 10. Preserve field type, field name, group name, and branch-path metadata in the slot graph and review evidence.
 11. Do not infer real frontend component or template names unless Vertical exposes explicit metadata for them.
-12. Do not edit or depend on changes inside the Vertical theme repo for this DBVC tranche.
-13. Do not start Object Type Context work inside this slice.
+12. Do not require DBVC-specific changes inside the Vertical theme repo for this DBVC tranche; consume Vertical context only through published helper or REST contracts.
+13. Treat Object Type Context as additive object-level metadata. It should narrow object choice and explain migration intent, not replace Field Context, slot graph eligibility, value contracts, or review/package gates.
 
 ## Landed Baseline To Reuse
 
@@ -45,6 +45,130 @@ The redesign should build on these already-landed DBVC pieces:
 - review payloads and inspector UI already expose compact field-context evidence
 - provider-empty catalogs now remain truthfully `missing` while the enriched target catalog and slot graph may backfill purpose text from runtime ACF field/group metadata
 - semantic slot-role inference now keeps name-driven roles like `headline` and `cta_label` ahead of generic `wysiwyg`/`textarea` fallback
+
+## Provider Cache And Artifact Size Hardening
+
+The `flourishweb.co` replay exposed a provider/artifact size failure path that future DBVC work must preserve.
+
+DBVC asks Vertical for the unscoped Field Context catalog when rebuilding the site-wide target schema:
+
+- `DBVC_CC_Field_Context_Provider_Service::get_catalog([], 'mapping')`
+- Vertical cache criteria suffix: `d751713988987e9331980363e24189ce` (`md5('[]')`)
+
+On large Vertical sites, the raw Field Context provider payload can be too large for a WordPress transient write. Vertical now guards that path and may skip the persistent `_transient_vf_field_context_catalog_*` write when the serialized raw payload exceeds its configured byte cap. DBVC must treat `cache_layer`, `cache_version`, and transient existence as diagnostics only. A missing transient is not provider failure when the provider returns a usable projected mapping payload with `status`, `source_hash`, and entry/group counts.
+
+Artifact rules:
+
+- keep full normalized provider lookup maps request-local only: `groups_by_key`, `entries_by_key_path`, `entries_by_name_path`, `entries_by_group_and_acf_key`, `entries_by_acf_key`
+- do not embed those maps in top-level `field_context_provider` blocks inside V2 schema artifacts
+- use `DBVC_CC_Field_Context_Provider_Service::summarize_provider()` for top-level `field_context_provider` metadata
+- keep semantic context where consumers actually need it: `acf_catalog.groups[*].field_context`, `acf_catalog.groups[*].fields[*].field_context`, and slot projections
+- include the compact provider summary in artifact fingerprints; use `source_hash` as the semantic invalidation key for the provider
+- forced rebuilds must not decode existing large JSON artifacts before overwrite
+- `build_inventory()`, `build_catalog()`, and `build_graph()` should use `$force_rebuild ? null : read_json_file(...)`
+- forced slot-graph rebuilds must force the V2 target field catalog rebuild instead of loading a stale oversized catalog
+
+Current LocalWP evidence from the successful `flourishweb.co` replay hardening pass:
+
+- raw Vertical unscoped Field Context cache payload: `16052461` serialized bytes
+- Vertical persistent cache skip cap: `2097152` bytes
+- pre-hardening DBVC artifacts: target field catalog about `60M`, target slot graph about `56M`
+- post-hardening DBVC artifacts: `_schema/dbvc_cc_target_field_catalog.v2.json` about `19M`, `_schema/dbvc_cc_target_slot_graph.v1.json` about `15M`
+- successful object/field context probe: `catalog_group_context_count = 31`, `catalog_field_context_count = 2252`, `slot_context_count = 1716`
+
+Do not re-expand top-level provider maps to make downstream code convenient. Add focused lookup helpers or request-local indexes instead.
+
+## Object Type Context Adapter Slice
+
+Object Type Context is now an approved additive DBVC adapter slice because Vertical exposes a runtime `vf_object_type_context` catalog for CPT and taxonomy semantics. DBVC should consume that contract the same way it consumes Field Context: normalize provider metadata once, embed compact summaries into existing V2 artifacts, and keep all migration decisions inside the current mapper, review, and package systems.
+
+### Provider shape
+
+DBVC normalizes Vertical's object provider into `DBVC_CC_Object_Type_Context_Provider_Service`.
+
+Required provider summary fields:
+
+- `status`
+- `reason`
+- `provider`
+- `provider_version`
+- `transport`
+- `contract_version`
+- `source_hash`
+- `schema_version`
+- `site_fingerprint`
+- `catalog_status`
+- `entry_count`
+- `complete_count`
+- `partial_count`
+- `override_count`
+- `warnings[]`
+
+Required entry fields for object-level migration use:
+
+- `object_id`
+- `object_kind`
+- `object_key`
+- `label`
+- `singular_label`
+- `resolved_purpose`
+- `entity_role`
+- `content_model`
+- `supports_generation`
+- `supports_migration_target`
+- `requires_manual_review`
+- `status`
+- `resolved_from`
+- `has_override`
+- `registration`
+- `relationships`
+
+Taxonomy entries may additionally carry `term_role`, `assignment_behavior`, `is_classification_only`, `is_user_facing_filter`, `hierarchical_meaning`, and `owner_feature`.
+
+### Artifact integration
+
+Object Type Context should be embedded only into existing artifacts:
+
+- `dbvc_cc_target_object_inventory.v1.json`
+  - add `object_type_context_provider`
+  - add compact `object_type_context` to each `object_types[]` and `taxonomy_types[]` record
+  - include object provider identity in inventory fingerprints and source artifacts
+- `dbvc_cc_target_field_catalog.v2.json`
+  - add provider summary and fingerprint inputs
+  - resolve group `object_type_context` from normalized `object_context`
+  - carry the same context into group and field `field_context` blocks as parent object evidence
+- `dbvc_cc_target_slot_graph.v1.json`
+  - add provider summary and fingerprint inputs
+  - expose each slot's inherited `object_type_context`
+- mapping index and recommendation artifacts
+  - propagate provider summary for QA drift checks
+  - keep target refs and recommendation shapes backward compatible
+- URL QA and package readiness
+  - warn when old recommendations lack object provider metadata
+  - block only when a recorded Object Type Context provider fingerprint drifts from the current slot graph
+
+### Scoring and review usage
+
+Initial target-object classification may use Object Type Context before field-level mapping:
+
+- reward complete or override-backed context
+- penalize partial or registration-only context
+- block or heavily penalize objects where `supports_migration_target` is false
+- require review when `requires_manual_review` is true
+- reward `primary_content` entities for page/content migration when other evidence agrees
+- penalize `configuration`, `operational`, or `system_only` object models as migration targets
+- use `resolved_purpose`, labels, `entity_role`, and `content_model` as scoring text, not as hard target refs
+
+Field Context still owns slot eligibility, value-shape validation, and field-purpose interpretation. Object Type Context only answers whether a CPT/taxonomy itself is a sensible migration target and why.
+
+### Acceptance criteria
+
+- DBVC works when Vertical Object Type Context helpers are unavailable, returning a stable `unavailable` provider summary without fatal errors.
+- New target object inventory, target field catalog, slot graph, mapping index, and recommendation artifacts include object provider metadata.
+- Object-context metadata changes artifact fingerprints so stale schema caches can be detected.
+- Initial classification explains object-level target decisions using compact context evidence.
+- URL QA surfaces missing/degraded Object Type Context as warnings for backward compatibility and blocks only verified provider drift.
+- No direct writes are made to Vertical Object Type Context data.
 
 The next work should extend those contracts, not duplicate them.
 
@@ -257,7 +381,8 @@ Recommended order:
 
 Recommended artifact-backed cache output:
 
-- `_inventory/dbvc_cc_target_slot_graph.v1.json`
+- `_schema/dbvc_cc_target_field_catalog.v2.json`
+- `_schema/dbvc_cc_target_slot_graph.v1.json`
 
 Recommended lookup indexes:
 
@@ -313,7 +438,9 @@ Recommended initial unresolved classes:
 Primary ownership:
 
 - `addons/content-migration/shared/dbvc-cc-field-context-provider-service.php`
+- `addons/content-migration/shared/dbvc-cc-object-type-context-provider-service.php`
 - `addons/content-migration/shared/dbvc-cc-field-context-match-scorer.php`
+- `addons/content-migration/v2/schema/dbvc-cc-v2-target-object-inventory-service.php`
 - `addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php`
 
 Recommended additions:
@@ -324,9 +451,11 @@ Recommended additions:
 Responsibilities:
 
 - normalize provider payloads
+- normalize Object Type Context provider payloads
 - derive context chains
 - derive slot graph projections from the current catalog
 - preserve field type, field name, group name, and branch-path metadata
+- preserve object-level target semantics and provider audit metadata
 - maintain rebuildable artifact-backed slot indexes
 - preserve provider audit metadata
 
@@ -380,6 +509,7 @@ Primary ownership:
 Responsibilities:
 
 - enforce field-context-based blockers and warnings
+- surface Object Type Context provider warnings and fingerprint drift without blocking older artifacts that never carried object provider metadata
 - keep package readiness aligned with mapping quality
 - stop invalid shapes from reaching import packaging
 
@@ -478,7 +608,7 @@ Benchmark work should start in parallel with early deterministic tranches, not a
 
 ## Out Of Scope
 
-- Object Type Context
+- Vertical-side Object Type Context authoring, admin UI, or provider implementation
 - changes to Vertical theme code or docs outside DBVC repo work
 - raw ACF JSON semantic parsing at runtime
 - a new standalone mapping UI outside the current V2 inspector and readiness flows

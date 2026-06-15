@@ -89,6 +89,7 @@ final class DBVC_CC_Field_Context_Chain_Builder
         ];
 
         $object_context = $this->resolve_object_context($field_context, $group_context, $group);
+        $object_type_context = $this->resolve_object_type_context($field_context, $group_context, $group);
         $value_contract = isset($field_context['value_contract']) && is_array($field_context['value_contract'])
             ? $field_context['value_contract']
             : [
@@ -135,6 +136,7 @@ final class DBVC_CC_Field_Context_Chain_Builder
             'is_repeatable' => $is_repeatable,
             'competition_group' => $this->build_competition_group($group_key, $branch_name_path, $section_family, $slot_role, $is_repeatable),
             'object_context' => $object_context,
+            'object_type_context' => $object_type_context,
             'value_contract' => $value_contract,
             'writable' => ! empty($value_contract['writable']) && empty($clone_context['is_clone_projected']) ? true : (! empty($value_contract['writable']) && ! empty($clone_context['is_directly_writable'])),
             'clone_context' => $clone_context,
@@ -168,6 +170,29 @@ final class DBVC_CC_Field_Context_Chain_Builder
 
         $location = isset($group['location']) && is_array($group['location']) ? $group['location'] : [];
         return DBVC_CC_Field_Context_Provider_Service::get_instance()->normalize_object_context($location);
+    }
+
+    /**
+     * @param array<string, mixed> $field_context
+     * @param array<string, mixed> $group_context
+     * @param array<string, mixed> $group
+     * @return array<string, mixed>
+     */
+    private function resolve_object_type_context(array $field_context, array $group_context, array $group)
+    {
+        if (isset($field_context['object_type_context']) && is_array($field_context['object_type_context'])) {
+            return $field_context['object_type_context'];
+        }
+
+        if (isset($group_context['object_type_context']) && is_array($group_context['object_type_context'])) {
+            return $group_context['object_type_context'];
+        }
+
+        if (isset($group['object_type_context']) && is_array($group['object_type_context'])) {
+            return $group['object_type_context'];
+        }
+
+        return [];
     }
 
     /**

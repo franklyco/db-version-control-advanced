@@ -45,11 +45,11 @@
 - [ ] Current-post flexible text-like/WYSIWYG/choice/link/image saves mutate only the targeted flexible row
 - [ ] Related-post flexible text-like/WYSIWYG/choice/link/image saves mutate only the targeted related-owner flexible row
 - [x] Composite-save REST requests reject related/shared child batches without explicit acknowledgement before any child write
-- [ ] Composite-save REST requests reject unsupported, readonly, missing, or structured child controls before any child write
+- [x] Composite-save REST requests reject unsupported, readonly, missing, or structured child controls before any child write
 - [x] Composite scalar batch saves persist same-value, changed-value, and restored child values through the composite-save route
 - [x] Composite stale child baselines return `409` before any batch writes and preserve the externally changed value
 - [x] Composite batch writes attempt rollback of earlier child writes when a later child write fails in the controlled mutation-service probe
-- [ ] Composite batch journal entries use one parent change set with one item per child mutation and include live failure/rollback row evidence
+- [x] Composite batch journal entries use one parent change set with one item per child mutation and include live failure/rollback row evidence
 
 ## UX
 - [ ] Editable fields open expected input

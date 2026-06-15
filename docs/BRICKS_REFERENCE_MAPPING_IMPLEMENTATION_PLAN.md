@@ -2,7 +2,7 @@
 
 Date: 2026-06-09
 
-Status: initial backend implementation in progress. Core export/import support exists for Bricks `templatePreviewPostId` and `templatePreviewTerm` references; proposal preflight UI and broader Bricks condition/query rules remain pending.
+Status: initial backend implementation in progress. Core export/import support exists for Bricks `templatePreviewPostId` and `templatePreviewTerm` references. Proposal review now exposes Bricks reference preflight summaries in REST payloads, shows a compact selected-proposal notice, and can block proposal apply when unresolved references are present and the unresolved-reference policy is set to `block`. Broader Bricks condition/query rules remain pending.
 
 Related docs:
 
@@ -146,6 +146,8 @@ Add an import setting:
 
 Add an unresolved-reference policy:
 
+- Option: `dbvc_bricks_reference_unresolved_policy`
+- Default: `warn`
 - `warn`: preserve source value and log warning. Recommended default for legacy/manual import.
 - `block`: block proposal apply until mapped or explicitly ignored. Recommended for proposal apply.
 - `clear`: remove the reference only when the path rule explicitly supports clearing. Defer this mode.
@@ -212,6 +214,8 @@ Reference localization must work whether exact-ID creation is enabled or disable
 - Write apply receipt details.
 - Add tests for resolved, unresolved, occupied-ID, and ambiguous-slug cases.
 
+Current implementation note: proposal list/entity REST payloads include `bricks_references` counts and rows. The selected proposal UI shows a compact resolved/unresolved notice. Apply records localization results in `dbvc_post_history`, and proposal apply returns a `dbvc_bricks_reference_preflight_blocked` REST error before import when `dbvc_bricks_reference_unresolved_policy=block` and preflight has unresolved supported Bricks references.
+
 ### Phase 4: Expand Bricks Rules
 
 - Add template condition post/term selectors after fixture confirmation.
@@ -232,6 +236,5 @@ Minimum validation before release:
 
 ## Open Decisions
 
-1. Should proposal apply default unresolved Bricks references to `block` immediately, or start with `warn` for one compatibility release?
-2. Should the first UI expose manual mapping for unresolved references, or only show warnings and require JSON/source cleanup?
-3. Should Bricks add-on settings surface advanced rule toggles, or should the first release keep this entirely under core Import Defaults?
+1. Should the first UI expose manual mapping for unresolved references, or only show warnings and require JSON/source cleanup?
+2. Should Bricks add-on settings surface advanced rule toggles, or should the first release keep this entirely under core Import Defaults?

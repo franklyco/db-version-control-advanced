@@ -61,19 +61,47 @@ final class DBVC_CC_Field_Context_Provider_Service
      */
     public function get_status(array $criteria = [], $profile = 'mapping')
     {
-        $catalog = $this->get_catalog($criteria, $profile);
+        return $this->summarize_provider($this->get_catalog($criteria, $profile));
+    }
+
+    /**
+     * @param array<string, mixed> $provider
+     * @return array<string, mixed>
+     */
+    public function summarize_provider(array $provider)
+    {
+        if (empty($provider)) {
+            return [];
+        }
+
+        $warnings = isset($provider['warnings']) && is_array($provider['warnings'])
+            ? array_values(
+                array_filter(
+                    array_map(
+                        static function ($warning) {
+                            return is_scalar($warning) ? sanitize_text_field((string) $warning) : '';
+                        },
+                        $provider['warnings']
+                    )
+                )
+            )
+            : [];
 
         return [
-            'status' => isset($catalog['status']) ? (string) $catalog['status'] : 'unavailable',
-            'reason' => isset($catalog['reason']) ? (string) $catalog['reason'] : '',
-            'transport' => isset($catalog['transport']) ? (string) $catalog['transport'] : 'local',
-            'provider' => isset($catalog['provider']) ? (string) $catalog['provider'] : 'vertical-field-context',
-            'contract_version' => isset($catalog['contract_version']) ? (string) $catalog['contract_version'] : '',
-            'catalog_status' => isset($catalog['catalog_status']) ? (string) $catalog['catalog_status'] : '',
-            'source_hash' => isset($catalog['source_hash']) ? (string) $catalog['source_hash'] : '',
-            'schema_version' => isset($catalog['schema_version']) ? (string) $catalog['schema_version'] : '',
-            'site_fingerprint' => isset($catalog['site_fingerprint']) ? (string) $catalog['site_fingerprint'] : '',
-            'warnings' => isset($catalog['warnings']) && is_array($catalog['warnings']) ? array_values($catalog['warnings']) : [],
+            'status' => isset($provider['status']) ? sanitize_key((string) $provider['status']) : 'unavailable',
+            'reason' => isset($provider['reason']) ? sanitize_key((string) $provider['reason']) : '',
+            'transport' => isset($provider['transport']) ? sanitize_key((string) $provider['transport']) : 'local',
+            'provider' => isset($provider['provider']) ? sanitize_key((string) $provider['provider']) : 'vertical-field-context',
+            'contract_version' => isset($provider['contract_version']) ? sanitize_text_field((string) $provider['contract_version']) : '',
+            'catalog_status' => isset($provider['catalog_status']) ? sanitize_key((string) $provider['catalog_status']) : '',
+            'source_hash' => isset($provider['source_hash']) ? sanitize_text_field((string) $provider['source_hash']) : '',
+            'schema_version' => isset($provider['schema_version']) ? sanitize_text_field((string) $provider['schema_version']) : '',
+            'site_fingerprint' => isset($provider['site_fingerprint']) ? sanitize_text_field((string) $provider['site_fingerprint']) : '',
+            'cache_layer' => isset($provider['cache_layer']) ? sanitize_key((string) $provider['cache_layer']) : '',
+            'cache_version' => isset($provider['cache_version']) ? sanitize_text_field((string) $provider['cache_version']) : '',
+            'group_count' => isset($provider['groups_by_key']) && is_array($provider['groups_by_key']) ? count($provider['groups_by_key']) : 0,
+            'entry_count' => isset($provider['entries_by_key_path']) && is_array($provider['entries_by_key_path']) ? count($provider['entries_by_key_path']) : 0,
+            'warnings' => $warnings,
         ];
     }
 

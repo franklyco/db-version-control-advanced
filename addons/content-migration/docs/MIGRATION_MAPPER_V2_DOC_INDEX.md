@@ -24,6 +24,7 @@ Read these first when continuing active implementation work:
 
 When the active seam touches Vertical Field Context or mapping accuracy, read next:
 
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
 
@@ -137,6 +138,7 @@ These are useful for:
 - Current crawl reuse boundary and landed run-start model:
   - `MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 - Vertical field-context mapping-accuracy redesign:
+  - `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
   - `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
   - `MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
 - Journey logging model:
@@ -174,6 +176,7 @@ When one of these changes, update the others if needed:
   - update `PACKAGE_SPEC` if package-facing
 
 - If the Vertical Field Context mapping model, chain contract, or phased delivery order changes:
+  - update `VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF`
   - update `VERTICAL_FIELD_CONTEXT_PLAN`
   - update `VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE`
   - update `WORKING_STATE`
@@ -194,6 +197,7 @@ When one of these changes, update the others if needed:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DECISIONS.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
+- `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md`

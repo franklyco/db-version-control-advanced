@@ -216,6 +216,10 @@ function dbvc_render_export_page()
   $prefer_entity_uids     = get_option('dbvc_prefer_entity_uids', '0');
   $allow_uid_fallback_matching = get_option('dbvc_allow_uid_fallback_matching', '0');
   $localize_bricks_entity_references = get_option('dbvc_localize_bricks_entity_references', '1');
+  $bricks_reference_unresolved_policy = sanitize_key((string) get_option('dbvc_bricks_reference_unresolved_policy', 'warn'));
+  if (! in_array($bricks_reference_unresolved_policy, ['warn', 'block'], true)) {
+    $bricks_reference_unresolved_policy = 'warn';
+  }
   $sync_ftp_window_until  = function_exists('dbvc_get_sync_ftp_window_until')
     ? dbvc_get_sync_ftp_window_until()
     : 0;
@@ -645,6 +649,14 @@ function dbvc_render_export_page()
 
     $localize_bricks_entity_references = ! empty($_POST['dbvc_localize_bricks_entity_references']) ? '1' : '0';
     update_option('dbvc_localize_bricks_entity_references', $localize_bricks_entity_references);
+
+    $bricks_reference_unresolved_policy = isset($_POST['dbvc_bricks_reference_unresolved_policy'])
+      ? sanitize_key(wp_unslash($_POST['dbvc_bricks_reference_unresolved_policy']))
+      : 'warn';
+    if (! in_array($bricks_reference_unresolved_policy, ['warn', 'block'], true)) {
+      $bricks_reference_unresolved_policy = 'warn';
+    }
+    update_option('dbvc_bricks_reference_unresolved_policy', $bricks_reference_unresolved_policy);
 
     // --- FTP Upload Window ---
     if (isset($_POST['dbvc_sync_ftp_window_action'])) {
@@ -1305,6 +1317,14 @@ function dbvc_render_export_page()
 
       $localize_bricks_entity_references = ! empty($_POST['dbvc_localize_bricks_entity_references']) ? '1' : '0';
       update_option('dbvc_localize_bricks_entity_references', $localize_bricks_entity_references);
+
+      $bricks_reference_unresolved_policy = isset($_POST['dbvc_bricks_reference_unresolved_policy'])
+        ? sanitize_key(wp_unslash($_POST['dbvc_bricks_reference_unresolved_policy']))
+        : 'warn';
+      if (! in_array($bricks_reference_unresolved_policy, ['warn', 'block'], true)) {
+        $bricks_reference_unresolved_policy = 'warn';
+      }
+      update_option('dbvc_bricks_reference_unresolved_policy', $bricks_reference_unresolved_policy);
 
       if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
         DBVC_Sync_Logger::log_import('Manual import requested', [
@@ -2099,6 +2119,14 @@ function dbvc_render_export_page()
                     <?php esc_html_e('Localize known Bricks entity references during import', 'dbvc'); ?>
                   </label><br>
                   <small><?php esc_html_e('Rewrites supported Bricks template settings, such as preview post IDs, to matching local entity IDs when DBVC can prove the target object.', 'dbvc'); ?></small>
+                </p>
+                <p>
+                  <label for="dbvc_bricks_reference_unresolved_policy_import"><?php esc_html_e('Unresolved Bricks reference policy:', 'dbvc'); ?></label><br>
+                  <select name="dbvc_bricks_reference_unresolved_policy" id="dbvc_bricks_reference_unresolved_policy_import">
+                    <option value="warn" <?php selected($bricks_reference_unresolved_policy, 'warn'); ?>><?php esc_html_e('Warn and continue', 'dbvc'); ?></option>
+                    <option value="block" <?php selected($bricks_reference_unresolved_policy, 'block'); ?>><?php esc_html_e('Block proposal apply', 'dbvc'); ?></option>
+                  </select><br>
+                  <small><?php esc_html_e('Manual imports remain tolerant; block is enforced when applying reviewed proposals.', 'dbvc'); ?></small>
                 </p>
 <?php if (class_exists('DBVC_Media_Sync')) : ?>
                 <fieldset class="dbvc-media-import-options" style="margin:1rem 0;">
@@ -3731,6 +3759,15 @@ document.addEventListener('DOMContentLoaded', function () {
               </p>
 
               <p>
+                <label for="dbvc_bricks_reference_unresolved_policy"><?php esc_html_e('Unresolved Bricks reference policy:', 'dbvc'); ?></label><br>
+                <select name="dbvc_bricks_reference_unresolved_policy" id="dbvc_bricks_reference_unresolved_policy">
+                  <option value="warn" <?php selected($bricks_reference_unresolved_policy, 'warn'); ?>><?php esc_html_e('Warn and continue', 'dbvc'); ?></option>
+                  <option value="block" <?php selected($bricks_reference_unresolved_policy, 'block'); ?>><?php esc_html_e('Block proposal apply', 'dbvc'); ?></option>
+                </select><br>
+                <small><?php esc_html_e('Warn keeps manual and legacy imports tolerant. Block stops proposal apply when supported Bricks references cannot be resolved safely.', 'dbvc'); ?></small>
+              </p>
+
+              <p>
                 <label for="dbvc_new_post_status"><?php esc_html_e('Default status for new posts:', 'dbvc'); ?></label><br>
                 <select name="dbvc_new_post_status" id="dbvc_new_post_status">
                   <?php
@@ -4364,6 +4401,7 @@ document.addEventListener('DOMContentLoaded', function () {
           $hydration_settings = $media_hydration_settings ?: \Dbvc\Media\Hydration\Settings::get_all();
           $hydration_mime_groups = (array) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_ALLOWED_MIME_GROUPS] ?? []);
           $hydration_enabled = (string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_ENABLED] ?? '0') === '1';
+          $hydration_execution_mode = (string) ($hydration_settings[\Dbvc\Media\Hydration\Settings::OPTION_EXECUTION_MODE] ?? 'browser_chunks');
           ?>
           <hr>
           <h3><?php esc_html_e('Media Hydration', 'dbvc'); ?></h3>
@@ -4415,6 +4453,18 @@ document.addEventListener('DOMContentLoaded', function () {
           </p>
 
           <p>
+            <label for="dbvc_media_hydration_execution_mode"><strong><?php esc_html_e('Hydration execution mode', 'dbvc'); ?></strong></label><br>
+            <select name="<?php echo esc_attr(\Dbvc\Media\Hydration\Settings::OPTION_EXECUTION_MODE); ?>" id="dbvc_media_hydration_execution_mode">
+              <?php foreach (\Dbvc\Media\Hydration\Settings::allowed_execution_modes() as $mode_key) : ?>
+                <option value="<?php echo esc_attr($mode_key); ?>" <?php selected($hydration_execution_mode, $mode_key); ?>>
+                  <?php echo esc_html($mode_key === 'background_job' ? __('Background job', 'dbvc') : __('Browser chunks', 'dbvc')); ?>
+                </option>
+              <?php endforeach; ?>
+            </select><br>
+            <small><?php esc_html_e('Browser chunks run from the current admin page. Background jobs persist progress in DBVC jobs and can continue through WP-Cron or admin polling.', 'dbvc'); ?></small>
+          </p>
+
+          <p>
             <strong><?php esc_html_e('Allowed MIME groups', 'dbvc'); ?></strong><br>
             <?php foreach (\Dbvc\Media\Hydration\Settings::allowed_mime_groups() as $group_key) : ?>
               <label style="display:inline-block; margin-right:1rem;">
@@ -4459,6 +4509,7 @@ document.addEventListener('DOMContentLoaded', function () {
             data-dbvc-rest-root="<?php echo esc_url_raw(rest_url('dbvc/v1/')); ?>"
             data-dbvc-rest-nonce="<?php echo esc_attr(wp_create_nonce('wp_rest')); ?>"
             data-dbvc-media-hydration-enabled="<?php echo $hydration_enabled ? '1' : '0'; ?>"
+            data-dbvc-media-hydration-execution-mode="<?php echo esc_attr($hydration_execution_mode); ?>"
           >
             <h4><?php esc_html_e('Hydration Workflow', 'dbvc'); ?></h4>
             <?php if (! $hydration_enabled) : ?>
@@ -4518,6 +4569,16 @@ document.addEventListener('DOMContentLoaded', function () {
               <div class="dbvc-media-hydration-workflow__panel">
                 <h5><?php esc_html_e('Apply', 'dbvc'); ?></h5>
                 <p>
+                  <label for="dbvc-media-hydration-execution-mode"><?php esc_html_e('Execution mode', 'dbvc'); ?></label><br>
+                  <select id="dbvc-media-hydration-execution-mode">
+                    <?php foreach (\Dbvc\Media\Hydration\Settings::allowed_execution_modes() as $mode_key) : ?>
+                      <option value="<?php echo esc_attr($mode_key); ?>" <?php selected($hydration_execution_mode, $mode_key); ?>>
+                        <?php echo esc_html($mode_key === 'background_job' ? __('Background job', 'dbvc') : __('Browser chunks', 'dbvc')); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </p>
+                <p>
                   <label>
                     <input type="checkbox" id="dbvc-media-hydration-confirm-apply" />
                     <?php esc_html_e('Confirm hydrate existing media', 'dbvc'); ?>
@@ -4558,7 +4619,13 @@ document.addEventListener('DOMContentLoaded', function () {
             <div id="dbvc-media-hydration-receipts" class="dbvc-media-hydration-receipts">
               <div class="dbvc-media-hydration-review__header">
                 <h5><?php esc_html_e('Recent Receipts', 'dbvc'); ?></h5>
-                <button type="button" class="button button-small" id="dbvc-media-hydration-refresh-receipts"><?php esc_html_e('Refresh receipts', 'dbvc'); ?></button>
+                <div class="dbvc-media-hydration-receipts__tools">
+                  <button type="button" class="button button-small" id="dbvc-media-hydration-refresh-receipts"><?php esc_html_e('Refresh receipts', 'dbvc'); ?></button>
+                  <label for="dbvc-media-hydration-cleanup-days"><?php esc_html_e('Older than', 'dbvc'); ?></label>
+                  <input type="number" id="dbvc-media-hydration-cleanup-days" value="30" min="1" max="3650" step="1" />
+                  <span><?php esc_html_e('days', 'dbvc'); ?></span>
+                  <button type="button" class="button button-small" id="dbvc-media-hydration-cleanup-receipts"><?php esc_html_e('Clear old receipts', 'dbvc'); ?></button>
+                </div>
               </div>
               <div id="dbvc-media-hydration-receipt-list" class="dbvc-media-hydration-receipts__list">
                 <?php esc_html_e('Receipts will appear after preflight or apply runs.', 'dbvc'); ?>
@@ -5425,8 +5492,10 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
     .dbvc-media-hydration-review__table table { margin:0; border:0; }
     .dbvc-media-hydration-review__table th,
     .dbvc-media-hydration-review__table td { vertical-align:top; }
-    .dbvc-media-hydration-review__path { word-break:break-all; }
-    .dbvc-media-hydration-receipts__list table { margin:0; }
+	    .dbvc-media-hydration-review__path { word-break:break-all; }
+	    .dbvc-media-hydration-receipts__tools { display:flex; flex-wrap:wrap; align-items:center; gap:0.4rem; }
+	    .dbvc-media-hydration-receipts__tools input[type="number"] { width:5rem; }
+	    .dbvc-media-hydration-receipts__list table { margin:0; }
     .dbvc-media-hydration-receipts__empty { margin:0; color:#646970; }
     .dbvc-media-hydration-upload-form { margin:1.5rem 0; padding-top:1.25rem; border-top:1px solid #dcdcde; }
     .dbvc-media-hydration-upload-report__path { display:block; max-width:100%; overflow:auto; white-space:pre-wrap; word-break:break-all; padding:0.35rem 0.5rem; }
@@ -5723,6 +5792,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
         const restRoot = (wrap.getAttribute('data-dbvc-rest-root') || wrap.getAttribute('data-rest-root') || '').replace(/\/$/, '');
         const nonce = wrap.getAttribute('data-dbvc-rest-nonce') || wrap.getAttribute('data-rest-nonce') || '';
         const workflowEnabled = wrap.getAttribute('data-dbvc-media-hydration-enabled') === '1';
+        const defaultExecutionMode = wrap.getAttribute('data-dbvc-media-hydration-execution-mode') || 'browser_chunks';
         const output = document.getElementById('dbvc-media-hydration-output');
         const manifestPath = document.getElementById('dbvc-media-hydration-manifest-path');
         const planId = document.getElementById('dbvc-media-hydration-plan-id');
@@ -5730,6 +5800,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
         const packageId = document.getElementById('dbvc-media-hydration-package-id');
         const includeFiles = document.getElementById('dbvc-media-hydration-include-files');
         const createZip = document.getElementById('dbvc-media-hydration-create-zip');
+        const executionModeSelect = document.getElementById('dbvc-media-hydration-execution-mode');
         const confirmApply = document.getElementById('dbvc-media-hydration-confirm-apply');
         const downloadWrap = document.getElementById('dbvc-media-hydration-download');
         const downloadLink = document.getElementById('dbvc-media-hydration-download-link');
@@ -5747,19 +5818,24 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
         const preflightTable = document.getElementById('dbvc-media-hydration-review-table');
         const preflightFilter = document.getElementById('dbvc-media-hydration-review-filter');
         const refreshReceiptsButton = document.getElementById('dbvc-media-hydration-refresh-receipts');
+        const cleanupReceiptsButton = document.getElementById('dbvc-media-hydration-cleanup-receipts');
+        const cleanupReceiptsDays = document.getElementById('dbvc-media-hydration-cleanup-days');
         const receiptList = document.getElementById('dbvc-media-hydration-receipt-list');
         const actionButtons = Array.from(wrap.querySelectorAll('[data-dbvc-media-hydration-action]'));
         let applyStopRequested = false;
         let resumeOffset = 0;
         let resumeRetryReceiptId = '';
+        let currentBackgroundJobId = 0;
         let lastProgressPercent = 0;
         let cumulativeSummary = emptyCumulativeSummary();
         let lastPreflightItems = [];
         const progressLabels = {
           ready: <?php echo wp_json_encode(__('Ready', 'dbvc')); ?>,
+          queued: <?php echo wp_json_encode(__('Queued', 'dbvc')); ?>,
           hydrating: <?php echo wp_json_encode(__('Hydrating', 'dbvc')); ?>,
           stopping: <?php echo wp_json_encode(__('Stopping after current batch', 'dbvc')); ?>,
           stopped: <?php echo wp_json_encode(__('Stopped', 'dbvc')); ?>,
+          paused: <?php echo wp_json_encode(__('Paused', 'dbvc')); ?>,
           completed: <?php echo wp_json_encode(__('Completed', 'dbvc')); ?>,
           failed: <?php echo wp_json_encode(__('Failed', 'dbvc')); ?>
         };
@@ -5789,6 +5865,7 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
         function resetApplyState() {
           resumeOffset = 0;
           resumeRetryReceiptId = '';
+          currentBackgroundJobId = 0;
           lastProgressPercent = 0;
           cumulativeSummary = emptyCumulativeSummary();
         }
@@ -5915,6 +5992,47 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           return progress;
         }
 
+        function setCumulativeSummary(summary) {
+          const next = emptyCumulativeSummary();
+          const source = summary && typeof summary === 'object' ? summary : {};
+          Object.keys(next).forEach(function(key) {
+            next[key] = intValue(source[key], 0);
+          });
+          cumulativeSummary = next;
+        }
+
+        function updateProgressFromJob(job, report) {
+          const context = job && job.context && typeof job.context === 'object' ? job.context : {};
+          const jobStatus = text(job && job.status ? job.status : '');
+          const total = intValue(context.total_plan_items, 0);
+          const processed = intValue(context.processed_total, 0);
+          const percent = clampPercent(floatValue(job && typeof job.progress !== 'undefined' ? job.progress : context.progress, total > 0 ? (processed / total) * 100 : 0));
+          setCumulativeSummary(context.cumulative_summary || {});
+          const meta = total > 0
+            ? <?php echo wp_json_encode(__('Processed', 'dbvc')); ?> + ' ' + processed + ' <?php echo esc_js(__('of', 'dbvc')); ?> ' + total + ' (' + Math.round(percent) + '%)'
+            : <?php echo wp_json_encode(__('No planned items.', 'dbvc')); ?>;
+          const label = jobStatus === 'queued'
+            ? progressLabels.queued
+            : (jobStatus === 'paused'
+              ? progressLabels.paused
+              : (jobStatus === 'completed' ? progressLabels.completed : (jobStatus === 'failed' ? progressLabels.failed : progressLabels.hydrating)));
+          setProgress(percent, label, meta, formatCounts());
+
+          if (report && report.summary) {
+            return extractProgress(report);
+          }
+
+          return {
+            total: total,
+            processed: processed,
+            selected: 0,
+            nextOffset: intValue(context.offset, processed),
+            remaining: Math.max(0, total - processed),
+            percent: percent,
+            hasMore: ['queued', 'running'].indexOf(jobStatus) >= 0 && percent < 100
+          };
+        }
+
         function setWorkflowBusy(button, busy, allowStop) {
           actionButtons.forEach(function(actionButton) {
             actionButton.disabled = !!busy || !workflowEnabled;
@@ -5923,9 +6041,15 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           if (stopButton) {
             stopButton.disabled = !allowStop;
           }
+          if (cleanupReceiptsButton) {
+            cleanupReceiptsButton.disabled = !!busy || !workflowEnabled;
+          }
           wrap.querySelectorAll('[data-dbvc-media-hydration-retry-receipt]').forEach(function(retryButton) {
             retryButton.disabled = !!busy || !workflowEnabled;
           });
+          if (executionModeSelect) {
+            executionModeSelect.disabled = !!busy || !workflowEnabled;
+          }
         }
 
         function endpoint(path) {
@@ -5958,6 +6082,11 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
               return data;
             });
           });
+        }
+
+        function selectedExecutionMode() {
+          const mode = executionModeSelect ? executionModeSelect.value : defaultExecutionMode;
+          return mode === 'background_job' ? 'background_job' : 'browser_chunks';
         }
 
         function loadPackages() {
@@ -6155,6 +6284,11 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
                 retryButton.setAttribute('data-dbvc-media-hydration-retry-receipt', text(receipt.receipt_id));
                 retryButton.textContent = <?php echo wp_json_encode(__('Retry Failed', 'dbvc')); ?>;
                 retryButton.addEventListener('click', function() {
+                  if (selectedExecutionMode() === 'background_job') {
+                    runBackgroundApply(retryButton, text(receipt.receipt_id));
+                    return;
+                  }
+
                   runApply(retryButton, text(receipt.receipt_id));
                 });
                 linkCell.appendChild(document.createTextNode(' '));
@@ -6171,6 +6305,38 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
             message.className = 'dbvc-media-hydration-receipts__empty';
             message.textContent = error && error.message ? error.message : <?php echo wp_json_encode(__('Unable to load receipts.', 'dbvc')); ?>;
             receiptList.appendChild(message);
+          });
+        }
+
+        function cleanupReceipts() {
+          if (!cleanupReceiptsButton) {
+            return;
+          }
+
+          const days = cleanupReceiptsDays ? Math.max(1, Math.min(3650, intValue(cleanupReceiptsDays.value, 30))) : 30;
+          if (cleanupReceiptsDays) {
+            cleanupReceiptsDays.value = String(days);
+          }
+
+          const message = <?php echo wp_json_encode(__('Delete media hydration receipts older than %d days? This cannot be undone.', 'dbvc')); ?>.replace('%d', String(days));
+          if (!window.confirm(message)) {
+            return;
+          }
+
+          setWorkflowBusy(cleanupReceiptsButton, true, false);
+          show(<?php echo wp_json_encode(__('Clearing old media hydration receipts...', 'dbvc')); ?>, false);
+          api('media-hydration/receipts', {
+            method: 'DELETE',
+            body: {
+              older_than_days: days
+            }
+          }).then(function(data) {
+            show(data, false);
+            return loadReceipts();
+          }).catch(function(error) {
+            show(error && error.data ? error.data : (error && error.message ? error.message : <?php echo wp_json_encode(__('Receipt cleanup failed.', 'dbvc')); ?>), true);
+          }).finally(function() {
+            setWorkflowBusy(cleanupReceiptsButton, false, false);
           });
         }
 
@@ -6220,6 +6386,55 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           });
         }
 
+        function runBackgroundJobBatch(jobId) {
+          if (!jobId) {
+            return Promise.reject({ message: <?php echo wp_json_encode(__('Missing media hydration job ID.', 'dbvc')); ?> });
+          }
+
+          if (applyStopRequested) {
+            return api('media-hydration/jobs/' + encodeURIComponent(String(jobId)) + '/pause', {
+              method: 'POST',
+              body: {}
+            }).then(function(data) {
+              updateProgressFromJob(data && data.job ? data.job : {});
+              return data;
+            });
+          }
+
+          return api('media-hydration/jobs/' + encodeURIComponent(String(jobId)) + '/run', {
+            method: 'POST',
+            body: {}
+          }).then(function(data) {
+            const job = data && data.job ? data.job : {};
+            const report = data && data.report ? data.report : {};
+            currentBackgroundJobId = intValue(job.job_id, jobId);
+            const previousOffset = resumeOffset;
+            const progress = updateProgressFromJob(job, report);
+            const status = text(job.status);
+
+            if (applyStopRequested) {
+              return data;
+            }
+
+            if (status === 'queued' || status === 'running') {
+              if (report && report.progress && progress.total > 0 && progress.nextOffset <= previousOffset) {
+                throw {
+                  message: <?php echo wp_json_encode(__('Hydration progress did not advance; stopping to avoid a loop.', 'dbvc')); ?>,
+                  data: data
+                };
+              }
+              resumeOffset = progress.nextOffset;
+              return new Promise(function(resolve) {
+                window.setTimeout(resolve, 900);
+              }).then(function() {
+                return runBackgroundJobBatch(currentBackgroundJobId || jobId);
+              });
+            }
+
+            return data;
+          });
+        }
+
         function runApply(button, retryReceiptId) {
           if (!confirmApply || !confirmApply.checked) {
             show(<?php echo wp_json_encode(__('Confirm hydration apply before continuing.', 'dbvc')); ?>, true);
@@ -6257,6 +6472,71 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
               cumulative_summary: cumulativeSummary,
               last_report: data
             }, false);
+            loadReceipts();
+          }).catch(function(error) {
+            setProgress(lastProgressPercent, progressLabels.failed, error && error.message ? error.message : <?php echo wp_json_encode(__('Request failed.', 'dbvc')); ?>, formatCounts());
+            show(error && error.data ? error.data : (error && error.message ? error.message : <?php echo wp_json_encode(__('Request failed.', 'dbvc')); ?>), true);
+          }).finally(function() {
+            setWorkflowBusy(button, false, false);
+          });
+        }
+
+        function runBackgroundApply(button, retryReceiptId) {
+          if (!confirmApply || !confirmApply.checked) {
+            show(<?php echo wp_json_encode(__('Confirm hydration apply before continuing.', 'dbvc')); ?>, true);
+            return;
+          }
+
+          const activeRetryReceiptId = retryReceiptId || resumeRetryReceiptId;
+          applyStopRequested = false;
+          resetApplyState();
+          resumeRetryReceiptId = activeRetryReceiptId;
+          setDownloadUrl('');
+          setProgress(0, progressLabels.queued, activeRetryReceiptId ? <?php echo wp_json_encode(__('Queueing failed-item retry job.', 'dbvc')); ?> : <?php echo wp_json_encode(__('Queueing background hydration job.', 'dbvc')); ?>, formatCounts());
+          show(activeRetryReceiptId ? <?php echo wp_json_encode(__('Failed-item retry background job is being created...', 'dbvc')); ?> : <?php echo wp_json_encode(__('Background hydration job is being created...', 'dbvc')); ?>, false);
+          setWorkflowBusy(button, true, true);
+
+          const body = {
+            manifest_path: manifestPath ? manifestPath.value : '',
+            plan_id: planId ? planId.value : '',
+            confirm: 'hydrate-existing-media'
+          };
+          if (activeRetryReceiptId) {
+            body.retry_receipt_id = activeRetryReceiptId;
+          }
+
+          api('media-hydration/jobs', {
+            method: 'POST',
+            body: body
+          }).then(function(data) {
+            const job = data && data.job ? data.job : {};
+            currentBackgroundJobId = intValue(job.job_id, 0);
+            updateProgressFromJob(job);
+            show(data, false);
+            return runBackgroundJobBatch(currentBackgroundJobId);
+          }).then(function(data) {
+            const job = data && data.job ? data.job : {};
+            const status = text(job.status);
+            updateProgressFromJob(job, data && data.report ? data.report : {});
+            if (status === 'paused') {
+              show({
+                status: 'paused',
+                job: job
+              }, false);
+              loadReceipts();
+              return;
+            }
+
+            if (status === 'completed') {
+              show({
+                status: 'completed',
+                job: job
+              }, false);
+              loadReceipts();
+              return;
+            }
+
+            show(data, status === 'failed');
             loadReceipts();
           }).catch(function(error) {
             setProgress(lastProgressPercent, progressLabels.failed, error && error.message ? error.message : <?php echo wp_json_encode(__('Request failed.', 'dbvc')); ?>, formatCounts());
@@ -6306,6 +6586,10 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           refreshReceiptsButton.addEventListener('click', function() {
             loadReceipts();
           });
+        }
+
+        if (cleanupReceiptsButton) {
+          cleanupReceiptsButton.addEventListener('click', cleanupReceipts);
         }
 
         actionButtons.forEach(function(button) {
@@ -6372,6 +6656,11 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
             }
 
             if (action === 'apply') {
+              if (selectedExecutionMode() === 'background_job') {
+                runBackgroundApply(button);
+                return;
+              }
+
               runApply(button);
             }
           });
@@ -6382,6 +6671,13 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
         }
         if (refreshReceiptsButton) {
           refreshReceiptsButton.disabled = !workflowEnabled;
+        }
+        if (cleanupReceiptsButton) {
+          cleanupReceiptsButton.disabled = !workflowEnabled;
+        }
+        if (executionModeSelect) {
+          executionModeSelect.value = ['browser_chunks', 'background_job'].indexOf(defaultExecutionMode) >= 0 ? defaultExecutionMode : 'browser_chunks';
+          executionModeSelect.disabled = !workflowEnabled;
         }
 
         if (workflowEnabled) {

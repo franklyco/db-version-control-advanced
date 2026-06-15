@@ -20,7 +20,9 @@ export default function ReadinessPagesTable( {
 		const ambiguousCount =
 			stats.fieldContextAmbiguousRecommendationCount ?? 0;
 		const transformBlockedCount = stats.transformBlockedCount ?? 0;
-		const providerDriftCount = stats.fieldContextProviderDriftCount ?? 0;
+		const providerDriftCount =
+			( stats.fieldContextProviderDriftCount ?? 0 ) +
+			( stats.objectTypeContextProviderDriftCount ?? 0 );
 
 		return (
 			<>

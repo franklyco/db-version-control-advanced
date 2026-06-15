@@ -74,6 +74,9 @@ final class DBVC_CC_V2_Recommendation_Finalizer_Service
             'field_context_provider' => isset($mapping_index_artifact['field_context_provider']) && is_array($mapping_index_artifact['field_context_provider'])
                 ? $mapping_index_artifact['field_context_provider']
                 : [],
+            'object_type_context_provider' => isset($mapping_index_artifact['object_type_context_provider']) && is_array($mapping_index_artifact['object_type_context_provider'])
+                ? $mapping_index_artifact['object_type_context_provider']
+                : [],
             'classification' => [
                 'primary' => $primary,
                 'alternates' => array_values($alternates),

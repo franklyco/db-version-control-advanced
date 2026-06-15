@@ -40,17 +40,19 @@ final class DBVC_CC_V2_Target_Object_Inventory_Service
             return $snapshot_source;
         }
 
-        $object_types = $this->collect_object_types();
-        $taxonomy_types = $this->collect_taxonomy_types();
+        $object_type_context_provider = DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->get_catalog([], 'mapping');
+        $object_types = $this->collect_object_types($object_type_context_provider);
+        $taxonomy_types = $this->collect_taxonomy_types($object_type_context_provider);
         $inventory_fingerprint = $this->compute_fingerprint(
             [
                 'snapshot_hash' => $snapshot_source['snapshot_hash'],
+                'object_type_context_provider' => $object_type_context_provider,
                 'object_types' => $object_types,
                 'taxonomy_types' => $taxonomy_types,
             ]
         );
 
-        $existing = $this->read_json_file($context['target_object_inventory_file']);
+        $existing = $force_rebuild ? null : $this->read_json_file($context['target_object_inventory_file']);
         if (
             ! $force_rebuild
             && is_array($existing)
@@ -78,12 +80,18 @@ final class DBVC_CC_V2_Target_Object_Inventory_Service
             'source_artifacts' => [
                 'schema_snapshot_file' => $snapshot_source['snapshot_file'],
                 'schema_snapshot_hash' => $snapshot_source['snapshot_hash'],
+                'object_type_context_source_hash' => isset($object_type_context_provider['source_hash']) ? (string) $object_type_context_provider['source_hash'] : '',
+                'object_type_context_schema_version' => isset($object_type_context_provider['schema_version']) ? (string) $object_type_context_provider['schema_version'] : '',
+                'object_type_context_site_fingerprint' => isset($object_type_context_provider['site_fingerprint']) ? (string) $object_type_context_provider['site_fingerprint'] : '',
             ],
+            'object_type_context_provider' => DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->summarize_provider($object_type_context_provider),
             'object_types' => $object_types,
             'taxonomy_types' => $taxonomy_types,
             'stats' => [
                 'object_type_count' => count($object_types),
                 'taxonomy_type_count' => count($taxonomy_types),
+                'object_type_context_entry_count' => isset($object_type_context_provider['entries_by_object_id']) && is_array($object_type_context_provider['entries_by_object_id']) ? count($object_type_context_provider['entries_by_object_id']) : 0,
+                'object_type_context_partial_count' => isset($object_type_context_provider['partial_count']) ? absint($object_type_context_provider['partial_count']) : 0,
                 'public_object_type_count' => count(array_filter($object_types, static function ($entry) {
                     return ! empty($entry['public']);
                 })),
@@ -185,7 +193,7 @@ final class DBVC_CC_V2_Target_Object_Inventory_Service
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function collect_object_types()
+    private function collect_object_types(array $object_type_context_provider)
     {
         $objects = get_post_types([], 'objects');
         if (! is_array($objects)) {
@@ -199,6 +207,10 @@ final class DBVC_CC_V2_Target_Object_Inventory_Service
             }
 
             $supports = get_all_post_type_supports((string) $post_type);
+            $object_type_context = DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->get_post_type_context(
+                (string) $post_type,
+                $object_type_context_provider
+            );
             $inventory[] = [
                 'object_key' => (string) $post_type,
                 'label' => (string) $object->label,
@@ -207,6 +219,7 @@ final class DBVC_CC_V2_Target_Object_Inventory_Service
                 'hierarchical' => (bool) $object->hierarchical,
                 'supports' => array_values(array_keys(is_array($supports) ? $supports : [])),
                 'taxonomy_refs' => array_values(get_object_taxonomies((string) $post_type)),
+                'object_type_context' => $object_type_context,
             ];
         }
 
@@ -223,7 +236,7 @@ final class DBVC_CC_V2_Target_Object_Inventory_Service
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function collect_taxonomy_types()
+    private function collect_taxonomy_types(array $object_type_context_provider)
     {
         $objects = get_taxonomies([], 'objects');
         if (! is_array($objects)) {
@@ -236,12 +249,17 @@ final class DBVC_CC_V2_Target_Object_Inventory_Service
                 continue;
             }
 
+            $object_type_context = DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->get_taxonomy_context(
+                (string) $taxonomy,
+                $object_type_context_provider
+            );
             $inventory[] = [
                 'taxonomy_key' => (string) $taxonomy,
                 'label' => (string) $object->label,
                 'public' => (bool) $object->public,
                 'hierarchical' => (bool) $object->hierarchical,
                 'object_refs' => array_values(is_array($object->object_type) ? $object->object_type : []),
+                'object_type_context' => $object_type_context,
             ];
         }
 

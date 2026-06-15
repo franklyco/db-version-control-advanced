@@ -48,7 +48,7 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
         $legacy_catalog = isset($legacy_result['catalog']) && is_array($legacy_result['catalog']) ? $legacy_result['catalog'] : [];
         $catalog_payload = $this->build_v2_catalog_payload($context, $inventory_result, $legacy_result, $legacy_catalog);
 
-        $existing = $this->read_json_file($context['target_field_catalog_file']);
+        $existing = $force_rebuild ? null : $this->read_json_file($context['target_field_catalog_file']);
         if (
             ! $force_rebuild
             && is_array($existing)
@@ -144,7 +144,8 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
         // Vertical field-context catalogs are ACF-object scoped, not crawl-domain scoped.
         // Passing a DBVC domain into the provider collapses ACF group resolution to zero groups.
         $field_context_provider = DBVC_CC_Field_Context_Provider_Service::get_instance()->get_catalog([], 'mapping');
-        $acf_catalog = $this->enrich_acf_catalog($acf_catalog, $field_context_provider);
+        $object_type_context_provider = DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->get_catalog([], 'mapping');
+        $acf_catalog = $this->enrich_acf_catalog($acf_catalog, $field_context_provider, $object_type_context_provider);
 
         $source_artifacts = [
             'schema_snapshot_file' => isset($legacy_catalog['source_artifacts']['schema_snapshot_file']) ? (string) $legacy_catalog['source_artifacts']['schema_snapshot_file'] : DBVC_CC_Schema_Snapshot_Service::get_snapshot_file_path(),
@@ -156,13 +157,17 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
             'field_context_source_hash' => isset($field_context_provider['source_hash']) ? (string) $field_context_provider['source_hash'] : '',
             'field_context_schema_version' => isset($field_context_provider['schema_version']) ? (string) $field_context_provider['schema_version'] : '',
             'field_context_site_fingerprint' => isset($field_context_provider['site_fingerprint']) ? (string) $field_context_provider['site_fingerprint'] : '',
+            'object_type_context_source_hash' => isset($object_type_context_provider['source_hash']) ? (string) $object_type_context_provider['source_hash'] : '',
+            'object_type_context_schema_version' => isset($object_type_context_provider['schema_version']) ? (string) $object_type_context_provider['schema_version'] : '',
+            'object_type_context_site_fingerprint' => isset($object_type_context_provider['site_fingerprint']) ? (string) $object_type_context_provider['site_fingerprint'] : '',
         ];
 
         $catalog_fingerprint = $this->compute_fingerprint(
             [
                 'inventory_fingerprint' => $source_artifacts['inventory_fingerprint'],
                 'schema_snapshot_hash' => $source_artifacts['schema_snapshot_hash'],
-                'field_context_provider' => $field_context_provider,
+                'field_context_provider' => DBVC_CC_Field_Context_Provider_Service::get_instance()->summarize_provider($field_context_provider),
+                'object_type_context_provider' => $object_type_context_provider,
                 'object_catalog' => $object_catalog,
                 'taxonomy_catalog' => $taxonomy_catalog,
                 'term_catalog' => $term_catalog,
@@ -180,7 +185,8 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
             'inventory_fingerprint' => $source_artifacts['inventory_fingerprint'],
             'catalog_fingerprint' => $catalog_fingerprint,
             'source_artifacts' => $source_artifacts,
-            'field_context_provider' => $field_context_provider,
+            'field_context_provider' => DBVC_CC_Field_Context_Provider_Service::get_instance()->summarize_provider($field_context_provider),
+            'object_type_context_provider' => DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->summarize_provider($object_type_context_provider),
             'object_catalog' => $object_catalog,
             'taxonomy_catalog' => $taxonomy_catalog,
             'term_catalog' => $term_catalog,
@@ -195,6 +201,8 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
                 'acf_group_count' => isset($acf_catalog['groups']) && is_array($acf_catalog['groups']) ? count($acf_catalog['groups']) : 0,
                 'field_context_group_count' => isset($field_context_provider['groups_by_key']) && is_array($field_context_provider['groups_by_key']) ? count($field_context_provider['groups_by_key']) : 0,
                 'field_context_entry_count' => isset($field_context_provider['entries_by_key_path']) && is_array($field_context_provider['entries_by_key_path']) ? count($field_context_provider['entries_by_key_path']) : 0,
+                'object_type_context_entry_count' => isset($object_type_context_provider['entries_by_object_id']) && is_array($object_type_context_provider['entries_by_object_id']) ? count($object_type_context_provider['entries_by_object_id']) : 0,
+                'object_type_context_partial_count' => isset($object_type_context_provider['partial_count']) ? absint($object_type_context_provider['partial_count']) : 0,
                 'media_field_count' => count($media_field_catalog),
             ],
         ];
@@ -205,7 +213,7 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
      * @param array<string, mixed> $field_context_provider
      * @return array<string, mixed>
      */
-    private function enrich_acf_catalog(array $acf_catalog, array $field_context_provider)
+    private function enrich_acf_catalog(array $acf_catalog, array $field_context_provider, array $object_type_context_provider)
     {
         $groups = isset($acf_catalog['groups']) && is_array($acf_catalog['groups']) ? $acf_catalog['groups'] : [];
         if (empty($groups)) {
@@ -218,7 +226,7 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
                 continue;
             }
 
-            $groups[$group_key] = $this->enrich_acf_group($group, $field_context_provider);
+            $groups[$group_key] = $this->enrich_acf_group($group, $field_context_provider, $object_type_context_provider);
         }
 
         $acf_catalog['groups'] = $groups;
@@ -228,9 +236,10 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
     /**
      * @param array<string, mixed> $group
      * @param array<string, mixed> $field_context_provider
+     * @param array<string, mixed> $object_type_context_provider
      * @return array<string, mixed>
      */
-    private function enrich_acf_group(array $group, array $field_context_provider)
+    private function enrich_acf_group(array $group, array $field_context_provider, array $object_type_context_provider)
     {
         $group_key = isset($group['key']) ? sanitize_key((string) $group['key']) : '';
         $provider_groups = isset($field_context_provider['groups_by_key']) && is_array($field_context_provider['groups_by_key'])
@@ -248,7 +257,11 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
             : DBVC_CC_Field_Context_Provider_Service::get_instance()->normalize_object_context(
                 isset($group['location']) && is_array($group['location']) ? $group['location'] : []
             );
-        $group['field_context'] = $this->build_group_field_context($group, $provider_group, $field_context_provider);
+        $group['object_type_context'] = DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->resolve_context_for_object_context(
+            isset($group['object_context']) && is_array($group['object_context']) ? $group['object_context'] : [],
+            $object_type_context_provider
+        );
+        $group['field_context'] = $this->build_group_field_context($group, $provider_group, $field_context_provider, $group['object_type_context']);
 
         $fields = isset($group['fields']) && is_array($group['fields']) ? $group['fields'] : [];
         foreach ($fields as $field_key => $field) {
@@ -290,7 +303,7 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
      * @param array<string, mixed> $field_context_provider
      * @return array<string, mixed>
      */
-    private function build_group_field_context(array $group, array $provider_group, array $field_context_provider)
+    private function build_group_field_context(array $group, array $provider_group, array $field_context_provider, array $object_type_context = [])
     {
         $warnings = isset($provider_group['warnings']) && is_array($provider_group['warnings']) ? array_values($provider_group['warnings']) : [];
         $status = isset($field_context_provider['status']) ? sanitize_key((string) $field_context_provider['status']) : 'unavailable';
@@ -338,6 +351,7 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
                 : DBVC_CC_Field_Context_Provider_Service::get_instance()->normalize_object_context(
                     isset($group['location']) && is_array($group['location']) ? $group['location'] : []
                 ),
+            'object_type_context' => $object_type_context,
             'warnings' => array_values(array_unique($warnings)),
         ];
     }
@@ -352,6 +366,9 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
     private function build_field_entry_context(array $group, array $field, array $provider_entry, array $field_context_provider)
     {
         $group_context = isset($group['field_context']) && is_array($group['field_context']) ? $group['field_context'] : [];
+        $object_type_context = isset($group['object_type_context']) && is_array($group['object_type_context'])
+            ? $group['object_type_context']
+            : (isset($group_context['object_type_context']) && is_array($group_context['object_type_context']) ? $group_context['object_type_context'] : []);
         $warnings = isset($provider_entry['warnings']) && is_array($provider_entry['warnings']) ? array_values($provider_entry['warnings']) : [];
         $status = isset($field_context_provider['status']) ? sanitize_key((string) $field_context_provider['status']) : 'unavailable';
         if ($this->is_provider_catalog_unavailable($status)) {
@@ -410,6 +427,7 @@ final class DBVC_CC_V2_Target_Field_Catalog_Service
             'object_context' => ! empty($provider_entry['object_context']) && is_array($provider_entry['object_context'])
                 ? $provider_entry['object_context']
                 : (isset($group_context['object_context']) && is_array($group_context['object_context']) ? $group_context['object_context'] : []),
+            'object_type_context' => $object_type_context,
             'value_contract' => isset($provider_entry['value_contract']) && is_array($provider_entry['value_contract'])
                 ? array_merge($default_value_contract, $provider_entry['value_contract'])
                 : $default_value_contract,

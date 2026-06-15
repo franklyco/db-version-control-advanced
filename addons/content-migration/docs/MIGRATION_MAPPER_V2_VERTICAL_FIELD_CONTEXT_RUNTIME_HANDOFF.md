@@ -25,6 +25,8 @@ The DBVC runtime now:
 - exposes key-path, name-path, ACF-key, and group-scoped ACF-key indexes
 - enriches V2 target field catalog artifacts with Field Context provider metadata
 - adds compact `field_context` traces to ACF groups and fields
+- keeps top-level provider metadata compact through `summarize_provider()` so schema artifacts do not duplicate full provider lookup maps
+- skips decoding old target object inventory, target field catalog, and slot graph artifacts during forced rebuilds
 - uses Field Context traces during mapping candidate generation
 - propagates selected candidate Field Context traces into mapping recommendations
 - lowers confidence and requires review for degraded, missing, non-writable, and clone-projected targets
@@ -59,6 +61,8 @@ DBVC should:
 - use `clone_context` for clone source/projection provenance
 - prefer `key_path` and group-scoped indexes over raw `acf_key` when available
 - carry provider `source_hash`, `schema_version`, `contract_version`, and `site_fingerprint` into diagnostics
+- treat WordPress transient cache metadata as diagnostics only; oversized Vertical catalogs may intentionally skip persistent transient writes
+- keep full provider lookup maps request-local and store only compact provider summaries in top-level DBVC artifacts
 
 ## Implementation Map
 
@@ -153,6 +157,8 @@ Top-level result includes:
 }
 ```
 
+Artifact-facing provider summaries should use `DBVC_CC_Field_Context_Provider_Service::summarize_provider()` and include only compact metadata such as status, reason, transport, provider, contract/schema/site identity, source hash, cache metadata, counts, and warnings. Do not write `groups_by_key`, `entries_by_key_path`, `entries_by_name_path`, `entries_by_group_and_acf_key`, or `entries_by_acf_key` into top-level `field_context_provider` blocks.
+
 The provider preserves `entries_by_acf_key` for backward compatibility, but this index can collapse clone-projected duplicates. New code should prefer:
 
 1. `entries_by_key_path`
@@ -229,7 +235,7 @@ File:
 
 - `addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php`
 
-The V2 target field catalog now asks the Field Context provider for a full mapping index and embeds an additive provider block:
+The V2 target field catalog now asks the Field Context provider for a full mapping index, enriches groups and fields from that request-local index, and embeds an additive compact provider block:
 
 ```json
 {
@@ -261,6 +267,14 @@ The V2 target field catalog now asks the Field Context provider for a full mappi
 
 - `field_context_source_hash`
 - `field_context_site_fingerprint`
+
+Important artifact-size rule:
+
+- top-level `field_context_provider` is a summary, not the full normalized provider
+- provider maps remain available only during the build request
+- per-group and per-field `field_context` blocks remain in `acf_catalog`
+- fingerprints use the summary/source hash rather than serialized provider maps
+- forced catalog rebuilds must not call `read_json_file()` on the existing large artifact before overwrite
 
 `stats` now includes:
 
@@ -399,11 +413,65 @@ Current flow:
 4. The provider selects local transport first when Vertical helpers are available.
 5. The provider calls `vf_field_context_get_service_catalog_payload($criteria, 'mapping')`.
 6. The provider normalizes the Vertical service payload into DBVC indexes and diagnostics.
-7. The V2 catalog service embeds `field_context_provider` and adds `field_context` blocks to matching ACF groups and fields.
+7. The V2 catalog service summarizes `field_context_provider` and adds `field_context` blocks to matching ACF groups and fields.
 8. The mapping index service builds candidates from the enriched catalog.
 9. Candidates carry `field_context` and warnings.
 10. Recommendation finalization copies selected candidate Field Context into recommendations.
 11. Review/package/QA layers can now consume the trace from artifacts instead of re-querying Vertical.
+
+## Replay And Artifact Hardening Addendum
+
+The `flourishweb.co` replay failure on `2026-06-15 UTC` exposed two separate size issues:
+
+1. Vertical tried to write the unscoped raw Field Context provider cache to `_transient_vf_field_context_catalog_d751713988987e9331980363e24189ce`, where the suffix is `md5('[]')`.
+2. DBVC forced slot-graph rebuilds decoded previous large JSON artifacts before overwrite, which could exhaust the 512M PHP memory limit.
+
+The DBVC-side hardening lives in:
+
+- `addons/content-migration/shared/dbvc-cc-field-context-provider-service.php`
+  - `get_status()` returns `summarize_provider(get_catalog(...))`
+  - `summarize_provider()` returns compact provider metadata for artifact use
+- `addons/content-migration/v2/schema/dbvc-cc-v2-target-object-inventory-service.php`
+  - forced rebuild avoids reading the previous object inventory JSON
+- `addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php`
+  - forced rebuild avoids reading the previous field catalog JSON
+  - top-level `field_context_provider` stores the provider summary, not full maps
+- `addons/content-migration/v2/schema/dbvc-cc-v2-target-slot-graph-service.php`
+  - forced rebuild avoids reading the previous slot graph JSON
+  - forced slot-graph rebuild calls `build_catalog($domain, true)` to avoid stale catalog reuse
+  - provider summaries flow through from the catalog
+
+The Vertical-side cache guard lives in:
+
+- `/wp-content/themes/vertical/functions/plugins/acf/field-context/field-context.php`
+  - oversized raw persistent catalog writes are skipped before `set_transient()`
+  - `vf_field_context/persistent_catalog_cache_skipped` fires with criteria, bytes, max, and cache key
+
+Validated post-hardening behavior:
+
+- Vertical raw unscoped payload serialized size: `16052461` bytes
+- Vertical cache cap used in validation: `2097152` bytes
+- transient option was not created, by design
+- `dbvc_cc_target_field_catalog.v2.json` size dropped from about `60M` to about `19M`
+- `dbvc_cc_target_slot_graph.v1.json` size dropped from about `56M` to about `15M`
+- `field_context_provider` in field catalog and slot graph has no provider maps
+- `acf_catalog` still carries group and field Field Context plus Object Type Context
+- slot graph still carries inherited object context
+
+Successful probe summary:
+
+```json
+{
+  "ok": true,
+  "domain": "flourishweb.co",
+  "catalog_group_context_count": 31,
+  "catalog_field_context_count": 2252,
+  "slot_context_count": 1716,
+  "inventory": "_schema/dbvc_cc_target_object_inventory.v1.json",
+  "catalog": "_schema/dbvc_cc_target_field_catalog.v2.json",
+  "slot_graph": "_schema/dbvc_cc_target_slot_graph.v1.json"
+}
+```
 
 ## Current Context Map
 
@@ -723,6 +791,7 @@ Start by reading:
 - addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md
 - addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md
 - addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md
+- addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md
 
 Also cross-check the Vertical provider contract docs in:
 
@@ -730,24 +799,30 @@ Also cross-check the Vertical provider contract docs in:
 /Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical/docs/field-context-integration-layer.md
 /Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical/docs/dbvc-sync.md
 /Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical/docs/dbvc-field-context-handoff.md
+/Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical/docs/object-type-context-schema.md
+/Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical/docs/object-type-context-integration-layer.md
+/Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical/docs/dbvc-object-type-context-handoff.md
 
 Do not use raw Vertical acf-json files or Field Context smart-authoring artifacts as runtime source of truth.
 Use the resolved Vertical service projection through DBVC_CC_Field_Context_Provider_Service.
 Treat key_path as opaque provider identity.
 Use resolved_purpose for semantic meaning, value_contract for value shape/write behavior, location/object_context for object scope, and clone_context for clone provenance.
+Treat Object Type Context as additive object-level evidence for CPT/taxonomy target choice, not as a replacement for Field Context slot eligibility or value_contract validation.
+Keep top-level provider blocks compact; do not embed full Field Context provider maps in DBVC artifacts.
+When force rebuilding target schema artifacts, do not decode previous large JSON artifacts before overwrite.
 
 Current implemented state:
 
 - DBVC provider service normalizes provider metadata, source_hash, location/object_context, value_contract, clone_context, and diagnostics.
-- V2 target catalog embeds field_context_provider plus per-group/per-field field_context traces.
+- V2 target catalog embeds compact field_context_provider metadata plus per-group/per-field field_context traces.
+- Object Type Context provider summaries and per-object context now flow through target object inventory, target field catalog, and slot graph.
 - V2 mapping candidates carry field_context traces and warnings.
 - V2 mapping recommendations copy selected candidate field_context and warnings.
-- Runtime probes passed locally.
+- `flourishweb.co` replay hardening passed locally after compact provider summaries and force-rebuild no-decode guards.
 
 Next logical implementation phase:
 
-Start Phase FC-DBVC-1 reviewer visibility unless the user directs otherwise.
-Expose compact Field Context evidence in recommendation review payload/UI, then move to package QA readiness gates.
+Continue from MIGRATION_MAPPER_V2_WORKING_STATE. Do not re-expand provider metadata to full maps. The next product seam remains measured benchmark coverage across real Vertical pages, residual conversion-page ambiguity reduction, and package-preview policy hardening unless the user asks for another slice.
 ```
 
 ## Validation Commands For Next Session
@@ -757,9 +832,12 @@ Syntax checks:
 ```bash
 php -l addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php
 php -l addons/content-migration/shared/dbvc-cc-field-context-provider-service.php
+php -l addons/content-migration/shared/dbvc-cc-object-type-context-provider-service.php
 php -l addons/content-migration/v2/shared/dbvc-cc-v2-contracts.php
 php -l addons/content-migration/v2/admin/dbvc-cc-v2-configure-addon-settings.php
+php -l addons/content-migration/v2/schema/dbvc-cc-v2-target-object-inventory-service.php
 php -l addons/content-migration/v2/schema/dbvc-cc-v2-target-field-catalog-service.php
+php -l addons/content-migration/v2/schema/dbvc-cc-v2-target-slot-graph-service.php
 php -l addons/content-migration/v2/mapping/dbvc-cc-v2-mapping-index-service.php
 php -l addons/content-migration/v2/mapping/dbvc-cc-v2-recommendation-finalizer-service.php
 git diff --check

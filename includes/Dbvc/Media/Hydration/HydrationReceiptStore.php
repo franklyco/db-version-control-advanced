@@ -191,6 +191,79 @@ final class HydrationReceiptStore
     }
 
     /**
+     * Delete receipt JSON files older than the provided age.
+     *
+     * @param int $older_than_days
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function delete_older_than(int $older_than_days)
+    {
+        $older_than_days = absint($older_than_days);
+        if ($older_than_days < 1) {
+            return new \WP_Error('dbvc_media_hydration_bad_receipt_cleanup_age', __('Receipt cleanup age must be at least one day.', 'dbvc'), ['status' => 400]);
+        }
+
+        $base_dir = self::base_dir();
+        if (is_wp_error($base_dir)) {
+            return $base_dir;
+        }
+
+        $day_seconds = defined('DAY_IN_SECONDS') ? (int) DAY_IN_SECONDS : 86400;
+        $cutoff = time() - ($older_than_days * $day_seconds);
+        $result = [
+            'older_than_days' => $older_than_days,
+            'cutoff_unix' => $cutoff,
+            'cutoff_at' => gmdate('c', $cutoff),
+            'scanned' => 0,
+            'kept' => 0,
+            'deleted' => 0,
+            'failed' => 0,
+            'bytes_deleted' => 0,
+        ];
+
+        $dates = scandir($base_dir);
+        foreach (is_array($dates) ? $dates : [] as $date_dir) {
+            if ($date_dir === '.' || $date_dir === '..' || ! preg_match('/^\d{8}$/', $date_dir)) {
+                continue;
+            }
+
+            $dir = trailingslashit($base_dir) . $date_dir;
+            if (! is_dir($dir)) {
+                continue;
+            }
+
+            foreach (glob(trailingslashit($dir) . '*.json') ?: [] as $path) {
+                $real = realpath($path);
+                if (! is_string($real) || ! self::path_starts_with($real, $base_dir)) {
+                    continue;
+                }
+
+                $modified = filemtime($real);
+                if (! is_int($modified)) {
+                    $result['failed']++;
+                    continue;
+                }
+
+                $result['scanned']++;
+                if ($modified >= $cutoff) {
+                    $result['kept']++;
+                    continue;
+                }
+
+                $size = filesize($real);
+                if (@unlink($real)) {
+                    $result['deleted']++;
+                    $result['bytes_deleted'] += is_int($size) ? $size : 0;
+                } else {
+                    $result['failed']++;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * @return string|\WP_Error
      */
     public static function base_dir()
