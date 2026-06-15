@@ -13,6 +13,11 @@ Brief usage notes for the DBVC Entity Editor.
 
 ## Actions
 
+- `Entity index`
+  - Lists indexed post/CPT and taxonomy term JSON files from the sync folder.
+  - The `Import status` column is sortable; click it once to bring unimported/unmatched files to the top.
+  - Rows with no matched WordPress entity are labeled `Not imported` and can show `Import as New` when the payload is eligible.
+
 - `New From Raw JSON`
   - Opens a dedicated intake modal from the Entity Editor toolbar.
   - Accepts one DBVC post/CPT or term JSON payload.

@@ -67,6 +67,8 @@
    - Legacy upload area now offers an immediate-import toggle for post JSON uploads that preserves the current sync folder contents and imports only the routed post file(s) from the current request.
    - Added a targeted post-only import helper in `DBVC_Sync_Posts` so the upload flow no longer has to call `import_all()` and rescan the entire sync folder.
    - Upload routing reports now include immediate-import counts and per-file outcomes, while the upload notice distinguishes plain uploads from upload-plus-import runs.
+   - Completed runtime QA across standard JSON upload, immediate JSON import, mixed post/term JSON routing, dry-run, ZIP guardrail, smart import, and UID fallback disabled/enabled cases.
+   - Fixed ZIP upload temp cleanup so only the per-upload extraction root is removed after copy.
 20. **UID Preservation Import Fix**
    - Non-empty incoming `vf_object_uid` values from entity JSON are treated as authoritative during post import, taxonomy normalization, upload routing, and Entity Editor import/export cycles.
    - Post import now reads `meta.vf_object_uid` when top-level UID is absent and keeps rewritten top-level, history, and meta UID fields aligned to the authoritative UID.
@@ -80,6 +82,10 @@
    - Added `docs/import-identity-matching.md` as the current source of truth for UID preservation, strict fallback behavior, and flow-specific matching rules.
    - Archived the completed implementation note at `docs/archive/import-uid-preservation-hardening-2026-05-25.md`.
    - Updated roadmap, README, Entity Editor, term, and legacy upload docs so they no longer describe UID fallback as always-on behavior.
+23. **Content Migration V2 Context Provider Hardening**
+   - Field Context and Object Type Context schema artifacts now preserve compact provider summaries instead of embedding full provider lookup maps at the top level.
+   - Forced target object inventory, target field catalog, and slot graph rebuilds avoid decoding previous large JSON artifacts before overwrite.
+   - The `flourishweb.co` replay path was validated after Vertical skipped the oversized raw Field Context transient by design; target field catalog and slot graph artifacts now remain materially smaller while preserving per-group, per-field, and per-slot context.
 
 ## Remaining / Next Steps
 1. **PlanMapper Addon Planning**

@@ -2,7 +2,7 @@
 
 This phase adds a narrow enhancement to the legacy sync-folder upload flow: when an admin uploads one or more post JSON files from the "Upload to Sync Folder" area, they can opt to keep the existing sync folder intact and immediately import only those uploaded post files instead of running the full sync-folder importer.
 
-Last updated: 2026-03-18
+Last updated: 2026-06-12
 
 ## Phase Name
 
@@ -235,13 +235,33 @@ Required scenarios:
 
 Checklist:
 
-- [ ] Default upload flow regression-tested.
-- [ ] Single-file immediate import verified.
-- [ ] Multi-file immediate import verified.
-- [ ] Mixed-scenario routing verified.
-- [ ] Dry-run and ZIP guardrails verified.
-- [ ] Smart-import behavior verified in the new path.
-- [ ] UID-matching and unmatched-UID fallback-toggle behavior verified in the new path.
+- [x] Default upload flow regression-tested.
+- [x] Single-file immediate import verified.
+- [x] Multi-file immediate import verified.
+- [x] Mixed-scenario routing verified.
+- [x] Dry-run and ZIP guardrails verified.
+- [x] Smart-import behavior verified in the new path.
+- [x] UID-matching and unmatched-UID fallback-toggle behavior verified in the new path.
+
+### QA Evidence
+
+Runtime probe completed on 2026-06-12 using disposable pages plus generated JSON/ZIP upload fixtures.
+
+- Probe: `/private/tmp/dbvc_upload_immediate_uid_qa.php`
+- Report: `/private/tmp/dbvc_upload_immediate_uid_qa_report.json`
+- Test package directory: `/private/tmp/dbvc-upload-immediate-qa-9oqqjwcy`
+- Result: all eight scenarios passed.
+
+Covered scenarios:
+
+- standard single JSON upload with immediate import disabled cleared the sync marker and did not import
+- single JSON upload with immediate import enabled retained the marker and applied one post
+- mixed post plus term JSON upload routed both files and imported only the post
+- dry-run JSON upload routed only and did not import
+- ZIP upload bypassed immediate import
+- smart-import skipped an unchanged file by `_dbvc_import_hash`
+- unmatched UID with fallback disabled skipped import and preserved the local UID
+- unmatched UID with fallback enabled applied through legacy fallback and aligned the incoming UID
 
 ## Suggested Task Order
 
@@ -258,7 +278,7 @@ Checklist:
 
 ### Status
 
-- Phase state: Implemented, pending manual QA
+- Phase state: Implemented, QA complete
 - Delivery scope: Legacy upload area only
 - Risk level: Low to medium
 
@@ -272,13 +292,14 @@ Checklist:
 - [x] Smart-import control wired into targeted import and strict legacy UID matching preserved.
 - [x] Upload report and notices extended for import outcomes.
 - [x] Logging/activity coverage added.
-- [ ] Manual QA completed across the required scenarios.
+- [x] Manual QA completed across the required scenarios.
 
 ## Tradeoffs / Notes
 
 - This phase intentionally does not auto-import terms, menus, or options. That keeps the new behavior aligned with the "individual post file(s)" workflow and limits regression risk.
 - The immediate-import path should not call `import_all()`. Doing so would reintroduce the current sync-folder-wide behavior and defeat the point of the enhancement.
 - The existing legacy smart-import hash only compares `post_content + meta`, not every imported field. That limitation remains unless a later phase expands the hash contract.
+- QA exposed and closed a ZIP temp cleanup issue in `DBVC_Sync_Posts::handle_upload_sync()`: the handler now deletes only the extraction root created for the current upload instead of the broader temp parent directory.
 
 ## Follow-up Candidates
 

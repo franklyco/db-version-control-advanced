@@ -132,6 +132,9 @@ What is already true:
 - run-aware package artifact loading now refuses page-level artifacts whose `journey_id` belongs to a newer run, so historical readiness and package reads stop showing newer-run page artifacts when direct historical files are unavailable
 - package QA now filters recommendation conflicts through saved decision state, so resolved conflict groups do not keep historical package preflight or execute blocked just because the raw recommendation artifact still lists the original conflict set
 - the targeted unsandboxed Playwright smoke `preserves historical package execute mutation after a same-url overwrite run` is now green, and it proves a real historical `POST /runs/{run_id}/execute` mutation stays pinned to the approved older `runId` and `packageId` on disposable data inside `dbvc-codexchanges.local`
+- `flourishweb.co` replay hardening is landed for the Field Context and Object Type Context schema path: DBVC now keeps top-level `field_context_provider` blocks compact through `DBVC_CC_Field_Context_Provider_Service::summarize_provider()`, leaves full provider lookup maps request-local, and still preserves per-group/per-field context in `acf_catalog` plus inherited context in the slot graph
+- forced rebuilds for target object inventory, V2 target field catalog, and target slot graph now avoid decoding existing large JSON artifacts before overwrite; forced slot-graph rebuilds force the V2 target field catalog rebuild instead of reusing stale oversized catalog data
+- Vertical's unscoped Field Context transient write may now be intentionally skipped for oversized raw catalogs; DBVC must treat missing `_transient_vf_field_context_catalog_d751713988987e9331980363e24189ce` as non-fatal when provider status, `source_hash`, and projected mapping entries are present
 
 What is still open:
 
@@ -165,6 +168,28 @@ What is still open:
 - `dbvc-codexchanges.local` still keeps real execute guardrail-blocked for this historical fixture flow, so the approved destructive execute recorded zero import runs and left rollback cleanup as a no-op
 - do not disable guardrails or broaden scope to another LocalWP site, database, directory, shared LocalWP infrastructure, or the LocalWP desktop app merely to fabricate rollback coverage
 - the next open work should come from a real product/runtime seam or release-readiness need, not from more rollback-specific QA on the current LocalWP target
+
+## Latest Replay Validation
+
+The latest local replay/adapter probe for `flourishweb.co` passed after the provider/artifact hardening.
+
+Command:
+
+```bash
+php /tmp/dbvc_object_type_context_adapter_probe.php frameworkflo-live.local flourishweb.co /Users/rhettbutler/Documents/LocalWP/frameworkflo-live/app/public/wp-content/themes/vertical
+```
+
+Key evidence:
+
+- `provider_available = true`
+- `provider_has_entries = true`
+- `catalog_group_context_count = 31`
+- `catalog_field_context_count = 2252`
+- `slot_context_count = 1716`
+- `_schema/dbvc_cc_target_field_catalog.v2.json` is about `19M`
+- `_schema/dbvc_cc_target_slot_graph.v1.json` is about `15M`
+- top-level `field_context_provider` in the field catalog and slot graph has summary keys only and no `groups_by_key` or `entries_by_key_path`
+- logs after the successful probe did not show a new MySQL `server has gone away` error or a new slot-graph memory fatal; older `02:29 UTC` memory errors were from the pre-fix artifact decode path
 
 ## Last Validation Baseline
 
@@ -260,14 +285,14 @@ Read these first when resuming:
 3. `addons/content-migration/docs/MIGRATION_MAPPER_V2_ROUTE_ARTIFACT_LEDGER.md`
 4. `addons/content-migration/docs/MIGRATION_MAPPER_V2_CRAWL_REUSE_AUDIT.md`
 5. `addons/content-migration/docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`
-6. `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
-7. `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
+6. `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF.md`
+7. `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_PLAN.md`
+8. `addons/content-migration/docs/MIGRATION_MAPPER_V2_VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE.md`
 
 Suggested resume prompt:
 
 ```text
-Resume V2 from codex/content-addon-v2. Read WORKING_STATE, DECISIONS, ROUTE_ARTIFACT_LEDGER, CRAWL_REUSE_AUDIT, IMPLEMENTATION_GUIDE, VERTICAL_FIELD_CONTEXT_PLAN, and VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE. Continue the Vertical Field Context mapping-accuracy seam from FC-04 and keep the next tranche limited to deterministic recommendation selection, unresolved bias, and reviewer-visible ambiguity framing inside the existing V2 runtime.
-Resume V2 from codex/content-addon-v2. Read WORKING_STATE, DECISIONS, ROUTE_ARTIFACT_LEDGER, CRAWL_REUSE_AUDIT, IMPLEMENTATION_GUIDE, VERTICAL_FIELD_CONTEXT_PLAN, and VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE. Continue the Vertical Field Context mapping-accuracy seam from FC-07 and keep the next tranche limited to measured benchmark coverage across additional Vertical pages plus residual non-home ambiguity reduction now that provider freshness, option-page exclusion, raw-score ordering, and the Home hero acceptance rerun are landed, then finish package-preview policy hardening inside the existing V2 runtime.
+Resume V2 from codex/content-addon-v2. Read WORKING_STATE, DECISIONS, ROUTE_ARTIFACT_LEDGER, CRAWL_REUSE_AUDIT, IMPLEMENTATION_GUIDE, VERTICAL_FIELD_CONTEXT_RUNTIME_HANDOFF, VERTICAL_FIELD_CONTEXT_PLAN, and VERTICAL_FIELD_CONTEXT_IMPLEMENTATION_GUIDE. Preserve the compact Field Context provider artifact shape from the flourishweb.co replay hardening: top-level field_context_provider blocks must stay summarized, full provider maps stay request-local, forced schema rebuilds must not decode old large JSON artifacts, and Object Type Context remains additive object-level evidence. Continue with measured benchmark coverage across additional Vertical pages, residual conversion-page ambiguity reduction, and package-preview policy hardening unless the user directs another DBVC slice.
 ```
 
 ## Update Rule

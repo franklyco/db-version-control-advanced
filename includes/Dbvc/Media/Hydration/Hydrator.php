@@ -57,6 +57,7 @@ final class Hydrator
      *   @type bool $overwrite_existing Replace existing target files. Default false.
      *   @type bool $repair_metadata    Regenerate attachment metadata when planned. Default true.
      *   @type bool $normalize_media_urls_to_https Rewrite exact http media URL references to https. Default false.
+     *   @type int[]|string $source_ids  Optional source attachment IDs to include.
      *   @type int  $limit              Max planned items to apply in this run. Default 100, max 500.
      *   @type int  $offset             Planned item offset. Default 0.
      * }
@@ -81,6 +82,19 @@ final class Hydrator
 
         $entries = array_values((array) ($manifest['attachments'] ?? []));
         $items = array_values((array) ($plan['items'] ?? []));
+        $source_ids = self::normalize_source_ids($args['source_ids'] ?? []);
+        if (! empty($source_ids)) {
+            $source_id_map = array_fill_keys($source_ids, true);
+            $items = array_filter($items, static function ($item) use ($source_id_map): bool {
+                if (! is_array($item)) {
+                    return false;
+                }
+
+                $source_id = isset($item['source_id']) ? absint($item['source_id']) : 0;
+                return $source_id > 0 && isset($source_id_map[$source_id]);
+            });
+        }
+
         $offset = isset($args['offset']) ? absint($args['offset']) : 0;
         $limit = isset($args['limit']) ? absint($args['limit']) : self::DEFAULT_LIMIT;
         if ($limit <= 0) {
@@ -117,6 +131,7 @@ final class Hydrator
                 'overwrite_existing' => ! empty($args['overwrite_existing']),
                 'repair_metadata' => array_key_exists('repair_metadata', $args) ? (bool) $args['repair_metadata'] : true,
                 'normalize_media_urls_to_https' => ! empty($args['normalize_media_urls_to_https']),
+                'source_id_filter_count' => count($source_ids),
             ],
             'pagination' => [
                 'offset' => $offset,
@@ -592,6 +607,31 @@ final class Hydrator
         if (isset($item['https_url_normalization']) && is_array($item['https_url_normalization'])) {
             $summary['https_url_replacements'] += (int) ($item['https_url_normalization']['replacements'] ?? 0);
         }
+    }
+
+    /**
+     * @param mixed $value
+     * @return int[]
+     */
+    private static function normalize_source_ids($value): array
+    {
+        if (is_string($value)) {
+            $value = preg_split('/[\s,]+/', $value);
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($value as $id) {
+            $id = absint($id);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     /**

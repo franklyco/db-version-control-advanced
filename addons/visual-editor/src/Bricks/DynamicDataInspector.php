@@ -219,7 +219,7 @@ final class DynamicDataInspector
             }
         }
 
-        if ($supported_children < 2) {
+        if ($supported_children < 1) {
             return [
                 'supported' => false,
             ];
@@ -235,6 +235,7 @@ final class DynamicDataInspector
             'children' => $children,
             'dynamic_count' => count($children),
             'supported_child_count' => $supported_children,
+            'unsupported_child_count' => max(0, count($children) - $supported_children),
             'render_context' => 'composite_text',
             'render_attribute' => '',
         ];

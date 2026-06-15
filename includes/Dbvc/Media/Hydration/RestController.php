@@ -70,6 +70,44 @@ final class RestController
 
         register_rest_route(
             self::REST_NAMESPACE,
+            '/media-hydration/jobs',
+            [
+                'methods' => \WP_REST_Server::CREATABLE,
+                'callback' => [$this, 'create_job'],
+                'permission_callback' => [$this, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            self::REST_NAMESPACE,
+            '/media-hydration/jobs/(?P<job_id>\d+)',
+            [
+                'methods' => \WP_REST_Server::READABLE,
+                'callback' => [$this, 'job_status'],
+                'permission_callback' => [$this, 'can_manage'],
+                'args' => [
+                    'job_id' => ['required' => true, 'sanitize_callback' => 'absint'],
+                ],
+            ]
+        );
+
+        foreach (['run', 'pause', 'resume', 'cancel'] as $job_action) {
+            register_rest_route(
+                self::REST_NAMESPACE,
+                '/media-hydration/jobs/(?P<job_id>\d+)/' . $job_action,
+                [
+                    'methods' => \WP_REST_Server::CREATABLE,
+                    'callback' => [$this, 'job_' . $job_action],
+                    'permission_callback' => [$this, 'can_manage'],
+                    'args' => [
+                        'job_id' => ['required' => true, 'sanitize_callback' => 'absint'],
+                    ],
+                ]
+            );
+        }
+
+        register_rest_route(
+            self::REST_NAMESPACE,
             '/media-hydration/packages',
             [
                 'methods' => \WP_REST_Server::READABLE,
@@ -95,11 +133,21 @@ final class RestController
             self::REST_NAMESPACE,
             '/media-hydration/receipts',
             [
-                'methods' => \WP_REST_Server::READABLE,
-                'callback' => [$this, 'receipts'],
-                'permission_callback' => [$this, 'can_manage'],
-                'args' => [
-                    'limit' => ['required' => false, 'sanitize_callback' => 'absint'],
+                [
+                    'methods' => \WP_REST_Server::READABLE,
+                    'callback' => [$this, 'receipts'],
+                    'permission_callback' => [$this, 'can_manage'],
+                    'args' => [
+                        'limit' => ['required' => false, 'sanitize_callback' => 'absint'],
+                    ],
+                ],
+                [
+                    'methods' => \WP_REST_Server::DELETABLE,
+                    'callback' => [$this, 'delete_receipts'],
+                    'permission_callback' => [$this, 'can_manage'],
+                    'args' => [
+                        'older_than_days' => ['required' => false, 'sanitize_callback' => 'absint'],
+                    ],
                 ],
             ]
         );
@@ -251,6 +299,33 @@ final class RestController
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response|\WP_Error
      */
+    public function delete_receipts($request)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $days = absint($request->get_param('older_than_days'));
+        if ($days <= 0) {
+            $days = 30;
+        }
+
+        $cleanup = HydrationReceiptStore::delete_older_than($days);
+        if (is_wp_error($cleanup)) {
+            return $cleanup;
+        }
+
+        return rest_ensure_response([
+            'cleanup' => $cleanup,
+            'receipts' => HydrationReceiptStore::list_recent(10),
+        ]);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
     public function apply($request)
     {
         $enabled = $this->ensure_enabled();
@@ -287,6 +362,11 @@ final class RestController
             }
         }
 
+        $retry_args = $this->retry_args_from_params($params);
+        if (is_wp_error($retry_args)) {
+            return $retry_args;
+        }
+
         $package_root = isset($params['package_root']) && (string) $params['package_root'] !== ''
             ? $this->normalize_package_root((string) $params['package_root'])
             : dirname($manifest_path);
@@ -303,15 +383,23 @@ final class RestController
         }
 
         try {
-            $report = Hydrator::apply_from_manifest_file($manifest_path, $this->apply_args_from_settings($params) + [
+            $apply_args = $this->apply_args_from_settings($params) + [
                 'package_root' => $package_root,
-            ]);
+            ] + $retry_args;
+            $report = Hydrator::apply_from_manifest_file($manifest_path, $apply_args);
         } finally {
             HydrationLock::release((string) ($lock['token'] ?? ''));
         }
 
         if (is_wp_error($report)) {
             return $report;
+        }
+
+        if (! empty($retry_args['retry_receipt_id'])) {
+            $report['retry'] = [
+                'receipt_id' => (string) $retry_args['retry_receipt_id'],
+                'source_id_count' => count((array) ($retry_args['source_ids'] ?? [])),
+            ];
         }
 
         if (Settings::get_bool(Settings::OPTION_RECEIPTS_ENABLED) === '1') {
@@ -324,6 +412,123 @@ final class RestController
         }
 
         return rest_ensure_response($report);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function create_job($request)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $params = $this->params($request);
+        if ((string) ($params['confirm'] ?? '') !== 'hydrate-existing-media') {
+            return new \WP_Error('dbvc_media_hydration_confirm_required', __('Media hydration job creation requires explicit confirmation.', 'dbvc'), ['status' => 400]);
+        }
+
+        $contract = $this->job_contract_from_params($params);
+        if (is_wp_error($contract)) {
+            return $contract;
+        }
+
+        $job = MediaHydrationJobStore::create($contract, 'queued');
+        if (is_wp_error($job)) {
+            return $job;
+        }
+
+        MediaHydrationJobRunner::schedule((int) ($job['job_id'] ?? 0));
+
+        return new \WP_REST_Response(['job' => $job], 201);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function job_status($request)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $job = MediaHydrationJobStore::get(absint($request->get_param('job_id')));
+        if (is_wp_error($job)) {
+            return $job;
+        }
+
+        return rest_ensure_response(['job' => $job]);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function job_run($request)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $result = MediaHydrationJobRunner::run(absint($request->get_param('job_id')));
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return rest_ensure_response($result);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function job_pause($request)
+    {
+        return $this->transition_job($request, 'paused');
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function job_resume($request)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $job = MediaHydrationJobStore::get(absint($request->get_param('job_id')));
+        if (is_wp_error($job)) {
+            return $job;
+        }
+
+        if ((string) ($job['status'] ?? '') !== 'paused') {
+            return new \WP_Error('dbvc_media_hydration_job_not_paused', __('Only paused media hydration jobs can be resumed.', 'dbvc'), ['status' => 409]);
+        }
+
+        $job = MediaHydrationJobStore::transition((int) ($job['job_id'] ?? 0), 'queued');
+        if (is_wp_error($job)) {
+            return $job;
+        }
+
+        MediaHydrationJobRunner::schedule((int) ($job['job_id'] ?? 0));
+
+        return rest_ensure_response(['job' => $job]);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public function job_cancel($request)
+    {
+        return $this->transition_job($request, 'cancelled');
     }
 
     /**
@@ -421,6 +626,32 @@ final class RestController
     }
 
     /**
+     * @param array<string,mixed> $params
+     * @return array<string,mixed>|\WP_Error
+     */
+    private function retry_args_from_params(array $params)
+    {
+        $receipt_id = isset($params['retry_receipt_id']) ? sanitize_file_name((string) $params['retry_receipt_id']) : '';
+        if ($receipt_id === '') {
+            return [];
+        }
+
+        $source_ids = HydrationReceiptStore::failed_source_ids($receipt_id);
+        if (is_wp_error($source_ids)) {
+            return $source_ids;
+        }
+
+        if (empty($source_ids)) {
+            return new \WP_Error('dbvc_media_hydration_retry_no_failed_items', __('The selected media hydration receipt has no failed items to retry.', 'dbvc'), ['status' => 400]);
+        }
+
+        return [
+            'retry_receipt_id' => $receipt_id,
+            'source_ids' => $source_ids,
+        ];
+    }
+
+    /**
      * @param string $path
      * @return string|\WP_Error
      */
@@ -510,5 +741,137 @@ final class RestController
         $path = rtrim(wp_normalize_path($path), '/') . '/';
         $base = rtrim(wp_normalize_path($base), '/') . '/';
         return strpos($path, $base) === 0;
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @param string           $status
+     * @return \WP_REST_Response|\WP_Error
+     */
+    private function transition_job($request, string $status)
+    {
+        $enabled = $this->ensure_enabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $job = MediaHydrationJobStore::get(absint($request->get_param('job_id')));
+        if (is_wp_error($job)) {
+            return $job;
+        }
+
+        $current = (string) ($job['status'] ?? '');
+        if (in_array($current, ['completed', 'cancelled'], true)) {
+            return new \WP_Error('dbvc_media_hydration_job_terminal', __('Media hydration job is already in a terminal status.', 'dbvc'), ['status' => 409]);
+        }
+
+        $job = MediaHydrationJobStore::transition((int) ($job['job_id'] ?? 0), $status);
+        if (is_wp_error($job)) {
+            return $job;
+        }
+
+        return rest_ensure_response(['job' => $job]);
+    }
+
+    /**
+     * @param array<string,mixed> $params
+     * @return array<string,mixed>|\WP_Error
+     */
+    private function job_contract_from_params(array $params)
+    {
+        $plan_id = isset($params['plan_id']) ? sanitize_file_name((string) $params['plan_id']) : '';
+        if (Settings::get_bool(Settings::OPTION_REQUIRE_DRY_RUN) === '1' && $plan_id === '') {
+            return new \WP_Error('dbvc_media_hydration_dry_run_required', __('Run and acknowledge a saved media hydration dry run before creating a background job.', 'dbvc'), ['status' => 400]);
+        }
+
+        $manifest_path = $this->normalize_manifest_path((string) ($params['manifest_path'] ?? ''));
+        if (is_wp_error($manifest_path)) {
+            return $manifest_path;
+        }
+
+        $manifest = $this->manifest_from_params([
+            'manifest_path' => $manifest_path,
+        ]);
+        if (is_wp_error($manifest)) {
+            return $manifest;
+        }
+
+        $plan = null;
+        if ($plan_id !== '') {
+            $plan = HydrationPlanStore::verify_for_manifest($plan_id, $manifest);
+            if (is_wp_error($plan)) {
+                return $plan;
+            }
+        } else {
+            $plan = HydrationPlanner::plan($manifest, $this->plan_args_from_settings($params));
+            if (is_wp_error($plan)) {
+                return $plan;
+            }
+        }
+
+        $retry_args = $this->retry_args_from_params($params);
+        if (is_wp_error($retry_args)) {
+            return $retry_args;
+        }
+
+        $package_root = isset($params['package_root']) && (string) $params['package_root'] !== ''
+            ? $this->normalize_package_root((string) $params['package_root'])
+            : dirname($manifest_path);
+        if (is_wp_error($package_root)) {
+            return $package_root;
+        }
+
+        $apply_args = $this->apply_args_from_settings($params);
+        $match_policy = sanitize_key((string) ($apply_args['match_policy'] ?? Settings::get_match_policy()));
+        if (! in_array($match_policy, Settings::allowed_match_policies(), true)) {
+            $match_policy = Settings::get_match_policy();
+        }
+        $source_ids = isset($retry_args['source_ids']) && is_array($retry_args['source_ids']) ? $retry_args['source_ids'] : [];
+        $items = isset($plan['items']) && is_array($plan['items']) ? $plan['items'] : [];
+        if (! empty($source_ids)) {
+            $source_id_map = array_fill_keys(array_map('absint', $source_ids), true);
+            $items = array_filter($items, static function ($item) use ($source_id_map): bool {
+                if (! is_array($item)) {
+                    return false;
+                }
+                $source_id = isset($item['source_id']) ? absint($item['source_id']) : 0;
+                return $source_id > 0 && isset($source_id_map[$source_id]);
+            });
+        }
+
+        return [
+            'manifest_path' => $manifest_path,
+            'manifest_checksum' => (string) ($manifest['checksum'] ?? ''),
+            'package_root' => $package_root,
+            'plan_id' => $plan_id,
+            'plan_checksum' => MediaHydrationJobRunner::plan_checksum($plan),
+            'retry_receipt_id' => (string) ($retry_args['retry_receipt_id'] ?? ''),
+            'source_ids' => $source_ids,
+            'offset' => 0,
+            'limit' => max(1, min(500, absint($apply_args['limit'] ?? Settings::get_batch_size()))),
+            'total_plan_items' => count($items),
+            'processed_total' => 0,
+            'cumulative_summary' => [
+                'items' => 0,
+                'hydrated' => 0,
+                'metadata_repaired' => 0,
+                'skipped' => 0,
+                'blocked' => 0,
+                'errors' => 0,
+                'bytes' => 0,
+            ],
+            'policy' => [
+                'clone_confirmation' => ! empty($apply_args['clone_confirmation']),
+                'strict_hashes' => ! empty($apply_args['strict_hashes']),
+                'match_policy' => $match_policy,
+                'repair_metadata' => ! empty($apply_args['repair_metadata']),
+                'normalize_media_urls_to_https' => ! empty($apply_args['normalize_media_urls_to_https']),
+                'overwrite_existing' => false,
+            ],
+            'created_by' => get_current_user_id(),
+            'last_error' => '',
+            'receipt_ids' => [],
+            'progress' => 0,
+        ];
     }
 }

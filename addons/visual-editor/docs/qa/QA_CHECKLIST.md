@@ -17,7 +17,8 @@
 - [ ] Repeater row markers stay distinct per row and do not collide across nested related-post loops
 - [ ] Direct flexible descendants with stable row + layout identity surface honest markers and path metadata
 - [ ] Single dynamic tags wrapped by one empty HTML node still instrument when otherwise supported
-- [ ] Multi-tag Bricks text settings surface one readonly composite marker with child source summaries, not one marker per child token
+- [x] Multi-tag Bricks text settings surface one readonly composite marker with child source summaries, not one marker per child token
+- [x] Multi-tag Bricks text settings with one resolved field plus unsupported provider tags surface locked child rows and stay readonly
 - [ ] Generic unsupported Bricks loop types do not receive false editable markers
 - [ ] `universal_cta_options` Site Settings link-group fields stay read-only in Visual Editor
 
@@ -43,6 +44,12 @@
 - [ ] Row-backed grouped/nested saves reject missing group or nested repeater containers instead of creating new paths from stale descriptors
 - [ ] Current-post flexible text-like/WYSIWYG/choice/link/image saves mutate only the targeted flexible row
 - [ ] Related-post flexible text-like/WYSIWYG/choice/link/image saves mutate only the targeted related-owner flexible row
+- [x] Composite-save REST requests reject related/shared child batches without explicit acknowledgement before any child write
+- [x] Composite-save REST requests reject unsupported, readonly, missing, or structured child controls before any child write
+- [x] Composite scalar batch saves persist same-value, changed-value, and restored child values through the composite-save route
+- [x] Composite stale child baselines return `409` before any batch writes and preserve the externally changed value
+- [x] Composite batch writes attempt rollback of earlier child writes when a later child write fails in the controlled mutation-service probe
+- [x] Composite batch journal entries use one parent change set with one item per child mutation and include live failure/rollback row evidence
 
 ## UX
 - [ ] Editable fields open expected input
@@ -53,4 +60,9 @@
 - [ ] Repeater-backed fields show parent repeater and row metadata in the modal source summary
 - [ ] Flexible-backed fields show parent flexible field, row, and layout metadata in the modal source summary
 - [ ] Shared options-page fields keep shared warnings distinct from related-post loop warnings
-- [ ] Composite text panels show reconstructed preview, original template, child source rows, and no save controls until batch save is implemented
+- [ ] Composite text panels show reconstructed preview, original template, child source rows, and no save controls while `canBatchSave` remains false
+- [ ] Composite text panels show batch-save preflight readiness, owner groups, acknowledgement types, and blocked child reasons while `canBatchSave` remains false
+- [ ] Composite text panels expose scalar child inputs and `Save All` only when `canBatchSave` is true
+- [ ] Composite text `Save All` requires related/shared acknowledgement in the panel before any save request
+- [ ] Composite text no-reload saves patch the active marker from the template and returned child display values without cross-syncing sibling markers
+- [ ] Review Fields `Open` opens zero-height/hidden composite descriptors through the token fallback path in live browser QA

@@ -4757,33 +4757,14 @@ $acf_relationship_fields = [
         } elseif ($has_multiple && $has_zip) {
             $failure_reason = 'mixed_upload_types';
         } elseif ('zip' === $extension && class_exists('ZipArchive')) {
-            $zip = new \ZipArchive();
-            $open_result = $zip->open($tmp);
-
-            if ($open_result === true) {
-                $tmp_dir = trailingslashit(self::get_temp_file() . '-extract');
-                wp_mkdir_p($tmp_dir);
-
-                if ($zip->extractTo($tmp_dir)) {
-                    $zip->close();
-
-                    $entries = array_diff(scandir($tmp_dir), ['.', '..']);
-                    if (count($entries) === 1 && is_dir($tmp_dir . $entries[0])) {
-                        $tmp_dir .= $entries[0] . '/';
-                    }
-
-                    self::recursive_copy($tmp_dir, $sync_dir);
-                    self::delete_folder_contents(dirname($tmp_dir));
-                    @rmdir(dirname($tmp_dir));
-
-                    $success = true;
-                    $should_normalize_term_json_files = true;
-                } else {
-                    $zip->close();
-                    $failure_reason = 'zip_extract_failed';
-                }
+            $zip_result = self::extract_upload_zip_to_sync_dir($tmp, $sync_dir);
+            $success = ! empty($zip_result['success']);
+            if ($success) {
+                $should_normalize_term_json_files = true;
             } else {
-                $failure_reason = 'zip_open_failed';
+                $failure_reason = isset($zip_result['failure_reason']) && is_string($zip_result['failure_reason'])
+                    ? $zip_result['failure_reason']
+                    : 'zip_extract_failed';
             }
         } elseif ('json' === $extension && class_exists('DBVC_Import_Router')) {
             $route_stats = DBVC_Import_Router::route_uploaded_json($uploads, [
@@ -4936,6 +4917,74 @@ $acf_relationship_fields = [
         }
 
         closedir($dir);
+    }
+
+    /**
+     * Extract a ZIP upload into the sync directory and clean only the per-upload extraction folder.
+     *
+     * @param string      $zip_path
+     * @param string      $sync_dir
+     * @param string|null $tmp_file Optional test seam for the base temp file path.
+     * @return array{success:bool,failure_reason:string,temp_file:string,extract_root:string}
+     */
+    private static function extract_upload_zip_to_sync_dir($zip_path, $sync_dir, $tmp_file = null)
+    {
+        $result = [
+            'success'        => false,
+            'failure_reason' => '',
+            'temp_file'      => '',
+            'extract_root'   => '',
+        ];
+
+        $zip = new \ZipArchive();
+        $open_result = $zip->open($zip_path);
+        if ($open_result !== true) {
+            $result['failure_reason'] = 'zip_open_failed';
+            return $result;
+        }
+
+        if ($tmp_file === null) {
+            $tmp_file = self::get_temp_file();
+        }
+
+        if (! $tmp_file) {
+            $zip->close();
+            $result['failure_reason'] = 'zip_temp_failed';
+            return $result;
+        }
+
+        $tmp_file = (string) $tmp_file;
+        $extract_root = trailingslashit($tmp_file . '-extract');
+        $tmp_dir = $extract_root;
+        $result['temp_file'] = $tmp_file;
+        $result['extract_root'] = $extract_root;
+
+        wp_mkdir_p($tmp_dir);
+
+        if (! $zip->extractTo($tmp_dir)) {
+            $zip->close();
+            self::delete_folder_contents($extract_root);
+            @rmdir($extract_root);
+            @unlink($tmp_file);
+            $result['failure_reason'] = 'zip_extract_failed';
+            return $result;
+        }
+
+        $zip->close();
+
+        $scanned_entries = scandir($tmp_dir);
+        $entries = is_array($scanned_entries) ? array_values(array_diff($scanned_entries, ['.', '..'])) : [];
+        if (count($entries) === 1 && is_dir($tmp_dir . $entries[0])) {
+            $tmp_dir .= $entries[0] . '/';
+        }
+
+        self::recursive_copy($tmp_dir, $sync_dir);
+        self::delete_folder_contents($extract_root);
+        @rmdir($extract_root);
+        @unlink($tmp_file);
+
+        $result['success'] = true;
+        return $result;
     }
 
 

@@ -81,6 +81,29 @@ Manual QA checklist for Entity Editor security and behavior validation.
 
 ---
 
-## 7) Known current limitation
+## 7) Sync File Import
+
+- Click the Entity index `Import status` header.
+  - Expected: unimported rows sort to the top on ascending sort, imported rows show an `Imported` badge, and unmatched rows show `Not imported`.
+- Drop one unmatched post/CPT JSON into the sync folder, rebuild/open Entity Editor, and verify the row shows `Import as New`.
+- Preview the file.
+  - Expected: modal shows entity kind, subtype, title, slug, UID, source path, `create` action, and no blocking reasons.
+- Commit the import.
+  - Expected: WP entity is created, result shows the created entity link, index refreshes, and only one final canonical JSON file remains.
+- Repeat with one unmatched `taxonomy/{taxonomy}/...json` term file.
+  - Expected: term is created, incoming UID/meta are preserved, and the JSON is normalized to the local `term_id` filename when filename mode includes IDs.
+- Preview a matched file.
+  - Expected: `Import as New` is unavailable or preview blocks with `matched_entity`.
+- Preview an older duplicate file when a duplicate group exists.
+  - Expected: stale duplicate is blocked and points to the canonical row.
+- Preview invalid, unsupported, or excluded JSON.
+  - Expected: modal shows a blocking reason and disables commit.
+- Run a mixed bulk preview with one creatable file and one blocked file.
+  - Expected: commit creates only the eligible entity and preserves the blocked result in the modal.
+
+---
+
+## 8) Known current limitation
 
 - Full replace modal does not currently show preflight delete-count preview before apply; only post-operation counts are returned.
+- Sync-file import browser QA should use disposable JSON because successful commits create live WP entities.

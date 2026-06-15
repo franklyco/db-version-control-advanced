@@ -145,6 +145,8 @@ final class DBVC_CC_V2_Package_QA_Service
         $summary['benchmarkRerunCount'] = isset($benchmark_summary['totals']['rerunCount']) ? (int) $benchmark_summary['totals']['rerunCount'] : 0;
         $summary['benchmarkTransformBlockedCount'] = isset($benchmark_summary['totals']['transformBlockedCount']) ? (int) $benchmark_summary['totals']['transformBlockedCount'] : 0;
         $summary['benchmarkProviderDriftCount'] = isset($benchmark_summary['totals']['providerDriftCount']) ? (int) $benchmark_summary['totals']['providerDriftCount'] : 0;
+        $summary['benchmarkFieldContextProviderDriftCount'] = isset($benchmark_summary['totals']['fieldContextProviderDriftCount']) ? (int) $benchmark_summary['totals']['fieldContextProviderDriftCount'] : 0;
+        $summary['benchmarkObjectTypeContextProviderDriftCount'] = isset($benchmark_summary['totals']['objectTypeContextProviderDriftCount']) ? (int) $benchmark_summary['totals']['objectTypeContextProviderDriftCount'] : 0;
         $collection_status = $this->resolve_collection_status($summary);
         $readiness_status = $this->resolve_overall_status(
             $collection_status,
@@ -179,6 +181,7 @@ final class DBVC_CC_V2_Package_QA_Service
         $pages_with_reruns = 0;
         $pages_with_transform_blocks = 0;
         $pages_with_provider_drift = 0;
+        $pages_with_object_type_context_provider_drift = 0;
         $pages_with_benchmark_blocked = 0;
         $pages_with_benchmark_review = 0;
         $high_risk_pages = 0;
@@ -190,6 +193,8 @@ final class DBVC_CC_V2_Package_QA_Service
             'rerunCount' => 0,
             'transformBlockedCount' => 0,
             'providerDriftCount' => 0,
+            'fieldContextProviderDriftCount' => 0,
+            'objectTypeContextProviderDriftCount' => 0,
         ];
 
         foreach ($page_reports as $report) {
@@ -204,7 +209,9 @@ final class DBVC_CC_V2_Package_QA_Service
             $manual_override_count = isset($report['manualOverrideCount']) ? (int) $report['manualOverrideCount'] : 0;
             $rerun_count = isset($report['rerunCount']) ? (int) $report['rerunCount'] : 0;
             $transform_blocked_count = isset($stats['transformBlockedCount']) ? (int) $stats['transformBlockedCount'] : 0;
-            $provider_drift_count = isset($stats['fieldContextProviderDriftCount']) ? (int) $stats['fieldContextProviderDriftCount'] : 0;
+            $field_context_provider_drift_count = isset($stats['fieldContextProviderDriftCount']) ? (int) $stats['fieldContextProviderDriftCount'] : 0;
+            $object_type_context_provider_drift_count = isset($stats['objectTypeContextProviderDriftCount']) ? (int) $stats['objectTypeContextProviderDriftCount'] : 0;
+            $provider_drift_count = $field_context_provider_drift_count + $object_type_context_provider_drift_count;
             $benchmark_gate = isset($report['benchmarkGate']) && is_array($report['benchmarkGate'])
                 ? $report['benchmarkGate']
                 : DBVC_CC_V2_Benchmark_Gate_Service::get_instance()->evaluate_page(
@@ -224,6 +231,8 @@ final class DBVC_CC_V2_Package_QA_Service
             $totals['rerunCount'] += $rerun_count;
             $totals['transformBlockedCount'] += $transform_blocked_count;
             $totals['providerDriftCount'] += $provider_drift_count;
+            $totals['fieldContextProviderDriftCount'] += $field_context_provider_drift_count;
+            $totals['objectTypeContextProviderDriftCount'] += $object_type_context_provider_drift_count;
 
             if ($unresolved_count > 0) {
                 ++$pages_with_unresolved;
@@ -245,6 +254,9 @@ final class DBVC_CC_V2_Package_QA_Service
             }
             if ($provider_drift_count > 0) {
                 ++$pages_with_provider_drift;
+            }
+            if ($object_type_context_provider_drift_count > 0) {
+                ++$pages_with_object_type_context_provider_drift;
             }
             if ($benchmark_gate_status === DBVC_CC_V2_Contracts::READINESS_STATUS_BLOCKED) {
                 ++$pages_with_benchmark_blocked;
@@ -274,6 +286,8 @@ final class DBVC_CC_V2_Package_QA_Service
                 'rerunCount' => $rerun_count,
                 'transformBlockedCount' => $transform_blocked_count,
                 'providerDriftCount' => $provider_drift_count,
+                'fieldContextProviderDriftCount' => $field_context_provider_drift_count,
+                'objectTypeContextProviderDriftCount' => $object_type_context_provider_drift_count,
                 'highRisk' => $high_risk,
                 'benchmarkReasonCodes' => array_values(
                     array_unique(
@@ -334,6 +348,7 @@ final class DBVC_CC_V2_Package_QA_Service
             'pagesWithRerunCount' => $pages_with_reruns,
             'pagesWithTransformBlocks' => $pages_with_transform_blocks,
             'pagesWithProviderDrift' => $pages_with_provider_drift,
+            'pagesWithObjectTypeContextProviderDrift' => $pages_with_object_type_context_provider_drift,
             'pagesWithBenchmarkBlocked' => $pages_with_benchmark_blocked,
             'pagesWithBenchmarkReview' => $pages_with_benchmark_review,
             'totals' => $totals,

@@ -30,31 +30,53 @@ final class BricksReferenceMapper
         $references = [];
         foreach ($settings_values as $index => $setting) {
             $setting = maybe_unserialize($setting);
-            if (! is_array($setting) || ! array_key_exists('templatePreviewPostId', $setting)) {
+            if (! is_array($setting)) {
                 continue;
             }
 
-            $raw_value = $setting['templatePreviewPostId'];
-            $source_id = absint($raw_value);
-            if (! $source_id) {
-                continue;
+            if (array_key_exists('templatePreviewPostId', $setting)) {
+                $raw_value = $setting['templatePreviewPostId'];
+                $source_id = absint($raw_value);
+                if ($source_id) {
+                    $path = sprintf('meta.%s.%d.templatePreviewPostId', self::META_TEMPLATE_SETTINGS, (int) $index);
+                    $context = self::build_post_context($source_id, $setting, $hydrate_context);
+
+                    $references[] = [
+                        'schema'            => self::SCHEMA,
+                        'provider'          => self::PROVIDER,
+                        'kind'              => 'post',
+                        'source_id'         => $source_id,
+                        'source_value_type' => self::value_type($raw_value),
+                        'path'              => $path,
+                        'meta_key'          => self::META_TEMPLATE_SETTINGS,
+                        'context'           => $context,
+                        'policy'            => 'localize_on_import',
+                        'confidence'        => 'high',
+                    ];
+                }
             }
 
-            $path = sprintf('meta.%s.%d.templatePreviewPostId', self::META_TEMPLATE_SETTINGS, (int) $index);
-            $context = self::build_post_context($source_id, $setting, $hydrate_context);
+            if (array_key_exists('templatePreviewTerm', $setting)) {
+                $raw_value = $setting['templatePreviewTerm'];
+                $parsed = self::parse_scoped_term_value($raw_value);
+                if ($parsed !== null) {
+                    $path = sprintf('meta.%s.%d.templatePreviewTerm', self::META_TEMPLATE_SETTINGS, (int) $index);
+                    $context = self::build_term_context($parsed['term_id'], $parsed['taxonomy'], $hydrate_context);
 
-            $references[] = [
-                'schema'            => self::SCHEMA,
-                'provider'          => self::PROVIDER,
-                'kind'              => 'post',
-                'source_id'         => $source_id,
-                'source_value_type' => self::value_type($raw_value),
-                'path'              => $path,
-                'meta_key'          => self::META_TEMPLATE_SETTINGS,
-                'context'           => $context,
-                'policy'            => 'localize_on_import',
-                'confidence'        => 'high',
-            ];
+                    $references[] = [
+                        'schema'            => self::SCHEMA,
+                        'provider'          => self::PROVIDER,
+                        'kind'              => 'term',
+                        'source_id'         => $parsed['term_id'],
+                        'source_value_type' => self::value_type($raw_value),
+                        'path'              => $path,
+                        'meta_key'          => self::META_TEMPLATE_SETTINGS,
+                        'context'           => $context,
+                        'policy'            => 'localize_on_import',
+                        'confidence'        => 'high',
+                    ];
+                }
+            }
         }
 
         return $references;
@@ -69,7 +91,29 @@ final class BricksReferenceMapper
      */
     public static function localize_post_payload(array $payload, array $source_to_local_post_ids = []): array
     {
-        if (! self::is_enabled()) {
+        return self::localize_post_payload_internal($payload, $source_to_local_post_ids, true);
+    }
+
+    /**
+     * Dry-run known Bricks ID reference localization for proposal/preflight display.
+     *
+     * @param array<string,mixed> $payload
+     * @param array<int,int>      $source_to_local_post_ids
+     * @return array{payload:array<string,mixed>,results:array<int,array<string,mixed>>}
+     */
+    public static function preflight_post_payload(array $payload, array $source_to_local_post_ids = []): array
+    {
+        return self::localize_post_payload_internal($payload, $source_to_local_post_ids, false);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<int,int>      $source_to_local_post_ids
+     * @return array{payload:array<string,mixed>,results:array<int,array<string,mixed>>}
+     */
+    private static function localize_post_payload_internal(array $payload, array $source_to_local_post_ids = [], bool $respect_enabled = true): array
+    {
+        if ($respect_enabled && ! self::is_enabled()) {
             return [
                 'payload' => $payload,
                 'results' => [],
@@ -92,13 +136,14 @@ final class BricksReferenceMapper
 
             $source_id = absint($reference['source_id'] ?? 0);
             $path = (string) ($reference['path'] ?? '');
-            $current_value = self::get_template_preview_value($payload, $path);
+            $kind = isset($reference['kind']) ? sanitize_key((string) $reference['kind']) : '';
+            $current_value = self::get_reference_value($payload, $reference);
             if ($current_value === null) {
                 $results[] = self::build_result($reference, 'missing_path');
                 continue;
             }
 
-            $current_source_id = absint($current_value);
+            $current_source_id = self::current_source_id($reference, $current_value);
             if ($source_id && $current_source_id && $current_source_id !== $source_id) {
                 $results[] = self::build_result($reference, 'current_value_mismatch', [
                     'current_source_id' => $current_source_id,
@@ -110,15 +155,17 @@ final class BricksReferenceMapper
                 $source_id = $current_source_id;
             }
 
-            $local_id = self::resolve_post_reference($reference, $source_to_local_post_ids);
+            $local_id = $kind === 'term'
+                ? self::resolve_term_reference($reference)
+                : self::resolve_post_reference($reference, $source_to_local_post_ids);
             if (! $local_id) {
                 $results[] = self::build_result($reference, 'unresolved');
                 continue;
             }
 
             $value_type = isset($reference['source_value_type']) ? (string) $reference['source_value_type'] : self::value_type($current_value);
-            $localized_value = self::cast_value($local_id, $value_type);
-            $patched = self::set_template_preview_value($payload, $path, $localized_value);
+            $localized_value = self::localized_value($reference, $current_value, $local_id, $value_type);
+            $patched = $localized_value !== null && self::set_reference_value($payload, $reference, $localized_value);
             $results[] = self::build_result($reference, $patched ? 'resolved' : 'patch_failed', [
                 'source_id' => $source_id,
                 'local_id'  => $local_id,
@@ -187,11 +234,22 @@ final class BricksReferenceMapper
      */
     private static function is_supported_reference(array $reference): bool
     {
-        if (($reference['provider'] ?? '') !== self::PROVIDER || ($reference['kind'] ?? '') !== 'post') {
+        if (($reference['provider'] ?? '') !== self::PROVIDER) {
             return false;
         }
 
-        return self::parse_template_preview_path((string) ($reference['path'] ?? '')) !== null;
+        $kind = isset($reference['kind']) ? sanitize_key((string) $reference['kind']) : '';
+        $path = (string) ($reference['path'] ?? '');
+
+        if ($kind === 'post') {
+            return self::parse_template_preview_post_path($path) !== null;
+        }
+
+        if ($kind === 'term') {
+            return self::parse_template_preview_term_path($path) !== null;
+        }
+
+        return false;
     }
 
     /**
@@ -225,6 +283,41 @@ final class BricksReferenceMapper
             if ($post_type !== '') {
                 $context['post_type'] = $post_type;
             }
+        }
+
+        return $context;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private static function build_term_context(int $source_id, string $taxonomy, bool $hydrate_context): array
+    {
+        $taxonomy = sanitize_key($taxonomy);
+        $context = [];
+        if ($taxonomy !== '') {
+            $context['taxonomy'] = $taxonomy;
+        }
+
+        if (! $hydrate_context || ! $source_id || $taxonomy === '') {
+            return $context;
+        }
+
+        $term = get_term($source_id, $taxonomy);
+        if (! $term || is_wp_error($term) || ! $term instanceof \WP_Term) {
+            return $context;
+        }
+
+        $context['slug'] = sanitize_title($term->slug);
+        $context['name'] = sanitize_text_field($term->name);
+
+        $uid = get_term_meta($source_id, 'vf_object_uid', true);
+        $uid = is_string($uid) ? trim($uid) : '';
+        if ($uid === '' && class_exists('\DBVC_Sync_Taxonomies')) {
+            $uid = (string) \DBVC_Sync_Taxonomies::ensure_term_uid($source_id, $taxonomy);
+        }
+        if ($uid !== '') {
+            $context['vf_object_uid'] = sanitize_text_field($uid);
         }
 
         return $context;
@@ -359,6 +452,41 @@ final class BricksReferenceMapper
         return 0;
     }
 
+    /**
+     * @param array<string,mixed> $reference
+     */
+    private static function resolve_term_reference(array $reference): int
+    {
+        $source_id = absint($reference['source_id'] ?? 0);
+        $context = isset($reference['context']) && is_array($reference['context']) ? $reference['context'] : [];
+        $taxonomy = isset($context['taxonomy']) ? sanitize_key((string) $context['taxonomy']) : '';
+
+        $uid = isset($context['vf_object_uid']) ? trim((string) $context['vf_object_uid']) : '';
+        if ($uid !== '' && class_exists('\DBVC_Sync_Posts') && method_exists('\DBVC_Sync_Posts', 'find_term_id_by_uid')) {
+            $by_uid = \DBVC_Sync_Posts::find_term_id_by_uid($uid, $taxonomy);
+            if ($by_uid) {
+                return (int) $by_uid;
+            }
+        }
+
+        $slug = isset($context['slug']) ? sanitize_title((string) $context['slug']) : '';
+        if ($slug !== '' && $taxonomy !== '' && taxonomy_exists($taxonomy)) {
+            $by_slug = get_term_by('slug', $slug, $taxonomy);
+            if ($by_slug instanceof \WP_Term) {
+                return (int) $by_slug->term_id;
+            }
+        }
+
+        if ($source_id && $taxonomy !== '' && taxonomy_exists($taxonomy)) {
+            $candidate = get_term($source_id, $taxonomy);
+            if ($candidate instanceof \WP_Term && ! is_wp_error($candidate)) {
+                return (int) $candidate->term_id;
+            }
+        }
+
+        return 0;
+    }
+
     private static function find_post_by_uid(string $uid, string $post_type = ''): int
     {
         if (class_exists('\DBVC_Database')) {
@@ -409,7 +537,7 @@ final class BricksReferenceMapper
     /**
      * @return int|null
      */
-    private static function parse_template_preview_path(string $path): ?int
+    private static function parse_template_preview_post_path(string $path): ?int
     {
         if (preg_match('/^meta\._bricks_template_settings\.(\d+)\.templatePreviewPostId$/', $path, $matches)) {
             return (int) $matches[1];
@@ -419,40 +547,102 @@ final class BricksReferenceMapper
     }
 
     /**
-     * @param array<string,mixed> $payload
-     * @return mixed|null
+     * @return int|null
      */
-    private static function get_template_preview_value(array $payload, string $path)
+    private static function parse_template_preview_term_path(string $path): ?int
     {
-        $index = self::parse_template_preview_path($path);
-        if ($index === null) {
+        if (preg_match('/^meta\._bricks_template_settings\.(\d+)\.templatePreviewTerm$/', $path, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param mixed $value
+     * @return array{taxonomy:string,term_id:int}|null
+     */
+    private static function parse_scoped_term_value($value): ?array
+    {
+        if (! is_scalar($value)) {
             return null;
         }
 
-        if (! isset($payload['meta'][self::META_TEMPLATE_SETTINGS][$index]) || ! is_array($payload['meta'][self::META_TEMPLATE_SETTINGS][$index])) {
+        $value = trim((string) $value);
+        if (! preg_match('/^([A-Za-z0-9_-]+)::([0-9]+)$/', $value, $matches)) {
             return null;
         }
 
-        return $payload['meta'][self::META_TEMPLATE_SETTINGS][$index]['templatePreviewPostId'] ?? null;
+        $taxonomy = sanitize_key($matches[1]);
+        $term_id = absint($matches[2]);
+        if ($taxonomy === '' || ! $term_id) {
+            return null;
+        }
+
+        return [
+            'taxonomy' => $taxonomy,
+            'term_id'  => $term_id,
+        ];
     }
 
     /**
      * @param array<string,mixed> $payload
+     * @param array<string,mixed> $reference
+     * @return mixed|null
+     */
+    private static function get_reference_value(array $payload, array $reference)
+    {
+        $path = (string) ($reference['path'] ?? '');
+        $post_index = self::parse_template_preview_post_path($path);
+        if ($post_index !== null) {
+            if (! isset($payload['meta'][self::META_TEMPLATE_SETTINGS][$post_index]) || ! is_array($payload['meta'][self::META_TEMPLATE_SETTINGS][$post_index])) {
+                return null;
+            }
+
+            return $payload['meta'][self::META_TEMPLATE_SETTINGS][$post_index]['templatePreviewPostId'] ?? null;
+        }
+
+        $term_index = self::parse_template_preview_term_path($path);
+        if ($term_index !== null) {
+            if (! isset($payload['meta'][self::META_TEMPLATE_SETTINGS][$term_index]) || ! is_array($payload['meta'][self::META_TEMPLATE_SETTINGS][$term_index])) {
+                return null;
+            }
+
+            return $payload['meta'][self::META_TEMPLATE_SETTINGS][$term_index]['templatePreviewTerm'] ?? null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<string,mixed> $reference
      * @param mixed               $value
      */
-    private static function set_template_preview_value(array &$payload, string $path, $value): bool
+    private static function set_reference_value(array &$payload, array $reference, $value): bool
     {
-        $index = self::parse_template_preview_path($path);
-        if ($index === null) {
-            return false;
+        $path = (string) ($reference['path'] ?? '');
+        $post_index = self::parse_template_preview_post_path($path);
+        if ($post_index !== null) {
+            if (! isset($payload['meta'][self::META_TEMPLATE_SETTINGS][$post_index]) || ! is_array($payload['meta'][self::META_TEMPLATE_SETTINGS][$post_index])) {
+                return false;
+            }
+
+            $payload['meta'][self::META_TEMPLATE_SETTINGS][$post_index]['templatePreviewPostId'] = $value;
+            return true;
         }
 
-        if (! isset($payload['meta'][self::META_TEMPLATE_SETTINGS][$index]) || ! is_array($payload['meta'][self::META_TEMPLATE_SETTINGS][$index])) {
-            return false;
+        $term_index = self::parse_template_preview_term_path($path);
+        if ($term_index !== null) {
+            if (! isset($payload['meta'][self::META_TEMPLATE_SETTINGS][$term_index]) || ! is_array($payload['meta'][self::META_TEMPLATE_SETTINGS][$term_index])) {
+                return false;
+            }
+
+            $payload['meta'][self::META_TEMPLATE_SETTINGS][$term_index]['templatePreviewTerm'] = $value;
+            return true;
         }
 
-        $payload['meta'][self::META_TEMPLATE_SETTINGS][$index]['templatePreviewPostId'] = $value;
-        return true;
+        return false;
     }
 
     /**
@@ -466,6 +656,42 @@ final class BricksReferenceMapper
 
     /**
      * @param array<string,mixed> $reference
+     * @param mixed               $current_value
+     */
+    private static function current_source_id(array $reference, $current_value): int
+    {
+        $kind = isset($reference['kind']) ? sanitize_key((string) $reference['kind']) : '';
+        if ($kind === 'term') {
+            $parsed = self::parse_scoped_term_value($current_value);
+            return $parsed !== null ? $parsed['term_id'] : 0;
+        }
+
+        return absint($current_value);
+    }
+
+    /**
+     * @param array<string,mixed> $reference
+     * @param mixed               $current_value
+     * @return int|string|null
+     */
+    private static function localized_value(array $reference, $current_value, int $local_id, string $value_type)
+    {
+        $kind = isset($reference['kind']) ? sanitize_key((string) $reference['kind']) : '';
+        if ($kind !== 'term') {
+            return self::cast_value($local_id, $value_type);
+        }
+
+        $parsed = self::parse_scoped_term_value($current_value);
+        $taxonomy = $parsed !== null ? $parsed['taxonomy'] : '';
+        if ($taxonomy === '' && isset($reference['context']) && is_array($reference['context'])) {
+            $taxonomy = isset($reference['context']['taxonomy']) ? sanitize_key((string) $reference['context']['taxonomy']) : '';
+        }
+
+        return $taxonomy !== '' ? $taxonomy . '::' . $local_id : null;
+    }
+
+    /**
+     * @param array<string,mixed> $reference
      * @param array<string,mixed> $extra
      * @return array<string,mixed>
      */
@@ -473,7 +699,7 @@ final class BricksReferenceMapper
     {
         return array_merge([
             'provider'  => self::PROVIDER,
-            'kind'      => 'post',
+            'kind'      => isset($reference['kind']) ? sanitize_key((string) $reference['kind']) : '',
             'path'      => (string) ($reference['path'] ?? ''),
             'source_id' => absint($reference['source_id'] ?? 0),
             'status'    => $status,

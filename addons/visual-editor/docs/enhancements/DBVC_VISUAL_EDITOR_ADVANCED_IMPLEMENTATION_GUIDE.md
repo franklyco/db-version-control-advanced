@@ -345,6 +345,7 @@ Source shapes for the first slice:
 - Supported dynamic tags:
   - ACF scalar/text-like fields that the existing resolver can already classify and save as a normal single-field descriptor
   - current-owner, related-owner, shared-owner, repeater-row, flexible-layout, and grouped descendants only when each child already has a proven existing save contract
+  - inspect-only composites may include unsupported Bricks/provider tags as locked child rows when at least one child source resolves safely
 - Supported static template pieces:
   - plain text
   - whitespace
@@ -383,8 +384,8 @@ Recommended descriptor model:
 Resolver and instrumentation changes:
 1. Extend `DynamicDataInspector` with a template parser separate from `extractSingleEmbeddedExpression()`.
    - keep the existing single embedded path unchanged for the simple one-field case
-   - return a composite inspection only when two or more supported dynamic expressions are present
-   - reject or lock unsupported expressions instead of pretending they are editable
+   - return a readonly composite inspection when two or more dynamic expressions are present and at least one expression resolves to a safe field source
+   - lock unsupported expressions instead of pretending they are editable
 2. Extend `ElementInstrumentationService` to register a composite parent descriptor.
    - run each dynamic segment through the same classification path used by single-field text descriptors
    - preserve loop context, native ACF loop ancestry, grouped selectors, field keys, and source/sync groups per child
@@ -417,6 +418,7 @@ Save and rollback design:
 2. Add a batch preflight before any write.
    - validate session token, capabilities, nonce, child descriptor tokens, mutation contracts, owner/path freshness, and stale source state for every child
    - reject the batch before writing if any editable child fails validation
+   - reuse the descriptor payload's `compositeText.saveReadiness` shape as the read-side preflight model: `readyChildCount`, `blockedChildCount`, `unsupportedChildCount`, `ownerGroups`, `requiresAcknowledgementTypes`, `blockers`, and `childContractsReady`
 3. Use a single Visual Editor change set for a successful `Save All`.
    - one change set for the composite save
    - one change item per child field mutation
@@ -440,7 +442,7 @@ Similar scenarios to include in QA:
 - composite text inside related post cards where all child owners are the loop-owned post
 - composite text inside repeater/flexible rows where every child shares the same row/layout path
 - composites that mix current-owner and related/shared fields; these should group by owner and require acknowledgement before any batch save
-- one unsupported dynamic tag plus several supported ACF tags; first slice should inspect or partially lock rather than silently ignore the unsupported segment
+- one unsupported dynamic tag plus one or more supported ACF tags; first slice should inspect and lock the unsupported segment rather than silently ignoring it
 - nested group selectors with mixed casing, preserving raw selectors just like `benefits_section_benefitsContent_related_items`
 
 Validation targets:
@@ -461,16 +463,22 @@ Implementation order:
 3. Add panel rendering for composite preview and locked/editable child rows.
 4. Enable editable children only when every child can reuse an existing scalar save contract and the batch preflight passes.
 5. Add the batch save endpoint or service wrapper, backed by one journal change set and per-child change items.
-6. Add no-reload DOM patching for safe scalar composites; keep `Save and Reload` available and preferred for complex HTML projections.
-7. Browser QA marker surfacing, panel hydration, `Save All`, partial-failure handling, no-reload patch, reload-after-save, and session-refresh behavior.
+6. Add guarded `Save All` controls only after disposable same-value and changed-value live-save QA proves the endpoint, journal, acknowledgement copy, and stale descriptor handling.
+7. Add no-reload DOM patching for safe scalar composites; keep complex HTML projections locked until a dedicated projection contract exists.
+8. Browser QA marker surfacing, panel hydration, `Save All`, partial-failure handling, no-reload patch, and session-refresh behavior.
 
 Current implementation state:
-- The first inspect-only slice is implemented for Bricks text-like settings with two or more supported dynamic expressions.
+- The first inspect-only slice is implemented for Bricks text-like settings with two or more dynamic expressions and at least one safely resolved child source.
 - `DynamicDataInspector` now preserves ordered literal/dynamic template segments and child ACF candidates while leaving existing pure and single-embedded tag paths unchanged.
 - Composite parent descriptors classify as readonly `native_readonly` / `composite_text`; the parent marker owns the one DOM badge and panel entry point.
-- Child candidates are classified through the existing resolver path and exposed in the descriptor payload as source/value evidence only. Child fields may be individually save-capable elsewhere, but this composite panel does not write them yet.
-- The panel renders reconstructed preview text, the original Bricks template, and one source row per child descriptor. Save controls are intentionally absent for this input mode.
-- Batch save, rollback/journal grouping, owner-group acknowledgement, no-reload composite DOM patching, unsupported-tag partial locking, and browser save QA remain follow-up work.
+- Child candidates are classified through the existing resolver path and exposed in the descriptor payload as source/value evidence. Unsupported Bricks/provider tags are preserved as locked child rows with their original expression.
+- The descriptor payload now includes `compositeText.saveReadiness`, a preflight summary that reports child contract readiness, blocked/unsupported children, owner groups, acknowledgement types, and `canBatchSave`. `canBatchSave` is true only when every dynamic child maps to an embedded writable scalar descriptor using `text`, `textarea`, `number`, `url`, `email`, or single-select input; otherwise it reports `ready_pending_ui` or `blocked`.
+- A guarded backend composite-save route is registered at `/visual-editor/session/{session_id}/composite-save/{token}`. It accepts child index/value pairs only, requires every dynamic child to map to an embedded writable scalar descriptor, rejects unsupported/readonly/structured child controls before mutation, and requires related/shared acknowledgement before any writes.
+- `MutationService::mutateBatch()` and `ChangeJournalRecorder` now provide the server-side batch foundation: one parent change set, one child change item per successful field mutation, audit/cache invalidation per child, and reverse-order rollback attempts if a later child write fails.
+- The panel renders reconstructed preview text, the original Bricks template, a partial-lock note when needed, a batch-save preflight block, and one source row per child descriptor/tag. When `canBatchSave` is true, save-ready scalar children render editable controls and the primary action becomes `Save All`.
+- Frontend `saveComposite()` now sends child index/value pairs and child base values with the existing related/shared acknowledgement model, updates the cached composite payload and base values from the save response, and patches the active marker's inner HTML from the original template plus returned child display values without a reload.
+- Composite save preflight now rejects stale child sources before any writes when a submitted base value no longer matches the backend value. The route returns `409 Conflict` with `stage = stale`, so the UI can distinguish stale source conflicts from validation failures.
+- Live disposable save QA on `/our-process/` page `24732` confirmed same-value save, changed-value save, immediate restore, stale-conflict rejection/restore, and in-memory rollback attempts for a later child write failure. Remaining follow-up work: browser-click panel QA on a visible non-header composite fixture and a live journal failure-row readback if we need durable rollback evidence beyond the current controlled rollback probe.
 
 Docs to update during implementation:
 - `CHANGELOG.md`
@@ -618,7 +626,7 @@ Validation before implementation is complete:
 - direct rendered ACF image: select replacement, no-reload save; then clear image, no-reload save; then add image again without reload.
 - rendered featured image: same replace/clear/add loop.
 - background image: replace, clear, and add back without reload while preserving wrapper dimensions.
-- populated Bricks `image-gallery` element `xxrpfg` on `/vertical/websites-for-contractors/`: verify add, replace, remove item, clear gallery, move buttons, drag/drop ordering, no-reload `Save`, and `Save and Reload` still work exactly as they do now.
+- populated Bricks `image-gallery` element `xxrpfg` on `/vertical/websites-for-contractors/`: user QA on 2026-06-13 confirmed add, replace, remove item, move/reorder, and no-reload `Save` still work as before after the single-media clear patch. Re-check `Save and Reload` only if gallery-specific code changes again.
 - missing-media marker: confirm clear/removal helper does not run and reload remains required.
 - repeated/query-loop cards: confirm clearing one card image does not hide another card image that shares the same Bricks element ID but has a different owner/source group.
 
@@ -634,6 +642,12 @@ Validation targets:
 Concrete gallery fixtures:
 - Populated gallery: `https://dbvc-codexchanges.local/vertical/websites-for-contractors/` uses `FLO-Verticals-Single` template `26763`, Bricks image-gallery element `xxrpfg`, and ACF gallery field `gallery_section_gallery` with five stored attachment IDs.
 - Empty/condition-skipped gallery gap: `https://dbvc-codexchanges.local/vertical/dentists/` uses the same template and field with an empty value; current render probes show Bricks emits no `xxrpfg` markup and no Visual Editor marker because the element is skipped before the current render hooks can register a descriptor.
+
+Current validation status:
+- `xxrpfg` gallery regression check is closed by user QA on 2026-06-13 for add/replace/remove/reorder/no-reload save.
+- Read-only render probes on 2026-06-13 confirmed server-side marker coverage for rendered `image_src` paths on `/vertical/websites-for-contractors/` and `/our-process/`, and one concrete `background_image` marker on `/service-areas/ohio/akron/` from template `120111`, element `117a72`, term `437`, field `vf_service_area_hero_image`.
+- Direct rendered ACF image, featured image, and background-image replace/clear/add-back browser checks remain open because the in-app browser session was not authenticated and could not load Visual Editor assets or markers.
+- Missing-media markers remain reload-only by design; confirm the single-media clear helper stays limited to rendered `image_src` and `background_image` markers.
 
 ### Immediate next implementation order
 

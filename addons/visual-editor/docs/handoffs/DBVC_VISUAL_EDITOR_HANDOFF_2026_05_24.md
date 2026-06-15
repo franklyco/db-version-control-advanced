@@ -109,7 +109,7 @@ Current behavior:
 
 Known follow-up:
 
-- Live browser QA should confirm no-reload save on direct image markers, background-image markers, and the `xxrpfg` gallery.
+- Live browser QA should still confirm no-reload save on direct image markers and background-image markers. User QA on 2026-06-13 confirmed the `xxrpfg` gallery add/replace/remove/reorder/no-reload save path remains correct after the single-media clear patch.
 - Non-empty condition-skipped gallery/image values remain deferred because proximity-based writable markers would be unsafe without a concrete rendered target.
 
 ### Connected Items And Query Collections
@@ -351,8 +351,8 @@ Acceptance:
 Test:
 
 - Direct rendered image marker.
-- Background-image marker if available.
-- `xxrpfg` gallery on `/vertical/websites-for-contractors/`, cross-checking `bricks_template-flo-verticals-single-26763.json` around lines `38317-38323` when template structure is needed.
+- Background-image marker: `/service-areas/ohio/akron/` currently renders one server-side `background_image` marker from template `120111`, element `117a72`, term `437`, field `vf_service_area_hero_image`.
+- `xxrpfg` gallery on `/vertical/websites-for-contractors/` is user-confirmed as still correct for add/replace/remove/reorder/no-reload save as of 2026-06-13. Re-test only if gallery-specific code changes again; cross-check `bricks_template-flo-verticals-single-26763.json` around lines `38317-38323` when template structure is needed.
 
 Verify:
 

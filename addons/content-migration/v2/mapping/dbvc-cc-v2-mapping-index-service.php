@@ -73,6 +73,13 @@ final class DBVC_CC_V2_Mapping_Index_Service
                     ? $catalog['field_context_provider']
                     : []
             );
+        $object_type_context_provider = isset($slot_graph['object_type_context_provider']) && is_array($slot_graph['object_type_context_provider'])
+            ? $slot_graph['object_type_context_provider']
+            : (
+                isset($catalog['object_type_context_provider']) && is_array($catalog['object_type_context_provider'])
+                    ? $catalog['object_type_context_provider']
+                    : []
+            );
         $context_map = $this->build_context_map($context_artifact);
         $route_map = $this->build_route_map($routing_artifact);
         $section_outline_map = $this->build_section_outline_map($sections_artifact);
@@ -183,6 +190,7 @@ final class DBVC_CC_V2_Mapping_Index_Service
             'classification_ref' => isset($args['classification_ref']) ? (string) $args['classification_ref'] : '',
             'routing_ref' => isset($args['routing_ref']) ? (string) $args['routing_ref'] : '',
             'field_context_provider' => $this->build_field_context_provider_summary($field_context_provider),
+            'object_type_context_provider' => DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->summarize_provider($object_type_context_provider),
             'routing' => [
                 'primary_route' => $routing_primary,
                 'review' => isset($routing_artifact['review']) && is_array($routing_artifact['review']) ? $routing_artifact['review'] : [],

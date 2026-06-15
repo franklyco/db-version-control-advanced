@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.8.0
+ * Version:     1.8.1
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -93,6 +93,8 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/Settings.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageRegistry.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MediaUrlHttpsNormalizer.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageImportService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MediaHydrationJobStore.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/MediaHydrationJobRunner.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/RestController.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/AdminUploadController.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Media/Hydration/PackageDownloadController.php';
@@ -188,6 +190,7 @@ DBVC_Bricks_Addon::bootstrap();
 DBVC_Bricks_Portability::bootstrap();
 DBVC_Visual_Editor_Addon::bootstrap();
 \Dbvc\AiPackage\OpenAiModelCatalogService::init();
+\Dbvc\Media\Hydration\MediaHydrationJobRunner::init();
 \Dbvc\Media\Hydration\RestController::init();
 if (class_exists('DBVC_CC_Addon_Bootstrap')) {
 	DBVC_CC_Addon_Bootstrap::bootstrap();

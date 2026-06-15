@@ -1,8 +1,8 @@
 # Entity Editor Sync File Import Implementation Guide
 
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
-Status: `P3 IMPLEMENTED; P4+ HARDENING PLANNED`
+Status: `P6 AUTOMATED COVERAGE IMPLEMENTED; BROWSER QA RECOMMENDED`
 
 ## Objective
 
@@ -28,8 +28,11 @@ Implemented on 2026-06-09:
 - selected rows can be bulk-previewed with `Preview import selected`
 - import preflight reads through Entity Editor safe path helpers and blocks live matches, creation-disabled settings, missing post types, unsupported payloads, and noncanonical duplicate rows
 - commit delegates creation to `DBVC_Sync_Posts::import_post_from_json()`
+- commit delegates term creation to `DBVC_Sync_Taxonomies::import_term_json_file()`
 - commit suppresses normal auto-export hooks during the import call so DBVC does not generate a second canonical JSON file
 - commit moves the importer-updated source JSON to the final canonical filename after the new local ID is known
+- Bricks template sync-file preview now includes a read-only advisory when the DBVC Bricks add-on is enabled, so users can see likely frontend rendering conflicts before creating a template
+- preview coverage now includes permission denial, invalid JSON, excluded paths, unsupported payloads, creation-disabled settings, whitelist blocking, stale duplicate blocking, bulk partial failures, and term creation
 - successful commits return the created WP entity and rebuild the Entity Editor index in the UI
 
 ## Original Gap
@@ -532,7 +535,7 @@ Exit criteria:
 
 ### P4. Duplicate And Canonical File Handling
 
-Status: `PARTIAL`
+Status: `CLOSED 2026-06-10`
 
 Tasks:
 
@@ -544,10 +547,11 @@ Tasks:
 Exit criteria:
 
 - duplicate sync files cannot accidentally create or update the wrong entity
+- PHPUnit confirms stale duplicate rows are blocked while the canonical duplicate row remains importable
 
 ### P5. Documentation And QA Closure
 
-Status: `PARTIAL`
+Status: `AUTOMATED COVERAGE CLOSED 2026-06-10; BROWSER QA OPEN`
 
 Tasks:
 
@@ -560,6 +564,68 @@ Exit criteria:
 
 - docs match shipped behavior
 - tests cover create success, creation disabled, matched blocked, invalid JSON, and bulk partial failure
+- browser QA confirms the wp-admin modal, row affordance, and index refresh on a real LocalWP site
+
+### P6. Bricks Template Import Advisory
+
+Status: `AUTOMATED COVERAGE CLOSED 2026-06-10; BROWSER QA OPEN`
+
+Problem:
+
+- A `bricks_template` JSON can import successfully but still not affect the frontend when another published Bricks template has the same or overlapping conditions.
+- Imported Bricks templates may also contain source-site preview IDs, such as `templatePreviewPostId`, that do not exist locally.
+- Users need this surfaced during quick-create preview, but the quick-create tool should not automatically rewrite Bricks conditions, disable templates, or become a second proposal system.
+
+Scope:
+
+- Run only for incoming post JSON where `post_type` is `bricks_template`.
+- Surface only when `DBVC_Bricks_Addon::is_enabled()` returns true.
+- Add read-only advisory data to sync-file preview/commit items.
+- Render a compact Bricks advisory panel in the existing `Import Sync JSON` modal.
+- Keep `Create Entity` behavior unchanged; warnings are informational unless the normal sync-file preflight already blocks the item.
+
+Development items:
+
+- Add a small Bricks advisory builder inside `SyncFileImportService` rather than adding a new import engine.
+- Extract `_bricks_template_type`, `_bricks_template_settings.templateConditions`, `templatePreviewPostId`, and `templatePreviewTerm` from the incoming DBVC JSON.
+- Query existing published `bricks_template` posts and compare template type plus normalized conditions.
+- Treat exact condition matches and simple overlapping Bricks condition targets, such as `postType: listing`, as warnings.
+- Warn when a preview post ID is present but does not resolve to a local post.
+- Warn when a preview term target is present but does not resolve to a local term.
+- Return links to conflicting live templates when available.
+- Do not make conflict warnings blocking.
+- Do not mutate Bricks conditions, preview IDs, template status, or template priority during import.
+- Add focused PHPUnit coverage for enabled add-on conflict detection and stale preview post warnings.
+- Update the React modal to render the advisory without changing existing warning/blocker rendering.
+
+Exit criteria:
+
+- previewing an unmatched `bricks_template` sync file with the Bricks add-on enabled reports Bricks-specific advisory data
+- an incoming template that targets the same CPT condition as an existing published template shows a warning with the existing template link
+- an incoming template with a missing preview post ID shows a warning
+- the import button remains governed by the existing sync-file preflight, not by advisory warnings
+- existing post/CPT and term import behavior remains unchanged
+
+### Later Enhancement. Merge Entities
+
+Status: `DEFERRED`
+
+Direction:
+
+- Treat entity merge as a single-file proposal/diff workflow, not a separate importer.
+- Reuse the upgraded proposal/diff decision model when it is stable enough to avoid duplicating decision storage and apply logic.
+- Start with a read-only compare between incoming JSON and a selected live entity snapshot.
+- Add field-level decisions only after the compare output is trusted.
+- Support core post fields, meta, taxonomies, and terms before Bricks-specific element-level merging.
+- For Bricks templates, eventually add a structured diff for template settings, conditions, preview references, and Bricks content elements.
+- Require explicit backups and explicit destructive decisions before any merge apply can remove or replace current data.
+
+Deferred by design:
+
+- selective Bricks element merges
+- automatic Bricks condition resolution
+- replacing existing templates from the quick-create modal
+- shared proposal/diff v2 storage changes
 
 ## Test Plan
 
@@ -571,11 +637,13 @@ Coverage:
 
 - preview requires `manage_options`
 - preview blocks invalid JSON
+- preview blocks excluded paths
 - preview blocks unsupported entity kind
 - preview blocks matched post by UID
 - preview blocks matched post by slug/subtype
 - preview blocks post creation when `dbvc_allow_new_posts` is disabled
 - preview blocks post type outside whitelist
+- preview blocks stale duplicate files while allowing the canonical duplicate file
 - commit creates an unmatched post from an existing sync file
 - commit preserves incoming UID
 - commit returns created WP entity metadata
@@ -585,6 +653,8 @@ Coverage:
 - commit preserves incoming term UID
 - commit returns created WP term metadata
 - commit normalizes term JSON to the final local-ID canonical filename
+- Bricks template advisory reports overlapping published template conditions when the Bricks add-on is enabled
+- Bricks template advisory reports missing preview post IDs without blocking import
 
 ### Manual QA
 
@@ -600,6 +670,7 @@ Checks:
 - successful commit creates WP post or term
 - created entity has imported core fields/meta/taxonomies where applicable
 - incoming UID is preserved
+- Bricks template import preview shows a Bricks advisory when the add-on is enabled and a condition conflict exists
 - index refresh shows matched WP entity after commit
 - existing `Edit JSON`, `Save JSON`, `Save + Partial Import`, `Save + Full Replace`, `New From Raw JSON`, transfer packet, and delete selected still behave as before
 

@@ -24,6 +24,9 @@ Implemented initial foundations:
 - Staged package discovery and selection in the Media Hydration workflow, so admins can choose uploaded/exported packages without pasting filesystem paths.
 - Preflight review summary/table rendering in the admin workflow before Apply.
 - Receipt listing and secure JSON receipt downloads from the Media Hydration workflow.
+- Receipt-scoped failed-item retry from the Media Hydration workflow. Retry reuses the same manifest/preflight/apply safety gates and limits the run to source attachment IDs recorded as failed in a prior apply receipt.
+- Safe old-receipt cleanup from the Media Hydration workflow. Cleanup uses the REST nonce, `manage_options`, age-based deletion, and receipt-root path containment.
+- Browser chunk and background job execution modes. Browser chunks remain the default. Background jobs persist `media_hydration` state in `dbvc_jobs`, use the same hydrator/lock/receipt path, and can be advanced through WP-Cron or admin REST polling.
 - Secure source-side media mirror ZIP download links after package export. Downloads are served through an admin-post action with `manage_options`, nonce verification, package-ID validation, and containment under the DBVC media mirror root.
 - Permission-aware REST endpoints for inventory, preflight planning, package export, and guarded apply. Preflight/package/apply are blocked until media hydration is enabled in DBVC settings.
 - File-backed JSON receipts and a global apply lock for write runs.
@@ -32,8 +35,7 @@ Implemented initial foundations:
 
 Not implemented yet:
 
-- Retry failed items only.
-- Asynchronous job orchestration.
+- WP-CLI commands for creating/running media hydration jobs outside the admin workflow.
 - Remote-source hydration.
 - New attachment creation for non-cloned targets.
 - Destructive mirror cleanup or deletion of target extras.
@@ -473,6 +475,7 @@ Use the existing Configure > Media Handling subtab, but organize settings into c
 | `dbvc_media_hydration_allowed_mime_groups` | string list | all registered | Restrict hydration to images, video, audio, fonts, documents, or all. |
 | `dbvc_media_hydration_max_file_size_mb` | int | `512` | Safety limit for a single file. |
 | `dbvc_media_hydration_batch_size` | int | `50` | Number of attachments per job batch. |
+| `dbvc_media_hydration_execution_mode` | select | `browser_chunks` | `browser_chunks` uses the current admin browser loop. `background_job` creates a server-side job that processes bounded batches through WP-Cron/WP-CLI/manual ticks. |
 | `dbvc_media_hydration_remote_base_url` | url | empty | Optional canonical uploads base URL override. |
 | `dbvc_media_hydration_filesystem_base_path` | path | empty | Optional trusted local/source uploads path for server-side copy. |
 | `dbvc_media_hydration_require_dry_run` | bool | `1` | Require a saved dry-run plan before execution. |
@@ -503,6 +506,7 @@ Required controls:
 - Run dry run.
 - Review counts by status.
 - Start hydration job.
+- Choose execution mode for this run when needed: browser-controlled chunks or background job.
 - View progress.
 - Download receipt.
 - Filter failures by reason.
@@ -535,13 +539,26 @@ Add routes under `dbvc/v1`, all gated by `manage_options`:
 - Implemented: `POST /media-hydration/package/export`
 - Implemented: `POST /media-hydration/apply`
   - Accepts `offset` and `limit` for chunked apply runs.
+  - Accepts `retry_receipt_id` to run only failed source attachment IDs from a prior apply receipt.
   - Returns `pagination` and `progress` fields with `processed_this_batch`, `processed_total`, `next_offset`, `remaining`, `total_plan_items`, `percent`/`progress_percent`, and `has_more`.
   - The admin UI loops over this endpoint until `has_more` is false or the operator clicks Stop after current batch.
 - Implemented: `GET /media-hydration/receipts`
   - Lists recent plan/apply receipts with secure admin-post download URLs.
+- Implemented: `DELETE /media-hydration/receipts`
+  - Deletes receipt JSON files older than an operator-specified number of days.
+  - Rejects broad same-day cleanup; age must be at least one day.
+  - Uses REST nonce, `manage_options`, date-folder validation, and receipt-root containment.
+- Future: `POST /media-hydration/jobs`
+  - Creates a background hydration job from the same manifest, package root, saved plan ID, retry receipt ID, and apply policy accepted by the chunked apply endpoint.
 - Future: `GET /media-hydration/jobs/{job_id}`
+  - Returns job status, context, progress, cumulative summary, latest receipt references, and last error without embedding full receipt JSON.
 - Future: `POST /media-hydration/jobs/{job_id}/run`
+  - Executes one bounded batch. Used by WP-Cron, WP-CLI, or a manual admin tick.
+- Future: `POST /media-hydration/jobs/{job_id}/pause`
+- Future: `POST /media-hydration/jobs/{job_id}/resume`
+- Future: `POST /media-hydration/jobs/{job_id}/cancel`
 - Future: `POST /media-hydration/jobs/{job_id}/retry`
+  - Creates a new background retry job from failed items in a prior apply receipt.
 - Future: `GET /media-hydration/jobs/{job_id}/receipt`
 - Implemented as admin-post form: target-side media hydration ZIP package upload under Import/Upload.
 - Implemented as admin-post download: media hydration receipt JSON downloads by receipt ID, with `manage_options`, nonce verification, and containment under the receipt root.
@@ -706,8 +723,8 @@ Tasks:
 - Add staged package selector to avoid manual manifest path entry.
 - Add bounded preflight review table with status filters and summary counts.
 - Add optional `http://` to `https://` media URL normalization setting for exact Media Library URLs only.
-- Add retry failed items.
-- Add clear old media hydration receipts with nonce/capability checks.
+- Add retry failed items from apply receipts.
+- Implemented: clear old media hydration receipts with REST nonce, capability checks, age threshold, and receipt-root containment.
 - Keep REST/admin handlers as thin delegators to the hydration services.
 
 Tests:
@@ -722,7 +739,134 @@ Exit criteria:
 
 - Admins can run the workflow without CLI.
 
-### Phase 7: Proposal Resolver Compatibility
+### Phase 7: Execution Mode Setting And Job Contracts
+
+Purpose:
+
+Add the configuration and persistence contracts that let DBVC support both the current browser-controlled chunk mode and an opt-in background job mode without splitting the hydration write path.
+
+Implementation status:
+
+- Complete in the current codebase for settings, configuration portability, admin default/per-run selectors, `media_hydration` job type, bounded sanitized job context, REST job creation/status, and plan/path validation at job creation.
+
+Tasks:
+
+- Add `dbvc_media_hydration_execution_mode` to `Settings`, the configuration portability media provider, and Configure > Media Handling.
+- Allowed values:
+  - `browser_chunks`
+  - `background_job`
+- Keep `browser_chunks` as the default and preserve current UI/apply behavior.
+- Add a per-run execution mode selector in the Media Hydration workflow that defaults from settings.
+- Define one `dbvc_jobs` job type: `media_hydration`.
+- Store job context in existing `DBVC_Database` job `context` JSON instead of adding a new table in the first pass.
+- Job context must include:
+  - `manifest_path`
+  - `manifest_checksum`
+  - `package_root`
+  - `plan_id`
+  - `plan_checksum`
+  - `retry_receipt_id`
+  - `source_ids` when retry-scoped
+  - `offset`
+  - `limit`
+  - `total_plan_items`
+  - `processed_total`
+  - `cumulative_summary`
+  - `policy` copied from apply settings at job creation
+  - `created_by`
+  - `last_error`
+  - `receipt_ids`
+- Job statuses:
+  - `queued`
+  - `running`
+  - `paused`
+  - `completed`
+  - `failed`
+  - `cancelled`
+- Use existing `HydrationLock` for writes, but lock owner should include the job ID, for example `media_hydration_job:<id>`.
+- Validate manifest path/package root using the same allowed-root checks as REST apply.
+- Verify the saved dry-run plan checksum at job creation and before each batch when `require_dry_run` is enabled.
+- Do not store raw secrets, auth headers, or remote credentials in job context.
+
+Tests:
+
+- Setting sanitization accepts only supported execution modes and defaults to `browser_chunks`.
+- Existing browser apply tests continue to pass with the default setting.
+- Job creation persists a `media_hydration` row with bounded, sanitized context.
+- Job creation blocks without saved-plan acknowledgement when required.
+- Job creation rejects manifest/package paths outside allowed roots.
+- Existing export chunked jobs are not affected by the new job type.
+
+Exit criteria:
+
+- Admin can choose an execution mode, but background mode can remain hidden/disabled until the runner is implemented.
+- Job context is sufficient to resume an apply without trusting mutable browser state.
+
+### Phase 8: Background Job Runner And Admin Polling
+
+Purpose:
+
+Process media hydration in server-side bounded batches while preserving the same dry-run, lock, receipt, retry, and hydrator contracts used by browser-controlled chunks.
+
+Implementation status:
+
+- Partially complete in the current codebase for `MediaHydrationJobStore`, `MediaHydrationJobRunner`, WP-Cron scheduling, REST create/status/run/pause/resume/cancel routes, and admin polling that advances server-owned job state.
+- Still open for dedicated WP-CLI job commands, richer resume/retry controls for previously created jobs, and broader browser QA on long multi-batch runs.
+
+Tasks:
+
+- Add a `MediaHydrationJobStore` thin wrapper around `DBVC_Database` for `media_hydration` jobs.
+- Add a `MediaHydrationJobRunner` service that:
+  - loads one job
+  - validates status transition
+  - re-verifies manifest/plan contract
+  - acquires `HydrationLock`
+  - calls `Hydrator::apply_from_manifest_file()` with the job's current `offset`, `limit`, policy, and retry source IDs
+  - updates offset/progress/cumulative summary
+  - writes receipts according to current receipt settings
+  - releases the lock in `finally`
+- Register a dedicated WP-Cron hook, for example `dbvc_media_hydration_run_job`.
+- Schedule the next tick only for active `queued` or `running` media hydration jobs.
+- Add WP-CLI support for deterministic server-side execution:
+  - `wp dbvc media hydrate-job create --manifest=...`
+  - `wp dbvc media hydrate-job run --job-id=<id>`
+  - `wp dbvc media hydrate-job status --job-id=<id>`
+- Add REST routes listed above for create/status/run/pause/resume/cancel/retry.
+- Add admin UI polling for job status.
+- Add controls:
+  - Start background job
+  - Run next batch now
+  - Pause
+  - Resume
+  - Cancel
+  - Retry failed as background job
+- Keep the current progress bar but source progress from job status when execution mode is `background_job`.
+- Show clear copy that WP-Cron is traffic-triggered; recommend real server cron or WP-CLI for reliable unattended runs on low-traffic sites.
+- Make cancellation cooperative:
+  - cancel changes job status before the next batch
+  - do not interrupt a file copy mid-batch
+  - stop scheduling future ticks
+- Do not run background jobs from public frontend requests except through normal WP-Cron dispatch and only after capability-checked job creation.
+
+Tests:
+
+- Runner processes one batch and advances offset.
+- Runner completes when `has_more` is false.
+- Runner resumes after a partial run without duplicating hydrated files.
+- Runner honors pause/cancel before starting a new batch.
+- Runner blocks concurrent writes through `HydrationLock`.
+- Failed batch records `last_error`, marks job `failed`, and preserves resume context.
+- Retry job uses only failed source IDs from the selected receipt.
+- REST job routes require `manage_options`.
+- WP-Cron hook processes only `media_hydration` jobs and ignores other DBVC job types.
+- WP-CLI job run works without browser polling.
+
+Exit criteria:
+
+- Admin can safely choose between current browser-controlled chunks and opt-in background jobs.
+- Both modes produce compatible apply receipts and use the same hydrator code path.
+
+### Phase 9: Proposal Resolver Compatibility
 
 Tasks:
 
@@ -741,7 +885,7 @@ Exit criteria:
 
 - Proposal media diagnostics can benefit from hydration state without changing apply semantics.
 
-### Phase 8: Optional Non-Cloned Target Support
+### Phase 10: Optional Non-Cloned Target Support
 
 Tasks:
 
@@ -759,6 +903,66 @@ Tests:
 Exit criteria:
 
 - DBVC can support non-cloned media import without claiming ID preservation.
+
+## Async/Chunked Design Review
+
+### Shared Contracts
+
+- Both execution modes must call the same `Hydrator::apply_from_manifest_file()` path.
+- Both execution modes must use the same planner and saved-plan verification.
+- Both execution modes must use the same `HydrationLock`.
+- Both execution modes must write the same apply receipt shape.
+- Retry must use the same `retry_receipt_id`/failed-source-ID contract in both modes.
+- HTTPS normalization must remain a shared apply policy and must not become job-specific behavior.
+- Batch size, strict hashes, clone confirmation, metadata policy, receipts, and lock timeout stay shared settings.
+
+### Persistence And Job Isolation
+
+- Use existing `DBVC_Database` and `dbvc_jobs` for background job state.
+- Use a unique `job_type` of `media_hydration`; never overload `export_chunked`, `media_reconcile`, proposal, Content Collector, Bricks, Visual Editor, or AI package jobs.
+- Keep full job state inside the job context JSON until indexed queries prove a new table is necessary.
+- Store only resumable state, checksums, and non-secret policy values in job context.
+- Keep large plan/apply detail in receipt JSON files; job status endpoints should return summaries and receipt IDs only.
+- Activity logging should use distinct events such as `media_hydration_job_created`, `media_hydration_job_batch`, `media_hydration_job_completed`, `media_hydration_job_failed`, and `media_hydration_job_cancelled`.
+
+### Security Review
+
+- All job creation, status, pause, resume, cancel, manual-run, and retry REST routes require `manage_options`.
+- WP-Cron execution may run without a logged-in user, so every job must be fully authorized and validated before it is queued.
+- Job runner must revalidate manifest path, package root, manifest checksum, saved plan checksum, and current job status before each batch.
+- Background jobs must never trust browser-submitted offsets after job creation.
+- Background jobs must never store raw credentials, app passwords, auth headers, remote tokens, or user nonces.
+- Remote-source hydration remains disabled/deferred unless the existing DBVC external-host policy explicitly allows it.
+- Cancel/pause actions are cooperative and must not interrupt an in-progress file write.
+- Job status responses must not expose filesystem paths to unauthorized users.
+
+### Data Integrity Review
+
+- Background mode cannot bypass `require_dry_run`.
+- A job must snapshot the apply policy at creation time so later setting changes cannot silently alter an in-flight run.
+- Before each batch, the runner must compare current manifest checksum and saved plan checksum to the job context.
+- Offset/progress must update only after a successful batch report.
+- If a batch fails, preserve the last good offset and mark the job `failed` with `last_error`.
+- Completed jobs should be idempotent on rerun and return already-complete status, not reapply.
+- A retry job should be a new job linked to the source receipt, not a mutation of the old receipt.
+
+### Performance Review
+
+- Keep batch sizes bounded by the existing max.
+- Process only one background hydration batch per runner invocation.
+- Do not full-scan all attachments in status polling; status should read the job row and receipt summaries only.
+- Do not load full receipt JSON into admin polling unless the user downloads the receipt.
+- Schedule only one future cron event per active media hydration job.
+- Add stale-running recovery using lock timeout and updated-at timestamps, but do not automatically restart failed jobs without operator action.
+- Keep the browser chunk mode available because it is more predictable on LocalWP and low-traffic sites where WP-Cron may not run reliably.
+
+### Compatibility Review
+
+- Existing chunked REST apply behavior remains the default.
+- Existing WP-CLI media hydration commands remain valid and should gain job commands without changing current command semantics.
+- Configuration portability should include the execution mode setting as ordinary media hydration configuration, but should not export active job rows or runtime receipts.
+- Proposal diffs, resolver decisions, Entity Editor imports, Visual Editor media saves, Content Collector media mapping, Bricks portability, AI package workflows, and third-party portability must not enqueue media hydration jobs automatically.
+- Background jobs must not run during Bricks Builder, Visual Editor frontend sessions, proposal apply, or raw entity import unless the user explicitly starts a media hydration job.
 
 ## Conflict Avoidance Rules
 
@@ -796,6 +1000,12 @@ Exit criteria:
 - Metadata regeneration updates existing attachment IDs.
 - Full-library manifest does not alter proposal manifest `media_index`.
 - Existing proposal resolver tests still pass.
+- Execution mode setting defaults to browser chunks and rejects unknown values.
+- Background job creation stores sanitized context and does not alter existing chunked apply behavior.
+- Background job runner processes one bounded batch per invocation.
+- Background job pause/resume/cancel are cooperative and preserve the last safe offset.
+- Background job status polling does not load full receipt payloads.
+- Configuration portability exports the execution mode setting but excludes active job rows and receipts.
 
 ### Runtime Smoke Tests
 
@@ -811,6 +1021,10 @@ Use a disposable target clone:
 8. Verify attachment IDs did not change.
 9. Verify `_wp_attachment_metadata` exists for images.
 10. Verify proposal review still opens and existing resolver panels are unchanged.
+11. Repeat apply using browser-controlled chunks.
+12. Repeat apply using background job mode on a disposable package.
+13. Confirm WP-Cron/CLI job runner can continue a background job after closing the browser.
+14. Confirm pause/cancel stops future batches without corrupting hydrated files.
 
 ### Safety Checks
 
@@ -828,6 +1042,9 @@ Use a disposable target clone:
 - WordPress metadata is regenerated or verified for hydrated items.
 - Existing proposal diffs, resolver decisions, entity imports, add-ons, and Visual Editor behavior are not disrupted.
 - Full-library media mirror support is opt-in and off by default.
+- Browser-controlled chunks remain the default execution mode.
+- Background job mode is opt-in and uses the same hydrator, dry-run, lock, retry, and receipt contracts.
+- In-flight background jobs are resumable, observable, and cancellable without duplicate hydration.
 - Destructive mirror cleanup is not shipped in the initial release.
 
 ## Recommended First Implementation Slice

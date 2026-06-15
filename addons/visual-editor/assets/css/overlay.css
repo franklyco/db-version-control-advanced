@@ -1153,6 +1153,59 @@ body.dbvc-ve-panel-dragging {
   border-radius: 0 0 var(--dbvc-ve-border-radius--s) var(--dbvc-ve-border-radius--s);
 }
 
+.dbvc-ve-panel__composite-note {
+  padding: 8px 10px;
+  border: 1px solid var(--dbvc-ve-color-warning-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-warning-bg);
+  color: var(--dbvc-ve-color-warning);
+  font-size: var(--dbvc-ve-font--caption);
+  line-height: 1.4;
+}
+
+.dbvc-ve-panel__composite-readiness {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-panel__composite-readiness[data-status="ready"] {
+  border-color: var(--dbvc-ve-color-success-border);
+  background: var(--dbvc-ve-color-success-bg);
+}
+
+.dbvc-ve-panel__composite-readiness[data-status="pending"] {
+  border-color: var(--dbvc-ve-color-info-border-strong);
+  background: var(--dbvc-ve-color-info-bg);
+}
+
+.dbvc-ve-panel__composite-readiness[data-status="blocked"] {
+  border-color: var(--dbvc-ve-color-warning-border);
+  background: var(--dbvc-ve-color-warning-bg);
+}
+
+.dbvc-ve-panel__composite-readiness-title {
+  color: var(--dbvc-ve-color-text-dark);
+  font-size: var(--dbvc-ve-font--body);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-panel__composite-readiness-detail,
+.dbvc-ve-panel__composite-readiness-meta,
+.dbvc-ve-panel__composite-readiness-list {
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+  line-height: 1.4;
+}
+
+.dbvc-ve-panel__composite-readiness-list {
+  margin: 3px 0 0;
+  padding-left: 16px;
+}
+
 .dbvc-ve-panel__composite-list {
   display: grid;
   gap: 8px;
@@ -1220,6 +1273,12 @@ body.dbvc-ve-panel-dragging {
   white-space: pre-wrap;
   word-break: break-word;
   overflow: auto;
+}
+
+.dbvc-ve-panel__composite-input {
+  width: 100%;
+  min-height: 38px;
+  margin: 0;
 }
 
 .dbvc-ve-panel__composite-child-meta,
@@ -1755,8 +1814,8 @@ textarea.dbvc-ve-panel__input--textlike {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
+  width: calc(var(--dbvc-ve-font-icon--s) * 2);
+  height: calc(var(--dbvc-ve-font-icon--s) * 2);
   border: var(--dbvc-ve-border--surface-s);
   border-radius: var(--dbvc-ve-border-radius--l);
   background: var(--dbvc-ve-color-background-light);

@@ -676,6 +676,7 @@ final class DBVC_Admin_App
             $duplicate_summary = self::find_duplicate_manifest_entities($manifest);
 
             $new_entity_summary = self::summarize_manifest_new_entities($manifest, $proposal_decisions);
+            $bricks_reference_summary = self::build_manifest_bricks_reference_summary($manifest, $proposal_id, false);
 
             $items[] = [
                 'id'             => $proposal_id,
@@ -699,6 +700,7 @@ final class DBVC_Admin_App
                 'requirements'    => $transfer_context['requirements'],
                 'preflight'       => $transfer_context['preflight'],
                 'warnings'        => $transfer_context['warnings'],
+                'bricks_references' => $bricks_reference_summary,
             ];
         }
 
@@ -1180,6 +1182,10 @@ final class DBVC_Admin_App
             ? $decision_store[$proposal_id]
             : [];
         $transfer_context = self::build_transfer_packet_context($manifest);
+        $bricks_reference_summary = self::build_manifest_bricks_reference_summary($manifest, $proposal_id, true);
+        $bricks_reference_entities = isset($bricks_reference_summary['entities']) && is_array($bricks_reference_summary['entities'])
+            ? $bricks_reference_summary['entities']
+            : [];
 
         $items = [];
 
@@ -1274,6 +1280,9 @@ final class DBVC_Admin_App
                 : [];
             $decision_summary = self::summarize_entity_decisions($entity_decisions);
             $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $entity_decisions);
+            $entity_bricks_references = isset($bricks_reference_entities[$vf_object_uid]) && is_array($bricks_reference_entities[$vf_object_uid])
+                ? $bricks_reference_entities[$vf_object_uid]
+                : self::empty_bricks_reference_summary(false);
 
             $items[] = [
                 'vf_object_uid' => $vf_object_uid !== '' ? $vf_object_uid : (string) ($item['post_id'] ?? ''),
@@ -1305,6 +1314,7 @@ final class DBVC_Admin_App
                 'uid_mismatch'       => $identity['uid_mismatch'] ?? false,
                 'new_entity_decision'=> $new_entity_decision,
                 'decision_summary' => $decision_summary,
+                'bricks_references' => $entity_bricks_references,
             ];
         }
 
@@ -1321,6 +1331,7 @@ final class DBVC_Admin_App
             'requirements'       => $transfer_context['requirements'],
             'preflight'          => $transfer_context['preflight'],
             'warnings'           => $transfer_context['warnings'],
+            'bricks_references'  => $bricks_reference_summary,
         ]);
     }
 
@@ -3176,6 +3187,348 @@ final class DBVC_Admin_App
         return is_array($decoded) ? $decoded : null;
     }
 
+    /**
+     * Build proposal-level Bricks entity-reference preflight results.
+     *
+     * @param array  $manifest
+     * @param string $proposal_id
+     * @param bool   $include_entities Include per-entity summaries for detail responses.
+     * @return array<string,mixed>
+     */
+    private static function build_manifest_bricks_reference_summary(array $manifest, string $proposal_id = '', bool $include_entities = false): array
+    {
+        $summary = self::empty_bricks_reference_summary($include_entities);
+        if (! class_exists('\Dbvc\EntityReferences\BricksReferenceMapper')) {
+            return $summary;
+        }
+
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        if (empty($items)) {
+            return $summary;
+        }
+
+        $source_to_local_post_ids = self::build_manifest_source_to_local_post_id_map($manifest);
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $item_type = isset($item['item_type']) ? sanitize_key((string) $item['item_type']) : 'post';
+            if ($item_type !== 'post') {
+                continue;
+            }
+
+            $payload = null;
+            $relative_path = isset($item['path']) ? ltrim(str_replace('\\', '/', (string) $item['path']), '/') : '';
+            if ($proposal_id !== '' && $relative_path !== '') {
+                $payload = self::read_entity_payload($proposal_id, $relative_path);
+            }
+
+            $entity_summary = self::build_item_bricks_reference_summary($item, $payload, $source_to_local_post_ids);
+            if (($entity_summary['total'] ?? 0) <= 0) {
+                continue;
+            }
+
+            $summary = self::merge_bricks_reference_summary($summary, $entity_summary);
+            if ($include_entities) {
+                $entity_uid = (string) ($entity_summary['entity_uid'] ?? '');
+                if ($entity_uid !== '') {
+                    $summary['entities'][$entity_uid] = $entity_summary;
+                }
+            }
+        }
+
+        $summary['status'] = self::bricks_reference_status_for_counts($summary);
+        return $summary;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param array<string,mixed>|null $payload
+     * @param array<int,int> $source_to_local_post_ids
+     * @return array<string,mixed>
+     */
+    private static function build_item_bricks_reference_summary(array $item, ?array $payload, array $source_to_local_post_ids): array
+    {
+        $entity_uid = isset($item['vf_object_uid'])
+            ? (string) $item['vf_object_uid']
+            : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+
+        $summary = self::empty_bricks_reference_summary(false);
+        $summary['entity_uid'] = $entity_uid;
+        $summary['entity_path'] = isset($item['path']) ? ltrim(str_replace('\\', '/', (string) $item['path']), '/') : '';
+        $summary['entity_title'] = isset($item['post_title']) ? sanitize_text_field((string) $item['post_title']) : '';
+        $summary['entity_type'] = isset($item['post_type']) ? sanitize_key((string) $item['post_type']) : 'post';
+
+        $references = [];
+        if (isset($item['dbvc_entity_references'])) {
+            $references = \Dbvc\EntityReferences\BricksReferenceMapper::normalize_references($item['dbvc_entity_references']);
+        }
+
+        if (empty($references) && is_array($payload)) {
+            $references = \Dbvc\EntityReferences\BricksReferenceMapper::normalize_references(
+                \Dbvc\EntityReferences\BricksReferenceMapper::collect_post_references($payload, false)
+            );
+        }
+
+        if (empty($references)) {
+            return $summary;
+        }
+
+        if (! is_array($payload)) {
+            foreach ($references as $reference) {
+                $summary['items'][] = self::format_bricks_reference_row($reference, [
+                    'status' => 'payload_missing',
+                ], $summary);
+            }
+            return self::finalize_bricks_reference_summary($summary);
+        }
+
+        $payload['dbvc_entity_references'] = array_values($references);
+        $preflight = \Dbvc\EntityReferences\BricksReferenceMapper::preflight_post_payload($payload, $source_to_local_post_ids);
+        $results = isset($preflight['results']) && is_array($preflight['results']) ? $preflight['results'] : [];
+
+        $seen_paths = [];
+        foreach ($results as $result) {
+            if (! is_array($result)) {
+                continue;
+            }
+
+            $path = isset($result['path']) ? (string) $result['path'] : '';
+            if ($path !== '') {
+                $seen_paths[$path] = true;
+            }
+
+            $reference = isset($references[$path]) && is_array($references[$path])
+                ? $references[$path]
+                : $result;
+            $summary['items'][] = self::format_bricks_reference_row($reference, $result, $summary);
+        }
+
+        foreach ($references as $path => $reference) {
+            if (isset($seen_paths[$path])) {
+                continue;
+            }
+
+            $summary['items'][] = self::format_bricks_reference_row($reference, [
+                'status' => 'unsupported_path',
+            ], $summary);
+        }
+
+        return self::finalize_bricks_reference_summary($summary);
+    }
+
+    /**
+     * @param array<string,mixed> $manifest
+     * @return array<int,int>
+     */
+    private static function build_manifest_source_to_local_post_id_map(array $manifest): array
+    {
+        $map = [];
+        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $item_type = isset($item['item_type']) ? sanitize_key((string) $item['item_type']) : 'post';
+            if ($item_type !== 'post') {
+                continue;
+            }
+
+            $source_id = isset($item['post_id']) ? absint($item['post_id']) : 0;
+            if (! $source_id) {
+                continue;
+            }
+
+            $identity = self::describe_entity_identity($item);
+            $local_post_id = isset($identity['local_post_id']) ? absint($identity['local_post_id']) : 0;
+            if ($local_post_id) {
+                $map[$source_id] = $local_post_id;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string,mixed> $reference
+     * @param array<string,mixed> $result
+     * @param array<string,mixed> $entity_summary
+     * @return array<string,mixed>
+     */
+    private static function format_bricks_reference_row(array $reference, array $result, array $entity_summary): array
+    {
+        $context = isset($reference['context']) && is_array($reference['context']) ? $reference['context'] : [];
+        $sanitized_context = [];
+        foreach ($context as $key => $value) {
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            $key = sanitize_key((string) $key);
+            if ($key === '') {
+                continue;
+            }
+
+            $sanitized_context[$key] = sanitize_text_field((string) $value);
+        }
+
+        $status = isset($result['status']) ? sanitize_key((string) $result['status']) : 'unknown';
+        $local_id = isset($result['local_id']) ? absint($result['local_id']) : 0;
+
+        return [
+            'provider'     => isset($reference['provider']) ? sanitize_key((string) $reference['provider']) : 'bricks',
+            'kind'         => isset($reference['kind']) ? sanitize_key((string) $reference['kind']) : '',
+            'path'         => isset($reference['path']) ? sanitize_text_field((string) $reference['path']) : '',
+            'source_id'    => isset($reference['source_id']) ? absint($reference['source_id']) : 0,
+            'local_id'     => $local_id ?: null,
+            'status'       => $status !== '' ? $status : 'unknown',
+            'severity'     => $status === 'resolved' ? 'resolved' : 'warning',
+            'context'      => $sanitized_context,
+            'entity_uid'   => isset($entity_summary['entity_uid']) ? (string) $entity_summary['entity_uid'] : '',
+            'entity_path'  => isset($entity_summary['entity_path']) ? (string) $entity_summary['entity_path'] : '',
+            'entity_title' => isset($entity_summary['entity_title']) ? (string) $entity_summary['entity_title'] : '',
+            'entity_type'  => isset($entity_summary['entity_type']) ? (string) $entity_summary['entity_type'] : '',
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private static function empty_bricks_reference_summary(bool $include_entities = false): array
+    {
+        $summary = [
+            'status'      => 'none',
+            'total'       => 0,
+            'resolved'    => 0,
+            'unresolved'  => 0,
+            'by_status'   => [],
+            'items'       => [],
+        ];
+
+        if ($include_entities) {
+            $summary['entities'] = [];
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @param array<string,mixed> $summary
+     * @return array<string,mixed>
+     */
+    private static function finalize_bricks_reference_summary(array $summary): array
+    {
+        $items = isset($summary['items']) && is_array($summary['items']) ? $summary['items'] : [];
+        $summary['total'] = count($items);
+        $summary['resolved'] = 0;
+        $summary['unresolved'] = 0;
+        $summary['by_status'] = [];
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $status = isset($item['status']) ? sanitize_key((string) $item['status']) : 'unknown';
+            if ($status === '') {
+                $status = 'unknown';
+            }
+
+            if (! isset($summary['by_status'][$status])) {
+                $summary['by_status'][$status] = 0;
+            }
+            $summary['by_status'][$status]++;
+
+            if ($status === 'resolved') {
+                $summary['resolved']++;
+            } else {
+                $summary['unresolved']++;
+            }
+        }
+
+        $summary['status'] = self::bricks_reference_status_for_counts($summary);
+        return $summary;
+    }
+
+    /**
+     * @param array<string,mixed> $base
+     * @param array<string,mixed> $entity_summary
+     * @return array<string,mixed>
+     */
+    private static function merge_bricks_reference_summary(array $base, array $entity_summary): array
+    {
+        $base_items = isset($base['items']) && is_array($base['items']) ? $base['items'] : [];
+        $entity_items = isset($entity_summary['items']) && is_array($entity_summary['items']) ? $entity_summary['items'] : [];
+        $base['items'] = array_values(array_merge($base_items, $entity_items));
+
+        return self::finalize_bricks_reference_summary($base);
+    }
+
+    /**
+     * @param array<string,mixed> $summary
+     */
+    private static function bricks_reference_status_for_counts(array $summary): string
+    {
+        $total = isset($summary['total']) ? (int) $summary['total'] : 0;
+        if ($total <= 0) {
+            return 'none';
+        }
+
+        $unresolved = isset($summary['unresolved']) ? (int) $summary['unresolved'] : 0;
+        return $unresolved > 0 ? 'warning' : 'ok';
+    }
+
+    private static function get_bricks_reference_unresolved_policy(): string
+    {
+        $policy = sanitize_key((string) get_option('dbvc_bricks_reference_unresolved_policy', 'warn'));
+        if (! in_array($policy, ['warn', 'block'], true)) {
+            $policy = 'warn';
+        }
+
+        $filtered = sanitize_key((string) apply_filters('dbvc_bricks_reference_unresolved_policy', $policy));
+        return in_array($filtered, ['warn', 'block'], true) ? $filtered : $policy;
+    }
+
+    private static function maybe_block_proposal_apply_for_bricks_references(string $proposal_id)
+    {
+        if (self::get_bricks_reference_unresolved_policy() !== 'block') {
+            return null;
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! is_array($manifest)) {
+            return null;
+        }
+
+        $summary = self::build_manifest_bricks_reference_summary($manifest, $proposal_id, false);
+        $unresolved = isset($summary['unresolved']) ? (int) $summary['unresolved'] : 0;
+        if ($unresolved <= 0) {
+            return null;
+        }
+
+        return new \WP_Error(
+            'dbvc_bricks_reference_preflight_blocked',
+            sprintf(
+                _n(
+                    'Proposal apply blocked: %d Bricks entity reference could not be resolved safely.',
+                    'Proposal apply blocked: %d Bricks entity references could not be resolved safely.',
+                    $unresolved,
+                    'dbvc'
+                ),
+                $unresolved
+            ),
+            [
+                'status'            => 409,
+                'policy'            => 'block',
+                'bricks_references' => $summary,
+            ]
+        );
+    }
+
     private static function find_duplicate_manifest_entities(array $manifest): array
     {
         $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
@@ -4274,6 +4627,23 @@ final class DBVC_Admin_App
             } else {
                 $force_reapply_new_posts = in_array($force_param, [true, 1, '1', 'true', 'on'], true);
             }
+        }
+
+        $bricks_reference_block = self::maybe_block_proposal_apply_for_bricks_references($proposal_id);
+        if (is_wp_error($bricks_reference_block)) {
+            if (class_exists('DBVC_Sync_Logger')) {
+                $error_data = $bricks_reference_block->get_error_data();
+                $summary = is_array($error_data) && isset($error_data['bricks_references']) && is_array($error_data['bricks_references'])
+                    ? $error_data['bricks_references']
+                    : [];
+                DBVC_Sync_Logger::log('Proposal apply blocked by unresolved Bricks references', [
+                    'proposal'   => $proposal_id,
+                    'mode'       => $mode,
+                    'unresolved' => isset($summary['unresolved']) ? (int) $summary['unresolved'] : 0,
+                ]);
+            }
+
+            return $bricks_reference_block;
         }
 
         $decision_store_before = self::get_decision_store();

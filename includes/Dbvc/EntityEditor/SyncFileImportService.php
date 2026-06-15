@@ -708,7 +708,477 @@ final class SyncFileImportService
             $base['available_actions'][self::MODE_CREATE_ONLY] = true;
         }
 
+        $bricks_advisory = self::build_bricks_template_advisory($payload, $base['match']);
+        if (\is_array($bricks_advisory)) {
+            $base['bricks_template_advisory'] = $bricks_advisory;
+        }
+
         return $base;
+    }
+
+    /**
+     * Build read-only Bricks template import guidance for the preview modal.
+     *
+     * @param array<string,mixed> $payload
+     * @param array<string,mixed> $match
+     * @return array<string,mixed>|null
+     */
+    private static function build_bricks_template_advisory(array $payload, array $match = [])
+    {
+        if (sanitize_key((string) ($payload['post_type'] ?? '')) !== 'bricks_template') {
+            return null;
+        }
+
+        if (
+            ! \class_exists('\DBVC_Bricks_Addon')
+            || ! \method_exists('\DBVC_Bricks_Addon', 'is_enabled')
+            || ! \DBVC_Bricks_Addon::is_enabled()
+        ) {
+            return null;
+        }
+
+        $settings = self::extract_bricks_template_settings($payload);
+        $template_type = self::extract_bricks_template_type($payload);
+        $conditions = self::extract_bricks_template_conditions($settings);
+        $condition_summaries = self::summarize_bricks_template_conditions($conditions);
+        $exclude_ids = [];
+
+        if (isset($payload['ID'])) {
+            $exclude_ids[] = absint($payload['ID']);
+        }
+        if (($match['status'] ?? '') === 'matched' && ! empty($match['id'])) {
+            $exclude_ids[] = absint($match['id']);
+        }
+
+        $conflicts = self::find_bricks_template_condition_conflicts($template_type, $conditions, $exclude_ids);
+        $preview_post = self::build_bricks_preview_post_advisory($settings);
+        $preview_term = self::build_bricks_preview_term_advisory($settings);
+
+        $messages = [];
+        foreach ($conflicts as $conflict) {
+            $title = isset($conflict['title']) && $conflict['title'] !== '' ? (string) $conflict['title'] : __('Untitled Bricks template', 'dbvc');
+            $id = isset($conflict['id']) ? (int) $conflict['id'] : 0;
+            $messages[] = sprintf(
+                __('Existing published Bricks template "%1$s" (#%2$d) has overlapping conditions and may render instead.', 'dbvc'),
+                $title,
+                $id
+            );
+        }
+
+        if (\is_array($preview_post) && empty($preview_post['exists_locally']) && ! empty($preview_post['incoming_id'])) {
+            $messages[] = sprintf(
+                __('Preview post ID %d does not exist locally.', 'dbvc'),
+                (int) $preview_post['incoming_id']
+            );
+        }
+
+        if (\is_array($preview_term) && empty($preview_term['exists_locally']) && ! empty($preview_term['incoming_term_id'])) {
+            $messages[] = sprintf(
+                __('Preview term ID %d does not exist locally.', 'dbvc'),
+                (int) $preview_term['incoming_term_id']
+            );
+        }
+
+        $severity = (! empty($conflicts) || ! empty($messages)) ? 'warning' : 'info';
+
+        return [
+            'enabled'             => true,
+            'severity'            => $severity,
+            'template_type'       => $template_type,
+            'conditions'          => $condition_summaries,
+            'condition_conflicts' => $conflicts,
+            'preview_post'        => $preview_post,
+            'preview_term'        => $preview_term,
+            'messages'            => array_values(array_unique($messages)),
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private static function extract_bricks_template_settings(array $payload)
+    {
+        $settings = self::extract_bricks_template_meta_value($payload, '_bricks_template_settings');
+        return \is_array($settings) ? $settings : [];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return string
+     */
+    private static function extract_bricks_template_type(array $payload)
+    {
+        return self::normalize_bricks_scalar(self::extract_bricks_template_meta_value($payload, '_bricks_template_type'));
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param string              $meta_key
+     * @return mixed|null
+     */
+    private static function extract_bricks_template_meta_value(array $payload, $meta_key)
+    {
+        $meta = isset($payload['meta']) && \is_array($payload['meta']) ? $payload['meta'] : [];
+        if (! array_key_exists($meta_key, $meta)) {
+            return null;
+        }
+
+        return self::unwrap_single_meta_value($meta[$meta_key]);
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function unwrap_single_meta_value($value)
+    {
+        if (\is_array($value) && self::is_list_array($value) && count($value) === 1) {
+            return reset($value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_bricks_scalar($value)
+    {
+        $value = self::unwrap_single_meta_value($value);
+        if (\is_array($value)) {
+            foreach ($value as $candidate) {
+                if (\is_scalar($candidate)) {
+                    return sanitize_key((string) $candidate);
+                }
+            }
+            return '';
+        }
+
+        return \is_scalar($value) ? sanitize_key((string) $value) : '';
+    }
+
+    /**
+     * @param array<string,mixed> $settings
+     * @return array<int,array<string,mixed>>
+     */
+    private static function extract_bricks_template_conditions(array $settings)
+    {
+        $conditions = isset($settings['templateConditions']) && \is_array($settings['templateConditions'])
+            ? $settings['templateConditions']
+            : [];
+
+        $normalized = [];
+        foreach ($conditions as $condition) {
+            if (\is_array($condition)) {
+                $normalized[] = $condition;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $conditions
+     * @return array<int,string>
+     */
+    private static function summarize_bricks_template_conditions(array $conditions)
+    {
+        $summaries = [];
+        foreach ($conditions as $condition) {
+            $summaries[] = self::summarize_bricks_template_condition($condition);
+        }
+
+        return array_values(array_filter(array_unique($summaries)));
+    }
+
+    /**
+     * @param array<string,mixed> $condition
+     * @return string
+     */
+    private static function summarize_bricks_template_condition(array $condition)
+    {
+        $main = isset($condition['main']) ? sanitize_key((string) $condition['main']) : '';
+        if ($main === 'posttype') {
+            $post_types = self::bricks_condition_values($condition, 'postType');
+            return $post_types ? 'postType: ' . implode(', ', $post_types) : 'postType';
+        }
+
+        if ($main === 'archivetype') {
+            $parts = ['archiveType'];
+            $archive_types = self::bricks_condition_values($condition, 'archiveType');
+            $archive_terms = self::bricks_condition_values($condition, 'archiveTerms');
+            if ($archive_types) {
+                $parts[] = implode(', ', $archive_types);
+            }
+            if ($archive_terms) {
+                $parts[] = 'terms: ' . implode(', ', $archive_terms);
+            }
+            return implode(' - ', $parts);
+        }
+
+        return $main !== '' ? $main : __('Bricks template condition', 'dbvc');
+    }
+
+    /**
+     * @param string                     $template_type
+     * @param array<int,array<string,mixed>> $incoming_conditions
+     * @param array<int,int>             $exclude_ids
+     * @return array<int,array<string,mixed>>
+     */
+    private static function find_bricks_template_condition_conflicts($template_type, array $incoming_conditions, array $exclude_ids = [])
+    {
+        if (empty($incoming_conditions) || ! post_type_exists('bricks_template')) {
+            return [];
+        }
+
+        $exclude_ids = array_values(array_unique(array_filter(array_map('absint', $exclude_ids))));
+        $template_ids = get_posts([
+            'post_type'        => 'bricks_template',
+            'post_status'      => 'publish',
+            'fields'           => 'ids',
+            'posts_per_page'   => 50,
+            'no_found_rows'    => true,
+            'suppress_filters' => false,
+        ]);
+
+        $conflicts = [];
+        foreach ($template_ids as $template_id) {
+            $template_id = absint($template_id);
+            if ($template_id <= 0 || in_array($template_id, $exclude_ids, true)) {
+                continue;
+            }
+
+            $existing_type = self::normalize_bricks_scalar(get_post_meta($template_id, '_bricks_template_type', true));
+            if ($template_type !== '' && $existing_type !== '' && $template_type !== $existing_type) {
+                continue;
+            }
+
+            $existing_settings = self::unwrap_single_meta_value(get_post_meta($template_id, '_bricks_template_settings', true));
+            $existing_conditions = \is_array($existing_settings) ? self::extract_bricks_template_conditions($existing_settings) : [];
+            if (empty($existing_conditions)) {
+                continue;
+            }
+
+            foreach ($incoming_conditions as $incoming_condition) {
+                foreach ($existing_conditions as $existing_condition) {
+                    $overlap = self::describe_bricks_condition_overlap($incoming_condition, $existing_condition);
+                    if (! $overlap) {
+                        continue;
+                    }
+
+                    $title = (string) get_the_title($template_id);
+                    $conflicts[] = [
+                        'id'                 => $template_id,
+                        'title'              => $title,
+                        'status'             => 'publish',
+                        'template_type'      => $existing_type,
+                        'reason'             => $overlap,
+                        'condition'          => self::summarize_bricks_template_condition($existing_condition),
+                        'incoming_condition' => self::summarize_bricks_template_condition($incoming_condition),
+                        'edit_url'           => get_edit_post_link($template_id, 'raw') ?: '',
+                    ];
+                    break 2;
+                }
+            }
+
+            if (count($conflicts) >= 10) {
+                break;
+            }
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * @param array<string,mixed> $incoming
+     * @param array<string,mixed> $existing
+     * @return string
+     */
+    private static function describe_bricks_condition_overlap(array $incoming, array $existing)
+    {
+        if (self::normalize_bricks_condition_for_compare($incoming) === self::normalize_bricks_condition_for_compare($existing)) {
+            return __('Exact template condition match.', 'dbvc');
+        }
+
+        $incoming_main = isset($incoming['main']) ? sanitize_key((string) $incoming['main']) : '';
+        $existing_main = isset($existing['main']) ? sanitize_key((string) $existing['main']) : '';
+        if ($incoming_main === '' || $incoming_main !== $existing_main) {
+            return '';
+        }
+
+        if ($incoming_main === 'posttype') {
+            $overlap = array_intersect(
+                self::bricks_condition_values($incoming, 'postType'),
+                self::bricks_condition_values($existing, 'postType')
+            );
+            return $overlap ? sprintf(__('Overlapping post type condition: %s.', 'dbvc'), implode(', ', $overlap)) : '';
+        }
+
+        if ($incoming_main === 'archivetype') {
+            $archive_overlap = array_intersect(
+                self::bricks_condition_values($incoming, 'archiveType'),
+                self::bricks_condition_values($existing, 'archiveType')
+            );
+            if (empty($archive_overlap)) {
+                return '';
+            }
+
+            $incoming_terms = self::bricks_condition_values($incoming, 'archiveTerms');
+            $existing_terms = self::bricks_condition_values($existing, 'archiveTerms');
+            if (empty($incoming_terms) || empty($existing_terms) || array_intersect($incoming_terms, $existing_terms)) {
+                return sprintf(__('Overlapping archive condition: %s.', 'dbvc'), implode(', ', $archive_overlap));
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string,mixed> $condition
+     * @return array<string,mixed>
+     */
+    private static function normalize_bricks_condition_for_compare(array $condition)
+    {
+        unset($condition['id']);
+        return self::normalize_bricks_compare_value($condition);
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function normalize_bricks_compare_value($value)
+    {
+        if (! \is_array($value)) {
+            return \is_scalar($value) || $value === null ? (string) $value : '';
+        }
+
+        $normalized = [];
+        foreach ($value as $key => $child) {
+            $normalized[$key] = self::normalize_bricks_compare_value($child);
+        }
+
+        if (self::is_list_array($normalized)) {
+            sort($normalized);
+        } else {
+            ksort($normalized);
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string,mixed> $condition
+     * @param string              $key
+     * @return array<int,string>
+     */
+    private static function bricks_condition_values(array $condition, $key)
+    {
+        if (! array_key_exists($key, $condition)) {
+            return [];
+        }
+
+        $value = $condition[$key];
+        $values = \is_array($value) ? $value : [$value];
+        $normalized = [];
+        foreach ($values as $candidate) {
+            if (\is_scalar($candidate)) {
+                $candidate = sanitize_text_field((string) $candidate);
+                if ($candidate !== '') {
+                    $normalized[] = $candidate;
+                }
+            }
+        }
+
+        return array_values(array_unique($normalized));
+    }
+
+    /**
+     * @param array<string,mixed> $settings
+     * @return array<string,mixed>|null
+     */
+    private static function build_bricks_preview_post_advisory(array $settings)
+    {
+        if (! array_key_exists('templatePreviewPostId', $settings)) {
+            return null;
+        }
+
+        $incoming_id = absint($settings['templatePreviewPostId']);
+        if ($incoming_id <= 0) {
+            return null;
+        }
+
+        $post = get_post($incoming_id);
+        $exists = $post instanceof \WP_Post;
+
+        return [
+            'incoming_id'    => $incoming_id,
+            'exists_locally' => $exists,
+            'post_type'      => $exists ? (string) $post->post_type : '',
+            'title'          => $exists ? (string) get_the_title($incoming_id) : '',
+            'edit_url'       => $exists ? (get_edit_post_link($incoming_id, 'raw') ?: '') : '',
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $settings
+     * @return array<string,mixed>|null
+     */
+    private static function build_bricks_preview_term_advisory(array $settings)
+    {
+        if (! array_key_exists('templatePreviewTerm', $settings)) {
+            return null;
+        }
+
+        $raw = (string) $settings['templatePreviewTerm'];
+        if ($raw === '') {
+            return null;
+        }
+
+        $taxonomy = '';
+        $term_id = 0;
+        if (strpos($raw, '::') !== false) {
+            [$taxonomy, $term_id_raw] = array_pad(explode('::', $raw, 2), 2, '');
+            $taxonomy = sanitize_key((string) $taxonomy);
+            $term_id = absint($term_id_raw);
+        } else {
+            $term_id = absint($raw);
+        }
+
+        if ($term_id <= 0) {
+            return null;
+        }
+
+        $term = $taxonomy !== '' ? get_term($term_id, $taxonomy) : get_term($term_id);
+        $exists = $term && ! \is_wp_error($term);
+
+        return [
+            'incoming_value'   => $raw,
+            'incoming_term_id' => $term_id,
+            'taxonomy'         => $taxonomy,
+            'exists_locally'   => $exists,
+            'name'             => $exists ? (string) $term->name : '',
+            'edit_url'         => $exists ? get_edit_term_link($term_id, $taxonomy ?: $term->taxonomy) : '',
+        ];
+    }
+
+    /**
+     * @param array<mixed> $value
+     * @return bool
+     */
+    private static function is_list_array(array $value)
+    {
+        $index = 0;
+        foreach (array_keys($value) as $key) {
+            if ($key !== $index) {
+                return false;
+            }
+            $index++;
+        }
+
+        return true;
     }
 
     /**

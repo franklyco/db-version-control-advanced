@@ -79,6 +79,14 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             $field_context_provider,
             $field_context_provider_current
         );
+        $object_type_context_provider = is_array($recommendations) && isset($recommendations['object_type_context_provider']) && is_array($recommendations['object_type_context_provider'])
+            ? $recommendations['object_type_context_provider']
+            : [];
+        $object_type_context_provider_current = $this->load_current_object_type_context_provider($domain);
+        $object_type_context_provider_drift = $this->summarize_provider_drift(
+            $object_type_context_provider,
+            $object_type_context_provider_current
+        );
         $field_context_selection = $this->summarize_field_context_selection($recommendations);
         $unresolved_summary = $this->summarize_unresolved_items($recommendations);
         $transform_validation = $this->summarize_transform_validation($target_transform);
@@ -121,6 +129,21 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             $field_context_provider,
             $field_context_provider_current,
             $field_context_provider_drift
+        );
+        $this->append_object_type_context_issues(
+            $warnings,
+            $row,
+            $artifact_relatives,
+            $object_type_context_provider
+        );
+        $this->append_object_type_context_drift_issues(
+            $blocking_issues,
+            $warnings,
+            $row,
+            $artifact_relatives,
+            $object_type_context_provider,
+            $object_type_context_provider_current,
+            $object_type_context_provider_drift
         );
         $this->append_transform_issues(
             $blocking_issues,
@@ -177,6 +200,9 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             'fieldContextProvider' => $field_context_provider,
             'fieldContextProviderCurrent' => $field_context_provider_current,
             'fieldContextProviderDrift' => $field_context_provider_drift,
+            'objectTypeContextProvider' => $object_type_context_provider,
+            'objectTypeContextProviderCurrent' => $object_type_context_provider_current,
+            'objectTypeContextProviderDrift' => $object_type_context_provider_drift,
             'fieldContextSelection' => $field_context_selection,
             'unresolvedSummary' => $unresolved_summary,
             'benchmarkGate' => $benchmark_gate,
@@ -207,6 +233,9 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                     'field_context_provider' => $field_context_provider,
                     'field_context_provider_current' => $field_context_provider_current,
                     'field_context_provider_drift' => $field_context_provider_drift,
+                    'object_type_context_provider' => $object_type_context_provider,
+                    'object_type_context_provider_current' => $object_type_context_provider_current,
+                    'object_type_context_provider_drift' => $object_type_context_provider_drift,
                     'field_context_selection' => $field_context_selection,
                     'unresolved_summary' => $unresolved_summary,
                     'benchmark_gate' => $benchmark_gate,
@@ -219,6 +248,7 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                 'conflictCount' => $conflict_count,
                 'unresolvedCount' => $unresolved_count,
                 'fieldContextProviderDriftCount' => isset($field_context_provider_drift['status']) && (string) $field_context_provider_drift['status'] === 'drifted' ? 1 : 0,
+                'objectTypeContextProviderDriftCount' => isset($object_type_context_provider_drift['status']) && (string) $object_type_context_provider_drift['status'] === 'drifted' ? 1 : 0,
                 'fieldContextAmbiguousRecommendationCount' => isset($field_context_selection['ambiguous_count']) ? (int) $field_context_selection['ambiguous_count'] : 0,
                 'fieldContextAmbiguousReviewedCount' => isset($field_context_selection['ambiguous_reviewed_count']) ? (int) $field_context_selection['ambiguous_reviewed_count'] : 0,
                 'unresolvedClassCount' => isset($unresolved_summary['class_count']) ? (int) $unresolved_summary['class_count'] : 0,
@@ -527,6 +557,130 @@ final class DBVC_CC_V2_URL_QA_Report_Service
     }
 
     /**
+     * @param array<int, array<string, mixed>> $warnings
+     * @param array<string, mixed>             $row
+     * @param array<string, mixed>             $artifact_relatives
+     * @param array<string, mixed>             $object_type_context_provider
+     * @return void
+     */
+    private function append_object_type_context_issues(
+        array &$warnings,
+        array $row,
+        array $artifact_relatives,
+        array $object_type_context_provider
+    ) {
+        $provider_status = isset($object_type_context_provider['status']) ? sanitize_key((string) $object_type_context_provider['status']) : '';
+        $provider_context = $this->build_object_type_context_issue_context($row, $artifact_relatives, $object_type_context_provider);
+
+        if ($provider_status === '' || in_array($provider_status, ['missing', 'unavailable'], true)) {
+            $warnings[] = $this->make_issue(
+                'object_type_context_provider_missing',
+                __('Object Type Context provider metadata is missing for this URL, so target object semantics could not be verified beyond registration data.', 'dbvc'),
+                'warning',
+                $provider_context
+            );
+        } elseif (in_array($provider_status, ['degraded', 'legacy_only'], true)) {
+            $warnings[] = $this->make_issue(
+                'object_type_context_provider_degraded',
+                __('Object Type Context provider coverage is degraded for this URL, so target object scoring is carrying reduced confidence.', 'dbvc'),
+                'warning',
+                $provider_context
+            );
+        }
+
+        $provider_warning_count = isset($object_type_context_provider['warnings']) && is_array($object_type_context_provider['warnings'])
+            ? count($object_type_context_provider['warnings'])
+            : 0;
+        if ($provider_warning_count > 0) {
+            $warnings[] = $this->make_issue(
+                'object_type_context_provider_warnings',
+                __('Object Type Context provider warnings were recorded for this URL and should be reviewed before import.', 'dbvc'),
+                'warning',
+                array_merge(
+                    $provider_context,
+                    [
+                        'objectTypeContextWarningCount' => $provider_warning_count,
+                    ]
+                )
+            );
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $blocking_issues
+     * @param array<int, array<string, mixed>> $warnings
+     * @param array<string, mixed>             $row
+     * @param array<string, mixed>             $artifact_relatives
+     * @param array<string, mixed>             $object_type_context_provider
+     * @param array<string, mixed>             $object_type_context_provider_current
+     * @param array<string, mixed>             $object_type_context_provider_drift
+     * @return void
+     */
+    private function append_object_type_context_drift_issues(
+        array &$blocking_issues,
+        array &$warnings,
+        array $row,
+        array $artifact_relatives,
+        array $object_type_context_provider,
+        array $object_type_context_provider_current,
+        array $object_type_context_provider_drift
+    ) {
+        $recorded_status = isset($object_type_context_provider['status']) ? sanitize_key((string) $object_type_context_provider['status']) : '';
+        if ($recorded_status === '' || empty($object_type_context_provider)) {
+            return;
+        }
+
+        $drift_context = array_merge(
+            $this->build_object_type_context_issue_context($row, $artifact_relatives, $object_type_context_provider),
+            [
+                'objectTypeContextProviderCurrentStatus' => isset($object_type_context_provider_current['status']) ? sanitize_key((string) $object_type_context_provider_current['status']) : '',
+                'objectTypeContextProviderCurrentSourceHash' => isset($object_type_context_provider_current['source_hash']) ? sanitize_text_field((string) $object_type_context_provider_current['source_hash']) : '',
+                'objectTypeContextProviderCurrentSchemaVersion' => isset($object_type_context_provider_current['schema_version']) ? sanitize_text_field((string) $object_type_context_provider_current['schema_version']) : '',
+                'objectTypeContextProviderCurrentContractVersion' => isset($object_type_context_provider_current['contract_version']) ? sanitize_text_field((string) $object_type_context_provider_current['contract_version']) : '',
+                'objectTypeContextProviderCurrentSiteFingerprint' => isset($object_type_context_provider_current['site_fingerprint']) ? sanitize_text_field((string) $object_type_context_provider_current['site_fingerprint']) : '',
+                'objectTypeContextProviderCurrentSlotGraphRef' => isset($object_type_context_provider_current['slot_graph_ref']) ? sanitize_text_field((string) $object_type_context_provider_current['slot_graph_ref']) : '',
+                'objectTypeContextProviderCurrentSlotGraphFingerprint' => isset($object_type_context_provider_current['slot_graph_fingerprint']) ? sanitize_text_field((string) $object_type_context_provider_current['slot_graph_fingerprint']) : '',
+                'objectTypeContextDriftStatus' => isset($object_type_context_provider_drift['status']) ? sanitize_key((string) $object_type_context_provider_drift['status']) : '',
+                'objectTypeContextDriftFields' => isset($object_type_context_provider_drift['mismatch_fields']) && is_array($object_type_context_provider_drift['mismatch_fields'])
+                    ? array_values($object_type_context_provider_drift['mismatch_fields'])
+                    : [],
+            ]
+        );
+
+        $current_status = isset($object_type_context_provider_current['status']) ? sanitize_key((string) $object_type_context_provider_current['status']) : '';
+        if ($current_status === '' || in_array($current_status, ['missing', 'unavailable'], true)) {
+            $warnings[] = $this->make_issue(
+                'object_type_context_provider_current_missing',
+                __('The current slot graph does not expose verifiable Object Type Context provider metadata for this URL, so readiness cannot confirm active object semantics.', 'dbvc'),
+                'warning',
+                $drift_context
+            );
+            return;
+        }
+
+        if (($object_type_context_provider_drift['status'] ?? '') === 'drifted') {
+            $blocking_issues[] = $this->make_issue(
+                'object_type_context_provider_drift',
+                __('The saved recommendation Object Type Context metadata no longer matches the current slot graph, so this URL should be rerun or re-reviewed before packaging.', 'dbvc'),
+                'blocking',
+                $drift_context
+            );
+        }
+
+        if (
+            in_array($current_status, ['degraded', 'legacy_only'], true)
+            && $current_status !== $recorded_status
+        ) {
+            $warnings[] = $this->make_issue(
+                'object_type_context_provider_current_degraded',
+                __('The current slot graph reports degraded Object Type Context coverage for this URL even though the saved recommendation metadata was stronger.', 'dbvc'),
+                'warning',
+                $drift_context
+            );
+        }
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $blocking_issues
      * @param array<int, array<string, mixed>> $warnings
      * @param array<string, mixed>             $row
@@ -775,6 +929,35 @@ final class DBVC_CC_V2_URL_QA_Report_Service
     }
 
     /**
+     * @param string $domain
+     * @return array<string, mixed>
+     */
+    private function load_current_object_type_context_provider($domain)
+    {
+        $domain = sanitize_text_field((string) $domain);
+        if ($domain === '') {
+            return [];
+        }
+
+        $slot_graph_bundle = DBVC_CC_V2_Target_Slot_Graph_Service::get_instance()->get_graph($domain, true);
+        if (is_wp_error($slot_graph_bundle) || ! is_array($slot_graph_bundle)) {
+            return [
+                'status' => 'unavailable',
+            ];
+        }
+
+        $slot_graph = isset($slot_graph_bundle['slot_graph']) && is_array($slot_graph_bundle['slot_graph']) ? $slot_graph_bundle['slot_graph'] : [];
+        $provider = isset($slot_graph['object_type_context_provider']) && is_array($slot_graph['object_type_context_provider'])
+            ? $slot_graph['object_type_context_provider']
+            : [];
+        $summary = $this->normalize_object_type_context_provider_summary($provider);
+        $summary['slot_graph_ref'] = isset($slot_graph_bundle['artifact_relative_path']) ? sanitize_text_field((string) $slot_graph_bundle['artifact_relative_path']) : '';
+        $summary['slot_graph_fingerprint'] = isset($slot_graph_bundle['slot_graph_fingerprint']) ? sanitize_text_field((string) $slot_graph_bundle['slot_graph_fingerprint']) : '';
+
+        return $summary;
+    }
+
+    /**
      * @param array<string, mixed>|null $recommendations
      * @return array<string, mixed>
      */
@@ -820,6 +1003,16 @@ final class DBVC_CC_V2_URL_QA_Report_Service
      */
     private function summarize_field_context_provider_drift(array $recorded, array $current)
     {
+        return $this->summarize_provider_drift($recorded, $current);
+    }
+
+    /**
+     * @param array<string, mixed> $recorded
+     * @param array<string, mixed> $current
+     * @return array<string, mixed>
+     */
+    private function summarize_provider_drift(array $recorded, array $current)
+    {
         $summary = [
             'status' => 'unverified',
             'mismatch_fields' => [],
@@ -858,6 +1051,29 @@ final class DBVC_CC_V2_URL_QA_Report_Service
             'source_hash' => isset($provider['source_hash']) ? sanitize_text_field((string) $provider['source_hash']) : '',
             'schema_version' => isset($provider['schema_version']) ? sanitize_text_field((string) $provider['schema_version']) : '',
             'site_fingerprint' => isset($provider['site_fingerprint']) ? sanitize_text_field((string) $provider['site_fingerprint']) : '',
+            'warnings' => isset($provider['warnings']) && is_array($provider['warnings']) ? array_values($provider['warnings']) : [],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $provider
+     * @return array<string, mixed>
+     */
+    private function normalize_object_type_context_provider_summary(array $provider)
+    {
+        return [
+            'status' => isset($provider['status']) ? sanitize_key((string) $provider['status']) : '',
+            'provider' => isset($provider['provider']) ? sanitize_key((string) $provider['provider']) : '',
+            'transport' => isset($provider['transport']) ? sanitize_key((string) $provider['transport']) : '',
+            'contract_version' => isset($provider['contract_version']) ? sanitize_text_field((string) $provider['contract_version']) : '',
+            'source_hash' => isset($provider['source_hash']) ? sanitize_text_field((string) $provider['source_hash']) : '',
+            'schema_version' => isset($provider['schema_version']) ? sanitize_text_field((string) $provider['schema_version']) : '',
+            'site_fingerprint' => isset($provider['site_fingerprint']) ? sanitize_text_field((string) $provider['site_fingerprint']) : '',
+            'catalog_status' => isset($provider['catalog_status']) ? sanitize_key((string) $provider['catalog_status']) : '',
+            'entry_count' => isset($provider['entry_count']) ? absint($provider['entry_count']) : 0,
+            'complete_count' => isset($provider['complete_count']) ? absint($provider['complete_count']) : 0,
+            'partial_count' => isset($provider['partial_count']) ? absint($provider['partial_count']) : 0,
+            'override_count' => isset($provider['override_count']) ? absint($provider['override_count']) : 0,
             'warnings' => isset($provider['warnings']) && is_array($provider['warnings']) ? array_values($provider['warnings']) : [],
         ];
     }
@@ -953,6 +1169,25 @@ final class DBVC_CC_V2_URL_QA_Report_Service
                 'fieldContextSourceHash' => isset($field_context_provider['source_hash']) ? sanitize_text_field((string) $field_context_provider['source_hash']) : '',
                 'fieldContextSchemaVersion' => isset($field_context_provider['schema_version']) ? sanitize_text_field((string) $field_context_provider['schema_version']) : '',
                 'fieldContextContractVersion' => isset($field_context_provider['contract_version']) ? sanitize_text_field((string) $field_context_provider['contract_version']) : '',
+            ]
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $artifact_relatives
+     * @param array<string, mixed> $object_type_context_provider
+     * @return array<string, mixed>
+     */
+    private function build_object_type_context_issue_context(array $row, array $artifact_relatives, array $object_type_context_provider)
+    {
+        return array_merge(
+            $this->build_issue_context($row, $artifact_relatives, 'mapping_recommendations'),
+            [
+                'objectTypeContextProviderStatus' => isset($object_type_context_provider['status']) ? sanitize_key((string) $object_type_context_provider['status']) : '',
+                'objectTypeContextSourceHash' => isset($object_type_context_provider['source_hash']) ? sanitize_text_field((string) $object_type_context_provider['source_hash']) : '',
+                'objectTypeContextSchemaVersion' => isset($object_type_context_provider['schema_version']) ? sanitize_text_field((string) $object_type_context_provider['schema_version']) : '',
+                'objectTypeContextContractVersion' => isset($object_type_context_provider['contract_version']) ? sanitize_text_field((string) $object_type_context_provider['contract_version']) : '',
             ]
         );
     }

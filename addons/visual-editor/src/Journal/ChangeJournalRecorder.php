@@ -39,8 +39,48 @@ final class ChangeJournalRecorder
      */
     public function start(EditableDescriptor $descriptor, $resolver_name = '')
     {
+        return $this->startWithContext($descriptor, $resolver_name, []);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $resolver_name
+     * @param array<string,mixed> $batch_context
+     * @return int
+     */
+    public function startBatch(EditableDescriptor $descriptor, $resolver_name = '', array $batch_context = [])
+    {
+        return $this->startWithContext($descriptor, $resolver_name, [
+            'batch' => $batch_context,
+        ]);
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @param string             $resolver_name
+     * @param array<string,mixed> $extra_context
+     * @return int
+     */
+    private function startWithContext(EditableDescriptor $descriptor, $resolver_name = '', array $extra_context = [])
+    {
         $page = $this->resolvePageContext($descriptor);
         $owner = $this->resolveOwnerContext($descriptor);
+        $context = array_merge(
+            [
+                'descriptorVersion' => $this->resolveDescriptorVersion($descriptor),
+                'resolver' => sanitize_key((string) $resolver_name),
+                'scope' => isset($descriptor->scope) ? (string) $descriptor->scope : 'current_entity',
+                'status' => isset($descriptor->status) ? (string) $descriptor->status : '',
+                'page' => $page,
+                'owner' => $owner,
+                'loop' => $this->resolveLoopContext($descriptor),
+                'path' => $this->resolvePathContext($descriptor),
+                'mutation' => $this->resolveMutationContext($descriptor),
+                'source' => isset($descriptor->source) && is_array($descriptor->source) ? $descriptor->source : [],
+                'render' => isset($descriptor->render) && is_array($descriptor->render) ? $descriptor->render : [],
+            ],
+            $extra_context
+        );
 
         return $this->store->startChangeSet(
             [
@@ -53,19 +93,7 @@ final class ChangeJournalRecorder
                 'owner_entity_id' => isset($owner['id']) ? absint($owner['id']) : 0,
                 'owner_entity_subtype' => isset($owner['subtype']) ? (string) $owner['subtype'] : '',
                 'descriptor_token' => isset($descriptor->token) ? (string) $descriptor->token : '',
-                'context' => [
-                    'descriptorVersion' => $this->resolveDescriptorVersion($descriptor),
-                    'resolver' => sanitize_key((string) $resolver_name),
-                    'scope' => isset($descriptor->scope) ? (string) $descriptor->scope : 'current_entity',
-                    'status' => isset($descriptor->status) ? (string) $descriptor->status : '',
-                    'page' => $page,
-                    'owner' => $owner,
-                    'loop' => $this->resolveLoopContext($descriptor),
-                    'path' => $this->resolvePathContext($descriptor),
-                    'mutation' => $this->resolveMutationContext($descriptor),
-                    'source' => isset($descriptor->source) && is_array($descriptor->source) ? $descriptor->source : [],
-                    'render' => isset($descriptor->render) && is_array($descriptor->render) ? $descriptor->render : [],
-                ],
+                'context' => $context,
             ]
         );
     }
@@ -83,6 +111,33 @@ final class ChangeJournalRecorder
     {
         $this->recordItem($change_set_id, $descriptor, $resolver_name, $old_value, $new_value, $old_value, 'completed', '', $save_context);
         $this->store->finishChangeSet($change_set_id, 'completed');
+    }
+
+    /**
+     * @param int                $change_set_id
+     * @param EditableDescriptor $descriptor
+     * @param string             $resolver_name
+     * @param mixed              $old_value
+     * @param mixed              $new_value
+     * @param string             $result_status
+     * @param string             $error_message
+     * @param array<string,mixed> $save_context
+     * @return void
+     */
+    public function recordBatchItem($change_set_id, EditableDescriptor $descriptor, $resolver_name, $old_value, $new_value, $result_status = 'completed', $error_message = '', array $save_context = [])
+    {
+        $this->recordItem($change_set_id, $descriptor, $resolver_name, $old_value, $new_value, $old_value, $result_status, $error_message, $save_context);
+    }
+
+    /**
+     * @param int    $change_set_id
+     * @param string $status
+     * @param string $error_message
+     * @return void
+     */
+    public function finishBatch($change_set_id, $status = 'completed', $error_message = '')
+    {
+        $this->store->finishChangeSet($change_set_id, $status, 0, $error_message);
     }
 
     /**

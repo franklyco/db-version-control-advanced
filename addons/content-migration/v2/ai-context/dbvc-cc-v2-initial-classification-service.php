@@ -87,10 +87,10 @@ final class DBVC_CC_V2_Initial_Classification_Service
                 continue;
             }
 
-            $object_key = isset($object_type['object_key']) ? sanitize_key((string) $object_type['object_key']) : '';
-            if ($object_key === '' || ! $this->is_classification_candidate($object_type)) {
-                continue;
-            }
+        $object_key = isset($object_type['object_key']) ? sanitize_key((string) $object_type['object_key']) : '';
+        if ($object_key === '' || ! $this->is_classification_candidate($object_type)) {
+            continue;
+        }
 
             $candidate_pool[] = $object_type;
         }
@@ -208,11 +208,54 @@ final class DBVC_CC_V2_Initial_Classification_Service
         $object_key = isset($object_type['object_key']) ? sanitize_key((string) $object_type['object_key']) : '';
         $label = isset($object_type['label']) ? (string) $object_type['label'] : $object_key;
         $taxonomy_refs = isset($object_type['taxonomy_refs']) && is_array($object_type['taxonomy_refs']) ? array_values($object_type['taxonomy_refs']) : [];
-        $candidate_tokens = $this->tokenize($object_key . ' ' . $label);
+        $object_type_context = isset($object_type['object_type_context']) && is_array($object_type['object_type_context']) ? $object_type['object_type_context'] : [];
+        $context_purpose = isset($object_type_context['resolved_purpose']) ? (string) $object_type_context['resolved_purpose'] : '';
+        $entity_role = isset($object_type_context['entity_role']) ? sanitize_key((string) $object_type_context['entity_role']) : '';
+        $content_model = isset($object_type_context['content_model']) ? sanitize_key((string) $object_type_context['content_model']) : '';
+        $context_status = isset($object_type_context['status']) ? sanitize_key((string) $object_type_context['status']) : '';
+        $candidate_tokens = $this->tokenize($object_key . ' ' . $label . ' ' . $context_purpose . ' ' . $entity_role . ' ' . $content_model);
         $matched_tokens = array_values(array_intersect($candidate_tokens, isset($features['tokens']) && is_array($features['tokens']) ? $features['tokens'] : []));
 
         $score = $this->get_base_score($object_key);
         $rationale = [];
+
+        if (! empty($object_type_context)) {
+            if (in_array($context_status, ['complete', 'override'], true)) {
+                $score += 0.04;
+                $rationale[] = 'Object Type Context is complete for this target.';
+            } elseif (in_array($context_status, ['partial', 'registration_only'], true)) {
+                $score -= 0.08;
+                $rationale[] = 'Object Type Context is incomplete and should be reviewed.';
+            }
+
+            if (array_key_exists('supports_migration_target', $object_type_context) && empty($object_type_context['supports_migration_target'])) {
+                $score -= 0.35;
+                $rationale[] = 'Object Type Context marks this object as not migration-target eligible.';
+            }
+
+            if (! empty($object_type_context['requires_manual_review'])) {
+                $score -= 0.12;
+                $rationale[] = 'Object Type Context requires manual review for this object.';
+            }
+
+            if ($entity_role === 'primary_content') {
+                $score += 0.08;
+                $rationale[] = 'Object Type Context identifies this as a primary content object.';
+            } elseif (in_array($entity_role, ['supporting_content', 'reference_content'], true)) {
+                $score -= 0.04;
+            } elseif (in_array($entity_role, ['configuration', 'operational', 'system_only'], true)) {
+                $score -= 0.25;
+                $rationale[] = 'Object Type Context identifies this as configuration, operational, or system-only.';
+            }
+
+            if (! empty($features['is_service_like']) && in_array($content_model, ['detail_page', 'landing_page'], true)) {
+                $score += 0.04;
+            }
+
+            if (! empty($features['is_product_like']) && in_array($content_model, ['inventory_item', 'landing_page'], true)) {
+                $score += 0.04;
+            }
+        }
 
         if (! empty($matched_tokens)) {
             $score += min(0.18, count($matched_tokens) * 0.06);
@@ -266,6 +309,7 @@ final class DBVC_CC_V2_Initial_Classification_Service
                 : implode(' ', $rationale),
             'source_refs' => $source_refs,
             'taxonomy_refs' => $taxonomy_refs,
+            'object_type_context' => $this->compact_object_type_context($object_type_context),
         ];
     }
 
@@ -333,13 +377,23 @@ final class DBVC_CC_V2_Initial_Classification_Service
         $unambiguous = empty($alternates) || $gap_to_next >= 0.1;
         $reason_codes = [];
         $status = 'needs_review';
+        $object_type_context = isset($primary['object_type_context']) && is_array($primary['object_type_context']) ? $primary['object_type_context'] : [];
 
-        if ($primary_confidence < (float) $automation['blockBelowConfidence']) {
+        if (! empty($object_type_context) && array_key_exists('supports_migration_target', $object_type_context) && empty($object_type_context['supports_migration_target'])) {
+            $status = 'blocked';
+            $reason_codes[] = 'object_type_context_migration_disabled';
+        } elseif ($primary_confidence < (float) $automation['blockBelowConfidence']) {
             $status = 'blocked';
             $reason_codes[] = 'low_confidence';
         } elseif (! $unambiguous) {
             $status = 'needs_review';
             $reason_codes[] = 'ambiguous_primary_classification';
+        } elseif (! empty($object_type_context['requires_manual_review'])) {
+            $status = 'needs_review';
+            $reason_codes[] = 'object_type_context_requires_manual_review';
+        } elseif (isset($object_type_context['status']) && in_array(sanitize_key((string) $object_type_context['status']), ['partial', 'registration_only'], true)) {
+            $status = 'needs_review';
+            $reason_codes[] = 'object_type_context_incomplete';
         } elseif ($primary_confidence >= (float) $automation['autoAcceptMinConfidence']) {
             $status = 'auto_accept_candidate';
         } else {
@@ -378,6 +432,9 @@ final class DBVC_CC_V2_Initial_Classification_Service
                 'object_key' => isset($object_type['object_key']) ? (string) $object_type['object_key'] : '',
                 'label' => isset($object_type['label']) ? (string) $object_type['label'] : '',
                 'taxonomy_refs' => isset($object_type['taxonomy_refs']) && is_array($object_type['taxonomy_refs']) ? array_values($object_type['taxonomy_refs']) : [],
+                'object_type_context' => isset($object_type['object_type_context']) && is_array($object_type['object_type_context'])
+                    ? $this->compact_object_type_context($object_type['object_type_context'])
+                    : [],
             ];
         }
 
@@ -421,6 +478,31 @@ final class DBVC_CC_V2_Initial_Classification_Service
         }
 
         return 0.52;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function compact_object_type_context(array $context)
+    {
+        if (empty($context)) {
+            return [];
+        }
+
+        return [
+            'object_id' => isset($context['object_id']) ? sanitize_text_field((string) $context['object_id']) : '',
+            'object_kind' => isset($context['object_kind']) ? sanitize_key((string) $context['object_kind']) : '',
+            'object_key' => isset($context['object_key']) ? sanitize_key((string) $context['object_key']) : '',
+            'resolved_purpose' => isset($context['resolved_purpose']) ? sanitize_textarea_field((string) $context['resolved_purpose']) : '',
+            'entity_role' => isset($context['entity_role']) ? sanitize_key((string) $context['entity_role']) : '',
+            'content_model' => isset($context['content_model']) ? sanitize_key((string) $context['content_model']) : '',
+            'supports_migration_target' => ! empty($context['supports_migration_target']),
+            'supports_generation' => ! empty($context['supports_generation']),
+            'requires_manual_review' => ! empty($context['requires_manual_review']),
+            'status' => isset($context['status']) ? sanitize_key((string) $context['status']) : '',
+            'resolved_from' => isset($context['resolved_from']) ? sanitize_key((string) $context['resolved_from']) : '',
+        ];
     }
 
     /**

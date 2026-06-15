@@ -11,6 +11,7 @@ use Dbvc\VisualEditor\Registry\EditableRegistry;
 use Dbvc\VisualEditor\Resolvers\ResolverRegistry;
 use Dbvc\VisualEditor\Rest\DescriptorPayloadBuilder;
 use Dbvc\VisualEditor\Rest\Controllers\CollectionSeedController;
+use Dbvc\VisualEditor\Rest\Controllers\CompositeSaveController;
 use Dbvc\VisualEditor\Rest\Controllers\DescriptorController;
 use Dbvc\VisualEditor\Rest\Controllers\ObjectSearchController;
 use Dbvc\VisualEditor\Rest\Controllers\ReferenceSearchController;
@@ -112,6 +113,7 @@ final class Routes
         (new ObjectSearchController($this->edit_mode, $this->capabilities))->register();
         (new SharedGlobalFieldsController($this->registry, $this->edit_mode, $this->capabilities, $payloads))->register();
         (new CollectionSeedController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
+        (new CompositeSaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
         (new SaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
     }
 }

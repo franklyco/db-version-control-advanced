@@ -2897,6 +2897,15 @@
   }
 
   function handleToolbarClick(event) {
+    const statusbarActionNode = event.target && typeof event.target.closest === 'function'
+      ? event.target.closest('[data-dbvc-ve-statusbar-action]')
+      : null;
+
+    if (statusbarActionNode) {
+      handleStatusBarClick(event);
+      return;
+    }
+
     const actionNode = event.target && typeof event.target.closest === 'function'
       ? event.target.closest('[data-dbvc-ve-toolbar-action]')
       : null;
@@ -4133,10 +4142,28 @@
     }) || null;
   }
 
+  function canOpenMarkerPanelFromNode(node) {
+    if (!node || typeof node.getBoundingClientRect !== 'function') {
+      return false;
+    }
+
+    const rect = node.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return false;
+    }
+
+    const styles = window.getComputedStyle ? window.getComputedStyle(node) : null;
+
+    return !styles || (styles.display !== 'none' && styles.visibility !== 'hidden');
+  }
+
   function locateFieldIndexMarker(token, openPanel) {
     const node = findMarkerByToken(token);
 
     if (!node) {
+      if (openPanel) {
+        openToolbarDescriptorPanel(token);
+      }
       return;
     }
 
@@ -4156,8 +4183,12 @@
       }
     }, 1300);
 
-    if (openPanel && state.session) {
-      openEditor(node, state.session);
+    if (openPanel) {
+      if (state.session && canOpenMarkerPanelFromNode(node)) {
+        openEditor(node, state.session);
+      } else {
+        openToolbarDescriptorPanel(token);
+      }
     }
   }
 
@@ -6162,6 +6193,239 @@
     return parts.filter(Boolean).join(' / ');
   }
 
+  function formatCompositeReadinessMeta(readiness) {
+    if (!readiness || typeof readiness !== 'object') {
+      return '';
+    }
+
+    const dynamicCount = Number(readiness.dynamicCount || 0) || 0;
+    const readyCount = Number(readiness.readyChildCount || 0) || 0;
+    const blockedCount = Number(readiness.blockedChildCount || 0) || 0;
+    const ownerGroups = Array.isArray(readiness.ownerGroups) ? readiness.ownerGroups : [];
+    const ackTypes = Array.isArray(readiness.requiresAcknowledgementTypes)
+      ? readiness.requiresAcknowledgementTypes.map(function (type) {
+        return String(type).replace(/_/g, ' ');
+      }).filter(Boolean)
+      : [];
+    const parts = [];
+
+    parts.push(`${strings().panelCompositeReadyFields || 'Ready fields'}: ${readyCount}/${dynamicCount}`);
+
+    if (blockedCount > 0) {
+      parts.push(`${strings().panelCompositeBlockedFields || 'Blocked'}: ${blockedCount}`);
+    }
+
+    if (ownerGroups.length > 0) {
+      parts.push(`${strings().panelCompositeOwners || 'Owners'}: ${ownerGroups.length}`);
+    }
+
+    if (ackTypes.length > 0) {
+      parts.push(`${strings().panelCompositeAcknowledgements || 'Acknowledgements'}: ${ackTypes.join(', ')}`);
+    }
+
+    return parts.join(' · ');
+  }
+
+  function isCompositeBatchSaveReady(result) {
+    const composite = result && result.compositeText && typeof result.compositeText === 'object'
+      ? result.compositeText
+      : null;
+    const readiness = composite && composite.saveReadiness && typeof composite.saveReadiness === 'object'
+      ? composite.saveReadiness
+      : null;
+
+    return Boolean(readiness && readiness.canBatchSave);
+  }
+
+  function isActiveCompositeBatchSave() {
+    return Boolean(
+      state.activeDescriptor
+        && state.activeDescriptor.ui
+        && state.activeDescriptor.ui.input === 'composite_text'
+        && state.activeController
+        && state.activeController.canBatchSave
+    );
+  }
+
+  function getCompositeAcknowledgementTypes(result) {
+    const composite = result && result.compositeText && typeof result.compositeText === 'object'
+      ? result.compositeText
+      : null;
+    const readiness = composite && composite.saveReadiness && typeof composite.saveReadiness === 'object'
+      ? composite.saveReadiness
+      : null;
+    const types = readiness && Array.isArray(readiness.requiresAcknowledgementTypes)
+      ? readiness.requiresAcknowledgementTypes
+      : [];
+
+    return types.map(function (type) {
+      return String(type || '').trim();
+    }).filter(Boolean);
+  }
+
+  function resolveCompositeAcknowledgementType(types) {
+    if (types.includes('related')) {
+      return 'related';
+    }
+
+    if (types.includes('shared')) {
+      return 'shared';
+    }
+
+    return 'none';
+  }
+
+  function normalizeCompositeHtmlToText(html) {
+    const wrapper = document.createElement('div');
+
+    wrapper.innerHTML = String(html || '').replace(/<br\s*\/?>/gi, '\n');
+
+    return (wrapper.textContent || '').trim();
+  }
+
+  function buildCompositeHtmlFromSegments(segments, valuesByIndex) {
+    const sourceSegments = Array.isArray(segments) ? segments : [];
+
+    return sourceSegments.map(function (segment) {
+      if (!segment || typeof segment !== 'object') {
+        return '';
+      }
+
+      const type = segment.type ? String(segment.type) : '';
+      if (type === 'literal') {
+        return typeof segment.text === 'string' ? segment.text : '';
+      }
+
+      if (type === 'dynamic') {
+        const index = Number(segment.index);
+        const value = Number.isFinite(index) && Object.prototype.hasOwnProperty.call(valuesByIndex, index)
+          ? valuesByIndex[index]
+          : (typeof segment.expression === 'string' ? segment.expression : '');
+
+        return escapeHtml(value === null || typeof value === 'undefined' ? '' : String(value));
+      }
+
+      return '';
+    }).join('');
+  }
+
+  function buildCompositeValuesByIndex(children, useDisplayValue) {
+    const values = {};
+
+    (Array.isArray(children) ? children : []).forEach(function (child) {
+      if (!child || typeof child !== 'object') {
+        return;
+      }
+
+      const index = Number(child.index);
+      if (!Number.isFinite(index)) {
+        return;
+      }
+
+      if (useDisplayValue && Object.prototype.hasOwnProperty.call(child, 'displayValue')) {
+        values[index] = extractDisplayText(child.displayValue, child.displayMode);
+        return;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(child, 'currentValue')) {
+        values[index] = child.currentValue;
+        return;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(child, 'value')) {
+        values[index] = child.value;
+      }
+    });
+
+    return values;
+  }
+
+  function createCompositeChildEditor(child, onChange) {
+    const input = child && child.input ? String(child.input) : 'text';
+    const index = child && typeof child.index !== 'undefined' ? String(child.index) : String(Date.now());
+    const initialValue = child && Object.prototype.hasOwnProperty.call(child, 'currentValue') ? child.currentValue : '';
+    let field;
+
+    if (input === 'select') {
+      const descriptor = child && child.descriptor && typeof child.descriptor === 'object' ? child.descriptor : {};
+      const options = Array.isArray(descriptor.ui && descriptor.ui.options) ? descriptor.ui.options : [];
+      const initialString = initialValue === null || typeof initialValue === 'undefined' ? '' : String(initialValue);
+      let matchedInitialOption = false;
+
+      field = document.createElement('select');
+      field.className = 'dbvc-ve-panel__input dbvc-ve-panel__select dbvc-ve-panel__composite-input';
+
+      options.forEach(function (option) {
+        const item = document.createElement('option');
+        const optionValue = option && typeof option.value !== 'undefined' ? String(option.value) : '';
+
+        item.value = optionValue;
+        item.textContent = option && option.label ? String(option.label) : optionValue;
+        item.selected = optionValue === initialString;
+        matchedInitialOption = matchedInitialOption || item.selected;
+        field.appendChild(item);
+      });
+
+      if (!matchedInitialOption) {
+        const current = document.createElement('option');
+
+        current.value = initialString;
+        current.textContent = initialString || (strings().panelEmptyValue || 'Empty value');
+        current.selected = true;
+        field.insertBefore(current, field.firstChild);
+      }
+    } else if (input === 'textarea' || input === 'text') {
+      field = document.createElement('textarea');
+      field.className = 'dbvc-ve-panel__input dbvc-ve-panel__input--textlike dbvc-ve-panel__composite-input';
+      field.rows = input === 'textarea' ? 4 : 2;
+      field.value = initialValue === null || typeof initialValue === 'undefined' ? '' : String(initialValue);
+      syncTextareaAutoHeight(field);
+      field.addEventListener('input', function () {
+        syncTextareaAutoHeight(field);
+      });
+    } else {
+      field = document.createElement('input');
+      field.className = 'dbvc-ve-panel__input dbvc-ve-panel__composite-input';
+      field.type = ['number', 'url', 'email'].includes(input) ? input : 'text';
+      field.value = initialValue === null || typeof initialValue === 'undefined' ? '' : String(initialValue);
+    }
+
+    field.id = `dbvc-ve-composite-child-${index}`;
+    field.addEventListener('input', onChange);
+    field.addEventListener('change', onChange);
+
+    return {
+      element: field,
+      getValue() {
+        return field.value;
+      },
+      getPreviewValue() {
+        if (field.tagName === 'SELECT') {
+          const selected = field.options[field.selectedIndex];
+
+          return selected ? selected.textContent : field.value;
+        }
+
+        return field.value;
+      },
+      setValue(nextValue) {
+        field.value = nextValue === null || typeof nextValue === 'undefined' ? '' : String(nextValue);
+        if (field.tagName === 'TEXTAREA') {
+          syncTextareaAutoHeight(field);
+        }
+      },
+      focus() {
+        field.focus();
+        if (typeof field.select === 'function') {
+          field.select();
+        }
+      },
+      setDisabled(disabled) {
+        field.disabled = Boolean(disabled);
+      }
+    };
+  }
+
   function createCompositeTextController(value, descriptor, result) {
     const wrapper = document.createElement('div');
     const previewBlock = document.createElement('div');
@@ -6181,6 +6445,32 @@
     const template = typeof composite.template === 'string'
       ? composite.template
       : (descriptor && descriptor.source && typeof descriptor.source.template === 'string' ? descriptor.source.template : '');
+    const unsupportedChildCount = Number(composite.unsupportedChildCount || 0) || 0;
+    const readiness = composite.saveReadiness && typeof composite.saveReadiness === 'object'
+      ? composite.saveReadiness
+      : null;
+    const canBatchSave = Boolean(readiness && readiness.canBatchSave);
+    const childControllers = {};
+    const baseValuesByIndex = buildCompositeValuesByIndex(children, false);
+    let firstEditableController = null;
+
+    function buildCurrentValuesByIndex(usePreviewValues) {
+      const values = buildCompositeValuesByIndex(children, true);
+
+      Object.keys(childControllers).forEach(function (index) {
+        values[index] = usePreviewValues && typeof childControllers[index].getPreviewValue === 'function'
+          ? childControllers[index].getPreviewValue()
+          : childControllers[index].getValue();
+      });
+
+      return values;
+    }
+
+    function refreshPreview() {
+      const html = buildCompositeHtmlFromSegments(composite.segments, buildCurrentValuesByIndex(true));
+
+      preview.textContent = normalizeCompositeHtmlToText(html);
+    }
 
     wrapper.className = 'dbvc-ve-panel__composite';
     previewBlock.className = 'dbvc-ve-panel__composite-preview';
@@ -6200,6 +6490,51 @@
     templateBlock.appendChild(templateSummary);
     templateBlock.appendChild(templateBody);
     wrapper.appendChild(templateBlock);
+
+    if (unsupportedChildCount > 0) {
+      const note = document.createElement('div');
+
+      note.className = 'dbvc-ve-panel__composite-note';
+      note.textContent = strings().panelCompositePartial || 'Some dynamic tags in this Bricks text template are locked because Visual Editor cannot resolve them to safe field contracts yet.';
+      wrapper.appendChild(note);
+    }
+
+    if (readiness) {
+      const readinessBlock = document.createElement('div');
+      const readinessTitle = document.createElement('div');
+      const readinessDetail = document.createElement('div');
+      const readinessMeta = document.createElement('div');
+      const blockers = Array.isArray(readiness.blockers) ? readiness.blockers.filter(Boolean) : [];
+
+      readinessBlock.className = 'dbvc-ve-panel__composite-readiness';
+      readinessBlock.dataset.status = readiness.canBatchSave ? 'ready' : (readiness.childContractsReady ? 'pending' : 'blocked');
+      readinessTitle.className = 'dbvc-ve-panel__composite-readiness-title';
+      readinessDetail.className = 'dbvc-ve-panel__composite-readiness-detail';
+      readinessMeta.className = 'dbvc-ve-panel__composite-readiness-meta';
+      readinessTitle.textContent = strings().panelCompositeReadiness || 'Batch save preflight';
+      readinessDetail.textContent = readiness.message
+        ? String(readiness.message)
+        : (strings().panelCompositeBatchDisabled || 'Composite batch save is not enabled yet.');
+      readinessMeta.textContent = formatCompositeReadinessMeta(readiness);
+      readinessBlock.appendChild(readinessTitle);
+      readinessBlock.appendChild(readinessDetail);
+      if (readinessMeta.textContent) {
+        readinessBlock.appendChild(readinessMeta);
+      }
+      if (blockers.length) {
+        const blockerList = document.createElement('ul');
+
+        blockerList.className = 'dbvc-ve-panel__composite-readiness-list';
+        blockers.slice(0, 4).forEach(function (reason) {
+          const item = document.createElement('li');
+
+          item.textContent = String(reason);
+          blockerList.appendChild(item);
+        });
+        readinessBlock.appendChild(blockerList);
+      }
+      wrapper.appendChild(readinessBlock);
+    }
 
     list.className = 'dbvc-ve-panel__composite-list';
 
@@ -6224,6 +6559,7 @@
       const label = child && child.label ? String(child.label) : (strings().fieldIndexFieldFallback || 'Field');
       const sourceMeta = formatCompositeChildSource(child);
       const status = child && child.status ? String(child.status) : 'unsupported';
+      const warningText = child && child.warning ? String(child.warning) : (child && child.blockReason ? String(child.blockReason) : '');
 
       row.className = 'dbvc-ve-panel__composite-child';
       row.dataset.status = status;
@@ -6237,12 +6573,12 @@
 
       title.textContent = label;
       expression.textContent = child && child.expression ? String(child.expression) : '';
-      badge.textContent = child && child.canEdit
-        ? (strings().panelCompositeChildReady || 'Source editable')
+      badge.textContent = child && (child.saveReady || child.canEdit)
+        ? (strings().panelCompositeChildReady || 'Save contract ready')
         : (status === 'readonly' ? (strings().panelInspectOnly || 'Inspect only') : (strings().panelLocked || 'Locked'));
       valueNode.textContent = displayText || '';
       meta.textContent = sourceMeta;
-      warning.textContent = child && child.warning ? String(child.warning) : '';
+      warning.textContent = warningText;
 
       header.appendChild(title);
       header.appendChild(badge);
@@ -6250,7 +6586,18 @@
       if (expression.textContent) {
         row.appendChild(expression);
       }
-      row.appendChild(valueNode);
+      if (canBatchSave && child && child.saveReady) {
+        const childController = createCompositeChildEditor(child, refreshPreview);
+        const childIndex = String(child.index);
+
+        childControllers[childIndex] = childController;
+        if (!firstEditableController) {
+          firstEditableController = childController;
+        }
+        row.appendChild(childController.element);
+      } else {
+        row.appendChild(valueNode);
+      }
       if (meta.textContent) {
         row.appendChild(meta);
       }
@@ -6264,14 +6611,80 @@
 
     return createNoopLifecycle({
       element: wrapper,
+      canBatchSave,
+      getAcknowledgementTypes() {
+        return readiness && Array.isArray(readiness.requiresAcknowledgementTypes)
+          ? readiness.requiresAcknowledgementTypes
+          : [];
+      },
       getValue() {
-        return value;
+        return Object.keys(childControllers).map(function (index) {
+          return {
+            index: Number(index),
+            value: childControllers[index].getValue()
+          };
+        });
       },
-      setValue() {},
+      getBaseValues() {
+        return Object.keys(childControllers).map(function (index) {
+          return {
+            index: Number(index),
+            value: Object.prototype.hasOwnProperty.call(baseValuesByIndex, index) ? baseValuesByIndex[index] : ''
+          };
+        });
+      },
+      setValue(nextValue) {
+        const nextChildren = nextValue && Array.isArray(nextValue.children)
+          ? nextValue.children
+          : [];
+        const nextByIndex = {};
+
+        nextChildren.forEach(function (child) {
+          if (!child || typeof child !== 'object') {
+            return;
+          }
+
+          const index = Number(child.index);
+          if (Number.isFinite(index)) {
+            nextByIndex[index] = child;
+          }
+        });
+
+        Object.keys(childControllers).forEach(function (index) {
+          const child = nextByIndex[index];
+
+          if (child && Object.prototype.hasOwnProperty.call(child, 'value')) {
+            childControllers[index].setValue(child.value);
+            baseValuesByIndex[index] = child.value;
+          }
+        });
+
+        if (nextChildren.length) {
+          const html = buildCompositeHtmlFromSegments(composite.segments, buildCompositeValuesByIndex(nextChildren, true));
+
+          preview.textContent = normalizeCompositeHtmlToText(html);
+        } else {
+          refreshPreview();
+        }
+      },
       focus() {
-        preview.scrollIntoView({ block: 'nearest' });
+        if (firstEditableController) {
+          firstEditableController.focus();
+        } else {
+          preview.scrollIntoView({ block: 'nearest' });
+        }
       },
-      setDisabled() {}
+      setDisabled(disabled) {
+        wrapper.classList.toggle('is-disabled', Boolean(disabled));
+        Object.keys(childControllers).forEach(function (index) {
+          childControllers[index].setDisabled(disabled);
+        });
+      },
+      buildPatchedHtml(saveResult) {
+        const saveChildren = saveResult && Array.isArray(saveResult.children) ? saveResult.children : [];
+
+        return buildCompositeHtmlFromSegments(composite.segments, buildCompositeValuesByIndex(saveChildren, true));
+      }
     });
   }
 
@@ -7966,7 +8379,9 @@
     const entityType = getDescriptorEntityType(state.activeDescriptor);
     const renderContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
     const isMissingMedia = isMissingMediaMarker(state.activeNode);
+    const isCompositeBatch = isActiveCompositeBatchSave();
     const canNoReloadSave = !isMissingMedia
+      && !isCompositeBatch
       && status !== 'readonly'
       && (renderContext === 'query_collection' || canPatchRenderContextWithoutReload(renderContext));
     const offersReloadSave = canNoReloadSave || isMissingMedia;
@@ -7978,13 +8393,15 @@
       panelNodes.saveNoReloadButton.disabled = disabled;
     }
 
-    if (status === 'readonly') {
+    if (status === 'readonly' && !isCompositeBatch) {
       panelNodes.saveButton.textContent = strings().panelInspectOnly || 'Inspect only';
       panelNodes.saveButton.disabled = true;
       return;
     }
 
-    if (offersReloadSave) {
+    if (isCompositeBatch) {
+      panelNodes.saveButton.textContent = strings().panelCompositeSaveAll || 'Save All';
+    } else if (offersReloadSave) {
       panelNodes.saveButton.textContent = strings().panelSaveAndReload || 'Save and Reload';
     } else if (needsSharedAck && acknowledgementType === 'related') {
       panelNodes.saveButton.textContent = resolveRelatedSaveLabel(entityType);
@@ -8175,13 +8592,16 @@
     const panelNodes = getPanelNodes();
     const inputType = (descriptor.ui && descriptor.ui.input) || 'text';
     const controller = createFieldController(inputType, result.currentValue, descriptor, result);
-    const canEdit = Boolean(result.canEdit) && !result.sourceMismatch;
+    const compositeCanEdit = isCompositeBatchSaveReady(result);
+    const compositeAckTypes = compositeCanEdit ? getCompositeAcknowledgementTypes(result) : [];
+    const compositeAckType = resolveCompositeAcknowledgementType(compositeAckTypes);
+    const canEdit = (Boolean(result.canEdit) || compositeCanEdit) && !result.sourceMismatch;
     let statusMessage = '';
 
     destroyActiveController();
     state.activeController = controller;
-    state.activeRequiresSharedScopeAck = Boolean(result.requiresSharedScopeAck) && canEdit;
-    state.activeAcknowledgementType = result.acknowledgementType || 'none';
+    state.activeRequiresSharedScopeAck = (Boolean(result.requiresSharedScopeAck) || compositeAckTypes.length > 0) && canEdit;
+    state.activeAcknowledgementType = compositeAckType !== 'none' ? compositeAckType : (result.acknowledgementType || 'none');
     state.sharedScopeAcknowledged = false;
 
     if (result.sourceMismatch) {
@@ -8206,7 +8626,16 @@
     panelNodes.fieldLabel.textContent = descriptor.ui && descriptor.ui.label ? descriptor.ui.label : '';
     renderEntityHeader(result, panelNodes);
     renderSourceMeta(result, panelNodes);
-    renderPanelNotice(result, panelNodes, canEdit);
+    renderPanelNotice(
+      compositeCanEdit
+        ? Object.assign({}, result, {
+            requiresSharedScopeAck: compositeAckTypes.length > 0,
+            acknowledgementType: state.activeAcknowledgementType
+          })
+        : result,
+      panelNodes,
+      canEdit
+    );
     updateStatusBar({
       entitySummary: result && result.entitySummary ? result.entitySummary : null
     });
@@ -8561,6 +8990,79 @@
     });
   }
 
+  function updateCachedCompositePayload(saveResult) {
+    if (!state.activeDescriptor || !saveResult || !Array.isArray(saveResult.children)) {
+      return;
+    }
+
+    const payload = getCachedDescriptorPayload(state.activeDescriptor.token);
+    if (!payload || !payload.compositeText || !Array.isArray(payload.compositeText.children)) {
+      return;
+    }
+
+    const childrenByIndex = {};
+
+    saveResult.children.forEach(function (child) {
+      if (!child || typeof child !== 'object') {
+        return;
+      }
+
+      const index = Number(child.index);
+      if (Number.isFinite(index)) {
+        childrenByIndex[index] = child;
+      }
+    });
+
+    payload.compositeText.children.forEach(function (child) {
+      const index = Number(child && child.index);
+      const savedChild = Number.isFinite(index) ? childrenByIndex[index] : null;
+
+      if (!savedChild) {
+        return;
+      }
+
+      child.currentValue = savedChild.value;
+      child.displayValue = savedChild.displayValue;
+      child.displayMode = savedChild.displayMode;
+      if (savedChild.sourceSummary) {
+        child.sourceSummary = clonePayload(savedChild.sourceSummary);
+      }
+      if (savedChild.entitySummary) {
+        child.entitySummary = clonePayload(savedChild.entitySummary);
+      }
+      if (savedChild.saveSummary) {
+        child.saveSummary = clonePayload(savedChild.saveSummary);
+      }
+    });
+
+    const html = buildCompositeHtmlFromSegments(
+      payload.compositeText.segments,
+      buildCompositeValuesByIndex(saveResult.children, true)
+    );
+
+    payload.compositeText.previewText = normalizeCompositeHtmlToText(html);
+  }
+
+  function patchCompositeTextNode(saveResult) {
+    if (!state.activeController || typeof state.activeController.buildPatchedHtml !== 'function') {
+      return '';
+    }
+
+    const activeNode = state.activeNode && state.activeNode.isConnected ? state.activeNode : null;
+    const targetNode = activeNode || (state.activeDescriptor ? findMarkerByToken(state.activeDescriptor.token) : null);
+    if (!targetNode) {
+      return '';
+    }
+
+    const html = state.activeController.buildPatchedHtml(saveResult);
+
+    targetNode.innerHTML = html;
+    targetNode.dataset.dbvcVeDisplayValue = normalizeValue(normalizeCompositeHtmlToText(html));
+    scheduleBadgeLayout();
+
+    return html;
+  }
+
   async function openToolbarDescriptorPanel(token) {
     const panelNodes = getPanelNodes();
     const cached = getCachedDescriptorPayload(token);
@@ -8738,7 +9240,11 @@
 
     const token = state.activeDescriptor.token;
     const value = state.activeController.getValue();
+    const baseValues = typeof state.activeController.getBaseValues === 'function'
+      ? state.activeController.getBaseValues()
+      : [];
     const acknowledgeSharedScope = !state.activeRequiresSharedScopeAck || state.sharedScopeAcknowledged;
+    const isCompositeSave = isActiveCompositeBatchSave();
 
     if (!acknowledgeSharedScope) {
       panelNodes.panel.dataset.state = 'locked';
@@ -8765,7 +9271,16 @@
         await refreshSession({ silent: true, touchOnly: true });
       }
 
-      const saveResult = await window.DBVCVisualEditorApi.save(state.session.sessionId, token, value, acknowledgeSharedScope);
+      const saveResult = isCompositeSave
+        ? await window.DBVCVisualEditorApi.saveComposite(state.session.sessionId, token, value, {
+            baseValues,
+            acknowledgeCompositeScope: acknowledgeSharedScope,
+            acknowledgements: {
+              related: state.activeAcknowledgementType === 'related' && acknowledgeSharedScope,
+              shared: state.activeAcknowledgementType === 'shared' && acknowledgeSharedScope
+            }
+          })
+        : await window.DBVCVisualEditorApi.save(state.session.sessionId, token, value, acknowledgeSharedScope);
       const syncGroup = getActiveSyncGroup();
       const sourceGroup = getActiveSourceGroup();
       const activeContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
@@ -8774,8 +9289,35 @@
       const canDeferReload = activeContext === 'query_collection' || canPatchWithoutReload;
       const shouldReloadAfterSave = activeMissingMedia
         || ((activeContext === 'query_collection' || canPatchWithoutReload) && saveOptions.reloadAfterSave !== false);
-      const saveSummaryMessage = formatSaveSummary(saveResult);
+      const saveSummaryMessage = isCompositeSave ? '' : formatSaveSummary(saveResult);
       let successMessage = saveSummaryMessage || (saveResult && saveResult.message ? saveResult.message : (strings().panelSaved || 'Saved successfully.'));
+
+      if (isCompositeSave) {
+        const activePayload = state.activeDescriptor ? getCachedDescriptorPayload(state.activeDescriptor.token) : null;
+        const patchedHtml = patchCompositeTextNode(saveResult);
+
+        updateCachedCompositePayload(saveResult);
+        state.activeController.setValue(saveResult);
+        state.activeController.setDisabled(false);
+        panelNodes.panel.dataset.state = 'saved';
+        panelNodes.status.textContent = patchedHtml
+          ? (strings().panelCompositeSavedNoReload || successMessage || 'Composite fields saved and updated on the page.')
+          : (successMessage || strings().panelSaved || 'Saved successfully.');
+        updateSaveButtonState(panelNodes, true);
+        schedulePanelViewportClamp();
+        updateStatusBar({
+          kind: 'ready',
+          count: getMarkerCount(),
+          message: panelNodes.status.textContent,
+          entitySummary: activePayload && activePayload.entitySummary ? activePayload.entitySummary : null
+        });
+
+        if (saveOptions.closeAfterSave) {
+          closeEditorPanel();
+        }
+
+        return;
+      }
 
       if (shouldReloadAfterSave) {
         if (activeContext === 'query_collection') {
