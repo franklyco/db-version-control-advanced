@@ -1,7 +1,7 @@
 # AI Package Foundation Spec
 
-Status: Draft foundation spec  
-Date: 2026-04-07  
+Status: Implemented foundation spec with rollout follow-up
+Date: 2026-06-16
 Scope: Core DBVC planning baseline for AI-facing sample packages and AI submission package intake
 
 ## Purpose
@@ -61,7 +61,7 @@ The new AI package feature should improve AI usability without weakening DBVC's 
 - Make outbound AI credentials mandatory for this feature.
 - Perform AI-driven repair or rewriting during import.
 - Ship first-release support for menus, options, attachments, or media packaging as part of the AI submission contract.
-- Couple this feature to the Content Migration addon runtime.
+- Require the Content Migration addon runtime. Provider-backed Object Type Context and Field Context may be used when available, but sample package generation must degrade safely when those providers are unavailable.
 
 ## Product Boundary
 
@@ -197,8 +197,9 @@ Recommended top-level manifest keys:
 - `generated_at`
 - `dbvc_version`
 - `site_origin`
-- `site_fingerprint`
 - `artifacts`
+
+Sample package manifests include a top-level `site_fingerprint` because they describe the source site DBVC generated. Returned submission package manifests must put that same value under `source_sample_package.site_fingerprint` so intake can distinguish source-package identity from returned-package metadata.
 
 ## Sample Package Minimum Manifest
 
@@ -273,6 +274,14 @@ Minimum fields:
 
 The `generator` block may be partially blank when a human assembles the package manually.
 
+Canonical `intended_operation` values are:
+
+- `create_only`
+- `update_only`
+- `create_or_update`
+
+Compatibility aliases such as `create_and_update` may be accepted with warnings, but generated package guidance should use canonical values only.
+
 ## Package Profiles
 
 Two sample-package generation profiles are defined for v1:
@@ -326,6 +335,44 @@ Compact profile rules:
 - no duplicated root docs for README, AGENTS, OUTPUT_CONTRACT, USER_RULES, or VALIDATION_RULES
 - no repeated template snapshots inside markdown
 - no multi-variant output unless the operator explicitly overrides the variant setting
+
+### Compact Context Artifact Contract
+
+Each compact `.context.json` file is AI authoring context, not a provider debug dump. It should stay small and avoid internal system-specific properties.
+
+Minimum shape:
+
+```json
+{
+  "artifact_type": "dbvc_ai_sample_context",
+  "entity_kind": "post",
+  "object_key": "listing",
+  "sample_json": "samples/posts/listing.json",
+  "object": {
+    "context": "Authoring purpose for this object type."
+  },
+  "fields": {
+    "post_title": {
+      "type": "text",
+      "choices": [],
+      "context": "Use as the human-readable title."
+    },
+    "acf.status": {
+      "type": "select",
+      "choices": ["available", "pending", "sold"],
+      "context": "Use the current lifecycle status."
+    }
+  }
+}
+```
+
+Field `context` should use the best available provider context in this order:
+
+1. `resolved_purpose`
+2. `effective_purpose`
+3. `default_purpose`
+
+The package-facing context must not include provider trace data, hashes, confidence internals, raw field registries, or other implementation-only metadata unless a future importer contract explicitly requires it.
 
 ### Full Reference Sample Package Layout
 
@@ -1119,7 +1166,7 @@ This section captures decisions that should be treated as locked planning defaul
 
 ### Entity Identity and Operation Inference
 
-V1 should support mixed `create_and_update` packages.
+V1 supports mixed `create_or_update` packages. Legacy `create_and_update` values may be normalized with a warning for compatibility.
 
 Operation intent is inferred per entity:
 

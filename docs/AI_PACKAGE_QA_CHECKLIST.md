@@ -1,6 +1,6 @@
 # AI Package Manual QA Checklist
 
-Last updated: 2026-04-09
+Last updated: 2026-06-16
 
 ## Runtime Smoke
 
@@ -11,21 +11,42 @@ Last updated: 2026-04-09
 
 ## Tools > Download Sample Entities
 
-- Open `DBVC > Tools`.
+- Open `DBVC Export > Tools`.
 - Confirm the schema readiness, ACF coverage, and current fingerprint summary render.
 - Generate a sample package for at least one post type and one taxonomy.
-- Download the ZIP and confirm it contains:
+- Confirm the default package profile is `Compact AI Chat`.
+- Download the ZIP and confirm the compact package contains:
   - `dbvc-ai-manifest.json`
-  - top-level docs such as `README.md`, `AGENTS.md`, `STARTER_PROMPT.md`, `VALIDATION_RULES.md`
-  - schema artifacts
-  - per-sample `.json` and `.md` files
+  - `START_HERE.md`
+  - `SCHEMA_COMPACT.json`
+  - one `samples/posts/{post_type}.json` file for each selected post type
+  - one sibling `samples/posts/{post_type}.context.json` file for each selected post type
+  - one `samples/terms/{taxonomy}.json` file for each selected taxonomy
+  - one sibling `samples/terms/{taxonomy}.context.json` file for each selected taxonomy
+- Confirm each `.context.json` file keeps only the authoring context needed by AI tools:
+  - object context
+  - field `type`
+  - field `choices`
+  - best available field `context`
+- Confirm `START_HERE.md` and `SCHEMA_COMPACT.json` include the required returned `dbvc-ai-manifest.json` template with:
+  - `package_type: "dbvc_ai_submission_package"`
+  - `package_schema_version`
+  - `source_sample_package.site_fingerprint`
+  - `source_sample_package.package_schema_version`
+  - `intended_operation`
+  - `counts`
+- Switch to `Full Reference` only when explicitly testing the richer package profile.
 
 ## Configure > AI + Integrations
 
 - Open `DBVC Export > Configure > AI + Integrations`.
-- Confirm OpenAI is the default provider.
+- Confirm generation defaults persist after saving.
+- Confirm the package profile setting includes `Compact AI Chat` and `Full Reference`.
+- Confirm the validation defaults include the site fingerprint mismatch policy:
+  - `Block mismatched packages`
+  - `Allow with warning`
 - Save defaults without an API key and confirm settings persist.
-- Add an API key in a safe local environment and confirm the model catalog refreshes.
+- If testing provider catalog behavior in a safe local environment, add an API key and confirm the model catalog refreshes.
 - Confirm the model dropdown still renders a valid fallback when the catalog is unavailable.
 
 ## Legacy Upload Guard
@@ -38,8 +59,11 @@ Last updated: 2026-04-09
 
 - Upload a sample package ZIP to the import surface.
 - Confirm DBVC blocks the package as the wrong package type.
-- Upload a submission package with a mismatched fingerprint.
-- Confirm DBVC blocks the package before translation/import.
+- Upload a submission package with no usable source sample package fingerprint.
+- Confirm DBVC blocks with `site_fingerprint_missing`.
+- Set the mismatch policy to `Block mismatched packages`.
+- Upload a submission package with a true mismatched fingerprint.
+- Confirm DBVC blocks with `site_fingerprint_mismatch` before import.
 
 ## AI Intake Warnings
 
@@ -47,10 +71,18 @@ Last updated: 2026-04-09
 - Confirm DBVC shows `valid_with_warnings`.
 - Confirm warning confirmation is required when the warning policy is `confirm`.
 - Confirm validation and translation artifacts are downloadable from the review surface.
+- Set the mismatch policy to `Allow with warning`.
+- Upload a submission package with a true mismatched fingerprint.
+- Confirm DBVC downgrades `site_fingerprint_mismatch` to a warning and still requires the normal warning confirmation flow.
+- Upload a legacy AI-generated submission manifest that has root `site_fingerprint` but no `source_sample_package.site_fingerprint`.
+- Confirm DBVC accepts it with `site_fingerprint_legacy_top_level`.
+- Upload a legacy AI-generated submission manifest that omits `intended_operation` but includes `validation_defaults.package_mode`.
+- Confirm DBVC accepts it with `operation_inferred_from_validation_defaults`.
+- If `validation_defaults.package_mode` is `create_and_update`, confirm DBVC normalizes it to `create_or_update` with `operation_legacy_alias`.
 
 ## Create and Update Flow
 
-- Upload a create-only or mixed create/update AI package.
+- Upload a `create_only`, `update_only`, or `create_or_update` AI package.
 - Confirm update entities resolve by `vf_object_uid` first.
 - Confirm update entities without a UID can still resolve through approved slug/numeric ID paths.
 - Confirm update entities with a stale/unmatched UID block instead of falling back unless `dbvc_allow_uid_fallback_matching` is intentionally enabled for the QA environment.

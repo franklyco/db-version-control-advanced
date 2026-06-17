@@ -1,15 +1,13 @@
 # AI Sample Package Compact Profile Plan
 
-Status: Draft follow-on implementation plan  
-Date: 2026-05-02  
+Status: Implemented baseline with QA/metrics follow-up
+Date: 2026-06-16
 Scope: Reduce AI sample package context size for browser-based chat workflows without weakening DBVC import safety
 
 ## Current Resume Snapshot
 
-This plan is no longer speculative only. A first compact-mode implementation exists locally.
+Compact mode is implemented locally and is the default profile.
 
-- Branch at last documented update: `codex/ai-sample-entities-implementation`
-- Current HEAD at last documented update: `ff21de0`
 - Implemented so far:
   - `compact_ai_chat` exists as a real package profile and is the default
   - the Tools page and `AI + Integrations` defaults expose the profile setting
@@ -18,17 +16,20 @@ This plan is no longer speculative only. A first compact-mode implementation exi
     - `START_HERE.md`
     - `SCHEMA_COMPACT.json`
     - `samples/posts/{post_type}.json`
+    - `samples/posts/{post_type}.context.json`
     - `samples/terms/{taxonomy}.json`
+    - `samples/terms/{taxonomy}.context.json`
   - compact generation skips sibling sample markdown docs, but emits sibling `.context.json` files with object context plus path-keyed field type, choices, and authoring context
+  - `START_HERE.md` and `SCHEMA_COMPACT.json` include an explicit returned `dbvc-ai-manifest.json` template with nested `source_sample_package.site_fingerprint`
+  - intake accepts legacy AI-generated manifests that copied sample `site_fingerprint` to the root or used `validation_defaults.package_mode` instead of `intended_operation`, but only with warnings
   - full-reference generation still emits the richer package
   - full-reference sample markdown no longer duplicates the full JSON template snapshot
   - authoring docs now describe `docs/NOTES.md` and `reports/generation-summary.md` as optional, not required
 - Validation already completed for the current local state:
   - `php -l` passed on the touched compact-profile PHP files
   - [scripts/check-wp-runtime-authoring-smoke.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/scripts/check-wp-runtime-authoring-smoke.php) passed with `compact-authoring-smoke-ok`
-  - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `9 tests, 81 assertions`
+  - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `12 tests, 133 assertions`
 - Most important remaining compact-mode gaps:
-  - `SCHEMA_COMPACT.json` still includes more raw inventory/catalog structure than the final ideal
   - the Tools page does not yet show estimated file count or prompt footprint before generation
   - package-size regression metrics and before/after comparisons are still missing
   - browser-level QA with a real compact package in a browser LLM workflow is still pending
@@ -100,7 +101,7 @@ Recommended default:
 
 - `Compact AI Chat`
 
-This setting should be stored alongside current generation defaults in [Settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/Settings.php) and exposed in [class-ai-tools-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-ai-tools-page.php).
+This setting is stored alongside current generation defaults in [Settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/Settings.php) and exposed in the current server-rendered admin surface in [admin-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php).
 
 ### 2. Compact sample package layout
 
@@ -196,7 +197,21 @@ Recommended shape:
       "dbvc-ai-manifest.json",
       "entities/posts/{post_type}/{slug}.json",
       "entities/terms/{taxonomy}/{slug}.json"
-    ]
+    ],
+    "allowed_intended_operations": ["create_only", "update_only", "create_or_update"],
+    "manifest_template": {
+      "package_type": "dbvc_ai_submission_package",
+      "package_schema_version": 1,
+      "source_sample_package": {
+        "site_fingerprint": "sha256...",
+        "package_schema_version": 1
+      },
+      "intended_operation": "create_only",
+      "counts": {
+        "post_entities": 0,
+        "term_entities": 0
+      }
+    }
   },
   "objects": {
     "service": {
@@ -219,6 +234,20 @@ Design rules:
 - include only compact validation facts that the AI needs to author valid payloads
 - include provenance only where it materially helps authoring
 - omit duplicated descriptive text that already appears in `START_HERE.md`
+
+### Sibling `.context.json` Artifacts
+
+Each compact sample JSON has a sibling `.context.json` file. These files should remain intentionally smaller than the internal Object Type Context and Field Context provider payloads.
+
+Package-facing context should include:
+
+- object-level authoring context
+- path-keyed fields
+- each field's type
+- choices when known
+- one best available context string, selected from `resolved_purpose`, then `effective_purpose`, then `default_purpose`
+
+Package-facing context should omit provider trace data, confidence internals, hashes, raw field registry details, and any other system-specific metadata that does not help the AI assign values.
 
 ## Simplification Strategy
 
@@ -266,7 +295,7 @@ Status: `WIP`
   - [x] `compact_ai_chat`
   - [x] `full_reference`
 - [x] Set the default to `compact_ai_chat`.
-- [x] Add a package profile selector to [class-ai-tools-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-ai-tools-page.php).
+- [x] Add a package profile selector to the current Tools/admin surface in [admin-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php).
 - [x] Make profile-aware UI behavior explicit:
   - [x] compact mode should explain that doc selection is preset and minimized
   - [x] full mode should continue to expose richer artifact choices
@@ -302,7 +331,7 @@ Status: `WIP`
 Status: `WIP`
 
 - [x] Add a focused schema compaction service.
-- [ ] Recommended new file:
+- [x] Current compact schema builder:
   - [x] [CompactSchemaBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/CompactSchemaBuilder.php)
 - [x] Build compact schema output from existing schema bundle services rather than duplicating discovery logic.
 - [ ] Include:
@@ -348,8 +377,8 @@ Status: `WIP`
 
 - [x] Update [PackageDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/PackageDocBuilder.php) so compact prompts ask for only the minimal submission package layout.
 - [x] Update [AI_PACKAGE_FOUNDATION_SPEC.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/AI_PACKAGE_FOUNDATION_SPEC.md) to mark `docs/NOTES.md` and `reports/generation-summary.md` as optional return artifacts.
-- [ ] Verify [SubmissionPackageValidator.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SubmissionPackageValidator.php) continues to accept minimal packages with only manifest + entity JSON.
-- [ ] If validator layout rules currently imply richer return docs, relax that expectation without weakening manifest or entity validation.
+- [x] Verify [SubmissionPackageValidator.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SubmissionPackageValidator.php) continues to accept minimal packages with only manifest + entity JSON.
+- [x] If validator layout rules imply richer return docs, relax that expectation without weakening manifest or entity validation.
 
 ## Phase C7. Metrics, QA, and Rollout
 
@@ -372,7 +401,7 @@ Status: `WIP`
 Primary expected touchpoints:
 
 - [Settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/Settings.php)
-- [class-ai-tools-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-ai-tools-page.php)
+- [admin-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php)
 - [SamplePackageBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SamplePackageBuilder.php)
 - [PackageDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/PackageDocBuilder.php)
 - [SampleDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SampleDocBuilder.php)

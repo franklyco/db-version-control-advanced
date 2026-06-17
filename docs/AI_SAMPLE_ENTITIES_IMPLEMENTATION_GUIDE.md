@@ -1,44 +1,45 @@
 # AI Sample Entities + AI Package Intake Implementation Guide
 
-Last updated: 2026-05-03  
-Current phase: `P9`  
+Last updated: 2026-06-16
+Current phase: `P9`
 Status legend: `OPEN` | `WIP` | `CLOSED` | `DEFERRED`
 
 ## Current Resume Context
 
 Use this section as the first re-entry point in a new Codex session.
 
-- Branch at last documented update: `codex/ai-sample-entities-implementation`
-- Current HEAD at last documented update: `ff21de0`
-- The worktree is dirty with many unrelated Visual Editor and Bricks changes. Do not use broad git cleanup or revert commands. Isolate edits to AI package files unless the task explicitly broadens scope.
 - The core AI package workflow is implemented locally:
   - `DBVC Export > Tools > Download Sample Entities`
   - `Configure > AI + Integrations`
   - AI upload detection, validation, translation, import, retained reports, and review UI
-- The compact sample-package reduction work is partially implemented and now active as the default generation profile:
+- The compact sample-package profile is the default generation profile:
   - `compact_ai_chat` is the default profile
   - compact packages now emit `START_HERE.md`, `SCHEMA_COMPACT.json`, one sample `.json`, and one sibling `.context.json` per selected object type
-  - sample context artifacts include compact object context plus each sample field's type, available choices, and best available authoring context
+  - sample context artifacts include compact object context plus each sample field's type, available choices, and best available authoring context from Object Type Context / Field Context providers
   - compact guidance now includes an explicit returned `dbvc-ai-manifest.json` template so AI tools do not copy the sample package manifest shape
   - compact packages do not emit sibling sample markdown docs
   - full-reference packages still exist and no longer duplicate template JSON inside sibling markdown docs
+- The current canonical returned package manifest uses `source_sample_package.site_fingerprint` and direct `intended_operation`.
+- Intake compatibility now accepts two common AI-generated legacy manifest mistakes with warnings:
+  - a root-level `site_fingerprint` copied from the sample package
+  - missing `intended_operation` when `validation_defaults.package_mode` is present
+- A configurable validation default can downgrade true `site_fingerprint_mismatch` issues from blocked to warning. Missing fingerprints still block import.
 - Relevant implementation files for the compact profile work:
   - [includes/Dbvc/AiPackage/Settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/Settings.php)
-  - [includes/class-master-settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/class-master-settings.php)
-  - [admin/class-ai-tools-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-ai-tools-page.php)
   - [admin/admin-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php)
   - [includes/Dbvc/AiPackage/CompactSchemaBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/CompactSchemaBuilder.php)
   - [includes/Dbvc/AiPackage/SamplePackageBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SamplePackageBuilder.php)
   - [includes/Dbvc/AiPackage/PackageDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/PackageDocBuilder.php)
   - [includes/Dbvc/AiPackage/SampleDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SampleDocBuilder.php)
+  - [includes/Dbvc/AiPackage/SubmissionPackageValidator.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SubmissionPackageValidator.php)
 - Validation already run against the current local state:
   - `php -l` passed on the touched AI package PHP files
   - [scripts/check-wp-runtime-authoring-smoke.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/scripts/check-wp-runtime-authoring-smoke.php) passed with `compact-authoring-smoke-ok`
-  - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `9 tests, 81 assertions`
+  - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `12 tests, 133 assertions`
 - Highest-priority next work:
-  - continue trimming `SCHEMA_COMPACT.json` so it carries only high-signal authoring context
   - add package-size/file-count metrics to the Tools page before generation
   - add browser-level QA with a real compact package in ChatGPT or Claude
+  - continue field-family coverage hardening for unsupported media and deeper relationship-like ACF values
 
 ## Current Intentionally Unfinished Items
 
@@ -66,6 +67,17 @@ The finished workflow should feel like:
 - user uploads the ZIP into DBVC
 - DBVC shows an AI-specific validation and preflight review surface
 - DBVC imports only when the package is valid, explicitly confirmed with warnings, or explicitly override-approved for narrowly governed blocked cases
+
+## Operator Workflow
+
+1. Open `DBVC Export > Tools > Download Sample Entities`.
+2. Select the post types and taxonomies the AI should author.
+3. Generate and download the sample package ZIP.
+4. Upload the sample package ZIP into the AI chat/app and ask for a returned `dbvc_ai_submission_package` ZIP.
+5. Confirm the returned ZIP contains `dbvc-ai-manifest.json` plus `entities/posts/...` and/or `entities/terms/...` JSON files.
+6. Upload the returned ZIP through the DBVC import/upload surface.
+7. Review the AI intake validation summary.
+8. Import only when the package is valid, valid with confirmed warnings, or explicitly override-approved for the narrow fingerprint mismatch case.
 
 ## Foundation Reference
 
@@ -153,8 +165,8 @@ Recommended core PHP layout:
 
 ```text
 admin/
-  class-ai-tools-page.php
-  class-ai-package-intake-page.php
+  admin-page.php
+  # Future cleanup may extract dedicated AI tools/intake page controllers.
 includes/Dbvc/AiPackage/
   Settings.php
   Storage.php
@@ -290,8 +302,8 @@ This section translates `P1` into the intended file ownership and step order for
 - [admin/admin-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php)
   - extend Configure subtab registration and placeholder rendering for `AI + Integrations`
   - keep save handling routed through current Configure patterns until a dedicated controller is justified
-- [admin/class-ai-tools-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-ai-tools-page.php)
-  - new page renderer/controller for `Tools > Download Sample Entities`
+- [admin/admin-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-page.php)
+  - current server-rendered `Tools > Download Sample Entities`, AI upload review, and `AI + Integrations` settings surface
 - [includes/Dbvc/AiPackage/Settings.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/Settings.php)
   - new AI settings defaults, sanitization, and retrieval service
 - [includes/Dbvc/AiPackage/Storage.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/Storage.php)
@@ -313,7 +325,7 @@ This section translates `P1` into the intended file ownership and step order for
    - directory hardening helpers
    - cleanup retention constants only, not destructive cleanup execution yet
 4. Add the new `Tools` submenu in [admin/admin-menu.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/admin-menu.php).
-5. Create [admin/class-ai-tools-page.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/admin/class-ai-tools-page.php) and keep the first render to:
+5. Add the `Tools > Download Sample Entities` render path to the current admin surface and keep the first render to:
    - capability check
    - heading/intro copy
    - configuration form skeleton
@@ -380,13 +392,13 @@ Recommended maintenance pattern:
 |---|---|---|
 | `P0` | `CLOSED` | Foundation, architecture boundary, and contract decisions |
 | `P1` | `CLOSED` | Core storage, settings, admin menu, and page wiring |
-| `P2` | `WIP` | Schema discovery, ACF discovery, and fingerprint generation |
-| `P3` | `WIP` | Sample template generation and documentation assembly |
-| `P4` | `WIP` | Sample package build pipeline and Tools UI |
-| `P5` | `WIP` | AI package detection, extraction, validation, and reporting |
-| `P6` | `WIP` | Translation and importer handoff |
-| `P7` | `WIP` | Dedicated AI preflight review surface |
-| `P8` | `WIP` | `AI + Integrations` settings and rule authoring UX |
+| `P2` | `CLOSED` | Schema discovery, ACF discovery, and fingerprint generation |
+| `P3` | `CLOSED` | Sample template generation and documentation assembly |
+| `P4` | `CLOSED` | Sample package build pipeline and Tools UI |
+| `P5` | `CLOSED` | AI package detection, extraction, validation, and reporting |
+| `P6` | `CLOSED` | Translation and importer handoff |
+| `P7` | `CLOSED` | Dedicated AI preflight review surface |
+| `P8` | `CLOSED` | `AI + Integrations` settings and rule authoring UX |
 | `P9` | `WIP` | Tests, fixtures, docs, QA, and rollout closure |
 | `P10` | `DEFERRED` | Optional managed provider integrations and outbound AI workflows |
 
@@ -476,7 +488,6 @@ Establish the feature's core entry points and persistent configuration before im
 
 - `admin/admin-menu.php`
 - `admin/admin-page.php`
-- `admin/class-ai-tools-page.php`
 - `includes/Dbvc/AiPackage/Settings.php`
 - `includes/Dbvc/AiPackage/Storage.php`
 
@@ -779,7 +790,7 @@ Operators can select post types/taxonomies, choose package options, and download
 
 ### Likely Touchpoints
 
-- `admin/class-ai-tools-page.php`
+- `admin/admin-page.php`
 - `includes/Dbvc/AiPackage/SamplePackageBuilder.php`
 - `includes/Dbvc/AiPackage/RulesService.php`
 - `includes/Dbvc/AiPackage/Storage.php`
@@ -1197,6 +1208,41 @@ The feature ships with deterministic fixtures, targeted tests, manual QA guidanc
 
 - P1 through P8 materially complete
 
+### Next Implementation Plan
+
+Use this sequence for the next implementation pass. Keep each slice independently testable.
+
+1. Browser QA proof path
+   - Generate a default `compact_ai_chat` sample package from `DBVC Export > Tools`.
+   - Use the package in ChatGPT or Claude to produce a returned `dbvc_ai_submission_package` ZIP.
+   - Upload the returned ZIP through DBVC and record the validation state, warnings, translated artifacts, import result, and any manual fixes required.
+   - Cover one valid package, one warning package, one blocked package, and one legacy generated-manifest package.
+
+2. Tools preflight package metrics
+   - Add a pre-generation estimate block to `Tools > Download Sample Entities`.
+   - Show selected object count, estimated generated file count, root artifact count, sample JSON count, context JSON count, and estimated ZIP/package footprint where practical.
+   - Keep estimates read-only and advisory; generation remains the source of truth.
+
+3. Compact package contract tests
+   - Add fixture or builder-level coverage that asserts default compact packages include only `dbvc-ai-manifest.json`, `START_HERE.md`, `SCHEMA_COMPACT.json`, selected sample JSON files, and sibling `.context.json` files.
+   - Assert compact `.context.json` files expose only object context plus field `type`, `choices`, and best available `context`.
+   - Assert `START_HERE.md` and `SCHEMA_COMPACT.json` include the canonical returned manifest template with nested `source_sample_package.site_fingerprint`.
+
+4. Intake and translation regression coverage
+   - Add a fixture that exercises nested ACF structures plus structured slug refs together.
+   - Add focused coverage for create/update match precedence, protected field filtering, unresolved slug refs, and ACF discovery fallbacks.
+   - Keep unsupported non-empty media field behavior blocked unless a specific later policy changes it.
+
+5. Operator-facing warning polish
+   - Make unsupported media/relationship-like field failures easier to understand in validation summaries.
+   - Distinguish missing fingerprints, true mismatches, and accepted legacy root-fingerprint manifests in review copy.
+   - Keep `site_fingerprint_mismatch` as the only narrowly overridable blocked issue unless a new policy is explicitly defined.
+
+6. Rollout notes and cleanup
+   - Record final browser QA results in the QA checklist or a short rollout note.
+   - Document any remaining unsupported field families and known manual workarounds.
+   - Revisit whether AI package reporting needs a cross-linked import-history view before first release.
+
 ### Tracked Tasks
 
 - [x] Add PHPUnit coverage for site fingerprint generation.
@@ -1224,6 +1270,7 @@ The feature ships with deterministic fixtures, targeted tests, manual QA guidanc
   - [x] Add a valid submission package fixture.
   - [x] Add a submission package fixture with warnings.
   - [x] Add a blocked submission package fixture.
+  - [x] Add a legacy generated-manifest compatibility fixture for root `site_fingerprint` plus `validation_defaults.package_mode`.
   - [ ] Add at least one fixture that exercises nested ACF structures and structured slug refs together.
 
 - [x] Add manual QA scenarios.
@@ -1239,11 +1286,11 @@ The feature ships with deterministic fixtures, targeted tests, manual QA guidanc
   - [ ] Cover slug-based relationship resolution in browser QA.
   - [ ] Cover capability/nonce protection on generation and import actions in browser QA.
 
-- [ ] Update user-facing docs.
-  - [ ] Document sample package generation.
-  - [ ] Document AI package upload/review/import.
-  - [ ] Document settings reference.
-  - [ ] Document supported and unsupported first-release field families so expectations stay realistic.
+- [x] Update user-facing docs.
+  - [x] Document compact sample package generation.
+  - [x] Document AI package upload/review/import.
+  - [x] Document settings reference for generation and validation defaults.
+  - [x] Document supported and unsupported first-release field families so expectations stay realistic.
 
 - [ ] Add rollout notes and post-ship cleanup/follow-up items.
 
@@ -1253,7 +1300,7 @@ The feature ships with deterministic fixtures, targeted tests, manual QA guidanc
 - Add at least one fixture package that exercises nested ACF structures.
 - Include negative tests for protected fields and unresolved slug refs.
 - The repo now includes `scripts/check-wp-runtime-ai-import-smoke.php` as a repeatable LocalWP smoke for validator, translation, importer handoff, nested ACF storage translation, deferred relationship backfill, supported ACF relationship fields, and retained import artifacts.
-- The repo now includes PHPUnit coverage in [AiPackageWorkflowTest.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/tests/phpunit/AiPackageWorkflowTest.php) for fingerprint drift, manifest validation states, fixture-backed intake, nested translation, and blocked unsupported media fields.
+- The repo now includes PHPUnit coverage in [AiPackageWorkflowTest.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/tests/phpunit/AiPackageWorkflowTest.php) for fingerprint drift, manifest validation states, fixture-backed intake, legacy generated-manifest compatibility, nested translation, and blocked unsupported media fields.
 
 ### Likely Touchpoints
 
@@ -1268,9 +1315,9 @@ The feature ships with deterministic fixtures, targeted tests, manual QA guidanc
 
 ### Phase Exit
 
-- [ ] Core services have fixture-backed PHPUnit coverage.
-- [ ] Manual QA checklist exists.
-- [ ] User docs are updated.
+- [x] Core services have fixture-backed PHPUnit coverage.
+- [x] Manual QA checklist exists.
+- [x] User docs are updated.
 - [ ] Rollout notes are documented.
 
 ## P10. Managed Provider Integrations
@@ -1319,12 +1366,13 @@ These items should be revisited as real implementation details surface:
 
 This feature is ready for rollout when all of the following are true:
 
-- [ ] operators can generate a sample package from `Tools`
-- [ ] the sample package contains canonical JSON templates, schema artifacts, and AI guidance docs
-- [ ] DBVC detects AI submission packages without affecting generic uploads
-- [ ] blocked AI packages do not mutate sync or import state
-- [ ] warning-state AI packages present a dedicated confirmation surface
-- [ ] accepted packages translate into DBVC-native JSON and import through existing DBVC helpers
-- [ ] create and update entities both work under the locked precedence rules
-- [ ] fixture-backed validation and translation tests are green
-- [ ] user-facing docs explain both package generation and AI package upload/review/import
+- [x] operators can generate a sample package from `Tools`
+- [x] the sample package contains canonical JSON templates, compact schema/context artifacts, and AI guidance docs
+- [x] DBVC detects AI submission packages without affecting generic uploads
+- [x] blocked AI packages do not mutate sync or import state
+- [x] warning-state AI packages present a dedicated confirmation surface
+- [x] accepted packages translate into DBVC-native JSON and import through existing DBVC helpers
+- [x] create and update entities both work under the locked precedence rules
+- [x] fixture-backed validation and translation tests are green
+- [x] user-facing docs explain both package generation and AI package upload/review/import
+- [ ] browser-level QA covers the current compact package and AI upload/import path end to end
