@@ -19,7 +19,7 @@ This plan is no longer speculative only. A first compact-mode implementation exi
     - `SCHEMA_COMPACT.json`
     - `samples/posts/{post_type}.json`
     - `samples/terms/{taxonomy}.json`
-  - compact generation skips sibling sample markdown docs
+  - compact generation skips sibling sample markdown docs, but emits sibling `.context.json` files with object context plus path-keyed field type, choices, and authoring context
   - full-reference generation still emits the richer package
   - full-reference sample markdown no longer duplicates the full JSON template snapshot
   - authoring docs now describe `docs/NOTES.md` and `reports/generation-summary.md` as optional, not required
@@ -111,12 +111,15 @@ dbvc-ai-manifest.json
 START_HERE.md
 SCHEMA_COMPACT.json
 samples/posts/{post_type}.json
+samples/posts/{post_type}.context.json
 samples/terms/{taxonomy}.json
+samples/terms/{taxonomy}.context.json
 ```
 
 Compact profile rules:
 
 - exactly one JSON sample per selected object type
+- one sibling `.context.json` per selected object type with compact object context plus each sample field's type, choices, and best available authoring context
 - no per-sample markdown docs by default
 - no repeated template snapshots inside markdown
 - no separate root docs for README, AGENTS, OUTPUT_CONTRACT, USER_RULES, or VALIDATION_RULES
@@ -307,8 +310,8 @@ Status: `WIP`
   - [ ] required core fields
   - [ ] allowed and blocked top-level fields
   - [ ] relevant taxonomies
-  - [ ] compact meta context
-  - [ ] compact ACF context
+- [ ] compact meta context
+- [x] compact ACF context
   - [x] return-contract requirements
 - [ ] Exclude:
   - [ ] verbose prose
@@ -337,7 +340,7 @@ Status: `WIP`
 - [x] Stop emitting per-sample markdown docs in compact mode.
 - [x] Remove the `Template snapshot` JSON block from [SampleDocBuilder.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/includes/Dbvc/AiPackage/SampleDocBuilder.php) in all modes.
 - [x] Keep sibling sample docs only in full-reference mode.
-- [ ] Ensure the compact schema carries enough ACF and taxonomy context that losing the sibling docs does not break authoring quality.
+- [x] Ensure the compact schema and sibling `.context.json` artifacts carry enough ACF and taxonomy context that losing the sibling docs does not break authoring quality.
 
 ## Phase C6. Submission Contract Simplification
 

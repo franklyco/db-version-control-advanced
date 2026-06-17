@@ -313,12 +313,15 @@ dbvc-ai-manifest.json
 START_HERE.md
 SCHEMA_COMPACT.json
 samples/posts/{post_type}.json
+samples/posts/{post_type}.context.json
 samples/terms/{taxonomy}.json
+samples/terms/{taxonomy}.context.json
 ```
 
 Compact profile rules:
 
 - exactly one JSON sample per selected object type by default
+- one sibling `.context.json` per selected object type with object context plus path-keyed field type, choices, and best available authoring context
 - no sibling per-sample markdown docs in v1 compact mode
 - no duplicated root docs for README, AGENTS, OUTPUT_CONTRACT, USER_RULES, or VALIDATION_RULES
 - no repeated template snapshots inside markdown
@@ -339,20 +342,28 @@ schema/field-catalog.json
 schema/validation-rules.json
 samples/posts/{post_type}/sample.json
 samples/posts/{post_type}/sample.md
+samples/posts/{post_type}/sample.context.json
 samples/posts/{post_type}/sample-minimal.json
 samples/posts/{post_type}/sample-minimal.md
+samples/posts/{post_type}/sample-minimal.context.json
 samples/posts/{post_type}/sample-typical.json
 samples/posts/{post_type}/sample-typical.md
+samples/posts/{post_type}/sample-typical.context.json
 samples/posts/{post_type}/sample-maximal.json
 samples/posts/{post_type}/sample-maximal.md
+samples/posts/{post_type}/sample-maximal.context.json
 samples/terms/{taxonomy}/sample.json
 samples/terms/{taxonomy}/sample.md
+samples/terms/{taxonomy}/sample.context.json
 samples/terms/{taxonomy}/sample-minimal.json
 samples/terms/{taxonomy}/sample-minimal.md
+samples/terms/{taxonomy}/sample-minimal.context.json
 samples/terms/{taxonomy}/sample-typical.json
 samples/terms/{taxonomy}/sample-typical.md
+samples/terms/{taxonomy}/sample-typical.context.json
 samples/terms/{taxonomy}/sample-maximal.json
 samples/terms/{taxonomy}/sample-maximal.md
+samples/terms/{taxonomy}/sample-maximal.context.json
 ```
 
 Full reference rules:
@@ -1333,9 +1344,11 @@ Blocked:
 - unresolved update-intent entity match
 - unresolved required slug reference
 - invalid ACF choice value when the rule is machine-enforced
-- site fingerprint mismatch
+- site fingerprint mismatch when the configured mismatch policy is `block`
 
-`valid_with_warnings` should be supported. Blocked issues should prevent importer handoff by default, with one governed exception in v1: `site_fingerprint_mismatch` may proceed only through an explicit operator override in the AI review surface, with the override recorded in retained intake/import artifacts.
+`valid_with_warnings` should be supported. Blocked issues should prevent importer handoff by default, with one governed exception in v1: `site_fingerprint_mismatch` may proceed through an explicit operator override in the AI review surface. Operators may also configure the AI intake validation default to downgrade fingerprint mismatches to warnings for intentional cross-site sample-package workflows. Missing fingerprints still block import.
+
+Compatibility: v1 intake may accept AI-generated submission manifests that copied the sample package's top-level `site_fingerprint` or used `validation_defaults.package_mode` instead of direct `intended_operation`, but only with warnings and normalized retained report data.
 
 ### User-Authored Rules Schema
 

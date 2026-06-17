@@ -275,7 +275,7 @@ final class AcfDiscoveryService
         $normalized_fields = self::normalize_field_list(is_array($fields) ? $fields : []);
         $location = isset($group['location']) && is_array($group['location']) ? $group['location'] : [];
 
-        return [
+        $normalized = [
             'key' => isset($group['key']) ? (string) $group['key'] : '',
             'title' => isset($group['title']) ? (string) $group['title'] : '',
             'active' => ! array_key_exists('active', $group) || ! empty($group['active']),
@@ -287,6 +287,20 @@ final class AcfDiscoveryService
             'field_names' => self::collect_field_names($normalized_fields),
             'field_count' => count(self::collect_field_names($normalized_fields)),
         ];
+
+        foreach (['field_context', 'vf_field_context', 'context', 'default_context', 'object_type_context'] as $context_key) {
+            if (isset($group[$context_key]) && is_array($group[$context_key])) {
+                $normalized[$context_key] = self::normalize_value($group[$context_key]);
+            }
+        }
+
+        foreach (['resolved_purpose', 'effective_purpose', 'default_purpose', 'gardenai_field_purpose'] as $purpose_key) {
+            if (! empty($group[$purpose_key]) && is_scalar($group[$purpose_key])) {
+                $normalized[$purpose_key] = (string) $group[$purpose_key];
+            }
+        }
+
+        return $normalized;
     }
 
     /**
@@ -339,6 +353,18 @@ final class AcfDiscoveryService
             'max' => self::normalize_value($field['max'] ?? null),
             'availability' => self::sanitize_string_array($field['fco_object_availability'] ?? []),
         ];
+
+        foreach (['field_context', 'vf_field_context', 'context', 'default_context', 'object_type_context'] as $context_key) {
+            if (isset($field[$context_key]) && is_array($field[$context_key])) {
+                $normalized[$context_key] = self::normalize_value($field[$context_key]);
+            }
+        }
+
+        foreach (['resolved_purpose', 'effective_purpose', 'default_purpose', 'gardenai_field_purpose'] as $purpose_key) {
+            if (! empty($field[$purpose_key]) && is_scalar($field[$purpose_key])) {
+                $normalized[$purpose_key] = (string) $field[$purpose_key];
+            }
+        }
 
         if (! empty($field['sub_fields']) && is_array($field['sub_fields'])) {
             $normalized['sub_fields'] = self::normalize_field_list($field['sub_fields']);

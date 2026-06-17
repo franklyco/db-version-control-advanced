@@ -88,6 +88,15 @@ final class SubmissionPackageValidator
         $validation_rules = isset($schema_bundle['validation_rules']) && is_array($schema_bundle['validation_rules'])
             ? $schema_bundle['validation_rules']
             : RulesService::build_validation_rules($schema_bundle);
+        $validation_defaults = isset($validation_rules['validation_defaults']) && is_array($validation_rules['validation_defaults'])
+            ? $validation_rules['validation_defaults']
+            : [];
+        $site_fingerprint_mismatch_policy = isset($validation_defaults['site_fingerprint_mismatch_policy'])
+            ? sanitize_key((string) $validation_defaults['site_fingerprint_mismatch_policy'])
+            : 'block';
+        if (! in_array($site_fingerprint_mismatch_policy, ['block', 'warn'], true)) {
+            $site_fingerprint_mismatch_policy = 'block';
+        }
         $issues = [];
         $entities = [];
         $package_type = '';
@@ -159,11 +168,29 @@ final class SubmissionPackageValidator
                     );
                 }
 
-                $operation_result = self::normalize_intended_operation(
-                    isset($manifest['intended_operation']) ? (string) $manifest['intended_operation'] : ''
-                );
+                $operation_input = isset($manifest['intended_operation']) ? (string) $manifest['intended_operation'] : '';
+                $operation_inferred_from_package_mode = false;
+                if (
+                    $operation_input === ''
+                    && isset($manifest['validation_defaults'])
+                    && is_array($manifest['validation_defaults'])
+                    && ! empty($manifest['validation_defaults']['package_mode'])
+                ) {
+                    $operation_input = (string) $manifest['validation_defaults']['package_mode'];
+                    $operation_inferred_from_package_mode = true;
+                }
+
+                $operation_result = self::normalize_intended_operation($operation_input);
                 $intended_operation = (string) $operation_result['value'];
                 $manifest['intended_operation'] = $intended_operation;
+                if ($operation_inferred_from_package_mode && $operation_input !== '') {
+                    $issues[] = self::build_issue(
+                        'warning',
+                        'operation_inferred_from_validation_defaults',
+                        __('The AI package omitted `intended_operation`; DBVC inferred it from `validation_defaults.package_mode`. Future packages should set `intended_operation` directly.', 'dbvc'),
+                        (string) ($inspection['manifest_entry'] ?? '')
+                    );
+                }
                 if (! empty($operation_result['is_alias'])) {
                     $issues[] = self::build_issue(
                         'warning',
@@ -190,10 +217,33 @@ final class SubmissionPackageValidator
                 $manifest_fingerprint = isset($manifest['source_sample_package']['site_fingerprint'])
                     ? (string) $manifest['source_sample_package']['site_fingerprint']
                     : '';
+                if ($manifest_fingerprint === '' && ! empty($manifest['site_fingerprint']) && is_scalar($manifest['site_fingerprint'])) {
+                    $manifest_fingerprint = sanitize_text_field((string) $manifest['site_fingerprint']);
+                    if (! isset($manifest['source_sample_package']) || ! is_array($manifest['source_sample_package'])) {
+                        $manifest['source_sample_package'] = [];
+                    }
+                    $manifest['source_sample_package']['site_fingerprint'] = $manifest_fingerprint;
+                    if (empty($manifest['source_sample_package']['package_schema_version'])) {
+                        $manifest['source_sample_package']['package_schema_version'] = self::PACKAGE_SCHEMA_VERSION;
+                    }
+                    $issues[] = self::build_issue(
+                        'warning',
+                        'site_fingerprint_legacy_top_level',
+                        __('The AI package declared `site_fingerprint` at the manifest root. DBVC accepted it as `source_sample_package.site_fingerprint`, but future packages should use the nested source sample package field.', 'dbvc'),
+                        (string) ($inspection['manifest_entry'] ?? '')
+                    );
+                }
                 if ($manifest_fingerprint === '') {
                     $issues[] = self::build_issue('blocked', 'site_fingerprint_missing', __('The AI package does not declare a source sample package site fingerprint.', 'dbvc'), (string) ($inspection['manifest_entry'] ?? ''));
                 } elseif ($manifest_fingerprint !== $current_fingerprint) {
-                    $issues[] = self::build_issue('blocked', 'site_fingerprint_mismatch', __('The AI package was generated for a different site fingerprint.', 'dbvc'), (string) ($inspection['manifest_entry'] ?? ''));
+                    $issues[] = self::build_issue(
+                        $site_fingerprint_mismatch_policy === 'warn' ? 'warning' : 'blocked',
+                        'site_fingerprint_mismatch',
+                        $site_fingerprint_mismatch_policy === 'warn'
+                            ? __('The AI package was generated for a different site fingerprint. Current settings allow this mismatch with a warning.', 'dbvc')
+                            : __('The AI package was generated for a different site fingerprint.', 'dbvc'),
+                        (string) ($inspection['manifest_entry'] ?? '')
+                    );
                 }
 
                 if (! self::is_supported_intended_operation($intended_operation)) {

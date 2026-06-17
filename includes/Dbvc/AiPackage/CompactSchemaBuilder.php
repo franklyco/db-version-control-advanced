@@ -40,6 +40,24 @@ final class CompactSchemaBuilder
                     'docs/NOTES.md',
                     'reports/generation-summary.md',
                 ],
+                'manifest_template' => [
+                    'package_type' => 'dbvc_ai_submission_package',
+                    'package_schema_version' => 1,
+                    'source_sample_package' => [
+                        'site_fingerprint' => isset($fingerprint['site_fingerprint']) ? (string) $fingerprint['site_fingerprint'] : '',
+                        'package_schema_version' => 1,
+                    ],
+                    'intended_operation' => 'create_only',
+                    'counts' => [
+                        'post_entities' => 0,
+                        'term_entities' => 0,
+                    ],
+                ],
+                'allowed_intended_operations' => [
+                    'create_only',
+                    'update_only',
+                    'create_or_update',
+                ],
             ],
             'validation_defaults' => isset($validation_rules['validation_defaults']) && is_array($validation_rules['validation_defaults'])
                 ? $validation_rules['validation_defaults']

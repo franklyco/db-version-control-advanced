@@ -17,7 +17,9 @@ Use this section as the first re-entry point in a new Codex session.
   - AI upload detection, validation, translation, import, retained reports, and review UI
 - The compact sample-package reduction work is partially implemented and now active as the default generation profile:
   - `compact_ai_chat` is the default profile
-  - compact packages now emit `START_HERE.md`, `SCHEMA_COMPACT.json`, and one sample `.json` per selected object type
+  - compact packages now emit `START_HERE.md`, `SCHEMA_COMPACT.json`, one sample `.json`, and one sibling `.context.json` per selected object type
+  - sample context artifacts include compact object context plus each sample field's type, available choices, and best available authoring context
+  - compact guidance now includes an explicit returned `dbvc-ai-manifest.json` template so AI tools do not copy the sample package manifest shape
   - compact packages do not emit sibling sample markdown docs
   - full-reference packages still exist and no longer duplicate template JSON inside sibling markdown docs
 - Relevant implementation files for the compact profile work:
@@ -34,7 +36,7 @@ Use this section as the first re-entry point in a new Codex session.
   - [scripts/check-wp-runtime-authoring-smoke.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/scripts/check-wp-runtime-authoring-smoke.php) passed with `compact-authoring-smoke-ok`
   - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `9 tests, 81 assertions`
 - Highest-priority next work:
-  - finish trimming `SCHEMA_COMPACT.json` so it carries only high-signal authoring context
+  - continue trimming `SCHEMA_COMPACT.json` so it carries only high-signal authoring context
   - add package-size/file-count metrics to the Tools page before generation
   - add browser-level QA with a real compact package in ChatGPT or Claude
 
@@ -667,6 +669,7 @@ Generate canonical AI-facing sample JSON templates and sibling markdown docs for
   - [x] Include taxonomy rules.
   - [x] Include meta field context.
   - [x] Include ACF field context.
+  - [x] Include provider-backed Object Type Context and Field Context as simplified machine-readable authoring context artifacts.
   - [x] Include available choices where known.
   - [x] Include relationship/reference guidance.
   - [ ] Include provenance notes.
@@ -1119,6 +1122,8 @@ Operators can configure generation defaults, validation defaults, and user-autho
   - [x] Add warning handling policy control.
   - [x] Add allowed package operation mode control.
   - [x] Add strictness level control where applicable.
+  - [x] Add site fingerprint mismatch policy control.
+  - [x] Accept legacy AI-generated manifests that placed the sample `site_fingerprint` at the root and omitted `intended_operation` but included `validation_defaults.package_mode`, with warnings.
   - [x] Keep defaults aligned with the foundation spec until a later decision changes them explicitly.
 
 - [x] Add global user-authored notes/rules inputs.

@@ -22,13 +22,14 @@ final class SchemaDiscoveryService
         $shape_mode = self::resolve_shape_mode($args);
         $selection = self::resolve_selection($args);
         $acf_discovery = AcfDiscoveryService::discover();
+        $context_providers = self::build_context_provider_bundle();
         $observed_shape = [];
         if ($shape_mode === self::SHAPE_MODE_OBSERVED && class_exists(__NAMESPACE__ . '\\ObservedShapeService')) {
             $observed_shape = ObservedShapeService::collect($selection, self::resolve_observed_scan_cap($args));
         }
 
-        $object_inventory = self::build_object_inventory($selection, $acf_discovery);
-        $field_catalog = self::build_field_catalog($selection, $acf_discovery, $object_inventory, $observed_shape);
+        $object_inventory = self::build_object_inventory($selection, $acf_discovery, $context_providers);
+        $field_catalog = self::build_field_catalog($selection, $acf_discovery, $object_inventory, $observed_shape, $context_providers);
 
         return [
             'generated_at' => current_time('c'),
@@ -188,15 +189,19 @@ final class SchemaDiscoveryService
     /**
      * @param array<string,mixed> $selection
      * @param array<string,mixed> $acf_discovery
+     * @param array<string,mixed> $context_providers
      * @return array<string,mixed>
      */
-    private static function build_object_inventory(array $selection, array $acf_discovery): array
+    private static function build_object_inventory(array $selection, array $acf_discovery, array $context_providers = []): array
     {
         $runtime_post_types = self::get_runtime_post_types();
         $runtime_taxonomies = self::get_runtime_taxonomies();
         $acf_post_types = isset($acf_discovery['post_types']) && is_array($acf_discovery['post_types']) ? $acf_discovery['post_types'] : [];
         $acf_taxonomies = isset($acf_discovery['taxonomies']) && is_array($acf_discovery['taxonomies']) ? $acf_discovery['taxonomies'] : [];
         $object_map = isset($acf_discovery['object_map']) && is_array($acf_discovery['object_map']) ? $acf_discovery['object_map'] : [];
+        $object_type_context_catalog = isset($context_providers['object_type_context_catalog']) && is_array($context_providers['object_type_context_catalog'])
+            ? $context_providers['object_type_context_catalog']
+            : [];
 
         $post_types = [];
         foreach ($selection['post_types'] as $post_type) {
@@ -224,6 +229,7 @@ final class SchemaDiscoveryService
                 'supports' => self::normalize_string_array($supports),
                 'taxonomies' => self::normalize_string_array($taxonomies),
                 'acf_group_keys' => isset($object_map['post_types'][$post_type]) && is_array($object_map['post_types'][$post_type]) ? array_values($object_map['post_types'][$post_type]) : [],
+                'object_type_context' => self::resolve_object_type_context('post_type', $post_type, $object_type_context_catalog),
                 'sources' => [
                     'runtime' => true,
                     'acf_local_json' => ! empty($acf_entry),
@@ -251,6 +257,7 @@ final class SchemaDiscoveryService
                 'rest_base' => isset($taxonomy_object->rest_base) ? (string) $taxonomy_object->rest_base : (string) ($acf_entry['rest_base'] ?? ''),
                 'object_type' => self::normalize_string_array(isset($taxonomy_object->object_type) && is_array($taxonomy_object->object_type) ? $taxonomy_object->object_type : (array) ($acf_entry['object_type'] ?? [])),
                 'acf_group_keys' => isset($object_map['taxonomies'][$taxonomy]) && is_array($object_map['taxonomies'][$taxonomy]) ? array_values($object_map['taxonomies'][$taxonomy]) : [],
+                'object_type_context' => self::resolve_object_type_context('taxonomy', $taxonomy, $object_type_context_catalog),
                 'sources' => [
                     'runtime' => true,
                     'acf_local_json' => ! empty($acf_entry),
@@ -278,9 +285,10 @@ final class SchemaDiscoveryService
      * @param array<string,mixed> $acf_discovery
      * @param array<string,mixed> $object_inventory
      * @param array<string,mixed> $observed_shape
+     * @param array<string,mixed> $context_providers
      * @return array<string,mixed>
      */
-    private static function build_field_catalog(array $selection, array $acf_discovery, array $object_inventory, array $observed_shape = []): array
+    private static function build_field_catalog(array $selection, array $acf_discovery, array $object_inventory, array $observed_shape = [], array $context_providers = []): array
     {
         $all_groups = isset($acf_discovery['field_groups']) && is_array($acf_discovery['field_groups']) ? $acf_discovery['field_groups'] : [];
         $post_type_inventory = isset($object_inventory['post_types']) && is_array($object_inventory['post_types']) ? $object_inventory['post_types'] : [];
@@ -303,7 +311,8 @@ final class SchemaDiscoveryService
                     isset($post_type_inventory[$post_type]['acf_group_keys']) && is_array($post_type_inventory[$post_type]['acf_group_keys'])
                         ? $post_type_inventory[$post_type]['acf_group_keys']
                         : [],
-                    $all_groups
+                    $all_groups,
+                    $context_providers
                 ),
             ];
         }
@@ -322,7 +331,8 @@ final class SchemaDiscoveryService
                     isset($taxonomy_inventory[$taxonomy]['acf_group_keys']) && is_array($taxonomy_inventory[$taxonomy]['acf_group_keys'])
                         ? $taxonomy_inventory[$taxonomy]['acf_group_keys']
                         : [],
-                    $all_groups
+                    $all_groups,
+                    $context_providers
                 ),
             ];
         }
@@ -341,9 +351,10 @@ final class SchemaDiscoveryService
     /**
      * @param array<int,string>                     $group_keys
      * @param array<string,array<string,mixed>>     $all_groups
+     * @param array<string,mixed>                   $context_providers
      * @return array<string,mixed>
      */
-    private static function build_object_acf_catalog(array $group_keys, array $all_groups): array
+    private static function build_object_acf_catalog(array $group_keys, array $all_groups, array $context_providers = []): array
     {
         $groups = [];
         $logical_field_names = [];
@@ -355,6 +366,7 @@ final class SchemaDiscoveryService
             }
 
             $group = $all_groups[$group_key];
+            $group = self::enrich_acf_group_with_context($group, $context_providers);
             $groups[$group_key] = $group;
 
             $group_names = isset($group['field_names']) && is_array($group['field_names']) ? $group['field_names'] : [];
@@ -380,6 +392,362 @@ final class SchemaDiscoveryService
             'logical_field_names' => $logical_field_names,
             'field_type_counts' => $field_type_counts,
         ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private static function build_context_provider_bundle(): array
+    {
+        self::load_content_migration_context_services();
+
+        $field_context_catalog = [];
+        if (class_exists('\DBVC_CC_Field_Context_Provider_Service')) {
+            try {
+                $field_context_catalog = \DBVC_CC_Field_Context_Provider_Service::get_instance()->get_catalog([], 'mapping');
+            } catch (\Throwable $e) {
+                $field_context_catalog = [];
+            }
+        }
+
+        $object_type_context_catalog = [];
+        if (class_exists('\DBVC_CC_Object_Type_Context_Provider_Service')) {
+            try {
+                $object_type_context_catalog = \DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->get_catalog([], 'mapping');
+            } catch (\Throwable $e) {
+                $object_type_context_catalog = [];
+            }
+        }
+
+        return [
+            'field_context_catalog' => $field_context_catalog,
+            'object_type_context_catalog' => $object_type_context_catalog,
+        ];
+    }
+
+    /**
+     * @return void
+     */
+    private static function load_content_migration_context_services(): void
+    {
+        if (! defined('DBVC_PLUGIN_PATH')) {
+            return;
+        }
+
+        $files = [
+            'addons/content-migration/shared/dbvc-cc-field-context-provider-service.php',
+            'addons/content-migration/shared/dbvc-cc-object-type-context-provider-service.php',
+        ];
+
+        foreach ($files as $relative_path) {
+            $absolute_path = wp_normalize_path(trailingslashit(DBVC_PLUGIN_PATH) . $relative_path);
+            if (is_file($absolute_path)) {
+                require_once $absolute_path;
+            }
+        }
+    }
+
+    /**
+     * @param string              $kind post_type|taxonomy
+     * @param string              $object_key
+     * @param array<string,mixed> $object_type_context_catalog
+     * @return array<string,mixed>
+     */
+    private static function resolve_object_type_context(string $kind, string $object_key, array $object_type_context_catalog): array
+    {
+        $object_key = sanitize_key($object_key);
+        if ($object_key === '') {
+            return [];
+        }
+
+        if (class_exists('\DBVC_CC_Object_Type_Context_Provider_Service')) {
+            if ($kind === 'taxonomy') {
+                return self::build_authoring_context(
+                    \DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->get_taxonomy_context($object_key, $object_type_context_catalog)
+                );
+            }
+
+            return self::build_authoring_context(
+                \DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->get_post_type_context($object_key, $object_type_context_catalog)
+            );
+        }
+
+        $index_key = $kind === 'taxonomy' ? 'taxonomies_by_key' : 'post_types_by_key';
+        $entries = isset($object_type_context_catalog[$index_key]) && is_array($object_type_context_catalog[$index_key])
+            ? $object_type_context_catalog[$index_key]
+            : [];
+
+        return isset($entries[$object_key]) && is_array($entries[$object_key]) ? self::build_authoring_context($entries[$object_key]) : [];
+    }
+
+    /**
+     * @param array<string,mixed> $object_context
+     * @param array<string,mixed> $object_type_context_catalog
+     * @return array<string,mixed>
+     */
+    private static function resolve_object_type_context_for_object_context(array $object_context, array $object_type_context_catalog): array
+    {
+        if (class_exists('\DBVC_CC_Object_Type_Context_Provider_Service')) {
+            return self::build_authoring_context(
+                \DBVC_CC_Object_Type_Context_Provider_Service::get_instance()->resolve_context_for_object_context($object_context, $object_type_context_catalog)
+            );
+        }
+
+        $post_types = isset($object_context['post_types']) && is_array($object_context['post_types']) ? $object_context['post_types'] : [];
+        foreach ($post_types as $post_type) {
+            $context = self::resolve_object_type_context('post_type', (string) $post_type, $object_type_context_catalog);
+            if (! empty($context)) {
+                return $context;
+            }
+        }
+
+        $taxonomies = isset($object_context['taxonomies']) && is_array($object_context['taxonomies']) ? $object_context['taxonomies'] : [];
+        foreach ($taxonomies as $taxonomy) {
+            $context = self::resolve_object_type_context('taxonomy', (string) $taxonomy, $object_type_context_catalog);
+            if (! empty($context)) {
+                return $context;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string,mixed> $group
+     * @param array<string,mixed> $context_providers
+     * @return array<string,mixed>
+     */
+    private static function enrich_acf_group_with_context(array $group, array $context_providers): array
+    {
+        $field_context_catalog = isset($context_providers['field_context_catalog']) && is_array($context_providers['field_context_catalog'])
+            ? $context_providers['field_context_catalog']
+            : [];
+        $object_type_context_catalog = isset($context_providers['object_type_context_catalog']) && is_array($context_providers['object_type_context_catalog'])
+            ? $context_providers['object_type_context_catalog']
+            : [];
+        $group_key = isset($group['key']) ? sanitize_key((string) $group['key']) : '';
+        $provider_groups = isset($field_context_catalog['groups_by_key']) && is_array($field_context_catalog['groups_by_key'])
+            ? $field_context_catalog['groups_by_key']
+            : [];
+        $provider_group = ($group_key !== '' && isset($provider_groups[$group_key]) && is_array($provider_groups[$group_key]))
+            ? $provider_groups[$group_key]
+            : [];
+
+        $object_context = ! empty($provider_group['object_context']) && is_array($provider_group['object_context'])
+            ? $provider_group['object_context']
+            : self::normalize_object_context_from_location(isset($group['location']) && is_array($group['location']) ? $group['location'] : []);
+        $object_type_context = self::resolve_object_type_context_for_object_context($object_context, $object_type_context_catalog);
+
+        $group['group_name'] = ! empty($provider_group['group_name'])
+            ? sanitize_key((string) $provider_group['group_name'])
+            : sanitize_title((string) ($group['title'] ?? $group_key));
+        $group['object_type_context'] = $object_type_context;
+        $group['field_context'] = self::build_group_field_context($group, $provider_group);
+
+        $fields = isset($group['fields']) && is_array($group['fields']) ? $group['fields'] : [];
+        $group['fields'] = self::enrich_acf_fields_with_context($fields, $group, $field_context_catalog);
+
+        return $group;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $fields
+     * @param array<string,mixed>            $group
+     * @param array<string,mixed>            $field_context_catalog
+     * @return array<int,array<string,mixed>>
+     */
+    private static function enrich_acf_fields_with_context(array $fields, array $group, array $field_context_catalog): array
+    {
+        foreach ($fields as $index => $field) {
+            if (! is_array($field)) {
+                continue;
+            }
+
+            $field = self::enrich_acf_field_with_context($field, $group, $field_context_catalog);
+
+            if (! empty($field['sub_fields']) && is_array($field['sub_fields'])) {
+                $field['sub_fields'] = self::enrich_acf_fields_with_context($field['sub_fields'], $group, $field_context_catalog);
+            }
+
+            if (! empty($field['layouts']) && is_array($field['layouts'])) {
+                foreach ($field['layouts'] as $layout_index => $layout) {
+                    if (! is_array($layout) || empty($layout['sub_fields']) || ! is_array($layout['sub_fields'])) {
+                        continue;
+                    }
+
+                    $layout['sub_fields'] = self::enrich_acf_fields_with_context($layout['sub_fields'], $group, $field_context_catalog);
+                    $field['layouts'][$layout_index] = $layout;
+                }
+            }
+
+            $fields[$index] = $field;
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @param array<string,mixed> $field
+     * @param array<string,mixed> $group
+     * @param array<string,mixed> $field_context_catalog
+     * @return array<string,mixed>
+     */
+    private static function enrich_acf_field_with_context(array $field, array $group, array $field_context_catalog): array
+    {
+        $group_key = isset($group['key']) ? sanitize_key((string) $group['key']) : '';
+        $field_key = isset($field['key']) ? sanitize_key((string) $field['key']) : '';
+        $provider_entries = isset($field_context_catalog['entries_by_group_and_acf_key']) && is_array($field_context_catalog['entries_by_group_and_acf_key'])
+            ? $field_context_catalog['entries_by_group_and_acf_key']
+            : [];
+        $provider_entry = ($group_key !== '' && $field_key !== '' && isset($provider_entries[$group_key][$field_key]) && is_array($provider_entries[$group_key][$field_key]))
+            ? $provider_entries[$group_key][$field_key]
+            : [];
+
+        $field['field_context'] = self::build_field_entry_context($field, $provider_entry);
+
+        return $field;
+    }
+
+    /**
+     * @param array<string,mixed> $group
+     * @param array<string,mixed> $provider_group
+     * @return array<string,mixed>
+     */
+    private static function build_group_field_context(array $group, array $provider_group): array
+    {
+        $context = self::select_authoring_context_text($provider_group);
+        if ($context === '') {
+            $context = self::extract_runtime_purpose($group);
+        }
+
+        return $context === '' ? [] : ['context' => $context];
+    }
+
+    /**
+     * @param array<string,mixed> $field
+     * @param array<string,mixed> $provider_entry
+     * @return array<string,mixed>
+     */
+    private static function build_field_entry_context(array $field, array $provider_entry): array
+    {
+        $context = self::select_authoring_context_text($provider_entry);
+        if ($context === '') {
+            $context = self::extract_runtime_purpose($field);
+        }
+
+        return $context === '' ? [] : ['context' => $context];
+    }
+
+    /**
+     * @param array<int,mixed> $location
+     * @return array<string,mixed>
+     */
+    private static function normalize_object_context_from_location(array $location): array
+    {
+        if (class_exists('\DBVC_CC_Field_Context_Provider_Service')) {
+            return \DBVC_CC_Field_Context_Provider_Service::get_instance()->normalize_object_context($location);
+        }
+
+        $object_context = [
+            'post_types' => [],
+            'taxonomies' => [],
+            'options_pages' => [],
+            'unknown_rules' => [],
+        ];
+
+        foreach ($location as $rule_group) {
+            if (! is_array($rule_group)) {
+                continue;
+            }
+
+            foreach ($rule_group as $rule) {
+                if (! is_array($rule)) {
+                    continue;
+                }
+
+                $param = sanitize_key((string) ($rule['param'] ?? ''));
+                $operator = sanitize_text_field((string) ($rule['operator'] ?? ''));
+                $value = sanitize_key((string) ($rule['value'] ?? ''));
+                if ($param === '' || $operator !== '==' || $value === '') {
+                    continue;
+                }
+
+                if ($param === 'post_type') {
+                    $object_context['post_types'][] = $value;
+                } elseif ($param === 'taxonomy') {
+                    $object_context['taxonomies'][] = $value;
+                } elseif (in_array($param, ['options_page', 'options_page_key'], true)) {
+                    $object_context['options_pages'][] = $value;
+                } else {
+                    $object_context['unknown_rules'][] = [
+                        'param' => $param,
+                        'operator' => $operator,
+                        'value' => $value,
+                    ];
+                }
+            }
+        }
+
+        $object_context['post_types'] = array_values(array_unique($object_context['post_types']));
+        $object_context['taxonomies'] = array_values(array_unique($object_context['taxonomies']));
+        $object_context['options_pages'] = array_values(array_unique($object_context['options_pages']));
+
+        return $object_context;
+    }
+
+    /**
+     * @param array<string,mixed> $source
+     * @return string
+     */
+    private static function extract_runtime_purpose(array $source): string
+    {
+        $purpose = self::select_authoring_context_text($source);
+        if ($purpose !== '') {
+            return $purpose;
+        }
+
+        foreach (['purpose', 'gardenai_field_purpose'] as $key) {
+            if (! empty($source[$key])) {
+                return sanitize_textarea_field((string) $source[$key]);
+            }
+        }
+
+        foreach (['field_context', 'vf_field_context', 'context', 'default_context'] as $nested_key) {
+            if (isset($source[$nested_key]) && is_array($source[$nested_key])) {
+                $purpose = self::extract_runtime_purpose($source[$nested_key]);
+                if ($purpose !== '') {
+                    return $purpose;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string,mixed> $source
+     * @return array<string,string>
+     */
+    private static function build_authoring_context(array $source): array
+    {
+        $context = self::select_authoring_context_text($source);
+
+        return $context === '' ? [] : ['context' => $context];
+    }
+
+    /**
+     * @param array<string,mixed> $source
+     * @return string
+     */
+    private static function select_authoring_context_text(array $source): string
+    {
+        foreach (['resolved_purpose', 'effective_purpose', 'default_purpose', 'context'] as $key) {
+            if (! empty($source[$key]) && is_scalar($source[$key])) {
+                return sanitize_textarea_field((string) $source[$key]);
+            }
+        }
+
+        return '';
     }
 
     /**
