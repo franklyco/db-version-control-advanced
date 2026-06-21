@@ -2047,8 +2047,8 @@ function dbvc_render_export_page()
       <div class="dbvc-tabs__panels">
         <section id="tab-import" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-import' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-import" role="tabpanel" aria-labelledby="dbvc-nav-tab-import" <?php echo $active_main_tab === 'tab-import' ? '' : 'hidden'; ?>>
         <?php
-        $masking_doc_url  = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking.md';
-        $masking_plan_url = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking-plan.md';
+        $masking_doc_url  = trailingslashit(DBVC_PLUGIN_URL) . 'docs/reference/meta-masking.md';
+        $masking_plan_url = trailingslashit(DBVC_PLUGIN_URL) . 'docs/implementation/completed/meta-masking-plan.md';
         ?>
         <div class="dbvc-subtabs dbvc-subtabs--horizontal" data-dbvc-subtabs data-dbvc-subtabs-value-target="dbvc_import_defaults_subtab">
           <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import subsections', 'dbvc'); ?>">

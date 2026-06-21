@@ -1,0 +1,53 @@
+{
+  "row_key": "global_classes:name:alt__btn",
+  "domain": "global_classes",
+  "status": "same_name_different_id",
+  "display_name": "alt__btn",
+  "source": {
+    "match_keys": {
+      "id": "tiwsio",
+      "name": "alt__btn"
+    },
+    "fingerprint": "sha256:sourcehash",
+    "references": {
+      "variables": [
+        "--fco-cta-btn-secondary-color",
+        "--fco-cta-btn-secondary-bg",
+        "--gap-m",
+        "--gap-s",
+        "--radius-btn"
+      ]
+    }
+  },
+  "target": {
+    "match_keys": {
+      "id": "p4h2za",
+      "name": "alt__btn"
+    },
+    "fingerprint": "sha256:targethash",
+    "references": {
+      "variables": [
+        "--fco-cta-btn-secondary-color",
+        "--fco-cta-btn-secondary-bg",
+        "--gap-m",
+        "--gap-s"
+      ]
+    }
+  },
+  "diff": {
+    "changed": [
+      "_background.color.raw",
+      "_typography.color.raw",
+      "_border.radius.top",
+      "_border.radius.right",
+      "_border.radius.bottom",
+      "_border.radius.left"
+    ],
+    "added": [
+      "iconGap"
+    ],
+    "removed": []
+  },
+  "warnings": [],
+  "suggested_decision": "replace_target"
+}
