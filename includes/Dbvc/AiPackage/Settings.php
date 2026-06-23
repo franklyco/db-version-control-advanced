@@ -44,9 +44,10 @@ final class Settings
                 'included_docs'     => array_keys(self::get_included_doc_options()),
             ],
             'validation'     => [
-                'warning_policy' => 'confirm',
-                'package_mode'   => 'create_and_update',
-                'strictness'     => 'standard',
+                'warning_policy'                   => 'confirm',
+                'package_mode'                     => 'create_and_update',
+                'strictness'                       => 'standard',
+                'site_fingerprint_mismatch_policy' => 'block',
             ],
             'guidance'       => [
                 'global_ai_guidance'      => '',
@@ -198,6 +199,17 @@ final class Settings
     /**
      * @return array<string, string>
      */
+    public static function get_site_fingerprint_mismatch_policy_options(): array
+    {
+        return [
+            'block' => __('Block mismatched packages', 'dbvc'),
+            'warn'  => __('Allow with warning', 'dbvc'),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
     public static function get_included_doc_options(): array
     {
         return [
@@ -307,6 +319,13 @@ final class Settings
             $strictness = (string) $defaults['validation']['strictness'];
         }
 
+        $site_fingerprint_mismatch_policy = isset($validation['site_fingerprint_mismatch_policy'])
+            ? sanitize_key((string) wp_unslash($validation['site_fingerprint_mismatch_policy']))
+            : '';
+        if (! array_key_exists($site_fingerprint_mismatch_policy, self::get_site_fingerprint_mismatch_policy_options())) {
+            $site_fingerprint_mismatch_policy = (string) $defaults['validation']['site_fingerprint_mismatch_policy'];
+        }
+
         $service_mode = isset($providers['service_mode']) ? sanitize_key((string) wp_unslash($providers['service_mode'])) : '';
         if (! array_key_exists($service_mode, self::get_service_mode_options())) {
             $service_mode = (string) $defaults['providers']['service_mode'];
@@ -350,9 +369,10 @@ final class Settings
                 'included_docs'     => $included_docs,
             ],
             'validation'     => [
-                'warning_policy' => $warning_policy,
-                'package_mode'   => $package_mode,
-                'strictness'     => $strictness,
+                'warning_policy'                   => $warning_policy,
+                'package_mode'                     => $package_mode,
+                'strictness'                       => $strictness,
+                'site_fingerprint_mismatch_policy' => $site_fingerprint_mismatch_policy,
             ],
             'guidance'       => [
                 'global_ai_guidance'      => isset($guidance['global_ai_guidance']) ? sanitize_textarea_field((string) wp_unslash($guidance['global_ai_guidance'])) : '',

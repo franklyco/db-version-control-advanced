@@ -1,0 +1,10 @@
+{
+  "ID": 0,
+  "post_type": "page",
+  "post_title": "About Us",
+  "post_name": "about-us",
+  "post_status": "draft",
+  "post_content": "<p>Replace this with page copy that matches the generated sample package.</p>",
+  "menu_order": 0,
+  "meta": {}
+}

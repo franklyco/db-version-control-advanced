@@ -1,0 +1,321 @@
+# DBVC Visual Editor Badge and Hydration Plan
+
+## Goal
+
+Refine the frontend Visual Editor runtime so it feels more inline and responsive without weakening the current server-driven descriptor model.
+
+This plan covers:
+- moving away from one detached badge element per marker
+- reducing eager descriptor hydration on page load
+- preserving scope-aware UI labels and color treatments
+- clarifying where DB tables do and do not make sense for performance
+
+## Current Reality
+
+The runtime now does the following when Visual Editor mode is active:
+- scans every rendered `[data-dbvc-ve]` marker
+- fetches the authenticated session public map without full descriptor hydration by default
+- renders one shared badge controller in the detached overlay layer
+- positions that badge only for the currently hovered, focused, or selected marker
+- resolves hover markers by direct target first, then falls back to pointer hit-testing plus nearest repeated Bricks card/loop-item marker matching for card/link overlay patterns where a full-card link target would otherwise hide a smaller nested marker
+- disables known Bricks full-card pseudo-link overlays from `card__title` and `card__link` only while Visual Editor mode is active so nested editable markers can receive hover/click hit-testing
+- fetches full descriptor payloads on demand and caches them after first lookup
+
+This resolves the biggest issues from the earlier eager model:
+- fewer DOM nodes
+- less badge-position work
+- lighter initial REST payloads
+- less hidden-container badge leakage than a whole page of always-positioned detached badges
+
+Remaining follow-up areas are now narrower:
+- dwell timing and prefetch policy tuning
+- real-device touch-selection polish
+- statusbar field index/review UI
+- profiling before any deeper caching decisions
+
+## Design Decisions
+
+### 1. Keep render-time instrumentation and transient request sessions
+
+Do not change the source of truth:
+- Bricks render hooks still stamp lightweight markers
+- descriptor truth still lives server-side in the request/session registry
+- DOM still carries only the token plus non-sensitive render metadata
+
+This is still the correct model for safety.
+
+### 2. Replace per-marker badges with a shared active badge
+
+Recommended near-term UI model:
+- keep dashed outlines on all eligible markers
+- render one shared badge controller in the overlay layer
+- show and position that badge only for the currently hovered, focused, or selected marker
+- reuse the same badge node for:
+  - `Edit`
+  - `Shared`
+  - `Related Post`
+  - `Related Term`
+  - `Inspect`
+
+This preserves the current differentiated labels and scope meanings while removing the need to manage a badge node for every marker.
+
+### 3. Preserve scope colors and wording
+
+Do not flatten the existing source/scope signals.
+
+The shared badge must still reflect the current descriptor state:
+- current entity editable: teal treatment, `Edit`
+- shared/options/global target: amber treatment, `Shared`
+- related non-current owner: coral/red treatment, `Related Post` or `Related Term`
+- inspect-only/derived/locked: slate treatment, `Inspect`
+
+The same scope color system should remain aligned across:
+- dashed outline color
+- badge background/accent
+- panel state chip / notice accent
+
+### 4. Stop hydrating every descriptor during initial bootstrap
+
+Current bootstrap should be treated as heavier than necessary.
+
+Recommended next step:
+- session bootstrap returns the public descriptor map only by default
+- full descriptor payloads load on interaction
+- optional delayed prefetch can run on hover/focus for the active marker only
+
+This keeps the initial page payload smaller while preserving the same secure lookup flow.
+
+### 5. Use hover/focus/touch state, not broad visibility heuristics
+
+The shared badge should not try to maintain independent visibility for every hidden or revealed container.
+
+Preferred behavior:
+- `pointerenter` on a visible marker activates the shared badge
+- `focusin` activates the shared badge for keyboard users
+- first tap on touch devices selects the marker and reveals the badge/panel affordance
+- second tap on the same touch-selected marker can open the editor without navigating away
+- `pointerleave`, `blur`, `escape`, or panel-close clears the shared badge unless the marker is actively selected
+
+This is simpler and more robust than trying to infer hidden-container state for a whole page of detached controls.
+
+Known Bricks full-card link patterns must be handled at the CSS boundary when possible. The site's global `card` and `card__link` classes create `::after` overlays that fill the full card from title/link elements. During Visual Editor mode only, those pseudo-elements should not receive pointer events; otherwise the browser can hit-test the overlay link instead of the nested editable marker under the pointer.
+
+### 5a. Add viewport-aware prefetch as a bounded extension of the current model
+
+If the user is already editing one field, the next best performance win is to warm only the nearby visible markers, not the entire page.
+
+Recommended model:
+- keep the current active-marker dwell prefetch
+- add a second low-priority queue for markers that are actually in or near the viewport
+- drive that queue from browser visibility signals, not from eager descriptor hydration
+
+The goal is:
+- faster open times for the next likely field
+- no change to the secure server-side descriptor model
+- no broad startup payload increase
+- no new runtime persistence layer
+
+### 6. Do not add DB tables for runtime token caching now
+
+Do not add a database table just to cache:
+- request session payloads
+- descriptor tokens
+- rendered marker-to-field maps for the current page load
+
+Those are request/runtime concerns and become stale too easily when:
+- Bricks templates change
+- ACF field definitions change
+- query loop owners change
+- content updates alter the render projection
+
+### 7. Reserve DB tables for durable change history first
+
+If new Visual Editor tables are added, they should still be for:
+- change sets
+- change items
+- rollback metadata
+
+That remains the highest-value durable storage addition.
+
+### 8. Only consider a materialized mapping cache after profiling
+
+If profiling later proves that request-time classification/instrumentation is the real bottleneck, a separate optional materialized inventory layer can be considered.
+
+That would be:
+- explicitly rebuildable from admin/settings or a toolbar action
+- keyed by page/template/signature hashes
+- treated as an optimization hint, not source of truth
+- invalidated aggressively when builder/config/content inputs change
+
+This is a later optimization path, not the next step.
+
+## Recommended Implementation Slices
+
+### Slice 1. Shared badge controller
+
+Status:
+- implemented
+
+Implement:
+- one shared badge node
+- active-marker state manager
+- hover/focus/touch activation
+- scope-aware label + color switching
+- selected-marker persistence while the side panel is open
+
+Do not change descriptor generation in this slice.
+
+### Slice 2. Lazy session bootstrap
+
+Status:
+- implemented
+
+Change the session bootstrap contract so initial page load returns:
+- session id
+- page context
+- public map
+- marker counts / summary if useful
+
+Do not return full hydrated descriptors by default.
+
+### Slice 3. On-demand descriptor loading
+
+Status:
+- implemented with click-time lookup, in-memory cache reuse, and short-dwell hover/focus prefetch for the active marker
+
+Use:
+- descriptor fetch on badge click / marker activation
+- in-memory cache after first fetch
+- optional dwell-based hover prefetch for the active marker only
+
+This keeps the UI responsive without hydrating everything up front.
+
+### Slice 3b. Viewport-aware descriptor prefetch
+
+Status:
+- implemented at a bounded baseline level
+
+Implement:
+- `IntersectionObserver` over `[data-dbvc-ve]` markers
+- root margin around the viewport such as `200px` to `400px`
+- low-priority prefetch queue for visible uncached tokens
+- per-token reuse of the existing `loadDescriptorPayload()` path
+- no duplicate work when a token is already cached or already in `descriptorRequests`
+
+Guardrails:
+- do not use `hydrate=1`
+- do not prefetch every marker on the page
+- do not prefetch tokens with no public-map entry
+- do not prefetch while save is in progress or reload-after-save is pending
+- do not let viewport prefetch outrank active-marker hover/focus/touch prefetch
+
+Recommended queue rules:
+- priority 1: active marker selected by hover/focus/touch
+- priority 2: visible editable markers
+- priority 3: visible inspect-only markers
+- priority 4: near-viewport markers inside the root margin
+
+Recommended runtime limits:
+- bounded concurrency such as `1` to `2`
+- bounded queue budget per cycle
+- `requestIdleCallback` when available, with timer fallback
+- automatic pause on session-expired state
+- pause during save, reload-after-save, and WordPress Media Library modal flows
+
+### Slice 4. Active-marker interaction rules
+
+Status:
+- implemented at baseline hover/focus/touch-selection level
+- passive hover hide now uses a 500ms grace delay so users can move from large or rounded editable elements to the shared badge without racing the hide timer
+- real-device polish is still pending
+
+Formalize:
+- hover behavior
+- keyboard focus behavior
+- touch selection behavior
+- active panel vs passive hover behavior
+- keep the hover-leave badge grace delay long enough for image/card targets with large border radii, currently 500ms
+- how shared/related/inspect-only states are announced visually
+
+### Slice 4b. Statusbar field index
+
+Status:
+- planned in `DBVC_VISUAL_EDITOR_FIELD_INDEX_PLAN.md`
+
+Implement:
+- collapsible `Review fields` UI inside `dbvc-ve-statusbar__meta`
+- client-side nested index built from the session public map
+- shallow public-map `index` metadata for owner/source grouping
+- `Locate` action that scrolls and highlights the marker
+- `Open` action that reuses existing descriptor loading and panel opening
+
+Guardrails:
+- do not call `hydrate=1` during startup
+- do not include field values or full descriptors in public-map metadata
+- do not introduce bulk edit behavior in this UX slice
+- do not let index enrichment outrank active-marker or explicit open behavior
+
+### Slice 5. Runtime profiling and measurement
+
+Before discussing durable runtime caches, measure:
+- number of markers on representative pages
+- session bootstrap payload size
+- descriptor hydration cost
+- time spent in frontend badge work
+- modal-open latency with and without active-marker dwell prefetch
+- modal-open latency with and without viewport-aware warmup
+- total descriptor requests triggered on a long page after a few minutes of normal editing
+- time spent in Bricks classification/instrumentation
+
+Add lightweight debug timings or logs only if needed.
+
+## API / Contract Changes
+
+### Session bootstrap
+
+Recommended default response shape:
+- `sessionId`
+- `pageContext`
+- `descriptors` public map
+- optional summary counts
+
+Recommended optional modes:
+- `hydrate=1` only for debugging, QA, or explicit warmup
+- default interactive mode should be non-hydrated
+
+### Descriptor lookup
+
+Descriptor detail endpoint remains the source for:
+- owner metadata
+- editable/read-only status
+- current value
+- UI input contract
+- warning/acknowledgement requirements
+
+No raw save targets should move into the DOM.
+
+## Acceptance Criteria for the Refactor
+
+The next runtime slice is successful when:
+- dashed borders still show for all supported markers
+- only one badge element exists at a time in normal interaction flow
+- badge labels and colors still reflect current/shared/related/inspect states
+- hidden megamenus/offcanvas content no longer leaks detached badges while hidden
+- descriptor fetches happen on demand instead of hydrating the whole page by default
+- the active marker can prefetch descriptor payloads after a short hover/focus dwell without duplicating in-flight requests
+- nearby visible markers can warm their descriptors in the background without a burst of eager page-wide hydration
+- viewport warmup reuses the same descriptor cache and in-flight request map as explicit field opens
+- save and media-library flows still take priority over background warmup
+- no new persistent runtime cache table is required
+
+## Explicit Non-Goals
+
+This plan does not by itself add:
+- new field resolvers
+- new query-loop ownership coverage
+- new repeater/flexible mutation paths
+- persistent runtime token-cache tables
+- page-wide eager descriptor hydration
+- builder-wide precomputation jobs
+
+Those are separate follow-on concerns.

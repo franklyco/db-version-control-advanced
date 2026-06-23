@@ -28,6 +28,7 @@ final class RulesService
                 'warning_policy' => isset($validation['warning_policy']) ? (string) $validation['warning_policy'] : 'confirm',
                 'package_mode' => isset($validation['package_mode']) ? (string) $validation['package_mode'] : 'create_and_update',
                 'strictness' => isset($validation['strictness']) ? (string) $validation['strictness'] : 'standard',
+                'site_fingerprint_mismatch_policy' => isset($validation['site_fingerprint_mismatch_policy']) ? (string) $validation['site_fingerprint_mismatch_policy'] : 'block',
             ],
             'states' => [
                 'valid' => __('Package may proceed to translation/import.', 'dbvc'),

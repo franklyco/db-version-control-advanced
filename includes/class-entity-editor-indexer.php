@@ -277,7 +277,7 @@ final class DBVC_Entity_Editor_Indexer
     /**
      * Build the duplicate-group descriptor for an indexed entity file.
      *
-     * Primary key: matched WP entity ID. Fallback: vf_object_uid.
+     * Primary key: matched WP entity ID. Fallback: vf_object_uid, then source payload ID.
      *
      * @param array<string,mixed> $item
      * @return array{key:string,match_basis:string}
@@ -285,15 +285,7 @@ final class DBVC_Entity_Editor_Indexer
     private static function build_duplicate_group_descriptor(array $item): array
     {
         $kind = isset($item['entity_kind']) ? sanitize_key((string) $item['entity_kind']) : 'entity';
-        $payload_id = isset($item['payload_entity_id']) ? (int) $item['payload_entity_id'] : 0;
         $matched_id = isset($item['matched_wp']['id']) ? (int) $item['matched_wp']['id'] : 0;
-
-        if ($payload_id > 0) {
-            return [
-                'key' => sprintf('%s:payload:%d', $kind, $payload_id),
-                'match_basis' => 'payload_entity_id',
-            ];
-        }
 
         if ($matched_id > 0) {
             return [
@@ -307,6 +299,14 @@ final class DBVC_Entity_Editor_Indexer
             return [
                 'key' => sprintf('%s:uid:%s', $kind, $uid),
                 'match_basis' => 'vf_object_uid',
+            ];
+        }
+
+        $payload_id = isset($item['payload_entity_id']) ? (int) $item['payload_entity_id'] : 0;
+        if ($payload_id > 0) {
+            return [
+                'key' => sprintf('%s:payload:%d', $kind, $payload_id),
+                'match_basis' => 'payload_entity_id',
             ];
         }
 
@@ -378,7 +378,7 @@ final class DBVC_Entity_Editor_Indexer
         $payload_id = isset($item['payload_entity_id']) ? (int) $item['payload_entity_id'] : 0;
         $matched_id = isset($item['matched_wp']['id']) ? (int) $item['matched_wp']['id'] : 0;
         $filename_id = isset($item['filename_entity_id']) ? (int) $item['filename_entity_id'] : 0;
-        $reference_id = $payload_id > 0 ? $payload_id : $matched_id;
+        $reference_id = $matched_id > 0 ? $matched_id : $payload_id;
 
         return [
             'filename_matches_local_id' => ($reference_id > 0 && $filename_id > 0 && $reference_id === $filename_id) ? 1 : 0,

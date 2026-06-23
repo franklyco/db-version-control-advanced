@@ -1,67 +1,49 @@
-# DB Version Control Roadmap
+# DBVC Roadmap
 
-## Planned
-1. PlanMapper addon
-   - Add a first-class DBVC addon that provides a true built-in Kanban board inside the plugin instead of relying on an external planning tool.
-   - Copy the commented feature ideas and enhancement notes from the Vertical theme `sandbox.php` into the DBVC plugin as the initial seeded backlog before implementation starts.
-   - Store planned items as their own DBVC-managed entities/CPTs so the studio can plan, prioritize, and move work across columns/states inside WordPress.
-   - Define the initial data model for status, priority, owner, release window, dependencies, visibility, and frontend-ready summary fields.
-   - Support internal planning/admin surfaces plus public frontend output that can show current work, upcoming work, and "next up" items without exposing internal-only notes.
-   - Keep addon configuration aligned with existing DBVC patterns so setup remains modular, readable, and easy to extend.
-2. AI note/file converter for PlanMapper intake
-   - Add a logged-in intake surface where users can paste notes or upload files and have a flexible AI layer interpret them into PlanMapper-ready objects/CPT posts.
-   - Normalize loose roadmap notes, enhancement bullets, and planning dumps into the required schema/meta shapes for DBVC-managed planning items.
-   - Support flexible source formats (plain text, markdown, exported notes, roadmap drafts, uploaded files) with preview, validation, and manual confirmation before writes occur.
-   - Reuse DBVC review, audit, and permission patterns where possible so generated items can be accepted, edited, or rejected before they become live PlanMapper entries.
-   - Define guardrails for capability checks, nonce verification, schema versioning, and fallback behavior when the AI output is partial, ambiguous, or malformed.
-3. Universal single upload intake
-   - Provide one upload surface that accepts single JSON, multi-JSON batches, or ZIPs.
-   - Auto-route entity files to the correct sync subfolders (post types, taxonomies, media, options).
-   - Offer dry-run preview + stats before writing files.
-   - Preserve current legacy upload and proposal intake flows as optional paths.
-   - Optionally emit a proposal bundle/manifest from the same intake when review is desired.
-4. Canonical registry + proposal workflow for protected entities
-   - Define central canonical registry (authority site or repo) with signed revisions.
-   - Add proposal pipeline for promotion to canonical (review, accept/reject).
-   - Track per-entity protection status and sync state (GOD/MOD/REVIEW/NONE/REJECTED).
-   - Add status-driven packets for outbound review and inbound approvals.
-   - Define normalized hashing spec for canonical comparison (stable JSON ordering and field selection).
-   - Document pStatus state diagram and allowed transitions.
-   - Define minimal REST endpoints for canonical authority (submit proposal, approve/reject, fetch canonical).
-   - Configure "Authority Site (WordPress)" mode in Configure → Certified Canonicals UI (authority URL, auth, sync direction, test connection).
-5. Granular options import/export controls
-   - Add include/exclude controls for option keys/prefixes instead of all-or-nothing `options.json` handling.
-   - Support preview/dry-run summaries for options changes before apply.
-   - Add per-option-group toggles in UI + CLI parity for scripted imports/exports.
-   - Preserve safe defaults for sensitive/core options while allowing explicit overrides.
-6. Cross-site entity packet copy/paste between DBVC-enabled sites
-   - Let operators select one or many posts/CPTs or terms from Entity Editor and package them for transfer to another site that has DBVC and the relevant addon/runtime enabled.
-   - Expand selected entities into a portable packet that carries full post payloads plus required taxonomy terms, featured images, ACF/media references, and dependency metadata needed to recreate the content safely on the destination site.
-   - Support destination-side paste/upload intake that can preview, import as net-new entities, or intentionally map collisions instead of blindly overwriting existing content.
-   - Prefer source-side bulk actions in the existing Entity Editor index plus a transfer/import drawer or wizard that hands off to the current DBVC review/apply pipeline; avoid adding a dedicated per-row table column, and add a new submenu only if the workflow later outgrows the existing Entity Editor surface.
-   - Preserve UID/history, duplicate detection, media resolution, and audit logging so copied entities behave like first-class DBVC imports instead of ad hoc JSON writes.
-   - Implementation guide: `docs/CROSS_SITE_ENTITY_PACKET_IMPLEMENTATION_GUIDE.md`
-7. User documentation library integration (`DBVC_USER_DOCUMENTATION_LIBRARY`)
-   - Adopt `docs/DBVC_USER_DOCUMENTATION_LIBRARY.md` as the seed source for user-facing operational docs.
-   - Add an in-plugin documentation/library surface that can render and organize user guides.
-   - Wire doc update workflow into release/backlog cadence so behavior notes stay current with implementation.
-8. Evaluate and test a dedicated Firecrawl/Firebase agent skill
-   - Confirm product naming/scope before implementation; the provided bootstrap command targets `firecrawl-cli`, not Firebase-native tooling.
-   - Queue install/init for a later pass using `npx -y firecrawl-cli@latest init --all --browser`.
-   - Verify the generated skill/tooling can scrape a page to clean Markdown.
-   - Verify search plus scrape of top results.
-   - Verify full-site crawl support.
-   - Verify full-domain map support.
-   - Document setup prerequisites, generated files, auth/config needs, and whether it should become a first-class Codex skill in this repo.
-## In Progress
-- Continue targeted import/export edge-case triage outside the now-closed UID preservation and fallback-hardening workstream.
-- Temporary 5-minute FTP upload window toggle in Configure > Import Settings (still requires additional testing).
+This is the single repo-level planning index. Module-local plans remain with their modules and are linked here when they are active or useful.
 
-## Shipped (Recent)
-- Targeted upload immediate-import QA pass across JSON, mixed, dry-run, ZIP, smart-import, and UID fallback toggle scenarios (`docs/legacy-upload-immediate-import-plan.md`).
-- UID preservation and fallback hardening for core imports, including the default-off `dbvc_allow_uid_fallback_matching` option and current behavior docs (`docs/import-identity-matching.md`).
-- Entity Editor `New From Raw JSON` intake for DBVC post/CPT and term payloads, including preview, canonical sync write, staged-only mode, create-or-update mode, and direct handoff back into the normal Entity Editor flow (`docs/ENTITY_EDITOR_ENHANCEMENTS.md`).
-- Targeted upload immediate import for post JSON, including upload-area toggle, targeted post-only import helper, and combined routing/import report output.
-- Smart routing for flat JSON uploads into the sync folder.
-- Import/export guards to prevent unintended sync folder wipes.
-- Trash/delete handling for posts, terms, and media, including media bundle cleanup.
+## Active Work
+
+| Topic | Status | Guide | Notes |
+|---|---|---|---|
+| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md` | Current primary implementation stream. Keep detailed state in addon-local docs. |
+| Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
+| Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
+| Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
+| AI package workflow and import authoring reference | active | `docs/reference/import-authoring/README.md` | Compact package workflow exists locally; reference docs now provide the current agent-facing import contract. Remaining package QA and metrics follow-ups stay in the AI package implementation docs. |
+
+## Proposed Work
+
+| Topic | Status | Proposal | Notes |
+|---|---|---|---|
+| Cross-site entity packets | proposed | `docs/implementation/proposed/cross-site-entity-packet-guide.md` | Future transfer workflow. |
+| Configuration portability tool | proposed | `docs/implementation/proposed/configuration-portability-tool-guide.md` | Future configuration transport. |
+| Bricks portability drift manager | proposed | `docs/implementation/proposed/bricks-portability-drift-manager/README.md` | Proposed package/drift design. |
+| Bricks reference mapping | proposed | `docs/implementation/proposed/bricks-reference-mapping-plan.md` | Proposed mapping work. |
+| Media sync hydration | proposed | `docs/implementation/proposed/media-sync-hydration-guide.md` | Needs current-state review before coding. |
+| User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
+| Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
+| Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
+
+## Completed Work
+
+| Topic | Summary | Related Docs |
+|---|---|---|
+| Progress summary | Recent shipped DBVC admin and import work. | `docs/implementation/completed/progress-summary.md` |
+| Entity Editor | Implementation checklist, enhancements, sync-file import guide, duplicate-canonical import fixes, blocker resolution UI, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md` |
+| Legacy upload immediate import | Targeted upload/import phase plan and QA notes. | `docs/implementation/completed/legacy-upload-immediate-import-plan.md` |
+| Import identity hardening | Current matching contract plus historical hardening note. | `docs/reference/import-identity-matching.md` |
+| Meta masking | Current reference plus completed plan. | `docs/reference/meta-masking.md` |
+| Proposal diff minor update | Completed implementation guide retained for behavior context. | `docs/implementation/completed/proposal-diff-system-minor-update-guide.md` |
+
+## Archived Or Superseded Work
+
+| Topic | Archive Path | Replacement Doc | Notes |
+|---|---|---|---|
+| Old root roadmap and planning notes | `docs/archives/root-planning/` | `docs/roadmap.md` | Preserved as historical context. |
+| Root handoffs | `docs/archives/root-handoffs/` | `docs/README.md` | Includes old root handoff and previous root `AGENTS.md` snapshot. |
+| Entity Editor handoff/review | `docs/archives/entity-editor/` | `docs/reference/entity-editor-usage.md` | Implementation is complete enough that handoffs are historical. |
+| Proposal diff V2 planning | `docs/archives/proposal-diff-v2/` | `docs/implementation/completed/proposal-diff-system-minor-update-guide.md` | Historical audit and rollout docs. |
+| Bricks assets planning | `docs/archives/bricks-assets/` | `docs/architecture/bricks-assets-engine-contract-draft.md` | Discovery/handoff material. |
+| Bricks addon decisions | `docs/archives/bricks-addon/` | `addons/bricks/docs/BRICKS_ADDON_PLAN.md` | Historical addon handoff and recommendation. |
+| Content migration workbench handoff | `docs/archives/content-migration-workbench-handoff/` | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Historical standalone handoff pack. |

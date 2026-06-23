@@ -243,9 +243,12 @@ final class TemplateBuilder
                 'shape_mode' => $shape_mode,
                 'variant' => $variant,
                 'value_style' => $value_style,
+                'entity_kind' => 'post',
+                'object_key' => $post_type,
                 'post_type' => $post_type,
                 'label' => isset($inventory_entry['label']) ? (string) $inventory_entry['label'] : $post_type,
                 'singular_label' => $singular_label,
+                'object_type_context' => isset($inventory_entry['object_type_context']) && is_array($inventory_entry['object_type_context']) ? $inventory_entry['object_type_context'] : [],
             ],
         ];
     }
@@ -304,9 +307,12 @@ final class TemplateBuilder
                 'shape_mode' => $shape_mode,
                 'variant' => $variant,
                 'value_style' => $value_style,
+                'entity_kind' => 'term',
+                'object_key' => $taxonomy,
                 'taxonomy' => $taxonomy,
                 'label' => isset($inventory_entry['label']) ? (string) $inventory_entry['label'] : $taxonomy,
                 'singular_label' => $singular_label,
+                'object_type_context' => isset($inventory_entry['object_type_context']) && is_array($inventory_entry['object_type_context']) ? $inventory_entry['object_type_context'] : [],
             ],
         ];
     }
@@ -477,6 +483,9 @@ final class TemplateBuilder
             'choices' => isset($field['choices']) && is_array($field['choices']) ? $field['choices'] : [],
             'post_type' => isset($field['post_type']) && is_array($field['post_type']) ? $field['post_type'] : [],
             'taxonomy_filters' => isset($field['taxonomy_filters']) && is_array($field['taxonomy_filters']) ? $field['taxonomy_filters'] : [],
+            'field_context' => isset($field['field_context']) && is_array($field['field_context'])
+                ? self::build_compact_field_context($field['field_context'])
+                : [],
         ];
 
         switch ($type) {
@@ -673,6 +682,21 @@ final class TemplateBuilder
             default:
                 return $label !== '' ? sprintf('Sample %s', $label) : 'Sample value';
         }
+    }
+
+    /**
+     * @param array<string,mixed> $field_context
+     * @return array<string,mixed>
+     */
+    private static function build_compact_field_context(array $field_context): array
+    {
+        foreach (['context', 'resolved_purpose', 'effective_purpose', 'default_purpose'] as $key) {
+            if (! empty($field_context[$key]) && is_scalar($field_context[$key])) {
+                return ['context' => sanitize_textarea_field((string) $field_context[$key])];
+            }
+        }
+
+        return [];
     }
 
     /**

@@ -87,6 +87,7 @@ final class SamplePackageBuilder
                 'taxonomy_templates' => isset($template_bundle['taxonomies']) && is_array($template_bundle['taxonomies']) ? count($template_bundle['taxonomies']) : 0,
                 'sample_json_files' => (int) ($sample_artifacts['sample_json_files'] ?? 0),
                 'sample_markdown_files' => (int) ($sample_artifacts['sample_markdown_files'] ?? 0),
+                'sample_context_files' => (int) ($sample_artifacts['sample_context_files'] ?? 0),
                 'root_doc_files' => count($build_args['included_docs']),
             ];
 
@@ -336,6 +337,7 @@ final class SamplePackageBuilder
         $paths = [
             'json' => [],
             'markdown' => [],
+            'context' => [],
         ];
         $package_profile = isset($build_args['package_profile']) ? sanitize_key((string) $build_args['package_profile']) : self::PACKAGE_PROFILE_COMPACT;
 
@@ -356,7 +358,18 @@ final class SamplePackageBuilder
                     return $json_result;
                 }
 
+                $context_path = 'samples/posts/' . sanitize_key((string) $post_type) . '.context.json';
+                $context_result = self::write_json_file(
+                    $workspace_path,
+                    $context_path,
+                    self::build_sample_context_payload('post', (string) $post_type, $variant_payload, $json_path)
+                );
+                if (\is_wp_error($context_result)) {
+                    return $context_result;
+                }
+
                 $paths['json'][] = $json_path;
+                $paths['context'][] = $context_path;
                 continue;
             }
 
@@ -368,6 +381,7 @@ final class SamplePackageBuilder
                 $basename = self::build_sample_basename((string) $variant);
                 $json_path = 'samples/posts/' . sanitize_key((string) $post_type) . '/' . $basename . '.json';
                 $md_path = 'samples/posts/' . sanitize_key((string) $post_type) . '/' . $basename . '.md';
+                $context_path = 'samples/posts/' . sanitize_key((string) $post_type) . '/' . $basename . '.context.json';
 
                 $json_result = self::write_json_file($workspace_path, $json_path, $variant_payload['template'] ?? []);
                 if (\is_wp_error($json_result)) {
@@ -383,8 +397,18 @@ final class SamplePackageBuilder
                     return $doc_result;
                 }
 
+                $context_result = self::write_json_file(
+                    $workspace_path,
+                    $context_path,
+                    self::build_sample_context_payload('post', (string) $post_type, $variant_payload, $json_path)
+                );
+                if (\is_wp_error($context_result)) {
+                    return $context_result;
+                }
+
                 $paths['json'][] = $json_path;
                 $paths['markdown'][] = $md_path;
+                $paths['context'][] = $context_path;
             }
         }
 
@@ -405,7 +429,18 @@ final class SamplePackageBuilder
                     return $json_result;
                 }
 
+                $context_path = 'samples/terms/' . sanitize_key((string) $taxonomy) . '.context.json';
+                $context_result = self::write_json_file(
+                    $workspace_path,
+                    $context_path,
+                    self::build_sample_context_payload('term', (string) $taxonomy, $variant_payload, $json_path)
+                );
+                if (\is_wp_error($context_result)) {
+                    return $context_result;
+                }
+
                 $paths['json'][] = $json_path;
+                $paths['context'][] = $context_path;
                 continue;
             }
 
@@ -417,6 +452,7 @@ final class SamplePackageBuilder
                 $basename = self::build_sample_basename((string) $variant);
                 $json_path = 'samples/terms/' . sanitize_key((string) $taxonomy) . '/' . $basename . '.json';
                 $md_path = 'samples/terms/' . sanitize_key((string) $taxonomy) . '/' . $basename . '.md';
+                $context_path = 'samples/terms/' . sanitize_key((string) $taxonomy) . '/' . $basename . '.context.json';
 
                 $json_result = self::write_json_file($workspace_path, $json_path, $variant_payload['template'] ?? []);
                 if (\is_wp_error($json_result)) {
@@ -432,8 +468,18 @@ final class SamplePackageBuilder
                     return $doc_result;
                 }
 
+                $context_result = self::write_json_file(
+                    $workspace_path,
+                    $context_path,
+                    self::build_sample_context_payload('term', (string) $taxonomy, $variant_payload, $json_path)
+                );
+                if (\is_wp_error($context_result)) {
+                    return $context_result;
+                }
+
                 $paths['json'][] = $json_path;
                 $paths['markdown'][] = $md_path;
+                $paths['context'][] = $context_path;
             }
         }
 
@@ -441,7 +487,216 @@ final class SamplePackageBuilder
             'paths' => $paths,
             'sample_json_files' => count($paths['json']),
             'sample_markdown_files' => count($paths['markdown']),
+            'sample_context_files' => count($paths['context']),
         ];
+    }
+
+    /**
+     * @param string              $entity_kind post|term
+     * @param string              $object_key
+     * @param array<string,mixed> $variant_payload
+     * @param string              $sample_json_path
+     * @return array<string,mixed>
+     */
+    private static function build_sample_context_payload(string $entity_kind, string $object_key, array $variant_payload, string $sample_json_path): array
+    {
+        $context = isset($variant_payload['context']) && is_array($variant_payload['context']) ? $variant_payload['context'] : [];
+        $template = isset($variant_payload['template']) && is_array($variant_payload['template']) ? $variant_payload['template'] : [];
+        $object_type_context = isset($context['object_type_context']) && is_array($context['object_type_context']) ? $context['object_type_context'] : [];
+
+        return [
+            'artifact_type' => 'dbvc_ai_sample_context',
+            'artifact_schema_version' => 1,
+            'sample_json_path' => $sample_json_path,
+            'object' => [
+                'kind' => $entity_kind === 'term' ? 'term' : 'post',
+                'key' => sanitize_key($object_key),
+                'label' => isset($context['label']) ? (string) $context['label'] : $object_key,
+                'context' => self::extract_context_text($object_type_context),
+            ],
+            'fields' => self::build_sample_context_fields($entity_kind, $context, $template),
+        ];
+    }
+
+    /**
+     * @param string              $entity_kind post|term
+     * @param array<string,mixed> $context
+     * @param array<string,mixed> $template
+     * @return array<string,array<string,mixed>>
+     */
+    private static function build_sample_context_fields(string $entity_kind, array $context, array $template): array
+    {
+        $fields = [];
+        $core_fields = isset($context['core_fields']) && is_array($context['core_fields']) ? $context['core_fields'] : [];
+
+        foreach ($template as $field_name => $value) {
+            $field_name = (string) $field_name;
+            if ($field_name === 'meta' || $field_name === 'tax_input') {
+                continue;
+            }
+
+            $definition = isset($core_fields[$field_name]) && is_array($core_fields[$field_name]) ? $core_fields[$field_name] : [];
+            $fields[$field_name] = self::build_sample_context_field(
+                isset($definition['type']) ? (string) $definition['type'] : self::infer_sample_value_type($value),
+                isset($definition['choices']) && is_array($definition['choices']) ? $definition['choices'] : [],
+                self::extract_context_text($definition)
+            );
+        }
+
+        if ($entity_kind === 'post' && isset($template['tax_input']) && is_array($template['tax_input'])) {
+            $tax_input = isset($context['tax_input']) && is_array($context['tax_input']) ? $context['tax_input'] : [];
+            foreach ($template['tax_input'] as $taxonomy => $value) {
+                unset($value);
+                $taxonomy = sanitize_key((string) $taxonomy);
+                if ($taxonomy === '') {
+                    continue;
+                }
+
+                $definition = isset($tax_input[$taxonomy]) && is_array($tax_input[$taxonomy]) ? $tax_input[$taxonomy] : [];
+                $label = isset($definition['label']) ? (string) $definition['label'] : $taxonomy;
+                $fields['tax_input.' . $taxonomy] = self::build_sample_context_field(
+                    'taxonomy_terms',
+                    isset($definition['choices']) && is_array($definition['choices']) ? $definition['choices'] : [],
+                    sprintf('Assign %s terms by slug strings or structured term references. Prefer slugs over numeric IDs.', $label)
+                );
+            }
+        }
+
+        if (isset($template['meta']) && is_array($template['meta'])) {
+            $meta_context = isset($context['meta']) && is_array($context['meta']) ? $context['meta'] : [];
+            foreach ($meta_context as $path => $definition) {
+                if (! is_array($definition)) {
+                    continue;
+                }
+
+                $path = trim((string) $path);
+                if ($path === '') {
+                    continue;
+                }
+
+                $field_path = 'meta.' . $path;
+                $fields[$field_path] = self::build_sample_context_field(
+                    isset($definition['type']) ? (string) $definition['type'] : '',
+                    isset($definition['choices']) && is_array($definition['choices']) ? $definition['choices'] : [],
+                    self::extract_context_text(isset($definition['field_context']) && is_array($definition['field_context'])
+                        ? $definition['field_context']
+                        : $definition)
+                );
+            }
+
+            foreach ($template['meta'] as $meta_key => $value) {
+                $meta_key = trim((string) $meta_key);
+                if ($meta_key === '') {
+                    continue;
+                }
+
+                $field_path = 'meta.' . $meta_key;
+                if (isset($fields[$field_path])) {
+                    continue;
+                }
+
+                $fields[$field_path] = self::build_sample_context_field(
+                    self::infer_sample_value_type($value),
+                    [],
+                    ''
+                );
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @param string              $type
+     * @param array<string,mixed> $choices
+     * @param string              $context
+     * @return array<string,mixed>
+     */
+    private static function build_sample_context_field(string $type, array $choices, string $context): array
+    {
+        return [
+            'type' => sanitize_key($type),
+            'choices' => self::normalize_sample_context_choices($choices),
+            'context' => sanitize_textarea_field($context),
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $source
+     * @return string
+     */
+    private static function extract_context_text(array $source): string
+    {
+        foreach (['context', 'resolved_purpose', 'effective_purpose', 'default_purpose', 'description', 'instructions'] as $key) {
+            if (! empty($source[$key]) && is_scalar($source[$key])) {
+                return sanitize_textarea_field((string) $source[$key]);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string,mixed> $choices
+     * @return array<int|string,string>
+     */
+    private static function normalize_sample_context_choices(array $choices): array
+    {
+        if (empty($choices)) {
+            return [];
+        }
+
+        $keys = array_keys($choices);
+        $is_list = $keys === range(0, count($choices) - 1);
+        $normalized = [];
+        foreach ($choices as $key => $value) {
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            if ($is_list) {
+                $normalized[] = (string) $value;
+                continue;
+            }
+
+            $normalized[(string) $key] = (string) $value;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function infer_sample_value_type($value): string
+    {
+        if (is_bool($value)) {
+            return 'boolean';
+        }
+
+        if (is_int($value)) {
+            return 'integer';
+        }
+
+        if (is_float($value)) {
+            return 'number';
+        }
+
+        if (is_array($value)) {
+            if (empty($value)) {
+                return 'array';
+            }
+
+            $keys = array_keys($value);
+            return $keys === range(0, count($value) - 1) ? 'array' : 'object';
+        }
+
+        if ($value === null) {
+            return 'null';
+        }
+
+        return 'string';
     }
 
     /**

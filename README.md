@@ -10,6 +10,10 @@ DB Version Control Advanced extends the original DBVC exporter/importer with det
 
 Legacy full-site export/import and WP-CLI commands continue to ship for automation, but production workflows can now block direct imports until a proposal has been reviewed.
 
+## Documentation
+
+Start with `docs/README.md` for the documentation library and `docs/agent-entrypoints.md` for task-specific navigation. Archived docs under `docs/archives/` are historical and should not be treated as current implementation guidance.
+
 ## Feature Highlights
 
 - **Proposal-driven review** – Upload proposal zips, see resolver metrics, and diff entities inside the React UI. Accept/Keep individual fields, bulk-apply sections, or reject the entity entirely. Drawer-based review keeps context with keyboard & screen-reader support.
@@ -162,8 +166,4 @@ Use those docs as the shortest resume path before reopening the larger V2 planni
 
 ## Roadmap
 
-- **Snapshot polish** – add helper commands to recapture legacy proposals so term snapshots exist everywhere without manual uploads.
-- **Meta masking presets** – add a toolbar button above the All Entities table that auto-applies configured meta-field/post/term meta masking rules to any live proposal, letting reviewers ignore, auto-accept & suppress, or override masked fields with a single click while updating Needs Review / Unresolved meta labels automatically—keep existing export-time masking behavior untouched and explain the options via tooltips that contain help text plus links to the masking docs.
-- **Official collections** – curated “official” bundles that can be re-exported on demand remain on the backlog.
-
-This repository includes in-depth implementation notes under `handoff.md`, progress tracking inside `docs/progress-summary.md`, import identity matching rules inside `docs/import-identity-matching.md`, meta masking tooltip/help text plus implementation plan inside `docs/meta-masking.md` and `docs/meta-masking-plan.md`, and media transport design details inside `docs/media-sync-design.md`.
+Use `docs/roadmap.md` as the single planning index. Supporting docs include `docs/implementation/completed/progress-summary.md`, `docs/reference/import-identity-matching.md`, `docs/reference/meta-masking.md`, and `docs/architecture/media-sync-design.md`.

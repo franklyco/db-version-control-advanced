@@ -2047,8 +2047,8 @@ function dbvc_render_export_page()
       <div class="dbvc-tabs__panels">
         <section id="tab-import" class="dbvc-tab-panel<?php echo $active_main_tab === 'tab-import' ? ' is-active' : ''; ?>" data-dbvc-panel="tab-import" role="tabpanel" aria-labelledby="dbvc-nav-tab-import" <?php echo $active_main_tab === 'tab-import' ? '' : 'hidden'; ?>>
         <?php
-        $masking_doc_url  = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking.md';
-        $masking_plan_url = trailingslashit(DBVC_PLUGIN_URL) . 'docs/meta-masking-plan.md';
+        $masking_doc_url  = trailingslashit(DBVC_PLUGIN_URL) . 'docs/reference/meta-masking.md';
+        $masking_plan_url = trailingslashit(DBVC_PLUGIN_URL) . 'docs/implementation/completed/meta-masking-plan.md';
         ?>
         <div class="dbvc-subtabs dbvc-subtabs--horizontal" data-dbvc-subtabs data-dbvc-subtabs-value-target="dbvc_import_defaults_subtab">
           <nav class="dbvc-subtabs-nav" role="tablist" aria-label="<?php esc_attr_e('Import subsections', 'dbvc'); ?>">
@@ -3982,6 +3982,7 @@ document.addEventListener('DOMContentLoaded', function () {
         $ai_warning_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_warning_policy_options() : [];
         $ai_package_mode_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_package_mode_options() : [];
         $ai_strictness_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_strictness_options() : [];
+        $ai_fingerprint_policy_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_site_fingerprint_mismatch_policy_options() : [];
         $ai_doc_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_included_doc_options() : [];
         $ai_service_mode_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_service_mode_options() : [];
         $ai_provider_options = class_exists('\Dbvc\AiPackage\Settings') ? \Dbvc\AiPackage\Settings::get_provider_options() : [];
@@ -4107,6 +4108,18 @@ document.addEventListener('DOMContentLoaded', function () {
               </option>
             <?php endforeach; ?>
           </select>
+        </p>
+
+        <p>
+          <label for="dbvc-ai-validation-fingerprint-policy"><strong><?php esc_html_e('Site fingerprint mismatch policy', 'dbvc'); ?></strong></label><br>
+          <select id="dbvc-ai-validation-fingerprint-policy" name="dbvc_ai_settings[validation][site_fingerprint_mismatch_policy]">
+            <?php foreach ($ai_fingerprint_policy_options as $option_value => $option_label) : ?>
+              <option value="<?php echo esc_attr($option_value); ?>" <?php selected((string) ($ai_validation_settings['site_fingerprint_mismatch_policy'] ?? 'block'), $option_value); ?>>
+                <?php echo esc_html($option_label); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <br><small class="description"><?php esc_html_e('Use “Allow with warning” only when you intentionally import AI output authored from a sample package generated on another site. Missing fingerprints still block import.', 'dbvc'); ?></small>
         </p>
 
         <hr />

@@ -1,0 +1,15 @@
+{
+  "ID": 0,
+  "post_type": "service",
+  "post_title": "Web Design",
+  "post_name": "web-design",
+  "post_status": "draft",
+  "post_excerpt": "Website design services for local businesses.",
+  "post_content": "<p>Replace this with service content that matches the generated sample package.</p>",
+  "tax_input": {
+    "service_type": [
+      "web-design"
+    ]
+  },
+  "meta": {}
+}

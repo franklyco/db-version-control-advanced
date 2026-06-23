@@ -1,0 +1,137 @@
+# DBVC Admin App Progress Summary
+
+## Completed Phases / Tasks
+1. **React Admin Shell**
+   - Proposal list + entity table connected to REST endpoints.
+   - Diff view with conflict defaults, inline Accept/Keep radios, bulk Accept/Keep per visible section, section navigator.
+2. **Media Resolver Integration**
+   - REST surface for resolver metrics, conflicts, attachment rows.
+   - Per-resolver decision controls (reuse/download/map/skip), notes, and “remember for future proposals” toggle.
+   - Resolver decisions persisted per proposal and optionally as global rules (`dbvc_resolver_decisions`).
+   - Apply pipeline honors field selections and resolver decisions (reuse/map, skip, force download).
+3. **Notifications & History**
+   - Toast stack + recent apply history, including resolver decision counts and remaining conflicts.
+4. **Auto-clear & Hash Override**
+   - Admin setting to clear decisions post-apply; apply modal includes partial-mode override for legacy manifests.
+5. **Global Resolver Rule Management**
+   - REST endpoints for listing/deleting rules, plus bulk-delete and CSV export UI.
+   - Resolver decisions included in manifests so exports/imports carry reviewer intent.
+6. **Entity Detail UX**
+   - Entity diff lives inside a modal/drawer with overlay, focus trapping, and keyboard/overlay dismissal.
+   - Resolver attachments, filters, and bulk accept/keep controls fully compatible with the drawer.
+7. **Bulk Resolver Enhancements**
+   - Global rules panel now supports add/edit flows plus CSV import/export (with validation feedback).
+   - Resolver attachments include an advanced bulk-apply tool that can target conflicts by reason, asset UID, or manifest path.
+   - Batch operations respect “remember for future proposals” so global rules can be seeded rapidly.
+8. **WP PHPUnit Scaffold**
+   - Added `bin/install-wp-tests.sh`, updated bootstrap wiring, and seeded REST tests for apply/resolver rule endpoints.
+   - Documented how to install/run the suite so backend changes ship with automated coverage.
+9. **Performance & UX Polish**
+   - Entity list table virtualizes rows automatically for large proposals and caps viewport height for smoother scrolling.
+   - Resolver attachments and global rule panels now include search inputs plus filtered empty states for quick triage.
+   - Attachments search feeds the new bulk controls, keeping workflows responsive even with hundreds of conflicts.
+   - Resolver rule form remembers the last target ID and surfaces inline duplicate warnings before you hit Save.
+   - Configure → Import Defaults now has “Require DBVC Proposal review,” which hides the legacy Run Import form and forces the React workflow.
+10. **Duplicate + New-Entity Enforcement**
+    - Backend surface for `/duplicates` + `/duplicates/cleanup`, manifest rewrite, and modal flow shipped (blocking overlays + canonical keep selection).
+    - Proposal load now queries duplicate count + report, shows flashing overlay, and prevents entity review until all duplicates are resolved.
+    - Added explicit “New post” detection pipeline (UID/ID/slug heuristics, DBVC entity registry) with UI badges, forced filter, and accept/decline gating that the importer honours.
+    - Cleanup API rewrites manifest + deletes stray JSONs so reviewers always see a canonical source of truth.
+11. **Term Snapshot & Diff Parity**
+    - Snapshot manager now captures taxonomy entities (UIDs, parent chains, sanitized termmeta) alongside posts.
+    - React diffs and Accept/Keep gating compare term snapshots against proposal payloads, so term decisions behave exactly like post decisions when reopening proposals.
+12. **WP-CLI Proposals Namespace**
+    - Added `wp dbvc proposals list|upload|apply` commands that reuse the React workflow’s ingestion/apply helpers so CI/staging can manage proposals headlessly.
+13. **CLI Parity for Resolver Rules & Duplicates**
+    - Added `wp dbvc resolver-rules list|add|delete|import` plus `wp dbvc proposals list --cleanup-duplicates` so automation can manage global resolver rules and manifest cleanup without the React UI.
+14. **Meta Masking Drawer & REST**
+   - Added `/masking` + `/masking/apply` endpoints plus option stores for per-proposal suppressions/overrides and importer hooks that honor those directives.
+   - React admin now includes status badges, a Tools drawer housing masking controls, and inline tooltips linked to `docs/reference/meta-masking.md`. Remember to run `npm run build` whenever `src/admin-app/` changes.
+15. **All Entities Toolbar Consolidation**
+   - The Actions & Tools popover, Columns toggle, and selection utilities now live inside a single toolbar row so the layout stays stable while swapping filters or resizing the viewport.
+   - “Clear selection” and “Select all” buttons only appear when they can act on the current table state, keeping the UI calm for reviewers who are browsing without an active selection.
+   - The popover groups bulk Accept/Unaccept/Unkeep controls, new-entity approvals, maintenance operations (refresh, snapshots, hashes, duplicate resolver), and the masking drawer so future refactors can extract this block into a dedicated component.
+16. **Proposal Intake UI Polish**
+   - The uploader dropzone now uses a compact two-column layout (`__text` + `__actions`) with a muted panel background, inline "ZIP files only" hint, and a separate options row so overwrite/dev checkboxes stay aligned even on narrow screens.
+   - Proposal tables live inside `dbvc-proposal-table-wrapper`, limiting the viewport to roughly the three most recent proposals, pinning the header row, and enabling smooth scrolling for older uploads without pushing the entity area down the page.
+   - Added per-row delete actions (server-backed) so reviewers can remove any non-current proposal, including open ones, while locked proposals remain protected.
+17. **Sync Folder Intake + Deletion Handling**
+   - Multi-file upload routing now supports flat JSON batches and auto-creates target folders.
+   - Import/export guards prevent sync folder wipes during post saves and imports.
+   - Deletion handling now cleans JSONs and entity registry rows for posts/terms, with trash-aware status updates for posts and attachments.
+   - Media deletes now clear `dbvc_media_index` and remove bundled files under `sync/media/...`.
+18. **Admin App Resilience**
+   - Added an error boundary around the React admin app so render-time errors no longer crash the entire UI.
+   - Client-side crashes are logged via the new `/logs/client` REST endpoint to the DBVC file log and activity table for troubleshooting.
+19. **Targeted Upload Immediate Import**
+   - Legacy upload area now offers an immediate-import toggle for post JSON uploads that preserves the current sync folder contents and imports only the routed post file(s) from the current request.
+   - Added a targeted post-only import helper in `DBVC_Sync_Posts` so the upload flow no longer has to call `import_all()` and rescan the entire sync folder.
+   - Upload routing reports now include immediate-import counts and per-file outcomes, while the upload notice distinguishes plain uploads from upload-plus-import runs.
+   - Completed runtime QA across standard JSON upload, immediate JSON import, mixed post/term JSON routing, dry-run, ZIP guardrail, smart import, and UID fallback disabled/enabled cases.
+   - Fixed ZIP upload temp cleanup so only the per-upload extraction root is removed after copy.
+20. **UID Preservation Import Fix**
+   - Non-empty incoming `vf_object_uid` values from entity JSON are treated as authoritative during post import, taxonomy normalization, upload routing, and Entity Editor import/export cycles.
+   - Post import now reads `meta.vf_object_uid` when top-level UID is absent and keeps rewritten top-level, history, and meta UID fields aligned to the authoritative UID.
+   - Taxonomy normalization and upload routing only use local slug-matched UIDs when incoming JSON has no UID, preventing destination/local UIDs from replacing source UIDs.
+   - Entity Editor partial/full imports explicitly stamp matched posts/terms with the incoming UID before auto-export, so slug fallback cannot re-export a local UID.
+21. **UID Fallback Hardening Toggle**
+   - Added `dbvc_allow_uid_fallback_matching` under Configure -> Import Defaults and the legacy import form.
+   - When disabled, UID-bearing imports that do not match a local UID no longer fall back to local IDs, slugs, or reference fallbacks before applying changes.
+   - The fallback remains available for intentional legacy imports by enabling the checkbox.
+22. **Import Identity Documentation Cleanup**
+   - Added `docs/reference/import-identity-matching.md` as the current source of truth for UID preservation, strict fallback behavior, and flow-specific matching rules.
+   - Archived the completed implementation note at `docs/archives/import-identity/import-uid-preservation-hardening-2026-05-25.md`.
+   - Updated roadmap, README, Entity Editor, term, and legacy upload docs so they no longer describe UID fallback as always-on behavior.
+23. **Content Migration V2 Context Provider Hardening**
+   - Field Context and Object Type Context schema artifacts now preserve compact provider summaries instead of embedding full provider lookup maps at the top level.
+   - Forced target object inventory, target field catalog, and slot graph rebuilds avoid decoding previous large JSON artifacts before overwrite.
+   - The `flourishweb.co` replay path was validated after Vertical skipped the oversized raw Field Context transient by design; target field catalog and slot graph artifacts now remain materially smaller while preserving per-group, per-field, and per-slot context.
+
+## Remaining / Next Steps
+1. **PlanMapper Addon Planning**
+   - Define the addon bootstrap, menu placement, CPT/data model, board columns, and public frontend rendering contract for a true built-in Kanban board inside DBVC.
+   - Copy the commented feature ideas and enhancement notes from the Vertical theme `sandbox.php` into the DBVC repo as the initial PlanMapper seed backlog before implementation begins.
+   - Decide how PlanMapper items map to DBVC-managed entities/CPTs, status/state fields, visibility rules, and any public/private field split needed for frontend roadmap output.
+2. **AI Notes/File Converter Planning**
+   - Add a logged-in intake flow for pasted notes and uploaded files that can be interpreted by an AI layer into PlanMapper-ready objects/CPT posts plus structured schema/meta.
+   - Define supported source formats, preview/approval UX, validation/error handling, and fallback behavior when AI extraction is incomplete or ambiguous.
+   - Reuse DBVC permission, review, and audit patterns so generated planning items can be confirmed or corrected before being published to the board/frontend.
+3. **Term & Taxonomy Entity Polish**
+   - QA drawer UX, filters, and resolver badges now that real term snapshots feed the diff engine; optimize any slow comparisons discovered with large vocabularies.
+   - Refresh docs/help text so reviewers know the taxonomy filters, parent resolution behaviour, and “Accept all new terms” affordances that now ship with the feature.
+   - Backfill existing proposals by rerunning `DBVC_Snapshot_Manager::capture_for_proposal()` (or `wp dbvc proposals list --recapture-snapshots`) so every reopen flow benefits from the new term snapshots.
+   - 🗂️ `docs/term-entity-polish.md` now tracks the QA/backfill checklist so each environment can confirm parity before rollout.
+4. **Testing & Automation**
+   - Expand coverage (resolver bulk actions, CSV parsing, importer hooks, duplicate cleanup) now that the PHPUnit scaffold exists.
+   - Integrate the suite with CI once infrastructure is available so regressions (like the new-entity gating bug) are caught automatically.
+5. **Performance / UX Polish**
+   - Extend virtualization/search patterns to resolver attachments + global rule drawers as telemetry demands.
+   - Profile apply drawer rendering when thousands of diff sections are present and consider chunked rendering or skeleton states.
+6. **Media Preview Iteration**
+   - Finalize manifest/local preview URLs so thumbnails render consistently across environments or fall back gracefully when sync paths differ.
+   - Decide whether large assets should lazy-load to avoid blocking entity review.
+7. **Documentation & CLI**
+   - Keep README/handoff updated as new workflows (taxonomy entities, official collections) become available.
+   - Keep import identity behavior centralized in `docs/reference/import-identity-matching.md` when future importer surfaces add new match paths.
+8. **Meta Field Masking Workflow**
+   - ✅ Ship an “Apply masking rules” button above the All Entities table that auto-applies configured post/term meta masking directives (Tools panel, batching, undo).
+   - ✅ Allow reviewers to pick ignore, auto-accept & suppress, or override behaviors via a bulk selector, with override inputs and help tooltips pointing into `docs/reference/meta-masking.md`.
+   - ✅ Ensure the action runs against live proposals so posts/terms/media flagged as Needs Review or Unresolved meta are relabeled once matching masked fields are processed, keeping entity badges and counts accurate after auto-masking.
+   - ✅ Leave existing export-time masking logic untouched so deployments relying on masked exports keep their current behavior.
+   - ✅ Surface the new behaviors through tooltips anchored to the bulk action + help text in docs, plus a progress indicator while masking loads/applies.
+   - ✅ Tightened backend pagination (10-field default with a guarded `per_page` param) so each `/masking` fetch stays within memory budgets exposed by telemetry.
+   - ✅ Added PHPUnit coverage for `/masking` pagination + apply/undo flows (`tests/phpunit/MaskingEndpointsTest.php`) to lock in the behaviours above.
+   - ✅ Tools panel now ships with a “Revert masking decisions” control backed by `/masking/revert`, clearing stored suppressions/overrides so proposals can be re-reviewed after rule changes.
+   - ✅ Masking candidates now auto-prefetch after the entity table loads and persist in sessionStorage/cache, so reopening the drawer or switching tabs no longer re-fetches everything unless you hit Refresh.
+9. **Admin App Refactor**
+   - The compiled UI currently lives in `src/admin-app/index.js` as a single ~3,300 line bundle, which makes day-to-day edits nearly impossible.
+   - Before touching the bundle, capture a backup copy (tagged commit + `build/` artifact) and document the baseline so a reliable reference exists during the refactor; stage work in a separate branch or staging file to keep master stable.
+   - Recover or recreate the original modular React source (components, hooks, api helpers) and treat the generated bundle as a build artifact under `build/`.
+   - Break the work into smaller steps: first extract shared utilities/API calls, then UI primitives, then feature panels (diff table, masking drawer, resolver screens) so each PR stays reviewable and easy to roll back.
+   - Update build/docs to clarify the source-of-truth paths so future contributors can work in smaller files and keep reviews manageable.
+   - 📘 `docs/admin-app-refactor-plan.md` captures the staged architecture (data layer, hooks, components) so contributors can chip away at the refactor without editing the compiled bundle directly.
+10. **Granular Options Import/Export Controls**
+   - Replace coarse `options.json` import/apply behavior with key-level and prefix-level include/exclude controls.
+   - Add preview/dry-run output that summarizes added/changed/removed option keys before writing.
+   - Provide UI controls for selected option groups (core/plugin/theme/custom prefixes) plus WP-CLI flags for parity.
+   - Keep current safe excludes by default; require explicit opt-in for risky/core option keys.

@@ -270,9 +270,9 @@ These local changes were intentionally left out of the implementation commits:
 - `admin/admin-page.php`
 - `db-version-control.php`
 - `dbvc-backup.log`
-- `docs/ROADMAP.md`
-- `docs/legacy-upload-immediate-import-plan.md`
-- `docs/progress-summary.md`
+- `docs/roadmap.md`
+- `docs/implementation/completed/legacy-upload-immediate-import-plan.md`
+- `docs/implementation/completed/progress-summary.md`
 - `includes/class-sync-posts.php`
 - `test-results/`
 

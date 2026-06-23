@@ -56,7 +56,7 @@
                 throw new Error(e || `Request failed (${t.status})`);
               }
               return t.json();
-            }, maskDocsBase = DBVC_ADMIN_APP?.docs?.masking || (window.location && window.location.origin ? `${window.location.origin.replace(/\/$/, "")}/wp-content/plugins/db-version-control-main/docs/meta-masking.md` : "https://example.com/docs/meta-masking.md"), maskDocLink = e => e ? `${maskDocsBase}#${e}` : maskDocsBase, isThenable = e => !!e && ("object" == typeof e || "function" == typeof e) && "function" == typeof e.then, warnedAsyncValue = !1, warnedAsyncKeys = new Set, logAsyncValue = (e, t, s) => {
+            }, maskDocsBase = DBVC_ADMIN_APP?.docs?.masking || (window.location && window.location.origin ? `${window.location.origin.replace(/\/$/, "")}/wp-content/plugins/db-version-control-main/docs/reference/meta-masking.md` : "https://example.com/docs/reference/meta-masking.md"), maskDocLink = e => e ? `${maskDocsBase}#${e}` : maskDocsBase, isThenable = e => !!e && ("object" == typeof e || "function" == typeof e) && "function" == typeof e.then, warnedAsyncValue = !1, warnedAsyncKeys = new Set, logAsyncValue = (e, t, s) => {
               const n = `${e || "unknown"}::${t || "unknown"}`;
               if (warnedAsyncKeys.has(n)) return;
               warnedAsyncKeys.add(n), console.warn("DBVC: Promise detected in entity drawer values.", {

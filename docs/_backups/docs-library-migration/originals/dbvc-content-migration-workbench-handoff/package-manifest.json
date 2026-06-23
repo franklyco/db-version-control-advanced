@@ -1,0 +1,39 @@
+{
+  "package_name": "dbvc-content-migration-workbench-handoff",
+  "version": "1.0.0",
+  "intent": "Repo-drop implementation handoff for DBVC Content Migration Workbench",
+  "entry_points": [
+    "README.md",
+    "CODEX_KICKOFF_PROMPT.md"
+  ],
+  "documents": [
+    "docs/01-product-overview.md",
+    "docs/02-workbench-ui-layout.md",
+    "docs/03-components-and-state.md",
+    "docs/04-interaction-flows.md",
+    "docs/05-implementation-plan.md",
+    "docs/06-acceptance-criteria.md",
+    "docs/07-adaptation-notes.md",
+    "docs/08-wireframes-ascii.md",
+    "docs/09-data-contracts-and-status-model.md",
+    "docs/10-risk-and-anti-patterns.md"
+  ],
+  "package_version": "v3",
+  "notes": "Updated to include earlier architecture findings and recommendations from the session.",
+  "files_verified": [
+    "CODEX_KICKOFF_PROMPT.md",
+    "README.md",
+    "docs/00-architecture-findings-and-recommendations.md",
+    "docs/01-product-overview.md",
+    "docs/02-workbench-ui-layout.md",
+    "docs/03-components-and-state.md",
+    "docs/04-interaction-flows.md",
+    "docs/05-implementation-plan.md",
+    "docs/06-acceptance-criteria.md",
+    "docs/07-adaptation-notes.md",
+    "docs/08-wireframes-ascii.md",
+    "docs/09-data-contracts-and-status-model.md",
+    "docs/10-risk-and-anti-patterns.md",
+    "package-manifest.json"
+  ]
+}

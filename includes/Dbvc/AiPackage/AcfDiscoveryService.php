@@ -275,7 +275,7 @@ final class AcfDiscoveryService
         $normalized_fields = self::normalize_field_list(is_array($fields) ? $fields : []);
         $location = isset($group['location']) && is_array($group['location']) ? $group['location'] : [];
 
-        return [
+        $normalized = [
             'key' => isset($group['key']) ? (string) $group['key'] : '',
             'title' => isset($group['title']) ? (string) $group['title'] : '',
             'active' => ! array_key_exists('active', $group) || ! empty($group['active']),
@@ -287,6 +287,20 @@ final class AcfDiscoveryService
             'field_names' => self::collect_field_names($normalized_fields),
             'field_count' => count(self::collect_field_names($normalized_fields)),
         ];
+
+        foreach (['field_context', 'vf_field_context', 'context', 'default_context', 'object_type_context'] as $context_key) {
+            if (isset($group[$context_key]) && is_array($group[$context_key])) {
+                $normalized[$context_key] = self::normalize_value($group[$context_key]);
+            }
+        }
+
+        foreach (['resolved_purpose', 'effective_purpose', 'default_purpose', 'gardenai_field_purpose'] as $purpose_key) {
+            if (! empty($group[$purpose_key]) && is_scalar($group[$purpose_key])) {
+                $normalized[$purpose_key] = (string) $group[$purpose_key];
+            }
+        }
+
+        return $normalized;
     }
 
     /**
@@ -339,6 +353,18 @@ final class AcfDiscoveryService
             'max' => self::normalize_value($field['max'] ?? null),
             'availability' => self::sanitize_string_array($field['fco_object_availability'] ?? []),
         ];
+
+        foreach (['field_context', 'vf_field_context', 'context', 'default_context', 'object_type_context'] as $context_key) {
+            if (isset($field[$context_key]) && is_array($field[$context_key])) {
+                $normalized[$context_key] = self::normalize_value($field[$context_key]);
+            }
+        }
+
+        foreach (['resolved_purpose', 'effective_purpose', 'default_purpose', 'gardenai_field_purpose'] as $purpose_key) {
+            if (! empty($field[$purpose_key]) && is_scalar($field[$purpose_key])) {
+                $normalized[$purpose_key] = (string) $field[$purpose_key];
+            }
+        }
 
         if (! empty($field['sub_fields']) && is_array($field['sub_fields'])) {
             $normalized['sub_fields'] = self::normalize_field_list($field['sub_fields']);
@@ -397,6 +423,7 @@ final class AcfDiscoveryService
             'options_pages' => [],
             'unscoped_groups' => [],
         ];
+        $available_taxonomies = self::get_available_taxonomy_keys();
 
         foreach ($field_groups as $group_key => $group) {
             $targets = isset($group['targets']) && is_array($group['targets']) ? $group['targets'] : [];
@@ -416,6 +443,19 @@ final class AcfDiscoveryService
             }
 
             $taxonomies = isset($targets['taxonomies']) && is_array($targets['taxonomies']) ? $targets['taxonomies'] : [];
+            if (! empty($targets['all_taxonomies'])) {
+                $excluded_taxonomies = isset($targets['excluded_taxonomies']) && is_array($targets['excluded_taxonomies'])
+                    ? self::sanitize_string_array($targets['excluded_taxonomies'])
+                    : [];
+                foreach ($available_taxonomies as $available_taxonomy) {
+                    if (in_array($available_taxonomy, $excluded_taxonomies, true)) {
+                        continue;
+                    }
+
+                    $taxonomies[] = $available_taxonomy;
+                }
+            }
+
             foreach ($taxonomies as $taxonomy) {
                 $taxonomy = sanitize_key((string) $taxonomy);
                 if ($taxonomy === '') {
@@ -472,6 +512,8 @@ final class AcfDiscoveryService
         $targets = [
             'post_types' => [],
             'taxonomies' => [],
+            'all_taxonomies' => false,
+            'excluded_taxonomies' => [],
             'options_pages' => [],
             'generic_rules' => [],
         ];
@@ -493,6 +535,11 @@ final class AcfDiscoveryService
                     continue;
                 }
 
+                if ($param === 'taxonomy' && ($operator === '!=' || $operator === '!==')) {
+                    $targets['excluded_taxonomies'][] = sanitize_key($value);
+                    continue;
+                }
+
                 if ($operator !== '==' && $operator !== '===') {
                     $targets['generic_rules'][] = [
                         'param' => $param,
@@ -508,7 +555,12 @@ final class AcfDiscoveryService
                 }
 
                 if ($param === 'taxonomy') {
-                    $targets['taxonomies'][] = sanitize_key($value);
+                    $taxonomy = sanitize_key($value);
+                    if ($taxonomy === 'all') {
+                        $targets['all_taxonomies'] = true;
+                    } else {
+                        $targets['taxonomies'][] = $taxonomy;
+                    }
                     continue;
                 }
 
@@ -536,12 +588,28 @@ final class AcfDiscoveryService
 
         $targets['post_types'] = self::sanitize_string_array($targets['post_types']);
         $targets['taxonomies'] = self::sanitize_string_array($targets['taxonomies']);
+        $targets['excluded_taxonomies'] = self::sanitize_string_array($targets['excluded_taxonomies']);
         $targets['options_pages'] = self::sanitize_string_array($targets['options_pages']);
         usort($targets['generic_rules'], static function (array $left, array $right): int {
             return strcmp(wp_json_encode($left), wp_json_encode($right));
         });
 
         return $targets;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private static function get_available_taxonomy_keys(): array
+    {
+        if (function_exists('dbvc_get_available_taxonomies')) {
+            return self::sanitize_string_array(array_keys((array) dbvc_get_available_taxonomies()));
+        }
+
+        $taxonomies = function_exists('get_taxonomies')
+            ? get_taxonomies(['show_ui' => true], 'objects')
+            : [];
+        return self::sanitize_string_array(is_array($taxonomies) ? array_keys($taxonomies) : []);
     }
 
     /**

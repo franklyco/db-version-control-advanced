@@ -69,6 +69,7 @@ final class PackageDocBuilder
             '## What This Package Contains',
             '',
             '- Canonical DBVC-shaped sample JSON for the selected object types.',
+            '- Sibling `.context.json` files with object context plus each sample field type, choices, and authoring context.',
             '- One compact machine-readable schema file.',
             '- The current site fingerprint that the returned package should target.',
             '',
@@ -91,6 +92,28 @@ final class PackageDocBuilder
             '- `docs/NOTES.md`',
             '- `reports/generation-summary.md`',
             '',
+            '## Required Manifest Minimum',
+            '',
+            'The returned `dbvc-ai-manifest.json` must include this shape:',
+            '',
+            '```json',
+            '{',
+            '  "package_type": "dbvc_ai_submission_package",',
+            '  "package_schema_version": 1,',
+            '  "source_sample_package": {',
+            '    "site_fingerprint": "' . self::get_site_fingerprint($context) . '",',
+            '    "package_schema_version": 1',
+            '  },',
+            '  "intended_operation": "create_only",',
+            '  "counts": {',
+            '    "post_entities": 0,',
+            '    "term_entities": 0',
+            '  }',
+            '}',
+            '```',
+            '',
+            'Use `create_only`, `update_only`, or `create_or_update` for `intended_operation`.',
+            '',
             '## Authoring Rules',
             '',
             '- Mirror the sample JSON field names exactly.',
@@ -102,7 +125,7 @@ final class PackageDocBuilder
             '',
             '## Workflow',
             '',
-            '1. Read `SCHEMA_COMPACT.json` and the sample JSON for the object type you are authoring.',
+            '1. Read `SCHEMA_COMPACT.json`, the sample JSON, and the sibling `.context.json` for the object type you are authoring.',
             '2. Draft the returned entity JSON using the canonical sample structure.',
             '3. Return only the package contents DBVC needs for import.',
             '',
@@ -151,11 +174,11 @@ final class PackageDocBuilder
         $lines[] = '## Included Artifacts';
         $lines[] = '';
         $lines[] = '- `schema/object-inventory.json` describes the selected object types.';
-        $lines[] = '- `schema/field-catalog.json` lists core, registered meta, observed meta, taxonomy, and ACF field context.';
+        $lines[] = '- `schema/field-catalog.json` lists core, registered meta, observed meta, taxonomy, and ACF fields.';
         $lines[] = '- `schema/validation-rules.json` describes the current DBVC validation contract.';
-        $lines[] = '- `samples/` contains canonical sample JSON plus sibling markdown guidance for each selected object type.';
+        $lines[] = '- `samples/` contains canonical sample JSON plus sibling markdown and `.context.json` authoring guidance for each selected object type.';
         $lines[] = '';
-        $lines[] = 'Use the sample JSON as the source of truth for output shape. Use the markdown docs to understand rules, allowed values, and authoring guidance.';
+        $lines[] = 'Use the sample JSON as the source of truth for output shape. Use the markdown and context docs to understand rules, choices, field purpose, and object semantics.';
         $lines[] = '';
 
         return implode("\n", $lines);
@@ -204,7 +227,7 @@ final class PackageDocBuilder
             '## Working Method',
             '',
             '- Read `README.md`, `OUTPUT_CONTRACT.md`, and `VALIDATION_RULES.md` before authoring output.',
-            '- Read the sibling `.md` file beside each sample JSON you use.',
+            '- Read the sibling `.md` and `.context.json` files beside each sample JSON you use.',
             '- If a field is unclear, preserve the key and use a conservative placeholder rather than inventing unsupported structure.',
             '',
         ];

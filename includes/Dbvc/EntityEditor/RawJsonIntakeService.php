@@ -451,13 +451,28 @@ final class RawJsonIntakeService
             $uid = (string) $payload['dbvc_object_uid'];
         }
         if ($uid === '' && isset($payload['meta']) && \is_array($payload['meta'])) {
-            if (isset($payload['meta']['dbvc_post_history']) && \is_array($payload['meta']['dbvc_post_history'])) {
-                $uid = isset($payload['meta']['dbvc_post_history']['vf_object_uid']) ? (string) $payload['meta']['dbvc_post_history']['vf_object_uid'] : '';
+            if (isset($payload['meta']['vf_object_uid'])) {
+                $meta_uid = $payload['meta']['vf_object_uid'];
+                if (\is_array($meta_uid)) {
+                    $uid = isset($meta_uid[0]) ? (string) $meta_uid[0] : '';
+                } else {
+                    $uid = (string) $meta_uid;
+                }
+            }
+            if ($uid === '' && isset($payload['meta']['dbvc_post_history']) && \is_array($payload['meta']['dbvc_post_history'])) {
+                $history = $payload['meta']['dbvc_post_history'];
+                if (isset($history[0]) && \is_array($history[0]) && isset($history[0]['vf_object_uid'])) {
+                    $uid = (string) $history[0]['vf_object_uid'];
+                } elseif (isset($history['vf_object_uid'])) {
+                    $uid = (string) $history['vf_object_uid'];
+                }
             }
             if ($uid === '' && isset($payload['meta']['dbvc_term_history']) && \is_array($payload['meta']['dbvc_term_history'])) {
                 $history = $payload['meta']['dbvc_term_history'];
                 if (isset($history[0]) && \is_array($history[0]) && isset($history[0]['vf_object_uid'])) {
                     $uid = (string) $history[0]['vf_object_uid'];
+                } elseif (isset($history['vf_object_uid'])) {
+                    $uid = (string) $history['vf_object_uid'];
                 }
             }
         }
@@ -507,6 +522,9 @@ final class RawJsonIntakeService
         if ($kind === 'post') {
             if ($uid !== '') {
                 $sources[] = ['source' => 'uid', 'ids' => self::find_post_ids_by_uid($uid, $subtype)];
+            }
+            if (($uid === '' || self::is_uid_fallback_matching_allowed()) && ! empty($payload['ID'])) {
+                $sources[] = ['source' => 'payload_id', 'ids' => self::find_post_ids_by_payload_id((int) $payload['ID'], $subtype)];
             }
             if ($slug !== '' && $subtype !== '') {
                 $sources[] = ['source' => 'slug', 'ids' => self::find_post_ids_by_slug($slug, $subtype)];
@@ -926,6 +944,39 @@ final class RawJsonIntakeService
         }
 
         return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
+
+    /**
+     * @param int    $payload_id
+     * @param string $post_type
+     * @return array<int,int>
+     */
+    private static function find_post_ids_by_payload_id($payload_id, $post_type)
+    {
+        $payload_id = absint($payload_id);
+        $post_type = sanitize_key((string) $post_type);
+        if ($payload_id <= 0 || $post_type === '') {
+            return [];
+        }
+
+        $post = get_post($payload_id);
+        if (! ($post instanceof \WP_Post) || $post->post_type !== $post_type) {
+            return [];
+        }
+
+        return [(int) $post->ID];
+    }
+
+    /**
+     * @return bool
+     */
+    private static function is_uid_fallback_matching_allowed()
+    {
+        if (\class_exists('DBVC_Sync_Posts') && \method_exists('DBVC_Sync_Posts', 'is_uid_fallback_matching_allowed')) {
+            return (bool) \DBVC_Sync_Posts::is_uid_fallback_matching_allowed();
+        }
+
+        return get_option('dbvc_allow_uid_fallback_matching', '0') === '1';
     }
 
     /**

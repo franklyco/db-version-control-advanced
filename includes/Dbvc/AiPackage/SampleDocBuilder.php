@@ -31,6 +31,7 @@ final class SampleDocBuilder
         $meta_context = isset($context['meta']) && is_array($context['meta']) ? $context['meta'] : [];
         $core_fields = isset($context['core_fields']) && is_array($context['core_fields']) ? $context['core_fields'] : [];
         $tax_input = isset($context['tax_input']) && is_array($context['tax_input']) ? $context['tax_input'] : [];
+        $object_type_context = isset($context['object_type_context']) && is_array($context['object_type_context']) ? $context['object_type_context'] : [];
 
         $lines = [];
         $lines[] = '# ' . sprintf('%s sample guidance', $label);
@@ -48,6 +49,16 @@ final class SampleDocBuilder
         $lines[] = '- Value style: `' . $value_style . '`';
         $lines[] = '- Shape mode: `' . $shape_mode . '`';
         $lines[] = '- Create-template convention: `' . ($entity_kind === 'post' ? 'ID: 0' : 'term_id: 0') . '` and omit top-level `vf_object_uid` for net-new entities.';
+
+        if (! empty($object_type_context)) {
+            $lines[] = '';
+            $lines[] = '## Object Type Context';
+            $lines[] = '';
+            foreach (self::build_object_type_context_lines($object_type_context) as $line) {
+                $lines[] = $line;
+            }
+        }
+
         $lines[] = '';
         $lines[] = '## Core field rules';
         $lines[] = '';
@@ -198,6 +209,7 @@ final class SampleDocBuilder
         $choices = isset($definition['choices']) && is_array($definition['choices']) ? $definition['choices'] : [];
         $post_types = isset($definition['post_type']) && is_array($definition['post_type']) ? $definition['post_type'] : [];
         $taxonomy_filters = isset($definition['taxonomy_filters']) && is_array($definition['taxonomy_filters']) ? $definition['taxonomy_filters'] : [];
+        $field_context = isset($definition['field_context']) && is_array($definition['field_context']) ? $definition['field_context'] : [];
 
         $line = '- `' . $path . '` (`' . $label . '`)';
         if ($type !== '') {
@@ -205,6 +217,10 @@ final class SampleDocBuilder
         }
         if ($instructions !== '') {
             $line .= ': ' . $instructions;
+        }
+        $context_text = self::extract_context_text($field_context);
+        if ($context_text !== '') {
+            $line .= ' Context: ' . $context_text . '.';
         }
         if (! empty($choices)) {
             $line .= ' Choices: `' . implode('`, `', array_map('strval', array_keys($choices))) . '`.';
@@ -229,5 +245,35 @@ final class SampleDocBuilder
         }
 
         return $line;
+    }
+
+    /**
+     * @param array<string,mixed> $object_type_context
+     * @return array<int,string>
+     */
+    private static function build_object_type_context_lines(array $object_type_context): array
+    {
+        $lines = [];
+        $context = self::extract_context_text($object_type_context);
+        if ($context !== '') {
+            $lines[] = '- Context: ' . $context;
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @param array<string,mixed> $source
+     * @return string
+     */
+    private static function extract_context_text(array $source): string
+    {
+        foreach (['context', 'resolved_purpose', 'effective_purpose', 'default_purpose'] as $key) {
+            if (! empty($source[$key]) && is_scalar($source[$key])) {
+                return sanitize_textarea_field((string) $source[$key]);
+            }
+        }
+
+        return '';
     }
 }

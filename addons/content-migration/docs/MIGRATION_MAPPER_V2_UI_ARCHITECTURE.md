@@ -10,7 +10,7 @@ It should be read alongside:
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_OVERVIEW.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_IMPLEMENTATION_GUIDE.md`
 - `addons/content-migration/docs/MIGRATION_MAPPER_V2_FILE_PLAN.md`
-- `docs/UI-ARCHITECTURE.md`
+- `docs/architecture/admin-app-ui-architecture.md`
 
 The goal is to make the V2 operational experience feel simple by default and powerful on demand.
 
@@ -383,7 +383,7 @@ Use the same broad direction already established by:
 
 - `admin/class-admin-app.php`
 - `src/admin-app/index.js`
-- `docs/UI-ARCHITECTURE.md`
+- `docs/architecture/admin-app-ui-architecture.md`
 
 That means:
 

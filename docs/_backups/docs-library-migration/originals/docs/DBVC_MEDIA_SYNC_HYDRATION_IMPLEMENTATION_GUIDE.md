@@ -1,0 +1,1061 @@
+# DBVC Media Sync Hydration Implementation Guide
+
+Date: 2026-06-04
+Status: Initial service and WP-CLI implementation in progress
+
+## Objective
+
+Add a first-class DBVC media sync/hydration workflow that can mirror a site's registered WordPress Media Library assets to a duplicate site whose database already contains the attachment posts, but whose physical upload files are missing.
+
+The immediate target case is a duplicate site created from an All-in-One WP Migration `.wpress` restore where media files were excluded. The target database contains the canonical attachment posts with matching IDs. DBVC should be able to hydrate the missing files into `wp-content/uploads`, preserve the existing attachment IDs, regenerate or validate WordPress attachment metadata, and report a clear mapping/receipt without disrupting proposal review, entity diffs, Visual Editor, Content Collector, Bricks portability, AI package flows, or existing resolver decisions.
+
+## Current Implementation Status
+
+Implemented initial foundations:
+
+- Read-only attachment inventory and file-state inspection.
+- Full-library media mirror manifest/package export under a dedicated `dbvc_media_mirror` shape.
+- Dry-run hydration planning for cloned targets, with same-ID confirmation, hash checks, missing-file detection, metadata-repair detection, and conflict reporting.
+- Guarded WP-CLI apply for local mirror packages: `--apply` requires `--confirm=hydrate-existing-media`, hydrates existing attachment rows only, verifies package hashes, avoids overwrites by default, and runs WordPress attachment metadata repair when enabled.
+- Configure > Media Handling settings for enabling the workflow, source mode, matching policy, metadata policy, MIME group scope, batch size, receipts, strict hashes, clone confirmation, and apply lock timeout.
+- Basic Configure > Media Handling workflow controls for inventory, package export, preflight, and apply.
+- Configure > Media Handling apply progress UI with client-driven chunked REST apply, a progress bar, cumulative batch counters, and a stop-after-current-batch control.
+- Import/Upload tab media hydration package upload for ZIP packages, with safe extraction into `sync/media-mirrors/<package-id>/`.
+- Staged package discovery and selection in the Media Hydration workflow, so admins can choose uploaded/exported packages without pasting filesystem paths.
+- Preflight review summary/table rendering in the admin workflow before Apply.
+- Receipt listing and secure JSON receipt downloads from the Media Hydration workflow.
+- Receipt-scoped failed-item retry from the Media Hydration workflow. Retry reuses the same manifest/preflight/apply safety gates and limits the run to source attachment IDs recorded as failed in a prior apply receipt.
+- Safe old-receipt cleanup from the Media Hydration workflow. Cleanup uses the REST nonce, `manage_options`, age-based deletion, and receipt-root path containment.
+- Browser chunk and background job execution modes. Browser chunks remain the default. Background jobs persist `media_hydration` state in `dbvc_jobs`, use the same hydrator/lock/receipt path, and can be advanced through WP-Cron or admin REST polling.
+- Secure source-side media mirror ZIP download links after package export. Downloads are served through an admin-post action with `manage_options`, nonce verification, package-ID validation, and containment under the DBVC media mirror root.
+- Permission-aware REST endpoints for inventory, preflight planning, package export, and guarded apply. Preflight/package/apply are blocked until media hydration is enabled in DBVC settings.
+- File-backed JSON receipts and a global apply lock for write runs.
+- Saved dry-run plan IDs for REST preflight/apply acknowledgement, with manifest checksum verification.
+- Optional HTTPS normalization for exact Media Library URLs encountered during hydration apply. When enabled, DBVC rewrites known `http://` media references for the hydrated attachment to the target attachment's `https://` URL in attachment GUIDs, post content fields, and post meta using serialization-aware updates.
+
+Not implemented yet:
+
+- WP-CLI commands for creating/running media hydration jobs outside the admin workflow.
+- Remote-source hydration.
+- New attachment creation for non-cloned targets.
+- Destructive mirror cleanup or deletion of target extras.
+
+## Current Behavior Summary
+
+Current DBVC media behavior is proposal/reference driven:
+
+- `DBVC_Backup_Manager::generate_manifest()` builds `media_index` from attachment IDs found in exported post/term meta and known content URL references.
+- `Dbvc\Media\BundleManager` can copy those referenced files into proposal-specific media bundles when media bundling is enabled.
+- `Dbvc\Media\Resolver` resolves manifest entries by `vf_asset_uid`, `vf_file_hash`, `_wp_attached_file` path, then filename.
+- `Dbvc\Media\Reconciler` creates attachments from bundle files only when the resolver does not already find a target attachment.
+- `DBVC_Media_Sync` can sideload bundled or remote files for unresolved references when media retrieval is enabled.
+
+Important gap:
+
+- If the target database already contains the attachment rows, the resolver can mark media as `reused` even when the physical file is missing on disk. In the All-in-One no-media restore case, this prevents DBVC from hydrating missing files because attachment records already exist.
+
+## Product Boundary
+
+### In Scope
+
+- Registered WordPress Media Library assets represented by `post_type = attachment`.
+- Existing target attachment rows whose IDs match the canonical source rows.
+- Missing original upload files referenced by `_wp_attached_file`.
+- Missing or stale WordPress-generated attachment metadata.
+- Existing DBVC media identity metadata:
+  - `vf_asset_uid`
+  - `vf_file_hash`
+  - `_dbvc_original_attachment_id`
+- Source transport from:
+  - DBVC media mirror bundle/package
+  - canonical source URLs when explicitly allowed
+  - existing proposal bundles where appropriate
+- Dry-run planning before writes.
+- Job progress and receipts.
+- CLI and admin UI entry points.
+
+### Out of Scope for Initial Release
+
+- Deleting target media not present on source.
+- Mirroring arbitrary non-library files in `wp-content/uploads`.
+- Theme/plugin asset migration.
+- Preserving numeric attachment IDs when the target database was not cloned from the source.
+- Rewriting all entity content references beyond existing DBVC resolver/map contracts.
+- Replacing the existing proposal resolver workflow.
+- Importing non-media upload directories created by cache, optimization, backup, or form plugins unless they are registered as attachments.
+
+## Core Design Rule
+
+Hydrating an existing attachment row is not the same operation as importing a new attachment.
+
+For cloned databases with matching attachment IDs:
+
+1. Do not call `wp_insert_attachment()` for attachments that already exist.
+2. Do not create duplicate attachment posts.
+3. Copy/download the source file into the exact target path described by the target row's `_wp_attached_file`.
+4. Verify hash and file type.
+5. Run WordPress metadata generation/repair for that existing attachment ID.
+6. Record an identity mapping of `source_id -> target_id`, which will usually be the same ID.
+
+For non-cloned targets:
+
+1. Use normal DBVC resolver behavior and WordPress attachment creation APIs.
+2. Do not promise numeric ID preservation.
+3. Produce an ID map and remap references only through explicit DBVC contracts.
+
+## Proposed Architecture
+
+Place new code under `includes/Dbvc/Media/` unless an existing boundary is a better fit.
+
+### Implementation Boundaries
+
+Keep this feature out of existing monoliths except for narrow registration hooks.
+
+Recommended file layout:
+
+```text
+includes/Dbvc/Media/Hydration/
+  LibraryInventoryService.php
+  FileStateService.php
+  MirrorManifestBuilder.php
+  HydrationPlanner.php
+  Hydrator.php
+  MetadataRepairService.php
+  SourceLocator.php
+  HydrationReceiptStore.php
+  MediaMapStore.php
+  RestController.php
+  Settings.php
+commands/
+  class-media-hydration-cli.php
+```
+
+Registration rules:
+
+- Add `require_once` lines in `db-version-control.php` only for the new focused classes.
+- Prefer a dedicated `Dbvc\Media\Hydration\RestController` over adding large handlers to `DBVC_Admin_App`.
+- Serve media mirror ZIP downloads through a focused admin-post controller rather than exposing raw sync filesystem URLs.
+- If existing admin or REST classes must be touched, add thin delegation only.
+- Keep `DBVC_Sync_Posts`, `DBVC_Backup_Manager`, `DBVC_Media_Sync`, and `admin/admin-page.php` changes small and explicit.
+- Add settings metadata through `MediaHandlingProvider` or a small hydration settings provider; do not scatter raw option names across runtime services.
+- Do not place hydration logic in add-ons.
+- Do not make Visual Editor, Content Collector, Bricks, AI package, or third-party portability code depend on hydration classes.
+
+Service rules:
+
+- Each service owns one stage: inventory, planning, source resolution, hydration, metadata, receipt storage, or presentation.
+- Services should accept arrays/value objects and return structured arrays/results, not write global state except through the receipt/job store.
+- File-writing services must be callable from CLI and REST without duplicating logic.
+- Long-running work must be chunkable and resumable.
+
+### New Services
+
+| Service | Responsibility |
+|---|---|
+| `LibraryInventoryService` | Enumerate attachment posts and produce normalized media descriptors for all registered library items, not just referenced media. |
+| `FileStateService` | Check target file existence, size, hash, readability, metadata presence, generated sub-sizes, MIME, and upload-base safety. |
+| `MirrorManifestBuilder` | Build a dedicated full-library media manifest/package without changing proposal `media_index` semantics. |
+| `HydrationPlanner` | Compare source descriptors against target attachment rows and produce a dry-run plan. |
+| `Hydrator` | Execute in-place file hydration for existing attachments and optional new attachment creation for non-cloned targets. |
+| `MetadataRepairService` | Regenerate, update, or verify attachment metadata after file hydration. |
+| `SourceLocator` | Resolve source bytes from a bundle, exact source upload path, or allowed remote URL. |
+| `HydrationReceiptStore` | Persist run plans, results, errors, and downloadable receipts using `dbvc_jobs`, `dbvc_activity_log`, and JSON receipt files. |
+| `MediaMapStore` | Normalize source-to-target attachment mappings for use by existing resolver/reporting flows. |
+
+### Existing Services To Preserve
+
+- `Dbvc\Media\Resolver`
+- `Dbvc\Media\Reconciler`
+- `Dbvc\Media\BundleManager`
+- `DBVC_Media_Sync`
+- proposal review REST endpoints
+- resolver decision option store `dbvc_resolver_decisions`
+
+Do not make full-library media hydration automatically flood proposal resolver attachments. Keep proposal `media_index` focused on proposal-referenced media unless a later phase deliberately adds a filtered, UI-aware integration.
+
+## Security Controls
+
+Treat media mirror manifests and packages as untrusted input, even when generated by DBVC.
+
+### Permissions And Requests
+
+- Admin UI writes require `manage_options`.
+- REST routes require `permission_callback` equivalent to existing DBVC admin routes.
+- Classic admin actions require nonce verification.
+- CLI commands should log the initiating user/context when available.
+- Apply/hydrate actions require an explicit dry-run plan ID unless `dbvc_media_hydration_require_dry_run` is disabled by an administrator.
+
+### Package And Path Safety
+
+- Extract uploaded ZIP packages only through a safe extractor that rejects absolute paths, `..`, empty names, symlinks, hard links, and nested archive tricks.
+- Accept only expected package entries:
+  - mirror manifest JSON
+  - media files under a known package directory
+  - optional receipt/checksum files
+- Resolve every target path with `realpath()` where possible and verify containment under `wp_upload_dir()['basedir']`.
+- Never write to paths derived directly from `source_url`.
+- Do not follow symlinks when reading source files or writing target files.
+- Stage writes to a temporary file under the target upload tree, then rename into place.
+- Preserve existing target files unless overwrite policy permits replacement and a backup copy was created.
+
+### Remote Source Safety
+
+- Remote hydration is disabled unless the configured source mode allows it.
+- Reuse the existing mirror-domain/external-host policy, but add hydration-specific host validation for `dbvc_media_hydration_remote_base_url`.
+- Reject private, loopback, link-local, and malformed remote hosts to avoid SSRF.
+- Enforce `dbvc_media_hydration_max_file_size_mb` before and during download when response headers are available.
+- Set download timeouts and fail closed on redirects to unapproved hosts.
+- Validate MIME type and extension after download using WordPress file type checks before writing into uploads.
+
+### Manifest Integrity
+
+- Require `kind = dbvc_media_mirror` for full-library packages.
+- Verify manifest schema version before planning.
+- Verify file hashes after source read and after target write when hashes are present.
+- Treat missing hashes as warnings in dry run and blocked for apply unless an explicit legacy/unsafe mode is added later.
+- Record package checksum and manifest checksum in the receipt.
+
+### Logging Safety
+
+- Do not log credentials, signed URLs, auth headers, or full local filesystem roots unless debug mode explicitly permits it.
+- Logs should include attachment IDs, relative paths, status codes, and failure reasons.
+- Receipts can include relative upload paths and hashes, but should avoid secrets.
+
+## Manifest Strategy
+
+Do not overload the existing proposal `media_index` for full-library sync by default. It is already consumed by proposal review and resolver UI.
+
+Add a dedicated media mirror manifest shape:
+
+```json
+{
+  "schema": 1,
+  "kind": "dbvc_media_mirror",
+  "generated_at": "2026-06-04T00:00:00Z",
+  "source_site": {
+    "home_url": "https://canonical.example",
+    "uploads_baseurl": "https://canonical.example/wp-content/uploads"
+  },
+  "scope": {
+    "mode": "all_registered_attachments",
+    "include_unattached": true,
+    "mime_types": ["image", "video", "audio", "font", "document", "other"]
+  },
+  "attachments": [
+    {
+      "source_id": 123,
+      "asset_uid": "uuid-or-empty",
+      "relative_path": "2025/01/example.jpg",
+      "source_url": "https://canonical.example/wp-content/uploads/2025/01/example.jpg",
+      "filename": "example.jpg",
+      "mime_type": "image/jpeg",
+      "file_hash": "sha256:...",
+      "file_size": 123456,
+      "metadata": {
+        "width": 1200,
+        "height": 800,
+        "sizes": ["thumbnail", "medium", "large"]
+      }
+    }
+  ]
+}
+```
+
+Compatibility rule:
+
+- Existing proposal manifests keep `media_index`.
+- Full-library media mirror packages use `attachments`.
+- A future bridge can import `attachments` into resolver views only behind an explicit UI filter such as "Library hydration".
+
+## Target Matching And Mapping
+
+Planner matching order:
+
+1. Exact target attachment ID when `source_id` exists and `get_post(source_id)` is an attachment.
+2. `vf_asset_uid`.
+3. `_dbvc_original_attachment_id`.
+4. `vf_file_hash`.
+5. `_wp_attached_file` relative path.
+6. Filename only as a conflict signal, never as an automatic writable match.
+
+When the target DB is a clone and IDs match:
+
+- Mark mapping as `source_id == target_id`.
+- If target file exists and hash matches, status is `ok`.
+- If target file is missing, status is `needs_hydration`.
+- If target file exists but hash differs, status is `hash_mismatch` and requires overwrite policy.
+- If target metadata is missing/stale, status is `needs_metadata_repair`.
+
+Mapping output should include:
+
+```json
+{
+  "source_id": 123,
+  "target_id": 123,
+  "matched_via": "same_id",
+  "file_status": "missing",
+  "planned_action": "hydrate_existing_attachment",
+  "relative_path": "2025/01/example.jpg"
+}
+```
+
+## Hydration Execution
+
+### Existing Attachment Hydration
+
+For target attachment IDs that already exist:
+
+1. Resolve target relative path from target `_wp_attached_file`.
+2. Reject paths outside `wp_upload_dir()['basedir']`.
+3. Locate source file from bundle or allowed remote source.
+4. Validate expected file size/hash when known.
+5. Create the target upload subdirectory if needed.
+6. Copy or stream the source file to a temporary path in the target upload tree.
+7. Atomically move into place where possible.
+8. Update `vf_asset_uid`, `vf_file_hash`, and `_dbvc_original_attachment_id` if missing or explicitly allowed.
+9. Regenerate metadata for the existing attachment ID.
+10. Verify `get_attached_file($target_id)` exists and hash matches.
+11. Record receipt row.
+
+Idempotency requirements:
+
+- A second run after successful hydration should classify the item as `ok` or `needs_metadata_repair`, not copy the file again.
+- Failed items must be retryable without rerunning the entire library.
+- Each item receipt must record `planned_action`, `actual_action`, `status`, `source_hash`, `target_hash`, and any backup path.
+- Job state must checkpoint after each batch.
+- Concurrent hydration jobs must be blocked or serialized by a lock stored in `dbvc_jobs`/options.
+
+### New Attachment Creation
+
+Only use this path when the target does not contain the attachment row and the run is explicitly configured to create missing attachment records.
+
+- Use WordPress media APIs.
+- Store DBVC mapping metadata.
+- Do not promise source ID preservation.
+- Keep this path separate in receipts and UI.
+
+## WordPress Media Handling
+
+The in-place hydration path must still let WordPress process media metadata.
+
+For images:
+
+- call `wp_generate_attachment_metadata($attachment_id, $file_path)`
+- call `wp_update_attachment_metadata($attachment_id, $metadata)`
+- verify `_wp_attachment_metadata.file` aligns with `_wp_attached_file`
+
+For audio/video:
+
+- use the same metadata-generation path WordPress supports through `wp_generate_attachment_metadata`
+- preserve MIME type from attachment post unless validation proves it is wrong
+
+For fonts/documents/other files:
+
+- copy and verify the original file
+- update `_wp_attached_file` only if missing and source manifest is trusted
+- metadata may be empty; this is acceptable when WordPress itself would not generate sizes
+
+Generated derivative strategy should be configurable:
+
+- `regenerate` default: copy original and let WordPress regenerate sizes.
+- `copy_bundle_derivatives`: copy source derivative files when bundled.
+- `regenerate_then_copy_missing`: regenerate locally, then fill gaps from bundle.
+
+Initial release should implement `regenerate`; derivative copy can follow after validation.
+
+## Data Integrity Rules
+
+### Clone Confirmation
+
+Before applying same-ID hydration, the planner must confirm clone assumptions:
+
+- Target attachment IDs from the manifest exist as attachment posts.
+- Target `_wp_attached_file` values either match manifest relative paths or are explicitly accepted as target-authoritative.
+- Target database has not already diverged into conflicting attachment rows for the same `vf_asset_uid` or file hash.
+- A dry run reports the count of source attachments, target matching rows, missing target rows, missing files, existing files, and conflicts.
+
+Default policy for cloned targets:
+
+- Target attachment row is authoritative for ID and `_wp_attached_file`.
+- Source manifest is authoritative for file bytes, hash, MIME, and optional DBVC identity metadata.
+- Target URL/domain is never overwritten from source.
+
+### File And Metadata Consistency
+
+- Verify source hash before writing when available.
+- Verify target hash after writing.
+- Update `vf_file_hash` only after target verification succeeds.
+- Preserve `_wp_attached_file` unless it is missing and the manifest path passes upload containment checks.
+- Preserve attachment post title, author, parent, date, excerpt, and content in cloned-DB mode.
+- Metadata repair should not change attachment IDs, post parents, or entity relationships.
+- If metadata repair fails after file hydration, leave the hydrated original file in place and mark status `metadata_failed` unless strict mode is added later.
+
+### Rollback And Backup
+
+- Missing-file hydration does not need a backup because no target file is replaced.
+- Mismatch repair requires a backup copy before overwrite.
+- Backup copies should live under a DBVC-controlled, access-hardened folder in uploads/sync.
+- Receipts must include enough information to manually restore a replaced file.
+- Do not attempt automatic rollback across the whole job unless a later transactional design is added.
+
+### Storage
+
+Prefer existing tables and file receipts first:
+
+- `dbvc_jobs` for active job state and progress.
+- `dbvc_activity_log` for structured events.
+- `dbvc_media_index` for stable attachment/file metadata.
+- JSON receipt files under an access-hardened DBVC uploads/sync subdirectory.
+
+Add a new table only if receipts become too large or need frequent indexed queries that existing tables cannot support.
+
+## Performance Requirements
+
+Full media libraries can be large. The implementation must avoid eager, all-in-memory processing.
+
+Inventory:
+
+- Query attachment IDs in pages.
+- Do not use unbounded `posts_per_page = -1` in production hydration services.
+- Load only required post/meta fields for each stage.
+- Cache `wp_upload_dir()` and derived base paths per run.
+
+Hashing:
+
+- Default dry run should hash only files needed to make a decision.
+- Existing target files can be size/path checked first, then hashed only when required by mode.
+- Source package export may hash all files, but must do it in batches and record progress.
+- Large-file hash reads should stream from disk.
+
+Hydration:
+
+- Process in batches using `dbvc_media_hydration_batch_size`.
+- Check memory/time budget between batches.
+- Resume from the last checkpoint instead of restarting.
+- Limit concurrent writes.
+- Regenerate metadata only for hydrated files in the first release.
+
+UI:
+
+- Show aggregate counts first, then lazy-load item rows.
+- Keep receipt downloads as files, not huge REST payloads.
+- Poll job progress with compact payloads.
+
+CLI:
+
+- Stream progress lines for long runs.
+- Support `--limit`, `--offset`, `--only-failed`, and `--attachment-id=` filters in later phases.
+
+## Configure Tab Settings
+
+Use the existing Configure > Media Handling subtab, but organize settings into clear groups. If the current UI becomes too dense, add a sibling Configure subtab named Media Hydration that writes to the same provider domain.
+
+### Existing Settings To Preserve
+
+- `dbvc_media_retrieve_enabled`
+- `dbvc_media_preserve_filenames`
+- `dbvc_media_preview_enabled`
+- `dbvc_media_allow_external`
+- `dbvc_media_transport_mode`
+- `dbvc_media_bundle_enabled`
+- `dbvc_media_bundle_chunk`
+
+### Proposed New Settings
+
+| Option | Type | Default | Purpose |
+|---|---:|---:|---|
+| `dbvc_media_hydration_enabled` | bool | `0` | Enables the dedicated full-library hydration workflow. |
+| `dbvc_media_hydration_scope` | select | `missing_files_only` | `missing_files_only`, `missing_and_metadata`, `verify_all`, `repair_mismatches`. |
+| `dbvc_media_hydration_source` | select | `bundle_first` | `bundle_first`, `bundle_only`, `remote_only`, `filesystem_path`. |
+| `dbvc_media_hydration_match_policy` | select | `same_id_then_uid` | Matching strategy for cloned vs non-cloned targets. |
+| `dbvc_media_hydration_create_missing_attachments` | bool | `0` | Allow creation of attachment posts when target rows are absent. Off for cloned DB recovery. |
+| `dbvc_media_hydration_overwrite_policy` | select | `never` | `never`, `if_hash_mismatch_with_backup`, `always_with_backup`. |
+| `dbvc_media_hydration_metadata_policy` | select | `regenerate_missing` | `skip`, `regenerate_missing`, `regenerate_all_hydrated`. |
+| `dbvc_media_hydration_derivative_policy` | select | `regenerate` | `regenerate`, future `copy_bundle_derivatives`, future `regenerate_then_copy_missing`. |
+| `dbvc_media_hydration_allowed_mime_groups` | string list | all registered | Restrict hydration to images, video, audio, fonts, documents, or all. |
+| `dbvc_media_hydration_max_file_size_mb` | int | `512` | Safety limit for a single file. |
+| `dbvc_media_hydration_batch_size` | int | `50` | Number of attachments per job batch. |
+| `dbvc_media_hydration_execution_mode` | select | `browser_chunks` | `browser_chunks` uses the current admin browser loop. `background_job` creates a server-side job that processes bounded batches through WP-Cron/WP-CLI/manual ticks. |
+| `dbvc_media_hydration_remote_base_url` | url | empty | Optional canonical uploads base URL override. |
+| `dbvc_media_hydration_filesystem_base_path` | path | empty | Optional trusted local/source uploads path for server-side copy. |
+| `dbvc_media_hydration_require_dry_run` | bool | `1` | Require a saved dry-run plan before execution. |
+| `dbvc_media_hydration_receipts_enabled` | bool | `1` | Persist machine-readable run receipts. |
+| `dbvc_media_hydration_delete_extras_enabled` | bool | `0` | Reserved for future destructive mirror cleanup; must remain off initially. |
+| `dbvc_media_hydration_strict_hashes` | bool | `1` | Block apply for files without a source hash or with a source/target mismatch. |
+| `dbvc_media_hydration_clone_confirmation` | bool | `1` | Require same-ID clone checks before in-place hydration. |
+| `dbvc_media_hydration_lock_timeout_minutes` | int | `30` | Expire abandoned hydration job locks after a bounded interval. |
+
+### Recommended UI Copy
+
+Use wording that makes the cloned-DB mode explicit:
+
+- "Hydrate missing files for existing attachment records"
+- "Preserve target attachment IDs when the target database already contains matching attachment posts"
+- "Create missing attachment posts" should be visibly disabled/off by default
+- "Delete target files not present on source" should not ship in the first implementation
+
+## Admin And CLI Entry Points
+
+### Admin UI
+
+Add a Media Hydration panel under Configure > Media Handling or a new Configure > Media Hydration subtab.
+
+Required controls:
+
+- Select source package or source mode.
+- Run dry run.
+- Review counts by status.
+- Start hydration job.
+- Choose execution mode for this run when needed: browser-controlled chunks or background job.
+- View progress.
+- Download receipt.
+- Filter failures by reason.
+- Retry failed items only.
+
+Suggested dry-run summary buckets:
+
+- `ok`
+- `needs_hydration`
+- `needs_metadata_repair`
+- `hash_mismatch`
+- `target_attachment_missing`
+- `source_file_missing`
+- `blocked_remote`
+- `unsafe_path`
+- `mime_rejected`
+- `oversize`
+- `conflict`
+
+### REST Routes
+
+Add routes under `dbvc/v1`, all gated by `manage_options`:
+
+- Implemented: `GET /media-hydration/inventory`
+- Implemented: `GET /media-hydration/packages`
+  - Lists staged media mirror packages under the DBVC media mirror root.
+  - Returns package ID, manifest path, package directory, source-site metadata, attachment counts, file-included state, ZIP availability, and secure ZIP download URL when available.
+- Implemented: `POST /media-hydration/preflight`
+  - Admin UI renders summary chips plus a bounded review table from the returned plan rows before Apply.
+- Implemented: `POST /media-hydration/package/export`
+- Implemented: `POST /media-hydration/apply`
+  - Accepts `offset` and `limit` for chunked apply runs.
+  - Accepts `retry_receipt_id` to run only failed source attachment IDs from a prior apply receipt.
+  - Returns `pagination` and `progress` fields with `processed_this_batch`, `processed_total`, `next_offset`, `remaining`, `total_plan_items`, `percent`/`progress_percent`, and `has_more`.
+  - The admin UI loops over this endpoint until `has_more` is false or the operator clicks Stop after current batch.
+- Implemented: `GET /media-hydration/receipts`
+  - Lists recent plan/apply receipts with secure admin-post download URLs.
+- Implemented: `DELETE /media-hydration/receipts`
+  - Deletes receipt JSON files older than an operator-specified number of days.
+  - Rejects broad same-day cleanup; age must be at least one day.
+  - Uses REST nonce, `manage_options`, date-folder validation, and receipt-root containment.
+- Future: `POST /media-hydration/jobs`
+  - Creates a background hydration job from the same manifest, package root, saved plan ID, retry receipt ID, and apply policy accepted by the chunked apply endpoint.
+- Future: `GET /media-hydration/jobs/{job_id}`
+  - Returns job status, context, progress, cumulative summary, latest receipt references, and last error without embedding full receipt JSON.
+- Future: `POST /media-hydration/jobs/{job_id}/run`
+  - Executes one bounded batch. Used by WP-Cron, WP-CLI, or a manual admin tick.
+- Future: `POST /media-hydration/jobs/{job_id}/pause`
+- Future: `POST /media-hydration/jobs/{job_id}/resume`
+- Future: `POST /media-hydration/jobs/{job_id}/cancel`
+- Future: `POST /media-hydration/jobs/{job_id}/retry`
+  - Creates a new background retry job from failed items in a prior apply receipt.
+- Future: `GET /media-hydration/jobs/{job_id}/receipt`
+- Implemented as admin-post form: target-side media hydration ZIP package upload under Import/Upload.
+- Implemented as admin-post download: media hydration receipt JSON downloads by receipt ID, with `manage_options`, nonce verification, and containment under the receipt root.
+
+Keep these separate from `/proposals/{proposal_id}/resolver` until a later phase needs a shared screen.
+
+### WP-CLI
+
+Add commands:
+
+```bash
+wp dbvc media inventory --format=json
+wp dbvc media mirror-export --with-files --zip --out=/path/to/media-mirror.zip
+wp dbvc media hydrate --manifest=/path/to/dbvc-media-mirror.json --dry-run
+wp dbvc media hydrate --manifest=/path/to/dbvc-media-mirror.json --apply --confirm=hydrate-existing-media
+wp dbvc media verify --all
+```
+
+## Development Phases
+
+### Phase 0: Planning And Guardrails
+
+Tasks:
+
+- Add this implementation guide.
+- Confirm current proposal media behavior with code references.
+- Define non-destructive defaults.
+- Define manifest shape and receipts.
+- Add fixture plan for a cloned DB with missing uploads.
+
+Exit criteria:
+
+- No runtime behavior changed.
+- Guide accepted as source of truth for implementation.
+
+### Phase 1: Read-Only Target Inventory
+
+Tasks:
+
+- Implement `LibraryInventoryService`.
+- Implement `FileStateService`.
+- Add CLI/admin read-only inventory output.
+- Add paged query helpers and avoid unbounded attachment queries.
+- Detect missing files for existing attachment rows.
+- Detect metadata missing/stale.
+- Detect unsafe `_wp_attached_file` paths.
+
+Tests:
+
+- Attachment row with missing file.
+- Attachment row with existing matching file.
+- Attachment row with outside-upload path rejected.
+- Non-image attachment with empty metadata accepted.
+
+Exit criteria:
+
+- DBVC can report how many registered attachments need hydration without writing files.
+
+### Phase 2: Source Media Mirror Package
+
+Tasks:
+
+- Implement `MirrorManifestBuilder`.
+- Implement safe package writer and safe package reader.
+- Export all registered attachments into a dedicated media mirror manifest.
+- Optionally bundle original files.
+- Keep full-library mirror package separate from proposal `media_index`.
+- Include hashes, file sizes, MIME, source URL, relative path, and asset UID.
+- Store package and manifest checksums.
+
+Tests:
+
+- Full library export includes unattached attachments.
+- Proposal export behavior remains unchanged by default.
+- Bundle rejects missing source files with explicit receipt rows.
+- Package extraction rejects traversal, symlink, and unexpected entry paths.
+
+Exit criteria:
+
+- Canonical site can produce a media mirror package suitable for target hydration.
+
+### Phase 3: Hydration Planner
+
+Tasks:
+
+- Implement `HydrationPlanner`.
+- Consume source manifest and target inventory.
+- Build source-to-target map.
+- Support cloned-DB same-ID mode.
+- Enforce clone-confirmation checks before same-ID apply.
+- Produce dry-run status buckets and item-level planned actions.
+- Persist dry-run plan in `dbvc_jobs` plus a receipt JSON file.
+
+Tests:
+
+- Same source/target attachment ID maps as `same_id`.
+- Existing target row with missing file plans `hydrate_existing_attachment`.
+- Existing target row with matching file plans `none`.
+- Existing target row with mismatched file plans according to overwrite policy.
+- Missing target row is blocked unless `create_missing_attachments` is enabled.
+- Diverged same-ID rows are reported as conflicts.
+
+Exit criteria:
+
+- Admin can review exactly what would be copied, skipped, repaired, or blocked.
+
+### Phase 4: In-Place Hydrator
+
+Tasks:
+
+- Implement `SourceLocator`.
+- Implement `Hydrator` for existing attachment rows.
+- Implement job lock/checkpoint handling.
+- Copy source file to target upload path.
+- Verify hash after copy.
+- Update DBVC identity meta only when safe.
+- Write per-item receipts.
+- Back up existing mismatched target files before overwrite if overwrite is enabled.
+- Ensure all writes are staged and path-contained.
+
+Tests:
+
+- Missing image file is copied to the expected `_wp_attached_file` path.
+- Attachment ID remains unchanged.
+- Hash mismatch refuses overwrite by default.
+- Overwrite mode creates backup before replacement.
+- Remote source obeys existing external host policy.
+- Re-running hydration skips already-correct files.
+
+Exit criteria:
+
+- Target clone can hydrate missing original files without creating duplicate attachments.
+
+### Phase 5: Metadata Repair
+
+Tasks:
+
+- Implement `MetadataRepairService`.
+- Regenerate attachment metadata for hydrated files.
+- Support images, audio/video, fonts/documents/other.
+- Record metadata outcome in receipts.
+- Add retry path for metadata failures.
+
+Tests:
+
+- Image attachment gets `_wp_attachment_metadata`.
+- Existing metadata is preserved when policy is `skip`.
+- Metadata regeneration failures do not roll back successful file hydration unless strict mode is enabled.
+
+Exit criteria:
+
+- Hydrated files are processed through WordPress media metadata handling.
+
+### Phase 6: Admin UI And Receipts
+
+Tasks:
+
+- Add settings to Configure > Media Handling or new Configure > Media Hydration subtab through the settings provider.
+- Add dry-run and run controls.
+- Add job progress polling.
+- Add receipt download.
+- Add staged package selector to avoid manual manifest path entry.
+- Add bounded preflight review table with status filters and summary counts.
+- Add optional `http://` to `https://` media URL normalization setting for exact Media Library URLs only.
+- Add retry failed items from apply receipts.
+- Implemented: clear old media hydration receipts with REST nonce, capability checks, age threshold, and receipt-root containment.
+- Keep REST/admin handlers as thin delegators to the hydration services.
+
+Tests:
+
+- Settings save does not affect proposal resolver settings.
+- Dry run can be executed without writes.
+- Apply requires a dry-run plan when configured.
+- Failed rows are visible and retryable.
+- HTTPS normalization updates only known media references and preserves serialized post meta.
+
+Exit criteria:
+
+- Admins can run the workflow without CLI.
+
+### Phase 7: Execution Mode Setting And Job Contracts
+
+Purpose:
+
+Add the configuration and persistence contracts that let DBVC support both the current browser-controlled chunk mode and an opt-in background job mode without splitting the hydration write path.
+
+Implementation status:
+
+- Complete in the current codebase for settings, configuration portability, admin default/per-run selectors, `media_hydration` job type, bounded sanitized job context, REST job creation/status, and plan/path validation at job creation.
+
+Tasks:
+
+- Add `dbvc_media_hydration_execution_mode` to `Settings`, the configuration portability media provider, and Configure > Media Handling.
+- Allowed values:
+  - `browser_chunks`
+  - `background_job`
+- Keep `browser_chunks` as the default and preserve current UI/apply behavior.
+- Add a per-run execution mode selector in the Media Hydration workflow that defaults from settings.
+- Define one `dbvc_jobs` job type: `media_hydration`.
+- Store job context in existing `DBVC_Database` job `context` JSON instead of adding a new table in the first pass.
+- Job context must include:
+  - `manifest_path`
+  - `manifest_checksum`
+  - `package_root`
+  - `plan_id`
+  - `plan_checksum`
+  - `retry_receipt_id`
+  - `source_ids` when retry-scoped
+  - `offset`
+  - `limit`
+  - `total_plan_items`
+  - `processed_total`
+  - `cumulative_summary`
+  - `policy` copied from apply settings at job creation
+  - `created_by`
+  - `last_error`
+  - `receipt_ids`
+- Job statuses:
+  - `queued`
+  - `running`
+  - `paused`
+  - `completed`
+  - `failed`
+  - `cancelled`
+- Use existing `HydrationLock` for writes, but lock owner should include the job ID, for example `media_hydration_job:<id>`.
+- Validate manifest path/package root using the same allowed-root checks as REST apply.
+- Verify the saved dry-run plan checksum at job creation and before each batch when `require_dry_run` is enabled.
+- Do not store raw secrets, auth headers, or remote credentials in job context.
+
+Tests:
+
+- Setting sanitization accepts only supported execution modes and defaults to `browser_chunks`.
+- Existing browser apply tests continue to pass with the default setting.
+- Job creation persists a `media_hydration` row with bounded, sanitized context.
+- Job creation blocks without saved-plan acknowledgement when required.
+- Job creation rejects manifest/package paths outside allowed roots.
+- Existing export chunked jobs are not affected by the new job type.
+
+Exit criteria:
+
+- Admin can choose an execution mode, but background mode can remain hidden/disabled until the runner is implemented.
+- Job context is sufficient to resume an apply without trusting mutable browser state.
+
+### Phase 8: Background Job Runner And Admin Polling
+
+Purpose:
+
+Process media hydration in server-side bounded batches while preserving the same dry-run, lock, receipt, retry, and hydrator contracts used by browser-controlled chunks.
+
+Implementation status:
+
+- Partially complete in the current codebase for `MediaHydrationJobStore`, `MediaHydrationJobRunner`, WP-Cron scheduling, REST create/status/run/pause/resume/cancel routes, and admin polling that advances server-owned job state.
+- Still open for dedicated WP-CLI job commands, richer resume/retry controls for previously created jobs, and broader browser QA on long multi-batch runs.
+
+Tasks:
+
+- Add a `MediaHydrationJobStore` thin wrapper around `DBVC_Database` for `media_hydration` jobs.
+- Add a `MediaHydrationJobRunner` service that:
+  - loads one job
+  - validates status transition
+  - re-verifies manifest/plan contract
+  - acquires `HydrationLock`
+  - calls `Hydrator::apply_from_manifest_file()` with the job's current `offset`, `limit`, policy, and retry source IDs
+  - updates offset/progress/cumulative summary
+  - writes receipts according to current receipt settings
+  - releases the lock in `finally`
+- Register a dedicated WP-Cron hook, for example `dbvc_media_hydration_run_job`.
+- Schedule the next tick only for active `queued` or `running` media hydration jobs.
+- Add WP-CLI support for deterministic server-side execution:
+  - `wp dbvc media hydrate-job create --manifest=...`
+  - `wp dbvc media hydrate-job run --job-id=<id>`
+  - `wp dbvc media hydrate-job status --job-id=<id>`
+- Add REST routes listed above for create/status/run/pause/resume/cancel/retry.
+- Add admin UI polling for job status.
+- Add controls:
+  - Start background job
+  - Run next batch now
+  - Pause
+  - Resume
+  - Cancel
+  - Retry failed as background job
+- Keep the current progress bar but source progress from job status when execution mode is `background_job`.
+- Show clear copy that WP-Cron is traffic-triggered; recommend real server cron or WP-CLI for reliable unattended runs on low-traffic sites.
+- Make cancellation cooperative:
+  - cancel changes job status before the next batch
+  - do not interrupt a file copy mid-batch
+  - stop scheduling future ticks
+- Do not run background jobs from public frontend requests except through normal WP-Cron dispatch and only after capability-checked job creation.
+
+Tests:
+
+- Runner processes one batch and advances offset.
+- Runner completes when `has_more` is false.
+- Runner resumes after a partial run without duplicating hydrated files.
+- Runner honors pause/cancel before starting a new batch.
+- Runner blocks concurrent writes through `HydrationLock`.
+- Failed batch records `last_error`, marks job `failed`, and preserves resume context.
+- Retry job uses only failed source IDs from the selected receipt.
+- REST job routes require `manage_options`.
+- WP-Cron hook processes only `media_hydration` jobs and ignores other DBVC job types.
+- WP-CLI job run works without browser polling.
+
+Exit criteria:
+
+- Admin can safely choose between current browser-controlled chunks and opt-in background jobs.
+- Both modes produce compatible apply receipts and use the same hydrator code path.
+
+### Phase 9: Proposal Resolver Compatibility
+
+Tasks:
+
+- Teach resolver reporting to distinguish `reused_file_present` from `reused_file_missing` when requested.
+- Do not change default proposal resolver status until UI is ready.
+- Add optional `needs_hydration` detail in resolver payload.
+- Ensure proposal apply does not run both hydration and legacy sync for the same item.
+
+Tests:
+
+- Existing proposal diff/entity review remains unchanged by default.
+- Resolver detail can show file-missing state behind feature flag/config.
+- Existing resolver decisions still apply.
+
+Exit criteria:
+
+- Proposal media diagnostics can benefit from hydration state without changing apply semantics.
+
+### Phase 10: Optional Non-Cloned Target Support
+
+Tasks:
+
+- Add explicit new-attachment creation mode.
+- Use WordPress media APIs.
+- Produce ID map for non-matching IDs.
+- Integrate mapping with existing DBVC media refs only where contracts already exist.
+
+Tests:
+
+- Missing target attachment rows are created only when enabled.
+- New IDs are reported honestly.
+- References are remapped only through existing resolver/media ref paths.
+
+Exit criteria:
+
+- DBVC can support non-cloned media import without claiming ID preservation.
+
+## Async/Chunked Design Review
+
+### Shared Contracts
+
+- Both execution modes must call the same `Hydrator::apply_from_manifest_file()` path.
+- Both execution modes must use the same planner and saved-plan verification.
+- Both execution modes must use the same `HydrationLock`.
+- Both execution modes must write the same apply receipt shape.
+- Retry must use the same `retry_receipt_id`/failed-source-ID contract in both modes.
+- HTTPS normalization must remain a shared apply policy and must not become job-specific behavior.
+- Batch size, strict hashes, clone confirmation, metadata policy, receipts, and lock timeout stay shared settings.
+
+### Persistence And Job Isolation
+
+- Use existing `DBVC_Database` and `dbvc_jobs` for background job state.
+- Use a unique `job_type` of `media_hydration`; never overload `export_chunked`, `media_reconcile`, proposal, Content Collector, Bricks, Visual Editor, or AI package jobs.
+- Keep full job state inside the job context JSON until indexed queries prove a new table is necessary.
+- Store only resumable state, checksums, and non-secret policy values in job context.
+- Keep large plan/apply detail in receipt JSON files; job status endpoints should return summaries and receipt IDs only.
+- Activity logging should use distinct events such as `media_hydration_job_created`, `media_hydration_job_batch`, `media_hydration_job_completed`, `media_hydration_job_failed`, and `media_hydration_job_cancelled`.
+
+### Security Review
+
+- All job creation, status, pause, resume, cancel, manual-run, and retry REST routes require `manage_options`.
+- WP-Cron execution may run without a logged-in user, so every job must be fully authorized and validated before it is queued.
+- Job runner must revalidate manifest path, package root, manifest checksum, saved plan checksum, and current job status before each batch.
+- Background jobs must never trust browser-submitted offsets after job creation.
+- Background jobs must never store raw credentials, app passwords, auth headers, remote tokens, or user nonces.
+- Remote-source hydration remains disabled/deferred unless the existing DBVC external-host policy explicitly allows it.
+- Cancel/pause actions are cooperative and must not interrupt an in-progress file write.
+- Job status responses must not expose filesystem paths to unauthorized users.
+
+### Data Integrity Review
+
+- Background mode cannot bypass `require_dry_run`.
+- A job must snapshot the apply policy at creation time so later setting changes cannot silently alter an in-flight run.
+- Before each batch, the runner must compare current manifest checksum and saved plan checksum to the job context.
+- Offset/progress must update only after a successful batch report.
+- If a batch fails, preserve the last good offset and mark the job `failed` with `last_error`.
+- Completed jobs should be idempotent on rerun and return already-complete status, not reapply.
+- A retry job should be a new job linked to the source receipt, not a mutation of the old receipt.
+
+### Performance Review
+
+- Keep batch sizes bounded by the existing max.
+- Process only one background hydration batch per runner invocation.
+- Do not full-scan all attachments in status polling; status should read the job row and receipt summaries only.
+- Do not load full receipt JSON into admin polling unless the user downloads the receipt.
+- Schedule only one future cron event per active media hydration job.
+- Add stale-running recovery using lock timeout and updated-at timestamps, but do not automatically restart failed jobs without operator action.
+- Keep the browser chunk mode available because it is more predictable on LocalWP and low-traffic sites where WP-Cron may not run reliably.
+
+### Compatibility Review
+
+- Existing chunked REST apply behavior remains the default.
+- Existing WP-CLI media hydration commands remain valid and should gain job commands without changing current command semantics.
+- Configuration portability should include the execution mode setting as ordinary media hydration configuration, but should not export active job rows or runtime receipts.
+- Proposal diffs, resolver decisions, Entity Editor imports, Visual Editor media saves, Content Collector media mapping, Bricks portability, AI package workflows, and third-party portability must not enqueue media hydration jobs automatically.
+- Background jobs must not run during Bricks Builder, Visual Editor frontend sessions, proposal apply, or raw entity import unless the user explicitly starts a media hydration job.
+
+## Conflict Avoidance Rules
+
+- Do not change proposal `media_index` defaults.
+- Do not make full-library media items appear in proposal diff review by default.
+- Do not reuse `dbvc_resolver_decisions` for hydration overwrite choices.
+- Do not run destructive delete/mirror cleanup in the first implementation.
+- Do not alter Visual Editor media save contracts.
+- Do not alter Content Collector, AI package, Bricks portability, or third-party portability media behavior.
+- Do not modify attachment IDs on cloned targets.
+- Do not create attachment posts when the target row already exists.
+- Do not trust manifest paths without upload-base containment checks.
+- Do not download from unapproved hosts.
+- Do not add hydration logic to `DBVC_Sync_Posts`, `DBVC_Admin_App`, or `admin/admin-page.php` beyond registration/delegation.
+- Do not use unbounded media queries in production paths.
+- Do not allow two hydration apply jobs to write to the same site at the same time.
+- Do not make remote downloads the default for cloned-DB recovery.
+
+## Validation Plan
+
+### Unit/Integration Tests
+
+- Inventory finds all `post_type = attachment` rows.
+- Missing physical files are detected.
+- Existing matching files are skipped.
+- Hash mismatches are blocked by default.
+- Same-ID mapping is preferred for cloned DBs.
+- UID/hash/path fallback mapping works only when unambiguous.
+- Clone-confirmation failures block same-ID apply.
+- Unsafe manifest paths and unsafe target paths are rejected.
+- ZIP package traversal/symlink entries are rejected.
+- Remote private/loopback hosts are rejected.
+- Job lock prevents concurrent apply runs.
+- Hydration is idempotent on rerun.
+- Metadata regeneration updates existing attachment IDs.
+- Full-library manifest does not alter proposal manifest `media_index`.
+- Existing proposal resolver tests still pass.
+- Execution mode setting defaults to browser chunks and rejects unknown values.
+- Background job creation stores sanitized context and does not alter existing chunked apply behavior.
+- Background job runner processes one bounded batch per invocation.
+- Background job pause/resume/cancel are cooperative and preserve the last safe offset.
+- Background job status polling does not load full receipt payloads.
+- Configuration portability exports the execution mode setting but excludes active job rows and receipts.
+
+### Runtime Smoke Tests
+
+Use a disposable target clone:
+
+1. Restore database without media files.
+2. Confirm attachment posts exist and IDs match source.
+3. Run read-only inventory.
+4. Export media mirror package from canonical.
+5. Dry-run hydrate on target.
+6. Apply missing-file hydration.
+7. Verify sample images, videos, documents, fonts, and PDFs load through `wp_get_attachment_url()`.
+8. Verify attachment IDs did not change.
+9. Verify `_wp_attachment_metadata` exists for images.
+10. Verify proposal review still opens and existing resolver panels are unchanged.
+11. Repeat apply using browser-controlled chunks.
+12. Repeat apply using background job mode on a disposable package.
+13. Confirm WP-Cron/CLI job runner can continue a background job after closing the browser.
+14. Confirm pause/cancel stops future batches without corrupting hydrated files.
+
+### Safety Checks
+
+- `php -l` for touched PHP files.
+- Focused PHPUnit for new media services.
+- `git diff --check`.
+- Manual admin UI check for Configure tabs.
+- Optional WP-CLI smoke command on disposable clone.
+
+## Acceptance Criteria
+
+- A cloned target with matching attachment posts and missing upload files can hydrate missing media in place.
+- Hydration preserves existing target attachment IDs.
+- DBVC records source-to-target mappings and a downloadable receipt.
+- WordPress metadata is regenerated or verified for hydrated items.
+- Existing proposal diffs, resolver decisions, entity imports, add-ons, and Visual Editor behavior are not disrupted.
+- Full-library media mirror support is opt-in and off by default.
+- Browser-controlled chunks remain the default execution mode.
+- Background job mode is opt-in and uses the same hydrator, dry-run, lock, retry, and receipt contracts.
+- In-flight background jobs are resumable, observable, and cancellable without duplicate hydration.
+- Destructive mirror cleanup is not shipped in the initial release.
+
+## Recommended First Implementation Slice
+
+Build the smallest safe end-to-end path:
+
+1. Read-only inventory on target.
+2. Full-library mirror package export on source.
+3. Dry-run planner on target using same-ID matching.
+4. In-place hydration for missing original files only.
+5. Metadata regeneration for hydrated images.
+6. Receipt output.
+
+Defer remote-only hydration, derivative-copy strategies, new attachment creation, proposal resolver UI changes, and destructive mirror cleanup until the cloned-DB missing-media case is stable.

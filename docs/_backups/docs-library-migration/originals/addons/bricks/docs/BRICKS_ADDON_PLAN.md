@@ -1,0 +1,567 @@
+# BRICKS Add-on Plan (DBVC)
+
+Date: 2026-02-12  
+Scope: Discovery/update planning reference. Implementation has advanced beyond this document; use the tracker/checklist for active phase status.
+
+## 0) Field Matrix Source of Truth
+
+Concrete add-on fields, validation rules, option keys, artifact registry, and missing task inventory are defined in:
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_FIELD_MATRIX.md`
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
+- `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
+
+Implementation should follow that matrix as the configuration contract.
+
+Current execution note (2026-04-27):
+- `P19A` is `DONE`.
+- `P19D` is `DONE`.
+- `P19B` is `DONE`.
+- `P19C` is `IN_PROGRESS`.
+- The only remaining active Phase 19 work is `P19C-T2` (live drill + evidence + closure).
+
+## 1) Proposed Folder Structure (aligned to DBVC conventions)
+
+```text
+addons/
+  bricks/
+    bricks-addon.php
+    admin/
+      class-bricks-settings-page.php
+      class-bricks-ui-status.php
+      class-bricks-ui-diff.php
+      class-bricks-ui-proposals.php
+    engine/
+      class-bricks-artifact-adapter.php
+      class-bricks-canonicalizer.php
+      class-bricks-drift-scanner.php
+      class-bricks-policy.php
+      class-bricks-package-source.php
+      class-bricks-proposal-client.php
+      class-bricks-proposal-server.php
+    storage/
+      class-bricks-db.php
+    docs/
+      BRICKS_ADDON_PLAN.md
+      BRICKS_ADDON_OVERVIEW.md
+      BRICKS_ADDON_OPERATIONS.md
+```
+
+## 2) Current DBVC Patterns to Reuse
+
+- Admin tab/subtab rendering pattern: `admin/admin-page.php` (`$config_subtabs`, nested subtabs).
+- Section save/sanitize pattern: unified configure save handler in `admin/admin-page.php:355`.
+- REST route style and permission callbacks: `admin/class-admin-app.php`.
+- Logging:
+  - `DBVC_Sync_Logger` (`includes/class-sync-logger.php`)
+  - `DBVC_Database::log_activity` (`includes/class-database.php:846`).
+- Entity UID mapping:
+  - `ensure_post_uid` / `ensure_term_uid`
+  - `dbvc_entities` upsert/get (`includes/class-database.php:447`).
+- Manifest/snapshot/import package primitives:
+  - `DBVC_Backup_Manager`, `DBVC_Snapshot_Manager`, `DBVC_Sync_Posts::import_backup`.
+- Admin menu wiring for conditional submenu registration:
+  - `admin/admin-menu.php` (`add_submenu_page` under `dbvc-export`).
+
+## 3) UI Plan: Configure > General Settings > Add-ons > Bricks
+
+Activation model (locked):
+- Add-ons are toggled in `Configure -> Add-ons` (core configure subtab).
+- Bricks add-on submenu under DBVC appears only when `dbvc_addon_bricks_enabled=1`.
+- When disabled, Bricks add-on routes/hooks/jobs are not registered.
+
+### 3.1 Planned tabs
+1. Connection
+- `dbvc_bricks_role` (`mothership|client`)
+- `dbvc_bricks_mothership_url`
+- `dbvc_bricks_auth_method` (`hmac|api_key`)
+- `dbvc_bricks_auth_secret` (stored securely as option for MVP)
+- `dbvc_bricks_read_only` (`0|1`)
+- test connection action/button
+
+2. Golden Source
+- `dbvc_bricks_source_mode` (`mothership_api|pinned|bundled`)
+- `dbvc_bricks_pinned_version`
+- `dbvc_bricks_storage_mode` (`db_uploads` for MVP)
+- `dbvc_bricks_retention_count`
+- `dbvc_bricks_verify_signature` (`0|1`)
+
+3. Policies
+- Default policy per artifact type:
+  - `AUTO_ACCEPT`
+  - `REQUIRE_MANUAL_ACCEPT`
+  - `ALWAYS_OVERRIDE`
+  - `REQUEST_REVIEW`
+  - `IGNORE`
+- Per-artifact override editor by `artifact_uid`
+
+4. Operations
+- Manual drift scan trigger
+- Drift summary counters: CLEAN / DIVERGED / OVERRIDDEN / PENDING_REVIEW
+- Package version selector
+- Diff view entrypoint
+- Apply selected + create restore point + rollback selector
+
+5. Proposals
+- Client view: diverged artifacts and submit proposal action
+- Mothership view: proposal queue with approve/reject/needs changes actions
+
+### 3.2 UI integration strategy with current code
+- Add new configure subtab ID (e.g., `dbvc-config-addons`) in `$config_subtabs` (`admin/admin-page.php:1382`).
+- Inside it, use existing nested subtab pattern used by Import Defaults (`admin/admin-page.php:2417`).
+- Reuse nonce/capability and section save pattern (`admin/admin-page.php:355`).
+
+### 3.3 Input help text contract (show beneath inputs)
+- `Add-on Visibility Mode` (`dbvc_addon_bricks_visibility`)
+  - Help text:
+    - "`configure_and_submenu` (recommended): show Bricks settings in Configure and submenu when enabled."
+    - "`submenu_only`: hide Bricks settings from Configure and use submenu only."
+- `Mothership Base URL` (`dbvc_bricks_mothership_url`)
+  - Help text:
+    - "Use the mothership site base origin only (no trailing slash, no `/wp-json`)."
+    - "Example: `https://dbvc-mothership.local` for LocalWP."
+    - "Required when role is `client`; leave empty when role is `mothership`."
+
+## 4) MVP Artifact Types
+
+### Included
+- `bricks_template` (Entity-backed; CPT based)
+- `bricks_global_classes` (options-based)
+- `bricks_global_variables` (options-based)
+
+### Deferred
+- global-colors
+- components
+- theme-styles
+- template_tag
+- template_bundle
+
+## 5) Core Flows (MVP skeleton)
+
+### Flow 1: Publish Golden (Mothership)
+1. Export Bricks artifacts via add-on adapter.
+2. Canonicalize + fingerprint (`sha256`).
+3. Build package manifest and persist package.
+4. Mark package as latest approved.
+
+### Flow 2: Drift Scan (Client)
+1. Resolve source package (mothership/pinned/bundled).
+2. Export local artifacts and compute canonical hashes.
+3. Compare local hash vs last applied and incoming golden hash.
+4. Persist status and summary.
+
+### Flow 3: Apply Golden (Client)
+1. Preflight signature check (if enabled).
+2. Create restore point.
+3. Filter artifacts by policy and selection.
+4. Apply deterministic order:
+   - options artifacts first
+   - Entity-backed templates next.
+5. Verify hashes; update status; rollback on failure.
+
+### Flow 4: Submit Proposal (Client)
+1. Capture base version/hash + proposed canonical payload/hash.
+2. Build diff summary.
+3. Submit to mothership endpoint.
+4. Mark local artifact `PENDING_REVIEW`.
+
+### Flow 5: Review/Approve (Mothership)
+1. Queue listing and diff review.
+2. Decision: APPROVED / REJECTED / NEEDS_CHANGES.
+3. On approval, merge into next package and publish.
+
+## 6) Proposed REST Endpoints (planning only)
+
+Namespace: `dbvc/v1/bricks`
+
+### Golden packages
+1. `GET /packages`
+- Request query: `channel`, `limit`, `cursor`.
+- Response:
+```json
+{
+  "items": [{"package_id":"pkg_123","version":"1.2.0","channel":"stable","generated_at":"2026-02-12T10:00:00Z","artifacts":12}],
+  "next_cursor": null
+}
+```
+
+2. `GET /packages/{package_id}`
+- Request query: `include_payload_index=true|false`.
+- Response:
+```json
+{
+  "manifest": {"package_id":"pkg_123","version":"1.2.0","artifacts":[{"artifact_uid":"...","artifact_type":"bricks_template","hash":"sha256:...","payload_path":"artifacts/...json"}]},
+  "payload_index": [{"path":"artifacts/...json","hash":"sha256:..."}]
+}
+```
+
+### Proposal pipeline
+3. `POST /proposals`
+- Request body:
+```json
+{
+  "proposal_id":"prop_123",
+  "artifact_uid":"option:bricks_global_classes",
+  "artifact_type":"bricks_global_classes",
+  "base_golden_version":"1.2.0",
+  "base_hash":"sha256:...",
+  "proposed_hash":"sha256:...",
+  "canonical_payload":{},
+  "diff_summary":{},
+  "notes":"Updated utility class spacing",
+  "tags":["spacing"]
+}
+```
+- Response:
+```json
+{"ok":true,"proposal_id":"prop_123","status":"RECEIVED"}
+```
+
+4. `GET /proposals`
+- Request query: `status`, `limit`, `cursor`.
+- Response:
+```json
+{
+  "items": [{"proposal_id":"prop_123","artifact_uid":"...","artifact_type":"...","status":"RECEIVED","submitted_at":"..."}],
+  "next_cursor": null
+}
+```
+
+5. `PATCH /proposals/{proposal_id}`
+- Request body:
+```json
+{"status":"APPROVED","review_notes":"Looks good","publish_version":"1.3.0"}
+```
+- Response:
+```json
+{"ok":true,"proposal_id":"prop_123","status":"APPROVED","published_package_id":"pkg_130"}
+```
+
+### Push/Pull transport (phase 14/15 target)
+6. `POST /packages`
+- Purpose: client publishes package to mothership.
+- Required headers: idempotency key + correlation ID.
+- Request body (shape):
+```json
+{
+  "package": {
+    "package_id": "pkg_client_001",
+    "schema_version": "1.0.0",
+    "version": "1.0.0",
+    "channel": "canary",
+    "source_site": {
+      "site_uid": "client-site-1",
+      "base_url": "https://client-site.local"
+    },
+    "artifacts": []
+  },
+  "targeting": {
+    "mode": "all",
+    "site_uids": []
+  }
+}
+```
+- Response:
+```json
+{"ok":true,"package_id":"pkg_client_001","status":"PUBLISHED","receipt_id":"pkg_rcpt_123"}
+```
+
+7. `POST /packages/{package_id}/promote`
+- Purpose: mothership promotes package across channels (`canary -> beta -> stable`).
+
+8. `POST /packages/{package_id}/revoke`
+- Purpose: mothership emergency stop for package distribution.
+
+9. `GET /connected-sites`
+- Purpose: mothership lists connected client sites for selective rollout.
+
+10. `POST /connected-sites`
+- Purpose: register/update connected site metadata and auth profile.
+
+11. `POST /packages/{package_id}/ack`
+- Purpose: client acknowledges receipt/pull/apply outcome back to mothership.
+
+12. `POST /intro/packet`
+- Purpose: client submits one-time (idempotent) introduction packet after mothership credentials are configured/validated.
+- Request body (shape):
+```json
+{
+  "site_uid": "client-site-1",
+  "site_label": "Client Site 1",
+  "base_url": "https://client-site.local",
+  "environment": "local",
+  "capabilities": ["publish", "pull", "ack"],
+  "auth_profile": {"method":"wp_app_password","key_id":"integration-user"}
+}
+```
+
+13. `POST /intro/handshake`
+- Purpose: mothership accepts/rejects intro packet and returns signed acknowledgement for client trust establishment.
+- Request body (shape):
+```json
+{
+  "site_uid": "client-site-1",
+  "decision": "accept",
+  "notes": "Verified credentials"
+}
+```
+- Response:
+```json
+{
+  "ok": true,
+  "accepted": true,
+  "mothership_uid": "mship-main",
+  "registered_at": "2026-02-15T00:00:00Z",
+  "handshake_token": "hs_..."
+}
+```
+
+### Connected-sites selective rollout UI contract
+- Add mothership table panel:
+  - columns: `Site`, `Site UID`, `Base URL`, `Status`, `Last Seen`, `Auth Mode`, `Allowed`.
+  - controls: search, status filter, sort by last seen.
+  - selection:
+    - `All sites`,
+    - `Selected sites` with row checkboxes and "select all visible".
+- Package publish form includes:
+  - target mode select (`all` vs `selected`),
+  - target site selection table (shown when `selected`),
+  - summary badge: `N selected / M connected`.
+
+### Push/pull implementation notes
+- Server must enforce targeting regardless of client UI state.
+- Client only sees packages where:
+  - `target_mode=all`, or
+  - its `site_uid` is listed in `target_sites`.
+- Every publish/pull/apply action logs:
+  - actor,
+  - source site,
+  - target mode + selected sites,
+  - correlation ID.
+- Client force-channel policy (planned):
+  - optional `none|canary|beta|stable` override on outgoing client publish package channel,
+  - stable override requires explicit confirmation,
+  - audit metadata persisted (`channel_forced`, `forced_from`, `forced_to`, `forced_by`).
+- Introduction/handshake lifecycle hardening (planned):
+  - seed onboarding state row on add-on activation/configure save (before first intro attempt),
+  - track transport lifecycle markers (`ping_sent`, `intro_sent`, `handshake_state`, attempt counters),
+  - schedule bounded retry cron until onboarding reaches terminal state (`VERIFIED|REJECTED|DISABLED`) with idempotent request keys.
+
+## 7) Minimal Storage Plan
+
+### Reuse existing DBVC tables/files first
+- `dbvc_snapshots`, `dbvc_snapshot_items`
+- `dbvc_collections`, `dbvc_collection_items`
+- existing manifest/package files under DBVC backup/official storage
+- `dbvc_entities` for Entity UID mapping
+
+### Add-on-specific storage candidates (only if needed)
+1. `dbvc_bricks_artifact_state`
+- `artifact_uid`, `artifact_type`
+- `current_hash`
+- `last_golden_hash_applied`
+- `last_golden_version_applied`
+- `status`
+- `policy`
+- timestamps
+
+2. `dbvc_bricks_proposals`
+- `proposal_id`, `artifact_uid`, `artifact_type`
+- `base_golden_version`, `base_hash`, `proposed_hash`
+- payload ref / diff summary
+- `status`, reviewer metadata, timestamps
+
+3. `dbvc_bricks_clients` (planned)
+- `site_uid` (PK), `site_label`, `base_url`
+- `site_title_host_snapshot`
+- `local_instance_uuid`
+- `first_seen_at`
+- `site_sequence_id` (mothership-assigned monotonic integer)
+- `registry_state` (`PENDING_INTRO|VERIFIED|REJECTED|DISABLED`)
+- `handshake_token_hash`
+- `auth_method`, `key_id`
+- `last_intro_at`, `last_handshake_at`, `last_seen_at`
+- `ping_sent_at`, `intro_attempt_count`, `handshake_attempt_count`, `onboarding_last_error`
+- `created_at`, `updated_at`
+
+4. `dbvc_bricks_site_aliases` (planned)
+- `alias_site_uid` (unique)
+- `canonical_site_uid` (FK-ish to `dbvc_bricks_clients.site_uid`)
+- `reason`, `created_by`, `created_at`, `updated_at`
+- optional `auto_generated` flag (default false)
+
+Alias/merge policy:
+- `known_alias` is deterministic mapping only (`alias_site_uid -> canonical_site_uid`), never fuzzy auto-remap.
+- Fuzzy/similarity checks are advisory UX only (candidate suggestions by `base_url`, `local_instance_uuid`, `first_seen_at`, title/host snapshot).
+- Duplicate-site auto-merge remains off by default; assisted auto-merge may be enabled only for deterministic matches and explicit operator confirmation.
+- Preserve history continuity by storing `incoming_site_uid` and `resolved_site_uid` in transport/audit rows.
+
+Registry strategy:
+- Move connected-sites panel to registry-first records (`dbvc_bricks_clients`) and treat package-source backfill as fallback/auxiliary enrichment only.
+
+## 8) Risks / Unknowns for Live Validation
+
+1. Exact Bricks option keys by installed Bricks version.
+2. Non-deterministic/noisy fields in Bricks payloads.
+3. Bricks internal ID churn causing noisy diffs.
+4. Performance/memory for large template trees in diff/apply.
+5. Backward compatibility with legacy DBVC manifests and proposal folders.
+6. UX fit for adding “General Settings > Add-ons > Bricks” into current Configure IA.
+
+## 9) Discovery Exit Criteria (met by this plan)
+
+- DBVC-centric architecture documented.
+- Reuse vs new work identified with file-level references.
+- UI tabs/settings and endpoint skeletons defined.
+- MVP artifact scope and flows documented.
+
+## 10) Execution Checklist (Phased, with Sub-tasks)
+
+### Phase 1: Configuration + contracts
+- Add Configure -> Add-ons -> Bricks UI shell using existing DBVC subtab patterns.
+- Add all fields from the matrix with strict sanitization + allowlists.
+- Add read/write tests for options defaults and invalid input handling.
+- Sub-tasks:
+  - add central option key map,
+  - add validator helpers,
+  - add migration defaults bootstrap.
+
+### Phase 2: Artifact engine (read-only first)
+- Implement Bricks artifact registry for Entity + option artifacts.
+- Implement canonicalization + fingerprint (`sha256:<hex>`) utilities.
+- Implement drift scan endpoint and read-only UI status output.
+- Sub-tasks:
+  - canonical fixture set for every artifact type,
+  - deterministic ordering for nested arrays,
+  - size guards for large payloads.
+
+### Phase 3: Apply/restore safety
+- Implement restore point creation before apply.
+- Implement apply planner (dry-run default) + policy gates.
+- Implement verification pass and rollback-on-failure path.
+- Sub-tasks:
+  - destructive change guardrails,
+  - idempotency keys for apply calls,
+  - post-apply hash audit logging.
+
+### Phase 4: Proposal pipeline
+- Implement proposal submit/list/status endpoints.
+- Implement mothership queue and review actions.
+- Implement status machine + actor attribution/audit trail.
+- Sub-tasks:
+  - dedupe by `(artifact_uid, base_hash, proposed_hash)`,
+  - SLA/aging badges,
+  - reject/needs-changes feedback loop.
+
+### Phase 5: QA and hardening
+- Add unit tests: canonicalization, hashes, policy resolver, state transitions.
+- Add integration tests: satellite -> mothership -> approve -> apply.
+- Add manual QA checklist and rollback drills.
+- Sub-tasks:
+  - schema drift tests across Bricks versions,
+  - performance baseline for large option payloads,
+  - regression fixture pack for known noisy fields.
+
+## 11) Phase 19 Breakdown (Historical Plan + Current Resume Note)
+
+Original Phase 19 objectives:
+- Define shared mask/ignore rules once on mothership and distribute to connected sites (`all` or `selected`).
+- Add client-managed `Protected Artifact Variants` workflow with dedicated Bricks tab.
+- Add mothership visibility across client protected variants with direct navigation helpers.
+
+Execution split and current state:
+- `Phase 19A`: shared rules profile contract, persistence, distribution transport, signed client apply. Current state: `DONE`.
+- `Phase 19D`: client-initiated signed command envelope transport (queue, pull, ack, retry/dead-letter) to remove mothership->client DNS dependency. Current state: `DONE`.
+- `Phase 19B`: client protected variant model + `Protected Artifacts` tab workflows. Current state: `DONE`.
+- `Phase 19C`: mothership protected-variant visibility + full cross-site drill and closure evidence. Current state: `IN_PROGRESS`; `P19C-T1 DONE`, `P19C-T2` remaining.
+
+Planned architecture direction:
+- Reuse connected-sites registry and signed command scaffolding for distribution transport.
+- Keep distribution idempotent with per-site receipts and independent failure handling.
+- Store protected variants as explicit records with actor/timestamp attribution and artifact UID/type labels.
+
+UX expectations:
+- Client Bricks page adds `Protected Artifacts` tab for create/list/remove operations.
+- Mothership Bricks page adds protected-variant summary by client and artifact class with deep-link/copy-link actions to client tab path.
+
+Security and governance constraints:
+- Shared-rule apply operations require signed request validation and auditable correlation IDs.
+- Client protected-variant management remains capability-gated (`manage_options`) and nonce-protected in UI actions.
+
+### Phase 19D Specification: Signed Envelope Command Channel
+
+Problem statement:
+- Direct mothership->client HTTP delivery is blocked in environments where client URLs are not resolvable/reachable from mothership runtime (e.g., `.local` hosts).
+
+Design objective:
+- Shift transport to client-initiated command pull while preserving signed command verification, idempotency, auditability, and retry/dead-letter controls.
+
+Transport model:
+- Mothership enqueues one command envelope per target site.
+- Client polls mothership for pending envelopes over existing authenticated channel (`wp_app_password`).
+- Client verifies envelope signature + freshness + site binding, applies command, and posts receipt/ack.
+- Mothership updates envelope state (`queued|leased|applied|failed|dead_letter`) independently per site.
+
+Envelope contract (v1):
+- `envelope_id`
+- `command_type` (initially `shared_rules_apply`)
+- `site_uid`
+- `payload` + `payload_hash`
+- `signature` + signature metadata (`alg`, `signed_at`, `nonce`)
+- `correlation_id`, `distribution_id`, `request_id`
+- `state`, `attempt_count`, `max_attempts`
+- `next_attempt_at`, `lease_expires_at`, `expires_at`
+- `last_error_code`, `last_error_message`
+- `created_at`, `updated_at`
+
+Required APIs:
+- `POST /dbvc/v1/bricks/commands/enqueue` (mothership-only)
+- `POST /dbvc/v1/bricks/commands/pull` (client-authenticated; returns lease-granted envelopes for caller site UID only)
+- `POST /dbvc/v1/bricks/commands/ack` (client-authenticated; report `applied|failed` + receipt details)
+- `GET /dbvc/v1/bricks/commands/status` (mothership diagnostics/status view, filter by site/distribution/state)
+
+Retry/dead-letter policy:
+- Exponential backoff per envelope/site (`base`, `cap`, `max_attempts` configurable).
+- Lease timeout recovers stuck `leased` envelopes.
+- Move to `dead_letter` when attempts exhausted or envelope expired.
+- Preserve remediation hints and full error history in diagnostics payload.
+
+Security requirements:
+- Envelope signatures keyed by per-site command secret from onboarding handshake.
+- Pull/ack requests require authenticated site context and strict site UID matching.
+- Idempotency keys required for enqueue and ack writes.
+- Nonce replay protection + timestamp window validation for signed envelope metadata.
+
+Migration approach:
+- Keep existing direct push endpoints available behind fallback flag during migration.
+- Add transport mode setting: `direct_push` (legacy) vs `client_pull_envelope` (new default when ready).
+- Shared-rules distribution endpoint should enqueue envelopes when mode=`client_pull_envelope`.
+
+Validation gate outcome:
+- `P19A-TEST-05` rerun passed on 2026-03-08 after Phase 19D transport was implemented and enabled; see the tracker for detailed evidence.
+
+## 12) Backlog Additions for Next Implementation Phase
+
+1. Packages tab table identity headers
+- Extend the package table under the Packages tab (currently `Select | Package | Version | Channel | Audience`) with:
+  - `Site Domain`
+  - `Site UID`
+- Use connected-site metadata binding so each package row carries source-site identity context.
+
+2. Simple Smart Mode workflow (planned)
+- Add a `Simple Smart Mode` toggle that becomes available only when:
+  - mothership is set,
+  - first client site is set,
+  - handshake is confirmed valid.
+- Smart Mode behavior target:
+  - auto-configure settings based on planned requirements,
+  - incrementally capture client Bricks Builder artifact changes,
+  - maintain a running fluid package of these changes,
+  - periodically send package updates to mothership,
+  - flag submissions for review and merge into Golden artifacts.
+- Detailed end-to-end flow mapping remains a follow-up design task with explicit state and timing rules.
+
+## 13) Tracking Source of Truth
+
+- Active phases and statuses: `addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
+- Active execution checklist: `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`
+- Historical completed phases: `addons/bricks/docs/archive/BRICKS_ADDON_PROGRESS_TRACKER_ARCHIVE_P1_P18.md`
