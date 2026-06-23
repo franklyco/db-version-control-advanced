@@ -277,12 +277,10 @@ final class RawJsonIntakeService
 
         $file_collision = self::inspect_file_collision((string) $target_relative_path, $payload, $entity_kind, $subtype, $slug, $uid, $match);
 
-        if ($entity_kind === 'post' && isset($match['status']) && $match['status'] !== 'matched' && ! self::can_create_post($subtype)) {
-            $warnings[] = [
-                'code'    => 'post_creation_disabled',
-                'message' => self::build_post_creation_message($subtype),
-            ];
-            self::add_reason($reasons_by_mode, [self::MODE_CREATE_ONLY, self::MODE_CREATE_OR_UPDATE], 'post_creation_disabled', self::build_post_creation_message($subtype));
+        $creation_blocker = $entity_kind === 'post' ? self::build_post_creation_blocker($subtype) : null;
+        if ($entity_kind === 'post' && isset($match['status']) && $match['status'] !== 'matched' && \is_array($creation_blocker)) {
+            $warnings[] = $creation_blocker;
+            self::add_reason($reasons_by_mode, [self::MODE_CREATE_ONLY, self::MODE_CREATE_OR_UPDATE], $creation_blocker['code'], $creation_blocker['message']);
         }
 
         if (isset($match['status']) && $match['status'] === 'matched') {
@@ -328,7 +326,7 @@ final class RawJsonIntakeService
             self::MODE_STAGE_ONLY       => empty($reasons_by_mode[self::MODE_STAGE_ONLY]),
         ];
 
-        return [
+        $preview = [
             'mode'                => $mode,
             'entity_kind'         => $entity_kind,
             'subtype'             => $subtype,
@@ -344,6 +342,13 @@ final class RawJsonIntakeService
             'blocking'            => $reasons_by_mode[$mode],
             'detected_action'     => $available_actions[$mode] ? self::derive_detected_action($mode, $match) : 'blocked',
         ];
+
+        $preview['settings_links'] = self::build_import_settings_links($preview);
+        $preview['blocker_details'] = self::build_blocker_details($preview, $payload);
+        $preview['setting_remediations'] = [];
+        $preview['advanced_overrides'] = [];
+
+        return $preview;
     }
 
     /**
@@ -795,34 +800,140 @@ final class RawJsonIntakeService
 
     /**
      * @param string $post_type
-     * @return bool
+     * @return array{code:string,message:string}|null
      */
-    private static function can_create_post($post_type)
+    private static function build_post_creation_blocker($post_type)
     {
-        if (get_option('dbvc_allow_new_posts') !== '1') {
-            return false;
+        $post_type = sanitize_key((string) $post_type);
+        if (get_option('dbvc_allow_new_posts', '0') !== '1') {
+            return [
+                'code'    => 'post_creation_disabled',
+                'message' => __('DBVC is currently configured to block creation of new posts from imports.', 'dbvc'),
+            ];
         }
 
-        $whitelist = (array) get_option('dbvc_new_post_types_whitelist', []);
+        $whitelist = self::normalize_option_list(get_option('dbvc_new_post_types_whitelist', []));
         if (! empty($whitelist) && ! in_array($post_type, $whitelist, true)) {
-            return false;
+            return [
+                'code'    => 'post_type_whitelist_blocked',
+                'message' => sprintf(__('DBVC post creation is restricted and "%s" is not in the new-post whitelist.', 'dbvc'), $post_type),
+            ];
         }
 
-        return true;
+        return null;
     }
 
     /**
-     * @param string $post_type
-     * @return string
+     * @param array<string,mixed> $preview
+     * @return array<int,array<string,string>>
      */
-    private static function build_post_creation_message($post_type)
+    private static function build_import_settings_links(array $preview)
     {
-        $whitelist = (array) get_option('dbvc_new_post_types_whitelist', []);
-        if (! empty($whitelist) && ! in_array($post_type, $whitelist, true)) {
-            return sprintf(__('DBVC post creation is restricted and "%s" is not in the new-post whitelist.', 'dbvc'), $post_type);
+        $blocking_codes = array_column((array) ($preview['blocking'] ?? []), 'code');
+        if (
+            ! in_array('post_creation_disabled', $blocking_codes, true)
+            && ! in_array('post_type_whitelist_blocked', $blocking_codes, true)
+        ) {
+            return [];
         }
 
-        return __('DBVC is currently configured to block creation of new posts from imports.', 'dbvc');
+        $links = [
+            [
+                'id'    => 'import_settings',
+                'label' => __('Open Import Settings', 'dbvc'),
+                'url'   => admin_url('admin.php?page=dbvc-export&tab=tab-config&subtab=dbvc-config-import&import_subtab=dbvc-config-import-settings#dbvc-config-import-settings'),
+            ],
+        ];
+
+        if (in_array('post_type_whitelist_blocked', $blocking_codes, true)) {
+            $links[] = [
+                'id'    => 'post_type_settings',
+                'label' => __('Open Post Type Settings', 'dbvc'),
+                'url'   => admin_url('admin.php?page=dbvc-export&tab=tab-config&subtab=dbvc-config-post-types#dbvc-config-post-types'),
+            ];
+        }
+
+        return $links;
+    }
+
+    /**
+     * @param array<string,mixed> $preview
+     * @param array<string,mixed> $payload
+     * @return array<int,array<string,mixed>>
+     */
+    private static function build_blocker_details(array $preview, array $payload = [])
+    {
+        $details = [];
+        $blocking = isset($preview['blocking']) && \is_array($preview['blocking']) ? $preview['blocking'] : [];
+        foreach ($blocking as $blocker) {
+            if (! \is_array($blocker)) {
+                continue;
+            }
+
+            $code = isset($blocker['code']) ? (string) $blocker['code'] : '';
+            $detail = [
+                'code'     => $code,
+                'message'  => isset($blocker['message']) ? (string) $blocker['message'] : '',
+                'severity' => 'error',
+                'category' => __('Import blocker', 'dbvc'),
+            ];
+
+            if ($code === 'post_creation_disabled') {
+                $detail['category'] = __('Configuration', 'dbvc');
+                $detail['option'] = 'dbvc_allow_new_posts';
+                $detail['current_value'] = (string) get_option('dbvc_allow_new_posts', '0');
+                $detail['expected_value'] = '1';
+            } elseif ($code === 'post_type_whitelist_blocked') {
+                $detail['category'] = __('Configuration', 'dbvc');
+                $detail['option'] = 'dbvc_new_post_types_whitelist';
+                $detail['post_type'] = isset($preview['subtype']) ? sanitize_key((string) $preview['subtype']) : '';
+                $detail['current_value'] = self::normalize_option_list(get_option('dbvc_new_post_types_whitelist', []));
+            } elseif ($code === 'matched_entity') {
+                $detail['category'] = __('Existing entity', 'dbvc');
+                if (isset($preview['match']) && \is_array($preview['match'])) {
+                    $detail['match'] = $preview['match'];
+                }
+            } elseif ($code === 'file_collision') {
+                $detail['category'] = __('Sync file collision', 'dbvc');
+                if (isset($preview['file_collision']) && \is_array($preview['file_collision'])) {
+                    $detail['relative_path'] = isset($preview['file_collision']['relative_path']) ? (string) $preview['file_collision']['relative_path'] : '';
+                    $detail['compatible_with_match'] = ! empty($preview['file_collision']['compatible_with_match']);
+                }
+            } elseif (in_array($code, ['missing_post_type', 'missing_taxonomy'], true)) {
+                $detail['category'] = __('Unsupported entity type', 'dbvc');
+                if (isset($payload['post_type'])) {
+                    $detail['post_type'] = sanitize_key((string) $payload['post_type']);
+                }
+                if (isset($payload['taxonomy'])) {
+                    $detail['taxonomy'] = sanitize_key((string) $payload['taxonomy']);
+                }
+            }
+
+            $details[] = $detail;
+        }
+
+        return $details;
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int,string>
+     */
+    private static function normalize_option_list($value)
+    {
+        if (! \is_array($value)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($value as $entry) {
+            $entry = sanitize_key((string) $entry);
+            if ($entry !== '') {
+                $normalized[] = $entry;
+            }
+        }
+
+        return array_values(array_unique($normalized));
     }
 
     /**
