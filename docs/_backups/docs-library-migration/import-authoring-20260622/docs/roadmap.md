@@ -10,7 +10,6 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
-| AI package workflow and import authoring reference | active | `docs/reference/import-authoring/README.md` | Compact package workflow exists locally; reference docs now provide the current agent-facing import contract. Remaining package QA and metrics follow-ups stay in the AI package implementation docs. |
 
 ## Proposed Work
 
@@ -21,6 +20,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Bricks portability drift manager | proposed | `docs/implementation/proposed/bricks-portability-drift-manager/README.md` | Proposed package/drift design. |
 | Bricks reference mapping | proposed | `docs/implementation/proposed/bricks-reference-mapping-plan.md` | Proposed mapping work. |
 | Media sync hydration | proposed | `docs/implementation/proposed/media-sync-hydration-guide.md` | Needs current-state review before coding. |
+| AI package work | proposed | `docs/implementation/proposed/ai-package-foundation-spec.md` | Includes sample package and QA planning docs. |
 | User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
 | Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
 | Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
@@ -30,7 +30,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Topic | Summary | Related Docs |
 |---|---|---|
 | Progress summary | Recent shipped DBVC admin and import work. | `docs/implementation/completed/progress-summary.md` |
-| Entity Editor | Implementation checklist, enhancements, sync-file import guide, duplicate-canonical import fixes, blocker resolution UI, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md` |
+| Entity Editor | Implementation checklist, enhancements, sync-file import guide, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md` |
 | Legacy upload immediate import | Targeted upload/import phase plan and QA notes. | `docs/implementation/completed/legacy-upload-immediate-import-plan.md` |
 | Import identity hardening | Current matching contract plus historical hardening note. | `docs/reference/import-identity-matching.md` |
 | Meta masking | Current reference plus completed plan. | `docs/reference/meta-masking.md` |

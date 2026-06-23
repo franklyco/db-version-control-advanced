@@ -1,0 +1,13 @@
+{
+  "package_type": "dbvc_ai_submission_package",
+  "package_schema_version": 1,
+  "source_sample_package": {
+    "site_fingerprint": "copy-from-sample-package",
+    "package_schema_version": 1
+  },
+  "intended_operation": "create_only",
+  "counts": {
+    "post_entities": 2,
+    "term_entities": 1
+  }
+}

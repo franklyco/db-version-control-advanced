@@ -32,6 +32,7 @@ Brief usage notes for the DBVC Entity Editor.
   - Supports up to 25 selected files per request.
   - Blocks live matches, creation-disabled settings, unsupported payloads, and older duplicate sync files.
   - Renames the imported source JSON to the final canonical filename after the new local ID is known.
+  - Archives redundant same-entity duplicate JSON files into `.dbvc_entity_editor_backups` after successful canonicalization.
   - Keeps the result visible after commit and refreshes the Entity Editor index.
 
 - `Save JSON`

@@ -13,8 +13,6 @@ Keep the docs library small and navigable.
 - Add unresolved corrections or status questions to `docs/requests.md`.
 - Update `docs/roadmap.md` whenever implementation docs change status.
 - Keep folder README files current and only link files that exist.
-- Update `docs/reference/import-authoring/` whenever DBVC AI package shape, import entity shape, ACF value handling, Vertical Object Type Context, Vertical Field Context, media reference policy, identity matching, or submission validation changes.
-- Update agent entry-point and reference README links in the same pass when a canonical reference path changes.
 
 ## Canonical Paths
 
@@ -22,6 +20,5 @@ Keep the docs library small and navigable.
 - Agent routing: `docs/agent-entrypoints.md`
 - Planning index: `docs/roadmap.md`
 - Open doc questions: `docs/requests.md`
-- AI import authoring reference: `docs/reference/import-authoring/README.md`
 - Inventory: `docs/_meta/inventory.md`
 - Backup manifest: `docs/_backups/docs-library-migration/manifest.md`

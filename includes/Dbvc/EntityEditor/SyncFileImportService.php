@@ -77,6 +77,148 @@ final class SyncFileImportService
     }
 
     /**
+     * Resolve a blocked sync-file import preview with a narrow allowlisted action.
+     *
+     * @param string              $path
+     * @param string              $mode
+     * @param string              $remediation
+     * @param array<string,mixed> $args
+     * @param int                 $user_id
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function remediate($path, $mode = self::MODE_CREATE_ONLY, $remediation = '', array $args = [], $user_id = 0)
+    {
+        $mode = self::normalize_mode($mode);
+        $paths = self::normalize_paths($path);
+        if (\is_wp_error($paths)) {
+            return $paths;
+        }
+
+        if (count($paths) !== 1) {
+            return new \WP_Error(
+                'dbvc_entity_editor_sync_import_remediation_single_file_required',
+                __('Remediation actions support one sync JSON file at a time.', 'dbvc'),
+                ['status' => 400]
+            );
+        }
+
+        $relative_path = (string) $paths[0];
+        $preview = self::preview([$relative_path], $mode);
+        if (\is_wp_error($preview)) {
+            return $preview;
+        }
+
+        $item = isset($preview['items'][0]) && \is_array($preview['items'][0]) ? $preview['items'][0] : [];
+        if (empty($item)) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_remediation_missing_preview', __('Unable to preview this sync JSON before remediation.', 'dbvc'), ['status' => 400]);
+        }
+
+        $provided_hash = isset($args['preview_hash']) ? (string) $args['preview_hash'] : '';
+        $current_hash = isset($item['preview_hash']) ? (string) $item['preview_hash'] : '';
+        if ($provided_hash !== '' && $current_hash !== '' && ! hash_equals($current_hash, $provided_hash)) {
+            return new \WP_Error(
+                'dbvc_entity_editor_sync_import_remediation_stale_preview',
+                __('The import preview changed. Refresh the preview before applying this fix.', 'dbvc'),
+                ['status' => 409, 'preview' => $preview]
+            );
+        }
+
+        $remediation = sanitize_key((string) $remediation);
+        if ($remediation === 'enable_new_post_creation') {
+            if (! self::item_has_setting_remediation($item, $remediation)) {
+                return new \WP_Error('dbvc_entity_editor_sync_import_remediation_unavailable', __('This setting fix is not available for the current preview.', 'dbvc'), ['status' => 400, 'preview' => $preview]);
+            }
+
+            $old_value = get_option('dbvc_allow_new_posts', '0');
+            update_option('dbvc_allow_new_posts', '1');
+            self::log_remediation($remediation, $relative_path, (int) $user_id, [
+                'option'    => 'dbvc_allow_new_posts',
+                'old_value' => $old_value,
+                'new_value' => '1',
+            ]);
+
+            return self::with_remediation_result(self::preview([$relative_path], $mode), [
+                'action'    => $remediation,
+                'option'    => 'dbvc_allow_new_posts',
+                'old_value' => $old_value,
+                'new_value' => '1',
+            ]);
+        }
+
+        if ($remediation === 'allow_post_type_creation') {
+            if (! self::item_has_setting_remediation($item, $remediation)) {
+                return new \WP_Error('dbvc_entity_editor_sync_import_remediation_unavailable', __('This setting fix is not available for the current preview.', 'dbvc'), ['status' => 400, 'preview' => $preview]);
+            }
+
+            $post_type = sanitize_key((string) ($item['subtype'] ?? ''));
+            if ($post_type === '' || ! post_type_exists($post_type)) {
+                return new \WP_Error('dbvc_entity_editor_sync_import_remediation_missing_post_type', __('The incoming post type is not registered on this site.', 'dbvc'), ['status' => 400, 'preview' => $preview]);
+            }
+
+            $old_value = (array) get_option('dbvc_new_post_types_whitelist', []);
+            $new_value = array_values(array_unique(array_merge(array_map('sanitize_key', $old_value), [$post_type])));
+            update_option('dbvc_new_post_types_whitelist', $new_value);
+            self::log_remediation($remediation, $relative_path, (int) $user_id, [
+                'option'    => 'dbvc_new_post_types_whitelist',
+                'post_type' => $post_type,
+                'old_value' => $old_value,
+                'new_value' => $new_value,
+            ]);
+
+            return self::with_remediation_result(self::preview([$relative_path], $mode), [
+                'action'    => $remediation,
+                'option'    => 'dbvc_new_post_types_whitelist',
+                'post_type' => $post_type,
+                'old_value' => $old_value,
+                'new_value' => $new_value,
+            ]);
+        }
+
+        if ($remediation === 'use_canonical_row') {
+            $canonical_path = self::extract_item_canonical_path($item);
+            if ($canonical_path === '' || ! self::item_has_advanced_override($item, $remediation)) {
+                return new \WP_Error('dbvc_entity_editor_sync_import_remediation_missing_canonical', __('This preview does not identify a canonical duplicate row.', 'dbvc'), ['status' => 400, 'preview' => $preview]);
+            }
+
+            self::log_remediation($remediation, $relative_path, (int) $user_id, [
+                'canonical_relative_path' => $canonical_path,
+            ]);
+
+            return self::with_remediation_result(self::preview([$canonical_path], $mode), [
+                'action'                  => $remediation,
+                'source_relative_path'    => $relative_path,
+                'canonical_relative_path' => $canonical_path,
+            ]);
+        }
+
+        if ($remediation === 'archive_stale_duplicate') {
+            $canonical_path = self::extract_item_canonical_path($item);
+            if ($canonical_path === '' || ! self::item_has_advanced_override($item, $remediation)) {
+                return new \WP_Error('dbvc_entity_editor_sync_import_remediation_missing_canonical', __('This preview does not identify a stale duplicate that can be archived.', 'dbvc'), ['status' => 400, 'preview' => $preview]);
+            }
+
+            $archive = self::archive_single_stale_duplicate_file($relative_path, $canonical_path);
+            if (\is_wp_error($archive)) {
+                return $archive;
+            }
+
+            self::log_remediation($remediation, $relative_path, (int) $user_id, [
+                'canonical_relative_path' => $canonical_path,
+                'archive'                 => $archive,
+            ]);
+
+            return self::with_remediation_result(self::preview([$canonical_path], $mode), [
+                'action'                  => $remediation,
+                'source_relative_path'    => $relative_path,
+                'canonical_relative_path' => $canonical_path,
+                'archive'                 => $archive,
+            ]);
+        }
+
+        return new \WP_Error('dbvc_entity_editor_sync_import_remediation_unknown', __('Unknown sync-file import remediation action.', 'dbvc'), ['status' => 400, 'preview' => $preview]);
+    }
+
+    /**
      * @param array<string,mixed> $item
      * @param int                 $user_id
      * @return array<string,mixed>
@@ -192,6 +334,9 @@ final class SyncFileImportService
         ]);
         if ($normalization_warning) {
             $result_item['warnings'][] = $normalization_warning;
+        }
+        if (\is_array($file_normalization)) {
+            $result_item = self::append_file_normalization_warnings($result_item, $file_normalization);
         }
 
         if (\class_exists('DBVC_Sync_Logger')) {
@@ -330,6 +475,9 @@ final class SyncFileImportService
         if ($normalization_warning) {
             $result_item['warnings'][] = $normalization_warning;
         }
+        if (\is_array($file_normalization)) {
+            $result_item = self::append_file_normalization_warnings($result_item, $file_normalization);
+        }
 
         if (\class_exists('DBVC_Sync_Logger')) {
             \DBVC_Sync_Logger::log('Entity Editor sync file import', [
@@ -363,6 +511,31 @@ final class SyncFileImportService
                 self::reason((string) $error->get_error_code(), (string) $error->get_error_message()),
             ],
         ]);
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param array<string,mixed> $file_normalization
+     * @return array<string,mixed>
+     */
+    private static function append_file_normalization_warnings(array $item, array $file_normalization)
+    {
+        $errors = isset($file_normalization['archive_errors']) && \is_array($file_normalization['archive_errors'])
+            ? $file_normalization['archive_errors']
+            : [];
+        foreach ($errors as $error) {
+            $path = isset($error['relative_path']) ? (string) $error['relative_path'] : '';
+            $message = isset($error['message']) ? (string) $error['message'] : '';
+            if ($message === '') {
+                $message = __('A stale duplicate sync file could not be archived.', 'dbvc');
+            }
+            if ($path !== '') {
+                $message = sprintf('%s (%s)', $message, $path);
+            }
+            $item['warnings'][] = self::reason('stale_duplicate_archive_failed', $message);
+        }
+
+        return $item;
     }
 
     /**
@@ -581,31 +754,38 @@ final class SyncFileImportService
     private static function build_preview_item($relative_path)
     {
         $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
+        $payload = [];
+        $index_item = null;
         $base = [
-            'relative_path'    => $relative_path,
-            'entity_kind'      => '',
-            'subtype'          => '',
-            'title'            => '',
-            'slug'             => '',
-            'uid'              => '',
-            'detected_action'  => 'blocked',
-            'match'            => ['status' => 'none'],
-            'warnings'         => [],
-            'blocking'         => [],
-            'available_actions'=> [
+            'relative_path'        => $relative_path,
+            'entity_kind'          => '',
+            'subtype'              => '',
+            'title'                => '',
+            'slug'                 => '',
+            'uid'                  => '',
+            'detected_action'      => 'blocked',
+            'match'                => ['status' => 'none'],
+            'warnings'             => [],
+            'blocking'             => [],
+            'blocker_details'      => [],
+            'settings_links'       => [],
+            'setting_remediations' => [],
+            'advanced_overrides'   => [],
+            'preview_hash'         => '',
+            'available_actions'    => [
                 self::MODE_CREATE_ONLY => false,
             ],
         ];
 
         if (! \class_exists('DBVC_Entity_Editor_Indexer')) {
             $base['blocking'][] = self::reason('indexer_unavailable', __('Entity Editor indexer is unavailable.', 'dbvc'));
-            return $base;
+            return self::finalize_preview_item($base, $payload, $index_item);
         }
 
         $loaded = \DBVC_Entity_Editor_Indexer::load_entity_file_for_download($relative_path);
         if (\is_wp_error($loaded)) {
             $base['blocking'][] = self::reason((string) $loaded->get_error_code(), (string) $loaded->get_error_message());
-            return $base;
+            return self::finalize_preview_item($base, $payload, $index_item);
         }
 
         $payload = isset($loaded['decoded']) && \is_array($loaded['decoded']) ? $loaded['decoded'] : [];
@@ -627,7 +807,7 @@ final class SyncFileImportService
 
         if ($kind !== 'post' && $kind !== 'term') {
             $base['blocking'][] = self::reason('unsupported_entity_kind', __('Sync file import supports DBVC post/CPT and taxonomy term JSON only.', 'dbvc'));
-            return $base;
+            return self::finalize_preview_item($base, $payload, $index_item);
         }
 
         $post_type = $kind === 'post' ? sanitize_key((string) ($payload['post_type'] ?? '')) : '';
@@ -692,8 +872,11 @@ final class SyncFileImportService
             }
         }
 
-        if ($kind === 'post' && empty($base['blocking']) && ! self::can_create_post($post_type)) {
-            $base['blocking'][] = self::reason('post_creation_disabled', self::build_post_creation_message($post_type));
+        if ($kind === 'post' && empty($base['blocking'])) {
+            $creation_blocker = self::build_post_creation_blocker($post_type);
+            if (\is_array($creation_blocker)) {
+                $base['blocking'][] = $creation_blocker;
+            }
         }
 
         if (empty($base['blocking'])) {
@@ -713,7 +896,248 @@ final class SyncFileImportService
             $base['bricks_template_advisory'] = $bricks_advisory;
         }
 
-        return $base;
+        return self::finalize_preview_item($base, $payload, $index_item);
+    }
+
+    /**
+     * @param array<string,mixed>      $item
+     * @param array<string,mixed>      $payload
+     * @param array<string,mixed>|null $index_item
+     * @return array<string,mixed>
+     */
+    private static function finalize_preview_item(array $item, array $payload = [], $index_item = null)
+    {
+        $canonical_path = self::get_index_canonical_path($index_item);
+        if ($canonical_path !== '') {
+            $item['canonical_relative_path'] = $canonical_path;
+        }
+
+        $item['settings_links'] = self::build_import_settings_links($item);
+        $item['blocker_details'] = self::build_blocker_details($item, $payload, $index_item);
+        $item['setting_remediations'] = self::build_setting_remediations($item);
+        $item['advanced_overrides'] = self::build_advanced_overrides($item, $index_item);
+        $item['preview_hash'] = self::build_preview_hash($item, $payload, $index_item);
+
+        return $item;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @return array<int,array<string,string>>
+     */
+    private static function build_import_settings_links(array $item)
+    {
+        $blocking_codes = array_column((array) ($item['blocking'] ?? []), 'code');
+        if (
+            ! in_array('post_creation_disabled', $blocking_codes, true)
+            && ! in_array('post_type_whitelist_blocked', $blocking_codes, true)
+        ) {
+            return [];
+        }
+
+        $links = [
+            [
+                'id'    => 'import_settings',
+                'label' => __('Open Import Settings', 'dbvc'),
+                'url'   => admin_url('admin.php?page=dbvc-export&tab=tab-config&subtab=dbvc-config-import&import_subtab=dbvc-config-import-settings#dbvc-config-import-settings'),
+            ],
+        ];
+
+        if (in_array('post_type_whitelist_blocked', $blocking_codes, true)) {
+            $links[] = [
+                'id'    => 'post_type_settings',
+                'label' => __('Open Post Type Settings', 'dbvc'),
+                'url'   => admin_url('admin.php?page=dbvc-export&tab=tab-config&subtab=dbvc-config-post-types#dbvc-config-post-types'),
+            ];
+        }
+
+        return $links;
+    }
+
+    /**
+     * @param array<string,mixed>      $item
+     * @param array<string,mixed>      $payload
+     * @param array<string,mixed>|null $index_item
+     * @return array<int,array<string,mixed>>
+     */
+    private static function build_blocker_details(array $item, array $payload = [], $index_item = null)
+    {
+        $details = [];
+        $blocking = isset($item['blocking']) && \is_array($item['blocking']) ? $item['blocking'] : [];
+        foreach ($blocking as $blocker) {
+            if (! \is_array($blocker)) {
+                continue;
+            }
+
+            $code = isset($blocker['code']) ? (string) $blocker['code'] : '';
+            $detail = [
+                'code'     => $code,
+                'message'  => isset($blocker['message']) ? (string) $blocker['message'] : '',
+                'severity' => 'error',
+                'category' => __('Import blocker', 'dbvc'),
+            ];
+
+            if ($code === 'post_creation_disabled') {
+                $detail['category'] = __('Configuration', 'dbvc');
+                $detail['option'] = 'dbvc_allow_new_posts';
+                $detail['current_value'] = (string) get_option('dbvc_allow_new_posts', '0');
+                $detail['expected_value'] = '1';
+            } elseif ($code === 'post_type_whitelist_blocked') {
+                $detail['category'] = __('Configuration', 'dbvc');
+                $detail['option'] = 'dbvc_new_post_types_whitelist';
+                $detail['post_type'] = isset($item['subtype']) ? sanitize_key((string) $item['subtype']) : '';
+                $detail['current_value'] = self::normalize_option_list(get_option('dbvc_new_post_types_whitelist', []));
+            } elseif ($code === 'stale_duplicate_file') {
+                $detail['category'] = __('Duplicate sync file', 'dbvc');
+                $canonical_path = self::get_index_canonical_path($index_item);
+                if ($canonical_path !== '') {
+                    $detail['canonical_relative_path'] = $canonical_path;
+                }
+                if (\is_array($index_item) && ! empty($index_item['duplicate_group']) && \is_array($index_item['duplicate_group'])) {
+                    $detail['duplicate_group_key'] = isset($index_item['duplicate_group']['key']) ? (string) $index_item['duplicate_group']['key'] : '';
+                }
+            } elseif ($code === 'matched_entity') {
+                $detail['category'] = __('Existing entity', 'dbvc');
+                if (isset($item['match']) && \is_array($item['match'])) {
+                    $detail['match'] = $item['match'];
+                }
+            } elseif (in_array($code, ['missing_post_type', 'missing_taxonomy', 'unsupported_entity_kind'], true)) {
+                $detail['category'] = __('Unsupported entity type', 'dbvc');
+                if (isset($payload['post_type'])) {
+                    $detail['post_type'] = sanitize_key((string) $payload['post_type']);
+                }
+                if (isset($payload['taxonomy'])) {
+                    $detail['taxonomy'] = sanitize_key((string) $payload['taxonomy']);
+                }
+            }
+
+            $details[] = $detail;
+        }
+
+        return $details;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @return array<int,array<string,mixed>>
+     */
+    private static function build_setting_remediations(array $item)
+    {
+        $remediations = [];
+        $blocking_codes = array_column((array) ($item['blocking'] ?? []), 'code');
+        if (in_array('post_creation_disabled', $blocking_codes, true)) {
+            $remediations[] = [
+                'id'                    => 'enable_new_post_creation',
+                'label'                 => __('Enable new post creation', 'dbvc'),
+                'description'           => __('Set DBVC to allow new post/CPT entities during import.', 'dbvc'),
+                'option'                => 'dbvc_allow_new_posts',
+                'new_value'             => '1',
+                'requires_confirmation' => true,
+            ];
+        }
+
+        if (in_array('post_type_whitelist_blocked', $blocking_codes, true)) {
+            $post_type = isset($item['subtype']) ? sanitize_key((string) $item['subtype']) : '';
+            if ($post_type !== '') {
+                $remediations[] = [
+                    'id'                    => 'allow_post_type_creation',
+                    'label'                 => sprintf(__('Allow %s imports', 'dbvc'), $post_type),
+                    'description'           => sprintf(__('Add "%s" to the DBVC new-post import whitelist.', 'dbvc'), $post_type),
+                    'option'                => 'dbvc_new_post_types_whitelist',
+                    'post_type'             => $post_type,
+                    'requires_confirmation' => true,
+                ];
+            }
+        }
+
+        return $remediations;
+    }
+
+    /**
+     * @param array<string,mixed>      $item
+     * @param array<string,mixed>|null $index_item
+     * @return array<int,array<string,mixed>>
+     */
+    private static function build_advanced_overrides(array $item, $index_item = null)
+    {
+        $blocking_codes = array_column((array) ($item['blocking'] ?? []), 'code');
+        if (! in_array('stale_duplicate_file', $blocking_codes, true)) {
+            return [];
+        }
+
+        $canonical_path = self::get_index_canonical_path($index_item);
+        if ($canonical_path === '') {
+            return [];
+        }
+
+        return [
+            [
+                'id'                      => 'use_canonical_row',
+                'label'                   => __('Use canonical row', 'dbvc'),
+                'description'             => __('Refresh this preview against the canonical sync JSON for the same entity.', 'dbvc'),
+                'canonical_relative_path' => $canonical_path,
+                'requires_confirmation'   => false,
+            ],
+            [
+                'id'                      => 'archive_stale_duplicate',
+                'label'                   => __('Archive stale duplicate', 'dbvc'),
+                'description'             => __('Move only this stale duplicate JSON into the Entity Editor backup folder, then preview the canonical file.', 'dbvc'),
+                'canonical_relative_path' => $canonical_path,
+                'requires_confirmation'   => true,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed>      $item
+     * @param array<string,mixed>      $payload
+     * @param array<string,mixed>|null $index_item
+     * @return string
+     */
+    private static function build_preview_hash(array $item, array $payload = [], $index_item = null)
+    {
+        $blocking_codes = array_column((array) ($item['blocking'] ?? []), 'code');
+        $hash_payload = [
+            'relative_path'                   => isset($item['relative_path']) ? (string) $item['relative_path'] : '',
+            'payload_id'                      => isset($payload['ID']) ? (string) $payload['ID'] : (isset($payload['term_id']) ? (string) $payload['term_id'] : ''),
+            'entity_kind'                     => isset($item['entity_kind']) ? (string) $item['entity_kind'] : '',
+            'subtype'                         => isset($item['subtype']) ? (string) $item['subtype'] : '',
+            'slug'                            => isset($item['slug']) ? (string) $item['slug'] : '',
+            'uid'                             => isset($item['uid']) ? (string) $item['uid'] : '',
+            'blocking_codes'                  => array_values(array_map('strval', $blocking_codes)),
+            'canonical_relative_path'         => self::get_index_canonical_path($index_item),
+            'match_status'                    => isset($item['match']['status']) ? (string) $item['match']['status'] : '',
+            'match_id'                        => isset($item['match']['id']) ? (int) $item['match']['id'] : 0,
+            'dbvc_allow_new_posts'            => (string) get_option('dbvc_allow_new_posts', '0'),
+            'dbvc_new_post_types_whitelist'   => self::normalize_option_list(get_option('dbvc_new_post_types_whitelist', [])),
+        ];
+
+        return hash('sha256', (string) wp_json_encode($hash_payload));
+    }
+
+    /**
+     * @param array<string,mixed>|null $index_item
+     * @return string
+     */
+    private static function get_index_canonical_path($index_item = null)
+    {
+        if (! \is_array($index_item) || empty($index_item['duplicate_group']) || ! \is_array($index_item['duplicate_group'])) {
+            return '';
+        }
+
+        return isset($index_item['duplicate_group']['canonical_relative_path'])
+            ? str_replace('\\', '/', ltrim((string) $index_item['duplicate_group']['canonical_relative_path'], '/'))
+            : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int,string>
+     */
+    private static function normalize_option_list($value)
+    {
+        $values = \is_array($value) ? $value : [];
+        return array_values(array_unique(array_filter(array_map('sanitize_key', $values))));
     }
 
     /**
@@ -1315,10 +1739,16 @@ final class SyncFileImportService
             'replaced_existing'       => false,
             'removed_duplicate'       => false,
             'backup_path'             => '',
+            'archived_duplicates'     => [],
+            'archive_errors'          => [],
         ];
 
-        if ($canonical_relative_path === '' || $canonical_relative_path === $source_relative_path) {
+        if ($canonical_relative_path === '') {
             return $state;
+        }
+
+        if ($canonical_relative_path === $source_relative_path) {
+            return self::with_stale_duplicate_archival($state, $canonical_relative_path);
         }
 
         if (! is_file($source_absolute_path)) {
@@ -1348,7 +1778,7 @@ final class SyncFileImportService
 
                 $state['relative_path'] = $canonical_relative_path;
                 $state['removed_duplicate'] = true;
-                return $state;
+                return self::with_stale_duplicate_archival($state, $canonical_relative_path);
             }
 
             $backup_path = self::backup_existing_sync_file($target_absolute_path, $canonical_relative_path);
@@ -1379,7 +1809,285 @@ final class SyncFileImportService
         $state['relative_path'] = $canonical_relative_path;
         $state['moved'] = true;
 
+        return self::with_stale_duplicate_archival($state, $canonical_relative_path);
+    }
+
+    /**
+     * @param array<string,mixed> $state
+     * @param string              $canonical_relative_path
+     * @return array<string,mixed>
+     */
+    private static function with_stale_duplicate_archival(array $state, $canonical_relative_path)
+    {
+        $cleanup = self::archive_stale_duplicate_files((string) $canonical_relative_path);
+        $state['archived_duplicates'] = isset($cleanup['archived']) && \is_array($cleanup['archived'])
+            ? $cleanup['archived']
+            : [];
+        $state['archive_errors'] = isset($cleanup['errors']) && \is_array($cleanup['errors'])
+            ? $cleanup['errors']
+            : [];
+
         return $state;
+    }
+
+    /**
+     * Archive older duplicate sync files that point to the same live entity as the canonical file.
+     *
+     * @param string $canonical_relative_path
+     * @return array{archived:array<int,array<string,string>>,errors:array<int,array<string,string>>}
+     */
+    private static function archive_stale_duplicate_files($canonical_relative_path)
+    {
+        $result = [
+            'archived' => [],
+            'errors'  => [],
+        ];
+
+        $canonical_relative_path = str_replace('\\', '/', ltrim((string) $canonical_relative_path, '/'));
+        if ($canonical_relative_path === '' || ! \class_exists('DBVC_Entity_Editor_Indexer')) {
+            return $result;
+        }
+
+        delete_transient('dbvc_entity_editor_index_v1');
+        $index = \DBVC_Entity_Editor_Indexer::get_index(true);
+        $items = isset($index['items']) && \is_array($index['items']) ? $index['items'] : [];
+        $canonical_item = null;
+        foreach ($items as $item) {
+            if (! \is_array($item)) {
+                continue;
+            }
+            $path = isset($item['relative_path']) ? str_replace('\\', '/', ltrim((string) $item['relative_path'], '/')) : '';
+            if ($path === $canonical_relative_path) {
+                $canonical_item = $item;
+                break;
+            }
+        }
+
+        if (! \is_array($canonical_item) || empty($canonical_item['duplicate_group']) || ! \is_array($canonical_item['duplicate_group'])) {
+            return $result;
+        }
+
+        $group_key = isset($canonical_item['duplicate_group']['key']) ? (string) $canonical_item['duplicate_group']['key'] : '';
+        if ($group_key === '') {
+            return $result;
+        }
+
+        foreach ($items as $item) {
+            if (! \is_array($item)) {
+                continue;
+            }
+
+            $path = isset($item['relative_path']) ? str_replace('\\', '/', ltrim((string) $item['relative_path'], '/')) : '';
+            if ($path === '' || $path === $canonical_relative_path) {
+                continue;
+            }
+
+            $duplicate_group = isset($item['duplicate_group']) && \is_array($item['duplicate_group']) ? $item['duplicate_group'] : [];
+            $item_group_key = isset($duplicate_group['key']) ? (string) $duplicate_group['key'] : '';
+            if ($item_group_key === '' || $item_group_key !== $group_key || ! empty($item['is_canonical_duplicate'])) {
+                continue;
+            }
+
+            $absolute_path = \DBVC_Entity_Editor_Indexer::resolve_entity_file_path_for_import($path);
+            if (\is_wp_error($absolute_path)) {
+                $result['errors'][] = [
+                    'relative_path' => $path,
+                    'message'       => (string) $absolute_path->get_error_message(),
+                ];
+                continue;
+            }
+
+            $backup_path = self::backup_existing_sync_file((string) $absolute_path, $path);
+            if (\is_wp_error($backup_path)) {
+                $result['errors'][] = [
+                    'relative_path' => $path,
+                    'message'       => (string) $backup_path->get_error_message(),
+                ];
+                continue;
+            }
+
+            if (! @unlink((string) $absolute_path)) {
+                $result['errors'][] = [
+                    'relative_path' => $path,
+                    'message'       => __('The stale duplicate sync file could not be removed after backup.', 'dbvc'),
+                ];
+                continue;
+            }
+
+            $result['archived'][] = [
+                'relative_path' => $path,
+                'backup_path'   => (string) $backup_path,
+            ];
+        }
+
+        if (! empty($result['archived'])) {
+            delete_transient('dbvc_entity_editor_index_v1');
+        }
+
+        return $result;
+    }
+
+    /**
+     * Archive one explicitly selected stale duplicate sync file.
+     *
+     * @param string $relative_path
+     * @param string $canonical_relative_path
+     * @return array<string,string>|\WP_Error
+     */
+    private static function archive_single_stale_duplicate_file($relative_path, $canonical_relative_path)
+    {
+        $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
+        $canonical_relative_path = str_replace('\\', '/', ltrim((string) $canonical_relative_path, '/'));
+        if ($relative_path === '' || $canonical_relative_path === '' || $relative_path === $canonical_relative_path) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_archive_invalid_duplicate', __('Select a stale duplicate file that is different from the canonical file.', 'dbvc'), ['status' => 400]);
+        }
+
+        if (! \class_exists('DBVC_Entity_Editor_Indexer')) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_unavailable', __('Entity Editor indexer is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        delete_transient('dbvc_entity_editor_index_v1');
+        $index = \DBVC_Entity_Editor_Indexer::get_index(true);
+        $items = isset($index['items']) && \is_array($index['items']) ? $index['items'] : [];
+        $selected_item = null;
+        foreach ($items as $item) {
+            if (! \is_array($item)) {
+                continue;
+            }
+
+            $path = isset($item['relative_path']) ? str_replace('\\', '/', ltrim((string) $item['relative_path'], '/')) : '';
+            if ($path === $relative_path) {
+                $selected_item = $item;
+                break;
+            }
+        }
+
+        if (
+            ! \is_array($selected_item)
+            || empty($selected_item['is_duplicate'])
+            || ! empty($selected_item['is_canonical_duplicate'])
+            || self::get_index_canonical_path($selected_item) !== $canonical_relative_path
+        ) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_archive_not_stale_duplicate', __('This file is no longer a stale duplicate of the selected canonical file. Refresh the preview.', 'dbvc'), ['status' => 409]);
+        }
+
+        $absolute_path = \DBVC_Entity_Editor_Indexer::resolve_entity_file_path_for_import($relative_path);
+        if (\is_wp_error($absolute_path)) {
+            return $absolute_path;
+        }
+
+        $backup_path = self::backup_existing_sync_file((string) $absolute_path, $relative_path);
+        if (\is_wp_error($backup_path)) {
+            return $backup_path;
+        }
+
+        if (! @unlink((string) $absolute_path)) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_archive_unlink_failed', __('The stale duplicate sync file could not be removed after backup.', 'dbvc'), ['status' => 500]);
+        }
+
+        delete_transient('dbvc_entity_editor_index_v1');
+
+        return [
+            'relative_path'           => $relative_path,
+            'canonical_relative_path' => $canonical_relative_path,
+            'backup_path'             => (string) $backup_path,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed>|\WP_Error $preview
+     * @param array<string,mixed>           $result
+     * @return array<string,mixed>|\WP_Error
+     */
+    private static function with_remediation_result($preview, array $result)
+    {
+        if (\is_wp_error($preview)) {
+            return $preview;
+        }
+
+        $preview['remediation_result'] = $result;
+        return $preview;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param string              $id
+     * @return bool
+     */
+    private static function item_has_setting_remediation(array $item, $id)
+    {
+        $remediations = isset($item['setting_remediations']) && \is_array($item['setting_remediations']) ? $item['setting_remediations'] : [];
+        foreach ($remediations as $remediation) {
+            if (\is_array($remediation) && isset($remediation['id']) && (string) $remediation['id'] === (string) $id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param string              $id
+     * @return bool
+     */
+    private static function item_has_advanced_override(array $item, $id)
+    {
+        $overrides = isset($item['advanced_overrides']) && \is_array($item['advanced_overrides']) ? $item['advanced_overrides'] : [];
+        foreach ($overrides as $override) {
+            if (\is_array($override) && isset($override['id']) && (string) $override['id'] === (string) $id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @return string
+     */
+    private static function extract_item_canonical_path(array $item)
+    {
+        if (! empty($item['canonical_relative_path'])) {
+            return str_replace('\\', '/', ltrim((string) $item['canonical_relative_path'], '/'));
+        }
+
+        $details = isset($item['blocker_details']) && \is_array($item['blocker_details']) ? $item['blocker_details'] : [];
+        foreach ($details as $detail) {
+            if (\is_array($detail) && ! empty($detail['canonical_relative_path'])) {
+                return str_replace('\\', '/', ltrim((string) $detail['canonical_relative_path'], '/'));
+            }
+        }
+
+        $overrides = isset($item['advanced_overrides']) && \is_array($item['advanced_overrides']) ? $item['advanced_overrides'] : [];
+        foreach ($overrides as $override) {
+            if (\is_array($override) && ! empty($override['canonical_relative_path'])) {
+                return str_replace('\\', '/', ltrim((string) $override['canonical_relative_path'], '/'));
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param string              $action
+     * @param string              $relative_path
+     * @param int                 $user_id
+     * @param array<string,mixed> $context
+     * @return void
+     */
+    private static function log_remediation($action, $relative_path, $user_id, array $context = [])
+    {
+        if (! \class_exists('DBVC_Sync_Logger')) {
+            return;
+        }
+
+        \DBVC_Sync_Logger::log('Entity Editor sync file import remediation', array_merge([
+            'action'        => (string) $action,
+            'relative_path' => (string) $relative_path,
+            'user_id'       => (int) $user_id,
+        ], $context));
     }
 
     /**
@@ -1535,6 +2243,9 @@ final class SyncFileImportService
         $sources = [];
         if ($uid !== '') {
             $sources[] = ['source' => 'uid', 'ids' => self::find_post_ids_by_uid($uid, $post_type)];
+        }
+        if (($uid === '' || self::is_uid_fallback_matching_allowed()) && ! empty($payload['ID'])) {
+            $sources[] = ['source' => 'payload_id', 'ids' => self::find_post_ids_by_payload_id((int) $payload['ID'], $post_type)];
         }
         if ($slug !== '' && $post_type !== '') {
             $sources[] = ['source' => 'slug', 'ids' => self::find_post_ids_by_slug($slug, $post_type)];
@@ -1774,6 +2485,39 @@ final class SyncFileImportService
     }
 
     /**
+     * @param int    $payload_id
+     * @param string $post_type
+     * @return array<int,int>
+     */
+    private static function find_post_ids_by_payload_id($payload_id, $post_type)
+    {
+        $payload_id = absint($payload_id);
+        $post_type = sanitize_key((string) $post_type);
+        if ($payload_id <= 0 || $post_type === '') {
+            return [];
+        }
+
+        $post = get_post($payload_id);
+        if (! ($post instanceof \WP_Post) || $post->post_type !== $post_type) {
+            return [];
+        }
+
+        return [(int) $post->ID];
+    }
+
+    /**
+     * @return bool
+     */
+    private static function is_uid_fallback_matching_allowed()
+    {
+        if (\class_exists('DBVC_Sync_Posts') && \method_exists('DBVC_Sync_Posts', 'is_uid_fallback_matching_allowed')) {
+            return (bool) \DBVC_Sync_Posts::is_uid_fallback_matching_allowed();
+        }
+
+        return get_option('dbvc_allow_uid_fallback_matching', '0') === '1';
+    }
+
+    /**
      * @param string $uid
      * @param string $taxonomy
      * @return array<int,int>
@@ -1854,16 +2598,26 @@ final class SyncFileImportService
      */
     private static function can_create_post($post_type)
     {
-        if (get_option('dbvc_allow_new_posts') !== '1') {
-            return false;
+        return self::build_post_creation_blocker($post_type) === null;
+    }
+
+    /**
+     * @param string $post_type
+     * @return array{code:string,message:string}|null
+     */
+    private static function build_post_creation_blocker($post_type)
+    {
+        $post_type = sanitize_key((string) $post_type);
+        if (get_option('dbvc_allow_new_posts', '0') !== '1') {
+            return self::reason('post_creation_disabled', __('DBVC is currently configured to block creation of new posts from imports.', 'dbvc'));
         }
 
-        $whitelist = (array) get_option('dbvc_new_post_types_whitelist', []);
+        $whitelist = self::normalize_option_list(get_option('dbvc_new_post_types_whitelist', []));
         if (! empty($whitelist) && ! in_array($post_type, $whitelist, true)) {
-            return false;
+            return self::reason('post_type_whitelist_blocked', sprintf(__('DBVC post creation is restricted and "%s" is not in the new-post whitelist.', 'dbvc'), $post_type));
         }
 
-        return true;
+        return null;
     }
 
     /**
@@ -1872,7 +2626,8 @@ final class SyncFileImportService
      */
     private static function build_post_creation_message($post_type)
     {
-        $whitelist = (array) get_option('dbvc_new_post_types_whitelist', []);
+        $post_type = sanitize_key((string) $post_type);
+        $whitelist = self::normalize_option_list(get_option('dbvc_new_post_types_whitelist', []));
         if (! empty($whitelist) && ! in_array($post_type, $whitelist, true)) {
             return sprintf(__('DBVC post creation is restricted and "%s" is not in the new-post whitelist.', 'dbvc'), $post_type);
         }

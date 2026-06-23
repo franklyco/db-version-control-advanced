@@ -101,6 +101,14 @@ const getBricksAdvisoryNoticeClass = (advisory) => (
 	advisory?.severity === 'warning' ? 'notice-warning' : 'notice-info'
 );
 
+const formatSyncImportDetailValue = (value) => {
+	if (Array.isArray(value)) return value.length ? value.join(', ') : 'empty';
+	if (value === true) return 'true';
+	if (value === false) return 'false';
+	if (value === null || value === undefined || value === '') return 'empty';
+	return String(value);
+};
+
 const getEntityImportStatusRank = (item) => (item?.matched_wp?.id ? 1 : 0);
 
 const EntityEditorApp = () => {
@@ -159,7 +167,9 @@ const EntityEditorApp = () => {
 	const [syncImportPaths, setSyncImportPaths] = useState([]);
 	const [syncImportPreviewBusy, setSyncImportPreviewBusy] = useState(false);
 	const [syncImportCommitBusy, setSyncImportCommitBusy] = useState(false);
+	const [syncImportRemediationBusy, setSyncImportRemediationBusy] = useState('');
 	const [syncImportError, setSyncImportError] = useState('');
+	const [syncImportNotice, setSyncImportNotice] = useState('');
 	const [syncImportPreview, setSyncImportPreview] = useState(null);
 	const entityEditorTextareaRef = useRef(null);
 
@@ -447,7 +457,9 @@ const EntityEditorApp = () => {
 		setSyncImportPaths([]);
 		setSyncImportPreviewBusy(false);
 		setSyncImportCommitBusy(false);
+		setSyncImportRemediationBusy('');
 		setSyncImportError('');
+		setSyncImportNotice('');
 		setSyncImportPreview(null);
 	}, []);
 
@@ -478,6 +490,7 @@ const EntityEditorApp = () => {
 		setSyncImportPaths(normalizedPaths);
 		setSyncImportPreview(null);
 		setSyncImportError('');
+		setSyncImportNotice('');
 		setSyncImportPreviewBusy(true);
 		try {
 			const data = await apiPost('entity-editor/sync-file-import/preview', {
@@ -492,6 +505,45 @@ const EntityEditorApp = () => {
 			setSyncImportPreviewBusy(false);
 		}
 	}, []);
+
+	const remediateSyncImport = useCallback(async (item, remediation) => {
+		const path = item?.relative_path || item?.source_relative_path || '';
+		const remediationId = remediation?.id || '';
+		if (!path || !remediationId) return;
+
+		if (remediation?.requires_confirmation) {
+			const message = remediation?.description || 'Apply this import fix?';
+			if (!window.confirm(message)) return;
+		}
+
+		const busyKey = `${path}:${remediationId}`;
+		setSyncImportRemediationBusy(busyKey);
+		setSyncImportError('');
+		setSyncImportNotice('');
+		try {
+			const data = await apiPost('entity-editor/sync-file-import/remediate', {
+				path,
+				mode: 'create_only',
+				remediation: remediationId,
+				preview_hash: item?.preview_hash || '',
+			});
+			setSyncImportPreview(data);
+			const previewPaths = Array.isArray(data?.items)
+				? data.items.map((previewItem) => previewItem?.relative_path || previewItem?.source_relative_path || '').filter(Boolean)
+				: [];
+			if (previewPaths.length) {
+				setSyncImportPath(previewPaths[0]);
+				setSyncImportPaths(previewPaths);
+			}
+			setSyncImportNotice(data?.remediation_result?.action ? 'Import blocker fix applied. Review the refreshed preview before creating entities.' : '');
+			await loadEntityIndex(true);
+		} catch (error) {
+			setSyncImportError(error?.message || 'Failed to apply import fix');
+			setSyncImportPreview(error?.body?.data?.preview || syncImportPreview);
+		} finally {
+			setSyncImportRemediationBusy('');
+		}
+	}, [loadEntityIndex, syncImportPreview]);
 
 	const commitSyncImport = useCallback(async () => {
 		const paths = syncImportPaths.length ? syncImportPaths : (syncImportPath ? [syncImportPath] : []);
@@ -629,7 +681,7 @@ const EntityEditorApp = () => {
 		() => entityIndex.reduce((count, item) => count + (getEntityImportStatusRank(item) === 0 ? 1 : 0), 0),
 		[entityIndex]
 	);
-	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy || syncImportPreviewBusy || syncImportCommitBusy;
+	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy;
 	const entityBulkActionNeedsSelection = entityBulkAction === 'download_selected'
 		|| entityBulkAction === 'remove_selected'
 		|| entityBulkAction === 'clear_selection'
@@ -1456,6 +1508,11 @@ const EntityEditorApp = () => {
 										<p>{syncImportError}</p>
 									</div>
 								)}
+								{syncImportNotice && (
+									<div className="notice notice-success" style={{ marginTop: '12px' }}>
+										<p>{syncImportNotice}</p>
+									</div>
+								)}
 								{syncImportItems.length > 0 && (
 									<div style={{ marginTop: '12px' }}>
 										<div className="notice notice-info">
@@ -1472,6 +1529,10 @@ const EntityEditorApp = () => {
 											{syncImportItems.map((item, itemIndex) => {
 												const itemWarnings = Array.isArray(item?.warnings) ? item.warnings : [];
 												const itemBlocking = Array.isArray(item?.blocking) ? item.blocking : [];
+												const blockerDetails = Array.isArray(item?.blocker_details) ? item.blocker_details : [];
+												const settingsLinks = Array.isArray(item?.settings_links) ? item.settings_links : [];
+												const settingRemediations = Array.isArray(item?.setting_remediations) ? item.setting_remediations : [];
+												const advancedOverrides = Array.isArray(item?.advanced_overrides) ? item.advanced_overrides : [];
 												const bricksAdvisory = item?.bricks_template_advisory?.enabled ? item.bricks_template_advisory : null;
 												const bricksAdvisoryMessages = Array.isArray(bricksAdvisory?.messages) ? bricksAdvisory.messages : [];
 												const bricksAdvisoryConflicts = Array.isArray(bricksAdvisory?.condition_conflicts) ? bricksAdvisory.condition_conflicts : [];
@@ -1552,17 +1613,84 @@ const EntityEditorApp = () => {
 																)}
 															</p>
 														)}
+														{itemBlocking.length > 0 && (
+															<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+																<p><strong>Blockers and fixes</strong></p>
+																{blockerDetails.length > 0 ? (
+																	<ul style={{ marginLeft: '18px' }}>
+																		{blockerDetails.map((detail, index) => (
+																			<li key={`${detail?.code || 'blocker-detail'}-${index}`}>
+																				{detail?.message || detail?.code || 'Import blocked'}
+																				{detail?.option ? ` · Setting: ${detail.option}` : ''}
+																				{Object.prototype.hasOwnProperty.call(detail || {}, 'current_value') ? ` · Current: ${formatSyncImportDetailValue(detail.current_value)}` : ''}
+																				{detail?.post_type ? ` · Post type: ${detail.post_type}` : ''}
+																				{detail?.taxonomy ? ` · Taxonomy: ${detail.taxonomy}` : ''}
+																				{detail?.canonical_relative_path ? ` · Canonical: ${detail.canonical_relative_path}` : ''}
+																			</li>
+																		))}
+																	</ul>
+																) : (
+																	<ul style={{ marginLeft: '18px' }}>
+																		{itemBlocking.map((blocker, index) => (
+																			<li key={`${blocker?.code || 'blocked'}-${index}`}>{blocker?.message || 'Blocked'}</li>
+																		))}
+																	</ul>
+																)}
+																{(settingsLinks.length > 0 || settingRemediations.length > 0 || advancedOverrides.length > 0) && (
+																	<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+																		{settingsLinks.map((link) => (
+																			<a key={link?.id || link?.url} href={link?.url || '#'} className="button button-secondary">
+																				{link?.label || 'Open settings'}
+																			</a>
+																		))}
+																		{item?.canonical_relative_path && (
+																			<Button
+																				variant="secondary"
+																				onClick={() => {
+																					setSelectedEntityFile(item.canonical_relative_path);
+																					closeSyncImportModal();
+																				}}
+																				disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
+																			>
+																				Open canonical JSON
+																			</Button>
+																		)}
+																		{settingRemediations.map((remediation) => {
+																			const busyKey = `${item?.relative_path || item?.source_relative_path || ''}:${remediation?.id || ''}`;
+																			return (
+																				<Button
+																					key={remediation?.id || remediation?.label}
+																					variant="secondary"
+																					onClick={() => remediateSyncImport(item, remediation)}
+																					disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
+																					isBusy={syncImportRemediationBusy === busyKey}
+																				>
+																					{remediation?.label || 'Apply setting fix'}
+																				</Button>
+																			);
+																		})}
+																		{advancedOverrides.map((override) => {
+																			const busyKey = `${item?.relative_path || item?.source_relative_path || ''}:${override?.id || ''}`;
+																			return (
+																				<Button
+																					key={override?.id || override?.label}
+																					variant={override?.id === 'archive_stale_duplicate' ? 'secondary' : 'primary'}
+																					onClick={() => remediateSyncImport(item, override)}
+																					disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
+																					isBusy={syncImportRemediationBusy === busyKey}
+																				>
+																					{override?.label || 'Apply'}
+																				</Button>
+																			);
+																		})}
+																	</div>
+																)}
+															</div>
+														)}
 														{itemWarnings.length > 0 && (
 															<ul style={{ marginLeft: '18px' }}>
 																{itemWarnings.map((warning, index) => (
 																	<li key={`${warning?.code || 'warning'}-${index}`}>{warning?.message || 'Warning'}</li>
-																))}
-															</ul>
-														)}
-														{itemBlocking.length > 0 && (
-															<ul style={{ marginLeft: '18px' }}>
-																{itemBlocking.map((blocker, index) => (
-																	<li key={`${blocker?.code || 'blocked'}-${index}`}>{blocker?.message || 'Blocked'}</li>
 																))}
 															</ul>
 														)}
@@ -1578,13 +1706,13 @@ const EntityEditorApp = () => {
 									</div>
 								)}
 								<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-									<Button variant="tertiary" onClick={closeSyncImportModal} disabled={syncImportPreviewBusy || syncImportCommitBusy}>
+									<Button variant="tertiary" onClick={closeSyncImportModal} disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}>
 										Close
 									</Button>
-									<Button variant="secondary" onClick={() => openSyncImportPreview(syncImportPaths.length ? syncImportPaths : syncImportPath)} disabled={(!syncImportPath && !syncImportPaths.length) || syncImportPreviewBusy || syncImportCommitBusy} isBusy={syncImportPreviewBusy}>
+									<Button variant="secondary" onClick={() => openSyncImportPreview(syncImportPaths.length ? syncImportPaths : syncImportPath)} disabled={(!syncImportPath && !syncImportPaths.length) || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportPreviewBusy}>
 										Refresh Preview
 									</Button>
-									<Button variant="primary" onClick={commitSyncImport} disabled={!syncImportCanCommit || syncImportPreviewBusy || syncImportCommitBusy} isBusy={syncImportCommitBusy}>
+									<Button variant="primary" onClick={commitSyncImport} disabled={!syncImportCanCommit || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
 										Create {syncImportCreatableCount} {syncImportCreatableCount === 1 ? 'Entity' : 'Entities'}
 									</Button>
 								</div>

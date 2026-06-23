@@ -193,24 +193,3 @@
 | _source/content-collector/README.md | docs/_backups/docs-library-migration/originals/_source/content-collector/README.md | kept | _source/content-collector/README.md | Kept in place. |
 | _source/content-collector/readme.txt | docs/_backups/docs-library-migration/originals/_source/content-collector/readme.txt | kept | _source/content-collector/readme.txt | Kept in place. |
 | _source/content-collector/tests/fixtures/README.md | docs/_backups/docs-library-migration/originals/_source/content-collector/tests/fixtures/README.md | kept | _source/content-collector/tests/fixtures/README.md | Kept in place. |
-| docs/agent-entrypoints.md | docs/_backups/docs-library-migration/import-authoring-20260622/docs/agent-entrypoints.md/original.md | rewrite-lightly | docs/agent-entrypoints.md | Added AI import authoring entry point. |
-| docs/reference/README.md | docs/_backups/docs-library-migration/import-authoring-20260622/docs/reference/README.md | rewrite-lightly | docs/reference/README.md | Linked the import-authoring reference library. |
-| docs/_meta/doc-governance.md | docs/_backups/docs-library-migration/import-authoring-20260622/docs/_meta/doc-governance.md | rewrite-lightly | docs/_meta/doc-governance.md | Added anti-drift rule for import-authoring docs. |
-| docs/roadmap.md | docs/_backups/docs-library-migration/import-authoring-20260622/docs/roadmap.md | rewrite-lightly | docs/roadmap.md | Promoted AI package import-authoring reference to active roadmap entry. |
-| docs/requests.md | docs/_backups/docs-library-migration/import-authoring-20260622/docs/requests.md | rewrite-lightly | docs/requests.md | Replaced stale AI package consolidation request with current QA follow-ups. |
-| docs/_meta/inventory.md | docs/_backups/docs-library-migration/import-authoring-20260622/docs/_meta/inventory.md | rewrite-lightly | docs/_meta/inventory.md | Added import-authoring reference library files. |
-| docs/_backups/docs-library-migration/manifest.md | docs/_backups/docs-library-migration/import-authoring-20260622/docs/_backups/docs-library-migration/manifest.md | rewrite-lightly | docs/_backups/docs-library-migration/manifest.md | Recorded import-authoring reference library backups and created docs. |
-| (new) | N/A | created | docs/reference/import-authoring/README.md | Current AI-agent-facing import authoring reference router. |
-| (new) | N/A | created | docs/reference/import-authoring/ai-agent-quickstart.md | Minimal agent context for DBVC AI submission packages. |
-| (new) | N/A | created | docs/reference/import-authoring/package-layout.md | Sample package and returned package layout contract. |
-| (new) | N/A | created | docs/reference/import-authoring/entity-shapes.md | Post/CPT/page and term JSON shape contract. |
-| (new) | N/A | created | docs/reference/import-authoring/acf-authoring.md | ACF authoring rules for AI package `meta` values. |
-| (new) | N/A | created | docs/reference/import-authoring/vertical-context.md | Minimal package-facing Vertical Object Type Context and Field Context. |
-| (new) | N/A | created | docs/reference/import-authoring/validation-and-import-rules.md | AI package validation and import rules. |
-| (new) | N/A | created | docs/reference/import-authoring/source-code-map.md | Maintainer source map for AI package runtime contracts. |
-| (new) | N/A | created | docs/reference/import-authoring/maintenance-contract.md | Anti-drift rules for import authoring docs. |
-| (new) | N/A | created | docs/reference/import-authoring/examples/submission-layout.txt | Structural returned package layout example. |
-| (new) | N/A | created | docs/reference/import-authoring/examples/submission-manifest-create-only.json | Minimal create-only returned manifest example. |
-| (new) | N/A | created | docs/reference/import-authoring/examples/page-create.json | Structural page create entity example. |
-| (new) | N/A | created | docs/reference/import-authoring/examples/service-create.json | Structural service CPT create entity example. |
-| (new) | N/A | created | docs/reference/import-authoring/examples/term-create.json | Structural term create entity example. |

@@ -218,17 +218,3 @@ Current Path is the discovery-time path before this cleanup. Proposed Path is th
 | docs/_meta/doc-governance.md | reference/doc | unknown | created | docs/_meta/doc-governance.md | Created during docs-library cleanup. |
 | docs/_meta/README.md | README/router | unknown | created | docs/_meta/README.md | Created during docs-library cleanup. |
 | docs/_meta/review-log.md | reference/doc | unknown | created | docs/_meta/review-log.md | Created during docs-library cleanup. |
-| docs/reference/import-authoring/README.md | README/router | canonical | created | docs/reference/import-authoring/README.md | Current AI-agent-facing import authoring reference router. |
-| docs/reference/import-authoring/ai-agent-quickstart.md | reference/doc | canonical | created | docs/reference/import-authoring/ai-agent-quickstart.md | Minimal agent context for DBVC AI submission packages. |
-| docs/reference/import-authoring/package-layout.md | reference/doc | canonical | created | docs/reference/import-authoring/package-layout.md | Sample package and returned package layout contract. |
-| docs/reference/import-authoring/entity-shapes.md | reference/doc | canonical | created | docs/reference/import-authoring/entity-shapes.md | Post/CPT/page and term JSON shape contract. |
-| docs/reference/import-authoring/acf-authoring.md | reference/doc | canonical | created | docs/reference/import-authoring/acf-authoring.md | ACF authoring rules for AI package `meta` values. |
-| docs/reference/import-authoring/vertical-context.md | reference/doc | canonical | created | docs/reference/import-authoring/vertical-context.md | Minimal package-facing Vertical Object Type Context and Field Context. |
-| docs/reference/import-authoring/validation-and-import-rules.md | reference/doc | canonical | created | docs/reference/import-authoring/validation-and-import-rules.md | AI package validation and import rules. |
-| docs/reference/import-authoring/source-code-map.md | reference/doc | canonical | created | docs/reference/import-authoring/source-code-map.md | Maintainer source map for AI package runtime contracts. |
-| docs/reference/import-authoring/maintenance-contract.md | reference/doc | canonical | created | docs/reference/import-authoring/maintenance-contract.md | Anti-drift rules for import authoring docs. |
-| docs/reference/import-authoring/examples/submission-layout.txt | reference example | canonical | created | docs/reference/import-authoring/examples/submission-layout.txt | Structural returned package layout example. |
-| docs/reference/import-authoring/examples/submission-manifest-create-only.json | reference example | canonical | created | docs/reference/import-authoring/examples/submission-manifest-create-only.json | Minimal create-only returned manifest example. |
-| docs/reference/import-authoring/examples/page-create.json | reference example | canonical | created | docs/reference/import-authoring/examples/page-create.json | Structural page create entity example. |
-| docs/reference/import-authoring/examples/service-create.json | reference example | canonical | created | docs/reference/import-authoring/examples/service-create.json | Structural service CPT create entity example. |
-| docs/reference/import-authoring/examples/term-create.json | reference example | canonical | created | docs/reference/import-authoring/examples/term-create.json | Structural term create entity example. |

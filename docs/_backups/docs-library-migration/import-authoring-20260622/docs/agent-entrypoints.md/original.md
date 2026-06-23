@@ -2,21 +2,6 @@
 
 Use this file to choose a narrow documentation path.
 
-## AI Agent Site Content Or Import Package Authoring
-
-Read:
-
-1. `docs/reference/import-authoring/README.md`
-2. `docs/reference/import-authoring/ai-agent-quickstart.md`
-3. `docs/reference/import-authoring/package-layout.md`
-4. `docs/reference/import-authoring/entity-shapes.md`
-5. `docs/reference/import-identity-matching.md` when updating existing content
-
-When ACF or Vertical context is involved, add:
-
-1. `docs/reference/import-authoring/acf-authoring.md`
-2. `docs/reference/import-authoring/vertical-context.md`
-
 ## Core DBVC Import, Proposal, or Media Work
 
 Read:
@@ -71,3 +56,4 @@ Read:
 ## If Docs Conflict
 
 Prefer current entry points and code over archived docs. If the conflict cannot be resolved quickly, add it to `docs/requests.md` instead of guessing.
+

@@ -423,6 +423,7 @@ final class AcfDiscoveryService
             'options_pages' => [],
             'unscoped_groups' => [],
         ];
+        $available_taxonomies = self::get_available_taxonomy_keys();
 
         foreach ($field_groups as $group_key => $group) {
             $targets = isset($group['targets']) && is_array($group['targets']) ? $group['targets'] : [];
@@ -442,6 +443,19 @@ final class AcfDiscoveryService
             }
 
             $taxonomies = isset($targets['taxonomies']) && is_array($targets['taxonomies']) ? $targets['taxonomies'] : [];
+            if (! empty($targets['all_taxonomies'])) {
+                $excluded_taxonomies = isset($targets['excluded_taxonomies']) && is_array($targets['excluded_taxonomies'])
+                    ? self::sanitize_string_array($targets['excluded_taxonomies'])
+                    : [];
+                foreach ($available_taxonomies as $available_taxonomy) {
+                    if (in_array($available_taxonomy, $excluded_taxonomies, true)) {
+                        continue;
+                    }
+
+                    $taxonomies[] = $available_taxonomy;
+                }
+            }
+
             foreach ($taxonomies as $taxonomy) {
                 $taxonomy = sanitize_key((string) $taxonomy);
                 if ($taxonomy === '') {
@@ -498,6 +512,8 @@ final class AcfDiscoveryService
         $targets = [
             'post_types' => [],
             'taxonomies' => [],
+            'all_taxonomies' => false,
+            'excluded_taxonomies' => [],
             'options_pages' => [],
             'generic_rules' => [],
         ];
@@ -519,6 +535,11 @@ final class AcfDiscoveryService
                     continue;
                 }
 
+                if ($param === 'taxonomy' && ($operator === '!=' || $operator === '!==')) {
+                    $targets['excluded_taxonomies'][] = sanitize_key($value);
+                    continue;
+                }
+
                 if ($operator !== '==' && $operator !== '===') {
                     $targets['generic_rules'][] = [
                         'param' => $param,
@@ -534,7 +555,12 @@ final class AcfDiscoveryService
                 }
 
                 if ($param === 'taxonomy') {
-                    $targets['taxonomies'][] = sanitize_key($value);
+                    $taxonomy = sanitize_key($value);
+                    if ($taxonomy === 'all') {
+                        $targets['all_taxonomies'] = true;
+                    } else {
+                        $targets['taxonomies'][] = $taxonomy;
+                    }
                     continue;
                 }
 
@@ -562,12 +588,28 @@ final class AcfDiscoveryService
 
         $targets['post_types'] = self::sanitize_string_array($targets['post_types']);
         $targets['taxonomies'] = self::sanitize_string_array($targets['taxonomies']);
+        $targets['excluded_taxonomies'] = self::sanitize_string_array($targets['excluded_taxonomies']);
         $targets['options_pages'] = self::sanitize_string_array($targets['options_pages']);
         usort($targets['generic_rules'], static function (array $left, array $right): int {
             return strcmp(wp_json_encode($left), wp_json_encode($right));
         });
 
         return $targets;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private static function get_available_taxonomy_keys(): array
+    {
+        if (function_exists('dbvc_get_available_taxonomies')) {
+            return self::sanitize_string_array(array_keys((array) dbvc_get_available_taxonomies()));
+        }
+
+        $taxonomies = function_exists('get_taxonomies')
+            ? get_taxonomies(['show_ui' => true], 'objects')
+            : [];
+        return self::sanitize_string_array(is_array($taxonomies) ? array_keys($taxonomies) : []);
     }
 
     /**

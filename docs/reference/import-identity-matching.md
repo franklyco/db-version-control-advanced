@@ -45,6 +45,7 @@ The option is available in:
 - **Legacy term import:** `DBVC_Sync_Taxonomies::import_term_json_file()` reads UID from top-level, meta, or `dbvc_term_history`, and resolves local terms by UID before any slug fallback.
 - **Proposal term imports:** `DBVC_Sync_Posts::identify_local_term()` uses UID first. If the UID is unmatched and fallback is disabled, taxonomy slug/ID and `entity_refs` are not used for that UID-bearing item.
 - **Entity Editor:** partial and full replace use the same UID-first policy. With fallback disabled, an unmatched incoming UID blocks slug fallback.
+- **Entity Editor create-only intake:** sync-file import and raw JSON intake block legacy post payload-ID fallback before commit. UID-less post JSON is treated as an existing-entity match when its numeric `ID` belongs to a local post of the same type. UID-bearing post JSON ignores the source numeric `ID` while UID fallback matching is disabled, but blocks as an existing-entity match if UID fallback matching is enabled and that numeric `ID` belongs to a local same-type post.
 - **Upload routing/normalization:** incoming UIDs are preserved. Local slug-matched UIDs are used only when the incoming JSON has no UID.
 
 ## Validation Anchors

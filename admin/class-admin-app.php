@@ -629,6 +629,16 @@ final class DBVC_Admin_App
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/sync-file-import/remediate',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'remediate_entity_editor_sync_file_import'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
     }
 
     /**
@@ -2435,6 +2445,34 @@ final class DBVC_Admin_App
         $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
 
         $result = \Dbvc\EntityEditor\SyncFileImportService::commit($paths, $mode, get_current_user_id());
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: Resolve a blocked sync-file import preview with an allowlisted action.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function remediate_entity_editor_sync_file_import(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\SyncFileImportService')) {
+            return new \WP_Error('dbvc_entity_editor_sync_import_unavailable', __('Sync file import service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $path = isset($params['path']) ? (string) $params['path'] : '';
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
+        $remediation = isset($params['remediation']) ? (string) $params['remediation'] : '';
+        $args = [
+            'preview_hash' => isset($params['preview_hash']) ? (string) $params['preview_hash'] : '',
+        ];
+
+        $result = \Dbvc\EntityEditor\SyncFileImportService::remediate($path, $mode, $remediation, $args, get_current_user_id());
         if (is_wp_error($result)) {
             return $result;
         }

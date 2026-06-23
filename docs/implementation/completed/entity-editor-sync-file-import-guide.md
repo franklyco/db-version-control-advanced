@@ -1,8 +1,8 @@
 # Entity Editor Sync File Import Implementation Guide
 
-Last updated: 2026-06-10
+Last updated: 2026-06-23
 
-Status: `P6 AUTOMATED COVERAGE IMPLEMENTED; BROWSER QA RECOMMENDED`
+Status: `P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED`
 
 ## Objective
 
@@ -31,9 +31,20 @@ Implemented on 2026-06-09:
 - commit delegates term creation to `DBVC_Sync_Taxonomies::import_term_json_file()`
 - commit suppresses normal auto-export hooks during the import call so DBVC does not generate a second canonical JSON file
 - commit moves the importer-updated source JSON to the final canonical filename after the new local ID is known
+- duplicate grouping now prefers the matched local WordPress entity ID before source payload ID, so source-ID and local-ID JSON files for the same entity collapse into one duplicate group
+- successful sync-file import normalization archives older same-entity duplicate JSON files into `.dbvc_entity_editor_backups` after the canonical local-ID file is written
 - Bricks template sync-file preview now includes a read-only advisory when the DBVC Bricks add-on is enabled, so users can see likely frontend rendering conflicts before creating a template
+- blocked sync-file previews now return structured blocker details, settings links, setting remediations, advanced duplicate-resolution actions, and a stable preview hash
+- the sync-file import popup now includes a `Blockers and fixes` panel with inline actions for safe setting fixes and stale duplicate resolution
+- inline setting remediation is limited to `dbvc_allow_new_posts` and `dbvc_new_post_types_whitelist`, and stale duplicate archival is limited to a single verified stale duplicate file
+- sync-file and raw-intake create-only previews now detect legacy payload-ID fallback risk: UID-less post JSON, or UID-bearing post JSON when UID fallback matching is enabled, is blocked as an existing entity if the incoming numeric ID already belongs to a local post of the same type
+- raw-intake UID extraction now matches sync-file import for top-level UID, `dbvc_object_uid`, `meta.vf_object_uid`, and post/term history UID shapes
 - preview coverage now includes permission denial, invalid JSON, excluded paths, unsupported payloads, creation-disabled settings, whitelist blocking, stale duplicate blocking, bulk partial failures, and term creation
 - successful commits return the created WP entity and rebuild the Entity Editor index in the UI
+
+## Planned Next Slice
+
+No immediate sync-file import slice remains from this guide. The next related work should be config-model cleanup for how main post type/taxonomy export selections relate to the new-post creation whitelist, or the deferred merge-entities proposal/diff workflow.
 
 ## Original Gap
 
@@ -606,6 +617,209 @@ Exit criteria:
 - the import button remains governed by the existing sync-file preflight, not by advisory warnings
 - existing post/CPT and term import behavior remains unchanged
 
+### P7. Source-ID Duplicate Canonical Bug Fix
+
+Status: `CLOSED 2026-06-23`
+
+Problem:
+
+- A dropped source-site JSON can share the same `vf_object_uid` and slug as the newly created local entity but carry a different source `ID`.
+- The Entity Index duplicate grouping was intended to prefer the matched local WordPress entity ID, then UID, then payload ID. The implementation grouped by payload ID first, which split source-ID and local-ID files into separate groups.
+- That allowed stale source-ID files to appear as canonical rows while the real local-ID canonical file was not marked as part of the duplicate group.
+- For Bricks templates, this made stale files without ACF dynamic tags look authoritative even after the live local template and canonical export were corrected.
+
+Scope:
+
+- Keep the fix inside Entity Editor index/import behavior.
+- Do not change proposal review, raw JSON intake, legacy upload import, or general DBVC export filename settings.
+- Archive stale same-entity files with backups instead of permanently removing them without recovery.
+
+Development items:
+
+- Update `DBVC_Entity_Editor_Indexer::build_duplicate_group_descriptor()` to prefer:
+  - matched local WordPress entity ID
+  - `vf_object_uid`
+  - source payload ID
+- Update duplicate canonical scoring so filename alignment is checked against the matched local WP ID before the source payload ID.
+- After sync-file import canonical normalization, rebuild the Entity Index and archive stale duplicate files from the same duplicate group into `.dbvc_entity_editor_backups`.
+- Treat stale duplicate archive failures as non-blocking warnings after a successful import, not as a failed entity creation.
+- Add regression coverage for source-ID/local-ID duplicate grouping.
+- Add regression coverage for sync-file import archiving a stale same-UID duplicate after creating the canonical local-ID JSON.
+- Update operator docs to clarify that Import as New can archive redundant same-entity JSON files after successful normalization.
+
+Exit criteria:
+
+- source-ID and local-ID JSON files for the same live entity are grouped together
+- the local-ID filename is selected as the canonical duplicate row when it matches the matched WP entity
+- stale same-entity files are no longer left beside the canonical local-ID JSON after a successful sync-file import
+- failed stale-file archival returns a warning without undoing a successful entity creation
+
+### P8. Import Blocker Resolution UI
+
+Status: `IMPLEMENTED 2026-06-23`
+
+Problem:
+
+- The `Import as New` popup can currently leave operators with only `Refresh Preview` when preflight blocks creation.
+- The underlying response contains blocker codes, but the modal does not clearly connect those codes to:
+  - the affected entity type
+  - the setting or duplicate row causing the block
+  - the relevant DBVC configuration screen
+  - the safest next action
+- Common cases such as `dbvc_allow_new_posts` disabled, `dbvc_new_post_types_whitelist` missing the incoming post type, and `stale_duplicate_file` require the operator to leave the modal, infer the setting, update config manually, rebuild the index, and retry.
+
+Product goals:
+
+- Make blocked import previews actionable without making the quick-create tool unsafe.
+- Keep the primary behavior create-only and conservative.
+- Let operators fix narrowly scoped configuration blockers from the modal when the required change is obvious and safe.
+- Provide explicit links to `DBVC -> Export -> Configure -> Import Defaults -> Import Settings` for settings that require broader review.
+- Provide a clearly labeled advanced bypass area only for blocker types that have a safe, deterministic server-side behavior.
+
+Non-goals:
+
+- Do not turn the quick-create modal into proposal review or merge review.
+- Do not support arbitrary option writes from the browser.
+- Do not bypass malformed JSON, missing post types, missing taxonomies, unsafe paths, ambiguous matches, or permission failures.
+- Do not let a stale duplicate file silently create a second entity with the same `vf_object_uid`.
+- Do not update existing matched entities from the create-only modal.
+
+Blocker categories:
+
+| Blocker | Category | Modal action |
+| --- | --- | --- |
+| `post_creation_disabled` | Config fixable | Show setting state, link to Import Settings, offer `Enable new post creation` inline. |
+| `post_type_whitelist_blocked` / whitelist message | Config fixable | Show current whitelist summary, link to Import Settings, offer `Allow this post type` inline. |
+| `stale_duplicate_file` | Resolution action | Show canonical path and actions: `Open canonical JSON`, `Use canonical row`, `Archive stale duplicate after confirmation`. |
+| `matched_entity` | Existing entity | Show matched WP entity link and actions: `Open WP entity`, `Open canonical JSON` when known. Do not offer create. |
+| `missing_post_type` | Dependency missing | Show post type key and guidance that the CPT/plugin must be registered on this site. Link to config only as secondary context. |
+| `missing_taxonomy` | Dependency missing | Show taxonomy key and guidance that the taxonomy/plugin must be registered on this site. |
+| `unsupported_entity_kind`, `invalid_json`, `excluded_path`, path safety errors | Hard blocker | Explain the reason; no inline bypass. |
+| ambiguous UID/slug matches | Hard blocker | Show candidate IDs if safe; require manual cleanup or proposal/diff flow. |
+
+Safe inline config updates:
+
+- Add a new dedicated Entity Editor REST endpoint:
+  - `POST /dbvc/v1/entity-editor/sync-file-import/remediate`
+- Request shape:
+
+```json
+{
+  "path": "listing/example-listing-120818.json",
+  "mode": "create_only",
+  "remediation": "allow_post_type_creation",
+  "preview_hash": "..."
+}
+```
+
+- Supported remediations for the first slice:
+  - `enable_new_post_creation`: sets `dbvc_allow_new_posts = 1`
+  - `allow_post_type_creation`: appends the incoming registered post type to `dbvc_new_post_types_whitelist`
+  - `use_canonical_row`: returns a fresh preview for the canonical duplicate row
+  - `archive_stale_duplicate`: backs up and removes one verified stale duplicate sync file, then returns a fresh preview for the canonical row
+- Server requirements:
+  - require `manage_options`
+  - re-read the sync file
+  - re-run preview
+  - verify the requested remediation is still present and applicable
+  - verify the post type exists locally before adding it to the whitelist
+  - preserve existing whitelist values
+  - write only the specific allowed option
+  - log the setting change or stale duplicate archive with user ID, file path, old value/new value where applicable, and canonical path where applicable
+  - return a fresh preview payload after the setting update or stale duplicate resolution
+
+Config links:
+
+- Add a normalized `settings_links` array to preview items where relevant:
+
+```json
+{
+  "settings_links": [
+    {
+      "id": "import_settings",
+      "label": "Open Import Settings",
+      "url": "admin.php?page=dbvc-export&tab=tab-config&subtab=dbvc-config-import&import_subtab=dbvc-config-import-settings#dbvc-config-import-settings"
+    },
+    {
+      "id": "post_type_settings",
+      "label": "Open Post Type Settings",
+      "url": "admin.php?page=dbvc-export&tab=tab-config&subtab=dbvc-config-post-types"
+    }
+  ]
+}
+```
+
+- If the current tab URL scheme cannot activate subtabs from query args, add a lightweight anchor fallback first and defer deeper tab auto-selection.
+
+Bypass design:
+
+- Add a separate `advanced_overrides` array to preview items, distinct from config fixes.
+- Initial bypasses should be opt-in, per-file, and require confirmation in the modal.
+- Supported first bypass:
+  - `use_canonical_row`
+  - behavior: re-preview the canonical sync JSON row for the duplicate group and switch the modal selection to that path
+  - `archive_stale_duplicate`
+  - behavior: back up the selected stale duplicate JSON into `.dbvc_entity_editor_backups`, remove it from the active sync index, and refresh preview against the canonical row
+- Deferred bypass:
+  - `create_as_new_unique_entity_from_duplicate`
+  - requires a separate payload transformation plan: mint new UID, neutralize source ID, resolve slug collision, preview resulting canonical path, and show a destructive/identity warning. Do not include this in the first P8 implementation.
+
+UI requirements:
+
+- Replace the current blocked-state dead end with a `Blockers and fixes` panel in the import modal.
+- For each blocker, show:
+  - severity
+  - plain-language reason
+  - affected entity type/subtype
+  - matched entity or canonical path when available
+  - relevant current setting value when available
+  - available action buttons
+- Action button examples:
+  - `Enable new post creation`
+  - `Allow listing imports`
+  - `Open Import Settings`
+  - `Open canonical JSON`
+  - `Use canonical row`
+  - `Archive stale duplicate`
+- After an inline config update or stale duplicate archive, automatically refresh preview and keep the modal open.
+- Keep `Create Entity` disabled until the fresh preview reports `available_actions.create_only = true`.
+- For bulk previews, keep fixes per-item in the first implementation and keep `Create Entity` disabled until the refreshed preview reports at least one eligible create candidate.
+
+Backend development items:
+
+- Extend `SyncFileImportService::preview()` item payload with:
+  - `blocker_details`
+  - `settings_links`
+  - `setting_remediations`
+  - `advanced_overrides`
+  - stable `preview_hash` derived from path, payload UID, payload ID, post type/taxonomy, and blocker codes
+- Normalize blocker codes so whitelist failures are machine-readable instead of relying only on the current message text.
+- Add remediation endpoint and service method.
+- Add stale duplicate maintenance action that can archive one selected stale duplicate file after confirming its duplicate group canonical path.
+- Ensure remediation endpoints never accept arbitrary option names or values.
+- Add audit logging for inline setting changes and stale duplicate archive actions.
+
+Frontend development items:
+
+- Add a `Blockers and fixes` section to the sync-file import modal.
+- Render config fix buttons only when the preview item includes a matching `setting_remediations` entry.
+- Render settings links using localized admin URLs from the preview payload.
+- Add confirmation states for:
+  - enabling new post creation
+  - adding a post type to the whitelist
+  - archiving a stale duplicate file
+- After action success, replace the modal preview with the returned fresh preview.
+- Preserve existing warning/advisory rendering, including the Bricks advisory.
+
+Exit criteria:
+
+- A blocked Listing JSON with `listing` missing from `dbvc_new_post_types_whitelist` shows a clear explanation and an `Allow listing imports` action.
+- Clicking `Allow listing imports` updates only `dbvc_new_post_types_whitelist`, logs the change, refreshes preview, and enables `Create Entity` if no other blockers remain.
+- A blocked preview caused by `dbvc_allow_new_posts = 0` shows `Enable new post creation` and links to Import Settings.
+- A `stale_duplicate_file` preview shows the canonical path and lets the user switch to the canonical row or archive the stale row after confirmation.
+- Hard blockers never show bypass or config-write buttons.
+- Bulk modal remains safe when selected files have mixed blockers.
+
 ### Later Enhancement. Merge Entities
 
 Status: `DEFERRED`
@@ -655,6 +869,16 @@ Coverage:
 - commit normalizes term JSON to the final local-ID canonical filename
 - Bricks template advisory reports overlapping published template conditions when the Bricks add-on is enabled
 - Bricks template advisory reports missing preview post IDs without blocking import
+- index duplicate grouping prefers matched WP ID over source payload ID for source-ID/local-ID duplicate files
+- commit archives stale same-entity duplicate files after canonical filename normalization
+- preview exposes structured blocker details, setting remediations, settings links, and advanced override metadata
+- remediation endpoint updates only allowed DBVC import settings after re-previewing the same file
+- stale duplicate modal action can switch to the canonical row or archive the stale row after backup
+- hard blockers do not expose bypass actions
+- UID-less post JSON with a local same-type payload ID collision is blocked before commit
+- UID-bearing post JSON ignores source numeric ID collisions when UID fallback matching is disabled
+- UID-bearing post JSON is blocked as an existing entity when UID fallback matching is enabled and the source numeric ID matches a local same-type post
+- raw-intake recognizes `meta.vf_object_uid` and history UID values before considering legacy payload-ID fallback
 
 ### Manual QA
 
@@ -671,16 +895,22 @@ Checks:
 - created entity has imported core fields/meta/taxonomies where applicable
 - incoming UID is preserved
 - Bricks template import preview shows a Bricks advisory when the add-on is enabled and a condition conflict exists
+- blocked Listing import with missing whitelist entry shows `Allow listing imports`, updates the setting, refreshes preview, and enables creation only if no other blockers remain
+- disabled new-post creation shows `Enable new post creation`, updates the setting, and refreshes preview
+- stale duplicate preview shows the canonical path, supports `Use canonical row`, and archives stale duplicate only after confirmation
+- hard blockers such as invalid JSON and missing post type show explanation text but no bypass action
 - index refresh shows matched WP entity after commit
 - existing `Edit JSON`, `Save JSON`, `Save + Partial Import`, `Save + Full Replace`, `New From Raw JSON`, transfer packet, and delete selected still behave as before
 
 ## Rollback And Safety
 
 - No automatic import on file drop.
-- No destructive operations in this enhancement.
+- Stale duplicate cleanup backs up each redundant sync JSON into `.dbvc_entity_editor_backups` before removing it from the active sync index.
 - No direct raw meta writes from the new service.
 - No updates to existing matched entities from the new quick-create modal.
 - Existing DBVC import settings remain authoritative.
+- Inline setting remediation is limited to explicit allowlisted DBVC import options and is logged.
+- Bypass actions are per-file and do not create duplicate entities with reused UIDs.
 - Every commit is explicit and logged.
 - Bulk commit should be repeat-safe: already-created files become matched and are skipped or blocked on re-preview.
 
@@ -690,6 +920,8 @@ Checks:
 - Should batch limit default to 25, 50, or a setting-backed value?
 - Should successful post import auto-open the WP edit screen link only, or also open the resulting Entity Editor JSON modal?
 - Should import commits require a file lock, or is preflight plus explicit commit enough because the action does not edit the JSON file itself?
+- Should inline config remediation be limited to administrators even if future Entity Editor access is delegated to non-admin managers?
+- Should `Allow this post type` also sync the main `dbvc_post_types` export/import selection when the post type is absent there, or should it only affect the creation whitelist?
 
 Recommended answers for first implementation:
 
@@ -697,3 +929,5 @@ Recommended answers for first implementation:
 - batch limit 25
 - show both WP edit link and `Open JSON`
 - do not require editor lock for commit, but re-read and re-preflight immediately before import
+- keep inline remediation administrator-only through `manage_options`
+- for P8, update only the creation whitelist; handle synchronization with main post type/taxonomy selections as a separate config-model cleanup unless we first add a shared settings abstraction
