@@ -22,6 +22,7 @@ Brief usage notes for the DBVC Entity Editor.
   - Opens a dedicated intake modal from the Entity Editor toolbar.
   - Accepts one DBVC post/CPT or term JSON payload.
   - Previews detected kind, subtype, target sync path, live match state, warnings, and blocking reasons before commit.
+  - Uses the same blocker detail and settings-link guidance as staged sync-file import for configuration, existing-entity, unsupported-type, and file-collision blockers.
   - Supports `Create only`, `Create or Update Matched`, and `Stage JSON Only`.
   - Can auto-open the resulting sync file in the normal Entity Editor modal after success.
 
@@ -31,6 +32,7 @@ Brief usage notes for the DBVC Entity Editor.
   - Creates selected live WordPress entities through the existing DBVC post or term importer when preflight passes.
   - Supports up to 25 selected files per request.
   - Blocks live matches, creation-disabled settings, unsupported payloads, and older duplicate sync files.
+  - Uses the same blocker detail and settings-link guidance as raw JSON intake, with additional inline fixes for safe sync-file blockers.
   - Renames the imported source JSON to the final canonical filename after the new local ID is known.
   - Archives redundant same-entity duplicate JSON files into `.dbvc_entity_editor_backups` after successful canonicalization.
   - Keeps the result visible after commit and refreshes the Entity Editor index.

@@ -109,6 +109,117 @@ const formatSyncImportDetailValue = (value) => {
 	return String(value);
 };
 
+const ImportWarningNotes = ({ warnings = [] }) => {
+	if (!Array.isArray(warnings) || warnings.length === 0) return null;
+	return (
+		<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+			<p><strong>Notes</strong></p>
+			<ul style={{ marginLeft: '18px' }}>
+				{warnings.map((warning, index) => (
+					<li key={`${warning?.code || 'warning'}-${index}`}>{warning?.message || 'Warning'}</li>
+				))}
+			</ul>
+		</div>
+	);
+};
+
+const ImportBlockerPanel = ({
+	blocking = [],
+	blockerDetails = [],
+	settingsLinks = [],
+	settingRemediations = [],
+	advancedOverrides = [],
+	canonicalRelativePath = '',
+	onOpenCanonical,
+	onApplyAction,
+	buildBusyKey,
+	busyKey = '',
+	disabled = false,
+}) => {
+	if (!Array.isArray(blocking) || blocking.length === 0) return null;
+
+	const details = Array.isArray(blockerDetails) ? blockerDetails : [];
+	const links = Array.isArray(settingsLinks) ? settingsLinks : [];
+	const remediations = Array.isArray(settingRemediations) ? settingRemediations : [];
+	const overrides = Array.isArray(advancedOverrides) ? advancedOverrides : [];
+	const hasActions = links.length > 0 || remediations.length > 0 || overrides.length > 0 || !!canonicalRelativePath;
+
+	return (
+		<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+			<p><strong>Blockers and guidance</strong></p>
+			{details.length > 0 ? (
+				<ul style={{ marginLeft: '18px' }}>
+					{details.map((detail, index) => (
+						<li key={`${detail?.code || 'blocker-detail'}-${index}`}>
+							{detail?.category ? `${detail.category}: ` : ''}
+							{detail?.message || detail?.code || 'Import blocked'}
+							{detail?.option ? ` · Setting: ${detail.option}` : ''}
+							{Object.prototype.hasOwnProperty.call(detail || {}, 'current_value') ? ` · Current: ${formatSyncImportDetailValue(detail.current_value)}` : ''}
+							{detail?.post_type ? ` · Post type: ${detail.post_type}` : ''}
+							{detail?.taxonomy ? ` · Taxonomy: ${detail.taxonomy}` : ''}
+							{detail?.canonical_relative_path ? ` · Canonical: ${detail.canonical_relative_path}` : ''}
+							{detail?.relative_path ? ` · Sync file: ${detail.relative_path}` : ''}
+							{detail?.match?.id ? ` · Matched entity: ${detail.match.kind || 'entity'} #${detail.match.id}` : ''}
+						</li>
+					))}
+				</ul>
+			) : (
+				<ul style={{ marginLeft: '18px' }}>
+					{blocking.map((blocker, index) => (
+						<li key={`${blocker?.code || 'blocked'}-${index}`}>{blocker?.message || 'Blocked'}</li>
+					))}
+				</ul>
+			)}
+			{hasActions && (
+				<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+					{links.map((link) => (
+						<a key={link?.id || link?.url} href={link?.url || '#'} className="button button-secondary">
+							{link?.label || 'Open settings'}
+						</a>
+					))}
+					{canonicalRelativePath && (
+						<Button
+							variant="secondary"
+							onClick={() => onOpenCanonical?.(canonicalRelativePath)}
+							disabled={disabled || !onOpenCanonical}
+						>
+							Open canonical JSON
+						</Button>
+					)}
+					{remediations.map((remediation) => {
+						const actionBusyKey = buildBusyKey ? buildBusyKey(remediation) : remediation?.id || '';
+						return (
+							<Button
+								key={remediation?.id || remediation?.label}
+								variant="secondary"
+								onClick={() => onApplyAction?.(remediation)}
+								disabled={disabled || !onApplyAction}
+								isBusy={busyKey === actionBusyKey}
+							>
+								{remediation?.label || 'Apply setting fix'}
+							</Button>
+						);
+					})}
+					{overrides.map((override) => {
+						const actionBusyKey = buildBusyKey ? buildBusyKey(override) : override?.id || '';
+						return (
+							<Button
+								key={override?.id || override?.label}
+								variant={override?.id === 'archive_stale_duplicate' ? 'secondary' : 'primary'}
+								onClick={() => onApplyAction?.(override)}
+								disabled={disabled || !onApplyAction}
+								isBusy={busyKey === actionBusyKey}
+							>
+								{override?.label || 'Apply'}
+							</Button>
+						);
+					})}
+				</div>
+			)}
+		</div>
+	);
+};
+
 const getEntityImportStatusRank = (item) => (item?.matched_wp?.id ? 1 : 0);
 
 const EntityEditorApp = () => {
@@ -1613,87 +1724,23 @@ const EntityEditorApp = () => {
 																)}
 															</p>
 														)}
-														{itemBlocking.length > 0 && (
-															<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
-																<p><strong>Blockers and fixes</strong></p>
-																{blockerDetails.length > 0 ? (
-																	<ul style={{ marginLeft: '18px' }}>
-																		{blockerDetails.map((detail, index) => (
-																			<li key={`${detail?.code || 'blocker-detail'}-${index}`}>
-																				{detail?.message || detail?.code || 'Import blocked'}
-																				{detail?.option ? ` · Setting: ${detail.option}` : ''}
-																				{Object.prototype.hasOwnProperty.call(detail || {}, 'current_value') ? ` · Current: ${formatSyncImportDetailValue(detail.current_value)}` : ''}
-																				{detail?.post_type ? ` · Post type: ${detail.post_type}` : ''}
-																				{detail?.taxonomy ? ` · Taxonomy: ${detail.taxonomy}` : ''}
-																				{detail?.canonical_relative_path ? ` · Canonical: ${detail.canonical_relative_path}` : ''}
-																			</li>
-																		))}
-																	</ul>
-																) : (
-																	<ul style={{ marginLeft: '18px' }}>
-																		{itemBlocking.map((blocker, index) => (
-																			<li key={`${blocker?.code || 'blocked'}-${index}`}>{blocker?.message || 'Blocked'}</li>
-																		))}
-																	</ul>
-																)}
-																{(settingsLinks.length > 0 || settingRemediations.length > 0 || advancedOverrides.length > 0) && (
-																	<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-																		{settingsLinks.map((link) => (
-																			<a key={link?.id || link?.url} href={link?.url || '#'} className="button button-secondary">
-																				{link?.label || 'Open settings'}
-																			</a>
-																		))}
-																		{item?.canonical_relative_path && (
-																			<Button
-																				variant="secondary"
-																				onClick={() => {
-																					setSelectedEntityFile(item.canonical_relative_path);
-																					closeSyncImportModal();
-																				}}
-																				disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
-																			>
-																				Open canonical JSON
-																			</Button>
-																		)}
-																		{settingRemediations.map((remediation) => {
-																			const busyKey = `${item?.relative_path || item?.source_relative_path || ''}:${remediation?.id || ''}`;
-																			return (
-																				<Button
-																					key={remediation?.id || remediation?.label}
-																					variant="secondary"
-																					onClick={() => remediateSyncImport(item, remediation)}
-																					disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
-																					isBusy={syncImportRemediationBusy === busyKey}
-																				>
-																					{remediation?.label || 'Apply setting fix'}
-																				</Button>
-																			);
-																		})}
-																		{advancedOverrides.map((override) => {
-																			const busyKey = `${item?.relative_path || item?.source_relative_path || ''}:${override?.id || ''}`;
-																			return (
-																				<Button
-																					key={override?.id || override?.label}
-																					variant={override?.id === 'archive_stale_duplicate' ? 'secondary' : 'primary'}
-																					onClick={() => remediateSyncImport(item, override)}
-																					disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
-																					isBusy={syncImportRemediationBusy === busyKey}
-																				>
-																					{override?.label || 'Apply'}
-																				</Button>
-																			);
-																		})}
-																	</div>
-																)}
-															</div>
-														)}
-														{itemWarnings.length > 0 && (
-															<ul style={{ marginLeft: '18px' }}>
-																{itemWarnings.map((warning, index) => (
-																	<li key={`${warning?.code || 'warning'}-${index}`}>{warning?.message || 'Warning'}</li>
-																))}
-															</ul>
-														)}
+														<ImportBlockerPanel
+															blocking={itemBlocking}
+															blockerDetails={blockerDetails}
+															settingsLinks={settingsLinks}
+															settingRemediations={settingRemediations}
+															advancedOverrides={advancedOverrides}
+															canonicalRelativePath={item?.canonical_relative_path || ''}
+															onOpenCanonical={(path) => {
+																setSelectedEntityFile(path);
+																closeSyncImportModal();
+															}}
+															onApplyAction={(action) => remediateSyncImport(item, action)}
+															buildBusyKey={(action) => `${item?.relative_path || item?.source_relative_path || ''}:${action?.id || ''}`}
+															busyKey={syncImportRemediationBusy}
+															disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
+														/>
+														<ImportWarningNotes warnings={itemWarnings} />
 													</div>
 												);
 											})}
@@ -1801,26 +1848,15 @@ const EntityEditorApp = () => {
 												</p>
 											)}
 										</div>
-										{rawIntakeWarnings.length > 0 && (
-											<div className="notice notice-warning">
-												<p>Warnings:</p>
-												<ul style={{ marginLeft: '18px' }}>
-													{rawIntakeWarnings.map((warning, index) => (
-														<li key={`${warning?.code || 'warning'}-${index}`}>{warning?.message || 'Warning'}</li>
-													))}
-												</ul>
-											</div>
-										)}
-										{rawIntakeBlocking.length > 0 && (
-											<div className="notice notice-error">
-												<p>This payload is blocked for the selected mode:</p>
-												<ul style={{ marginLeft: '18px' }}>
-													{rawIntakeBlocking.map((item, index) => (
-														<li key={`${item?.code || 'blocked'}-${index}`}>{item?.message || 'Blocked'}</li>
-													))}
-												</ul>
-											</div>
-										)}
+										<ImportWarningNotes warnings={rawIntakeWarnings} />
+										<ImportBlockerPanel
+											blocking={rawIntakeBlocking}
+											blockerDetails={rawIntakePreview?.blocker_details || []}
+											settingsLinks={rawIntakePreview?.settings_links || []}
+											settingRemediations={rawIntakePreview?.setting_remediations || []}
+											advancedOverrides={rawIntakePreview?.advanced_overrides || []}
+											disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}
+										/>
 									</div>
 								)}
 								<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
