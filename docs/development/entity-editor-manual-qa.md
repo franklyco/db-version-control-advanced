@@ -93,7 +93,15 @@ Manual QA checklist for Entity Editor security and behavior validation.
 - Repeat with one unmatched `taxonomy/{taxonomy}/...json` term file.
   - Expected: term is created, incoming UID/meta are preserved, and the JSON is normalized to the local `term_id` filename when filename mode includes IDs.
 - Preview a matched file.
-  - Expected: `Import as New` is unavailable or preview blocks with `matched_entity`.
+  - Expected: create-only is blocked with `matched_entity`; UID-matched post/CPT files show a matched-update panel.
+- Check the matched-update `I confirm` checkbox.
+  - Expected: `Update Matched Entity` becomes clickable and identifies the matched WP entity.
+- Try matched update without checking the confirmation box, or after refreshing the preview without rechecking.
+  - Expected: server blocks the update and the live WP entity remains unchanged.
+- Commit a confirmed UID-matched post/CPT update.
+  - Expected: JSON-present post fields/meta/taxonomies update on the matched WP entity, the modal reports `updated`, and the sync JSON is normalized to the local canonical filename when needed.
+- Preview a slug-only matched file.
+  - Expected: create is blocked and matched update is not offered.
 - Preview an older duplicate file when a duplicate group exists.
   - Expected: stale duplicate is blocked and points to the canonical row.
 - Preview invalid, unsupported, or excluded JSON.

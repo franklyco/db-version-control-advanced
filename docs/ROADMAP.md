@@ -24,14 +24,13 @@ This is the single repo-level planning index. Module-local plans remain with the
 | User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
 | Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
 | Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
-| Entity Editor matched sync-file updates | planned | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import` | Adds an explicit confirmed `Update Matched Entity` flow for high-confidence sync-file matches without weakening create-only import safety. |
 
 ## Completed Work
 
 | Topic | Summary | Related Docs |
 |---|---|---|
 | Progress summary | Recent shipped DBVC admin and import work. | `docs/implementation/completed/progress-summary.md` |
-| Entity Editor | Implementation checklist, enhancements, sync-file import guide, duplicate-canonical import fixes, shared import blocker guidance, blocker resolution UI, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md` |
+| Entity Editor | Implementation checklist, enhancements, sync-file import guide, duplicate-canonical import fixes, shared import blocker guidance, blocker resolution UI, confirmed matched sync-file updates, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import` |
 | Legacy upload immediate import | Targeted upload/import phase plan and QA notes. | `docs/implementation/completed/legacy-upload-immediate-import-plan.md` |
 | Import identity hardening | Current matching contract plus historical hardening note. | `docs/reference/import-identity-matching.md` |
 | Meta masking | Current reference plus completed plan. | `docs/reference/meta-masking.md` |

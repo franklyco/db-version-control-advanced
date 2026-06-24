@@ -12,6 +12,7 @@ if (! defined('WPINC')) {
 final class SyncFileImportService
 {
     private const MODE_CREATE_ONLY = 'create_only';
+    private const MODE_UPDATE_MATCHED = 'update_matched';
     private const BATCH_LIMIT = 25;
 
     /**
@@ -49,9 +50,17 @@ final class SyncFileImportService
      * @param int                      $user_id
      * @return array<string,mixed>|\WP_Error
      */
-    public static function commit($paths, $mode = self::MODE_CREATE_ONLY, $user_id = 0)
+    public static function commit($paths, $mode = self::MODE_CREATE_ONLY, $user_id = 0, array $args = [])
     {
         $mode = self::normalize_mode($mode);
+        if ($mode === self::MODE_UPDATE_MATCHED) {
+            $confirmations = isset($args['confirmations']) && \is_array($args['confirmations'])
+                ? $args['confirmations']
+                : [];
+
+            return self::commit_confirmed_matched_updates($paths, $confirmations, (int) $user_id);
+        }
+
         $preview = self::preview($paths, $mode);
         if (\is_wp_error($preview)) {
             return $preview;
@@ -71,6 +80,50 @@ final class SyncFileImportService
 
         return [
             'mode'    => $mode,
+            'summary' => self::build_commit_summary($result_items),
+            'items'   => $result_items,
+        ];
+    }
+
+    /**
+     * Update matched live entities from existing sync JSON files after explicit per-file confirmation.
+     *
+     * This method is intentionally public so future DBVC workflows can reuse the same confirmation,
+     * preview-hash, and matched-entity drift checks without duplicating sync-file import logic.
+     *
+     * @param array<int,string>|string      $paths
+     * @param array<string|int,mixed>       $confirmations
+     * @param int                           $user_id
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function commit_confirmed_matched_updates($paths, array $confirmations = [], $user_id = 0)
+    {
+        $paths = self::normalize_paths($paths);
+        if (\is_wp_error($paths)) {
+            return $paths;
+        }
+
+        $preview = self::preview($paths, self::MODE_UPDATE_MATCHED);
+        if (\is_wp_error($preview)) {
+            return $preview;
+        }
+
+        $items = isset($preview['items']) && \is_array($preview['items']) ? $preview['items'] : [];
+        $result_items = [];
+        foreach ($items as $item) {
+            if (! \is_array($item)) {
+                continue;
+            }
+
+            $relative_path = isset($item['relative_path']) ? (string) $item['relative_path'] : '';
+            $confirmation = self::find_update_confirmation($confirmations, $relative_path);
+            $result_items[] = self::commit_confirmed_matched_update_item($item, $confirmation, (int) $user_id);
+        }
+
+        delete_transient('dbvc_entity_editor_index_v1');
+
+        return [
+            'mode'    => self::MODE_UPDATE_MATCHED,
             'summary' => self::build_commit_summary($result_items),
             'items'   => $result_items,
         ];
@@ -247,6 +300,188 @@ final class SyncFileImportService
         }
 
         return self::commit_post_preview_item($item, $absolute_path, (int) $user_id);
+    }
+
+    /**
+     * @param array<string,mixed>      $item
+     * @param array<string,mixed>|null $confirmation
+     * @param int                      $user_id
+     * @return array<string,mixed>
+     */
+    private static function commit_confirmed_matched_update_item(array $item, $confirmation, $user_id)
+    {
+        $relative_path = isset($item['relative_path']) ? (string) $item['relative_path'] : '';
+        $matched_update = isset($item['matched_update']) && \is_array($item['matched_update']) ? $item['matched_update'] : [];
+        $wp_entity = isset($matched_update['wp_entity']) && \is_array($matched_update['wp_entity']) ? $matched_update['wp_entity'] : [];
+        $matched_id = isset($wp_entity['id']) ? (int) $wp_entity['id'] : 0;
+
+        if (empty($matched_update['eligible']) || empty($item['available_actions'][self::MODE_UPDATE_MATCHED])) {
+            return self::merge_item_blocked(
+                $item,
+                'matched_update_unavailable',
+                __('This sync JSON does not have a safe matched-entity update action available.', 'dbvc')
+            );
+        }
+
+        if (! \is_array($confirmation) || empty($confirmation['confirmed'])) {
+            return self::merge_item_blocked(
+                $item,
+                'matched_update_confirmation_required',
+                __('Confirm the matched-entity update before DBVC applies this sync JSON.', 'dbvc')
+            );
+        }
+
+        $provided_hash = isset($confirmation['preview_hash']) ? (string) $confirmation['preview_hash'] : '';
+        $current_hash = isset($item['preview_hash']) ? (string) $item['preview_hash'] : '';
+        if ($provided_hash === '' || $current_hash === '' || ! hash_equals($current_hash, $provided_hash)) {
+            return self::merge_item_blocked(
+                $item,
+                'matched_update_stale_preview',
+                __('The import preview changed. Refresh the preview before updating the matched entity.', 'dbvc')
+            );
+        }
+
+        $confirmed_match_id = isset($confirmation['matched_entity_id'])
+            ? (int) $confirmation['matched_entity_id']
+            : (isset($confirmation['match_id']) ? (int) $confirmation['match_id'] : 0);
+        if ($matched_id <= 0 || $confirmed_match_id <= 0 || $confirmed_match_id !== $matched_id) {
+            return self::merge_item_blocked(
+                $item,
+                'matched_update_match_drift',
+                __('The matched entity changed. Refresh the preview before updating.', 'dbvc')
+            );
+        }
+
+        $absolute_path = self::resolve_absolute_path($relative_path);
+        if (\is_wp_error($absolute_path)) {
+            return self::merge_item_error($item, $absolute_path, 'error');
+        }
+
+        return self::commit_matched_post_update_item($item, (string) $absolute_path, (int) $user_id);
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param string              $absolute_path
+     * @param int                 $user_id
+     * @return array<string,mixed>
+     */
+    private static function commit_matched_post_update_item(array $item, $absolute_path, $user_id)
+    {
+        if (! \class_exists('DBVC_Sync_Posts')) {
+            return self::merge_item_error(
+                $item,
+                new \WP_Error('dbvc_entity_editor_sync_import_unavailable', __('DBVC post importer is unavailable.', 'dbvc'), ['status' => 500]),
+                'error'
+            );
+        }
+
+        $relative_path = isset($item['relative_path']) ? (string) $item['relative_path'] : '';
+        $matched_update = isset($item['matched_update']) && \is_array($item['matched_update']) ? $item['matched_update'] : [];
+        $expected_entity = isset($matched_update['wp_entity']) && \is_array($matched_update['wp_entity']) ? $matched_update['wp_entity'] : [];
+        $expected_id = isset($expected_entity['id']) ? (int) $expected_entity['id'] : 0;
+
+        $result = self::import_post_with_export_suppressed($absolute_path);
+        if (\is_wp_error($result)) {
+            return self::merge_item_error($item, $result, 'error');
+        }
+
+        if ($result !== 'applied') {
+            return array_merge($item, [
+                'action'        => self::MODE_UPDATE_MATCHED,
+                'created'       => false,
+                'updated'       => false,
+                'imported'      => false,
+                'status'        => 'skipped',
+                'import_result' => [
+                    'status' => is_string($result) ? $result : 'skipped',
+                ],
+                'blocking'      => [
+                    self::reason('dbvc_entity_editor_sync_import_update_skipped', __('DBVC wrote no changes for this matched sync JSON file.', 'dbvc')),
+                ],
+            ]);
+        }
+
+        $final_payload = self::read_json_file($absolute_path);
+        $match = \is_array($final_payload) ? self::inspect_live_post_match($final_payload) : ['status' => 'none'];
+        if (\is_wp_error($match)) {
+            return self::merge_item_error($item, $match, 'error');
+        }
+
+        if (! isset($match['status']) || $match['status'] !== 'matched' || (int) ($match['id'] ?? 0) !== $expected_id) {
+            return array_merge($item, [
+                'action'   => 'error',
+                'created'  => false,
+                'updated'  => false,
+                'imported' => false,
+                'status'   => 'error',
+                'blocking' => [
+                    self::reason('dbvc_entity_editor_sync_import_match_changed_after_update', __('DBVC updated the JSON, but the matched WordPress entity could not be reverified.', 'dbvc')),
+                ],
+            ]);
+        }
+
+        if (\is_array($final_payload)) {
+            $final_payload['ID'] = $expected_id;
+            if (! self::write_json_file($absolute_path, $final_payload)) {
+                return self::merge_item_error(
+                    $item,
+                    new \WP_Error('dbvc_entity_editor_sync_import_update_file_rewrite_failed', __('The matched update succeeded, but DBVC could not rewrite the sync JSON with the local entity ID.', 'dbvc'), ['status' => 500]),
+                    'error'
+                );
+            }
+        }
+
+        $final_relative_path = $relative_path;
+        $file_normalization = \is_array($final_payload)
+            ? self::normalize_imported_file_path($relative_path, $absolute_path, $final_payload)
+            : null;
+        $normalization_warning = null;
+        if (\is_wp_error($file_normalization)) {
+            $normalization_warning = self::reason(
+                (string) $file_normalization->get_error_code(),
+                (string) $file_normalization->get_error_message()
+            );
+        } elseif (\is_array($file_normalization) && ! empty($file_normalization['relative_path'])) {
+            $final_relative_path = (string) $file_normalization['relative_path'];
+        }
+
+        $result_item = array_merge($item, [
+            'relative_path'        => $final_relative_path,
+            'source_relative_path' => $relative_path,
+            'action'               => self::MODE_UPDATE_MATCHED,
+            'created'              => false,
+            'updated'              => true,
+            'imported'             => true,
+            'status'               => 'updated',
+            'import_result'        => [
+                'status' => 'applied',
+            ],
+            'wp_entity'            => $match,
+            'file_normalization'   => \is_array($file_normalization) ? $file_normalization : null,
+            'blocking'             => [],
+        ]);
+        if ($normalization_warning) {
+            $result_item['warnings'][] = $normalization_warning;
+        }
+        if (\is_array($file_normalization)) {
+            $result_item = self::append_file_normalization_warnings($result_item, $file_normalization);
+        }
+
+        if (\class_exists('DBVC_Sync_Logger')) {
+            \DBVC_Sync_Logger::log('Entity Editor sync file matched update', [
+                'relative_path'        => $final_relative_path,
+                'source_relative_path' => $relative_path,
+                'user_id'              => (int) $user_id,
+                'entity_kind'          => 'post',
+                'subtype'              => isset($result_item['subtype']) ? (string) $result_item['subtype'] : '',
+                'updated'              => true,
+                'wp_entity_id'         => isset($match['id']) ? (int) $match['id'] : 0,
+                'match_source'         => isset($match['match_source']) ? (string) $match['match_source'] : '',
+            ]);
+        }
+
+        return $result_item;
     }
 
     /**
@@ -505,10 +740,31 @@ final class SyncFileImportService
         return array_merge($item, [
             'action'   => $status,
             'created'  => false,
+            'updated'  => false,
             'imported' => false,
             'status'   => $status,
             'blocking' => [
                 self::reason((string) $error->get_error_code(), (string) $error->get_error_message()),
+            ],
+        ]);
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param string              $code
+     * @param string              $message
+     * @return array<string,mixed>
+     */
+    private static function merge_item_blocked(array $item, $code, $message)
+    {
+        return array_merge($item, [
+            'action'   => 'blocked',
+            'created'  => false,
+            'updated'  => false,
+            'imported' => false,
+            'status'   => 'blocked',
+            'blocking' => [
+                self::reason((string) $code, (string) $message),
             ],
         ]);
     }
@@ -544,7 +800,13 @@ final class SyncFileImportService
      */
     private static function normalize_mode($mode)
     {
-        return sanitize_key((string) $mode) === self::MODE_CREATE_ONLY ? self::MODE_CREATE_ONLY : self::MODE_CREATE_ONLY;
+        $mode = sanitize_key((string) $mode);
+        $allowed = [
+            self::MODE_CREATE_ONLY,
+            self::MODE_UPDATE_MATCHED,
+        ];
+
+        return \in_array($mode, $allowed, true) ? $mode : self::MODE_CREATE_ONLY;
     }
 
     /**
@@ -774,6 +1036,7 @@ final class SyncFileImportService
             'preview_hash'         => '',
             'available_actions'    => [
                 self::MODE_CREATE_ONLY => false,
+                self::MODE_UPDATE_MATCHED => false,
             ],
         ];
 
@@ -868,6 +1131,11 @@ final class SyncFileImportService
                 $base['match'] = $match;
                 if (isset($match['status']) && $match['status'] === 'matched') {
                     $base['blocking'][] = self::reason('matched_entity', __('This sync file already matches a live WordPress entity.', 'dbvc'));
+                    $matched_update = self::build_matched_update_descriptor($base, $match);
+                    if (\is_array($matched_update)) {
+                        $base['matched_update'] = $matched_update;
+                        $base['available_actions'][self::MODE_UPDATE_MATCHED] = true;
+                    }
                 }
             }
         }
@@ -897,6 +1165,41 @@ final class SyncFileImportService
         }
 
         return self::finalize_preview_item($base, $payload, $index_item);
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param array<string,mixed> $match
+     * @return array<string,mixed>|null
+     */
+    private static function build_matched_update_descriptor(array $item, array $match)
+    {
+        $entity_kind = isset($item['entity_kind']) ? (string) $item['entity_kind'] : '';
+        $match_source = isset($match['match_source']) ? sanitize_key((string) $match['match_source']) : '';
+        $match_id = isset($match['id']) ? (int) $match['id'] : 0;
+        $subtype = isset($item['subtype']) ? sanitize_key((string) $item['subtype']) : '';
+
+        if ($entity_kind !== 'post' || $match_id <= 0 || $match_source !== 'uid') {
+            return null;
+        }
+
+        $post = get_post($match_id);
+        if (! ($post instanceof \WP_Post) || ($subtype !== '' && $post->post_type !== $subtype)) {
+            return null;
+        }
+
+        return [
+            'eligible'              => true,
+            'requires_confirmation' => true,
+            'match_source'          => $match_source,
+            'wp_entity'             => self::format_post_entity($match_id, $subtype, $match_source),
+            'scope_summary'         => [
+                'core_fields' => true,
+                'meta'        => true,
+                'taxonomies'  => true,
+            ],
+            'confirmation_label'    => __('I confirm updating this matched WordPress entity from the selected JSON.', 'dbvc'),
+        ];
     }
 
     /**
@@ -1097,9 +1400,15 @@ final class SyncFileImportService
     private static function build_preview_hash(array $item, array $payload = [], $index_item = null)
     {
         $blocking_codes = array_column((array) ($item['blocking'] ?? []), 'code');
+        $payload_hash = '';
+        if (! empty($payload)) {
+            $encoded_payload = wp_json_encode($payload);
+            $payload_hash = \is_string($encoded_payload) ? hash('sha256', $encoded_payload) : '';
+        }
         $hash_payload = [
             'relative_path'                   => isset($item['relative_path']) ? (string) $item['relative_path'] : '',
             'payload_id'                      => isset($payload['ID']) ? (string) $payload['ID'] : (isset($payload['term_id']) ? (string) $payload['term_id'] : ''),
+            'payload_hash'                    => $payload_hash,
             'entity_kind'                     => isset($item['entity_kind']) ? (string) $item['entity_kind'] : '',
             'subtype'                         => isset($item['subtype']) ? (string) $item['subtype'] : '',
             'slug'                            => isset($item['slug']) ? (string) $item['slug'] : '',
@@ -1113,6 +1422,29 @@ final class SyncFileImportService
         ];
 
         return hash('sha256', (string) wp_json_encode($hash_payload));
+    }
+
+    /**
+     * @param array<string|int,mixed> $confirmations
+     * @param string                  $relative_path
+     * @return array<string,mixed>|null
+     */
+    private static function find_update_confirmation(array $confirmations, $relative_path)
+    {
+        $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
+        foreach ($confirmations as $key => $confirmation) {
+            if (! \is_array($confirmation)) {
+                continue;
+            }
+
+            $candidate_path = \is_string($key) ? $key : (isset($confirmation['path']) ? (string) $confirmation['path'] : '');
+            $candidate_path = str_replace('\\', '/', ltrim($candidate_path, '/'));
+            if ($candidate_path !== '' && $candidate_path === $relative_path) {
+                return $confirmation;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1654,14 +1986,18 @@ final class SyncFileImportService
         $summary = [
             'requested' => count($items),
             'creatable' => 0,
+            'updatable' => 0,
             'blocked'   => 0,
             'skipped'   => 0,
         ];
 
         foreach ($items as $item) {
             $blocking = isset($item['blocking']) && \is_array($item['blocking']) ? $item['blocking'] : [];
+            $matched_update = isset($item['matched_update']) && \is_array($item['matched_update']) ? $item['matched_update'] : [];
             if (empty($blocking) && isset($item['detected_action']) && $item['detected_action'] === 'create') {
                 $summary['creatable']++;
+            } elseif (! empty($matched_update['eligible']) && ! empty($item['available_actions'][self::MODE_UPDATE_MATCHED])) {
+                $summary['updatable']++;
             } elseif (! empty($blocking)) {
                 $summary['blocked']++;
             } else {
@@ -1691,6 +2027,8 @@ final class SyncFileImportService
             $status = isset($item['status']) ? (string) $item['status'] : '';
             if (! empty($item['created'])) {
                 $summary['created']++;
+            } elseif (! empty($item['updated']) || $status === 'updated') {
+                $summary['updated']++;
             } elseif ($status === 'blocked') {
                 $summary['blocked']++;
             } elseif ($status === 'skipped') {

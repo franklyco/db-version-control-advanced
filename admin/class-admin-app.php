@@ -2443,8 +2443,13 @@ final class DBVC_Admin_App
         $params = $request->get_json_params();
         $paths = $params['paths'] ?? ($params['path'] ?? []);
         $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
+        $args = [
+            'confirmations' => isset($params['confirmations']) && is_array($params['confirmations'])
+                ? $params['confirmations']
+                : [],
+        ];
 
-        $result = \Dbvc\EntityEditor\SyncFileImportService::commit($paths, $mode, get_current_user_id());
+        $result = \Dbvc\EntityEditor\SyncFileImportService::commit($paths, $mode, get_current_user_id(), $args);
         if (is_wp_error($result)) {
             return $result;
         }

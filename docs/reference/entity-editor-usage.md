@@ -37,6 +37,14 @@ Brief usage notes for the DBVC Entity Editor.
   - Archives redundant same-entity duplicate JSON files into `.dbvc_entity_editor_backups` after successful canonicalization.
   - Keeps the result visible after commit and refreshes the Entity Editor index.
 
+- `Update Matched Entity`
+  - Appears inside the `Import Sync JSON` modal only for high-confidence UID-matched post/CPT sync files.
+  - Requires checking `I confirm updating this matched WordPress entity from the selected JSON` before the update button is enabled.
+  - Applies JSON-present core fields, meta, and taxonomies through the existing DBVC post importer.
+  - Re-validates the preview hash and matched WP entity ID on the server before writing.
+  - Rewrites source-site IDs to the matched local post ID and normalizes the sync JSON to the local canonical filename when needed.
+  - Does not appear for slug-only matches, payload-ID-only matches, stale duplicate files, taxonomy terms, or hard blockers.
+
 - `Save JSON`
   - Validates JSON.
   - Creates backup.
@@ -69,6 +77,7 @@ Brief usage notes for the DBVC Entity Editor.
 ## Known limitations
 
 - `Import as New` supports post/CPT and taxonomy term JSON only; media, menu, and option JSON are intentionally excluded.
+- Sync-file `Update Matched Entity` is post/CPT-only in the first slice; term updates remain deferred until term update semantics are separately audited.
 - Full replace confirmation modal does not currently include preflight delete-count preview; counts are returned after operation.
 - CodeMirror JSON editor/linting is not yet integrated; editor currently uses textarea.
 
