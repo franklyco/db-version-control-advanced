@@ -1,10 +1,12 @@
 # Entity Editor Enhancements
 
-Last updated: 2026-04-07  
-Current phase: `P5`  
+Last updated: 2026-06-24
+Current phase: `P5 + post-ship minor fixes`
 Status legend: `OPEN` | `WIP` | `CLOSED` | `DEFERRED`
 
 Implementation status: Initial raw JSON intake shipped on 2026-04-07. The phase breakdown below now serves as the landed record plus follow-up structure for this first tranche.
+
+Post-ship maintenance note: P10 closed on 2026-06-24 to prevent `New From Raw JSON` commits from leaving both a source-ID JSON file and a local canonical JSON file active in the sync index. This reused the staged sync-file import suppression/canonicalization pattern added after the earlier P7 duplicate-canonical fix. Current behavior and regression history live in `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p10-minor-fix-raw-intake-duplicate-sync-json-prevention`.
 
 ## Objective
 
@@ -318,6 +320,8 @@ Add a single backend service that can inspect pasted payloads and tell the UI ex
 
 Status: `CLOSED`
 
+Post-ship correction: raw-intake commit now suppresses normal DBVC auto-export side effects during post/term importer calls, rewrites the staged JSON with the resolved local `ID` or `term_id` when needed, and normalizes the source file to the final canonical filename before reporting success. This keeps the original v1 contract but closes the duplicate active JSON regression documented in P10 of the sync-file import guide.
+
 ### Outcome
 
 Allow the previewed raw payload to be staged safely into the sync tree and then committed into WordPress using the smallest viable set of reusable DBVC engines.
@@ -353,6 +357,7 @@ Allow the previewed raw payload to be staged safely into the sync tree and then 
 - [ ] Posts can be created from valid raw JSON when DBVC creation settings allow it
 - [ ] Terms can be created from valid raw JSON through a public helper
 - [ ] The final sync file path matches current DBVC naming rules
+- [x] Post-ship: create/update commits leave one active canonical sync JSON file, not both source-ID and local-ID filenames
 
 ### Key risk
 

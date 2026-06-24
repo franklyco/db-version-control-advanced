@@ -24,6 +24,7 @@ Brief usage notes for the DBVC Entity Editor.
   - Previews detected kind, subtype, target sync path, live match state, warnings, and blocking reasons before commit.
   - Uses the same blocker detail and settings-link guidance as staged sync-file import for configuration, existing-entity, unsupported-type, and file-collision blockers.
   - Supports `Create only`, `Create or Update Matched`, and `Stage JSON Only`.
+  - After successful create/update, returns the final canonical sync file path and does not leave both source-ID and local-ID JSON files active in the index.
   - Can auto-open the resulting sync file in the normal Entity Editor modal after success.
 
 - `Import as New`
@@ -85,3 +86,4 @@ Brief usage notes for the DBVC Entity Editor.
 
 - `docs/reference/import-identity-matching.md`
 - `docs/implementation/completed/entity-editor-sync-file-import-guide.md`
+- `docs/implementation/completed/entity-editor-enhancements.md`

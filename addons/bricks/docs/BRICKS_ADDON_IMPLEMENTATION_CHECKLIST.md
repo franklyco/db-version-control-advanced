@@ -233,7 +233,112 @@ Archive files (completed phases/history):
 - Live cross-site evidence is complete and auditable.
 - Required tests pass and are logged in tracker.
 
-## 4.1) Backlog Candidates (Next Implementation Phase)
+## 4.1) Phase 20: Bricks Font and Icon Asset Portability
+
+Status: `NOT_STARTED`
+Owner: Codex
+Created: 2026-06-24
+Scope: Extend the standalone Bricks Settings Portability tool beyond option-only domains so it can safely export, import, compare, apply, and roll back Bricks Font Manager and Icon Manager assets.
+
+### Discovery baseline
+
+- Current official Bricks release checked on 2026-06-24: Bricks `2.3.8` (released 2026-06-23). The LocalWP site at `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/themes/bricks` is Bricks `2.3.7`.
+- Bricks Font Manager custom fonts are media-backed entity records, not a simple option domain:
+  - custom font families are posts with post type `bricks_fonts`;
+  - font variation metadata is stored in post meta key `bricks_font_faces`;
+  - generated CSS is option `bricks_font_face_rules` and should be treated as derived/regenerable;
+  - font files are WordPress media attachments referenced by attachment ID from `bricks_font_faces`;
+  - current local evidence: 8 `bricks_fonts` posts, with `.ttf` and `.woff2` attachments under uploads.
+- Bricks Icon Manager storage is option-backed but media-dependent:
+  - icon sets are option `bricks_icon_sets`;
+  - custom icon records are option `bricks_custom_icons`;
+  - disabled set state is option `bricks_disabled_icon_sets`;
+  - custom icons reference SVG media by `attachment_id` and `url`;
+  - current local evidence: 1 custom icon set, 4 custom SVG icons, and SVG attachment IDs under uploads.
+- Font and icon domains must support media transfer, checksum verification, ID remapping, and dependency warnings. They must not be added as raw option-only domains.
+- Bricks typography values can reference custom fonts by `custom_font_{post_id}`. Import must remap source font IDs to target font IDs anywhere selected Bricks domains contain typography references.
+- Bricks icon controls can reference custom icon set IDs and icon IDs. Import should preserve Bricks icon `id` and `setId` when safe; collisions require review/skip/replace decisions.
+
+### Entry criteria
+
+- Phase 19C live drill is closed or explicitly deferred by the user.
+- Existing Settings Portability export/import/apply/rollback flow is green via `BricksPortabilityManagerTest`.
+- DBVC media package/hydration primitives are reviewed for reuse before adding new asset-copy code.
+- A disposable local site is available for live apply/rollback verification with custom fonts and custom SVG icon sets.
+
+### Non-goals
+
+- No blind transport of arbitrary uploads; only referenced font/SVG attachments for selected Bricks font/icon domains are in scope.
+- No destructive delete-sync of target-only font families, icon sets, custom icons, or media files.
+- No remote Google Fonts download orchestration in DBVC. If Bricks has already converted a Google font into a local custom font, DBVC treats it as a normal custom font record plus media.
+- No support for Bricks built-in icon set binary assets. DBVC only transports custom icon sets and disabled/enabled state metadata.
+
+### Tasks / Sub-tasks
+
+- `P20-T0` Contract freeze + live schema verification
+  - `P20-T0-S1` Add a focused runtime probe that reports Bricks version, `bricks_fonts` post/meta shape, `bricks_font_face_rules` presence, icon option shape, attachment IDs, mime types, file paths, and multisite main-site constants.
+  - `P20-T0-S2` Freeze canonical font domain shape: family label, source post ID, deterministic family key, status, `bricks_font_faces` variants, normalized asset references, and derived-rule metadata.
+  - `P20-T0-S3` Freeze canonical icon domain shape: icon sets, custom icons, disabled sets, set/icon collision keys, and normalized SVG asset references.
+  - `P20-T0-S4` Define matching rules and collision policy:
+    - fonts match by normalized family name first, then variant asset checksums;
+    - icon sets match by Bricks set ID when identical, then normalized set name;
+    - icons match by set identity + icon ID/name + SVG checksum;
+    - conflicting IDs with different payload/checksum require explicit review.
+- `P20-T1` Package schema + media manifest
+  - `P20-T1-S1` Add `custom_fonts` and `icon_collections` as media-backed portability domains in `DBVC_Bricks_Portability_Registry`.
+  - `P20-T1-S2` Extend export packages with a `media/` directory and manifest entries containing checksum, mime type, original filename, source attachment ID, source URL, and consumer references.
+  - `P20-T1-S3` Enforce allowed mime/extensions: fonts `.woff2`, `.woff`, `.ttf` initially; icons `.svg` only, with SVG sanitization required on import.
+  - `P20-T1-S4` Mark `bricks_font_face_rules` as derived/backup-only in the package contract and regenerate it after font apply instead of transporting it as canonical state.
+- `P20-T2` Export implementation
+  - `P20-T2-S1` Export `bricks_fonts` posts and `bricks_font_faces` meta with referenced media files and checksums.
+  - `P20-T2-S2` Export icon manager options (`bricks_icon_sets`, `bricks_custom_icons`, `bricks_disabled_icon_sets`) plus referenced SVG media files and checksums.
+  - `P20-T2-S3` Add dependency metadata showing which selected domains reference custom fonts or custom icons, and warn when referenced font/icon assets are not selected for export.
+  - `P20-T2-S4` Add package validation that rejects missing, unchecksummed, oversized, or disallowed media files.
+- `P20-T3` Import, diff, and dependency review
+  - `P20-T3-S1` Normalize uploaded font/icon domains into review rows with media previews/metadata and current-site freshness fingerprints.
+  - `P20-T3-S2` Build an apply-time source-to-target font ID map and rewrite `custom_font_{source_post_id}` references in selected settings domains after the target font record is created/resolved.
+  - `P20-T3-S3` Preserve custom icon `id` and `setId` when no conflict exists; block or require explicit replace when the target already has the same ID with different SVG checksum or set metadata.
+  - `P20-T3-S4` Add review warnings for missing media files, unresolved attachment IDs, unsupported mime types, SVG sanitize failures, unresolved typography references, and icon references whose set is not selected or present on target.
+  - `P20-T3-S5` Keep target-only fonts/icons by default and expose `keep_current`, `add_incoming`, `replace_with_incoming`, and `skip` decisions only where the operation is deterministic.
+- `P20-T4` Apply, rollback, and asset lifecycle safety
+  - `P20-T4-S1` Create or update target font posts and media attachments before applying selected domains that reference them.
+  - `P20-T4-S2` Create or update SVG attachments before writing icon manager options.
+  - `P20-T4-S3` Regenerate or clear `bricks_font_face_rules` after font apply using Bricks-compatible generation rules.
+  - `P20-T4-S4` Extend rollback snapshots to include affected options, font posts/meta, attachment IDs, and file paths. Rollback should restore DB state and avoid deleting media unless the file was created by the failed apply and is still unreferenced.
+  - `P20-T4-S5` Add idempotent apply behavior so repeated imports do not duplicate identical media attachments or font posts.
+- `P20-T5` Admin UI integration
+  - `P20-T5-S1` Add `Custom Fonts` and `Icon Collections` domain cards with media counts, high-risk labels, and missing-dependency warnings.
+  - `P20-T5-S2` Add review row detail views for font variants and custom icons, including source/current checksums, filenames, mime types, and mapped target IDs.
+  - `P20-T5-S3` Add an import preflight summary for media files to be created/reused/replaced/skipped.
+  - `P20-T5-S4` Add post-apply receipts that report created/reused attachments, rewritten font references, regenerated font CSS status, and icon collision decisions.
+- `P20-T6` Validation + live evidence
+  - `P20-T6-S1` Add PHPUnit fixtures for font posts/meta, media-backed font files, icon sets, custom icons, disabled sets, collisions, and missing-media blockers.
+  - `P20-T6-S2` Add regression coverage for font ID remapping inside global classes, theme styles, components, and settings domains.
+  - `P20-T6-S3` Add regression coverage for SVG sanitize rejection, media checksum mismatch, duplicate attachment reuse, and rollback of partially failed applies.
+  - `P20-T6-S4` Run a live two-site drill: export custom fonts + icons from source, import into target, apply selected changes, verify Bricks builder load data, frontend `@font-face` output, icon picker data, rendered SVG icons, and rollback.
+
+### Required tests
+
+- `P20-TEST-01` Runtime schema probe fixture test for Bricks `2.3.x` font/icon storage.
+- `P20-TEST-02` Export package test for `custom_fonts` with media manifest and checksums.
+- `P20-TEST-03` Export package test for `icon_collections` with SVG media manifest and checksums.
+- `P20-TEST-04` Import validation test rejecting missing/unchecksummed/disallowed media.
+- `P20-TEST-05` Diff/review tests for font family, variant, icon set, icon, disabled-set, and collision rows.
+- `P20-TEST-06` Apply test for creating/reusing font attachments and regenerating `bricks_font_face_rules`.
+- `P20-TEST-07` Apply test for creating/reusing SVG attachments and writing icon manager options.
+- `P20-TEST-08` Cross-domain font reference remapping tests for `custom_font_{source_id}` values.
+- `P20-TEST-09` Rollback test covering options, font posts/meta, attachments, and derived CSS.
+- `P20-TEST-10` Live LocalWP two-site drill evidence for export/import/apply/rollback.
+
+### Exit criteria
+
+- Operators can export and import Bricks custom fonts and custom icon collections through the existing Settings Portability workflow.
+- Packages include only explicitly referenced and checksummed media assets.
+- Font and icon apply is reviewable, idempotent, rollback-safe, and does not delete target-only assets.
+- Custom font IDs are remapped in selected Bricks settings domains so imported typography references resolve on the target site.
+- Required automated tests and live LocalWP drill evidence are logged in the progress tracker.
+
+## 4.2) Backlog Candidates (Next Implementation Phase)
 
 ### `BL-PKG-TABLE-01` Packages table site identity columns
 - Add two table headers to the Packages tab package table (current header row: `Select | Package | Version | Channel | Audience`):

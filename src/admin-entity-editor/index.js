@@ -259,6 +259,13 @@ const isSyncImportMatchedUpdateEligible = (item) => (
 	&& !!item?.available_actions?.update_matched
 );
 
+const isRawIntakeMatchedUpdateEligible = (preview, mode) => (
+	mode === 'create_or_update_matched'
+	&& preview?.detected_action === 'update_matched'
+	&& !!preview?.matched_update?.eligible
+	&& !!preview?.available_actions?.create_or_update_matched
+);
+
 const getEntityImportStatusRank = (item) => (item?.matched_wp?.id ? 1 : 0);
 
 const EntityEditorApp = () => {
@@ -312,6 +319,7 @@ const EntityEditorApp = () => {
 	const [rawIntakeCommitBusy, setRawIntakeCommitBusy] = useState(false);
 	const [rawIntakeError, setRawIntakeError] = useState('');
 	const [rawIntakePreview, setRawIntakePreview] = useState(null);
+	const [rawIntakeUpdateConfirmation, setRawIntakeUpdateConfirmation] = useState(null);
 	const [syncImportOpen, setSyncImportOpen] = useState(false);
 	const [syncImportPath, setSyncImportPath] = useState('');
 	const [syncImportPaths, setSyncImportPaths] = useState([]);
@@ -592,6 +600,7 @@ const EntityEditorApp = () => {
 		setRawIntakeOpenAfterSuccess(true);
 		setRawIntakePreview(null);
 		setRawIntakeError('');
+		setRawIntakeUpdateConfirmation(null);
 	}, []);
 
 	const closeRawIntakeModal = useCallback(() => {
@@ -600,6 +609,7 @@ const EntityEditorApp = () => {
 		setRawIntakeCommitBusy(false);
 		setRawIntakeError('');
 		setRawIntakePreview(null);
+		setRawIntakeUpdateConfirmation(null);
 	}, []);
 
 	const closeSyncImportModal = useCallback(() => {
@@ -618,6 +628,7 @@ const EntityEditorApp = () => {
 	const previewRawIntake = useCallback(async () => {
 		setRawIntakePreviewBusy(true);
 		setRawIntakeError('');
+		setRawIntakeUpdateConfirmation(null);
 		try {
 			const data = await apiPost('entity-editor/raw-intake/preview', {
 				content: rawIntakeDraft,
@@ -631,6 +642,19 @@ const EntityEditorApp = () => {
 			setRawIntakePreviewBusy(false);
 		}
 	}, [rawIntakeDraft, rawIntakeMode]);
+
+	const setRawIntakeMatchedUpdateConfirmed = useCallback((confirmed) => {
+		if (!confirmed || !rawIntakePreview) {
+			setRawIntakeUpdateConfirmation(null);
+			return;
+		}
+
+		setRawIntakeUpdateConfirmation({
+			confirmed: true,
+			preview_hash: rawIntakePreview?.preview_hash || '',
+			matched_entity_id: rawIntakePreview?.matched_update?.wp_entity?.id || rawIntakePreview?.match?.id || 0,
+		});
+	}, [rawIntakePreview]);
 
 	const openSyncImportPreview = useCallback(async (paths) => {
 		const normalizedPaths = (Array.isArray(paths) ? paths : [paths])
@@ -798,10 +822,19 @@ const EntityEditorApp = () => {
 	const commitRawIntake = useCallback(async () => {
 		setRawIntakeCommitBusy(true);
 		setRawIntakeError('');
+		const matchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
+		const confirmation = matchedUpdate && rawIntakeUpdateConfirmation?.confirmed
+			? {
+				confirmed: true,
+				preview_hash: rawIntakeUpdateConfirmation.preview_hash || '',
+				matched_entity_id: rawIntakeUpdateConfirmation.matched_entity_id || 0,
+			}
+			: {};
 		try {
 			const data = await apiPost('entity-editor/raw-intake/commit', {
 				content: rawIntakeDraft,
 				mode: rawIntakeMode,
+				confirmation,
 				open_after_success: !!rawIntakeOpenAfterSuccess,
 			});
 
@@ -817,10 +850,11 @@ const EntityEditorApp = () => {
 		} catch (error) {
 			setRawIntakeError(error?.message || 'Failed to commit raw JSON intake');
 			setRawIntakePreview(error?.body?.data?.preview || rawIntakePreview);
+			setRawIntakeUpdateConfirmation(null);
 		} finally {
 			setRawIntakeCommitBusy(false);
 		}
-	}, [closeRawIntakeModal, loadEntityIndex, rawIntakeDraft, rawIntakeMode, rawIntakeOpenAfterSuccess, rawIntakePreview]);
+	}, [closeRawIntakeModal, loadEntityIndex, rawIntakeDraft, rawIntakeMode, rawIntakeOpenAfterSuccess, rawIntakePreview, rawIntakeUpdateConfirmation]);
 
 	const confirmFullReplaceModal = useCallback(async () => {
 		const phrase = (fullReplaceConfirmPhrase || '').trim();
@@ -1163,9 +1197,17 @@ const EntityEditorApp = () => {
 	const rawIntakeWarnings = Array.isArray(rawIntakePreview?.warnings) ? rawIntakePreview.warnings : [];
 	const rawIntakeBlocking = Array.isArray(rawIntakePreview?.blocking) ? rawIntakePreview.blocking : [];
 	const rawIntakeAvailable = rawIntakePreview?.available_actions || {};
-	const rawIntakeCanCommit = !!rawIntakePreview && !!rawIntakeAvailable?.[rawIntakeMode] && rawIntakeBlocking.length === 0;
+	const rawIntakeMatchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
+	const rawIntakeMatchedUpdateEntity = rawIntakePreview?.matched_update?.wp_entity || {};
+	const rawIntakeUpdateConfirmed = !!rawIntakeUpdateConfirmation?.confirmed
+		&& rawIntakeUpdateConfirmation.preview_hash === rawIntakePreview?.preview_hash
+		&& Number(rawIntakeUpdateConfirmation.matched_entity_id || 0) === Number(rawIntakeMatchedUpdateEntity?.id || rawIntakePreview?.match?.id || 0);
+	const rawIntakeCanCommitBase = !!rawIntakePreview
+		&& !!rawIntakeAvailable?.[rawIntakeMode]
+		&& rawIntakeBlocking.length === 0;
+	const rawIntakeCanCommit = rawIntakeCanCommitBase && (!rawIntakeMatchedUpdate || rawIntakeUpdateConfirmed);
 	const rawIntakeBlockedMessages = collectImportBlockerMessages([{ blocking: rawIntakeBlocking }]);
-	const rawIntakeModeBlocked = !!rawIntakePreview && !rawIntakePreviewBusy && !rawIntakeCanCommit;
+	const rawIntakeModeBlocked = !!rawIntakePreview && !rawIntakePreviewBusy && !rawIntakeCanCommitBase;
 	const syncImportItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
 	const syncImportSummary = syncImportPreview?.summary || {};
 	const syncImportCreatableCount = syncImportItems.reduce((count, item) => {
@@ -1979,7 +2021,10 @@ const EntityEditorApp = () => {
 									Mode
 									<select
 										value={rawIntakeMode}
-										onChange={(e) => setRawIntakeMode(e.target.value)}
+										onChange={(e) => {
+											setRawIntakeMode(e.target.value);
+											setRawIntakeUpdateConfirmation(null);
+										}}
 										style={{ display: 'block', width: '100%', marginTop: '6px' }}
 										disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}
 									>
@@ -2000,7 +2045,10 @@ const EntityEditorApp = () => {
 								<textarea
 									className="dbvc-entity-editor__textarea"
 									value={rawIntakeDraft}
-									onChange={(e) => setRawIntakeDraft(e.target.value)}
+									onChange={(e) => {
+										setRawIntakeDraft(e.target.value);
+										setRawIntakeUpdateConfirmation(null);
+									}}
 									placeholder='Paste one DBVC entity JSON payload here...'
 									style={{ minHeight: '260px' }}
 								/>
@@ -2035,6 +2083,34 @@ const EntityEditorApp = () => {
 													)}
 													{' · '}match source: {rawIntakePreview?.match?.match_source || 'unknown'}
 												</p>
+											)}
+											{rawIntakeMatchedUpdate && (
+												<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+													<p>
+														<strong>Update matched entity</strong>
+														{rawIntakePreview?.matched_update?.match_source ? ` · Match source: ${rawIntakePreview.matched_update.match_source}` : ''}
+													</p>
+													<p>
+														DBVC will apply JSON-present core fields, meta, and taxonomies from this raw JSON payload to{' '}
+														{rawIntakeMatchedUpdateEntity?.edit_url ? (
+															<a href={rawIntakeMatchedUpdateEntity.edit_url}>
+																{rawIntakeMatchedUpdateEntity?.label || rawIntakeMatchedUpdateEntity?.subtype || 'entity'} #{rawIntakeMatchedUpdateEntity?.id || 0}
+															</a>
+														) : (
+															<span>{rawIntakeMatchedUpdateEntity?.label || rawIntakeMatchedUpdateEntity?.subtype || 'entity'} #{rawIntakeMatchedUpdateEntity?.id || 0}</span>
+														)}
+														.
+													</p>
+													<label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '8px' }}>
+														<input
+															type="checkbox"
+															checked={rawIntakeUpdateConfirmed}
+															onChange={(event) => setRawIntakeMatchedUpdateConfirmed(event.target.checked)}
+															disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}
+														/>
+														<span>{rawIntakePreview?.matched_update?.confirmation_label || 'I confirm updating this matched WordPress entity from the selected JSON.'}</span>
+													</label>
+												</div>
 											)}
 											{rawIntakePreview?.file_collision?.exists && (
 												<p>

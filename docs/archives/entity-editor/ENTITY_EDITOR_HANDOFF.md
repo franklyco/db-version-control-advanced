@@ -10,6 +10,8 @@
 - Track Entity Editor phase execution in `docs/ENTITY_EDITOR_CHECKLIST.md`.
 - Phase 1 (admin app routing skeleton) has been implemented in the admin app source/build.
 
+Archive note added 2026-06-24: this handoff predates the duplicate active JSON fixes. Do not use it as current implementation guidance for import canonicalization. Current behavior is in `docs/implementation/completed/entity-editor-sync-file-import-guide.md`: P7 covers staged sync-file source-ID/local-ID duplicate cleanup, and P10 covers `New From Raw JSON` duplicate JSON prevention.
+
 ---
 
 ## 0) Executive summary

@@ -1,7 +1,7 @@
 # AI Sample Entities + AI Package Intake Implementation Guide
 
-Last updated: 2026-06-16
-Current phase: `P9`
+Last updated: 2026-06-23
+Current phase: `P9` with `P10` and `P11` planned
 Status legend: `OPEN` | `WIP` | `CLOSED` | `DEFERRED`
 
 ## Current Resume Context
@@ -35,8 +35,10 @@ Use this section as the first re-entry point in a new Codex session.
 - Validation already run against the current local state:
   - `php -l` passed on the touched AI package PHP files
   - [scripts/check-wp-runtime-authoring-smoke.php](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/scripts/check-wp-runtime-authoring-smoke.php) passed with `compact-authoring-smoke-ok`
-  - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `12 tests, 133 assertions`
+  - `vendor/bin/phpunit tests/phpunit/AiPackageWorkflowTest.php` passed with `13 tests, 167 assertions`
 - Highest-priority next work:
+  - finish P10 Compact Authoring Context hardening from the June 23 cross-site QA feedback
+  - plan P11 Agent Authoring Context Catalog and Connector so Codex, Claude Code, and similar tools can lazily request current writing directives
   - add package-size/file-count metrics to the Tools page before generation
   - add browser-level QA with a real compact package in ChatGPT or Claude
   - continue field-family coverage hardening for unsupported media and deeper relationship-like ACF values
@@ -44,10 +46,11 @@ Use this section as the first re-entry point in a new Codex session.
 ## Current Intentionally Unfinished Items
 
 - [ ] Full ACF underscore reference meta synthesis is still pending beyond the currently supported simple, nested, and first-pass deferred relationship families.
-- [ ] Deferred media-oriented ACF field families such as `image`, `file`, and `gallery` are policy-locked to `block` when non-empty, but they still need clearer operator-facing UX and end-user docs.
+- [ ] Deferred media-oriented ACF field families such as `image`, `file`, and `gallery` still need clearer operator-facing hydration UX and end-user docs. Legacy/no-context non-empty media stays blocking; provider v2 `media_deferred` values are warning-and-strip.
 - [ ] Deeper relationship-like ACF translation remains pending beyond the current first pass for `post_object`, `relationship`, and `taxonomy`.
 - [ ] Advanced clone edge cases still need broader validation beyond the current first-pass storage-aware clone expansion path.
 - [ ] AI intake reporting still needs a richer cross-linked import-history view beyond the current server-rendered drill-down panels and retained artifact downloads.
+- [ ] Agent-facing context is still package-local only; a refreshable local catalog/connector for all current object writing directives is planned in P11.
 - [ ] Full browser-driven end-to-end AI upload/import QA with a real submission ZIP is still pending.
 
 ## Objective
@@ -83,8 +86,8 @@ The finished workflow should feel like:
 
 This guide implements the decisions locked in:
 
-- [AI_PACKAGE_FOUNDATION_SPEC.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/AI_PACKAGE_FOUNDATION_SPEC.md)
-- [AI_SAMPLE_PACKAGE_COMPACT_PROFILE_PLAN.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/AI_SAMPLE_PACKAGE_COMPACT_PROFILE_PLAN.md)
+- [ai-package-foundation-spec.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/implementation/proposed/ai-package-foundation-spec.md)
+- [ai-sample-package-compact-profile-plan.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/implementation/proposed/ai-sample-package-compact-profile-plan.md)
 
 That foundation spec remains the source of truth for:
 
@@ -255,7 +258,7 @@ This keeps the first tranche low-risk and avoids mixing UI scaffolding, archive 
 
 ## P5 and P6 Contract Reference
 
-Before implementing AI intake and translation, treat the following retained artifacts as the baseline contract defined in [AI_PACKAGE_FOUNDATION_SPEC.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/AI_PACKAGE_FOUNDATION_SPEC.md).
+Before implementing AI intake and translation, treat the following retained artifacts as the baseline contract defined in [ai-package-foundation-spec.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/implementation/proposed/ai-package-foundation-spec.md).
 
 ### Validation report artifacts
 
@@ -400,7 +403,9 @@ Recommended maintenance pattern:
 | `P7` | `CLOSED` | Dedicated AI preflight review surface |
 | `P8` | `CLOSED` | `AI + Integrations` settings and rule authoring UX |
 | `P9` | `WIP` | Tests, fixtures, docs, QA, and rollout closure |
-| `P10` | `DEFERRED` | Optional managed provider integrations and outbound AI workflows |
+| `P10` | `OPEN` | Compact Authoring Context hardening from cross-site QA |
+| `P11` | `OPEN` | Agent Authoring Context Catalog and Connector |
+| `P12` | `DEFERRED` | Optional managed provider integrations and outbound AI workflows |
 
 Update this table at the end of each landed tranche.
 
@@ -1275,7 +1280,7 @@ Use this sequence for the next implementation pass. Keep each slice independentl
 
 - [x] Add manual QA scenarios.
   - [x] Add a repo-owned runtime smoke script for AI intake/import regression coverage.
-  - [x] Add a dedicated manual QA checklist doc in [AI_PACKAGE_QA_CHECKLIST.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/AI_PACKAGE_QA_CHECKLIST.md).
+  - [x] Add a dedicated manual QA checklist doc in [ai-package-qa-checklist.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/implementation/proposed/ai-package-qa-checklist.md).
   - [ ] Cover unchanged non-AI ZIP upload behavior in browser QA.
   - [ ] Cover AI package detection in browser QA.
   - [ ] Cover blocked AI package handling in browser QA.
@@ -1320,7 +1325,373 @@ Use this sequence for the next implementation pass. Keep each slice independentl
 - [x] User docs are updated.
 - [ ] Rollout notes are documented.
 
-## P10. Managed Provider Integrations
+## P10. Compact Authoring Context Hardening From Cross-Site QA
+
+Status: `OPEN`
+
+### Outcome
+
+DBVC sample packages stay compact, but become safer and more decisive for real cross-site AI authoring by projecting only high-signal context into package-facing artifacts.
+
+This phase uses the term `Compact Authoring Context` for the package-facing minimal context projection: sample JSON owns shape, sibling `.context.json` owns meaning, and DBVC avoids provider internals or low-signal site-specific noise.
+
+### Dependencies
+
+- P9 browser/package QA evidence from at least one real cross-site authoring loop.
+- Vertical provider improvements where noted in [vertical-context-provider-feedback-2026-06-23.md](/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main/docs/reference/import-authoring/vertical-context-provider-feedback-2026-06-23.md).
+- Existing compact package generation remains backward-compatible for already generated packages.
+
+### Ownership Split
+
+DBVC owns:
+
+- package profiles, archive layout, and manifest schema
+- deciding what compact package artifacts to emit
+- pruning storage-mirror fields from AI-facing samples when DBVC can re-derive them during translation
+- warning or blocking behavior during intake
+- target-scope warnings for returned packages
+- tests, fixtures, docs, and operator-facing review copy
+
+Vertical Field Context / Object Type Context owns:
+
+- field `cross_site_safety`
+- site-specific `choice_meaning`
+- object `authoring_profile`
+- object `section_authoring`
+- object routing hints such as `vertical` vs `page`
+- admin/editor group classification
+- shared group identity metadata
+- term palette/token warnings
+- design-expected authoring priority
+
+DBVC may pass through these provider signals when present. DBVC should not hard-code Vertical-specific field semantics beyond conservative fallbacks.
+
+### Tracked Tasks
+
+- [x] Lock the Compact Authoring Context schema additions.
+  - [x] Add optional field context keys: `cross_site_safety`, `authoring_surface`, `authoring_priority`, `authoring_note`, `choice_meaning`, `shared_group_id`, `shared_group_label`, and `section_selection`.
+  - [x] Add optional object context keys: `authoring_profile`, `routing_hint`, and `section_authoring`.
+  - [x] Keep `type`, `choices`, and `context` as the minimum stable field contract.
+  - [x] Ensure older `.context.json` consumers ignore unknown additions safely.
+
+- [ ] Add an `essentials` authoring profile path for compact sample generation.
+  - [ ] Default cross-site/fresh-site packages to essentials when Object Type Context `authoring_profile` is `essentials`.
+  - [ ] Use Field Context `section_selection` and `section_group_map` as the source of truth for selected/default frontend sections.
+  - [ ] Do not add or rely on a separate `essential_sections` list.
+  - [ ] Keep `extended` and `all` as future/operator opt-up profiles.
+  - [ ] Preserve `full_reference` as the exhaustive inspection profile.
+
+- [ ] Prune low-signal or unsafe sample fields by default.
+  - [ ] Hide flat storage-mirror meta keys that duplicate nested ACF group paths when translation can re-derive them.
+  - [ ] Scope `core_allpostypes_controls` and admin settings out of default compact authoring samples unless explicitly requested.
+  - [ ] Treat site-token choices without `choice_meaning` as blank-by-default guidance rather than copyable values.
+  - [ ] Keep media fields visibly deferred with null/empty default values.
+
+- [ ] Add shared group context factoring.
+  - [ ] Emit a top-level `shared_groups/` context artifact when repeated group definitions are identical enough to factor.
+  - [ ] Reference shared group IDs from per-CPT `.context.json` files.
+  - [ ] Start with common Vertical groups such as `hero_section`, `intro_section`, `seo_group`, `faq_group`, and `cta_section` only when provider shared group IDs are available.
+
+- [ ] Add returned-package target intent.
+  - [ ] Extend `dbvc-ai-manifest.json` guidance with optional `target_intent.intended_post_types` and `target_intent.intended_taxonomies`.
+  - [ ] Warn when the returned package includes entities outside declared target intent.
+  - [ ] Warn when selected sample object types have no returned entities and no explicit omission note.
+  - [ ] Keep missing `target_intent` non-blocking in v1.
+
+- [ ] Improve validation and review copy for cross-site safety.
+  - [x] Distinguish `portable`, `site_specific`, `media_deferred`, and `admin_or_editor` field guidance in sample/package reports and AI submission translation warnings.
+  - [ ] Surface palette/theme-token warnings as operator-actionable review notes.
+  - [ ] Soft-warn for design-expected fields that are empty; hard-block only DBVC contract-required fields.
+
+- [ ] Add fixture and regression coverage.
+  - [x] Add focused regression coverage for object routing hints, `section_selection` defaults/maps, site-specific choices, admin/editor skips, and media-deferred fields.
+  - [ ] Add a reusable compact Vertical-backed package fixture with real provider output.
+  - [ ] Assert storage-mirror fields are not exposed in default compact samples when re-derivable.
+  - [ ] Assert `target_intent` warnings do not block otherwise valid packages.
+  - [ ] Assert legacy compact packages without the new fields still validate.
+
+### Implementation Notes
+
+- Prefer a small projection layer over expanding `SamplePackageBuilder.php` with Vertical-specific conditionals.
+- Treat provider fields as optional enrichment. Missing provider data should reduce confidence and increase conservatism, not break sample package generation.
+- Keep the returned AI submission entity JSON contract unchanged unless a separate import contract phase explicitly changes it.
+- Use fixture-backed examples from real compact packages before documenting universal Vertical group behavior.
+
+### Likely Touchpoints
+
+- `includes/Dbvc/AiPackage/SamplePackageBuilder.php`
+- `includes/Dbvc/AiPackage/TemplateBuilder.php`
+- `includes/Dbvc/AiPackage/CompactSchemaBuilder.php`
+- `includes/Dbvc/AiPackage/PackageDocBuilder.php`
+- `includes/Dbvc/AiPackage/SubmissionPackageValidator.php`
+- `docs/reference/import-authoring/vertical-context.md`
+- `docs/reference/import-authoring/package-layout.md`
+- `tests/phpunit/AiPackageWorkflowTest.php`
+- `tests/fixtures/ai-packages/`
+
+### Risks
+
+- Hard-coding Vertical field names in DBVC will make this brittle across framework updates.
+- Pruning too aggressively could hide fields the operator expected the AI to author.
+- Shared group factoring can reduce package size, but only if references remain easy for AI tools to follow.
+- Site-specific choice meanings may be incomplete during provider rollout, so blank-by-default behavior must remain safe.
+
+### Phase Exit
+
+- [ ] Default compact packages expose a smaller essentials-focused authoring surface when provider signals are available.
+- [ ] Cross-site unsafe fields are clearly marked or omitted from default authoring samples.
+- [ ] DBVC warns on target intent drift without blocking valid v1 packages.
+- [ ] Shared group factoring reduces repeated context without making package navigation harder.
+- [ ] Fixture-backed tests cover new context fields and backward compatibility.
+
+## P11. Agent Authoring Context Catalog and Connector
+
+Status: `OPEN`
+
+### Outcome
+
+DBVC exposes the current site's AI authoring directives as a refreshable, lazy-loadable context catalog that local coding agents and AI tools can query without loading a full AI Sample Package into context.
+
+The catalog should answer questions like:
+
+- What post types, taxonomies, and other authorable objects exist on this site?
+- Which object should this content become?
+- What writing directives apply to this object?
+- Which ACF/meta fields are authorable, optional, site-specific, media-deferred, or admin/editor-only?
+- Which `section_selection` values are selected/default, and which ACF groups do they map to?
+- What sample packet shape should an agent return?
+
+This phase is not an outbound AI workflow. DBVC stays local and deterministic. Agents such as Codex, Claude Code, and ChatGPT should consume the catalog through files, REST, CLI, or a future MCP connector.
+
+### Naming
+
+Use `Agent Authoring Context Catalog` for the generated catalog.
+
+Use `Agent Context Connector` for the access layer that exposes the catalog to external/local agents.
+
+The catalog is a broader, refreshable sibling to `Compact Authoring Context`:
+
+- `Compact Authoring Context` is the small package-facing projection bundled with selected sample entities.
+- `Agent Authoring Context Catalog` is the local, current-site index of available objects and writing directives that agents can browse on demand.
+
+### Source Inputs
+
+DBVC owns the compiler and connector. Source semantics remain owned by their providers.
+
+Primary inputs:
+
+- DBVC schema discovery and selected package profile settings
+- DBVC validation/import rules
+- Vertical Field Context provider payloads
+- Vertical Object Type Context provider payloads
+- ACF local/runtime field catalog
+- DBVC sample template generation
+
+Provider v2 fields remain the high-signal minimum:
+
+- field `cross_site_safety`
+- field `authoring_surface`
+- field `authoring_priority`
+- field `authoring_note`
+- field `choice_meaning`
+- field `shared_group_id`
+- field `shared_group_label`
+- field `section_selection`
+- object `authoring_profile`
+- object `routing_hint`
+- object `section_authoring`
+
+Do not add or consume `essential_sections`; continue using Field Context `section_selection` and `section_selection.section_group_map`.
+
+### Proposed Catalog Layout
+
+Static exports should use this shape when written to AI Sample Packages or DBVC-managed local storage:
+
+```text
+agent-context/
+  manifest.json
+  index.json
+  writing-directives.md
+  refresh-status.json
+  objects/
+    post-types/{post_type}.context.json
+    post-types/{post_type}.md
+    taxonomies/{taxonomy}.context.json
+    taxonomies/{taxonomy}.md
+  fields/
+    shared-groups/{shared_group_id}.context.json
+```
+
+`manifest.json` should include:
+
+- catalog schema version
+- generated timestamp
+- DBVC plugin version
+- WordPress site URL hash or site fingerprint
+- active package/context profile
+- source provider names and contract versions
+- source provider hashes when available
+- selected object counts
+- stale/refresh status
+
+`index.json` should be a small discovery index, not the full catalog:
+
+- object IDs such as `post_type:page` or `taxonomy:service-category`
+- object label and kind
+- authoring profile
+- routing hint summary
+- paths or connector resource IDs for details
+
+Object `.context.json` files should include:
+
+- object identity and object context
+- object-level writing directives
+- compact field context for that object
+- section authoring metadata
+- sample packet template reference
+- validation/import caveats
+
+Object `.md` files should be human/agent-readable summaries, generated from the JSON rather than hand-maintained.
+
+### Refresh Model
+
+The catalog should support three refresh paths.
+
+#### Manual Pull Context
+
+Add a `Pull Context` action in DBVC's AI Sample Package / AI + Integrations area.
+
+The action should:
+
+- request current Vertical Field Context and Object Type Context provider payloads from the active site runtime
+- rebuild the DBVC schema/context catalog
+- persist the last-good catalog snapshot
+- store provider source hashes and generated timestamps
+- show object counts, field counts, warning counts, and stale/fresh state
+
+Manual pull is the preferred operator-visible control because it makes theme/context drift obvious before a package is generated.
+
+#### Automatic First-Request Refresh
+
+When an agent or connector requests the catalog:
+
+- if no catalog exists, build one before responding
+- if provider source hashes or schema fingerprints changed, rebuild before responding when safe
+- if a rebuild is already running, return the last-good catalog with a `refresh_in_progress` warning or wait only for a short bounded lock window
+- if provider payloads are unavailable, return the last-good catalog with a `stale_provider_context` warning instead of failing hard
+
+This keeps AI Packages current with the latest Vertical theme context without making every agent interaction depend on a perfect live provider fetch.
+
+#### Package Generation Refresh
+
+Before generating an AI Sample Package, DBVC should call a shared `ensure_current_catalog()` service.
+
+Default behavior:
+
+- rebuild when no catalog exists
+- rebuild when DBVC schema fingerprint or provider source hash changed
+- use the last-good catalog with a visible package warning when provider refresh fails
+- include `refresh-status.json` in the package so agents know whether context is current, stale, or partial
+
+### P11.1 Context Compiler
+
+- [ ] Add an `AgentContextCatalogBuilder` or equivalent service under `includes/Dbvc/AiPackage/`.
+- [ ] Reuse `SchemaDiscoveryService` and provider adapter output instead of rereading raw Vertical ACF JSON.
+- [ ] Compile object-level and field-level context into a normalized catalog.
+- [ ] Keep provider internals out of exported catalog files.
+- [ ] Include profile-aware projections: `essentials`, `extended`, `all`, and future connector-specific filters.
+- [ ] Ensure field paths match the package-facing sample paths agents will author, such as `meta.hero_title`.
+- [ ] Preserve `section_selection.section_group_map` and avoid assuming section values are ACF group names.
+- [ ] Include source hash/fingerprint data needed for stale detection.
+
+### P11.2 Catalog Storage and Refresh Pipeline
+
+- [ ] Add persistent storage for the last-good catalog snapshot.
+- [ ] Add refresh metadata: generated time, provider hashes, schema fingerprint, status, warnings, and failure reason.
+- [ ] Add a short-lived build lock so concurrent agent requests do not stampede provider fetches.
+- [ ] Add a manual `Pull Context` button in the relevant AI package/settings UI.
+- [ ] Add a server action/REST route for manual refresh.
+- [ ] Add automatic first-request refresh when the catalog is missing.
+- [ ] Add stale detection based on DBVC schema fingerprint and Vertical provider source hashes.
+- [ ] Add fallback behavior that serves the last-good catalog with warnings when provider refresh fails.
+
+### P11.3 Static AI Package Artifacts
+
+- [ ] Add optional `agent-context/` artifacts to compact sample packages.
+- [ ] Include only selected objects in package-local `agent-context/` by default.
+- [ ] Add a package setting for including broader current-site catalog indexes when operators want agents to browse beyond selected objects.
+- [ ] Keep static package artifacts compact; do not duplicate full provider maps.
+- [ ] Add `refresh-status.json` to explain whether the package was generated from fresh or stale provider context.
+- [ ] Link `START_HERE.md` to `agent-context/index.json` and selected object directive files.
+
+### P11.4 Agent Connector Surface
+
+- [ ] Add a local REST surface for DBVC admin-authenticated catalog access.
+- [ ] Add a WP-CLI export command for filesystem-oriented workflows.
+- [ ] Design a future MCP connector that can expose the same catalog as resources/tools.
+- [ ] Keep connector methods lazy and object-scoped:
+  - [ ] `list_objects`
+  - [ ] `get_object_context`
+  - [ ] `get_object_directives`
+  - [ ] `get_field_context`
+  - [ ] `get_sample_packet_template`
+  - [ ] `get_refresh_status`
+  - [ ] `validate_draft_packet`
+- [ ] Use stable resource IDs such as `dbvc://agent-context/object/post_type/page`.
+- [ ] Avoid one mega endpoint that returns every field on the site unless explicitly requested.
+
+### P11.5 UX, Safety, and Governance
+
+- [ ] Show catalog freshness in the Tools UI before package generation.
+- [ ] Show provider names, contract versions, and last pull time.
+- [ ] Show stale/partial provider warnings prominently but keep package generation possible with explicit operator awareness.
+- [ ] Sanitize all provider text before exporting it to package files or connector responses.
+- [ ] Keep secrets, raw options, credentials, internal provider maps, and unsupported system props out of agent-facing output.
+- [ ] Add capability checks for REST/manual refresh actions.
+- [ ] Keep all refreshes local to the WordPress site; do not call external AI services.
+- [ ] Log refresh failures enough for operator debugging without leaking sensitive payloads.
+
+### P11.6 Tests and QA
+
+- [ ] Add provider-fixture tests for a fresh catalog build.
+- [ ] Add stale-detection tests for changed provider source hashes.
+- [ ] Add first-request auto-refresh tests for missing catalog state.
+- [ ] Add fallback tests for provider refresh failure with a last-good catalog.
+- [ ] Add package artifact tests for `agent-context/` inclusion and `refresh-status.json`.
+- [ ] Add REST/CLI contract tests for lazy object and field reads.
+- [ ] Add backward-compatibility tests showing AI Sample Package generation still works when no provider payload is available.
+- [ ] Add browser/manual QA notes for using the catalog from Codex and Claude Code.
+
+### Likely Touchpoints
+
+- `includes/Dbvc/AiPackage/SchemaDiscoveryService.php`
+- `includes/Dbvc/AiPackage/SamplePackageBuilder.php`
+- `includes/Dbvc/AiPackage/PackageDocBuilder.php`
+- `includes/Dbvc/AiPackage/Settings.php`
+- `admin/admin-page.php`
+- `addons/content-migration/shared/dbvc-cc-field-context-provider-service.php`
+- `addons/content-migration/shared/dbvc-cc-object-type-context-provider-service.php`
+- `docs/reference/import-authoring/vertical-context.md`
+- `tests/phpunit/AiPackageWorkflowTest.php`
+
+### Risks
+
+- Auto-refresh on every request could make agent access slow or brittle; prefer hash-based stale checks and a last-good cache.
+- Returning all object and field context at once will create the same oversized-context problem compact packages are trying to avoid.
+- Provider payload failures should not silently produce outdated packages; stale context must be visible in UI and package artifacts.
+- MCP design should not become required for the first useful implementation; static files and REST/CLI are enough to start.
+- A full-site catalog may expose objects the operator did not intend for a specific AI authoring run; package-local context should still default to selected objects.
+
+### Phase Exit
+
+- [ ] Operators can manually refresh provider context with `Pull Context`.
+- [ ] First agent/catalog request builds a missing catalog automatically.
+- [ ] AI Sample Package generation uses a current or explicitly stale-noted catalog.
+- [ ] Generated packages can include a compact `agent-context/` directory.
+- [ ] Local agents can list available objects and request object-scoped directives without loading the whole catalog.
+- [ ] Tests cover fresh, stale, missing, and provider-failure refresh paths.
+
+## P12. Managed Provider Integrations
 
 Status: `DEFERRED`
 
@@ -1361,6 +1732,9 @@ These items should be revisited as real implementation details surface:
 7. Land P7 dedicated AI preflight review surface.
 8. Land P8 `AI + Integrations` settings.
 9. Land P9 tests, fixtures, docs, and rollout closure.
+10. Land P10 Compact Authoring Context hardening from cross-site QA.
+11. Land P11 Agent Authoring Context Catalog and Connector after the compact context contract is stable.
+12. Keep P12 managed provider integrations deferred until outbound AI workflows are explicitly in scope.
 
 ## Closure Criteria
 

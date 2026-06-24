@@ -810,6 +810,45 @@ final class SyncFileImportService
     }
 
     /**
+     * Shared helper for Entity Editor intake flows that need the low-level post
+     * importer without the normal auto-export hooks creating duplicate files.
+     *
+     * @param string $absolute_path
+     * @return mixed
+     */
+    public static function import_post_with_auto_exports_suppressed($absolute_path)
+    {
+        return self::import_post_with_export_suppressed($absolute_path);
+    }
+
+    /**
+     * Shared helper for Entity Editor intake flows that need the low-level term
+     * importer without broad term-change side effects.
+     *
+     * @param string $absolute_path
+     * @param string $taxonomy
+     * @return mixed
+     */
+    public static function import_term_with_import_side_effects_suppressed($absolute_path, $taxonomy)
+    {
+        return self::import_term_with_side_effects_suppressed($absolute_path, $taxonomy);
+    }
+
+    /**
+     * Shared helper for Entity Editor intake flows that need to move an
+     * importer-updated source file to its final local canonical filename.
+     *
+     * @param string              $source_relative_path
+     * @param string              $source_absolute_path
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function normalize_imported_entity_file_path($source_relative_path, $source_absolute_path, array $payload)
+    {
+        return self::normalize_imported_file_path($source_relative_path, $source_absolute_path, $payload);
+    }
+
+    /**
      * Call the existing low-level importer without letting save_post create a second export file.
      *
      * @param string $absolute_path

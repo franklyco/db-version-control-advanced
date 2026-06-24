@@ -257,6 +257,11 @@ Working checklist for Entity Editor implementation. Mirrors the phase plan from 
 
 Priority legend: `P1` critical reliability, `P2` important hardening, `P3` quality-of-life.
 
+### Post-ship duplicate-file fixes
+- [x] `P1` Staged sync-file import duplicate canonical grouping and stale duplicate archival fixed in P7; see `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p7-source-id-duplicate-canonical-bug-fix`.
+- [x] `P1` Raw-intake create/update duplicate active JSON prevention fixed in P10; see `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p10-minor-fix-raw-intake-duplicate-sync-json-prevention`.
+- [x] `P1` Regression coverage confirms raw-intake post and term creation leave one active canonical sync JSON file.
+
 ### Loose ends (current implementation)
 - [x] `P1` Verify Entity Editor CSS is loading through the dedicated loader on real admin pages (post-fix validation after filename mismatch correction).
 - [ ] `P1` Add regression test/check for asset manifest CSS discovery so future entrypoint/style renames fail fast.

@@ -1,8 +1,10 @@
 # Entity Editor Sync File Import Implementation Guide
 
-Last updated: 2026-06-23
+Last updated: 2026-06-24
 
-Status: `P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED`
+Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED`
+
+Recurrence note: duplicate active JSON files have now been fixed in two Entity Editor paths. P7 fixed staged sync-file import and duplicate canonical grouping; P10 applies the same side-effect suppression and canonicalization guardrail to raw-intake commits.
 
 ## Objective
 
@@ -40,8 +42,42 @@ Implemented on 2026-06-09:
 - sync-file and raw-intake create-only previews now detect legacy payload-ID fallback risk: UID-less post JSON, or UID-bearing post JSON when UID fallback matching is enabled, is blocked as an existing entity if the incoming numeric ID already belongs to a local post of the same type
 - raw-intake UID extraction now matches sync-file import for top-level UID, `dbvc_object_uid`, `meta.vf_object_uid`, and post/term history UID shapes
 - raw-intake previews now return the same universal blocker detail/settings-link shape used by sync-file import, so both Entity Editor import modals surface matching configuration, existing-entity, unsupported-type, and file-collision guidance
+- raw-intake commits now reuse sync-file import side-effect suppression and canonical filename normalization so `New From Raw JSON` create/update flows do not leave both source-ID and local-ID JSON files active in the sync index
 - preview coverage now includes permission denial, invalid JSON, excluded paths, unsupported payloads, creation-disabled settings, whitelist blocking, stale duplicate blocking, bulk partial failures, and term creation
 - successful commits return the created WP entity and rebuild the Entity Editor index in the UI
+
+## P10. Minor Fix: Raw-Intake Duplicate Sync JSON Prevention
+
+Status: `CLOSED` on 2026-06-24.
+
+Regression history:
+- This is the second duplicate-file class fixed for Entity Editor imports.
+- P7 fixed source-ID/local-ID duplicate grouping and stale duplicate cleanup for staged sync-file import rows.
+- P10 fixes the equivalent raw-intake create/update path, where the importer's auto-export side effects could race ahead of raw-intake source-file normalization.
+- Future Entity Editor import paths that create or update live entities from JSON must suppress normal auto-export side effects during the importer call, rewrite source-site IDs to local IDs when needed, and normalize the active sync JSON to one canonical file before returning success.
+
+Problem:
+- `New From Raw JSON` wrote the pasted payload to its previewed sync path, then called the low-level post/term importers directly.
+- Post creation and meta writes could trigger DBVC auto-export hooks before raw intake normalized the source file, leaving both the raw source filename and the local canonical filename active.
+- Entity Editor correctly grouped those rows as duplicates because they pointed to the same matched WordPress entity or `vf_object_uid`.
+
+Implementation plan:
+- Reuse the sync-file import service's existing side-effect suppression instead of creating a separate raw-intake suppression path.
+- After a successful raw-intake import, rewrite the source JSON with the resolved local post `ID` or term `term_id` when needed.
+- Reuse the sync-file import canonical file normalization helper to move the importer-updated source JSON to the final DBVC filename and archive same-entity stale duplicates.
+- Return the final canonical `relative_path` to the UI so the existing "open after success" behavior opens the surviving file.
+- Add regression coverage for raw-intake post and term creation under local-ID-bearing filename modes, asserting that exactly one active JSON file remains.
+
+Blast-radius guardrails:
+- Applies only to `POST /dbvc/v1/entity-editor/raw-intake/commit`.
+- Does not change raw-intake preview matching, staged sync-file import preview/commit, proposal review/apply, legacy upload import, general DBVC export settings, Entity Editor `Save JSON`, `Save + Partial Import`, or `Save + Full Replace`.
+- Uses the same importer calls as before; the change is limited to temporary hook suppression during the import call and post-import file canonicalization.
+
+Acceptance checks:
+- Raw-intake post create leaves one active `page/*.json` file at the local canonical filename.
+- Raw-intake term create leaves one active `taxonomy/{taxonomy}/*.json` file at the local canonical filename.
+- The created/updated WordPress entity keeps the incoming `vf_object_uid`, meta, taxonomy, and status behavior from the existing importer.
+- Existing sync-file import duplicate-prevention tests continue to pass.
 
 ## Planned Next Slice
 
@@ -1012,6 +1048,8 @@ Coverage:
 - UID-bearing post JSON ignores source numeric ID collisions when UID fallback matching is disabled
 - UID-bearing post JSON is blocked as an existing entity when UID fallback matching is enabled and the source numeric ID matches a local same-type post
 - raw-intake recognizes `meta.vf_object_uid` and history UID values before considering legacy payload-ID fallback
+- raw-intake post create leaves one active local canonical `page/*.json` file after the importer writes the created local ID
+- raw-intake term create leaves one active local canonical `taxonomy/{taxonomy}/*.json` file after the importer writes the created local term ID
 - sync-file preview exposes `matched_update` only for high-confidence UID-matched post/CPT rows
 - sync-file matched update requires a confirmation record and blocks missing confirmation, stale preview hash, match drift, slug-only matches, and payload-ID-only matches
 - sync-file matched update applies JSON-present post fields, meta, and taxonomies through the existing DBVC post importer and normalizes source-site IDs to the matched local canonical JSON filename

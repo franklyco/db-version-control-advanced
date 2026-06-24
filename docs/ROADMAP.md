@@ -10,7 +10,8 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
-| AI package workflow and import authoring reference | active | `docs/reference/import-authoring/README.md` | Compact package workflow exists locally; reference docs now provide the current agent-facing import contract. Remaining package QA and metrics follow-ups stay in the AI package implementation docs. |
+| AI package workflow and import authoring reference | active | `docs/reference/import-authoring/README.md`; `docs/implementation/proposed/ai-sample-entities-guide.md` | Compact package workflow exists locally; reference docs now provide the current agent-facing import contract. P10 tracks compact context hardening; P11 now tracks the Agent Authoring Context Catalog and Connector refresh pipeline. |
+| Bricks add-on settings portability | planned | `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`; `addons/bricks/docs/BRICKS_PORTABILITY_MANAGER_IMPLEMENTATION_NOTES.md` | Phase 20 now scopes media-backed Bricks custom font and icon collection portability for the standalone Settings Portability tool. |
 
 ## Proposed Work
 
@@ -30,7 +31,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Topic | Summary | Related Docs |
 |---|---|---|
 | Progress summary | Recent shipped DBVC admin and import work. | `docs/implementation/completed/progress-summary.md` |
-| Entity Editor | Implementation checklist, enhancements, sync-file import guide, duplicate-canonical import fixes, shared import blocker guidance, blocker resolution UI, confirmed matched sync-file updates, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import` |
+| Entity Editor | Implementation checklist, raw-intake enhancements, sync-file import guide, duplicate-canonical import fixes, raw-intake duplicate JSON prevention, shared import blocker guidance, blocker resolution UI, confirmed matched sync-file updates, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md`; `docs/implementation/completed/entity-editor-enhancements.md`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p10-minor-fix-raw-intake-duplicate-sync-json-prevention`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import` |
 | Legacy upload immediate import | Targeted upload/import phase plan and QA notes. | `docs/implementation/completed/legacy-upload-immediate-import-plan.md` |
 | Import identity hardening | Current matching contract plus historical hardening note. | `docs/reference/import-identity-matching.md` |
 | Meta masking | Current reference plus completed plan. | `docs/reference/meta-masking.md` |

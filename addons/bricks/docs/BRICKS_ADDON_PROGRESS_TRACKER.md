@@ -241,3 +241,71 @@ Completed: n/a
 - [x] Operators have usable deep-link/copy-link navigation to client protected tab paths.
 - [ ] Cross-site drill evidence is complete and auditable.
 - [ ] Required tests pass with tracker evidence.
+
+## Phase 20 - Bricks Font and Icon Asset Portability
+Status: NOT_STARTED
+Owner: Codex
+Created: 2026-06-24
+Completed: n/a
+
+### Discovery Baseline
+- Current official Bricks release checked 2026-06-24: Bricks `2.3.8` (released 2026-06-23). LocalWP Bricks install at `/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/themes/bricks` is `2.3.7`.
+- Local code confirms Bricks `2.0+` Font Manager/Icon Manager storage names:
+  - fonts: `bricks_fonts` posts, `bricks_font_faces` post meta, derived option `bricks_font_face_rules`, media attachment IDs in face variants.
+  - icons: `bricks_icon_sets`, `bricks_custom_icons`, `bricks_disabled_icon_sets`; custom icons reference SVG attachment IDs and URLs.
+- Local DB probe evidence:
+  - `bricks_fonts_posts=8`.
+  - `bricks_icon_sets=1 array`.
+  - `bricks_custom_icons=4 array`.
+  - `bricks_disabled_icon_sets=NULL`.
+  - `bricks_font_face_rules=5615 string`.
+  - matching font/SVG attachments were found in uploads.
+
+### Tasks
+- [ ] P20-T0 Contract freeze + live schema verification (Status: NOT_STARTED)
+  - [ ] P20-T0-S1 Add runtime probe for Bricks version, font/icon storage shapes, media refs, mime types, and multisite constants. (Status: NOT_STARTED)
+  - [ ] P20-T0-S2 Freeze canonical font domain shape for `bricks_fonts`, `bricks_font_faces`, media refs, and derived CSS metadata. (Status: NOT_STARTED)
+  - [ ] P20-T0-S3 Freeze canonical icon domain shape for icon sets, custom icons, disabled sets, and SVG media refs. (Status: NOT_STARTED)
+  - [ ] P20-T0-S4 Define match/collision policies for family names, set IDs, icon IDs, and asset checksums. (Status: NOT_STARTED)
+- [ ] P20-T1 Package schema + media manifest (Status: NOT_STARTED)
+  - [ ] P20-T1-S1 Add media-backed `custom_fonts` and `icon_collections` domains to the portability registry. (Status: NOT_STARTED)
+  - [ ] P20-T1-S2 Extend packages with checksummed media files and attachment reference metadata. (Status: NOT_STARTED)
+  - [ ] P20-T1-S3 Enforce allowed font/SVG mime types and import sanitization. (Status: NOT_STARTED)
+  - [ ] P20-T1-S4 Treat `bricks_font_face_rules` as derived/backup-only and regenerate it after apply. (Status: NOT_STARTED)
+- [ ] P20-T2 Export implementation (Status: NOT_STARTED)
+  - [ ] P20-T2-S1 Export custom font posts/meta plus referenced font media. (Status: NOT_STARTED)
+  - [ ] P20-T2-S2 Export icon options plus referenced SVG media. (Status: NOT_STARTED)
+  - [ ] P20-T2-S3 Emit dependency metadata for selected domains that reference custom fonts/icons. (Status: NOT_STARTED)
+  - [ ] P20-T2-S4 Reject missing, unchecksummed, oversized, or disallowed media files. (Status: NOT_STARTED)
+- [ ] P20-T3 Import, diff, and dependency review (Status: NOT_STARTED)
+  - [ ] P20-T3-S1 Normalize font/icon package payloads into review rows with media fingerprints and current-site freshness. (Status: NOT_STARTED)
+  - [ ] P20-T3-S2 Remap `custom_font_{source_post_id}` typography references to target font IDs. (Status: NOT_STARTED)
+  - [ ] P20-T3-S3 Preserve custom icon IDs and set IDs when safe, and block conflicting IDs without explicit review. (Status: NOT_STARTED)
+  - [ ] P20-T3-S4 Add review warnings for missing media, unsupported mime types, SVG sanitize failures, and unresolved references. (Status: NOT_STARTED)
+  - [ ] P20-T3-S5 Keep target-only fonts/icons by default. (Status: NOT_STARTED)
+- [ ] P20-T4 Apply, rollback, and asset lifecycle safety (Status: NOT_STARTED)
+  - [ ] P20-T4-S1 Create or update target font posts/media before applying dependent settings domains. (Status: NOT_STARTED)
+  - [ ] P20-T4-S2 Create or update SVG attachments before writing icon manager options. (Status: NOT_STARTED)
+  - [ ] P20-T4-S3 Regenerate or clear Bricks custom font CSS after font apply. (Status: NOT_STARTED)
+  - [ ] P20-T4-S4 Extend rollback snapshots across options, font posts/meta, attachments, and created files. (Status: NOT_STARTED)
+  - [ ] P20-T4-S5 Make repeated applies idempotent and avoid duplicate identical attachments. (Status: NOT_STARTED)
+- [ ] P20-T5 Admin UI integration (Status: NOT_STARTED)
+  - [ ] P20-T5-S1 Add `Custom Fonts` and `Icon Collections` domain cards with media counts and high-risk warnings. (Status: NOT_STARTED)
+  - [ ] P20-T5-S2 Add detail views for font variants and custom icons with checksums, filenames, mime types, and mapped target IDs. (Status: NOT_STARTED)
+  - [ ] P20-T5-S3 Add media preflight summary for create/reuse/replace/skip actions. (Status: NOT_STARTED)
+  - [ ] P20-T5-S4 Add apply receipts for attachments, font reference rewrites, regenerated CSS, and icon collision decisions. (Status: NOT_STARTED)
+- [ ] P20-T6 Validation + live evidence (Status: NOT_STARTED)
+  - [ ] P20-T6-S1 Add PHPUnit fixtures for fonts, media-backed font variants, icon sets, SVG icons, disabled sets, collisions, and missing-media blockers. (Status: NOT_STARTED)
+  - [ ] P20-T6-S2 Add font ID remapping coverage across global classes, theme styles, components, and settings domains. (Status: NOT_STARTED)
+  - [ ] P20-T6-S3 Add SVG sanitize, checksum mismatch, duplicate media reuse, and rollback regression coverage. (Status: NOT_STARTED)
+  - [ ] P20-T6-S4 Run live two-site export/import/apply/rollback drill with frontend and builder data checks. (Status: NOT_STARTED)
+
+### Test Evidence
+- P20-TEST-01 through P20-TEST-10: NOT_RUN - see `BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md` Phase 20 required tests.
+
+### Exit Criteria Check
+- [ ] Operators can export and import Bricks custom fonts and custom icon collections through Settings Portability.
+- [ ] Packages include only explicitly referenced and checksummed media assets.
+- [ ] Font and icon apply is reviewable, idempotent, rollback-safe, and non-destructive toward target-only assets.
+- [ ] Custom font IDs are remapped in selected Bricks settings domains so typography references resolve on the target site.
+- [ ] Required automated tests and live LocalWP drill evidence are complete.
