@@ -37,14 +37,17 @@ final class DBVC_Bricks_Portability_Registry
                 'notes' => 'Legacy predecessor to bricks_components. Newer Bricks versions can convert legacy global elements, but MVP portability stays anchored to bricks_components until live rules are verified.',
             ]),
             'bricks_pinned_elements' => self::option_item('', 'Bricks Pinned Elements', 'ignore_mvp'),
-            'bricks_font_face_rules' => self::option_item('', 'Bricks Font Face Rules', 'needs_verification', [
-                'notes' => 'Fonts can have file dependency concerns. Excluded from MVP portability.',
+            'bricks_font_face_rules' => self::option_item('custom_fonts', 'Bricks Font Face Rules', 'backup_only', [
+                'notes' => 'Derived CSS generated from bricks_fonts posts and bricks_font_faces meta. Exported for review, but rebuilt by Bricks from font entities.',
             ]),
-            'bricks_icon_sets' => self::option_item('', 'Bricks Icon Sets', 'needs_verification', [
-                'notes' => 'Icon set portability may require media or file transfer support.',
+            'bricks_icon_sets' => self::option_item('icon_collections', 'Bricks Icon Sets', 'portable', [
+                'notes' => 'Media-backed icon collection root option.',
             ]),
-            'bricks_custom_icons' => self::option_item('', 'Bricks Custom Icons', 'needs_verification', [
-                'notes' => 'Custom icon portability may require media or file transfer support.',
+            'bricks_custom_icons' => self::option_item('icon_collections', 'Bricks Custom Icons', 'related_metadata', [
+                'notes' => 'Media-backed SVG icon records keyed to bricks_icon_sets.',
+            ]),
+            'bricks_disabled_icon_sets' => self::option_item('icon_collections', 'Bricks Disabled Icon Sets', 'related_metadata', [
+                'notes' => 'Icon-manager disabled set state for imported icon collections.',
             ]),
         ];
     }
@@ -125,6 +128,21 @@ final class DBVC_Bricks_Portability_Registry
                 'high_risk' => false,
                 'portable' => true,
             ],
+            'bricks_templates' => [
+                'label' => 'Bricks Templates',
+                'file_slug' => 'bricks-templates',
+                'mode' => 'collection',
+                'primary_option' => '',
+                'related_options' => [],
+                'match_order' => ['slug', 'name'],
+                'high_risk' => true,
+                'portable' => true,
+                'entity_backed' => true,
+                'entity_apply_supported' => true,
+                'storage_type' => 'bricks_template_posts',
+                'post_type' => 'bricks_template',
+                'taxonomies' => ['template_tag', 'template_bundle'],
+            ],
             'breakpoints' => [
                 'label' => 'Bricks Breakpoints Settings',
                 'file_slug' => 'breakpoints',
@@ -135,6 +153,35 @@ final class DBVC_Bricks_Portability_Registry
                 'high_risk' => true,
                 'portable' => true,
                 'verification' => 'live_shape_recommended',
+            ],
+            'custom_fonts' => [
+                'label' => 'Bricks Custom Fonts',
+                'file_slug' => 'custom-fonts',
+                'mode' => 'collection',
+                'primary_option' => '',
+                'related_options' => ['bricks_font_face_rules'],
+                'match_order' => ['name', 'slug'],
+                'high_risk' => true,
+                'portable' => true,
+                'media_backed' => true,
+                'media_apply_supported' => true,
+                'media_apply_mode' => 'add_only',
+                'storage_type' => 'bricks_font_posts',
+                'post_type' => 'bricks_fonts',
+            ],
+            'icon_collections' => [
+                'label' => 'Bricks Icon Collections',
+                'file_slug' => 'icon-collections',
+                'mode' => 'collection',
+                'primary_option' => 'bricks_icon_sets',
+                'related_options' => ['bricks_custom_icons', 'bricks_disabled_icon_sets'],
+                'match_order' => ['name', 'id'],
+                'high_risk' => true,
+                'portable' => true,
+                'media_backed' => true,
+                'media_apply_supported' => true,
+                'media_apply_mode' => 'add_only',
+                'storage_type' => 'bricks_icon_options',
             ],
         ];
     }
@@ -241,6 +288,30 @@ final class DBVC_Bricks_Portability_Registry
             if (get_option($option_name, null) !== null) {
                 return true;
             }
+        }
+
+        if ($domain_key === 'custom_fonts') {
+            $fonts = get_posts([
+                'post_type' => (string) ($definition['post_type'] ?? 'bricks_fonts'),
+                'post_status' => 'any',
+                'posts_per_page' => 1,
+                'fields' => 'ids',
+                'no_found_rows' => true,
+            ]);
+
+            return ! empty($fonts);
+        }
+
+        if ($domain_key === 'bricks_templates') {
+            $templates = get_posts([
+                'post_type' => (string) ($definition['post_type'] ?? 'bricks_template'),
+                'post_status' => 'any',
+                'posts_per_page' => 1,
+                'fields' => 'ids',
+                'no_found_rows' => true,
+            ]);
+
+            return ! empty($templates);
         }
 
         return $domain_key !== 'breakpoints';

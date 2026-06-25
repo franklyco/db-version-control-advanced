@@ -235,10 +235,12 @@ Archive files (completed phases/history):
 
 ## 4.1) Phase 20: Bricks Font and Icon Asset Portability
 
-Status: `NOT_STARTED`
+Status: `IN_PROGRESS`
 Owner: Codex
 Created: 2026-06-24
 Scope: Extend the standalone Bricks Settings Portability tool beyond option-only domains so it can safely export, import, compare, apply, and roll back Bricks Font Manager and Icon Manager assets.
+
+Implementation note (2026-06-24): implementation slices now add media-backed `custom_fonts` and `icon_collections` registry domains, normalize Bricks font posts/meta and icon-manager options, export referenced font/SVG attachments into checksummed package media, import package payloads into review rows, and support add-only apply for new incoming font families and icon collections with attachment creation/reuse, source-to-target font ID remapping in selected option domains, and rollback cleanup for created posts/attachments. Replacement, delete-sync, richer collision handling, and live two-site evidence remain open.
 
 ### Discovery baseline
 
@@ -338,7 +340,71 @@ Scope: Extend the standalone Bricks Settings Portability tool beyond option-only
 - Custom font IDs are remapped in selected Bricks settings domains so imported typography references resolve on the target site.
 - Required automated tests and live LocalWP drill evidence are logged in the progress tracker.
 
-## 4.2) Backlog Candidates (Next Implementation Phase)
+## 4.2) Phase 21: Bricks Template Entity Portability
+
+Status: `IN_PROGRESS`
+Owner: Codex
+Created: 2026-06-24
+Scope: Add `bricks_templates` as an entity-backed domain in the standalone Bricks Settings Portability tool so Bricks template posts can be exported, imported, reviewed, applied, and rolled back alongside option-backed and media-backed domains.
+
+Implementation note (2026-06-24): initial implementation now registers `bricks_templates`, normalizes `bricks_template` posts into review rows, packages template domain JSON, imports it through the existing package/session model, and supports add/replace apply with rollback for template posts, `_bricks_template_type`, `_bricks_template_settings`, Bricks area meta (`_bricks_page_header_2`, `_bricks_page_content_2`, `_bricks_page_footer_2`), and `template_tag`/`template_bundle` terms by slug. Embedded media IDs, arbitrary post IDs, nested template IDs, and live builder/front-end verification remain open.
+
+### Discovery baseline
+
+- Current local Bricks install confirms template storage constants:
+  - post type: `bricks_template`;
+  - taxonomies: `template_tag`, `template_bundle`;
+  - template type meta: `_bricks_template_type`;
+  - template settings meta: `_bricks_template_settings`;
+  - Bricks element data meta: `_bricks_page_header_2`, `_bricks_page_content_2`, `_bricks_page_footer_2`.
+- Bricks templates are entity-backed WordPress records, not option-only settings. They must use row-level matching, backup, and rollback behavior rather than raw option replacement.
+- Bricks element payloads can contain media IDs, nested template IDs, query references, dynamic data references, and custom font values. Phase 21 transports the template record and warns on likely unresolved references; deep reference remapping is a follow-up.
+
+### Tasks / Sub-tasks
+
+- `P21-T0` Contract and storage shape
+  - `P21-T0-S1` Freeze canonical template payload shape for post fields, template type/settings meta, Bricks area meta, and template taxonomies. (Status: DONE)
+  - `P21-T0-S2` Define match policy: template type + slug first, then template type + title; never match by source post ID across sites. (Status: DONE)
+  - `P21-T0-S3` Add warnings for embedded media/post/template references that are not remapped in the initial slice. (Status: DONE)
+- `P21-T1` Package/import/diff
+  - `P21-T1-S1` Add `bricks_templates` to `DBVC_Bricks_Portability_Registry` as an entity-backed high-risk domain. (Status: DONE)
+  - `P21-T1-S2` Export template rows into the existing domains package contract. (Status: DONE)
+  - `P21-T1-S3` Import entity-backed domain JSON through the existing package/session comparison flow. (Status: DONE)
+  - `P21-T1-S4` Surface template rows with add/replace/keep/skip review actions and target-only keep-current defaults. (Status: DONE)
+- `P21-T2` Apply and rollback
+  - `P21-T2-S1` Create incoming templates with Bricks meta and template tags/bundles. (Status: DONE)
+  - `P21-T2-S2` Replace matched templates by preserving target post ID and writing incoming Bricks template payload. (Status: DONE)
+  - `P21-T2-S3` Extend backups with entity state for created/replaced template posts and rollback restore/delete behavior. (Status: DONE)
+  - `P21-T2-S4` Remap imported custom font values inside template payloads when `custom_fonts` is applied in the same session. (Status: DONE)
+- `P21-T3` Hardening and dependency mapping
+  - `P21-T3-S1` Remap embedded media/attachment references in template element payloads using package media hydration. (Status: NOT_STARTED)
+  - `P21-T3-S2` Remap nested Bricks template references and warn/block unresolved dependencies. (Status: NOT_STARTED)
+  - `P21-T3-S3` Define collision policy for same slug/title across different template types and for WordPress-generated unique slugs. (Status: IN_PROGRESS - initial type+slug/type+title match implemented)
+  - `P21-T3-S4` Add partial-failure rollback coverage across mixed option/media/template applies. (Status: NOT_STARTED)
+- `P21-T4` Admin UI and live evidence
+  - `P21-T4-S1` Add template-specific review detail summaries for type, tags, bundles, element counts, and unresolved references. (Status: NOT_STARTED)
+  - `P21-T4-S2` Add apply receipts for created/replaced templates and taxonomy assignments. (Status: NOT_STARTED)
+  - `P21-T4-S3` Run live LocalWP two-site template export/import/apply/rollback drill and verify Bricks builder load plus frontend render. (Status: NOT_STARTED)
+
+### Required tests
+
+- `P21-TEST-01` Registry/support test for `bricks_templates` domain availability and high-risk entity-backed metadata.
+- `P21-TEST-02` Export/import review test for template posts, type/settings meta, Bricks area meta, and tags/bundles.
+- `P21-TEST-03` Apply test for matched template replacement plus new template creation.
+- `P21-TEST-04` Rollback test restoring replaced templates and deleting created templates.
+- `P21-TEST-05` Cross-domain font reference remapping test for template payloads when custom fonts are imported in the same session.
+- `P21-TEST-06` Future media/nested-template dependency tests once reference hydration is implemented.
+- `P21-TEST-07` Live two-site drill evidence for builder and frontend behavior.
+
+### Exit criteria
+
+- Operators can select `Bricks Templates` in Settings Portability exports and imports.
+- Template rows are reviewed at object granularity and target-only templates are kept by default.
+- Add and replace apply paths are rollback-safe for template posts, Bricks template meta, and template tag/bundle assignments.
+- Packages do not silently claim to hydrate embedded media, arbitrary post IDs, or nested template IDs until those remappers exist.
+- Required automated tests and live LocalWP drill evidence are logged in the progress tracker.
+
+## 4.3) Backlog Candidates (Next Implementation Phase)
 
 ### `BL-PKG-TABLE-01` Packages table site identity columns
 - Add two table headers to the Packages tab package table (current header row: `Select | Package | Version | Channel | Audience`):

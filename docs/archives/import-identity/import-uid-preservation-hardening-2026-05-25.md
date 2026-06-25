@@ -23,7 +23,7 @@ Core import paths could match a destination entity by ID or slug, then rewrite t
 - If the UID is not found and fallback is disabled, DBVC does not fall back to ID, slug, or reference matching for that item.
 - Operators can enable fallback only for intentional legacy JSON imports where local UID records are missing.
 
-Current behavior is documented in `docs/import-identity-matching.md`.
+Current behavior is documented in `docs/reference/import-identity-matching.md`.
 
 ## Validation Recorded
 

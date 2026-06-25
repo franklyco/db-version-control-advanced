@@ -34,6 +34,7 @@ final class DBVC_Bricks_Portability_Normalizer
      */
     public static function normalize_live_domain(array $domain_definition)
     {
+        $domain_key = sanitize_key((string) ($domain_definition['domain_key'] ?? ''));
         $option_values = [];
         foreach ((array) ($domain_definition['option_names'] ?? []) as $option_name) {
             $option_name = sanitize_key((string) $option_name);
@@ -41,6 +42,18 @@ final class DBVC_Bricks_Portability_Normalizer
                 continue;
             }
             $option_values[$option_name] = get_option($option_name, null);
+        }
+
+        if ($domain_key === 'custom_fonts') {
+            return self::normalize_custom_fonts_domain($domain_definition, $option_values, 'live');
+        }
+
+        if ($domain_key === 'icon_collections') {
+            return self::normalize_icon_collections_domain($domain_definition, $option_values, 'live');
+        }
+
+        if ($domain_key === 'bricks_templates') {
+            return self::normalize_bricks_templates_domain($domain_definition, 'live');
         }
 
         return self::normalize_domain($domain_definition, $option_values, 'live');
@@ -53,7 +66,49 @@ final class DBVC_Bricks_Portability_Normalizer
      */
     public static function normalize_package_domain(array $domain_definition, array $option_values)
     {
+        $domain_key = sanitize_key((string) ($domain_definition['domain_key'] ?? ''));
+        if ($domain_key === 'icon_collections') {
+            return self::normalize_icon_collections_domain($domain_definition, $option_values, 'package');
+        }
+
         return self::normalize_domain($domain_definition, $option_values, 'package');
+    }
+
+    /**
+     * @param array<string, mixed> $domain_definition
+     * @param array<string, mixed> $domain_payload
+     * @return array<string, mixed>
+     */
+    public static function normalize_package_domain_payload(array $domain_definition, array $domain_payload)
+    {
+        $domain_key = sanitize_key((string) ($domain_definition['domain_key'] ?? ($domain_payload['domain'] ?? '')));
+        $label = sanitize_text_field((string) ($domain_definition['label'] ?? ($domain_payload['label'] ?? $domain_key)));
+        $mode = sanitize_key((string) ($domain_definition['mode'] ?? 'collection'));
+        $objects = isset($domain_payload['objects']) && is_array($domain_payload['objects']) ? array_values($domain_payload['objects']) : [];
+        $metadata_rows = isset($domain_payload['metadata_rows']) && is_array($domain_payload['metadata_rows']) ? array_values($domain_payload['metadata_rows']) : [];
+        $meta = isset($domain_payload['meta']) && is_array($domain_payload['meta']) ? $domain_payload['meta'] : [];
+
+        return [
+            'domain_key' => $domain_key,
+            'label' => $label,
+            'mode' => $mode,
+            'source' => 'package',
+            'normalization_version' => self::NORMALIZATION_VERSION,
+            'source_option_names' => (array) ($domain_definition['option_names'] ?? []),
+            'option_values' => [],
+            'primary_option' => sanitize_key((string) ($domain_definition['primary_option'] ?? '')),
+            'objects' => $objects,
+            'metadata_rows' => $metadata_rows,
+            'warnings' => array_values((array) ($meta['warnings'] ?? [])),
+            'verification' => DBVC_Bricks_Portability_Domain_Verifier::verify_domain_payload($domain_definition, [], 'package'),
+            'transport' => isset($meta['transport']) && is_array($meta['transport']) ? $meta['transport'] : [
+                'shape' => 'list',
+                'path' => [],
+                'wrapper_shape' => 'root',
+            ],
+            'media_refs' => isset($domain_payload['media_refs']) && is_array($domain_payload['media_refs']) ? array_values($domain_payload['media_refs']) : [],
+            'domain_fingerprint' => sanitize_text_field((string) ($meta['domain_fingerprint'] ?? self::build_domain_fingerprint($objects, $metadata_rows))),
+        ];
     }
 
     /**
@@ -151,22 +206,845 @@ final class DBVC_Bricks_Portability_Normalizer
             ];
         }
 
-        $normalized['domain_fingerprint'] = DBVC_Bricks_Portability_Utils::fingerprint([
+        $normalized['domain_fingerprint'] = self::build_domain_fingerprint($normalized['objects'], $normalized['metadata_rows']);
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $domain_definition
+     * @param array<string, mixed> $option_values
+     * @param string $source
+     * @return array<string, mixed>
+     */
+    private static function normalize_custom_fonts_domain(array $domain_definition, array $option_values, $source)
+    {
+        $domain_key = 'custom_fonts';
+        $label = sanitize_text_field((string) ($domain_definition['label'] ?? 'Bricks Custom Fonts'));
+        $post_type = sanitize_key((string) ($domain_definition['post_type'] ?? 'bricks_fonts'));
+        if ($post_type === '') {
+            $post_type = 'bricks_fonts';
+        }
+
+        $objects = [];
+        $media_refs = [];
+        $warnings = [];
+        $posts = get_posts([
+            'post_type' => $post_type,
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'orderby' => 'title',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+        ]);
+
+        foreach ($posts as $index => $post) {
+            if (! $post instanceof \WP_Post) {
+                continue;
+            }
+
+            $font_faces = get_post_meta((int) $post->ID, 'bricks_font_faces', true);
+            if (! is_array($font_faces)) {
+                $font_faces = [];
+            }
+
+            $object_media_refs = [];
+            foreach (self::extract_font_face_attachment_ids($font_faces) as $attachment_id) {
+                $ref = self::build_attachment_media_ref($attachment_id, $domain_key, 'font_file');
+                if (! empty($ref)) {
+                    $object_media_refs[(string) ($ref['media_key'] ?? $attachment_id)] = $ref;
+                    $media_refs[(string) ($ref['media_key'] ?? $attachment_id)] = $ref;
+                    if (empty($ref['file_available'])) {
+                        $warnings[] = 'Font attachment file is missing for attachment ID ' . (int) $attachment_id . '.';
+                    }
+                }
+            }
+
+            $normalized_faces = self::normalize_font_faces_for_compare($font_faces);
+            $normalized_payload = self::normalize_value([
+                'post_title' => (string) $post->post_title,
+                'post_name' => (string) $post->post_name,
+                'post_status' => (string) $post->post_status,
+                'font_faces' => $normalized_faces,
+            ], $domain_key, false);
+            $object_id = 'custom_font_' . (int) $post->ID;
+            $display_name = sanitize_text_field((string) $post->post_title);
+            if ($display_name === '') {
+                $display_name = $object_id;
+            }
+
+            $objects[] = [
+                'source_key' => $domain_key . ':font:' . (int) $post->ID,
+                'display_name' => $display_name,
+                'object_id' => $object_id,
+                'match_keys' => array_filter([
+                    'id' => $object_id,
+                    'name' => $display_name,
+                    'slug' => sanitize_title((string) $post->post_name),
+                ]),
+                'fingerprint' => DBVC_Bricks_Portability_Utils::fingerprint($normalized_payload),
+                'references' => [
+                    'css_variables' => [],
+                    'class_names' => [],
+                    'category_values' => [],
+                    'category_option_name' => '',
+                    'media_refs' => array_values($object_media_refs),
+                ],
+                'warnings' => self::build_media_reference_warnings($object_media_refs, 'font'),
+                'raw' => [
+                    'post_id' => (int) $post->ID,
+                    'post_title' => (string) $post->post_title,
+                    'post_name' => (string) $post->post_name,
+                    'post_status' => (string) $post->post_status,
+                    'font_faces' => $font_faces,
+                ],
+                'normalized' => $normalized_payload,
+                'source_index' => (int) $index,
+                'map_key' => $object_id,
+                'transport' => [
+                    'shape' => 'entity',
+                    'path' => ['bricks_fonts'],
+                    'wrapper_shape' => 'posts',
+                ],
+                'media_refs' => array_values($object_media_refs),
+            ];
+        }
+
+        $metadata_rows = self::build_related_metadata_rows($domain_definition, $option_values, $domain_key);
+
+        return [
+            'domain_key' => $domain_key,
+            'label' => $label,
+            'mode' => 'collection',
+            'source' => sanitize_key((string) $source),
+            'normalization_version' => self::NORMALIZATION_VERSION,
+            'source_option_names' => (array) ($domain_definition['option_names'] ?? []),
+            'option_values' => $option_values,
+            'primary_option' => '',
+            'objects' => $objects,
+            'metadata_rows' => $metadata_rows,
+            'warnings' => array_values(array_unique(array_map('sanitize_text_field', $warnings))),
+            'verification' => DBVC_Bricks_Portability_Domain_Verifier::verify_domain_payload($domain_definition, $option_values, $source),
+            'transport' => [
+                'shape' => 'entity_collection',
+                'path' => ['bricks_fonts'],
+                'wrapper_shape' => 'posts',
+            ],
+            'media_refs' => array_values($media_refs),
+            'domain_fingerprint' => self::build_domain_fingerprint($objects, $metadata_rows),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $domain_definition
+     * @param string $source
+     * @return array<string, mixed>
+     */
+    private static function normalize_bricks_templates_domain(array $domain_definition, $source)
+    {
+        $domain_key = 'bricks_templates';
+        $label = sanitize_text_field((string) ($domain_definition['label'] ?? 'Bricks Templates'));
+        $post_type = sanitize_key((string) ($domain_definition['post_type'] ?? 'bricks_template'));
+        if ($post_type === '') {
+            $post_type = 'bricks_template';
+        }
+
+        $objects = [];
+        $warnings = [];
+        $posts = get_posts([
+            'post_type' => $post_type,
+            'post_status' => 'any',
+            'posts_per_page' => -1,
+            'orderby' => ['title' => 'ASC', 'ID' => 'ASC'],
+            'no_found_rows' => true,
+        ]);
+
+        foreach ($posts as $index => $post) {
+            if (! $post instanceof \WP_Post) {
+                continue;
+            }
+
+            $object = self::build_bricks_template_object($post, $domain_key, (int) $index);
+            $warnings = self::merge_warning_lists($warnings, (array) ($object['warnings'] ?? []));
+            $objects[] = $object;
+        }
+
+        return [
+            'domain_key' => $domain_key,
+            'label' => $label,
+            'mode' => 'collection',
+            'source' => sanitize_key((string) $source),
+            'normalization_version' => self::NORMALIZATION_VERSION,
+            'source_option_names' => [],
+            'option_values' => [],
+            'primary_option' => '',
+            'objects' => $objects,
+            'metadata_rows' => [],
+            'warnings' => array_values(array_unique(array_map('sanitize_text_field', $warnings))),
+            'verification' => DBVC_Bricks_Portability_Domain_Verifier::verify_domain_payload($domain_definition, [], $source),
+            'transport' => [
+                'shape' => 'entity_collection',
+                'path' => ['bricks_template'],
+                'wrapper_shape' => 'posts',
+            ],
+            'media_refs' => [],
+            'domain_fingerprint' => self::build_domain_fingerprint($objects, []),
+        ];
+    }
+
+    /**
+     * @param \WP_Post $post
+     * @param string $domain_key
+     * @param int $index
+     * @return array<string, mixed>
+     */
+    private static function build_bricks_template_object(\WP_Post $post, $domain_key, $index)
+    {
+        $template_type = self::get_template_type_for_post((int) $post->ID);
+        $template_slug = sanitize_title((string) $post->post_name);
+        $display_name = sanitize_text_field((string) $post->post_title);
+        if ($display_name === '') {
+            $display_name = $template_slug !== '' ? $template_slug : 'Template ' . (int) $post->ID;
+        }
+
+        $raw = [
+            'post_id' => (int) $post->ID,
+            'post_title' => (string) $post->post_title,
+            'post_name' => (string) $post->post_name,
+            'post_status' => (string) $post->post_status,
+            'post_excerpt' => (string) $post->post_excerpt,
+            'menu_order' => (int) $post->menu_order,
+            'template_type' => $template_type,
+            'template_settings' => get_post_meta((int) $post->ID, '_bricks_template_settings', true),
+            'areas' => self::get_template_area_meta((int) $post->ID),
+            'taxonomies' => self::get_template_taxonomy_terms((int) $post->ID),
+        ];
+        $normalized = self::normalize_value(self::template_compare_payload($raw), $domain_key, true);
+        $type_prefix = $template_type !== '' ? $template_type : 'content';
+        $object_id = $type_prefix . ':' . ($template_slug !== '' ? $template_slug : (string) $post->ID);
+        $source_key = $domain_key . ':template:' . (int) $post->ID;
+        $reference_payload = [
+            'post' => [
+                'title' => $raw['post_title'],
+                'name' => $raw['post_name'],
+                'type' => $raw['template_type'],
+            ],
+            'settings' => $raw['template_settings'],
+            'areas' => $raw['areas'],
+        ];
+        $warnings = self::build_template_reference_warnings($reference_payload);
+
+        return [
+            'source_key' => $source_key,
+            'display_name' => $display_name,
+            'object_id' => $object_id,
+            'match_keys' => array_filter([
+                'slug' => $type_prefix . '::' . $template_slug,
+                'name' => $type_prefix . '::' . $display_name,
+            ]),
+            'fingerprint' => DBVC_Bricks_Portability_Utils::fingerprint($normalized),
+            'references' => [
+                'css_variables' => DBVC_Bricks_Portability_Utils::extract_css_variable_tokens($reference_payload),
+                'class_names' => self::extract_class_references($reference_payload),
+                'category_values' => [],
+                'category_option_name' => '',
+            ],
+            'warnings' => $warnings,
+            'raw' => $raw,
+            'normalized' => $normalized,
+            'source_index' => (int) $index,
+            'map_key' => $object_id,
+            'transport' => [
+                'shape' => 'entity',
+                'path' => ['bricks_template', (string) $post->ID],
+                'wrapper_shape' => 'posts',
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $raw
+     * @return array<string, mixed>
+     */
+    private static function template_compare_payload(array $raw)
+    {
+        unset($raw['post_id']);
+        return $raw;
+    }
+
+    /**
+     * @param int $post_id
+     * @return string
+     */
+    private static function get_template_type_for_post($post_id)
+    {
+        $template_type = get_post_meta((int) $post_id, '_bricks_template_type', true);
+        if (is_scalar($template_type) && trim((string) $template_type) !== '') {
+            return sanitize_key((string) $template_type);
+        }
+
+        foreach ([
+            'header' => '_bricks_page_header_2',
+            'footer' => '_bricks_page_footer_2',
+            'content' => '_bricks_page_content_2',
+        ] as $type => $meta_key) {
+            $data = get_post_meta((int) $post_id, $meta_key, true);
+            if (is_array($data) && ! empty($data)) {
+                return $type;
+            }
+        }
+
+        return 'content';
+    }
+
+    /**
+     * @param int $post_id
+     * @return array<string, mixed>
+     */
+    private static function get_template_area_meta($post_id)
+    {
+        $areas = [];
+        foreach (self::get_template_area_meta_keys() as $meta_key) {
+            $value = get_post_meta((int) $post_id, $meta_key, true);
+            if ($value === '' || $value === null) {
+                continue;
+            }
+            if (is_array($value) && empty($value)) {
+                continue;
+            }
+            $areas[$meta_key] = $value;
+        }
+
+        ksort($areas, SORT_STRING);
+        return $areas;
+    }
+
+    /**
+     * @param int $post_id
+     * @return array<string, array<int, array<string, string>>>
+     */
+    private static function get_template_taxonomy_terms($post_id)
+    {
+        $result = [];
+        foreach (self::get_template_taxonomies() as $taxonomy) {
+            if (! taxonomy_exists($taxonomy)) {
+                $result[$taxonomy] = [];
+                continue;
+            }
+
+            $terms = wp_get_object_terms((int) $post_id, $taxonomy, ['fields' => 'all']);
+            if (is_wp_error($terms)) {
+                $result[$taxonomy] = [];
+                continue;
+            }
+
+            $items = [];
+            foreach ($terms as $term) {
+                if (! $term instanceof \WP_Term) {
+                    continue;
+                }
+                $items[] = [
+                    'slug' => sanitize_title((string) $term->slug),
+                    'name' => sanitize_text_field((string) $term->name),
+                ];
+            }
+            usort($items, static function ($left, $right) {
+                return strcmp((string) ($left['slug'] ?? ''), (string) ($right['slug'] ?? ''));
+            });
+            $result[$taxonomy] = $items;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function get_template_area_meta_keys()
+    {
+        return ['_bricks_page_header_2', '_bricks_page_content_2', '_bricks_page_footer_2'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function get_template_taxonomies()
+    {
+        return ['template_tag', 'template_bundle'];
+    }
+
+    /**
+     * @param mixed $payload
+     * @return array<int, string>
+     */
+    private static function build_template_reference_warnings($payload)
+    {
+        $warnings = [];
+        $text = is_scalar($payload) ? (string) $payload : DBVC_Bricks_Portability_Utils::json_encode($payload);
+        if ($text === '') {
+            return [];
+        }
+
+        if (preg_match('/"templateId"\s*:\s*\d+|"template"\s*:\s*\d+|"template_id"\s*:\s*\d+/', $text) === 1) {
+            $warnings[] = 'Template contains nested Bricks template ID references; this phase does not remap nested template IDs yet.';
+        }
+        if (preg_match('/"(?:id|image|media|attachment|attachment_id|backgroundImage)"\s*:\s*\d+/', $text) === 1) {
+            $warnings[] = 'Template may contain media or post ID references; this phase transports template records but does not hydrate embedded media or arbitrary post IDs yet.';
+        }
+
+        return array_values(array_unique($warnings));
+    }
+
+    /**
+     * @param array<string, mixed> $domain_definition
+     * @param array<string, mixed> $option_values
+     * @param string $source
+     * @return array<string, mixed>
+     */
+    private static function normalize_icon_collections_domain(array $domain_definition, array $option_values, $source)
+    {
+        $domain_key = 'icon_collections';
+        $label = sanitize_text_field((string) ($domain_definition['label'] ?? 'Bricks Icon Collections'));
+        $sets = isset($option_values['bricks_icon_sets']) && is_array($option_values['bricks_icon_sets']) ? $option_values['bricks_icon_sets'] : [];
+        $icons = isset($option_values['bricks_custom_icons']) && is_array($option_values['bricks_custom_icons']) ? $option_values['bricks_custom_icons'] : [];
+        $disabled = isset($option_values['bricks_disabled_icon_sets']) && is_array($option_values['bricks_disabled_icon_sets']) ? $option_values['bricks_disabled_icon_sets'] : [];
+        $disabled_lookup = self::build_disabled_icon_set_lookup($disabled);
+        $icons_by_set = [];
+        $media_refs = [];
+        $warnings = [];
+
+        foreach ($icons as $icon) {
+            if (! is_array($icon)) {
+                continue;
+            }
+            $set_id = sanitize_text_field((string) ($icon['setId'] ?? $icon['set_id'] ?? ''));
+            if ($set_id === '') {
+                $set_id = '__unassigned';
+            }
+            if (! isset($icons_by_set[$set_id])) {
+                $icons_by_set[$set_id] = [];
+            }
+            $icons_by_set[$set_id][] = $icon;
+        }
+
+        $objects = [];
+        $seen_set_ids = [];
+        foreach ($sets as $index => $set) {
+            if (! is_array($set)) {
+                continue;
+            }
+            $set_id = sanitize_text_field((string) ($set['id'] ?? $set['setId'] ?? 'set-' . $index));
+            if ($set_id === '') {
+                $set_id = 'set-' . $index;
+            }
+            $seen_set_ids[$set_id] = true;
+            $object = self::build_icon_collection_object($set, (array) ($icons_by_set[$set_id] ?? []), isset($disabled_lookup[$set_id]), $domain_key, (int) $index);
+            foreach ((array) ($object['media_refs'] ?? []) as $ref) {
+                if (is_array($ref)) {
+                    $media_refs[(string) ($ref['media_key'] ?? '')] = $ref;
+                    if (empty($ref['file_available'])) {
+                        $warnings[] = 'Icon attachment file is missing for attachment ID ' . (int) ($ref['source_attachment_id'] ?? 0) . '.';
+                    }
+                }
+            }
+            $objects[] = $object;
+        }
+
+        foreach ($icons_by_set as $set_id => $set_icons) {
+            if ($set_id !== '__unassigned' && isset($seen_set_ids[$set_id])) {
+                continue;
+            }
+            $set = [
+                'id' => $set_id,
+                'name' => $set_id === '__unassigned' ? 'Unassigned Icons' : 'Missing Icon Set: ' . $set_id,
+            ];
+            $object = self::build_icon_collection_object($set, (array) $set_icons, isset($disabled_lookup[$set_id]), $domain_key, count($objects));
+            $object['warnings'][] = $set_id === '__unassigned'
+                ? 'Custom icons exist without an icon set ID.'
+                : 'Custom icons reference an icon set that is not present in bricks_icon_sets.';
+            foreach ((array) ($object['media_refs'] ?? []) as $ref) {
+                if (is_array($ref)) {
+                    $media_refs[(string) ($ref['media_key'] ?? '')] = $ref;
+                }
+            }
+            $objects[] = $object;
+        }
+
+        $metadata_rows = self::build_related_metadata_rows($domain_definition, $option_values, $domain_key);
+
+        return [
+            'domain_key' => $domain_key,
+            'label' => $label,
+            'mode' => 'collection',
+            'source' => sanitize_key((string) $source),
+            'normalization_version' => self::NORMALIZATION_VERSION,
+            'source_option_names' => (array) ($domain_definition['option_names'] ?? []),
+            'option_values' => $option_values,
+            'primary_option' => sanitize_key((string) ($domain_definition['primary_option'] ?? 'bricks_icon_sets')),
+            'objects' => $objects,
+            'metadata_rows' => $metadata_rows,
+            'warnings' => array_values(array_unique(array_map('sanitize_text_field', $warnings))),
+            'verification' => DBVC_Bricks_Portability_Domain_Verifier::verify_domain_payload($domain_definition, $option_values, $source),
+            'transport' => [
+                'shape' => 'entity_collection',
+                'path' => ['bricks_icon_sets', 'bricks_custom_icons'],
+                'wrapper_shape' => 'options',
+            ],
+            'media_refs' => array_values(array_filter($media_refs)),
+            'domain_fingerprint' => self::build_domain_fingerprint($objects, $metadata_rows),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $set
+     * @param array<int, array<string, mixed>> $icons
+     * @param bool $disabled
+     * @param string $domain_key
+     * @param int $index
+     * @return array<string, mixed>
+     */
+    private static function build_icon_collection_object(array $set, array $icons, $disabled, $domain_key, $index)
+    {
+        $set_id = sanitize_text_field((string) ($set['id'] ?? $set['setId'] ?? 'set-' . $index));
+        if ($set_id === '') {
+            $set_id = 'set-' . $index;
+        }
+        $display_name = sanitize_text_field((string) ($set['name'] ?? $set['label'] ?? $set_id));
+        if ($display_name === '') {
+            $display_name = $set_id;
+        }
+
+        $media_refs = [];
+        $normalized_icons = [];
+        foreach ($icons as $icon) {
+            if (! is_array($icon)) {
+                continue;
+            }
+            $icon_ref = self::build_icon_media_ref($icon, $domain_key);
+            if (! empty($icon_ref)) {
+                $media_refs[(string) ($icon_ref['media_key'] ?? '')] = $icon_ref;
+            }
+            $normalized_icons[] = self::normalize_icon_record_for_compare($icon, $icon_ref);
+        }
+
+        $normalized_payload = self::normalize_value([
+            'set' => $set,
+            'icons' => $normalized_icons,
+            'disabled' => (bool) $disabled,
+        ], $domain_key, false);
+
+        return [
+            'source_key' => $domain_key . ':set:' . $set_id,
+            'display_name' => $display_name,
+            'object_id' => $set_id,
+            'match_keys' => array_filter([
+                'id' => $set_id,
+                'name' => $display_name,
+                'slug' => sanitize_title($display_name),
+            ]),
+            'fingerprint' => DBVC_Bricks_Portability_Utils::fingerprint($normalized_payload),
+            'references' => [
+                'css_variables' => [],
+                'class_names' => [],
+                'category_values' => [],
+                'category_option_name' => '',
+                'media_refs' => array_values($media_refs),
+            ],
+            'warnings' => self::build_media_reference_warnings($media_refs, 'icon'),
+            'raw' => [
+                'set' => $set,
+                'icons' => array_values($icons),
+                'disabled' => (bool) $disabled,
+            ],
+            'normalized' => $normalized_payload,
+            'source_index' => (int) $index,
+            'map_key' => $set_id,
+            'transport' => [
+                'shape' => 'entity',
+                'path' => ['bricks_icon_sets', $set_id],
+                'wrapper_shape' => 'options',
+            ],
+            'media_refs' => array_values($media_refs),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $domain_definition
+     * @param array<string, mixed> $option_values
+     * @param string $domain_key
+     * @return array<int, array<string, mixed>>
+     */
+    private static function build_related_metadata_rows(array $domain_definition, array $option_values, $domain_key)
+    {
+        $rows = [];
+        foreach ((array) ($domain_definition['related_options'] ?? []) as $option_name) {
+            $option_name = sanitize_key((string) $option_name);
+            if ($option_name === '' || ! array_key_exists($option_name, $option_values)) {
+                continue;
+            }
+
+            $raw = $option_values[$option_name];
+            $normalized_payload = self::normalize_value($raw, $domain_key, false);
+            $rows[] = [
+                'row_id' => $domain_key . '::meta::' . $option_name,
+                'row_type' => 'meta',
+                'display_name' => 'Related Metadata: ' . $option_name,
+                'object_id' => $option_name,
+                'option_name' => $option_name,
+                'fingerprint' => DBVC_Bricks_Portability_Utils::fingerprint($normalized_payload),
+                'raw' => $raw,
+                'normalized' => $normalized_payload,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $objects
+     * @param array<int, array<string, mixed>> $metadata_rows
+     * @return string
+     */
+    private static function build_domain_fingerprint(array $objects, array $metadata_rows)
+    {
+        return DBVC_Bricks_Portability_Utils::fingerprint([
             'objects' => array_map(static function ($object) {
                 return [
                     'source_key' => (string) ($object['source_key'] ?? ''),
                     'fingerprint' => (string) ($object['fingerprint'] ?? ''),
                 ];
-            }, $normalized['objects']),
+            }, $objects),
             'metadata_rows' => array_map(static function ($row) {
                 return [
                     'row_id' => (string) ($row['row_id'] ?? ''),
                     'fingerprint' => (string) ($row['fingerprint'] ?? ''),
                 ];
-            }, $normalized['metadata_rows']),
+            }, $metadata_rows),
         ]);
+    }
+
+    /**
+     * @param mixed $font_faces
+     * @return array<int, int>
+     */
+    private static function extract_font_face_attachment_ids($font_faces)
+    {
+        $ids = [];
+        self::walk_font_faces_for_attachment_ids($font_faces, $ids);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        sort($ids, SORT_NUMERIC);
+        return $ids;
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<int, int> $ids
+     * @param string $key
+     * @return void
+     */
+    private static function walk_font_faces_for_attachment_ids($value, array &$ids, $key = '')
+    {
+        $key = sanitize_key((string) $key);
+        if (is_array($value)) {
+            foreach ($value as $child_key => $child_value) {
+                self::walk_font_faces_for_attachment_ids($child_value, $ids, (string) $child_key);
+            }
+            return;
+        }
+
+        if (! in_array($key, self::get_media_attachment_candidate_keys(), true)) {
+            return;
+        }
+
+        if (is_numeric($value) && (int) $value > 0) {
+            $ids[] = (int) $value;
+        }
+    }
+
+    /**
+     * @param mixed $font_faces
+     * @return mixed
+     */
+    private static function normalize_font_faces_for_compare($font_faces)
+    {
+        if (! is_array($font_faces)) {
+            return $font_faces;
+        }
+
+        $normalized = [];
+        foreach ($font_faces as $key => $value) {
+            $clean_key = is_int($key) ? $key : (string) $key;
+            if (in_array(sanitize_key((string) $key), self::get_media_attachment_candidate_keys(), true) && is_numeric($value)) {
+                $normalized[$clean_key] = self::build_media_compare_payload((int) $value, 'custom_fonts', 'font_file');
+                continue;
+            }
+            $normalized[$clean_key] = self::normalize_font_faces_for_compare($value);
+        }
 
         return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $icon
+     * @param array<string, mixed> $media_ref
+     * @return array<string, mixed>
+     */
+    private static function normalize_icon_record_for_compare(array $icon, array $media_ref = [])
+    {
+        $normalized = $icon;
+        unset($normalized['attachment_id'], $normalized['attachmentId'], $normalized['url']);
+        if (! empty($media_ref)) {
+            $normalized['media'] = self::media_ref_compare_payload($media_ref);
+        }
+
+        return self::normalize_value($normalized, 'icon_collections', false);
+    }
+
+    /**
+     * @param array<string, mixed> $icon
+     * @param string $domain_key
+     * @return array<string, mixed>
+     */
+    private static function build_icon_media_ref(array $icon, $domain_key)
+    {
+        foreach (['attachment_id', 'attachmentId'] as $key) {
+            if (! empty($icon[$key]) && is_numeric($icon[$key])) {
+                return self::build_attachment_media_ref((int) $icon[$key], $domain_key, 'icon_svg');
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param int $attachment_id
+     * @param string $domain_key
+     * @param string $usage
+     * @return array<string, mixed>
+     */
+    private static function build_attachment_media_ref($attachment_id, $domain_key, $usage)
+    {
+        $attachment_id = (int) $attachment_id;
+        if ($attachment_id <= 0) {
+            return [];
+        }
+
+        $file = get_attached_file($attachment_id);
+        $file = is_string($file) ? wp_normalize_path($file) : '';
+        $url = wp_get_attachment_url($attachment_id);
+        $mime_type = get_post_mime_type($attachment_id);
+        $filename = $file !== '' ? basename($file) : basename((string) parse_url((string) $url, PHP_URL_PATH));
+        $extension = strtolower((string) pathinfo($filename, PATHINFO_EXTENSION));
+        $checksum = '';
+        $file_available = $file !== '' && is_file($file) && is_readable($file);
+        $size = 0;
+        if ($file_available) {
+            $hash = hash_file('sha256', $file);
+            $checksum = is_string($hash) && $hash !== '' ? 'sha256:' . $hash : '';
+            $size_result = filesize($file);
+            $size = is_int($size_result) ? $size_result : 0;
+        }
+
+        return [
+            'media_key' => $checksum !== '' ? 'media:' . substr($checksum, 7) : 'attachment:' . $attachment_id,
+            'domain_key' => sanitize_key((string) $domain_key),
+            'usage' => sanitize_key((string) $usage),
+            'source_attachment_id' => $attachment_id,
+            'source_url' => is_string($url) ? esc_url_raw($url) : '',
+            'source_file' => $file,
+            'filename' => sanitize_file_name($filename !== '' ? $filename : 'attachment-' . $attachment_id),
+            'extension' => sanitize_key($extension),
+            'mime_type' => sanitize_text_field((string) $mime_type),
+            'checksum' => $checksum,
+            'file_size' => $size,
+            'file_available' => $file_available,
+        ];
+    }
+
+    /**
+     * @param int $attachment_id
+     * @param string $domain_key
+     * @param string $usage
+     * @return array<string, mixed>
+     */
+    private static function build_media_compare_payload($attachment_id, $domain_key, $usage)
+    {
+        return self::media_ref_compare_payload(self::build_attachment_media_ref($attachment_id, $domain_key, $usage));
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @return array<string, mixed>
+     */
+    private static function media_ref_compare_payload(array $ref)
+    {
+        if (empty($ref)) {
+            return [];
+        }
+
+        return [
+            'checksum' => sanitize_text_field((string) ($ref['checksum'] ?? '')),
+            'filename' => sanitize_file_name((string) ($ref['filename'] ?? '')),
+            'extension' => sanitize_key((string) ($ref['extension'] ?? '')),
+            'mime_type' => sanitize_text_field((string) ($ref['mime_type'] ?? '')),
+            'file_available' => ! empty($ref['file_available']),
+        ];
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $media_refs
+     * @param string $label
+     * @return array<int, string>
+     */
+    private static function build_media_reference_warnings(array $media_refs, $label)
+    {
+        $warnings = [];
+        foreach ($media_refs as $ref) {
+            if (! is_array($ref) || ! empty($ref['file_available'])) {
+                continue;
+            }
+            $warnings[] = sprintf(
+                'The %1$s media file `%2$s` is missing or unreadable.',
+                sanitize_text_field((string) $label),
+                sanitize_file_name((string) ($ref['filename'] ?? ''))
+            );
+        }
+
+        return array_values(array_unique($warnings));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function get_media_attachment_candidate_keys()
+    {
+        return ['woff2', 'woff', 'ttf', 'otf', 'eot', 'svg'];
+    }
+
+    /**
+     * @param array<int|string, mixed> $disabled
+     * @return array<string, bool>
+     */
+    private static function build_disabled_icon_set_lookup(array $disabled)
+    {
+        $lookup = [];
+        foreach ($disabled as $key => $value) {
+            if (is_string($key) && ! is_int($key)) {
+                if (! empty($value)) {
+                    $lookup[sanitize_text_field($key)] = true;
+                }
+                continue;
+            }
+
+            if (is_scalar($value)) {
+                $clean = sanitize_text_field((string) $value);
+                if ($clean !== '') {
+                    $lookup[$clean] = true;
+                }
+            }
+        }
+
+        return $lookup;
     }
 
     /**

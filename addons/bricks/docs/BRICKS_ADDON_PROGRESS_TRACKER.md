@@ -243,7 +243,7 @@ Completed: n/a
 - [ ] Required tests pass with tracker evidence.
 
 ## Phase 20 - Bricks Font and Icon Asset Portability
-Status: NOT_STARTED
+Status: IN_PROGRESS
 Owner: Codex
 Created: 2026-06-24
 Completed: n/a
@@ -262,50 +262,103 @@ Completed: n/a
   - matching font/SVG attachments were found in uploads.
 
 ### Tasks
-- [ ] P20-T0 Contract freeze + live schema verification (Status: NOT_STARTED)
+- [ ] P20-T0 Contract freeze + live schema verification (Status: IN_PROGRESS)
   - [ ] P20-T0-S1 Add runtime probe for Bricks version, font/icon storage shapes, media refs, mime types, and multisite constants. (Status: NOT_STARTED)
-  - [ ] P20-T0-S2 Freeze canonical font domain shape for `bricks_fonts`, `bricks_font_faces`, media refs, and derived CSS metadata. (Status: NOT_STARTED)
-  - [ ] P20-T0-S3 Freeze canonical icon domain shape for icon sets, custom icons, disabled sets, and SVG media refs. (Status: NOT_STARTED)
-  - [ ] P20-T0-S4 Define match/collision policies for family names, set IDs, icon IDs, and asset checksums. (Status: NOT_STARTED)
-- [ ] P20-T1 Package schema + media manifest (Status: NOT_STARTED)
-  - [ ] P20-T1-S1 Add media-backed `custom_fonts` and `icon_collections` domains to the portability registry. (Status: NOT_STARTED)
-  - [ ] P20-T1-S2 Extend packages with checksummed media files and attachment reference metadata. (Status: NOT_STARTED)
-  - [ ] P20-T1-S3 Enforce allowed font/SVG mime types and import sanitization. (Status: NOT_STARTED)
-  - [ ] P20-T1-S4 Treat `bricks_font_face_rules` as derived/backup-only and regenerate it after apply. (Status: NOT_STARTED)
-- [ ] P20-T2 Export implementation (Status: NOT_STARTED)
-  - [ ] P20-T2-S1 Export custom font posts/meta plus referenced font media. (Status: NOT_STARTED)
-  - [ ] P20-T2-S2 Export icon options plus referenced SVG media. (Status: NOT_STARTED)
+  - [x] P20-T0-S2 Freeze canonical font domain shape for `bricks_fonts`, `bricks_font_faces`, media refs, and derived CSS metadata. (Status: DONE - implemented in normalizer/package payload)
+  - [x] P20-T0-S3 Freeze canonical icon domain shape for icon sets, custom icons, disabled sets, and SVG media refs. (Status: DONE - implemented in normalizer/package payload)
+  - [ ] P20-T0-S4 Define match/collision policies for family names, set IDs, icon IDs, and asset checksums. (Status: IN_PROGRESS - family/set matching implemented; add-only apply blocks existing font family/set IDs; explicit replacement policy still open)
+- [ ] P20-T1 Package schema + media manifest (Status: IN_PROGRESS)
+  - [x] P20-T1-S1 Add media-backed `custom_fonts` and `icon_collections` domains to the portability registry. (Status: DONE)
+  - [x] P20-T1-S2 Extend packages with checksummed media files and attachment reference metadata. (Status: DONE)
+  - [ ] P20-T1-S3 Enforce allowed font/SVG mime types and import sanitization. (Status: IN_PROGRESS - extension allowlist, package path validation, checksum verification, SVG scriptable-content rejection, and filterable size limits implemented; broader MIME policy still open)
+  - [ ] P20-T1-S4 Treat `bricks_font_face_rules` as derived/backup-only and regenerate it after apply. (Status: IN_PROGRESS - registry marks derived/backup-only and add-only font apply clears generated CSS; Bricks-compatible regeneration/live verification still open)
+- [ ] P20-T2 Export implementation (Status: IN_PROGRESS)
+  - [x] P20-T2-S1 Export custom font posts/meta plus referenced font media. (Status: DONE)
+  - [x] P20-T2-S2 Export icon options plus referenced SVG media. (Status: DONE)
   - [ ] P20-T2-S3 Emit dependency metadata for selected domains that reference custom fonts/icons. (Status: NOT_STARTED)
-  - [ ] P20-T2-S4 Reject missing, unchecksummed, oversized, or disallowed media files. (Status: NOT_STARTED)
-- [ ] P20-T3 Import, diff, and dependency review (Status: NOT_STARTED)
-  - [ ] P20-T3-S1 Normalize font/icon package payloads into review rows with media fingerprints and current-site freshness. (Status: NOT_STARTED)
-  - [ ] P20-T3-S2 Remap `custom_font_{source_post_id}` typography references to target font IDs. (Status: NOT_STARTED)
-  - [ ] P20-T3-S3 Preserve custom icon IDs and set IDs when safe, and block conflicting IDs without explicit review. (Status: NOT_STARTED)
-  - [ ] P20-T3-S4 Add review warnings for missing media, unsupported mime types, SVG sanitize failures, and unresolved references. (Status: NOT_STARTED)
-  - [ ] P20-T3-S5 Keep target-only fonts/icons by default. (Status: NOT_STARTED)
-- [ ] P20-T4 Apply, rollback, and asset lifecycle safety (Status: NOT_STARTED)
-  - [ ] P20-T4-S1 Create or update target font posts/media before applying dependent settings domains. (Status: NOT_STARTED)
-  - [ ] P20-T4-S2 Create or update SVG attachments before writing icon manager options. (Status: NOT_STARTED)
-  - [ ] P20-T4-S3 Regenerate or clear Bricks custom font CSS after font apply. (Status: NOT_STARTED)
-  - [ ] P20-T4-S4 Extend rollback snapshots across options, font posts/meta, attachments, and created files. (Status: NOT_STARTED)
-  - [ ] P20-T4-S5 Make repeated applies idempotent and avoid duplicate identical attachments. (Status: NOT_STARTED)
+  - [ ] P20-T2-S4 Reject missing, unchecksummed, oversized, or disallowed media files. (Status: IN_PROGRESS - checksums/path/extension validation and filterable size limits implemented; broader export-side rejection coverage still open)
+- [ ] P20-T3 Import, diff, and dependency review (Status: IN_PROGRESS)
+  - [x] P20-T3-S1 Normalize font/icon package payloads into review rows with media fingerprints and current-site freshness. (Status: DONE)
+  - [x] P20-T3-S2 Remap `custom_font_{source_post_id}` typography references to target font IDs. (Status: DONE - add-only apply builds a source-to-target font value map and rewrites selected mutated option payloads; coverage includes global classes, settings, theme styles, and components)
+  - [ ] P20-T3-S3 Preserve custom icon IDs and set IDs when safe, and block conflicting IDs without explicit review. (Status: IN_PROGRESS - add-only apply preserves incoming icon/set IDs and blocks existing set IDs; replacement and icon-level collision policy still open)
+  - [ ] P20-T3-S4 Add review warnings for missing media, unsupported mime types, SVG sanitize failures, and unresolved references. (Status: IN_PROGRESS - media-backed add-only warnings and apply-time validation implemented; richer pre-apply row warnings still open)
+  - [x] P20-T3-S5 Keep target-only fonts/icons by default. (Status: DONE - media-backed domains expose add-only actions for new incoming objects and keep/skip for existing or target-only rows)
+- [ ] P20-T4 Apply, rollback, and asset lifecycle safety (Status: IN_PROGRESS)
+  - [ ] P20-T4-S1 Create or update target font posts/media before applying dependent settings domains. (Status: IN_PROGRESS - add-only target font post/media creation implemented; update/replacement remains open)
+  - [ ] P20-T4-S2 Create or update SVG attachments before writing icon manager options. (Status: IN_PROGRESS - add-only SVG attachment create/reuse and icon option writes implemented; update/replacement remains open)
+  - [x] P20-T4-S3 Regenerate or clear Bricks custom font CSS after font apply. (Status: DONE - add-only apply clears `bricks_font_face_rules` so Bricks can regenerate)
+  - [ ] P20-T4-S4 Extend rollback snapshots across options, font posts/meta, attachments, and created files. (Status: IN_PROGRESS - backup records created font posts/attachments and rollback removes them; corrupt media apply blockers verify no partial posts/options are left behind; partial-failure and live file-reference hardening remain open)
+  - [ ] P20-T4-S5 Make repeated applies idempotent and avoid duplicate identical attachments. (Status: IN_PROGRESS - checksum-based attachment reuse is implemented and covered; repeated font/icon object applies still block on collisions until merge/reuse policy exists)
 - [ ] P20-T5 Admin UI integration (Status: NOT_STARTED)
   - [ ] P20-T5-S1 Add `Custom Fonts` and `Icon Collections` domain cards with media counts and high-risk warnings. (Status: NOT_STARTED)
   - [ ] P20-T5-S2 Add detail views for font variants and custom icons with checksums, filenames, mime types, and mapped target IDs. (Status: NOT_STARTED)
   - [ ] P20-T5-S3 Add media preflight summary for create/reuse/replace/skip actions. (Status: NOT_STARTED)
   - [ ] P20-T5-S4 Add apply receipts for attachments, font reference rewrites, regenerated CSS, and icon collision decisions. (Status: NOT_STARTED)
-- [ ] P20-T6 Validation + live evidence (Status: NOT_STARTED)
-  - [ ] P20-T6-S1 Add PHPUnit fixtures for fonts, media-backed font variants, icon sets, SVG icons, disabled sets, collisions, and missing-media blockers. (Status: NOT_STARTED)
-  - [ ] P20-T6-S2 Add font ID remapping coverage across global classes, theme styles, components, and settings domains. (Status: NOT_STARTED)
-  - [ ] P20-T6-S3 Add SVG sanitize, checksum mismatch, duplicate media reuse, and rollback regression coverage. (Status: NOT_STARTED)
+- [ ] P20-T6 Validation + live evidence (Status: IN_PROGRESS)
+  - [ ] P20-T6-S1 Add PHPUnit fixtures for fonts, media-backed font variants, icon sets, SVG icons, disabled sets, collisions, and missing-media blockers. (Status: IN_PROGRESS - font/icon media apply fixture and missing-media blockers added; collision cases still open)
+  - [x] P20-T6-S2 Add font ID remapping coverage across global classes, theme styles, components, and settings domains. (Status: DONE)
+  - [ ] P20-T6-S3 Add SVG sanitize, checksum mismatch, duplicate media reuse, and rollback regression coverage. (Status: IN_PROGRESS - SVG sanitize, checksum mismatch, duplicate attachment reuse, size-limit, invalid-ref, and rollback regression coverage added; partial-failure rollback cases still open)
   - [ ] P20-T6-S4 Run live two-site export/import/apply/rollback drill with frontend and builder data checks. (Status: NOT_STARTED)
 
 ### Test Evidence
-- P20-TEST-01 through P20-TEST-10: NOT_RUN - see `BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md` Phase 20 required tests.
+- P20-TEST-02/P20-TEST-03/P20-TEST-04/P20-TEST-05/P20-TEST-06/P20-TEST-07/P20-TEST-08/P20-TEST-09 partial: PASS - `vendor/bin/phpunit --filter BricksPortabilityManagerTest` on 2026-06-24 (`20 tests, 403 assertions`). Coverage includes media-backed font and icon export package files, `media.json`, package media paths, import review rows, add-only apply actions, font attachment creation, SVG attachment creation, icon option writes, custom font remapping across global classes/settings/theme styles/components, generated font CSS clearing, rollback cleanup for created posts/attachments, missing packaged media, checksum mismatch, invalid package refs, unsafe SVG rejection, filterable size limits, and checksum-based duplicate attachment reuse.
+- P20-TEST-01, P20-TEST-04 remaining import-stage package rejection cases, P20-TEST-06/P20-TEST-07/P20-TEST-09 remaining replacement/partial-failure cases, and P20-TEST-10: NOT_RUN/OPEN - runtime probe fixture, replacement/collision paths, partial-failure rollback, broader export-side media rejection proof, and live two-site drill are still pending.
 
 ### Exit Criteria Check
-- [ ] Operators can export and import Bricks custom fonts and custom icon collections through Settings Portability.
-- [ ] Packages include only explicitly referenced and checksummed media assets.
-- [ ] Font and icon apply is reviewable, idempotent, rollback-safe, and non-destructive toward target-only assets.
-- [ ] Custom font IDs are remapped in selected Bricks settings domains so typography references resolve on the target site.
+- [x] Operators can export and import Bricks custom fonts and custom icon collections through Settings Portability.
+- [x] Packages include only explicitly referenced and checksummed media assets.
+- [ ] Font and icon apply is reviewable, idempotent, rollback-safe, and non-destructive toward target-only assets. (Partial: add-only new incoming objects, corrupt media blockers, rollback cleanup, and checksum attachment reuse covered by PHPUnit; replacement/collision/live hardening remains open.)
+- [x] Custom font IDs are remapped in selected Bricks settings domains so typography references resolve on the target site.
+- [ ] Required automated tests and live LocalWP drill evidence are complete.
+
+## Phase 21 - Bricks Template Entity Portability
+Status: IN_PROGRESS
+Owner: Codex
+Created: 2026-06-24
+Completed: n/a
+
+### Discovery Baseline
+- Local Bricks `2.3.7` code confirms templates are stored as `bricks_template` posts with:
+  - template type meta `_bricks_template_type`;
+  - template settings meta `_bricks_template_settings`;
+  - Bricks element data meta `_bricks_page_header_2`, `_bricks_page_content_2`, `_bricks_page_footer_2`;
+  - template taxonomies `template_tag` and `template_bundle`.
+- `bricks_templates` is entity-backed, not option-backed. It must use post/meta/taxonomy snapshots and rollback state, not raw option replacement.
+- Embedded template payload references to media IDs, arbitrary post IDs, and nested template IDs are still unresolved in the initial slice and are surfaced as review warnings/follow-up work.
+
+### Tasks
+- [x] P21-T0 Contract and storage shape (Status: DONE)
+  - [x] P21-T0-S1 Freeze canonical template payload shape for post fields, Bricks meta, area meta, and template taxonomies. (Status: DONE)
+  - [x] P21-T0-S2 Define match policy as template type + slug, then template type + title; source post IDs are excluded from fingerprints. (Status: DONE)
+  - [x] P21-T0-S3 Add warnings for embedded references not remapped in the first slice. (Status: DONE)
+- [x] P21-T1 Package/import/diff (Status: DONE)
+  - [x] P21-T1-S1 Add `bricks_templates` as an entity-backed high-risk registry domain. (Status: DONE)
+  - [x] P21-T1-S2 Export template rows into the domains package contract. (Status: DONE)
+  - [x] P21-T1-S3 Import entity-backed package domain JSON through the session model. (Status: DONE)
+  - [x] P21-T1-S4 Surface template add/replace/keep/skip review actions while keeping target-only templates by default. (Status: DONE)
+- [ ] P21-T2 Apply and rollback (Status: IN_PROGRESS)
+  - [x] P21-T2-S1 Create incoming templates with Bricks meta and template tags/bundles. (Status: DONE)
+  - [x] P21-T2-S2 Replace matched templates while preserving target post IDs. (Status: DONE)
+  - [x] P21-T2-S3 Extend backups with entity state for created/replaced template posts and rollback behavior. (Status: DONE)
+  - [x] P21-T2-S4 Remap imported custom font values inside template payloads when `custom_fonts` is applied in the same session. (Status: DONE - implemented; dedicated template+font PHPUnit still open)
+- [ ] P21-T3 Hardening and dependency mapping (Status: NOT_STARTED)
+  - [ ] P21-T3-S1 Remap embedded media/attachment references in template element payloads. (Status: NOT_STARTED)
+  - [ ] P21-T3-S2 Remap nested Bricks template references and warn/block unresolved dependencies. (Status: NOT_STARTED)
+  - [ ] P21-T3-S3 Define collision policy for same slug/title across different template types and WordPress-generated unique slugs. (Status: IN_PROGRESS - initial type+slug/type+title matching implemented)
+  - [ ] P21-T3-S4 Add partial-failure rollback coverage across mixed option/media/template applies. (Status: NOT_STARTED)
+- [ ] P21-T4 Admin UI and live evidence (Status: NOT_STARTED)
+  - [ ] P21-T4-S1 Add template-specific review detail summaries for type, tags, bundles, element counts, and unresolved references. (Status: NOT_STARTED)
+  - [ ] P21-T4-S2 Add apply receipts for created/replaced templates and taxonomy assignments. (Status: NOT_STARTED)
+  - [ ] P21-T4-S3 Run live two-site template export/import/apply/rollback drill with builder and frontend checks. (Status: NOT_STARTED)
+
+### Test Evidence
+- P21-TEST-02/P21-TEST-03/P21-TEST-04 partial: PASS - `vendor/bin/phpunit --filter test_bricks_templates_export_import_apply_and_rollback` on 2026-06-24 (`1 test, 44 assertions`). Coverage includes template domain package export/import, review rows for changed/new/target-only templates, add/replace apply, Bricks template type/settings/area meta writes, tag/bundle assignments, rollback restore for replaced templates, and rollback delete for created templates.
+- P21 regression suite: PASS - `vendor/bin/phpunit --filter BricksPortabilityManagerTest` on 2026-06-24 (`21 tests, 447 assertions`).
+- P21-TEST-01, P21-TEST-05, P21-TEST-06, P21-TEST-07: OPEN - registry metadata assertion, dedicated template custom-font remap proof, embedded media/nested-template dependency tests, and live LocalWP two-site evidence remain pending.
+
+### Exit Criteria Check
+- [x] Operators can select `Bricks Templates` in Settings Portability exports and imports.
+- [x] Template rows are reviewed at object granularity and target-only templates are kept by default.
+- [x] Add and replace apply paths are rollback-safe for template posts, Bricks template meta, and template tag/bundle assignments in PHPUnit.
+- [ ] Embedded media, arbitrary post IDs, and nested template IDs are not silently hydrated; remapping remains a planned hardening item.
 - [ ] Required automated tests and live LocalWP drill evidence are complete.

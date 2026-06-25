@@ -112,6 +112,7 @@ final class DBVC_Bricks_Portability_Diff_Engine
         if (! empty($definition['high_risk'])) {
             $warnings[] = 'This domain is high risk and should be reviewed carefully before apply.';
         }
+        $warnings = array_merge($warnings, self::build_domain_policy_warnings($definition));
         $warnings = array_merge($warnings, (array) ($source_domain['warnings'] ?? []), (array) ($target_domain['warnings'] ?? []));
         $warnings = array_merge($warnings, self::build_reference_warnings($reference_analysis));
         $warnings = array_values(array_unique(array_map('sanitize_text_field', $warnings)));
@@ -185,7 +186,11 @@ final class DBVC_Bricks_Portability_Diff_Engine
                     'object_id' => sanitize_text_field((string) ($source_object['object_id'] ?? '')),
                     'match_status' => 'unmatched',
                     'status' => 'new_in_source',
-                    'warnings' => self::build_reference_warnings($reference_analysis),
+                    'warnings' => array_values(array_unique(array_map('sanitize_text_field', array_merge(
+                        (array) ($source_object['warnings'] ?? []),
+                        self::build_domain_policy_warnings($definition),
+                        self::build_reference_warnings($reference_analysis)
+                    )))),
                     'path_summary' => [
                         'changed' => [],
                         'added' => [],
@@ -206,7 +211,11 @@ final class DBVC_Bricks_Portability_Diff_Engine
 
             $status = self::classify_matched_status($source_object, $target_object, (string) ($match['matched_by'] ?? ''));
             $path_summary = DBVC_Bricks_Portability_Utils::diff_paths($target_object['normalized'] ?? null, $source_object['normalized'] ?? null);
-            $warnings = array_merge((array) ($source_object['warnings'] ?? []), self::build_reference_warnings($reference_analysis));
+            $warnings = array_values(array_unique(array_map('sanitize_text_field', array_merge(
+                (array) ($source_object['warnings'] ?? []),
+                self::build_domain_policy_warnings($definition),
+                self::build_reference_warnings($reference_analysis)
+            ))));
 
             $rows[] = [
                 'row_id' => $domain_key . '::match::' . sanitize_key((string) ($source_object['source_key'] ?? '')),
@@ -536,6 +545,9 @@ final class DBVC_Bricks_Portability_Diff_Engine
         if ($status === 'identical') {
             return 'skip';
         }
+        if (self::is_media_add_only_domain($domain_key) && $status !== 'new_in_source') {
+            return 'keep_current';
+        }
         if ($status === 'missing_from_source') {
             return 'keep_current';
         }
@@ -557,6 +569,13 @@ final class DBVC_Bricks_Portability_Diff_Engine
         $status = sanitize_key((string) $status);
         $row_type = sanitize_key((string) $row_type);
 
+        if (self::is_media_add_only_domain($domain_key)) {
+            if ($row_type === 'object' && $status === 'new_in_source') {
+                return ['add_incoming', 'keep_current', 'skip'];
+            }
+            return ['keep_current', 'skip'];
+        }
+
         if ($row_type === 'meta' || $row_type === 'domain' || in_array($domain_key, ['settings', 'breakpoints'], true)) {
             return ['replace_with_incoming', 'keep_current', 'skip'];
         }
@@ -570,6 +589,64 @@ final class DBVC_Bricks_Portability_Diff_Engine
         }
 
         return ['replace_with_incoming', 'keep_current', 'skip'];
+    }
+
+    /**
+     * @param array<string, mixed> $definition
+     * @return array<int, string>
+     */
+    private static function build_domain_policy_warnings(array $definition)
+    {
+        $domain_key = sanitize_key((string) ($definition['domain_key'] ?? ''));
+        if (! empty($definition['entity_backed'])) {
+            if ($domain_key === 'bricks_templates') {
+                return [
+                    'This entity-backed Bricks domain writes template posts, template settings, Bricks element data, and template tags/bundles. Embedded media and arbitrary post IDs are not hydrated in this phase.',
+                ];
+            }
+
+            return [
+                'This entity-backed Bricks domain can update WordPress records and should be reviewed carefully before apply.',
+            ];
+        }
+
+        if (! self::is_media_backed_domain($domain_key)) {
+            return [];
+        }
+
+        if (self::is_media_add_only_domain($domain_key)) {
+            return [
+                'This media-backed Bricks domain supports adding new incoming objects; replacement and delete-sync remain disabled.',
+            ];
+        }
+
+        return [
+            'This media-backed Bricks domain can be exported and compared, but direct apply is disabled until attachment remapping and rollback support are available.',
+        ];
+    }
+
+    /**
+     * @param string $domain_key
+     * @return bool
+     */
+    private static function is_media_add_only_domain($domain_key)
+    {
+        $definition = DBVC_Bricks_Portability_Registry::get_domain($domain_key);
+        if (! is_array($definition)) {
+            return false;
+        }
+
+        return ! empty($definition['media_backed']) && ! empty($definition['media_apply_supported']) && ($definition['media_apply_mode'] ?? '') === 'add_only';
+    }
+
+    /**
+     * @param string $domain_key
+     * @return bool
+     */
+    private static function is_media_backed_domain($domain_key)
+    {
+        $definition = DBVC_Bricks_Portability_Registry::get_domain($domain_key);
+        return is_array($definition) && ! empty($definition['media_backed']);
     }
 
     /**

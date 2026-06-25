@@ -68,6 +68,28 @@ final class DBVC_Bricks_Portability_Apply_Service
                 ],
             ];
         }
+        $unsupported_media_domains = self::collect_unsupported_media_apply_domains(array_keys($affected_domains));
+        if (! empty($unsupported_media_domains)) {
+            return new \WP_Error(
+                'dbvc_bricks_portability_media_apply_unsupported',
+                sprintf(
+                    __('The selected Bricks domains cannot be applied yet because they include media-backed fonts or icons without rollback-safe attachment remapping: %s', 'dbvc'),
+                    implode(', ', $unsupported_media_domains)
+                ),
+                ['status' => 409, 'domains' => $unsupported_media_domains]
+            );
+        }
+        $unsupported_entity_domains = self::collect_unsupported_entity_apply_domains(array_keys($affected_domains));
+        if (! empty($unsupported_entity_domains)) {
+            return new \WP_Error(
+                'dbvc_bricks_portability_entity_apply_unsupported',
+                sprintf(
+                    __('The selected Bricks domains cannot be applied yet because they include entity-backed objects without rollback-safe apply support: %s', 'dbvc'),
+                    implode(', ', $unsupported_entity_domains)
+                ),
+                ['status' => 409, 'domains' => $unsupported_entity_domains]
+            );
+        }
 
         $source_validation = self::validate_session_domain_verification($session, array_keys($affected_domains));
         if (is_wp_error($source_validation)) {
@@ -91,6 +113,9 @@ final class DBVC_Bricks_Portability_Apply_Service
             if (! is_array($domain_definition)) {
                 continue;
             }
+            if (! empty($domain_definition['media_backed']) || ! empty($domain_definition['entity_backed'])) {
+                continue;
+            }
             $source_domain = isset($session['source_domains'][$domain_key]) && is_array($session['source_domains'][$domain_key]) ? $session['source_domains'][$domain_key] : [];
             $target_domain = isset($session['target_domains'][$domain_key]) && is_array($session['target_domains'][$domain_key]) ? $session['target_domains'][$domain_key] : [];
             $domain_values = self::build_mutated_domain_option_values($domain_definition, $source_domain, $target_domain, $domain_rows, $effective_decisions);
@@ -101,11 +126,59 @@ final class DBVC_Bricks_Portability_Apply_Service
             $mutated_values = array_merge($mutated_values, $domain_values);
         }
 
-        $affected_option_names = array_keys($mutated_values);
+        $affected_option_names = array_values(array_unique(array_merge(
+            array_keys($mutated_values),
+            DBVC_Bricks_Portability_Media_Apply_Service::get_affected_option_names($affected_domains)
+        )));
         $backup = DBVC_Bricks_Portability_Backup_Service::create_backup($session, $affected_option_names, $job_id);
         if (is_wp_error($backup)) {
             self::update_job($job_id, 'failed', ['error' => $backup->get_error_code()]);
             return $backup;
+        }
+
+        $media_apply = DBVC_Bricks_Portability_Media_Apply_Service::apply_affected_domains($session, $affected_domains, $effective_decisions);
+        if (is_wp_error($media_apply)) {
+            DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+            self::update_job($job_id, 'failed', ['error' => $media_apply->get_error_code()]);
+            return $media_apply;
+        }
+
+        $media_state = isset($media_apply['media_state']) && is_array($media_apply['media_state']) ? $media_apply['media_state'] : [];
+        if (! empty($media_state['created_posts']) || ! empty($media_state['created_attachments']) || ! empty($media_state['reused_attachments'])) {
+            $backup = DBVC_Bricks_Portability_Backup_Service::record_media_state($backup, $media_state);
+            if (is_wp_error($backup)) {
+                DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
+                self::update_job($job_id, 'failed', ['error' => $backup->get_error_code()]);
+                return $backup;
+            }
+        }
+
+        $media_mutated_options = isset($media_apply['mutated_options']) && is_array($media_apply['mutated_options']) ? $media_apply['mutated_options'] : [];
+        $mutated_values = array_merge($mutated_values, $media_mutated_options);
+        $font_value_map = isset($media_apply['font_value_map']) && is_array($media_apply['font_value_map']) ? $media_apply['font_value_map'] : [];
+        if (! empty($font_value_map)) {
+            $mutated_values = self::remap_custom_font_references_in_options($mutated_values, $font_value_map);
+        }
+
+        $template_apply = DBVC_Bricks_Portability_Template_Apply_Service::apply_affected_domains($session, $affected_domains, $effective_decisions, $font_value_map);
+        if (is_wp_error($template_apply)) {
+            DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
+            DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+            self::update_job($job_id, 'failed', ['error' => $template_apply->get_error_code()]);
+            return $template_apply;
+        }
+
+        $entity_state = isset($template_apply['entity_state']) && is_array($template_apply['entity_state']) ? $template_apply['entity_state'] : [];
+        if (! empty($entity_state['created_posts']) || ! empty($entity_state['updated_posts']) || ! empty($entity_state['created_terms'])) {
+            $backup_before_entity = $backup;
+            $entity_backup = DBVC_Bricks_Portability_Backup_Service::record_entity_state($backup_before_entity, $entity_state);
+            if (is_wp_error($entity_backup)) {
+                DBVC_Bricks_Portability_Backup_Service::restore_entity_state($entity_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_backup($backup_before_entity);
+                self::update_job($job_id, 'failed', ['error' => $entity_backup->get_error_code()]);
+                return $entity_backup;
+            }
+            $backup = $entity_backup;
         }
 
         $write_result = self::write_mutated_options($mutated_values);
@@ -141,6 +214,16 @@ final class DBVC_Bricks_Portability_Apply_Service
                 'decision_count' => count(array_filter($effective_decisions, static function ($decision) {
                     return in_array($decision, ['add_incoming', 'replace_with_incoming'], true);
                 })),
+                'media' => [
+                    'created_posts' => count((array) ($media_state['created_posts'] ?? [])),
+                    'created_attachments' => count((array) ($media_state['created_attachments'] ?? [])),
+                    'reused_attachments' => count((array) ($media_state['reused_attachments'] ?? [])),
+                ],
+                'entities' => [
+                    'created_posts' => count((array) ($entity_state['created_posts'] ?? [])),
+                    'updated_posts' => count((array) ($entity_state['updated_posts'] ?? [])),
+                    'created_terms' => count((array) ($entity_state['created_terms'] ?? [])),
+                ],
             ],
         ];
 
@@ -318,6 +401,48 @@ final class DBVC_Bricks_Portability_Apply_Service
         }
 
         return $affected;
+    }
+
+    /**
+     * @param array<int, string> $domain_keys
+     * @return array<int, string>
+     */
+    private static function collect_unsupported_media_apply_domains(array $domain_keys)
+    {
+        $blocked = [];
+        foreach ($domain_keys as $domain_key) {
+            $domain_key = sanitize_key((string) $domain_key);
+            $definition = DBVC_Bricks_Portability_Registry::get_domain($domain_key);
+            if (! is_array($definition)) {
+                continue;
+            }
+            if (! empty($definition['media_backed']) && empty($definition['media_apply_supported'])) {
+                $blocked[] = $domain_key;
+            }
+        }
+
+        return array_values(array_unique($blocked));
+    }
+
+    /**
+     * @param array<int, string> $domain_keys
+     * @return array<int, string>
+     */
+    private static function collect_unsupported_entity_apply_domains(array $domain_keys)
+    {
+        $blocked = [];
+        foreach ($domain_keys as $domain_key) {
+            $domain_key = sanitize_key((string) $domain_key);
+            $definition = DBVC_Bricks_Portability_Registry::get_domain($domain_key);
+            if (! is_array($definition)) {
+                continue;
+            }
+            if (! empty($definition['entity_backed']) && empty($definition['entity_apply_supported'])) {
+                $blocked[] = $domain_key;
+            }
+        }
+
+        return array_values(array_unique($blocked));
     }
 
     /**
@@ -579,6 +704,48 @@ final class DBVC_Bricks_Portability_Apply_Service
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $mutated_values
+     * @param array<string, string> $font_value_map
+     * @return array<string, mixed>
+     */
+    private static function remap_custom_font_references_in_options(array $mutated_values, array $font_value_map)
+    {
+        foreach ($mutated_values as $option_name => $value) {
+            $option_name = sanitize_key((string) $option_name);
+            if ($option_name === 'bricks_font_face_rules') {
+                continue;
+            }
+            $mutated_values[$option_name] = self::remap_custom_font_references($value, $font_value_map);
+        }
+
+        return $mutated_values;
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<string, string> $font_value_map
+     * @return mixed
+     */
+    private static function remap_custom_font_references($value, array $font_value_map)
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $child) {
+                $value[$key] = self::remap_custom_font_references($child, $font_value_map);
+            }
+            return $value;
+        }
+
+        if (! is_string($value) || $value === '') {
+            return $value;
+        }
+
+        return preg_replace_callback('/custom_font_\d+/', static function ($matches) use ($font_value_map) {
+            $token = (string) ($matches[0] ?? '');
+            return isset($font_value_map[$token]) ? (string) $font_value_map[$token] : $token;
+        }, $value);
     }
 
     /**

@@ -155,7 +155,9 @@ require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-por
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-normalizer.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-diff-engine.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-package-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-template-apply-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-backup-service.php';
+require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-media-apply-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-apply-service.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability-rest-controller.php';
 require_once DBVC_PLUGIN_PATH . 'addons/bricks/portability/class-dbvc-bricks-portability.php';

@@ -11,7 +11,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
 | AI package workflow and import authoring reference | active | `docs/reference/import-authoring/README.md`; `docs/implementation/proposed/ai-sample-entities-guide.md` | Compact package workflow exists locally; reference docs now provide the current agent-facing import contract. P10 tracks compact context hardening; P11 now tracks the Agent Authoring Context Catalog and Connector refresh pipeline. |
-| Bricks add-on settings portability | planned | `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`; `addons/bricks/docs/BRICKS_PORTABILITY_MANAGER_IMPLEMENTATION_NOTES.md` | Phase 20 now scopes media-backed Bricks custom font and icon collection portability for the standalone Settings Portability tool. |
+| Bricks add-on settings portability | active | `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`; `addons/bricks/docs/BRICKS_PORTABILITY_MANAGER_IMPLEMENTATION_NOTES.md` | Phase 20 has media-backed custom font/icon export/import plus add-only apply/remap/rollback support. Phase 21 adds entity-backed `bricks_templates` export/import plus add/replace apply/rollback for template posts/meta/taxonomies. Media/icon replacement, embedded template reference remapping, collision policy, and live drill evidence remain open. |
 
 ## Proposed Work
 

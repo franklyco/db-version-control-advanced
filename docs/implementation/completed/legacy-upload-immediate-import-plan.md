@@ -252,6 +252,13 @@ Runtime probe completed on 2026-06-12 using disposable pages plus generated JSON
 - Test package directory: `/private/tmp/dbvc-upload-immediate-qa-9oqqjwcy`
 - Result: all eight scenarios passed.
 
+Current-code recheck completed on 2026-06-24 using a fresh disposable upload package and the real `DBVC_Sync_Posts::handle_upload_sync()` entry point.
+
+- Probe: `/private/tmp/dbvc_current_import_qa.php`
+- Report: `/private/tmp/dbvc_upload_current_qa_report.json`
+- Test package directory: `/var/folders/kz/jqnkc4s11msfs8l_5d45d_jm0000gn/T/dbvc-upload-current-qa-y3ez16jq`
+- Result: all eight scenarios passed.
+
 Covered scenarios:
 
 - standard single JSON upload with immediate import disabled cleared the sync marker and did not import

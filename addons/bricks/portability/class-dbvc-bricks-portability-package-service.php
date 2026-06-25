@@ -8,6 +8,7 @@ final class DBVC_Bricks_Portability_Package_Service
 {
     public const PACKAGE_VERSION = 1;
     public const FEATURE_VERSION = '0.1.0';
+    private const DEFAULT_MAX_MEDIA_FILE_BYTES = 26214400;
 
     /**
      * @param array<int, string> $requested_domains
@@ -45,6 +46,10 @@ final class DBVC_Bricks_Portability_Package_Service
         $checksums = [];
         $selected_domain_keys = [];
         $normalized_domains = [];
+        $media_manifest = [
+            'version' => 1,
+            'files' => [],
+        ];
 
         foreach ($domains as $domain) {
             $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ''));
@@ -58,6 +63,12 @@ final class DBVC_Bricks_Portability_Package_Service
                 self::cleanup_directory($workspace);
                 return $verification_error;
             }
+            $media_result = self::package_normalized_media_refs($normalized, $domain_key, $workspace, $checksums, $media_manifest);
+            if (is_wp_error($media_result)) {
+                self::cleanup_directory($workspace);
+                return $media_result;
+            }
+            $normalized = $media_result;
             $normalized_domains[$domain_key] = $normalized;
             $selected_domain_keys[] = $domain_key;
 
@@ -69,11 +80,13 @@ final class DBVC_Bricks_Portability_Package_Service
                 'normalization_version' => DBVC_Bricks_Portability_Normalizer::NORMALIZATION_VERSION,
                 'objects' => array_values((array) ($normalized['objects'] ?? [])),
                 'metadata_rows' => array_values((array) ($normalized['metadata_rows'] ?? [])),
+                'media_refs' => array_values((array) ($normalized['media_refs'] ?? [])),
                 'meta' => [
                     'count' => count((array) ($normalized['objects'] ?? [])),
                     'warnings' => array_values((array) ($normalized['warnings'] ?? [])),
                     'transport' => $normalized['transport'] ?? [],
                     'domain_fingerprint' => (string) ($normalized['domain_fingerprint'] ?? ''),
+                    'media_count' => count((array) ($normalized['media_refs'] ?? [])),
                 ],
             ];
 
@@ -133,6 +146,12 @@ final class DBVC_Bricks_Portability_Package_Service
                 'min_dbvc_version' => (string) ($site_context['dbvc_version'] ?? ''),
                 'min_bricks_version' => '',
             ],
+            'media' => [
+                'file_count' => count((array) ($media_manifest['files'] ?? [])),
+                'domains' => array_values(array_unique(array_filter(array_map(static function ($file) {
+                    return is_array($file) ? sanitize_key((string) ($file['domain_key'] ?? '')) : '';
+                }, (array) ($media_manifest['files'] ?? []))))),
+            ],
         ];
         $site_payload = [
             'site_name' => (string) ($site_context['site_name'] ?? ''),
@@ -143,6 +162,14 @@ final class DBVC_Bricks_Portability_Package_Service
             'environment' => sanitize_key((string) ($args['environment'] ?? '')),
         ];
 
+        if (! empty($media_manifest['files'])) {
+            $media_path = DBVC_Bricks_Portability_Storage::write_json_file($workspace, 'media.json', $media_manifest);
+            if (is_wp_error($media_path)) {
+                self::cleanup_directory($workspace);
+                return $media_path;
+            }
+            $checksums['media.json'] = DBVC_Bricks_Portability_Utils::fingerprint($media_manifest);
+        }
         DBVC_Bricks_Portability_Storage::write_json_file($workspace, 'manifest.json', $manifest);
         DBVC_Bricks_Portability_Storage::write_json_file($workspace, 'site.json', $site_payload);
         $checksums['manifest.json'] = DBVC_Bricks_Portability_Utils::fingerprint($manifest);
@@ -253,6 +280,16 @@ final class DBVC_Bricks_Portability_Package_Service
         if (is_wp_error($site_payload)) {
             return $site_payload;
         }
+        $media_payload_path = wp_normalize_path(trailingslashit($extract_dir) . 'media.json');
+        $media_manifest = is_file($media_payload_path)
+            ? DBVC_Bricks_Portability_Storage::read_json_file($media_payload_path)
+            : [
+                'version' => 1,
+                'files' => [],
+            ];
+        if (is_wp_error($media_manifest)) {
+            return $media_manifest;
+        }
 
         $validation = self::validate_manifest($manifest);
         if (is_wp_error($validation)) {
@@ -276,6 +313,20 @@ final class DBVC_Bricks_Portability_Package_Service
         $target_domains = [];
         foreach ($domains as $domain) {
             $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ''));
+            if (! empty($domain['media_backed']) || ! empty($domain['entity_backed'])) {
+                $domain_payload = self::read_domain_payload($extract_dir, $domain);
+                if (is_wp_error($domain_payload)) {
+                    return $domain_payload;
+                }
+                $source_domains[$domain_key] = DBVC_Bricks_Portability_Normalizer::normalize_package_domain_payload($domain, $domain_payload);
+                $verification_error = self::validate_normalized_domain_for_portability($domain, $source_domains[$domain_key], 'import');
+                if (is_wp_error($verification_error)) {
+                    return $verification_error;
+                }
+                $target_domains[$domain_key] = DBVC_Bricks_Portability_Normalizer::normalize_live_domain($domain);
+                continue;
+            }
+
             $raw_values = [];
             foreach ((array) ($domain['option_names'] ?? []) as $option_name) {
                 $option_name = sanitize_key((string) $option_name);
@@ -324,6 +375,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'rows' => $review['rows'],
             'source_domains' => $source_domains,
             'target_domains' => $target_domains,
+            'media_manifest' => $media_manifest,
             'archive_path' => $archive_path,
             'extract_dir' => $extract_dir,
             'draft' => [],
@@ -1088,6 +1140,197 @@ final class DBVC_Bricks_Portability_Package_Service
     }
 
     /**
+     * @param array<string, mixed> $normalized
+     * @param string $domain_key
+     * @param string $workspace
+     * @param array<string, string> $checksums
+     * @param array<string, mixed> $media_manifest
+     * @return array<string, mixed>|\WP_Error
+     */
+    private static function package_normalized_media_refs(array $normalized, $domain_key, $workspace, array &$checksums, array &$media_manifest)
+    {
+        $refs = isset($normalized['media_refs']) && is_array($normalized['media_refs']) ? $normalized['media_refs'] : [];
+        if (empty($refs)) {
+            return $normalized;
+        }
+
+        $domain_key = sanitize_key((string) $domain_key);
+        $workspace = wp_normalize_path((string) $workspace);
+        $media_dir = wp_normalize_path(trailingslashit($workspace) . 'media/' . $domain_key);
+        if (! wp_mkdir_p($media_dir)) {
+            return new \WP_Error('dbvc_bricks_portability_media_dir_failed', __('Failed to create the Bricks portability media workspace.', 'dbvc'), ['status' => 500]);
+        }
+
+        $packaged_refs = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key === '') {
+                continue;
+            }
+
+            $packaged = self::strip_private_media_ref_fields($ref);
+            $packaged_refs[$media_key] = $packaged;
+            if (empty($ref['file_available']) || empty($ref['source_file']) || empty($ref['checksum'])) {
+                continue;
+            }
+
+            $extension = sanitize_key((string) ($ref['extension'] ?? pathinfo((string) ($ref['source_file'] ?? ''), PATHINFO_EXTENSION)));
+            if (! self::is_allowed_media_extension($extension)) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_media_type_invalid',
+                    sprintf(__('The Bricks portability media file `%s` has an unsupported extension.', 'dbvc'), sanitize_file_name((string) ($ref['filename'] ?? 'media'))),
+                    ['status' => 400]
+                );
+            }
+
+            $source_file = wp_normalize_path((string) $ref['source_file']);
+            if ($source_file === '' || ! is_file($source_file) || ! is_readable($source_file)) {
+                continue;
+            }
+
+            $size_validation = self::validate_media_file_size($source_file, (string) ($ref['filename'] ?? basename($source_file)));
+            if (is_wp_error($size_validation)) {
+                return $size_validation;
+            }
+
+            $hash = preg_replace('/^sha256:/', '', sanitize_text_field((string) $ref['checksum']));
+            $filename = sanitize_file_name((string) ($ref['filename'] ?? basename($source_file)));
+            if ($filename === '') {
+                $filename = 'media-' . substr((string) $hash, 0, 12) . '.' . $extension;
+            }
+            $relative_path = 'media/' . $domain_key . '/' . substr((string) $hash, 0, 16) . '-' . $filename;
+            $dest = wp_normalize_path(trailingslashit($workspace) . $relative_path);
+            if (! @copy($source_file, $dest)) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_media_copy_failed',
+                    sprintf(__('Failed to copy Bricks portability media file `%s` into the package.', 'dbvc'), $filename),
+                    ['status' => 500]
+                );
+            }
+
+            $checksum = 'sha256:' . hash_file('sha256', $dest);
+            if (! hash_equals((string) $ref['checksum'], $checksum)) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_media_checksum_failed',
+                    sprintf(__('Failed to verify copied Bricks portability media file `%s`.', 'dbvc'), $filename),
+                    ['status' => 500]
+                );
+            }
+
+            $packaged['package_path'] = $relative_path;
+            $packaged['checksum'] = $checksum;
+            $packaged_refs[$media_key] = $packaged;
+            $checksums[$relative_path] = $checksum;
+            $media_manifest['files'][] = $packaged;
+        }
+
+        $normalized['media_refs'] = array_values($packaged_refs);
+        if (! empty($normalized['objects']) && is_array($normalized['objects'])) {
+            foreach ($normalized['objects'] as $index => $object) {
+                if (! is_array($object)) {
+                    continue;
+                }
+                $normalized['objects'][$index] = self::hydrate_object_packaged_media_refs($object, $packaged_refs);
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $object
+     * @param array<string, array<string, mixed>> $packaged_refs
+     * @return array<string, mixed>
+     */
+    private static function hydrate_object_packaged_media_refs(array $object, array $packaged_refs)
+    {
+        foreach (['media_refs'] as $field) {
+            if (empty($object[$field]) || ! is_array($object[$field])) {
+                continue;
+            }
+            $object[$field] = self::replace_media_ref_list_with_packaged_refs((array) $object[$field], $packaged_refs);
+        }
+
+        if (! empty($object['references']) && is_array($object['references']) && ! empty($object['references']['media_refs']) && is_array($object['references']['media_refs'])) {
+            $object['references']['media_refs'] = self::replace_media_ref_list_with_packaged_refs((array) $object['references']['media_refs'], $packaged_refs);
+        }
+
+        return $object;
+    }
+
+    /**
+     * @param array<int, mixed> $refs
+     * @param array<string, array<string, mixed>> $packaged_refs
+     * @return array<int, array<string, mixed>>
+     */
+    private static function replace_media_ref_list_with_packaged_refs(array $refs, array $packaged_refs)
+    {
+        $result = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key !== '' && isset($packaged_refs[$media_key])) {
+                $result[] = $packaged_refs[$media_key];
+                continue;
+            }
+            $result[] = self::strip_private_media_ref_fields($ref);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @return array<string, mixed>
+     */
+    private static function strip_private_media_ref_fields(array $ref)
+    {
+        unset($ref['source_file']);
+        if (isset($ref['filename'])) {
+            $ref['filename'] = sanitize_file_name((string) $ref['filename']);
+        }
+        if (isset($ref['extension'])) {
+            $ref['extension'] = sanitize_key((string) $ref['extension']);
+        }
+        if (isset($ref['mime_type'])) {
+            $ref['mime_type'] = sanitize_text_field((string) $ref['mime_type']);
+        }
+        if (isset($ref['source_url'])) {
+            $ref['source_url'] = esc_url_raw((string) $ref['source_url']);
+        }
+
+        return $ref;
+    }
+
+    /**
+     * @param string $extract_dir
+     * @param array<string, mixed> $domain
+     * @return array<string, mixed>|\WP_Error
+     */
+    private static function read_domain_payload($extract_dir, array $domain)
+    {
+        $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ''));
+        $domain_file = sanitize_file_name((string) ($domain['file_slug'] ?? $domain_key) . '.json');
+        $domain_path = wp_normalize_path(trailingslashit($extract_dir) . 'domains/' . $domain_file);
+        $domain_payload = DBVC_Bricks_Portability_Storage::read_json_file($domain_path);
+        if (is_wp_error($domain_payload)) {
+            return new \WP_Error(
+                'dbvc_bricks_portability_package_domain_missing',
+                sprintf(__('Missing expected domain payload for `%s` in the uploaded package.', 'dbvc'), $domain_key),
+                ['status' => 400]
+            );
+        }
+
+        return $domain_payload;
+    }
+
+    /**
      * @param string $workspace
      * @param string $zip_path
      * @return true|\WP_Error
@@ -1299,8 +1542,19 @@ final class DBVC_Bricks_Portability_Package_Service
             return true;
         }
 
+        if ($relative_path === 'media.json') {
+            return true;
+        }
+
         if (preg_match('#^(domains|raw-options)/[^/]+\.json$#', $relative_path) === 1) {
             return true;
+        }
+
+        if (preg_match('#^media/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+$#', $relative_path) === 1) {
+            $extension = strtolower((string) pathinfo($relative_path, PATHINFO_EXTENSION));
+            if (self::is_allowed_media_extension($extension)) {
+                return true;
+            }
         }
 
         return new \WP_Error(
@@ -1308,6 +1562,47 @@ final class DBVC_Bricks_Portability_Package_Service
             sprintf(__('Package file `%s` is not part of the Bricks portability package contract.', 'dbvc'), $relative_path),
             ['status' => 400]
         );
+    }
+
+    /**
+     * @param string $extension
+     * @return bool
+     */
+    private static function is_allowed_media_extension($extension)
+    {
+        return in_array(sanitize_key((string) $extension), ['woff2', 'woff', 'ttf', 'otf', 'eot', 'svg'], true);
+    }
+
+    /**
+     * @param string $absolute
+     * @param string $label
+     * @return true|\WP_Error
+     */
+    private static function validate_media_file_size($absolute, $label)
+    {
+        $max_bytes = self::get_max_media_file_bytes();
+        if ($max_bytes <= 0) {
+            return true;
+        }
+
+        clearstatcache(true, $absolute);
+        $bytes = filesize($absolute);
+        if (! is_int($bytes)) {
+            return new \WP_Error('dbvc_bricks_portability_media_size_failed', sprintf(__('Failed to inspect Bricks media file `%s`.', 'dbvc'), sanitize_text_field((string) $label)), ['status' => 500]);
+        }
+        if ($bytes > $max_bytes) {
+            return new \WP_Error('dbvc_bricks_portability_media_file_too_large', sprintf(__('Bricks media file `%1$s` exceeds the allowed size limit of %2$s bytes.', 'dbvc'), sanitize_text_field((string) $label), number_format_i18n($max_bytes)), ['status' => 400]);
+        }
+
+        return true;
+    }
+
+    /**
+     * @return int
+     */
+    private static function get_max_media_file_bytes()
+    {
+        return max(0, (int) apply_filters('dbvc_bricks_portability_max_media_file_bytes', self::DEFAULT_MAX_MEDIA_FILE_BYTES));
     }
 
     /**

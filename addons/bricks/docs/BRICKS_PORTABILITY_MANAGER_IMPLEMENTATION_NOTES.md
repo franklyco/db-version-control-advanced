@@ -25,6 +25,10 @@
 - `components` -> `bricks_components`
 - `breakpoints` -> `bricks_breakpoints` when present
 
+## Supported entity-backed domains
+
+- `bricks_templates` -> `bricks_template` posts with `_bricks_template_type`, `_bricks_template_settings`, Bricks area meta (`_bricks_page_header_2`, `_bricks_page_content_2`, `_bricks_page_footer_2`), and `template_tag`/`template_bundle` terms
+
 ## Related metadata included in domain review
 
 - `bricks_global_classes_categories`
@@ -66,7 +70,8 @@
 - Related metadata: categories options for classes and variables
 - Backup-only: `bricks_global_classes_locked`, `bricks_global_classes_changes`, `bricks_global_classes_timestamp`, `bricks_global_classes_user`, `bricks_global_classes_trash`, `bricks_breakpoints_last_generated`
 - Ignore for MVP: `bricks_remote_templates`, `bricks_panel_width`, `bricks_pinned_elements`
-- Planned Phase 20 media-backed domains: custom fonts (`bricks_fonts` posts + `bricks_font_faces` post meta + referenced font attachments) and icon collections (`bricks_icon_sets`, `bricks_custom_icons`, `bricks_disabled_icon_sets` + referenced SVG attachments)
+- Phase 20 media-backed domains: custom fonts (`bricks_fonts` posts + `bricks_font_faces` post meta + referenced font attachments) and icon collections (`bricks_icon_sets`, `bricks_custom_icons`, `bricks_disabled_icon_sets` + referenced SVG attachments). Current implementation exports/imports these domains into review rows with checksummed package media and supports add-only apply for new incoming font/icon objects with attachment creation/reuse, font ID remapping in selected option payloads, generated font CSS clearing, and rollback cleanup for created posts/attachments. Replacement, delete-sync, and richer collision handling remain disabled.
+- Phase 21 entity-backed domain: Bricks templates (`bricks_template` posts + template type/settings meta + Bricks area meta + template tag/bundle terms). Current implementation exports/imports this domain into review rows and supports add/replace apply with entity-state rollback for created/replaced templates. Embedded media IDs, arbitrary post IDs, nested template IDs, and live builder/frontend evidence remain open.
 - Backup-only/derived for Phase 20: `bricks_font_face_rules`
 - Still needs live verification before portability support: `bricks_global_elements`
 
@@ -95,19 +100,22 @@
 7. Recommended file/class breakdown: keep current service split; add new narrow verifier/normalizer helpers only when behavior cannot fit existing classes cleanly.
 8. Naming conflicts or architectural risks: avoid reusing legacy package/apply concepts from `bricks-packages.php` for settings portability; keep this governed package/session model separate.
 9. Custom DB tables for MVP: not needed. Existing DBVC storage plus jobs/activity is sufficient for export packages, review sessions, backups, rollback records, and recent history.
-10. Canonical Bricks option names: MVP registry treats `bricks_global_settings`, `bricks_color_palette`, `bricks_global_classes`, `bricks_global_variables`, `bricks_global_pseudo_classes`, `bricks_theme_styles`, `bricks_components`, and verified `bricks_breakpoints` as portable; class/variable categories are related metadata; generated/locked/change/user/trash markers are backup-only or ignored.
-11. Font/icon extension boundary: `custom_fonts` and `icon_collections` are intentionally deferred to Phase 20 because they require DB entities, media files, attachment ID remapping, SVG/font validation, and rollback semantics beyond the option-only MVP.
+10. Canonical Bricks option names and entity records: MVP registry treats `bricks_global_settings`, `bricks_color_palette`, `bricks_global_classes`, `bricks_global_variables`, `bricks_global_pseudo_classes`, `bricks_theme_styles`, `bricks_components`, and verified `bricks_breakpoints` as portable option domains; `bricks_templates` is a portable entity-backed domain; class/variable categories are related metadata; generated/locked/change/user/trash markers are backup-only or ignored.
+11. Font/icon extension boundary: `custom_fonts` and `icon_collections` are Phase 20 media-backed domains. Export/import review and add-only apply for new incoming objects are implemented; replacement/merge apply remains blocked until conflict policy, live evidence, and broader validation coverage are complete.
+12. Template extension boundary: `bricks_templates` is Phase 21 entity-backed portability. Export/import review and add/replace apply are implemented for template posts/meta/taxonomies; embedded media/post/nested-template reference remapping remains blocked until dependency mapping and live evidence are complete.
 
 ## Next phased hardening plan
 
 - `BPDM-HARDEN-01`: tighten uploaded package validation so every extracted JSON payload must be explicitly checksummed and allowed by the package contract.
 - `BPDM-HARDEN-02`: add regression coverage for unchecksummed package payload rejection and unexpected package file rejection.
 - `BPDM-HARDEN-03`: run targeted PHPUnit and syntax validation before expanding into Phase 2 domains.
-- `P20`: implement media-backed Bricks custom font and icon collection portability as planned in `BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`.
+- `P20`: finish media-backed Bricks custom font and icon collection replacement/collision handling, export-side media rejection proof, partial-failure rollback hardening, admin preflight/receipt UI, and live two-site evidence as planned in `BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`.
+- `P21`: finish template embedded media/post/nested-template reference mapping, dedicated template+font remap coverage, template collision policy, admin receipts, and live two-site evidence as planned in `BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`.
 
 ## Current assumptions worth re-checking against live Bricks installs
 
 - Breakpoints are wired to `bricks_breakpoints` if that option exists locally. This remains the biggest live-storage verification point.
 - `bricks_components` is treated as the canonical portable component domain for MVP.
 - `bricks_global_elements` is treated as legacy storage. Newer Bricks versions can convert legacy global elements, but DBVC portability does not write that legacy option directly in MVP.
-- Icon/font domains are excluded from the current MVP because they require media transfer, checksum validation, attachment creation/reuse, and ID remapping. Phase 20 now owns that work.
+- Icon/font domains now support media transfer into export/import review packages plus add-only apply for new incoming objects. Attachment creation/reuse, custom font ID remapping across selected settings/theme/component payloads, missing media, checksum mismatch, invalid refs, filterable size limits, SVG scriptable-content rejection, and rollback cleanup have automated coverage; replacement/collision paths and live two-site verification still need hardening.
+- Bricks template domain now supports entity transfer into export/import review packages plus add/replace apply and rollback for template posts, Bricks template meta, and template terms. Embedded media/post/nested-template reference remapping and live two-site verification still need hardening.

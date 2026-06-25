@@ -54,9 +54,10 @@ Primary regression coverage:
 
 - `tests/phpunit/CoreImportUidPreservationTest.php`
 - `tests/phpunit/EntityEditorEndpointsTest.php`
+- `tests/phpunit/EntityEditorRawIntakeTest.php`
 
 Useful focused filter:
 
 ```bash
-vendor/bin/phpunit --filter 'CoreImportUidPreservationTest|test_full_replace_preserves_incoming_uid_when_slug_fallback_matches|test_full_replace_blocks_slug_fallback_when_uid_is_unmatched_and_fallback_disabled'
+vendor/bin/phpunit --filter 'CoreImportUidPreservationTest|test_full_replace_preserves_incoming_uid_when_slug_fallback_matches|test_full_replace_blocks_slug_fallback_when_uid_is_unmatched_and_fallback_disabled|test_raw_intake_preview_uses_meta_uid_before_payload_id_fallback|test_sync_file_import_preview_ignores_payload_id_when_uid_present_and_fallback_disabled|test_sync_file_import_preview_blocks_payload_id_when_uid_fallback_enabled'
 ```
