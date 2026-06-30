@@ -15,38 +15,38 @@ final class DBVC_Bricks_Portability_Registry
             'bricks_global_settings' => self::option_item('settings', 'Bricks Settings', 'portable'),
             'bricks_color_palette' => self::option_item('color_palette', 'Bricks Color Palettes', 'portable'),
             'bricks_global_classes' => self::option_item('global_classes', 'Bricks Global Classes', 'portable'),
-            'bricks_global_classes_categories' => self::option_item('global_classes', 'Bricks Global Classes Categories', 'related_metadata'),
+            'bricks_global_classes_categories' => self::option_item('global_classes', 'Global Class Categories', 'related_metadata'),
             'bricks_global_variables' => self::option_item('global_variables', 'Bricks Global CSS Variables', 'portable'),
-            'bricks_global_variables_categories' => self::option_item('global_variables', 'Bricks Global Variable Categories', 'related_metadata'),
-            'bricks_global_pseudo_classes' => self::option_item('pseudo_classes', 'Bricks Pseudo Classes', 'portable'),
+            'bricks_global_variables_categories' => self::option_item('global_variables', 'Global Variable Categories', 'related_metadata'),
+            'bricks_global_pseudo_classes' => self::option_item('pseudo_classes', 'Pseudo Classes', 'portable'),
             'bricks_theme_styles' => self::option_item('theme_styles', 'Bricks Theme Styles', 'portable'),
             'bricks_components' => self::option_item('components', 'Bricks Components', 'portable'),
-            'bricks_breakpoints' => self::option_item('breakpoints', 'Bricks Breakpoints Settings', 'portable', [
+            'bricks_breakpoints' => self::option_item('breakpoints', 'Breakpoint Settings', 'portable', [
                 'verification' => 'live_shape_recommended',
                 'notes' => 'Current DBVC registry suggests this option, but live Bricks storage should still be verified.',
             ]),
-            'bricks_breakpoints_last_generated' => self::option_item('breakpoints', 'Bricks Breakpoints Generated Marker', 'backup_only'),
+            'bricks_breakpoints_last_generated' => self::option_item('breakpoints', 'Breakpoint Generated Marker', 'backup_only'),
             'bricks_remote_templates' => self::option_item('', 'Bricks Remote Templates', 'ignore_mvp'),
             'bricks_panel_width' => self::option_item('', 'Bricks Panel Width', 'ignore_mvp'),
-            'bricks_global_classes_changes' => self::option_item('global_classes', 'Bricks Global Classes Changes', 'backup_only'),
-            'bricks_global_classes_locked' => self::option_item('global_classes', 'Bricks Global Classes Locked', 'backup_only'),
-            'bricks_global_classes_timestamp' => self::option_item('global_classes', 'Bricks Global Classes Timestamp', 'backup_only'),
-            'bricks_global_classes_user' => self::option_item('global_classes', 'Bricks Global Classes User', 'backup_only'),
-            'bricks_global_classes_trash' => self::option_item('global_classes', 'Bricks Global Classes Trash', 'backup_only'),
+            'bricks_global_classes_changes' => self::option_item('global_classes', 'Global Classes Change History', 'backup_only'),
+            'bricks_global_classes_locked' => self::option_item('global_classes', 'Locked Global Classes', 'backup_only'),
+            'bricks_global_classes_timestamp' => self::option_item('global_classes', 'Global Classes Updated Time', 'backup_only'),
+            'bricks_global_classes_user' => self::option_item('global_classes', 'Global Classes Last Editor', 'backup_only'),
+            'bricks_global_classes_trash' => self::option_item('global_classes', 'Deleted Global Classes', 'backup_only'),
             'bricks_global_elements' => self::option_item('', 'Bricks Global Elements', 'needs_verification', [
                 'notes' => 'Legacy predecessor to bricks_components. Newer Bricks versions can convert legacy global elements, but MVP portability stays anchored to bricks_components until live rules are verified.',
             ]),
             'bricks_pinned_elements' => self::option_item('', 'Bricks Pinned Elements', 'ignore_mvp'),
-            'bricks_font_face_rules' => self::option_item('custom_fonts', 'Bricks Font Face Rules', 'backup_only', [
+            'bricks_font_face_rules' => self::option_item('custom_fonts', 'Generated Font CSS', 'backup_only', [
                 'notes' => 'Derived CSS generated from bricks_fonts posts and bricks_font_faces meta. Exported for review, but rebuilt by Bricks from font entities.',
             ]),
-            'bricks_icon_sets' => self::option_item('icon_collections', 'Bricks Icon Sets', 'portable', [
+            'bricks_icon_sets' => self::option_item('icon_collections', 'Icon Sets', 'portable', [
                 'notes' => 'Media-backed icon collection root option.',
             ]),
-            'bricks_custom_icons' => self::option_item('icon_collections', 'Bricks Custom Icons', 'related_metadata', [
+            'bricks_custom_icons' => self::option_item('icon_collections', 'Custom Icons', 'related_metadata', [
                 'notes' => 'Media-backed SVG icon records keyed to bricks_icon_sets.',
             ]),
-            'bricks_disabled_icon_sets' => self::option_item('icon_collections', 'Bricks Disabled Icon Sets', 'related_metadata', [
+            'bricks_disabled_icon_sets' => self::option_item('icon_collections', 'Disabled Icon Sets', 'related_metadata', [
                 'notes' => 'Icon-manager disabled set state for imported icon collections.',
             ]),
         ];
@@ -99,7 +99,7 @@ final class DBVC_Bricks_Portability_Registry
                 'portable' => true,
             ],
             'pseudo_classes' => [
-                'label' => 'Bricks Pseudo Classes',
+                'label' => 'Pseudo Classes',
                 'file_slug' => 'pseudo-classes',
                 'mode' => 'collection',
                 'primary_option' => 'bricks_global_pseudo_classes',
@@ -144,7 +144,7 @@ final class DBVC_Bricks_Portability_Registry
                 'taxonomies' => ['template_tag', 'template_bundle'],
             ],
             'breakpoints' => [
-                'label' => 'Bricks Breakpoints Settings',
+                'label' => 'Breakpoint Settings',
                 'file_slug' => 'breakpoints',
                 'mode' => 'singleton',
                 'primary_option' => 'bricks_breakpoints',

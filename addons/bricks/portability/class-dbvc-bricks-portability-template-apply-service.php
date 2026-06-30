@@ -11,12 +11,11 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
      * @param array<string, array<int, array<string, mixed>>> $affected_domains
      * @param array<string, string> $effective_decisions
      * @param array<string, string> $font_value_map
+     * @param array<string, mixed>|null $media_state
      * @return array<string, mixed>|\WP_Error
      */
-    public static function apply_affected_domains(array $session, array $affected_domains, array $effective_decisions, array $font_value_map = [])
+    public static function apply_affected_domains(array $session, array $affected_domains, array $effective_decisions, array $font_value_map = [], &$media_state = null)
     {
-        unset($session);
-
         $rows = isset($affected_domains['bricks_templates']) && is_array($affected_domains['bricks_templates'])
             ? $affected_domains['bricks_templates']
             : [];
@@ -24,12 +23,120 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
         if (empty($rows)) {
             return ['entity_state' => $state];
         }
+        if (! is_array($media_state)) {
+            $media_state = DBVC_Bricks_Portability_Media_Apply_Service::empty_media_state();
+        }
 
+        $extract_dir = wp_normalize_path((string) ($session['extract_dir'] ?? ''));
+        $template_id_map = self::build_initial_template_id_map($rows);
+        $pending = self::collect_selected_template_rows($rows, $effective_decisions);
+
+        while (! empty($pending)) {
+            $progress = false;
+            $pending_source_ids = self::collect_pending_source_template_ids($pending);
+
+            foreach ($pending as $pending_index => $row) {
+                if (! is_array($row)) {
+                    unset($pending[$pending_index]);
+                    $progress = true;
+                    continue;
+                }
+
+                $waiting = self::find_waiting_nested_template_dependencies($row, $template_id_map, $pending_source_ids);
+                if (! empty($waiting)) {
+                    continue;
+                }
+
+                $result = self::apply_template_row($row, $effective_decisions, $font_value_map, $extract_dir, $template_id_map, $state, $media_state);
+                if (is_wp_error($result)) {
+                    DBVC_Bricks_Portability_Backup_Service::restore_entity_state($state);
+                    return $result;
+                }
+
+                unset($pending[$pending_index]);
+                $progress = true;
+            }
+
+            if (! $progress) {
+                DBVC_Bricks_Portability_Backup_Service::restore_entity_state($state);
+                return new \WP_Error(
+                    'dbvc_bricks_portability_template_dependency_unresolved',
+                    __('One or more selected Bricks templates depend on nested templates that cannot be resolved without creating a cycle or selecting the missing dependency.', 'dbvc'),
+                    ['status' => 409]
+                );
+            }
+        }
+
+        return ['entity_state' => $state];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, string> $effective_decisions
+     * @param array<string, string> $font_value_map
+     * @param string $extract_dir
+     * @param array<string, int> $template_id_map
+     * @param array<string, array<int, array<string, mixed>>> $state
+     * @param array<string, mixed> $media_state
+     * @return int|true|\WP_Error
+     */
+    private static function apply_template_row(array $row, array $effective_decisions, array $font_value_map, $extract_dir, array &$template_id_map, array &$state, array &$media_state)
+    {
+        if (($row['row_type'] ?? '') !== 'object') {
+            return true;
+        }
+
+        $row_id = self::normalize_row_id($row['row_id'] ?? '');
+        $decision = sanitize_key((string) ($effective_decisions[$row_id] ?? ''));
+        if (! in_array($decision, ['add_incoming', 'replace_with_incoming'], true)) {
+            return true;
+        }
+        if (empty($row['source']) || ! is_array($row['source']) || empty($row['source']['raw']) || ! is_array($row['source']['raw'])) {
+            return true;
+        }
+
+        $source = (array) $row['source'];
+        $source_raw = self::remap_custom_font_references((array) $source['raw'], $font_value_map);
+        $source_raw = self::hydrate_template_media_references($source_raw, $source, $extract_dir, $media_state);
+        if (is_wp_error($source_raw)) {
+            return $source_raw;
+        }
+        $source_raw = self::remap_nested_template_references($source_raw, $source, $template_id_map);
+        if (is_wp_error($source_raw)) {
+            return $source_raw;
+        }
+        $source_raw = self::remap_post_or_term_references($source_raw, $source);
+
+        $target_post_id = 0;
+        if ($decision === 'replace_with_incoming' && ! empty($row['target']) && is_array($row['target']) && ! empty($row['target']['raw']) && is_array($row['target']['raw'])) {
+            $target_post_id = (int) ($row['target']['raw']['post_id'] ?? 0);
+        }
+
+        $post_id = self::apply_template_object($source_raw, $decision, $target_post_id, $state);
+        if (is_wp_error($post_id)) {
+            return $post_id;
+        }
+
+        $source_post_id = (int) ($source_raw['post_id'] ?? 0);
+        if ($source_post_id > 0) {
+            $template_id_map[(string) $source_post_id] = (int) $post_id;
+        }
+
+        return (int) $post_id;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<string, string> $effective_decisions
+     * @return array<int, array<string, mixed>>
+     */
+    private static function collect_selected_template_rows(array $rows, array $effective_decisions)
+    {
+        $selected = [];
         foreach ($rows as $row) {
             if (! is_array($row) || ($row['row_type'] ?? '') !== 'object') {
                 continue;
             }
-
             $row_id = self::normalize_row_id($row['row_id'] ?? '');
             $decision = sanitize_key((string) ($effective_decisions[$row_id] ?? ''));
             if (! in_array($decision, ['add_incoming', 'replace_with_incoming'], true)) {
@@ -38,21 +145,75 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
             if (empty($row['source']) || ! is_array($row['source']) || empty($row['source']['raw']) || ! is_array($row['source']['raw'])) {
                 continue;
             }
+            $selected[] = $row;
+        }
 
-            $source_raw = self::remap_custom_font_references((array) $row['source']['raw'], $font_value_map);
-            $target_post_id = 0;
-            if ($decision === 'replace_with_incoming' && ! empty($row['target']) && is_array($row['target']) && ! empty($row['target']['raw']) && is_array($row['target']['raw'])) {
-                $target_post_id = (int) ($row['target']['raw']['post_id'] ?? 0);
+        return $selected;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<string, int>
+     */
+    private static function build_initial_template_id_map(array $rows)
+    {
+        $map = [];
+        foreach ($rows as $row) {
+            if (! is_array($row) || empty($row['source']) || ! is_array($row['source']) || empty($row['source']['raw']) || ! is_array($row['source']['raw'])) {
+                continue;
             }
-
-            $result = self::apply_template_object($source_raw, $decision, $target_post_id, $state);
-            if (is_wp_error($result)) {
-                DBVC_Bricks_Portability_Backup_Service::restore_entity_state($state);
-                return $result;
+            $source_post_id = (int) ($row['source']['raw']['post_id'] ?? 0);
+            $target_post_id = ! empty($row['target']) && is_array($row['target']) && ! empty($row['target']['raw']) && is_array($row['target']['raw'])
+                ? (int) ($row['target']['raw']['post_id'] ?? 0)
+                : 0;
+            if ($source_post_id > 0 && $target_post_id > 0) {
+                $map[(string) $source_post_id] = $target_post_id;
             }
         }
 
-        return ['entity_state' => $state];
+        return $map;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $pending
+     * @return array<string, bool>
+     */
+    private static function collect_pending_source_template_ids(array $pending)
+    {
+        $ids = [];
+        foreach ($pending as $row) {
+            if (! is_array($row) || empty($row['source']) || ! is_array($row['source']) || empty($row['source']['raw']) || ! is_array($row['source']['raw'])) {
+                continue;
+            }
+            $source_post_id = (int) ($row['source']['raw']['post_id'] ?? 0);
+            if ($source_post_id > 0) {
+                $ids[(string) $source_post_id] = true;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param array<string, int> $template_id_map
+     * @param array<string, bool> $pending_source_ids
+     * @return array<int, int>
+     */
+    private static function find_waiting_nested_template_dependencies(array $row, array $template_id_map, array $pending_source_ids)
+    {
+        $waiting = [];
+        foreach (self::get_dependency_refs((array) ($row['source'] ?? []), 'nested_template') as $ref) {
+            $source_id = (int) ($ref['source_id'] ?? 0);
+            if ($source_id <= 0 || isset($template_id_map[(string) $source_id])) {
+                continue;
+            }
+            if (! empty($pending_source_ids[(string) $source_id])) {
+                $waiting[] = $source_id;
+            }
+        }
+
+        return array_values(array_unique($waiting));
     }
 
     /**
@@ -150,6 +311,14 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
         } else {
             $post_data = self::build_post_data($source_raw);
             $post_data['post_type'] = 'bricks_template';
+            $requested_slug = sanitize_title((string) ($post_data['post_name'] ?? ''));
+            if ($requested_slug !== '' && self::find_template_by_slug($requested_slug) > 0) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_template_slug_collision',
+                    sprintf(__('A Bricks template with slug `%s` already exists. Refresh the review or replace the matched template instead of adding a duplicate.', 'dbvc'), $requested_slug),
+                    ['status' => 409]
+                );
+            }
             $result = wp_insert_post(wp_slash($post_data), true);
             if (is_wp_error($result)) {
                 return $result;
@@ -161,6 +330,14 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
                 'source_post_id' => (int) ($source_raw['post_id'] ?? 0),
                 'post_title' => sanitize_text_field((string) ($source_raw['post_title'] ?? '')),
             ];
+            $created_post = get_post($post_id);
+            if ($requested_slug !== '' && $created_post instanceof \WP_Post && (string) $created_post->post_name !== $requested_slug) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_template_slug_changed',
+                    sprintf(__('WordPress changed imported Bricks template slug `%1$s` to `%2$s`; apply was stopped to avoid silent template reference drift.', 'dbvc'), $requested_slug, (string) $created_post->post_name),
+                    ['status' => 409]
+                );
+            }
         }
 
         $write = self::write_template_payload($post_id, $source_raw, $state);
@@ -388,6 +565,339 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
     private static function get_template_taxonomies()
     {
         return ['template_tag', 'template_bundle'];
+    }
+
+    /**
+     * @param array<string, mixed> $raw
+     * @param array<string, mixed> $source
+     * @param string $extract_dir
+     * @param array<string, mixed> $media_state
+     * @return array<string, mixed>|\WP_Error
+     */
+    private static function hydrate_template_media_references(array $raw, array $source, $extract_dir, array &$media_state)
+    {
+        $media_refs = self::index_media_refs((array) ($source['media_refs'] ?? []));
+        foreach (self::get_dependency_refs($source, 'media') as $ref) {
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key === '' || empty($media_refs[$media_key]) || ! is_array($media_refs[$media_key])) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_template_media_missing',
+                    __('A Bricks template media reference is missing from the imported package.', 'dbvc'),
+                    ['status' => 400]
+                );
+            }
+
+            $attachment_id = DBVC_Bricks_Portability_Media_Apply_Service::import_packaged_media_ref((array) $media_refs[$media_key], $extract_dir, $media_state);
+            if (is_wp_error($attachment_id)) {
+                return $attachment_id;
+            }
+
+            $path = self::normalize_dependency_path((array) ($ref['path'] ?? []));
+            if (! empty($path)) {
+                self::set_payload_path_value($raw, $path, (int) $attachment_id);
+            }
+
+            $url_path = self::normalize_dependency_path((array) ($ref['url_path'] ?? []));
+            if (! empty($url_path)) {
+                $url = wp_get_attachment_url((int) $attachment_id);
+                self::set_payload_path_value($raw, $url_path, is_string($url) ? $url : '');
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * @param array<string, mixed> $raw
+     * @param array<string, mixed> $source
+     * @param array<string, int> $template_id_map
+     * @return array<string, mixed>|\WP_Error
+     */
+    private static function remap_nested_template_references(array $raw, array $source, array $template_id_map)
+    {
+        foreach (self::get_dependency_refs($source, 'nested_template') as $ref) {
+            $source_id = (int) ($ref['source_id'] ?? 0);
+            if ($source_id <= 0) {
+                continue;
+            }
+            if (empty($template_id_map[(string) $source_id])) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_template_nested_unresolved',
+                    sprintf(__('A Bricks template references nested template ID `%d`, but no selected or matched target template could resolve it.', 'dbvc'), $source_id),
+                    ['status' => 409]
+                );
+            }
+            $path = self::normalize_dependency_path((array) ($ref['path'] ?? []));
+            if (! empty($path)) {
+                self::set_payload_path_value($raw, $path, (int) $template_id_map[(string) $source_id]);
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * @param array<string, mixed> $raw
+     * @param array<string, mixed> $source
+     * @return array<string, mixed>
+     */
+    private static function remap_post_or_term_references(array $raw, array $source)
+    {
+        foreach (self::get_dependency_refs($source, 'post_or_term') as $ref) {
+            $entity_kind = sanitize_key((string) ($ref['entity_kind'] ?? ''));
+            $target_id = $entity_kind === 'term'
+                ? self::resolve_term_dependency_ref($ref)
+                : self::resolve_post_dependency_ref($ref);
+            if ($target_id <= 0) {
+                continue;
+            }
+
+            $path = self::normalize_dependency_path((array) ($ref['path'] ?? []));
+            if (empty($path)) {
+                continue;
+            }
+
+            $value = $entity_kind === 'term'
+                ? self::localized_term_dependency_value($ref, $target_id)
+                : self::localized_post_dependency_value($ref, $target_id);
+            if ($value !== null) {
+                self::set_payload_path_value($raw, $path, $value);
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @return int
+     */
+    private static function resolve_post_dependency_ref(array $ref)
+    {
+        $post_type = sanitize_key((string) ($ref['object_subtype'] ?? ''));
+        $uid = trim((string) ($ref['entity_uid'] ?? ''));
+        if ($uid !== '') {
+            $by_uid = self::find_post_by_uid($uid, $post_type);
+            if ($by_uid > 0) {
+                return $by_uid;
+            }
+        }
+
+        $slug = sanitize_title((string) ($ref['object_slug'] ?? ''));
+        if ($slug !== '' && $post_type !== '') {
+            $by_slug = self::find_post_by_slug($slug, $post_type);
+            if ($by_slug > 0) {
+                return $by_slug;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @return int
+     */
+    private static function resolve_term_dependency_ref(array $ref)
+    {
+        $taxonomy = sanitize_key((string) ($ref['object_subtype'] ?? ''));
+        $uid = trim((string) ($ref['entity_uid'] ?? ''));
+        if ($uid !== '' && class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'find_term_id_by_uid')) {
+            $by_uid = DBVC_Sync_Posts::find_term_id_by_uid($uid, $taxonomy);
+            if ($by_uid) {
+                return (int) $by_uid;
+            }
+        }
+
+        $slug = sanitize_title((string) ($ref['object_slug'] ?? ''));
+        if ($slug !== '' && $taxonomy !== '' && taxonomy_exists($taxonomy)) {
+            $term = get_term_by('slug', $slug, $taxonomy);
+            if ($term instanceof \WP_Term) {
+                return (int) $term->term_id;
+            }
+        }
+
+        return 0;
+    }
+
+    private static function localized_post_dependency_value(array $ref, $target_id)
+    {
+        $value_type = sanitize_key((string) ($ref['source_value_type'] ?? 'integer'));
+        return $value_type === 'string' ? (string) (int) $target_id : (int) $target_id;
+    }
+
+    private static function localized_term_dependency_value(array $ref, $target_id)
+    {
+        $taxonomy = sanitize_key((string) ($ref['object_subtype'] ?? ''));
+        if ($taxonomy === '') {
+            return null;
+        }
+
+        return $taxonomy . '::' . (int) $target_id;
+    }
+
+    private static function find_post_by_uid($uid, $post_type = '')
+    {
+        $uid = trim((string) $uid);
+        $post_type = sanitize_key((string) $post_type);
+        if ($uid === '') {
+            return 0;
+        }
+
+        if (class_exists('DBVC_Database')) {
+            $record = DBVC_Database::get_entity_by_uid($uid);
+            if ($record && ! empty($record->object_id)) {
+                $candidate = get_post((int) $record->object_id);
+                if ($candidate instanceof \WP_Post && ($post_type === '' || $candidate->post_type === $post_type)) {
+                    return (int) $candidate->ID;
+                }
+            }
+        }
+
+        $found = get_posts([
+            'post_type' => $post_type !== '' ? [$post_type] : 'any',
+            'post_status' => 'any',
+            'meta_key' => 'vf_object_uid',
+            'meta_value' => $uid,
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'no_found_rows' => true,
+            'suppress_filters' => true,
+        ]);
+
+        return ! empty($found[0]) ? (int) $found[0] : 0;
+    }
+
+    private static function find_post_by_slug($slug, $post_type)
+    {
+        $slug = sanitize_title((string) $slug);
+        $post_type = sanitize_key((string) $post_type);
+        if ($slug === '' || $post_type === '') {
+            return 0;
+        }
+
+        $candidate = get_page_by_path($slug, OBJECT, $post_type);
+        if ($candidate instanceof \WP_Post) {
+            return (int) $candidate->ID;
+        }
+
+        $found = get_posts([
+            'post_type' => [$post_type],
+            'name' => $slug,
+            'post_status' => 'any',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'no_found_rows' => true,
+            'suppress_filters' => true,
+        ]);
+
+        return ! empty($found[0]) ? (int) $found[0] : 0;
+    }
+
+    /**
+     * @param array<string, mixed> $source
+     * @param string $ref_type
+     * @return array<int, array<string, mixed>>
+     */
+    private static function get_dependency_refs(array $source, $ref_type)
+    {
+        $ref_type = sanitize_key((string) $ref_type);
+        $refs = [];
+        foreach ((array) ($source['dependency_refs'] ?? []) as $ref) {
+            if (! is_array($ref) || sanitize_key((string) ($ref['ref_type'] ?? '')) !== $ref_type) {
+                continue;
+            }
+            $refs[] = $ref;
+        }
+
+        return $refs;
+    }
+
+    /**
+     * @param array<int, mixed> $refs
+     * @return array<string, array<string, mixed>>
+     */
+    private static function index_media_refs(array $refs)
+    {
+        $indexed = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key !== '') {
+                $indexed[$media_key] = $ref;
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @param array<int, mixed> $path
+     * @return array<int, string|int>
+     */
+    private static function normalize_dependency_path(array $path)
+    {
+        $normalized = [];
+        foreach ($path as $segment) {
+            if (is_int($segment) || (is_string($segment) && preg_match('/^\d+$/', $segment))) {
+                $normalized[] = (int) $segment;
+                continue;
+            }
+            $segment = (string) $segment;
+            if ($segment === '') {
+                return [];
+            }
+            $normalized[] = $segment;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<int, string|int> $path
+     * @param mixed $value
+     * @return void
+     */
+    private static function set_payload_path_value(array &$payload, array $path, $value)
+    {
+        $cursor =& $payload;
+        $last_index = count($path) - 1;
+        foreach ($path as $index => $segment) {
+            if ($index === $last_index) {
+                $cursor[$segment] = $value;
+                return;
+            }
+            if (! isset($cursor[$segment]) || ! is_array($cursor[$segment])) {
+                return;
+            }
+            $cursor =& $cursor[$segment];
+        }
+    }
+
+    /**
+     * @param string $slug
+     * @return int
+     */
+    private static function find_template_by_slug($slug)
+    {
+        $slug = sanitize_title((string) $slug);
+        if ($slug === '') {
+            return 0;
+        }
+
+        $posts = get_posts([
+            'post_type' => 'bricks_template',
+            'post_status' => 'any',
+            'name' => $slug,
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'no_found_rows' => true,
+        ]);
+
+        return ! empty($posts[0]) ? (int) $posts[0] : 0;
     }
 
     /**

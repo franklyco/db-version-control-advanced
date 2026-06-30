@@ -102,6 +102,18 @@ final class DBVC_Bricks_Portability_Media_Apply_Service
     }
 
     /**
+     * @param array<string, mixed> $ref
+     * @param string $extract_dir
+     * @param array<string, mixed> $state
+     * @return int|\WP_Error
+     */
+    public static function import_packaged_media_ref(array $ref, $extract_dir, array &$state)
+    {
+        $state = array_merge(self::empty_media_state(), $state);
+        return self::import_media_ref($ref, $extract_dir, $state);
+    }
+
+    /**
      * @param array<string, mixed> $session
      * @param array<int, array<string, mixed>> $rows
      * @param string $extract_dir
@@ -599,7 +611,7 @@ final class DBVC_Bricks_Portability_Media_Apply_Service
      */
     private static function is_allowed_media_extension($extension)
     {
-        return in_array(sanitize_key((string) $extension), ['woff2', 'woff', 'ttf', 'otf', 'eot', 'svg'], true);
+        return in_array(sanitize_key((string) $extension), ['woff2', 'woff', 'ttf', 'otf', 'eot', 'svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'mp4', 'm4v', 'webm', 'ogv'], true);
     }
 
     /**
@@ -615,6 +627,16 @@ final class DBVC_Bricks_Portability_Media_Apply_Service
             'otf' => 'font/otf',
             'eot' => 'application/vnd.ms-fontobject',
             'svg' => 'image/svg+xml',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'avif' => 'image/avif',
+            'mp4' => 'video/mp4',
+            'm4v' => 'video/x-m4v',
+            'webm' => 'video/webm',
+            'ogv' => 'video/ogg',
         ];
 
         $extension = sanitize_key((string) $extension);
@@ -641,7 +663,7 @@ final class DBVC_Bricks_Portability_Media_Apply_Service
     /**
      * @return array<string, mixed>
      */
-    private static function empty_media_state()
+    public static function empty_media_state()
     {
         return [
             'created_posts' => [],

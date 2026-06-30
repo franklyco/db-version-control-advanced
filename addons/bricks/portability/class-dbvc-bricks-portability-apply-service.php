@@ -160,7 +160,7 @@ final class DBVC_Bricks_Portability_Apply_Service
             $mutated_values = self::remap_custom_font_references_in_options($mutated_values, $font_value_map);
         }
 
-        $template_apply = DBVC_Bricks_Portability_Template_Apply_Service::apply_affected_domains($session, $affected_domains, $effective_decisions, $font_value_map);
+        $template_apply = DBVC_Bricks_Portability_Template_Apply_Service::apply_affected_domains($session, $affected_domains, $effective_decisions, $font_value_map, $media_state);
         if (is_wp_error($template_apply)) {
             DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
             DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
@@ -169,6 +169,17 @@ final class DBVC_Bricks_Portability_Apply_Service
         }
 
         $entity_state = isset($template_apply['entity_state']) && is_array($template_apply['entity_state']) ? $template_apply['entity_state'] : [];
+        if (! empty($media_state['created_posts']) || ! empty($media_state['created_attachments']) || ! empty($media_state['reused_attachments'])) {
+            $media_backup = DBVC_Bricks_Portability_Backup_Service::record_media_state($backup, $media_state);
+            if (is_wp_error($media_backup)) {
+                DBVC_Bricks_Portability_Backup_Service::restore_entity_state($entity_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+                self::update_job($job_id, 'failed', ['error' => $media_backup->get_error_code()]);
+                return $media_backup;
+            }
+            $backup = $media_backup;
+        }
         if (! empty($entity_state['created_posts']) || ! empty($entity_state['updated_posts']) || ! empty($entity_state['created_terms'])) {
             $backup_before_entity = $backup;
             $entity_backup = DBVC_Bricks_Portability_Backup_Service::record_entity_state($backup_before_entity, $entity_state);

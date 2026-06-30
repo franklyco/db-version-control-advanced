@@ -715,27 +715,304 @@ final class DBVC_Bricks_Portability_Package_Service
     private static function validate_normalized_domain_for_portability(array $domain, array $normalized, $operation)
     {
         $operation = sanitize_key((string) $operation);
+        $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ($normalized['domain_key'] ?? '')));
         $verification = isset($normalized['verification']) && is_array($normalized['verification']) ? $normalized['verification'] : [];
-        if ($verification === []) {
+        if ($verification !== []) {
+            $blocks = DBVC_Bricks_Portability_Domain_Verifier::blocks_export($verification);
+            if ($blocks) {
+                $label = sanitize_text_field((string) ($domain['label'] ?? ($normalized['label'] ?? 'Selected domain')));
+                $warning = sanitize_text_field((string) (($verification['warnings'][0] ?? '')));
+                $message = sprintf(__('The Bricks portability %1$s for `%2$s` was blocked because its storage shape could not be verified safely.', 'dbvc'), $operation, $label);
+                if ($warning !== '') {
+                    $message .= ' ' . $warning;
+                }
+
+                return new \WP_Error(
+                    'dbvc_bricks_portability_domain_verification_failed',
+                    $message,
+                    ['status' => 400, 'domain_key' => $domain_key]
+                );
+            }
+        }
+
+        if ($domain_key === 'bricks_templates') {
+            return self::validate_template_dependency_descriptors($normalized, $operation);
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $normalized
+     * @param string $operation
+     * @return true|\WP_Error
+     */
+    private static function validate_template_dependency_descriptors(array $normalized, $operation)
+    {
+        $operation = sanitize_key((string) $operation);
+        $domain_media_refs = self::index_template_dependency_media_refs((array) ($normalized['media_refs'] ?? []));
+        foreach ((array) ($normalized['objects'] ?? []) as $object_index => $object) {
+            if (! is_array($object)) {
+                continue;
+            }
+            if (array_key_exists('dependency_refs', $object) && ! is_array($object['dependency_refs'])) {
+                return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template dependency descriptors must be an array.', 'dbvc'));
+            }
+            if (array_key_exists('media_refs', $object) && ! is_array($object['media_refs'])) {
+                return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template media references must be an array.', 'dbvc'));
+            }
+
+            $media_refs = array_merge($domain_media_refs, self::index_template_dependency_media_refs((array) ($object['media_refs'] ?? [])));
+            if (! empty($object['references']) && is_array($object['references'])) {
+                if (isset($object['references']['media_refs']) && ! is_array($object['references']['media_refs'])) {
+                    return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template reference media metadata must be an array.', 'dbvc'));
+                }
+                if (isset($object['references']['template_refs']) && ! is_array($object['references']['template_refs'])) {
+                    return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template reference template metadata must be an array.', 'dbvc'));
+                }
+                $media_refs = array_merge($media_refs, self::index_template_dependency_media_refs((array) ($object['references']['media_refs'] ?? [])));
+            }
+
+            foreach ((array) ($object['dependency_refs'] ?? []) as $ref_index => $ref) {
+                if (! is_array($ref)) {
+                    return self::template_dependency_descriptor_error($operation, (int) $object_index, (int) $ref_index, __('Each template dependency descriptor must be an object.', 'dbvc'));
+                }
+
+                $validation = self::validate_template_dependency_descriptor($ref, $media_refs, $operation, (int) $object_index, (int) $ref_index);
+                if (is_wp_error($validation)) {
+                    return $validation;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param array<string, array<string, mixed>> $media_refs
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @return true|\WP_Error
+     */
+    private static function validate_template_dependency_descriptor(array $ref, array $media_refs, $operation, $object_index, $ref_index)
+    {
+        $ref_type = sanitize_key((string) ($ref['ref_type'] ?? ''));
+        if (! in_array($ref_type, ['media', 'nested_template', 'post_or_term'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor has an unsupported reference type.', 'dbvc'));
+        }
+
+        $source_id = isset($ref['source_id']) && is_numeric($ref['source_id']) ? (int) $ref['source_id'] : 0;
+        if ($source_id <= 0) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor is missing a valid source ID.', 'dbvc'));
+        }
+
+        if (empty($ref['path']) || ! is_array($ref['path']) || ! self::template_dependency_path_is_safe((array) $ref['path'], false)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor contains an unsafe payload path.', 'dbvc'));
+        }
+
+        $expected_payload_path = implode('.', array_map('strval', (array) $ref['path']));
+        $payload_path = isset($ref['payload_path']) ? (string) $ref['payload_path'] : '';
+        if ($payload_path === '' || ! hash_equals($expected_payload_path, $payload_path)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor payload path does not match its path array.', 'dbvc'));
+        }
+
+        if (isset($ref['url_path']) && (! is_array($ref['url_path']) || ! self::template_dependency_path_is_safe((array) $ref['url_path'], true))) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor contains an unsafe URL payload path.', 'dbvc'));
+        }
+
+        if (isset($ref['required']) && ! is_bool($ref['required'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor required flag must be boolean.', 'dbvc'));
+        }
+
+        $confidence = sanitize_key((string) ($ref['confidence'] ?? ''));
+        if ($confidence !== '' && ! in_array($confidence, ['high', 'medium', 'low'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor confidence is invalid.', 'dbvc'));
+        }
+
+        if (isset($ref['target_id']) && ! is_numeric($ref['target_id'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor target ID must be numeric.', 'dbvc'));
+        }
+
+        $strategy = sanitize_key((string) ($ref['resolution_strategy'] ?? ''));
+        if ($ref_type === 'media') {
+            return self::validate_template_media_dependency_descriptor($ref, $media_refs, $operation, $object_index, $ref_index, $strategy);
+        }
+
+        if ($ref_type === 'post_or_term') {
+            return self::validate_template_entity_dependency_descriptor($ref, $operation, $object_index, $ref_index, $strategy);
+        }
+
+        if ($strategy !== 'template_graph') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Nested template dependency descriptors must use the template graph resolution strategy.', 'dbvc'));
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param array<string, array<string, mixed>> $media_refs
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @param string $strategy
+     * @return true|\WP_Error
+     */
+    private static function validate_template_media_dependency_descriptor(array $ref, array $media_refs, $operation, $object_index, $ref_index, $strategy)
+    {
+        if ($strategy !== 'package_media_checksum') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptors must use the package media checksum resolution strategy.', 'dbvc'));
+        }
+
+        $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+        if ($media_key === '' || empty($media_refs[$media_key]) || ! is_array($media_refs[$media_key])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptor does not resolve to package media metadata.', 'dbvc'));
+        }
+
+        if ($operation !== 'import') {
             return true;
         }
 
-        $blocks = DBVC_Bricks_Portability_Domain_Verifier::blocks_export($verification);
-        if (! $blocks) {
-            return true;
+        $media_ref = $media_refs[$media_key];
+        $package_path = self::normalize_package_relative_path($media_ref['package_path'] ?? '');
+        $checksum = sanitize_text_field((string) ($media_ref['checksum'] ?? ''));
+        if ($package_path === '' || $checksum === '' || strpos($package_path, 'media/bricks_templates/') !== 0 || ! self::is_sha256_checksum($checksum)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptor is missing checksummed package media.', 'dbvc'));
         }
 
-        $label = sanitize_text_field((string) ($domain['label'] ?? ($normalized['label'] ?? 'Selected domain')));
-        $warning = sanitize_text_field((string) (($verification['warnings'][0] ?? '')));
-        $message = sprintf(__('The Bricks portability %1$s for `%2$s` was blocked because its storage shape could not be verified safely.', 'dbvc'), $operation, $label);
-        if ($warning !== '') {
-            $message .= ' ' . $warning;
+        $path_validation = self::validate_checksummed_payload_path($package_path);
+        if (is_wp_error($path_validation)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptor points to an unsafe package media path.', 'dbvc'));
         }
 
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @param string $strategy
+     * @return true|\WP_Error
+     */
+    private static function validate_template_entity_dependency_descriptor(array $ref, $operation, $object_index, $ref_index, $strategy)
+    {
+        if ($strategy !== 'entity_uid_then_slug') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptors must use the UID then slug resolution strategy.', 'dbvc'));
+        }
+
+        $entity_kind = sanitize_key((string) ($ref['entity_kind'] ?? ''));
+        if (! in_array($entity_kind, ['post', 'term'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor has an invalid entity kind.', 'dbvc'));
+        }
+
+        if (isset($ref['entity_uid']) && ! is_scalar($ref['entity_uid'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor UID must be scalar.', 'dbvc'));
+        }
+
+        $object_subtype = sanitize_key((string) ($ref['object_subtype'] ?? ''));
+        if ($object_subtype === '') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor is missing an object subtype.', 'dbvc'));
+        }
+
+        if (isset($ref['object_slug']) && ! is_scalar($ref['object_slug'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor slug must be scalar.', 'dbvc'));
+        }
+
+        $value_type = sanitize_key((string) ($ref['source_value_type'] ?? ''));
+        if ($value_type !== '' && ! in_array($value_type, ['integer', 'string', 'scoped_term'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor value type is invalid.', 'dbvc'));
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, mixed> $refs
+     * @return array<string, array<string, mixed>>
+     */
+    private static function index_template_dependency_media_refs(array $refs)
+    {
+        $indexed = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key !== '') {
+                $indexed[$media_key] = $ref;
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @param array<int, mixed> $path
+     * @param bool $allow_empty
+     * @return bool
+     */
+    private static function template_dependency_path_is_safe(array $path, $allow_empty)
+    {
+        if (empty($path)) {
+            return (bool) $allow_empty;
+        }
+        if (count($path) > 64) {
+            return false;
+        }
+
+        foreach ($path as $segment) {
+            if (is_int($segment)) {
+                if ($segment < 0) {
+                    return false;
+                }
+                continue;
+            }
+            if (! is_string($segment)) {
+                return false;
+            }
+            $segment = trim($segment);
+            if (
+                $segment === ''
+                || $segment === '.'
+                || $segment === '..'
+                || strlen($segment) > 128
+                || strpos($segment, "\0") !== false
+                || strpos($segment, '/') !== false
+                || strpos($segment, '\\') !== false
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param mixed $checksum
+     * @return bool
+     */
+    private static function is_sha256_checksum($checksum)
+    {
+        return is_string($checksum) && preg_match('/^sha256:[a-f0-9]{64}$/', $checksum) === 1;
+    }
+
+    /**
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @param string $message
+     * @return \WP_Error
+     */
+    private static function template_dependency_descriptor_error($operation, $object_index, $ref_index, $message)
+    {
         return new \WP_Error(
-            'dbvc_bricks_portability_domain_verification_failed',
-            $message,
-            ['status' => 400, 'domain_key' => sanitize_key((string) ($domain['domain_key'] ?? ''))]
+            'dbvc_bricks_portability_template_dependency_invalid',
+            sprintf(__('The Bricks template dependency metadata is invalid during %1$s at object %2$d, reference %3$d. %4$s', 'dbvc'), sanitize_key((string) $operation), (int) $object_index, (int) $ref_index, $message),
+            ['status' => 400, 'object_index' => (int) $object_index, 'ref_index' => (int) $ref_index]
         );
     }
 
@@ -1570,7 +1847,7 @@ final class DBVC_Bricks_Portability_Package_Service
      */
     private static function is_allowed_media_extension($extension)
     {
-        return in_array(sanitize_key((string) $extension), ['woff2', 'woff', 'ttf', 'otf', 'eot', 'svg'], true);
+        return in_array(sanitize_key((string) $extension), ['woff2', 'woff', 'ttf', 'otf', 'eot', 'svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'mp4', 'm4v', 'webm', 'ogv'], true);
     }
 
     /**

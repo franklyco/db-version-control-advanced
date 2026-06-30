@@ -404,7 +404,292 @@ Implementation note (2026-06-24): initial implementation now registers `bricks_t
 - Packages do not silently claim to hydrate embedded media, arbitrary post IDs, or nested template IDs until those remappers exist.
 - Required automated tests and live LocalWP drill evidence are logged in the progress tracker.
 
-## 4.3) Backlog Candidates (Next Implementation Phase)
+## 4.3) Phase 22: Bricks Template Reference Hydration and Dependency Safety
+
+Status: `IN_PROGRESS`
+Owner: Codex
+Created: 2026-06-24
+Scope: Close the Phase 21 template portability boundaries by detecting, packaging, remapping, reviewing, applying, and rolling back embedded Bricks template dependencies. This phase handles embedded media/attachment references, nested Bricks template references, deterministic post/entity references, slug collisions, and mixed option/media/template rollback safety.
+
+Implementation note (updated 2026-06-25): initial implementation slice adds typed template dependency descriptors for attachment-backed media, nested template IDs, and Bricks template preview post/term refs, exports template-embedded media through the existing checksummed media manifest, imports/reuses target attachments during template apply, rewrites known image/gallery/background/video ID/URL payload paths in Bricks area meta and `_bricks_template_settings`, applies selected templates in nested-template dependency order, rewrites nested template IDs, remaps `templatePreviewPostId`/`templatePreviewTerm` by DBVC UID then exact type/taxonomy slug, preserves unresolved preview refs, blocks unselected/cyclic nested-template applies, blocks stale slug-collision applies via freshness checks plus insert-time slug guards, validates imported dependency descriptor shape/path/package-media/entity metadata, and covers media/nested/post-term/rollback/import-validation behavior in PHPUnit. Broader Bricks query/post picker/dynamic-data refs, richer admin receipts, and live LocalWP evidence remain open.
+
+### Entry criteria
+
+- Phase 21 `bricks_templates` export/import/add/replace apply is merged and `BricksPortabilityManagerTest` is green.
+- Phase 20 media package primitives for checksummed media creation/reuse are available for reuse by template-embedded media references.
+- A disposable LocalWP source/target pair exists with templates containing at least one image/media control, one nested template reference, one custom font value, one dynamic/query reference, and one intentional slug collision fixture.
+- Current Bricks local source is rechecked for element control key names before extractor implementation begins.
+
+### Non-goals
+
+- No blind remapping of arbitrary numeric IDs. References are remapped only when DBVC can prove identity through package media checksums, selected template mappings, DBVC entity UID metadata, or an explicit safe same-type slug match.
+- No automatic creation of arbitrary content posts, terms, products, forms, or third-party entities referenced by a template.
+- No destructive delete-sync of target-only templates, target-only media, or target-only referenced content.
+- No replacement/merge policy for custom font/icon domains beyond the Phase 20 supported behavior unless that work is explicitly pulled into the phase.
+
+### Reference handling policy
+
+- `media`: package the referenced attachment file when available, verify checksum/mime/path on import, create or reuse the target attachment, and rewrite known Bricks element ID/URL fields.
+- `nested_template`: resolve through the selected/imported template graph first, then matched current target templates. Block apply when a required nested template cannot be resolved; warn when the reference appears optional.
+- `post_or_term`: remap only by DBVC UID or exact same object type + stable slug/path when present on target. Otherwise keep the source value and surface an unresolved-reference warning or blocker based on control criticality.
+- `dynamic_data`: preserve tokens unless the token contains a recognized entity ID; for recognized IDs, apply the `post_or_term` policy.
+- `unknown_numeric_id`: do not remap. Record path, value, and confidence for review.
+
+### Tasks / Sub-tasks
+
+- `P22-T0` Contract freeze + Bricks control discovery (Status: IN_PROGRESS)
+  - `P22-T0-S1` Re-scan local Bricks source and fixture template payloads for known media, gallery, video, icon, nested template, query, dynamic data, and post picker control keys. (Status: IN_PROGRESS - fixture-driven image/gallery/background/video media and nested keys implemented; broader live Bricks source audit still open)
+  - `P22-T0-S2` Freeze reference descriptor schema: `ref_type`, `source_id`, `source_url`, `payload_path`, `consumer_template_key`, `control_name`, `required`, `confidence`, `resolution_strategy`, `target_id`, and `status`. (Status: DONE - initial descriptor includes typed path/media/template fields; consumer template key can be derived from object context)
+  - `P22-T0-S3` Define severity rules: `block_apply`, `warn_unresolved`, `safe_preserve`, and `remapped`. (Status: IN_PROGRESS - unresolved required nested templates block; typed media imports block on missing media; broader severity table remains open)
+- `P22-T1` Dependency extraction and package metadata (Status: IN_PROGRESS)
+  - `P22-T1-S1` Add a template reference extractor that walks Bricks template raw payloads recursively and emits typed descriptors without treating every `id` key as remappable. (Status: DONE for attachment-backed media, nested template IDs, and template preview post/term refs; broader query/dynamic refs open)
+  - `P22-T1-S2` Store extracted descriptors in template domain objects and domain-level dependency metadata. (Status: DONE - object `dependency_refs` and media refs added; domain-level media refs aggregate for packaging)
+  - `P22-T1-S3` Add dependency fingerprints so review sessions can detect when the target has changed after import.
+  - `P22-T1-S4` Add package validation for dependency descriptor shape and reject malformed or unsafe reference paths. (Status: DONE - imported template dependency descriptors now validate ref type, source IDs, path arrays, payload-path consistency, strategy, required/confidence/target fields, and checksummed template media package paths)
+- `P22-T2` Embedded media hydration (Status: IN_PROGRESS)
+  - `P22-T2-S1` Package template-embedded media attachments into the existing checksummed media manifest when the attachment file is available and allowed. (Status: DONE for attachment-backed template media refs)
+  - `P22-T2-S2` Create/reuse target attachments by checksum during apply before template posts are written. (Status: DONE)
+  - `P22-T2-S3` Rewrite known template media ID and URL fields in `_bricks_page_header_2`, `_bricks_page_content_2`, `_bricks_page_footer_2`, and `_bricks_template_settings`. (Status: DONE - image/gallery/background/video ID/URL rewrites are covered for Bricks area meta, and thumbnail-style `_bricks_template_settings` media is covered)
+  - `P22-T2-S4` Extend rollback state for template-created attachments and verify unreferenced cleanup only deletes DBVC-created media. (Status: DONE for template-created attachment rollback)
+- `P22-T3` Nested template graph remapping (Status: DONE)
+  - `P22-T3-S1` Build a source template ID/key to target post ID map from selected add/replace rows, existing matched target templates, and current target-only templates. (Status: DONE for source post ID to target post ID mapping from selected/matched rows)
+  - `P22-T3-S2` Topologically order selected template applies when nested dependencies exist; detect cycles and report deterministic blockers. (Status: DONE - selected nested templates wait for dependency creation, unselected required dependencies block, and selected cycles report deterministic blockers)
+  - `P22-T3-S3` Rewrite known nested template ID fields after target IDs are known. (Status: DONE for typed `templateId`-style numeric refs)
+  - `P22-T3-S4` Block apply when a required nested template is neither selected nor resolvable on target. (Status: DONE for typed required nested refs)
+- `P22-T4` Deterministic post/entity reference policy (Status: IN_PROGRESS)
+  - `P22-T4-S1` Add reference handlers for recognized Bricks query/post picker/dynamic-data fields that can point at WordPress posts, terms, authors, or archives. (Status: IN_PROGRESS - `templatePreviewPostId` and `templatePreviewTerm` are handled; broader query/post picker/dynamic-data fields remain open)
+  - `P22-T4-S2` Resolve post/term references by DBVC UID first, then exact same type + slug/path where safe. (Status: IN_PROGRESS - preview post/term refs resolve by UID, then exact post type/taxonomy slug)
+  - `P22-T4-S3` Surface unresolved entity references in review rows with enough path/value context for manual remediation. (Status: IN_PROGRESS - preview refs emit `post_or_term` dependency descriptors with path, source value, UID, subtype/taxonomy, slug, and URL context; richer admin summaries remain open)
+  - `P22-T4-S4` Keep unresolved arbitrary references unchanged unless severity rules classify the control as apply-blocking. (Status: IN_PROGRESS - unresolved preview post/term refs are preserved during apply)
+- `P22-T5` Template collision and slug integrity hardening (Status: IN_PROGRESS)
+  - `P22-T5-S1` Preflight target slug/title collisions before add or replace, including WordPress-generated unique-slug behavior after `wp_insert_post`. (Status: IN_PROGRESS - live target freshness blocks stale collisions; insert-time slug guard added)
+  - `P22-T5-S2` Block add when the intended slug would be silently changed and no explicit collision decision exists. (Status: DONE - add path rejects pre-existing slug and post-insert slug mutation)
+  - `P22-T5-S3` Preserve type+slug matching for replacements and add an explicit warning when title-only matching is used.
+  - `P22-T5-S4` Record final target post IDs/slugs in apply receipts.
+- `P22-T6` Mixed-domain apply ordering and rollback (Status: IN_PROGRESS)
+  - `P22-T6-S1` Enforce apply order: package media validation, media/font/icon creation or reuse, template dependency graph resolution, template writes, then option writes. (Status: IN_PROGRESS - template media import + nested graph resolution now occur before template writes; existing option writes remain after template writes)
+  - `P22-T6-S2` Extend backup records with dependency maps and attachment/template/post reference remap state. (Status: IN_PROGRESS - template-created media now recorded in media state; explicit dependency map backup still open)
+  - `P22-T6-S3` Add partial-failure rollback for mixed option/media/font/icon/template applies. (Status: IN_PROGRESS - template media rollback covered; broader mixed failure fixture still open)
+  - `P22-T6-S4` Make repeated template reference hydration idempotent and avoid duplicate identical attachments or duplicate nested-template remaps. (Status: IN_PROGRESS - checksum attachment reuse inherited; repeated template graph fixture still open)
+- `P22-T7` Admin review details and receipts
+  - `P22-T7-S1` Add template reference detail summaries for media, nested templates, post/entity refs, dynamic-data refs, unknown IDs, and blocker/warning counts.
+  - `P22-T7-S2` Add apply receipts showing source-to-target attachment IDs, nested template IDs, preserved unresolved refs, and final template post IDs/slugs.
+  - `P22-T7-S3` Add filters for `Has blockers`, `Has unresolved refs`, and `Media will be created/reused`.
+- `P22-T8` Validation + live evidence (Status: IN_PROGRESS)
+  - `P22-T8-S1` Add fixture builders for templates with media controls, galleries, background images, nested templates, dynamic data, post picker refs, custom fonts, and slug collisions. (Status: IN_PROGRESS - image/gallery/background/video media, template-settings media, preview post/term refs, nested template, nested dependency blocker, nested cycle, and stale slug collision fixtures added)
+  - `P22-T8-S2` Add PHPUnit coverage for dependency extraction, package validation, media remapping, nested template remapping, unresolved reference blockers, slug collision blockers, idempotency, and mixed rollback. (Status: IN_PROGRESS - media remap/rollback, gallery/background/video/template-settings remap, preview post/term remap/preserve, nested remap/blockers, stale collision, and unsafe dependency descriptor import validation coverage added; remaining cases open)
+  - `P22-T8-S3` Run live two-site LocalWP export/import/apply/rollback drill and verify builder load, frontend media render, nested template render, font render, and rollback restoration.
+
+### Required tests
+
+- `P22-TEST-01` Reference extractor fixture coverage for known Bricks media, nested-template, post/query, dynamic-data, and unknown-ID shapes.
+- `P22-TEST-02` Package export test proving template-embedded media files are checksummed and dependency descriptors are valid.
+- `P22-TEST-03` Import validation test rejecting malformed dependency descriptors and unsafe media paths.
+- `P22-TEST-04` Apply test remapping image/background/gallery/video/template-settings attachment IDs and URLs into template meta.
+- `P22-TEST-05` Nested template apply test proving create/replace ordering, source-to-target ID remap, and unresolved dependency blockers.
+- `P22-TEST-06` Deterministic post/term reference policy test for DBVC UID match, exact slug match, unresolved warning/preserve, and required-ref blocker.
+- `P22-TEST-07` Slug collision test proving silent WordPress unique-slug changes are blocked or explicitly surfaced.
+- `P22-TEST-08` Mixed option/media/font/icon/template partial-failure rollback test.
+- `P22-TEST-09` Idempotency test proving repeated applies reuse attachments/templates instead of duplicating them.
+- `P22-TEST-10` Admin review payload test for reference summaries, blockers, and apply receipts.
+- `P22-TEST-11` Live LocalWP two-site drill evidence for template media, nested templates, custom fonts, frontend render, builder load, and rollback.
+
+### Exit criteria
+
+- Template imports can hydrate embedded media references with checksum-backed attachment creation/reuse and rollback.
+- Nested template references are remapped in deterministic apply order or blocked with actionable review errors.
+- Arbitrary post/entity references follow an explicit safe-remap policy and are never silently guessed. (Partial: Bricks template preview post/term refs remap by UID/type-slug and preserve unresolved values.)
+- Template slug collisions and WordPress unique-slug mutations are detected before apply.
+- Mixed option/media/template applies are rollback-safe under partial failure.
+- Required automated tests and live LocalWP evidence are logged in the progress tracker.
+
+## 4.4) Phase 23: Broader Bricks Entity and Dynamic Reference Coverage
+
+Status: `IN_PROGRESS`
+Owner: Codex
+Created: 2026-06-25
+Scope: Extend the Phase 22 deterministic reference policy beyond template preview settings into recognized Bricks query controls, post pickers, taxonomy pickers, archive controls, author references, and dynamic-data tokens that can embed WordPress entity IDs.
+
+### UX and operator-effort constraints
+
+- Do not add a new required import step or per-reference decision workflow.
+- Safe refs are detected, remapped, and applied automatically using the existing import/apply flow.
+- Unresolved optional refs are preserved and summarized; they should not require user input to continue.
+- Required unresolved refs may block apply, but the blocker must point to the affected template row and control path instead of asking the user to understand internal descriptor data.
+- No new global settings should be added unless a behavior cannot be made deterministic from the package data.
+
+### Tasks / Sub-tasks
+
+- `P23-T1` Bricks control/key discovery pass (Status: IN_PROGRESS - local Bricks 2.3.x query storage reviewed; first allowlist is `settings.query.post__in`, `post__not_in`, `tax_query`, and `tax_query_not`)
+  - `P23-T1-S1` Re-scan local Bricks 2.3.x source and exported fixture payloads for query, post picker, term picker, archive, author, and dynamic-data storage keys. (Status: IN_PROGRESS - query include/exclude and taxonomy query storage confirmed; Bricks also accepts CSV/dynamic query values that remain preserve-only for now)
+  - `P23-T1-S2` Build a narrow allowlist of remappable controls and explicitly document ignored numeric shapes. (Status: IN_PROGRESS - first slice remaps scalar/array IDs, warns for skipped CSV/dynamic/missing-source query refs, and still defers query editor PHP, user refs, and unknown numeric controls)
+  - `P23-T1-S3` Reuse the existing Phase 22 `dependency_refs` descriptor contract instead of introducing a second reference schema. (Status: DONE for first query slice)
+- `P23-T2` Query and picker descriptor extraction (Status: IN_PROGRESS - first query include/exclude descriptor extraction implemented)
+  - `P23-T2-S1` Emit `post_or_term` descriptors for recognized post picker and query include/exclude controls. (Status: IN_PROGRESS - implemented for query `post__in` and `post__not_in` scalar/array IDs)
+  - `P23-T2-S2` Emit term descriptors for recognized taxonomy/query controls using DBVC term UID and taxonomy+slug context. (Status: IN_PROGRESS - implemented for query `tax_query` and `tax_query_not` scoped term values)
+  - `P23-T2-S3` Add author/archive descriptor handling only when identity can be resolved deterministically; otherwise preserve and warn.
+- `P23-T3` Dynamic-data token handling (Status: NOT_STARTED)
+  - `P23-T3-S1` Tokenize recognized Bricks dynamic-data strings without changing unrelated text.
+  - `P23-T3-S2` Remap only token segments with a known entity kind and resolver; preserve unknown tokens unchanged.
+  - `P23-T3-S3` Add descriptor context for token name, payload path, original token, and confidence.
+- `P23-T4` Apply remapping and blocker policy (Status: IN_PROGRESS - query refs reuse Phase 22 apply behavior)
+  - `P23-T4-S1` Reuse Phase 22 UID-first, exact subtype/taxonomy slug fallback resolvers. (Status: DONE for first query slice)
+  - `P23-T4-S2` Preserve unresolved optional refs and block only controls marked as required for valid template rendering. (Status: DONE for first query slice; query refs are optional and preserve source values when unresolved)
+  - `P23-T4-S3` Keep source IDs out of fallback matching unless an existing DBVC identity policy explicitly allows it.
+- `P23-T5` Validation and tests (Status: IN_PROGRESS - query fixtures and unmapped-shape warning fixture added)
+  - `P23-T5-S1` Extend import descriptor validation for any new ref kinds or value types. (Status: DONE for first query slice; no new ref/value type required)
+  - `P23-T5-S2` Add fixtures for query include/exclude, post picker, term picker, archive/author where deterministic, and dynamic-data token strings. (Status: IN_PROGRESS - query include/exclude remap/preserve and skipped-shape warnings added; broader picker/archive/author/dynamic remap fixtures open)
+
+### Required tests
+
+- `P23-TEST-01` Descriptor extraction for query/post picker/term picker controls. (Partial PASS for query post/term controls)
+- `P23-TEST-02` UID-first and exact slug fallback remap for recognized post/term picker refs. (Partial PASS for UID-first query post/term refs)
+- `P23-TEST-03` Dynamic-data token remap preserves unrelated token/text segments.
+- `P23-TEST-04` Required unresolved refs block apply; optional unresolved refs preserve source values. (Partial PASS for optional unresolved query refs)
+- `P23-TEST-05` Unknown numeric IDs remain untouched and appear only as review warnings. (Partial PASS for skipped Bricks query post/term shapes)
+
+### Exit criteria
+
+- Recognized Bricks query, picker, archive/author, and dynamic-data references follow the same deterministic policy as preview post/term refs.
+- No additional operator choices are required for safe remaps.
+- Unknown and optional unresolved references are review-visible but preserved.
+- Required unresolved references fail apply with a concise row-level blocker.
+
+## 4.5) Phase 24: Low-Friction Review Summaries and Apply Receipts
+
+Status: `NOT_STARTED`
+Owner: Codex
+Created: 2026-06-25
+Scope: Make reference hydration understandable without creating an overwhelming interface. This phase surfaces compact counts, row-level details, and apply receipts for media, nested template, entity, dynamic-data, preserved, and blocked references.
+
+### UX and operator-effort constraints
+
+- Keep the existing Settings Portability workspace and row modal; do not introduce a new reference-management screen.
+- Default display should be a compact `Needs attention` summary, not a full dependency table.
+- Do not require users to approve individual remaps. Safe remaps are automatic.
+- Reuse existing warning/manual-decision filtering where possible. If one new filter is needed, prefer a single `Needs attention` filter over multiple specialized filters.
+- Apply receipts should live in History/Rollback and should not interrupt the apply flow unless apply fails.
+
+### Tasks / Sub-tasks
+
+- `P24-T1` Summary aggregation (Status: NOT_STARTED)
+  - `P24-T1-S1` Add backend summary counts for remapped, preserved, blocked, media-created, media-reused, and unknown refs.
+  - `P24-T1-S2` Roll counts up to domain and row summaries using existing review session payloads.
+  - `P24-T1-S3` Keep descriptor internals available for debugging but hidden by default.
+- `P24-T2` Row modal reference details (Status: NOT_STARTED)
+  - `P24-T2-S1` Add a compact reference section to the existing row modal.
+  - `P24-T2-S2` Show human-readable control path, action, and reason; avoid raw JSON unless the existing diff/debug view is expanded.
+  - `P24-T2-S3` Link blockers to the affected row and path without adding per-reference controls.
+- `P24-T3` Apply receipts (Status: NOT_STARTED)
+  - `P24-T3-S1` Store source-to-target attachment, nested template, post, term, and dynamic-data remap summaries in backup/history records.
+  - `P24-T3-S2` Store preserved unresolved refs and blocker reasons with enough context for troubleshooting.
+  - `P24-T3-S3` Surface final template post IDs/slugs and created/reused media counts in rollback history.
+- `P24-T4` Minimal filtering (Status: NOT_STARTED)
+  - `P24-T4-S1` Reuse existing warning-state filters for unresolved/blocker cases where possible.
+  - `P24-T4-S2` Add only one combined `Needs attention` filter if existing filters cannot cover blockers plus preserved unresolved refs clearly.
+
+### Required tests
+
+- `P24-TEST-01` REST review payload includes compact reference summary counts.
+- `P24-TEST-02` Row modal payload includes path/action/reason details without requiring new decisions.
+- `P24-TEST-03` Apply receipt records remapped, preserved, created/reused, and blocked reference summaries.
+- `P24-TEST-04` History/Rollback endpoint surfaces receipt summaries after apply and rollback.
+
+### Exit criteria
+
+- Operators can understand what DBVC remapped or preserved from a compact summary.
+- Safe imports still require no new user choices.
+- Blocked imports give actionable row-level reasons.
+- Apply receipts provide enough detail for support/debugging without expanding the default UI.
+
+## 4.6) Phase 25: Idempotency and Mixed Rollback Hardening
+
+Status: `NOT_STARTED`
+Owner: Codex
+Created: 2026-06-25
+Scope: Harden repeated applies, mixed-domain rollback, and failure handling across options, media, custom fonts/icons, Bricks templates, nested template refs, and entity/dynamic references.
+
+### UX and operator-effort constraints
+
+- No new required UI controls.
+- Recovery should use the existing rollback/history workflow.
+- Idempotency should be automatic: reapplying the same safe package should reuse existing target objects rather than asking for manual conflict decisions.
+
+### Tasks / Sub-tasks
+
+- `P25-T1` Repeated apply idempotency (Status: NOT_STARTED)
+  - `P25-T1-S1` Prove repeated template applies reuse attachments by checksum and do not duplicate equivalent media.
+  - `P25-T1-S2` Prove repeated nested template remaps do not drift IDs or create duplicate templates.
+  - `P25-T1-S3` Prove repeated font/icon applies reuse existing created posts/attachments where supported.
+- `P25-T2` Dependency map backup state (Status: NOT_STARTED)
+  - `P25-T2-S1` Store dependency maps needed to undo created media/templates and understand remap state.
+  - `P25-T2-S2` Include final target IDs/slugs in backup records without exposing additional import controls.
+- `P25-T3` Mixed partial-failure rollback (Status: NOT_STARTED)
+  - `P25-T3-S1` Add controlled failure fixtures after media creation and before template writes.
+  - `P25-T3-S2` Add controlled failure fixtures after template writes and before option writes.
+  - `P25-T3-S3` Verify rollback restores options, replaced templates, created templates, and DBVC-created media while leaving pre-existing target objects alone.
+- `P25-T4` Stale session and package hardening (Status: NOT_STARTED)
+  - `P25-T4-S1` Verify stale review sessions block unsafe applies and can refresh through the existing session refresh action.
+  - `P25-T4-S2` Add malformed package variants for bad media paths, bad descriptor paths, missing checksums, and unexpected files.
+
+### Required tests
+
+- `P25-TEST-01` Repeated apply reuses created/reused attachments and templates.
+- `P25-TEST-02` Mixed-domain failure before template writes rolls back DBVC-created media.
+- `P25-TEST-03` Mixed-domain failure after template writes restores posts/meta/terms/options.
+- `P25-TEST-04` Stale review session blocks unsafe apply and refreshes cleanly.
+- `P25-TEST-05` Malformed package variants are rejected before apply.
+
+### Exit criteria
+
+- Repeated safe applies are deterministic and do not create duplicate objects.
+- Mixed option/media/font/icon/template failures roll back through the existing backup workflow.
+- Package/session hardening prevents unsafe apply without adding new operator decisions.
+
+## 4.7) Phase 26: Live LocalWP Drill and Release Gate
+
+Status: `NOT_STARTED`
+Owner: Codex
+Created: 2026-06-25
+Scope: Validate the full Bricks Settings Portability flow against real LocalWP source/target sites and close the Bricks template portability hardening cycle with evidence.
+
+### UX and operator-effort constraints
+
+- Use the same default export/import/apply/rollback flow an operator would use.
+- Record required observations in docs; do not add setup-only UI.
+- Prefer one package covering fonts, icons, templates, media refs, nested templates, preview refs, query/dynamic refs, and rollback rather than many manual micro-drills.
+
+### Tasks / Sub-tasks
+
+- `P26-T1` Source fixture build (Status: NOT_STARTED)
+  - `P26-T1-S1` Create or identify a source LocalWP site with custom fonts/icons, templates with embedded media, nested templates, preview refs, and query/dynamic refs.
+  - `P26-T1-S2` Record fixture object labels/slugs and expected render behavior.
+- `P26-T2` Target apply drill (Status: NOT_STARTED)
+  - `P26-T2-S1` Export selected domains from source and import into target.
+  - `P26-T2-S2` Apply with default safe decisions and record remap/preserve/block summaries.
+  - `P26-T2-S3` Verify Bricks builder load, frontend media render, nested template render, font render, and query/dynamic behavior.
+- `P26-T3` Rollback drill (Status: NOT_STARTED)
+  - `P26-T3-S1` Roll back the apply package from History/Rollback.
+  - `P26-T3-S2` Verify target options, templates, terms, and DBVC-created media return to pre-apply state.
+- `P26-T4` Release gate documentation (Status: NOT_STARTED)
+  - `P26-T4-S1` Record commands, screenshots or notes, package IDs, backup IDs, and observed warnings/blockers in the tracker.
+  - `P26-T4-S2` Decide whether remaining open cases are release blockers or post-MVP backlog.
+
+### Required tests/evidence
+
+- `P26-EVIDENCE-01` Live export/import/apply drill evidence.
+- `P26-EVIDENCE-02` Builder and frontend render verification.
+- `P26-EVIDENCE-03` Rollback verification.
+- `P26-EVIDENCE-04` Final go/no-go note with known limitations.
+
+### Exit criteria
+
+- LocalWP source-to-target portability succeeds with default user actions.
+- Frontend and builder behavior are verified after apply.
+- Rollback restores target state.
+- Remaining limitations are documented as explicit non-blockers or follow-up backlog.
+
+## 4.8) Backlog Candidates (Future Phase / Not Yet Scheduled)
 
 ### `BL-PKG-TABLE-01` Packages table site identity columns
 - Add two table headers to the Packages tab package table (current header row: `Select | Package | Version | Channel | Audience`):

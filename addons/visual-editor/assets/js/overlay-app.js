@@ -3050,6 +3050,9 @@
     }
 
     if (action === 'open-field') {
+      if (state.toolbarOpenPanel) {
+        closeToolbarPopover();
+      }
       locateFieldIndexMarker(token, true);
     }
   }
@@ -4167,6 +4170,11 @@
       return;
     }
 
+    if (openPanel && !canOpenMarkerPanelFromNode(node)) {
+      openToolbarDescriptorPanel(token);
+      return;
+    }
+
     if (typeof node.scrollIntoView === 'function') {
       node.scrollIntoView({
         block: 'center',
@@ -4182,9 +4190,8 @@
         node.classList.remove('is-locating');
       }
     }, 1300);
-
     if (openPanel) {
-      if (state.session && canOpenMarkerPanelFromNode(node)) {
+      if (state.session) {
         openEditor(node, state.session);
       } else {
         openToolbarDescriptorPanel(token);
@@ -5404,6 +5411,10 @@
     return Boolean(panel && target && (panel === target || panel.contains(target)));
   }
 
+  function isToolbarElement(target) {
+    return Boolean(target && typeof target.closest === 'function' && target.closest('.dbvc-ve-toolbar'));
+  }
+
   function isWpMediaModalElement(target) {
     if (!target || typeof target.closest !== 'function') {
       return false;
@@ -5485,7 +5496,7 @@
       return;
     }
 
-    if (isPanelElement(event.target) || isBadgeElement(event.target) || isWpMediaModalElement(event.target)) {
+    if (isPanelElement(event.target) || isBadgeElement(event.target) || isToolbarElement(event.target) || isWpMediaModalElement(event.target)) {
       return;
     }
 
