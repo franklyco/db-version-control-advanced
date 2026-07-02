@@ -991,24 +991,13 @@ Implemented notes:
 
 ### Later Enhancement. Merge Entities
 
-Status: `DEFERRED`
+Status: `SUPERSEDED BY PROPOSED GUIDE`
 
-Direction:
+The deferred merge idea from this completed sync-file import guide has been promoted into a dedicated proposed guide:
 
-- Treat entity merge as a single-file proposal/diff workflow, not a separate importer.
-- Reuse the upgraded proposal/diff decision model when it is stable enough to avoid duplicating decision storage and apply logic.
-- Start with a read-only compare between incoming JSON and a selected live entity snapshot.
-- Add field-level decisions only after the compare output is trusted.
-- Support core post fields, meta, taxonomies, and terms before Bricks-specific element-level merging.
-- For Bricks templates, eventually add a structured diff for template settings, conditions, preview references, and Bricks content elements.
-- Require explicit backups and explicit destructive decisions before any merge apply can remove or replace current data.
+- `docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md`
 
-Deferred by design:
-
-- selective Bricks element merges
-- automatic Bricks condition resolution
-- replacing existing templates from the quick-create modal
-- shared proposal/diff v2 storage changes
+Keep this completed guide focused on current sync-file import behavior. Use the proposed guide for future selected-entity pasted JSON merge work.
 
 ## Test Plan
 

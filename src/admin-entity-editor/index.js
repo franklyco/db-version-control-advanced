@@ -272,6 +272,7 @@ const EntityEditorApp = () => {
 	const [entityIndex, setEntityIndex] = useState([]);
 	const [entityIndexStats, setEntityIndexStats] = useState(null);
 	const [entityIndexLoading, setEntityIndexLoading] = useState(false);
+	const [entityIndexLoaded, setEntityIndexLoaded] = useState(false);
 	const [entityIndexError, setEntityIndexError] = useState('');
 	const [entityIndexErrorItems, setEntityIndexErrorItems] = useState([]);
 	const [entityIndexNotice, setEntityIndexNotice] = useState('');
@@ -336,6 +337,7 @@ const EntityEditorApp = () => {
 
 	const loadEntityIndex = useCallback(async (force = false) => {
 		setEntityIndexLoading(true);
+		setEntityIndexLoaded(false);
 		setEntityIndexError('');
 		setEntityIndexErrorItems([]);
 		try {
@@ -348,6 +350,7 @@ const EntityEditorApp = () => {
 			setEntityIndexError(error?.message || 'Failed to load entity index');
 			setEntityIndexErrorItems([]);
 		} finally {
+			setEntityIndexLoaded(true);
 			setEntityIndexLoading(false);
 		}
 	}, []);
@@ -411,10 +414,10 @@ const EntityEditorApp = () => {
 	}, []);
 
 	useEffect(() => {
-		if (entityIndex.length === 0 && !entityIndexLoading && !entityIndexError) {
+		if (!entityIndexLoaded && !entityIndexLoading && !entityIndexError) {
 			loadEntityIndex(false);
 		}
-	}, [entityIndex.length, entityIndexLoading, entityIndexError, loadEntityIndex]);
+	}, [entityIndexLoaded, entityIndexLoading, entityIndexError, loadEntityIndex]);
 
 	useEffect(() => {
 		if (!selectedEntityFile) {
@@ -485,6 +488,7 @@ const EntityEditorApp = () => {
 			setEntityLockToken(data?.lock?.token || entityLockToken);
 			setEntityLockInfo(data?.lock || entityLockInfo);
 			setEntityIndex([]);
+			setEntityIndexLoaded(false);
 		} catch (error) {
 			setEntitySaveError(error?.message || 'Failed to save JSON');
 			setEntityLockConflict(error?.body?.data?.lock || null);
@@ -521,6 +525,7 @@ const EntityEditorApp = () => {
 				`Saved + partial import complete (fields: ${counts.core_fields_updated ?? 0}, meta: ${counts.meta_keys_updated ?? 0}, tax: ${counts.taxonomies_updated ?? 0}).`
 			);
 			setEntityIndex([]);
+			setEntityIndexLoaded(false);
 		} catch (error) {
 			setEntitySaveError(error?.message || 'Failed to run partial import');
 			setEntityLockConflict(error?.body?.data?.lock || null);
@@ -564,6 +569,7 @@ const EntityEditorApp = () => {
 				`Saved + full replace complete (fields: ${counts.core_fields_updated ?? 0}, meta updated: ${counts.meta_keys_updated ?? 0}, meta deleted: ${counts.meta_keys_deleted ?? 0}, tax: ${counts.taxonomies_updated ?? 0})${snapshot ? `; snapshot: ${snapshot}` : ''}.`
 			);
 			setEntityIndex([]);
+			setEntityIndexLoaded(false);
 		} catch (error) {
 			setEntitySaveError(error?.message || 'Failed to run full replace');
 			setEntityLockConflict(error?.body?.data?.lock || null);

@@ -18,6 +18,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Topic | Status | Proposal | Notes |
 |---|---|---|---|
 | Cross-site entity packets | proposed | `docs/implementation/proposed/cross-site-entity-packet-guide.md` | Future transfer workflow. |
+| Entity Editor merge incoming JSON | proposed | `docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md` | Future selected-entity merge workflow for pasted DBVC JSON, with local identity preservation, simple override controls, preview notes, and partial-import reuse. |
 | Configuration portability tool | proposed | `docs/implementation/proposed/configuration-portability-tool-guide.md` | Future configuration transport. |
 | Bricks portability drift manager | proposed | `docs/implementation/proposed/bricks-portability-drift-manager/README.md` | Proposed package/drift design. |
 | Bricks reference mapping | proposed | `docs/implementation/proposed/bricks-reference-mapping-plan.md` | Proposed mapping work. |
