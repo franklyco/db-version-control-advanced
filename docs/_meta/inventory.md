@@ -210,6 +210,7 @@ Current Path is the discovery-time path before this cleanup. Proposed Path is th
 | docs/implementation/active/README.md | README/router | active | created | docs/implementation/active/README.md | Created during docs-library cleanup. |
 | docs/implementation/completed/README.md | README/router | completed | created | docs/implementation/completed/README.md | Created during docs-library cleanup. |
 | docs/implementation/proposed/README.md | README/router | proposed | created | docs/implementation/proposed/README.md | Created during docs-library cleanup. |
+| docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md | implementation guide | proposed | created | docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md | Proposed Entity Editor selected-entity pasted JSON merge workflow. |
 | docs/implementation/README.md | README/router | unknown | created | docs/implementation/README.md | Created during docs-library cleanup. |
 | docs/README.md | README/router | canonical | created | docs/README.md | Created during docs-library cleanup. |
 | docs/reference/README.md | README/router | canonical | created | docs/reference/README.md | Created during docs-library cleanup. |

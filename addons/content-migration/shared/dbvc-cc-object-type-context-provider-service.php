@@ -342,6 +342,9 @@ final class DBVC_CC_Object_Type_Context_Provider_Service
             'supports_generation' => ! empty($entry['supports_generation']),
             'supports_migration_target' => ! empty($entry['supports_migration_target']),
             'requires_manual_review' => ! empty($entry['requires_manual_review']),
+            'authoring_profile' => $this->normalize_authoring_profile(isset($entry['authoring_profile']) ? $entry['authoring_profile'] : ''),
+            'routing_hint' => isset($entry['routing_hint']) && is_scalar($entry['routing_hint']) ? sanitize_textarea_field((string) $entry['routing_hint']) : '',
+            'section_authoring' => $this->normalize_section_authoring(isset($entry['section_authoring']) ? $entry['section_authoring'] : []),
             'status' => isset($status_meta['code']) ? sanitize_key((string) $status_meta['code']) : '',
             'status_meta' => $status_meta,
             'resolved_from' => isset($entry['resolved_from']) ? sanitize_key((string) $entry['resolved_from']) : '',
@@ -371,6 +374,41 @@ final class DBVC_CC_Object_Type_Context_Provider_Service
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalize_authoring_profile($value)
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['essentials', 'extended', 'all'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $section_authoring
+     * @return array<string,mixed>
+     */
+    private function normalize_section_authoring($section_authoring)
+    {
+        if (! is_array($section_authoring)) {
+            return [];
+        }
+
+        $normalized = [
+            'available' => ! empty($section_authoring['available']),
+            'control_field' => isset($section_authoring['control_field']) && is_scalar($section_authoring['control_field']) ? sanitize_key((string) $section_authoring['control_field']) : '',
+            'field_context_required' => ! empty($section_authoring['field_context_required']),
+        ];
+
+        if (! empty($section_authoring['note']) && is_scalar($section_authoring['note'])) {
+            $normalized['note'] = sanitize_textarea_field((string) $section_authoring['note']);
+        }
+
+        return array_filter($normalized, static function ($value) {
+            return $value !== '' && $value !== [] && $value !== false;
+        });
     }
 
     /**

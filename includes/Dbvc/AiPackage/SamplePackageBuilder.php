@@ -504,16 +504,27 @@ final class SamplePackageBuilder
         $template = isset($variant_payload['template']) && is_array($variant_payload['template']) ? $variant_payload['template'] : [];
         $object_type_context = isset($context['object_type_context']) && is_array($context['object_type_context']) ? $context['object_type_context'] : [];
 
+        $object_context_payload = [
+            'kind' => $entity_kind === 'term' ? 'term' : 'post',
+            'key' => sanitize_key($object_key),
+            'label' => isset($context['label']) ? (string) $context['label'] : $object_key,
+            'context' => self::extract_context_text($object_type_context),
+        ];
+        if (! empty($object_type_context['authoring_profile']) && is_scalar($object_type_context['authoring_profile'])) {
+            $object_context_payload['authoring_profile'] = sanitize_key((string) $object_type_context['authoring_profile']);
+        }
+        if (! empty($object_type_context['routing_hint']) && is_scalar($object_type_context['routing_hint'])) {
+            $object_context_payload['routing_hint'] = sanitize_textarea_field((string) $object_type_context['routing_hint']);
+        }
+        if (isset($object_type_context['section_authoring']) && is_array($object_type_context['section_authoring'])) {
+            $object_context_payload['section_authoring'] = self::sanitize_sample_context_payload($object_type_context['section_authoring']);
+        }
+
         return [
             'artifact_type' => 'dbvc_ai_sample_context',
             'artifact_schema_version' => 1,
             'sample_json_path' => $sample_json_path,
-            'object' => [
-                'kind' => $entity_kind === 'term' ? 'term' : 'post',
-                'key' => sanitize_key($object_key),
-                'label' => isset($context['label']) ? (string) $context['label'] : $object_key,
-                'context' => self::extract_context_text($object_type_context),
-            ],
+            'object' => $object_context_payload,
             'fields' => self::build_sample_context_fields($entity_kind, $context, $template),
         ];
     }
@@ -539,7 +550,8 @@ final class SamplePackageBuilder
             $fields[$field_name] = self::build_sample_context_field(
                 isset($definition['type']) ? (string) $definition['type'] : self::infer_sample_value_type($value),
                 isset($definition['choices']) && is_array($definition['choices']) ? $definition['choices'] : [],
-                self::extract_context_text($definition)
+                self::extract_context_text($definition),
+                $definition
             );
         }
 
@@ -557,7 +569,8 @@ final class SamplePackageBuilder
                 $fields['tax_input.' . $taxonomy] = self::build_sample_context_field(
                     'taxonomy_terms',
                     isset($definition['choices']) && is_array($definition['choices']) ? $definition['choices'] : [],
-                    sprintf('Assign %s terms by slug strings or structured term references. Prefer slugs over numeric IDs.', $label)
+                    sprintf('Assign %s terms by slug strings or structured term references. Prefer slugs over numeric IDs.', $label),
+                    $definition
                 );
             }
         }
@@ -575,12 +588,14 @@ final class SamplePackageBuilder
                 }
 
                 $field_path = 'meta.' . $path;
+                $field_context = isset($definition['field_context']) && is_array($definition['field_context'])
+                    ? $definition['field_context']
+                    : $definition;
                 $fields[$field_path] = self::build_sample_context_field(
                     isset($definition['type']) ? (string) $definition['type'] : '',
                     isset($definition['choices']) && is_array($definition['choices']) ? $definition['choices'] : [],
-                    self::extract_context_text(isset($definition['field_context']) && is_array($definition['field_context'])
-                        ? $definition['field_context']
-                        : $definition)
+                    self::extract_context_text($field_context),
+                    $field_context
                 );
             }
 
@@ -610,15 +625,65 @@ final class SamplePackageBuilder
      * @param string              $type
      * @param array<string,mixed> $choices
      * @param string              $context
+     * @param array<string,mixed> $source
      * @return array<string,mixed>
      */
-    private static function build_sample_context_field(string $type, array $choices, string $context): array
+    private static function build_sample_context_field(string $type, array $choices, string $context, array $source = []): array
     {
-        return [
+        $field = [
             'type' => sanitize_key($type),
             'choices' => self::normalize_sample_context_choices($choices),
             'context' => sanitize_textarea_field($context),
         ];
+
+        foreach (['cross_site_safety', 'authoring_surface', 'authoring_priority'] as $key) {
+            if (! empty($source[$key]) && is_scalar($source[$key])) {
+                $field[$key] = sanitize_key((string) $source[$key]);
+            }
+        }
+
+        if (! empty($source['authoring_note']) && is_scalar($source['authoring_note'])) {
+            $field['authoring_note'] = sanitize_textarea_field((string) $source['authoring_note']);
+        }
+
+        foreach (['choice_meaning', 'section_selection'] as $key) {
+            if (isset($source[$key]) && is_array($source[$key])) {
+                $field[$key] = self::sanitize_sample_context_payload($source[$key]);
+            }
+        }
+
+        foreach (['shared_group_id', 'shared_group_label'] as $key) {
+            if (! empty($source[$key]) && is_scalar($source[$key])) {
+                $field[$key] = sanitize_text_field((string) $source[$key]);
+            }
+        }
+
+        return $field;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private static function sanitize_sample_context_payload(array $payload): array
+    {
+        $sanitized = [];
+        foreach ($payload as $key => $value) {
+            $key = sanitize_text_field((string) $key);
+            if ($key === '') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $sanitized[$key] = self::sanitize_sample_context_payload($value);
+            } elseif (is_bool($value)) {
+                $sanitized[$key] = $value;
+            } elseif (is_scalar($value)) {
+                $sanitized[$key] = sanitize_text_field((string) $value);
+            }
+        }
+
+        return $sanitized;
     }
 
     /**

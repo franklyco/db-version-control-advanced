@@ -1,5 +1,7 @@
 # ENTITY EDITOR — Repo Review (Phase 0)
 
+Archive note added 2026-06-24: this review predates later duplicate active JSON fixes. Current import canonicalization behavior is documented in `docs/implementation/completed/entity-editor-sync-file-import-guide.md`, especially P7 for staged sync-file import and P10 for raw-intake commits.
+
 ## Scope + document availability check
 
 Requested source docs in the kickoff were not present in this repository snapshot:

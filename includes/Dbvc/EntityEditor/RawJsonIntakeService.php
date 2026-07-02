@@ -40,9 +40,10 @@ final class RawJsonIntakeService
      * @param string $content
      * @param string $mode
      * @param int    $user_id
+     * @param array<string,mixed> $args
      * @return array<string,mixed>|\WP_Error
      */
-    public static function commit($content, $mode = self::MODE_CREATE_ONLY, $user_id = 0)
+    public static function commit($content, $mode = self::MODE_CREATE_ONLY, $user_id = 0, array $args = [])
     {
         $mode = self::normalize_mode($mode);
         $payload = self::decode_payload($content);
@@ -74,6 +75,14 @@ final class RawJsonIntakeService
             );
         }
 
+        if ($mode === self::MODE_CREATE_OR_UPDATE && isset($preview['detected_action']) && $preview['detected_action'] === 'update_matched') {
+            $confirmation = self::find_update_confirmation($args, $preview);
+            $confirmed = self::validate_matched_update_confirmation($preview, $confirmation);
+            if (\is_wp_error($confirmed)) {
+                return $confirmed;
+            }
+        }
+
         $relative_path = isset($preview['target_relative_path']) ? (string) $preview['target_relative_path'] : '';
         $entity_kind = isset($preview['entity_kind']) ? (string) $preview['entity_kind'] : '';
         $subtype = isset($preview['subtype']) ? (string) $preview['subtype'] : '';
@@ -89,20 +98,15 @@ final class RawJsonIntakeService
         $imported = false;
         $import_result = null;
         $wp_entity = null;
+        $final_payload = null;
+        $final_relative_path = $relative_path;
+        $file_normalization = null;
+        $normalization_warnings = [];
 
         if ($mode === self::MODE_STAGE_ONLY) {
             $action = 'stage';
         } elseif ($entity_kind === 'post') {
-            $result = \DBVC_Sync_Posts::import_post_from_json(
-                $written['absolute_path'],
-                false,
-                null,
-                null,
-                null,
-                null,
-                false,
-                []
-            );
+            $result = self::import_post_with_auto_exports_suppressed($written['absolute_path']);
 
             if (\is_wp_error($result)) {
                 return $result;
@@ -132,17 +136,30 @@ final class RawJsonIntakeService
             }
 
             if (isset($resolved_match['status']) && $resolved_match['status'] === 'matched') {
+                $matched_id = isset($resolved_match['id']) ? (int) $resolved_match['id'] : 0;
+                if (\is_array($final_payload) && $matched_id > 0 && (int) ($final_payload['ID'] ?? 0) !== $matched_id) {
+                    $final_payload['ID'] = $matched_id;
+                    if (! self::write_json_file($written['absolute_path'], $final_payload)) {
+                        return new \WP_Error(
+                            'dbvc_entity_editor_raw_intake_file_rewrite_failed',
+                            __('The raw JSON import succeeded, but DBVC could not rewrite the sync JSON with the local entity ID.', 'dbvc'),
+                            ['status' => 500]
+                        );
+                    }
+                    $final_payload = self::read_json_file($written['absolute_path']);
+                }
+
                 $wp_entity = self::format_wp_entity(
                     'post',
                     $subtype,
-                    isset($resolved_match['id']) ? (int) $resolved_match['id'] : 0,
+                    $matched_id,
                     isset($resolved_match['match_source']) ? (string) $resolved_match['match_source'] : ''
                 );
             }
 
             $created = isset($match['status']) && $match['status'] !== 'matched';
         } else {
-            $result = \DBVC_Sync_Taxonomies::import_term_json_file($written['absolute_path'], $subtype);
+            $result = self::import_term_with_import_side_effects_suppressed($written['absolute_path'], $subtype);
             if (\is_wp_error($result)) {
                 return $result;
             }
@@ -156,6 +173,43 @@ final class RawJsonIntakeService
                 isset($result['term_id']) ? (int) $result['term_id'] : 0,
                 'import'
             );
+
+            $final_payload = self::read_json_file($written['absolute_path']);
+            $term_id = isset($result['term_id']) ? (int) $result['term_id'] : 0;
+            if (\is_array($final_payload) && $term_id > 0) {
+                $final_payload['term_id'] = $term_id;
+                $final_payload['taxonomy'] = $subtype;
+                if (! empty($result['vf_object_uid'])) {
+                    $final_payload['vf_object_uid'] = (string) $result['vf_object_uid'];
+                }
+                if (! self::write_json_file($written['absolute_path'], $final_payload)) {
+                    return new \WP_Error(
+                        'dbvc_entity_editor_raw_intake_term_file_rewrite_failed',
+                        __('The raw JSON term import succeeded, but DBVC could not rewrite the sync JSON with the local term ID.', 'dbvc'),
+                        ['status' => 500]
+                    );
+                }
+                $final_payload = self::read_json_file($written['absolute_path']);
+            }
+        }
+
+        if ($imported && \is_array($final_payload)) {
+            $normalization = self::normalize_imported_file_path($relative_path, $written['absolute_path'], $final_payload);
+            if (\is_wp_error($normalization)) {
+                $normalization_warnings[] = [
+                    'code'    => (string) $normalization->get_error_code(),
+                    'message' => (string) $normalization->get_error_message(),
+                ];
+            } elseif (\is_array($normalization)) {
+                $file_normalization = $normalization;
+                if (! empty($normalization['relative_path'])) {
+                    $final_relative_path = (string) $normalization['relative_path'];
+                }
+                $normalization_warnings = array_merge(
+                    $normalization_warnings,
+                    self::build_file_normalization_warnings($normalization)
+                );
+            }
         }
 
         if (\class_exists('DBVC_Sync_Logger')) {
@@ -165,7 +219,8 @@ final class RawJsonIntakeService
                 'action'        => $action,
                 'entity_kind'   => $entity_kind,
                 'subtype'       => $subtype,
-                'relative_path' => $relative_path,
+                'relative_path' => $final_relative_path,
+                'source_relative_path' => $relative_path,
                 'created'       => $created,
                 'imported'      => $imported,
                 'backup_path'   => $written['backup_path'],
@@ -177,15 +232,77 @@ final class RawJsonIntakeService
             'mode'           => $mode,
             'entity_kind'    => $entity_kind,
             'subtype'        => $subtype,
-            'relative_path'  => $relative_path,
+            'relative_path'  => $final_relative_path,
+            'source_relative_path' => $relative_path,
             'backup_path'    => $written['backup_path'],
             'created'        => $created,
+            'updated'        => ($action === 'update_matched' && $imported),
             'imported'       => $imported,
             'matched'        => $match,
             'wp_entity'      => $wp_entity,
             'import_result'  => $import_result,
-            'warnings'       => isset($preview['warnings']) && \is_array($preview['warnings']) ? $preview['warnings'] : [],
+            'file_normalization' => $file_normalization,
+            'warnings'       => array_merge(
+                isset($preview['warnings']) && \is_array($preview['warnings']) ? $preview['warnings'] : [],
+                $normalization_warnings
+            ),
         ];
+    }
+
+    /**
+     * Validate an explicit raw-intake matched-update confirmation against the current preview.
+     *
+     * Future DBVC workflows that reuse raw-intake updates should pass the same confirmation shape:
+     * confirmed=true, preview_hash, and matched_entity_id.
+     *
+     * @param array<string,mixed>      $preview
+     * @param array<string,mixed>|null $confirmation
+     * @return true|\WP_Error
+     */
+    public static function validate_matched_update_confirmation(array $preview, $confirmation)
+    {
+        $match = isset($preview['match']) && \is_array($preview['match']) ? $preview['match'] : [];
+        $match_id = isset($match['id']) ? (int) $match['id'] : 0;
+
+        if (! \is_array($confirmation) || empty($confirmation['confirmed'])) {
+            return new \WP_Error(
+                'dbvc_entity_editor_raw_intake_update_confirmation_required',
+                __('Confirm the matched-entity update before DBVC applies this raw JSON payload.', 'dbvc'),
+                [
+                    'status'  => 409,
+                    'preview' => $preview,
+                ]
+            );
+        }
+
+        $provided_hash = isset($confirmation['preview_hash']) ? (string) $confirmation['preview_hash'] : '';
+        $current_hash = isset($preview['preview_hash']) ? (string) $preview['preview_hash'] : '';
+        if ($provided_hash === '' || $current_hash === '' || ! hash_equals($current_hash, $provided_hash)) {
+            return new \WP_Error(
+                'dbvc_entity_editor_raw_intake_update_stale_preview',
+                __('The raw JSON preview changed. Refresh the preview before updating the matched entity.', 'dbvc'),
+                [
+                    'status'  => 409,
+                    'preview' => $preview,
+                ]
+            );
+        }
+
+        $confirmed_match_id = isset($confirmation['matched_entity_id'])
+            ? (int) $confirmation['matched_entity_id']
+            : (isset($confirmation['match_id']) ? (int) $confirmation['match_id'] : 0);
+        if ($match_id <= 0 || $confirmed_match_id <= 0 || $confirmed_match_id !== $match_id) {
+            return new \WP_Error(
+                'dbvc_entity_editor_raw_intake_update_match_drift',
+                __('The matched entity changed. Refresh the preview before updating.', 'dbvc'),
+                [
+                    'status'  => 409,
+                    'preview' => $preview,
+                ]
+            );
+        }
+
+        return true;
     }
 
     /**
@@ -343,12 +460,111 @@ final class RawJsonIntakeService
             'detected_action'     => $available_actions[$mode] ? self::derive_detected_action($mode, $match) : 'blocked',
         ];
 
+        $matched_update = self::build_matched_update_descriptor($preview, $match);
+        if (\is_array($matched_update)) {
+            $preview['matched_update'] = $matched_update;
+        }
+
         $preview['settings_links'] = self::build_import_settings_links($preview);
         $preview['blocker_details'] = self::build_blocker_details($preview, $payload);
         $preview['setting_remediations'] = [];
         $preview['advanced_overrides'] = [];
+        $preview['preview_hash'] = self::build_preview_hash($preview, $payload);
 
         return $preview;
+    }
+
+    /**
+     * @param array<string,mixed> $preview
+     * @param array<string,mixed> $match
+     * @return array<string,mixed>|null
+     */
+    private static function build_matched_update_descriptor(array $preview, array $match)
+    {
+        if (! isset($match['status']) || $match['status'] !== 'matched') {
+            return null;
+        }
+
+        $match_id = isset($match['id']) ? (int) $match['id'] : 0;
+        if ($match_id <= 0) {
+            return null;
+        }
+
+        $entity_kind = isset($preview['entity_kind']) ? (string) $preview['entity_kind'] : '';
+        $subtype = isset($preview['subtype']) ? (string) $preview['subtype'] : '';
+        $match_source = isset($match['match_source']) ? (string) $match['match_source'] : '';
+
+        return [
+            'eligible'              => true,
+            'requires_confirmation' => true,
+            'match_source'          => $match_source,
+            'wp_entity'             => self::format_wp_entity($entity_kind, $subtype, $match_id, $match_source),
+            'scope_summary'         => [
+                'core_fields' => true,
+                'meta'        => true,
+                'taxonomies'  => true,
+            ],
+            'confirmation_label'    => __('I confirm updating this matched WordPress entity from the selected JSON.', 'dbvc'),
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $preview
+     * @param array<string,mixed> $payload
+     * @return string
+     */
+    private static function build_preview_hash(array $preview, array $payload)
+    {
+        $encoded_payload = wp_json_encode($payload);
+        $match = isset($preview['match']) && \is_array($preview['match']) ? $preview['match'] : [];
+        $blocking_codes = array_column((array) ($preview['blocking'] ?? []), 'code');
+        $hash_payload = [
+            'mode'                 => isset($preview['mode']) ? (string) $preview['mode'] : '',
+            'entity_kind'          => isset($preview['entity_kind']) ? (string) $preview['entity_kind'] : '',
+            'subtype'              => isset($preview['subtype']) ? (string) $preview['subtype'] : '',
+            'target_relative_path' => isset($preview['target_relative_path']) ? (string) $preview['target_relative_path'] : '',
+            'match_status'         => isset($match['status']) ? (string) $match['status'] : '',
+            'match_id'             => isset($match['id']) ? (int) $match['id'] : 0,
+            'match_source'         => isset($match['match_source']) ? (string) $match['match_source'] : '',
+            'blocking_codes'       => $blocking_codes,
+            'payload_hash'         => \is_string($encoded_payload) ? hash('sha256', $encoded_payload) : '',
+        ];
+
+        return hash('sha256', (string) wp_json_encode($hash_payload));
+    }
+
+    /**
+     * @param array<string,mixed> $args
+     * @param array<string,mixed> $preview
+     * @return array<string,mixed>|null
+     */
+    private static function find_update_confirmation(array $args, array $preview)
+    {
+        if (isset($args['confirmation']) && \is_array($args['confirmation'])) {
+            return $args['confirmation'];
+        }
+
+        $confirmations = isset($args['confirmations']) && \is_array($args['confirmations'])
+            ? $args['confirmations']
+            : [];
+        $relative_path = isset($preview['target_relative_path']) ? str_replace('\\', '/', ltrim((string) $preview['target_relative_path'], '/')) : '';
+        if ($relative_path === '') {
+            return null;
+        }
+
+        foreach ($confirmations as $key => $confirmation) {
+            if (! \is_array($confirmation)) {
+                continue;
+            }
+
+            $candidate_path = \is_string($key) ? $key : (isset($confirmation['path']) ? (string) $confirmation['path'] : '');
+            $candidate_path = str_replace('\\', '/', ltrim($candidate_path, '/'));
+            if ($candidate_path !== '' && $candidate_path === $relative_path) {
+                return $confirmation;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1189,6 +1405,120 @@ final class RawJsonIntakeService
         ]);
 
         return \is_array($terms) ? array_values(array_unique(array_map('intval', $terms))) : [];
+    }
+
+    /**
+     * @param string $absolute_path
+     * @return mixed
+     */
+    private static function import_post_with_auto_exports_suppressed($absolute_path)
+    {
+        if (
+            \class_exists(SyncFileImportService::class)
+            && \method_exists(SyncFileImportService::class, 'import_post_with_auto_exports_suppressed')
+        ) {
+            return SyncFileImportService::import_post_with_auto_exports_suppressed($absolute_path);
+        }
+
+        return \DBVC_Sync_Posts::import_post_from_json(
+            $absolute_path,
+            false,
+            null,
+            null,
+            null,
+            null,
+            false,
+            []
+        );
+    }
+
+    /**
+     * @param string $absolute_path
+     * @param string $taxonomy
+     * @return mixed
+     */
+    private static function import_term_with_import_side_effects_suppressed($absolute_path, $taxonomy)
+    {
+        if (
+            \class_exists(SyncFileImportService::class)
+            && \method_exists(SyncFileImportService::class, 'import_term_with_import_side_effects_suppressed')
+        ) {
+            return SyncFileImportService::import_term_with_import_side_effects_suppressed($absolute_path, $taxonomy);
+        }
+
+        return \DBVC_Sync_Taxonomies::import_term_json_file($absolute_path, $taxonomy);
+    }
+
+    /**
+     * @param string              $source_relative_path
+     * @param string              $source_absolute_path
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>|\WP_Error|null
+     */
+    private static function normalize_imported_file_path($source_relative_path, $source_absolute_path, array $payload)
+    {
+        if (
+            \class_exists(SyncFileImportService::class)
+            && \method_exists(SyncFileImportService::class, 'normalize_imported_entity_file_path')
+        ) {
+            return SyncFileImportService::normalize_imported_entity_file_path($source_relative_path, $source_absolute_path, $payload);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string,mixed> $file_normalization
+     * @return array<int,array<string,string>>
+     */
+    private static function build_file_normalization_warnings(array $file_normalization): array
+    {
+        $warnings = [];
+        $errors = isset($file_normalization['archive_errors']) && \is_array($file_normalization['archive_errors'])
+            ? $file_normalization['archive_errors']
+            : [];
+
+        foreach ($errors as $error) {
+            if (! \is_array($error)) {
+                continue;
+            }
+
+            $path = isset($error['relative_path']) ? (string) $error['relative_path'] : '';
+            $message = isset($error['message']) ? (string) $error['message'] : '';
+            if ($message === '') {
+                $message = __('A stale duplicate sync file could not be archived.', 'dbvc');
+            }
+            if ($path !== '') {
+                $message = sprintf('%s (%s)', $message, $path);
+            }
+
+            $warnings[] = [
+                'code'    => 'stale_duplicate_archive_failed',
+                'message' => $message,
+            ];
+        }
+
+        return $warnings;
+    }
+
+    /**
+     * @param string              $absolute_path
+     * @param array<string,mixed> $payload
+     * @return bool
+     */
+    private static function write_json_file($absolute_path, array $payload): bool
+    {
+        if (! \dbvc_is_safe_file_path($absolute_path)) {
+            return false;
+        }
+
+        $normalized = \function_exists('dbvc_normalize_for_json') ? \dbvc_normalize_for_json($payload) : $payload;
+        $encoded = wp_json_encode($normalized, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (! \is_string($encoded) || $encoded === '') {
+            return false;
+        }
+
+        return file_put_contents($absolute_path, $encoded . "\n") !== false;
     }
 
     /**

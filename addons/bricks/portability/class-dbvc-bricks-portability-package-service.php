@@ -8,6 +8,7 @@ final class DBVC_Bricks_Portability_Package_Service
 {
     public const PACKAGE_VERSION = 1;
     public const FEATURE_VERSION = '0.1.0';
+    private const DEFAULT_MAX_MEDIA_FILE_BYTES = 26214400;
 
     /**
      * @param array<int, string> $requested_domains
@@ -45,6 +46,10 @@ final class DBVC_Bricks_Portability_Package_Service
         $checksums = [];
         $selected_domain_keys = [];
         $normalized_domains = [];
+        $media_manifest = [
+            'version' => 1,
+            'files' => [],
+        ];
 
         foreach ($domains as $domain) {
             $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ''));
@@ -58,6 +63,12 @@ final class DBVC_Bricks_Portability_Package_Service
                 self::cleanup_directory($workspace);
                 return $verification_error;
             }
+            $media_result = self::package_normalized_media_refs($normalized, $domain_key, $workspace, $checksums, $media_manifest);
+            if (is_wp_error($media_result)) {
+                self::cleanup_directory($workspace);
+                return $media_result;
+            }
+            $normalized = $media_result;
             $normalized_domains[$domain_key] = $normalized;
             $selected_domain_keys[] = $domain_key;
 
@@ -69,11 +80,13 @@ final class DBVC_Bricks_Portability_Package_Service
                 'normalization_version' => DBVC_Bricks_Portability_Normalizer::NORMALIZATION_VERSION,
                 'objects' => array_values((array) ($normalized['objects'] ?? [])),
                 'metadata_rows' => array_values((array) ($normalized['metadata_rows'] ?? [])),
+                'media_refs' => array_values((array) ($normalized['media_refs'] ?? [])),
                 'meta' => [
                     'count' => count((array) ($normalized['objects'] ?? [])),
                     'warnings' => array_values((array) ($normalized['warnings'] ?? [])),
                     'transport' => $normalized['transport'] ?? [],
                     'domain_fingerprint' => (string) ($normalized['domain_fingerprint'] ?? ''),
+                    'media_count' => count((array) ($normalized['media_refs'] ?? [])),
                 ],
             ];
 
@@ -133,6 +146,12 @@ final class DBVC_Bricks_Portability_Package_Service
                 'min_dbvc_version' => (string) ($site_context['dbvc_version'] ?? ''),
                 'min_bricks_version' => '',
             ],
+            'media' => [
+                'file_count' => count((array) ($media_manifest['files'] ?? [])),
+                'domains' => array_values(array_unique(array_filter(array_map(static function ($file) {
+                    return is_array($file) ? sanitize_key((string) ($file['domain_key'] ?? '')) : '';
+                }, (array) ($media_manifest['files'] ?? []))))),
+            ],
         ];
         $site_payload = [
             'site_name' => (string) ($site_context['site_name'] ?? ''),
@@ -143,6 +162,14 @@ final class DBVC_Bricks_Portability_Package_Service
             'environment' => sanitize_key((string) ($args['environment'] ?? '')),
         ];
 
+        if (! empty($media_manifest['files'])) {
+            $media_path = DBVC_Bricks_Portability_Storage::write_json_file($workspace, 'media.json', $media_manifest);
+            if (is_wp_error($media_path)) {
+                self::cleanup_directory($workspace);
+                return $media_path;
+            }
+            $checksums['media.json'] = DBVC_Bricks_Portability_Utils::fingerprint($media_manifest);
+        }
         DBVC_Bricks_Portability_Storage::write_json_file($workspace, 'manifest.json', $manifest);
         DBVC_Bricks_Portability_Storage::write_json_file($workspace, 'site.json', $site_payload);
         $checksums['manifest.json'] = DBVC_Bricks_Portability_Utils::fingerprint($manifest);
@@ -253,6 +280,16 @@ final class DBVC_Bricks_Portability_Package_Service
         if (is_wp_error($site_payload)) {
             return $site_payload;
         }
+        $media_payload_path = wp_normalize_path(trailingslashit($extract_dir) . 'media.json');
+        $media_manifest = is_file($media_payload_path)
+            ? DBVC_Bricks_Portability_Storage::read_json_file($media_payload_path)
+            : [
+                'version' => 1,
+                'files' => [],
+            ];
+        if (is_wp_error($media_manifest)) {
+            return $media_manifest;
+        }
 
         $validation = self::validate_manifest($manifest);
         if (is_wp_error($validation)) {
@@ -276,6 +313,20 @@ final class DBVC_Bricks_Portability_Package_Service
         $target_domains = [];
         foreach ($domains as $domain) {
             $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ''));
+            if (! empty($domain['media_backed']) || ! empty($domain['entity_backed'])) {
+                $domain_payload = self::read_domain_payload($extract_dir, $domain);
+                if (is_wp_error($domain_payload)) {
+                    return $domain_payload;
+                }
+                $source_domains[$domain_key] = DBVC_Bricks_Portability_Normalizer::normalize_package_domain_payload($domain, $domain_payload);
+                $verification_error = self::validate_normalized_domain_for_portability($domain, $source_domains[$domain_key], 'import');
+                if (is_wp_error($verification_error)) {
+                    return $verification_error;
+                }
+                $target_domains[$domain_key] = DBVC_Bricks_Portability_Normalizer::normalize_live_domain($domain);
+                continue;
+            }
+
             $raw_values = [];
             foreach ((array) ($domain['option_names'] ?? []) as $option_name) {
                 $option_name = sanitize_key((string) $option_name);
@@ -324,6 +375,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'rows' => $review['rows'],
             'source_domains' => $source_domains,
             'target_domains' => $target_domains,
+            'media_manifest' => $media_manifest,
             'archive_path' => $archive_path,
             'extract_dir' => $extract_dir,
             'draft' => [],
@@ -386,6 +438,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'applied_to_site' => $applied_to_site,
             'backup_id' => $backup_id,
             'job_id' => $job_id,
+            'reference_receipt' => self::sanitize_reference_receipt(isset($args['reference_receipt']) && is_array($args['reference_receipt']) ? $args['reference_receipt'] : []),
             'rows' => self::build_row_approval_state($rows, $effective_decisions, $approved_at_gmt, $applied_to_site, $manual_row_ids),
         ];
 
@@ -467,6 +520,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'backup_id' => sanitize_key((string) ($rollback['backup_id'] ?? '')),
             'job_id' => (int) ($rollback['job_id'] ?? 0),
             'option_count' => count((array) ($rollback['option_names'] ?? [])),
+            'reference_receipt' => self::sanitize_reference_receipt(isset($rollback['reference_receipt']) && is_array($rollback['reference_receipt']) ? $rollback['reference_receipt'] : []),
         ];
 
         $persist = self::persist_session($session);
@@ -663,27 +717,387 @@ final class DBVC_Bricks_Portability_Package_Service
     private static function validate_normalized_domain_for_portability(array $domain, array $normalized, $operation)
     {
         $operation = sanitize_key((string) $operation);
+        $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ($normalized['domain_key'] ?? '')));
         $verification = isset($normalized['verification']) && is_array($normalized['verification']) ? $normalized['verification'] : [];
-        if ($verification === []) {
+        if ($verification !== []) {
+            $blocks = DBVC_Bricks_Portability_Domain_Verifier::blocks_export($verification);
+            if ($blocks) {
+                $label = sanitize_text_field((string) ($domain['label'] ?? ($normalized['label'] ?? 'Selected domain')));
+                $warning = sanitize_text_field((string) (($verification['warnings'][0] ?? '')));
+                $message = sprintf(__('The Bricks portability %1$s for `%2$s` was blocked because its storage shape could not be verified safely.', 'dbvc'), $operation, $label);
+                if ($warning !== '') {
+                    $message .= ' ' . $warning;
+                }
+
+                return new \WP_Error(
+                    'dbvc_bricks_portability_domain_verification_failed',
+                    $message,
+                    ['status' => 400, 'domain_key' => $domain_key]
+                );
+            }
+        }
+
+        if ($domain_key === 'bricks_templates') {
+            return self::validate_template_dependency_descriptors($normalized, $operation);
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $normalized
+     * @param string $operation
+     * @return true|\WP_Error
+     */
+    private static function validate_template_dependency_descriptors(array $normalized, $operation)
+    {
+        $operation = sanitize_key((string) $operation);
+        $domain_media_refs = self::index_template_dependency_media_refs((array) ($normalized['media_refs'] ?? []));
+        foreach ((array) ($normalized['objects'] ?? []) as $object_index => $object) {
+            if (! is_array($object)) {
+                continue;
+            }
+            if (array_key_exists('dependency_refs', $object) && ! is_array($object['dependency_refs'])) {
+                return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template dependency descriptors must be an array.', 'dbvc'));
+            }
+            if (array_key_exists('media_refs', $object) && ! is_array($object['media_refs'])) {
+                return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template media references must be an array.', 'dbvc'));
+            }
+
+            $media_refs = array_merge($domain_media_refs, self::index_template_dependency_media_refs((array) ($object['media_refs'] ?? [])));
+            if (! empty($object['references']) && is_array($object['references'])) {
+                if (isset($object['references']['media_refs']) && ! is_array($object['references']['media_refs'])) {
+                    return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template reference media metadata must be an array.', 'dbvc'));
+                }
+                if (isset($object['references']['template_refs']) && ! is_array($object['references']['template_refs'])) {
+                    return self::template_dependency_descriptor_error($operation, (int) $object_index, -1, __('Template reference template metadata must be an array.', 'dbvc'));
+                }
+                $media_refs = array_merge($media_refs, self::index_template_dependency_media_refs((array) ($object['references']['media_refs'] ?? [])));
+            }
+
+            foreach ((array) ($object['dependency_refs'] ?? []) as $ref_index => $ref) {
+                if (! is_array($ref)) {
+                    return self::template_dependency_descriptor_error($operation, (int) $object_index, (int) $ref_index, __('Each template dependency descriptor must be an object.', 'dbvc'));
+                }
+
+                $validation = self::validate_template_dependency_descriptor($ref, $media_refs, $operation, (int) $object_index, (int) $ref_index);
+                if (is_wp_error($validation)) {
+                    return $validation;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param array<string, array<string, mixed>> $media_refs
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @return true|\WP_Error
+     */
+    private static function validate_template_dependency_descriptor(array $ref, array $media_refs, $operation, $object_index, $ref_index)
+    {
+        $ref_type = sanitize_key((string) ($ref['ref_type'] ?? ''));
+        if (! in_array($ref_type, ['media', 'nested_template', 'post_or_term'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor has an unsupported reference type.', 'dbvc'));
+        }
+
+        $source_id = isset($ref['source_id']) && is_numeric($ref['source_id']) ? (int) $ref['source_id'] : 0;
+        if ($source_id <= 0) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor is missing a valid source ID.', 'dbvc'));
+        }
+
+        if (empty($ref['path']) || ! is_array($ref['path']) || ! self::template_dependency_path_is_safe((array) $ref['path'], false)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor contains an unsafe payload path.', 'dbvc'));
+        }
+
+        $expected_payload_path = implode('.', array_map('strval', (array) $ref['path']));
+        $payload_path = isset($ref['payload_path']) ? (string) $ref['payload_path'] : '';
+        if ($payload_path === '' || ! hash_equals($expected_payload_path, $payload_path)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor payload path does not match its path array.', 'dbvc'));
+        }
+
+        if (isset($ref['url_path']) && (! is_array($ref['url_path']) || ! self::template_dependency_path_is_safe((array) $ref['url_path'], true))) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor contains an unsafe URL payload path.', 'dbvc'));
+        }
+
+        if (isset($ref['required']) && ! is_bool($ref['required'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor required flag must be boolean.', 'dbvc'));
+        }
+
+        $confidence = sanitize_key((string) ($ref['confidence'] ?? ''));
+        if ($confidence !== '' && ! in_array($confidence, ['high', 'medium', 'low'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor confidence is invalid.', 'dbvc'));
+        }
+
+        if (isset($ref['target_id']) && ! is_numeric($ref['target_id'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dependency descriptor target ID must be numeric.', 'dbvc'));
+        }
+
+        $strategy = sanitize_key((string) ($ref['resolution_strategy'] ?? ''));
+        if ($ref_type === 'media') {
+            return self::validate_template_media_dependency_descriptor($ref, $media_refs, $operation, $object_index, $ref_index, $strategy);
+        }
+
+        if ($ref_type === 'post_or_term') {
+            return self::validate_template_entity_dependency_descriptor($ref, $operation, $object_index, $ref_index, $strategy);
+        }
+
+        if ($strategy !== 'template_graph') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Nested template dependency descriptors must use the template graph resolution strategy.', 'dbvc'));
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param array<string, array<string, mixed>> $media_refs
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @param string $strategy
+     * @return true|\WP_Error
+     */
+    private static function validate_template_media_dependency_descriptor(array $ref, array $media_refs, $operation, $object_index, $ref_index, $strategy)
+    {
+        if ($strategy !== 'package_media_checksum') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptors must use the package media checksum resolution strategy.', 'dbvc'));
+        }
+
+        $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+        if ($media_key === '' || empty($media_refs[$media_key]) || ! is_array($media_refs[$media_key])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptor does not resolve to package media metadata.', 'dbvc'));
+        }
+
+        if ($operation !== 'import') {
             return true;
         }
 
-        $blocks = DBVC_Bricks_Portability_Domain_Verifier::blocks_export($verification);
-        if (! $blocks) {
-            return true;
+        $media_ref = $media_refs[$media_key];
+        $package_path = self::normalize_package_relative_path($media_ref['package_path'] ?? '');
+        $checksum = sanitize_text_field((string) ($media_ref['checksum'] ?? ''));
+        if ($package_path === '' || $checksum === '' || strpos($package_path, 'media/bricks_templates/') !== 0 || ! self::is_sha256_checksum($checksum)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptor is missing checksummed package media.', 'dbvc'));
         }
 
-        $label = sanitize_text_field((string) ($domain['label'] ?? ($normalized['label'] ?? 'Selected domain')));
-        $warning = sanitize_text_field((string) (($verification['warnings'][0] ?? '')));
-        $message = sprintf(__('The Bricks portability %1$s for `%2$s` was blocked because its storage shape could not be verified safely.', 'dbvc'), $operation, $label);
-        if ($warning !== '') {
-            $message .= ' ' . $warning;
+        $path_validation = self::validate_checksummed_payload_path($package_path);
+        if (is_wp_error($path_validation)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template media dependency descriptor points to an unsafe package media path.', 'dbvc'));
         }
 
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @param string $strategy
+     * @return true|\WP_Error
+     */
+    private static function validate_template_entity_dependency_descriptor(array $ref, $operation, $object_index, $ref_index, $strategy)
+    {
+        if ($strategy !== 'entity_uid_then_slug') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptors must use the UID then slug resolution strategy.', 'dbvc'));
+        }
+
+        $entity_kind = sanitize_key((string) ($ref['entity_kind'] ?? ''));
+        if (! in_array($entity_kind, ['post', 'term'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor has an invalid entity kind.', 'dbvc'));
+        }
+
+        if (isset($ref['entity_uid']) && ! is_scalar($ref['entity_uid'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor UID must be scalar.', 'dbvc'));
+        }
+
+        $object_subtype = sanitize_key((string) ($ref['object_subtype'] ?? ''));
+        if ($object_subtype === '') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor is missing an object subtype.', 'dbvc'));
+        }
+
+        if (isset($ref['object_slug']) && ! is_scalar($ref['object_slug'])) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor slug must be scalar.', 'dbvc'));
+        }
+
+        $value_type = sanitize_key((string) ($ref['source_value_type'] ?? ''));
+        if ($value_type !== '' && ! in_array($value_type, ['integer', 'string', 'scoped_term'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor value type is invalid.', 'dbvc'));
+        }
+
+        $dynamic_ref_kind = sanitize_key((string) ($ref['dynamic_ref_kind'] ?? ''));
+        if ($dynamic_ref_kind !== '') {
+            $dynamic_validation = self::validate_template_dynamic_token_dependency_descriptor($ref, $entity_kind, $operation, $object_index, $ref_index);
+            if (is_wp_error($dynamic_validation)) {
+                return $dynamic_validation;
+            }
+        }
+
+        $link_ref_kind = sanitize_key((string) ($ref['link_ref_kind'] ?? ''));
+        if ($link_ref_kind !== '') {
+            $link_validation = self::validate_template_link_dependency_descriptor($ref, $entity_kind, $operation, $object_index, $ref_index);
+            if (is_wp_error($link_validation)) {
+                return $link_validation;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param string $entity_kind
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @return true|\WP_Error
+     */
+    private static function validate_template_dynamic_token_dependency_descriptor(array $ref, $entity_kind, $operation, $object_index, $ref_index)
+    {
+        if ($entity_kind !== 'post' || sanitize_key((string) ($ref['dynamic_ref_kind'] ?? '')) !== 'dynamic_data_token') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor has an invalid token reference kind.', 'dbvc'));
+        }
+
+        $token_name = sanitize_key((string) ($ref['dynamic_token_name'] ?? ''));
+        if (! in_array($token_name, ['site_login', 'site_logout'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor has an unsupported token name.', 'dbvc'));
+        }
+
+        foreach (['dynamic_token_original', 'dynamic_token_prefix', 'dynamic_token_suffix'] as $field) {
+            if (! isset($ref[$field]) || ! is_scalar($ref[$field]) || trim((string) $ref[$field]) === '') {
+                return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor is missing token metadata.', 'dbvc'));
+            }
+        }
+
+        $source_id = isset($ref['source_id']) && is_numeric($ref['source_id']) ? (int) $ref['source_id'] : 0;
+        $original = (string) $ref['dynamic_token_original'];
+        $prefix = (string) $ref['dynamic_token_prefix'];
+        $suffix = (string) $ref['dynamic_token_suffix'];
+        if ($source_id <= 0 || $prefix !== '{' . $token_name . ':' || substr($suffix, -1) !== '}') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor has invalid token metadata.', 'dbvc'));
+        }
+
+        $pattern = '/^\{' . preg_quote($token_name, '/') . ':' . preg_quote((string) $source_id, '/') . '[^}]*\}$/';
+        if (preg_match($pattern, $original) !== 1) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor original token does not match its source entity.', 'dbvc'));
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param string $entity_kind
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @return true|\WP_Error
+     */
+    private static function validate_template_link_dependency_descriptor(array $ref, $entity_kind, $operation, $object_index, $ref_index)
+    {
+        $link_ref_kind = sanitize_key((string) ($ref['link_ref_kind'] ?? ''));
+        if (! in_array($link_ref_kind, ['internal', 'taxonomy'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template link dependency descriptor has an unsupported link reference kind.', 'dbvc'));
+        }
+
+        if ($link_ref_kind === 'internal' && $entity_kind !== 'post') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template internal link dependency descriptor must reference a post entity.', 'dbvc'));
+        }
+
+        if ($link_ref_kind === 'taxonomy' && $entity_kind !== 'term') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template taxonomy link dependency descriptor must reference a term entity.', 'dbvc'));
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, mixed> $refs
+     * @return array<string, array<string, mixed>>
+     */
+    private static function index_template_dependency_media_refs(array $refs)
+    {
+        $indexed = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key !== '') {
+                $indexed[$media_key] = $ref;
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @param array<int, mixed> $path
+     * @param bool $allow_empty
+     * @return bool
+     */
+    private static function template_dependency_path_is_safe(array $path, $allow_empty)
+    {
+        if (empty($path)) {
+            return (bool) $allow_empty;
+        }
+        if (count($path) > 64) {
+            return false;
+        }
+
+        foreach ($path as $segment) {
+            if (is_int($segment)) {
+                if ($segment < 0) {
+                    return false;
+                }
+                continue;
+            }
+            if (! is_string($segment)) {
+                return false;
+            }
+            $segment = trim($segment);
+            if (
+                $segment === ''
+                || $segment === '.'
+                || $segment === '..'
+                || strlen($segment) > 128
+                || strpos($segment, "\0") !== false
+                || strpos($segment, '/') !== false
+                || strpos($segment, '\\') !== false
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param mixed $checksum
+     * @return bool
+     */
+    private static function is_sha256_checksum($checksum)
+    {
+        return is_string($checksum) && preg_match('/^sha256:[a-f0-9]{64}$/', $checksum) === 1;
+    }
+
+    /**
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @param string $message
+     * @return \WP_Error
+     */
+    private static function template_dependency_descriptor_error($operation, $object_index, $ref_index, $message)
+    {
         return new \WP_Error(
-            'dbvc_bricks_portability_domain_verification_failed',
-            $message,
-            ['status' => 400, 'domain_key' => sanitize_key((string) ($domain['domain_key'] ?? ''))]
+            'dbvc_bricks_portability_template_dependency_invalid',
+            sprintf(__('The Bricks template dependency metadata is invalid during %1$s at object %2$d, reference %3$d. %4$s', 'dbvc'), sanitize_key((string) $operation), (int) $object_index, (int) $ref_index, $message),
+            ['status' => 400, 'object_index' => (int) $object_index, 'ref_index' => (int) $ref_index]
         );
     }
 
@@ -801,6 +1215,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'applied_to_site' => ! empty($approval['applied_to_site']),
             'backup_id' => sanitize_key((string) ($approval['backup_id'] ?? '')),
             'job_id' => (int) ($approval['job_id'] ?? 0),
+            'reference_receipt' => self::sanitize_reference_receipt(isset($approval['reference_receipt']) && is_array($approval['reference_receipt']) ? $approval['reference_receipt'] : []),
         ];
         if (! $include_rows) {
             return $view;
@@ -845,7 +1260,122 @@ final class DBVC_Bricks_Portability_Package_Service
             'backup_id' => sanitize_key((string) ($rollback['backup_id'] ?? '')),
             'job_id' => (int) ($rollback['job_id'] ?? 0),
             'option_count' => (int) ($rollback['option_count'] ?? 0),
+            'reference_receipt' => self::sanitize_reference_receipt(isset($rollback['reference_receipt']) && is_array($rollback['reference_receipt']) ? $rollback['reference_receipt'] : []),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $receipt
+     * @return array<string, mixed>
+     */
+    private static function sanitize_reference_receipt(array $receipt)
+    {
+        return [
+            'template_rows' => max(0, (int) ($receipt['template_rows'] ?? 0)),
+            'references' => self::sanitize_receipt_count_section((array) ($receipt['references'] ?? []), [
+                'safe_refs',
+                'remapped_refs',
+                'media_refs',
+                'nested_template_refs',
+                'entity_refs',
+                'post_refs',
+                'term_refs',
+                'query_refs',
+                'link_refs',
+                'dynamic_data_refs',
+                'preserved_refs',
+                'unknown_refs',
+                'blocked_refs',
+            ]),
+            'media' => self::sanitize_receipt_count_section((array) ($receipt['media'] ?? []), [
+                'created_posts',
+                'created_attachments',
+                'reused_attachments',
+                'template_attachment_maps',
+                'font_id_maps',
+                'font_attachment_maps',
+                'icon_attachment_maps',
+            ]),
+            'entities' => self::sanitize_receipt_count_section((array) ($receipt['entities'] ?? []), [
+                'created_posts',
+                'updated_posts',
+                'created_terms',
+                'template_post_maps',
+            ]),
+            'maps' => self::sanitize_receipt_maps((array) ($receipt['maps'] ?? [])),
+            'reference_maps' => self::sanitize_receipt_reference_maps((array) ($receipt['reference_maps'] ?? [])),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     * @param array<int, string> $keys
+     * @return array<string, int>
+     */
+    private static function sanitize_receipt_count_section(array $section, array $keys)
+    {
+        $sanitized = [];
+        foreach ($keys as $key) {
+            $sanitized[$key] = max(0, (int) ($section[$key] ?? 0));
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $maps
+     * @return array<string, array<string, int>>
+     */
+    private static function sanitize_receipt_maps(array $maps)
+    {
+        $keys = ['template_posts', 'template_attachments', 'font_ids', 'font_attachments', 'icon_attachments'];
+        $sanitized = [];
+        foreach ($keys as $key) {
+            $sanitized[$key] = [];
+            foreach ((array) ($maps[$key] ?? []) as $source_id => $target_id) {
+                $source_id = (int) $source_id;
+                $target_id = (int) $target_id;
+                if ($source_id > 0 && $target_id > 0) {
+                    $sanitized[$key][(string) $source_id] = $target_id;
+                }
+            }
+            ksort($sanitized[$key], SORT_NATURAL);
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $reference_maps
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private static function sanitize_receipt_reference_maps(array $reference_maps)
+    {
+        $buckets = DBVC_Bricks_Portability_Template_Apply_Service::empty_reference_state();
+        foreach (array_keys($buckets) as $bucket) {
+            $items = [];
+            foreach ((array) ($reference_maps[$bucket] ?? []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $items[] = [
+                    'source_id' => max(0, (int) ($item['source_id'] ?? 0)),
+                    'target_id' => max(0, (int) ($item['target_id'] ?? 0)),
+                    'payload_path' => sanitize_text_field((string) ($item['payload_path'] ?? '')),
+                    'control_name' => sanitize_key((string) ($item['control_name'] ?? '')),
+                    'ref_type' => sanitize_key((string) ($item['ref_type'] ?? '')),
+                    'entity_kind' => sanitize_key((string) ($item['entity_kind'] ?? '')),
+                    'object_subtype' => sanitize_key((string) ($item['object_subtype'] ?? '')),
+                    'query_ref_kind' => sanitize_key((string) ($item['query_ref_kind'] ?? '')),
+                    'link_ref_kind' => sanitize_key((string) ($item['link_ref_kind'] ?? '')),
+                    'dynamic_ref_kind' => sanitize_key((string) ($item['dynamic_ref_kind'] ?? '')),
+                    'dynamic_token_name' => sanitize_key((string) ($item['dynamic_token_name'] ?? '')),
+                ];
+            }
+            $buckets[$bucket] = $items;
+        }
+
+        return $buckets;
     }
 
     /**
@@ -1088,6 +1618,197 @@ final class DBVC_Bricks_Portability_Package_Service
     }
 
     /**
+     * @param array<string, mixed> $normalized
+     * @param string $domain_key
+     * @param string $workspace
+     * @param array<string, string> $checksums
+     * @param array<string, mixed> $media_manifest
+     * @return array<string, mixed>|\WP_Error
+     */
+    private static function package_normalized_media_refs(array $normalized, $domain_key, $workspace, array &$checksums, array &$media_manifest)
+    {
+        $refs = isset($normalized['media_refs']) && is_array($normalized['media_refs']) ? $normalized['media_refs'] : [];
+        if (empty($refs)) {
+            return $normalized;
+        }
+
+        $domain_key = sanitize_key((string) $domain_key);
+        $workspace = wp_normalize_path((string) $workspace);
+        $media_dir = wp_normalize_path(trailingslashit($workspace) . 'media/' . $domain_key);
+        if (! wp_mkdir_p($media_dir)) {
+            return new \WP_Error('dbvc_bricks_portability_media_dir_failed', __('Failed to create the Bricks portability media workspace.', 'dbvc'), ['status' => 500]);
+        }
+
+        $packaged_refs = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key === '') {
+                continue;
+            }
+
+            $packaged = self::strip_private_media_ref_fields($ref);
+            $packaged_refs[$media_key] = $packaged;
+            if (empty($ref['file_available']) || empty($ref['source_file']) || empty($ref['checksum'])) {
+                continue;
+            }
+
+            $extension = sanitize_key((string) ($ref['extension'] ?? pathinfo((string) ($ref['source_file'] ?? ''), PATHINFO_EXTENSION)));
+            if (! self::is_allowed_media_extension($extension)) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_media_type_invalid',
+                    sprintf(__('The Bricks portability media file `%s` has an unsupported extension.', 'dbvc'), sanitize_file_name((string) ($ref['filename'] ?? 'media'))),
+                    ['status' => 400]
+                );
+            }
+
+            $source_file = wp_normalize_path((string) $ref['source_file']);
+            if ($source_file === '' || ! is_file($source_file) || ! is_readable($source_file)) {
+                continue;
+            }
+
+            $size_validation = self::validate_media_file_size($source_file, (string) ($ref['filename'] ?? basename($source_file)));
+            if (is_wp_error($size_validation)) {
+                return $size_validation;
+            }
+
+            $hash = preg_replace('/^sha256:/', '', sanitize_text_field((string) $ref['checksum']));
+            $filename = sanitize_file_name((string) ($ref['filename'] ?? basename($source_file)));
+            if ($filename === '') {
+                $filename = 'media-' . substr((string) $hash, 0, 12) . '.' . $extension;
+            }
+            $relative_path = 'media/' . $domain_key . '/' . substr((string) $hash, 0, 16) . '-' . $filename;
+            $dest = wp_normalize_path(trailingslashit($workspace) . $relative_path);
+            if (! @copy($source_file, $dest)) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_media_copy_failed',
+                    sprintf(__('Failed to copy Bricks portability media file `%s` into the package.', 'dbvc'), $filename),
+                    ['status' => 500]
+                );
+            }
+
+            $checksum = 'sha256:' . hash_file('sha256', $dest);
+            if (! hash_equals((string) $ref['checksum'], $checksum)) {
+                return new \WP_Error(
+                    'dbvc_bricks_portability_media_checksum_failed',
+                    sprintf(__('Failed to verify copied Bricks portability media file `%s`.', 'dbvc'), $filename),
+                    ['status' => 500]
+                );
+            }
+
+            $packaged['package_path'] = $relative_path;
+            $packaged['checksum'] = $checksum;
+            $packaged_refs[$media_key] = $packaged;
+            $checksums[$relative_path] = $checksum;
+            $media_manifest['files'][] = $packaged;
+        }
+
+        $normalized['media_refs'] = array_values($packaged_refs);
+        if (! empty($normalized['objects']) && is_array($normalized['objects'])) {
+            foreach ($normalized['objects'] as $index => $object) {
+                if (! is_array($object)) {
+                    continue;
+                }
+                $normalized['objects'][$index] = self::hydrate_object_packaged_media_refs($object, $packaged_refs);
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $object
+     * @param array<string, array<string, mixed>> $packaged_refs
+     * @return array<string, mixed>
+     */
+    private static function hydrate_object_packaged_media_refs(array $object, array $packaged_refs)
+    {
+        foreach (['media_refs'] as $field) {
+            if (empty($object[$field]) || ! is_array($object[$field])) {
+                continue;
+            }
+            $object[$field] = self::replace_media_ref_list_with_packaged_refs((array) $object[$field], $packaged_refs);
+        }
+
+        if (! empty($object['references']) && is_array($object['references']) && ! empty($object['references']['media_refs']) && is_array($object['references']['media_refs'])) {
+            $object['references']['media_refs'] = self::replace_media_ref_list_with_packaged_refs((array) $object['references']['media_refs'], $packaged_refs);
+        }
+
+        return $object;
+    }
+
+    /**
+     * @param array<int, mixed> $refs
+     * @param array<string, array<string, mixed>> $packaged_refs
+     * @return array<int, array<string, mixed>>
+     */
+    private static function replace_media_ref_list_with_packaged_refs(array $refs, array $packaged_refs)
+    {
+        $result = [];
+        foreach ($refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+            $media_key = sanitize_text_field((string) ($ref['media_key'] ?? ''));
+            if ($media_key !== '' && isset($packaged_refs[$media_key])) {
+                $result[] = $packaged_refs[$media_key];
+                continue;
+            }
+            $result[] = self::strip_private_media_ref_fields($ref);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @return array<string, mixed>
+     */
+    private static function strip_private_media_ref_fields(array $ref)
+    {
+        unset($ref['source_file']);
+        if (isset($ref['filename'])) {
+            $ref['filename'] = sanitize_file_name((string) $ref['filename']);
+        }
+        if (isset($ref['extension'])) {
+            $ref['extension'] = sanitize_key((string) $ref['extension']);
+        }
+        if (isset($ref['mime_type'])) {
+            $ref['mime_type'] = sanitize_text_field((string) $ref['mime_type']);
+        }
+        if (isset($ref['source_url'])) {
+            $ref['source_url'] = esc_url_raw((string) $ref['source_url']);
+        }
+
+        return $ref;
+    }
+
+    /**
+     * @param string $extract_dir
+     * @param array<string, mixed> $domain
+     * @return array<string, mixed>|\WP_Error
+     */
+    private static function read_domain_payload($extract_dir, array $domain)
+    {
+        $domain_key = sanitize_key((string) ($domain['domain_key'] ?? ''));
+        $domain_file = sanitize_file_name((string) ($domain['file_slug'] ?? $domain_key) . '.json');
+        $domain_path = wp_normalize_path(trailingslashit($extract_dir) . 'domains/' . $domain_file);
+        $domain_payload = DBVC_Bricks_Portability_Storage::read_json_file($domain_path);
+        if (is_wp_error($domain_payload)) {
+            return new \WP_Error(
+                'dbvc_bricks_portability_package_domain_missing',
+                sprintf(__('Missing expected domain payload for `%s` in the uploaded package.', 'dbvc'), $domain_key),
+                ['status' => 400]
+            );
+        }
+
+        return $domain_payload;
+    }
+
+    /**
      * @param string $workspace
      * @param string $zip_path
      * @return true|\WP_Error
@@ -1299,8 +2020,19 @@ final class DBVC_Bricks_Portability_Package_Service
             return true;
         }
 
+        if ($relative_path === 'media.json') {
+            return true;
+        }
+
         if (preg_match('#^(domains|raw-options)/[^/]+\.json$#', $relative_path) === 1) {
             return true;
+        }
+
+        if (preg_match('#^media/[A-Za-z0-9_-]+/[A-Za-z0-9._-]+$#', $relative_path) === 1) {
+            $extension = strtolower((string) pathinfo($relative_path, PATHINFO_EXTENSION));
+            if (self::is_allowed_media_extension($extension)) {
+                return true;
+            }
         }
 
         return new \WP_Error(
@@ -1308,6 +2040,47 @@ final class DBVC_Bricks_Portability_Package_Service
             sprintf(__('Package file `%s` is not part of the Bricks portability package contract.', 'dbvc'), $relative_path),
             ['status' => 400]
         );
+    }
+
+    /**
+     * @param string $extension
+     * @return bool
+     */
+    private static function is_allowed_media_extension($extension)
+    {
+        return in_array(sanitize_key((string) $extension), ['woff2', 'woff', 'ttf', 'otf', 'eot', 'svg', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'mp4', 'm4v', 'webm', 'ogv'], true);
+    }
+
+    /**
+     * @param string $absolute
+     * @param string $label
+     * @return true|\WP_Error
+     */
+    private static function validate_media_file_size($absolute, $label)
+    {
+        $max_bytes = self::get_max_media_file_bytes();
+        if ($max_bytes <= 0) {
+            return true;
+        }
+
+        clearstatcache(true, $absolute);
+        $bytes = filesize($absolute);
+        if (! is_int($bytes)) {
+            return new \WP_Error('dbvc_bricks_portability_media_size_failed', sprintf(__('Failed to inspect Bricks media file `%s`.', 'dbvc'), sanitize_text_field((string) $label)), ['status' => 500]);
+        }
+        if ($bytes > $max_bytes) {
+            return new \WP_Error('dbvc_bricks_portability_media_file_too_large', sprintf(__('Bricks media file `%1$s` exceeds the allowed size limit of %2$s bytes.', 'dbvc'), sanitize_text_field((string) $label), number_format_i18n($max_bytes)), ['status' => 400]);
+        }
+
+        return true;
+    }
+
+    /**
+     * @return int
+     */
+    private static function get_max_media_file_bytes()
+    {
+        return max(0, (int) apply_filters('dbvc_bricks_portability_max_media_file_bytes', self::DEFAULT_MAX_MEDIA_FILE_BYTES));
     }
 
     /**

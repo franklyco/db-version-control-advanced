@@ -6,6 +6,7 @@
     activeController: null,
     activeRequiresSharedScopeAck: false,
     activeAcknowledgementType: 'none',
+    activeSaveBlockedByStale: false,
     sharedScopeAcknowledged: false,
     descriptorCache: {},
     descriptorRequests: {},
@@ -244,6 +245,16 @@
     return clonePayload(state.descriptorCache[token]);
   }
 
+  function clearDescriptorPayload(token) {
+    if (!token) {
+      return;
+    }
+
+    delete state.descriptorCache[token];
+    delete state.descriptorRequests[token];
+    scheduleFieldIndexRefresh();
+  }
+
   function getMarkerToken(node) {
     return node && typeof node.getAttribute === 'function'
       ? String(node.getAttribute('data-dbvc-ve') || '')
@@ -350,6 +361,17 @@
       || message.indexOf(missing) !== -1
       || message.indexOf('session expired') !== -1
       || message.indexOf('session not found') !== -1
+    );
+  }
+
+  function isCompositeStaleError(error) {
+    const data = error && error.data && typeof error.data === 'object' ? error.data : null;
+    const stage = data && data.stage ? String(data.stage) : '';
+    const message = error && error.message ? String(error.message).toLowerCase() : '';
+
+    return Boolean(
+      error
+      && (error.status === 409 || stage === 'stale' || message.indexOf('changed after this panel was loaded') !== -1)
     );
   }
 
@@ -3050,6 +3072,9 @@
     }
 
     if (action === 'open-field') {
+      if (state.toolbarOpenPanel) {
+        closeToolbarPopover();
+      }
       locateFieldIndexMarker(token, true);
     }
   }
@@ -4167,6 +4192,11 @@
       return;
     }
 
+    if (openPanel && !canOpenMarkerPanelFromNode(node)) {
+      openToolbarDescriptorPanel(token);
+      return;
+    }
+
     if (typeof node.scrollIntoView === 'function') {
       node.scrollIntoView({
         block: 'center',
@@ -4182,9 +4212,8 @@
         node.classList.remove('is-locating');
       }
     }, 1300);
-
     if (openPanel) {
-      if (state.session && canOpenMarkerPanelFromNode(node)) {
+      if (state.session) {
         openEditor(node, state.session);
       } else {
         openToolbarDescriptorPanel(token);
@@ -5404,6 +5433,10 @@
     return Boolean(panel && target && (panel === target || panel.contains(target)));
   }
 
+  function isToolbarElement(target) {
+    return Boolean(target && typeof target.closest === 'function' && target.closest('.dbvc-ve-toolbar'));
+  }
+
   function isWpMediaModalElement(target) {
     if (!target || typeof target.closest !== 'function') {
       return false;
@@ -5485,7 +5518,7 @@
       return;
     }
 
-    if (isPanelElement(event.target) || isBadgeElement(event.target) || isWpMediaModalElement(event.target)) {
+    if (isPanelElement(event.target) || isBadgeElement(event.target) || isToolbarElement(event.target) || isWpMediaModalElement(event.target)) {
       return;
     }
 
@@ -5584,6 +5617,7 @@
     state.activeController = null;
     state.activeRequiresSharedScopeAck = false;
     state.activeAcknowledgementType = 'none';
+    state.activeSaveBlockedByStale = false;
     state.sharedScopeAcknowledged = false;
     state.touchSelectionToken = '';
     panelNodes.panel.dataset.state = 'idle';
@@ -8380,12 +8414,13 @@
     const renderContext = getDescriptorRenderContext(state.activeDescriptor, state.activeNode);
     const isMissingMedia = isMissingMediaMarker(state.activeNode);
     const isCompositeBatch = isActiveCompositeBatchSave();
+    const staleBlocked = Boolean(state.activeSaveBlockedByStale);
     const canNoReloadSave = !isMissingMedia
       && !isCompositeBatch
       && status !== 'readonly'
       && (renderContext === 'query_collection' || canPatchRenderContextWithoutReload(renderContext));
     const offersReloadSave = canNoReloadSave || isMissingMedia;
-    const disabled = !canEdit || (needsSharedAck && !state.sharedScopeAcknowledged);
+    const disabled = staleBlocked || !canEdit || (needsSharedAck && !state.sharedScopeAcknowledged);
 
     if (panelNodes.saveNoReloadButton) {
       panelNodes.saveNoReloadButton.hidden = !canNoReloadSave;
@@ -8602,6 +8637,7 @@
     state.activeController = controller;
     state.activeRequiresSharedScopeAck = (Boolean(result.requiresSharedScopeAck) || compositeAckTypes.length > 0) && canEdit;
     state.activeAcknowledgementType = compositeAckType !== 'none' ? compositeAckType : (result.acknowledgementType || 'none');
+    state.activeSaveBlockedByStale = false;
     state.sharedScopeAcknowledged = false;
 
     if (result.sourceMismatch) {
@@ -9100,6 +9136,7 @@
     state.activeDescriptor = null;
     state.activeRequiresSharedScopeAck = false;
     state.activeAcknowledgementType = 'none';
+    state.activeSaveBlockedByStale = false;
     state.sharedScopeAcknowledged = false;
     state.touchSelectionToken = token;
     clearDescriptorPrefetch();
@@ -9185,6 +9222,7 @@
     state.activeDescriptor = null;
     state.activeRequiresSharedScopeAck = false;
     state.activeAcknowledgementType = 'none';
+    state.activeSaveBlockedByStale = false;
     state.sharedScopeAcknowledged = false;
     state.touchSelectionToken = token;
     clearDescriptorPrefetch();
@@ -9372,6 +9410,31 @@
     } catch (error) {
       if (isSessionExpiredError(error)) {
         handleExpiredSession(error);
+      }
+
+      if (isCompositeSave && isCompositeStaleError(error)) {
+        const staleMessage = error && error.message
+          ? error.message
+          : (strings().panelCompositeStale || 'Composite save was blocked because one child field changed after this panel was loaded. Close and reopen the field details before saving again.');
+
+        state.activeSaveBlockedByStale = true;
+        clearDescriptorPayload(token);
+        panelNodes.panel.dataset.state = 'stale';
+        panelNodes.status.textContent = staleMessage;
+        if (state.activeController) {
+          state.activeController.setDisabled(false);
+        }
+        panelNodes.saveButton.disabled = true;
+        if (panelNodes.saveNoReloadButton) {
+          panelNodes.saveNoReloadButton.disabled = true;
+        }
+        schedulePanelViewportClamp();
+        updateStatusBar({
+          kind: 'error',
+          count: getMarkerCount(),
+          message: staleMessage
+        });
+        return;
       }
 
       panelNodes.panel.dataset.state = 'error';

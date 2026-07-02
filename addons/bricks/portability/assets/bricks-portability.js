@@ -72,60 +72,60 @@
 
   const STATUS_META = {
     identical: {
-      label: "No Drift",
-      description: "Incoming Package and Current Site are equivalent after normalization.",
+      label: "No Differences",
+      description: "The transfer package version and this site match after DBVC compares them.",
     },
     new_in_source: {
-      label: "Incoming Only",
-      description: "This object exists in the Incoming Package but not on the Current Site.",
+      label: "Only in Transfer Package",
+      description: "This item exists in the Transfer Package but not on This Site.",
     },
     missing_from_source: {
-      label: "Current Site Only",
-      description: "This object exists on the Current Site but is not present in the Incoming Package.",
+      label: "Only on This Site",
+      description: "This item exists on This Site but is not present in the Transfer Package.",
     },
     same_name_different_id: {
-      label: "Same Name, Different ID",
-      description: "The row matched by name, but the object identifiers differ.",
+      label: "Same Name, Needs Review",
+      description: "The item matched by name, but its IDs are different.",
     },
     same_id_different_name: {
-      label: "Same ID, Different Name",
-      description: "The row matched by ID, but the object labels differ.",
+      label: "Same Item, Different Name",
+      description: "The item matched by ID, but its names are different.",
     },
     value_changed: {
-      label: "Changed Values",
-      description: "The same object exists on both sides, but one or more normalized values differ.",
+      label: "Changed Settings",
+      description: "The same item exists on both sides, but one or more values differ.",
     },
     changed_props: {
-      label: "Changed Structure",
-      description: "The same object exists on both sides, with changed values plus added or removed properties.",
+      label: "Changed Settings Structure",
+      description: "The same item exists on both sides, with changed values plus added or removed fields.",
     },
     added_props: {
-      label: "Incoming Adds Properties",
-      description: "The Incoming Package adds normalized properties that are not on the Current Site.",
+      label: "Transfer Package Adds Details",
+      description: "The Transfer Package adds fields that are not on This Site.",
     },
     removed_props: {
-      label: "Current Site Has Extra Properties",
-      description: "The Current Site contains normalized properties that are not present in the Incoming Package.",
+      label: "This Site Has Extra Details",
+      description: "This Site contains fields that are not present in the Transfer Package.",
     },
   };
 
   const MATCH_META = {
-    singleton: "Singleton",
+    singleton: "Single site-wide setting",
     id: "Matched by ID",
     name: "Matched by Name",
-    slug: "Matched by Slug",
-    token: "Matched by Token",
-    selector: "Matched by Selector",
-    option_name: "Matched by Option Name",
+    slug: "Matched by URL name",
+    token: "Matched by technical key",
+    selector: "Matched by technical key",
+    option_name: "Matched by technical key",
     unmatched: "No Match",
-    target_only: "Current Site Only",
+    target_only: "Only on This Site",
     unknown: "Matched",
   };
 
   const ACTION_META = {
-    keep_current: "Keep Current Site",
-    add_incoming: "Add Incoming Package",
-    replace_with_incoming: "Replace With Incoming Package",
+    keep_current: "Keep This Site's Version",
+    add_incoming: "Add From Transfer Package",
+    replace_with_incoming: "Replace With Transfer Package Version",
     skip: "Skip",
   };
 
@@ -133,16 +133,16 @@
   const STAGED_DECISIONS_FILTER = "__staged_decisions__";
 
   const DOMAIN_STATUS_META = {
-    clean: "Clean",
-    has_drift: "Has Drift",
+    clean: "No Differences",
+    has_drift: "Has Differences",
     requires_attention: "Needs Attention",
     has_conflicts: "Has Conflicts",
   };
 
   const DIFF_BUCKET_META = {
-    changed: "Changed",
-    added: "Incoming Adds",
-    removed: "Current Only",
+    changed: "Changed Settings",
+    added: "Transfer Package Adds",
+    removed: "Only on This Site",
   };
 
   const APPROVAL_STATUS_META = {
@@ -338,15 +338,15 @@
       return;
     }
     if (!Array.isArray(state.domains) || state.domains.length === 0) {
-      els.domainList.textContent = "No supported portability domains found.";
+      els.domainList.textContent = "No Bricks settings groups are available to export.";
       return;
     }
     els.domainList.innerHTML = state.domains.map(function (domain) {
       const domainKey = String(domain.domain_key || "");
       const disabled = domain.available ? "" : ' disabled="disabled"';
       const note = domain.available ? "" : ' <em>(not available on this site)</em>';
-      const risk = domain.high_risk ? ' <span class="dbvc-bricks-portability-badge">high risk</span>' : "";
-      const verification = domain.verification ? ' <span class="dbvc-bricks-portability-badge">verify</span>' : "";
+      const risk = domain.high_risk ? ' <span class="dbvc-bricks-portability-badge">review carefully</span>' : "";
+      const verification = domain.verification ? ' <span class="dbvc-bricks-portability-badge">needs check</span>' : "";
       return '<label class="dbvc-bricks-portability-domain-option"><input type="checkbox" name="dbvc-bricks-portability-domain" value="' + esc(domainKey) + '"' + disabled + ' /> <strong>' + esc(domain.label || domainKey) + "</strong>" + risk + verification + note + "</label>";
     }).join("");
   }
@@ -356,7 +356,7 @@
       return;
     }
     if (!Array.isArray(state.exports) || state.exports.length === 0) {
-      els.exportsBody.innerHTML = '<tr><td colspan="4">No exports yet.</td></tr>';
+      els.exportsBody.innerHTML = '<tr><td colspan="4">No transfer packages yet.</td></tr>';
       return;
     }
     els.exportsBody.innerHTML = state.exports.map(function (item) {
@@ -390,10 +390,10 @@
         summaryParts.push('<div class="description">' + esc("Draft saved: " + formatTimestamp(draft.saved_at_gmt) + " | Decisions: " + String(draft.decision_count || 0)) + "</div>");
       }
       if (approval.approved_at_gmt) {
-        summaryParts.push('<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--approved">' + esc("Date Applied & Approved on Current Site: " + formatTimestamp(approval.approved_at_gmt)) + "</div>");
+        summaryParts.push('<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--approved">' + esc("Applied to This Site: " + formatTimestamp(approval.approved_at_gmt)) + "</div>");
       }
       if (rollback.rolled_back_at_gmt) {
-        summaryParts.push('<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--rollback">' + esc("Rolled Back on Current Site: " + formatTimestamp(rollback.rolled_back_at_gmt)) + "</div>");
+        summaryParts.push('<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--rollback">' + esc("Restored on This Site: " + formatTimestamp(rollback.rolled_back_at_gmt)) + "</div>");
       }
       return '<tr><td><code>' + esc(item.session_id || "") + '</code></td><td><code>' + esc(item.package_id || "") + '</code></td><td>' + summaryParts.join("") + '</td><td><button type="button" class="button button-small dbvc-bricks-portability-open-session" data-session-id="' + esc(item.session_id || "") + '">Open</button></td></tr>';
     }).join("");
@@ -414,7 +414,9 @@
     }
     els.backupsBody.innerHTML = state.backups.map(function (item) {
       const optionNames = Array.isArray(item.option_names) ? item.option_names.join(", ") : "";
-      return '<tr><td><code>' + esc(item.backup_id || "") + '</code></td><td>' + esc(item.created_at_gmt || "") + '</td><td>' + esc(optionNames) + '</td><td><button type="button" class="button button-small dbvc-bricks-portability-rollback" data-backup-id="' + esc(item.backup_id || "") + '">Rollback</button></td></tr>';
+      const receipt = renderReceiptInline(item.reference_receipt || {});
+      const detail = [optionNames, receipt].filter(Boolean).join(" | ");
+      return '<tr><td><code>' + esc(item.backup_id || "") + '</code></td><td>' + esc(item.created_at_gmt || "") + '</td><td>' + esc(detail) + '</td><td><button type="button" class="button button-small dbvc-bricks-portability-rollback" data-backup-id="' + esc(item.backup_id || "") + '">Restore</button></td></tr>';
     }).join("");
     Array.prototype.forEach.call(els.backupsBody.querySelectorAll(".dbvc-bricks-portability-rollback"), function (button) {
       button.addEventListener("click", function () {
@@ -435,7 +437,7 @@
       return;
     }
     if (!state.currentSession) {
-      els.sessionMeta.textContent = "No package loaded yet.";
+      els.sessionMeta.textContent = "No transfer package loaded yet.";
       return;
     }
     const summary = state.currentSession.summary || {};
@@ -446,28 +448,28 @@
     const incomingSite = [site.site_name, site.home_url].filter(Boolean).join(" | ");
     const lines = [
       "Session: " + String(state.currentSession.session_id || ""),
-      "Package: " + String(state.currentSession.package_id || ""),
+      "Transfer Package: " + String(state.currentSession.package_id || ""),
       "Last Compared: " + String(state.currentSession.refreshed_at_gmt || state.currentSession.created_at_gmt || ""),
       "Rows: " + String(summary.total_rows || 0),
-      "Actionable Incoming Changes: " + String(summary.actionable_rows || 0),
+      "Changes to Review: " + String(summary.actionable_rows || 0),
       "Warnings: " + String(summary.warning_rows || 0),
     ];
     if (incomingSite) {
-      lines.push("Incoming Package Site: " + incomingSite);
+      lines.push("Transfer Package Site: " + incomingSite);
     }
     if (draft.saved_at_gmt) {
       lines.push("Draft Saved: " + String(draft.saved_at_gmt));
       lines.push("Draft Decisions: " + String(draft.decision_count || 0));
     }
     if (approval.approved_at_gmt) {
-      lines.push("Date Applied & Approved on Current Site: " + String(approval.approved_at_gmt));
-      lines.push("Approved Decisions: " + String(approval.decision_count || 0));
+      lines.push("Applied to This Site: " + String(approval.approved_at_gmt));
+      lines.push("Reviewed Decisions: " + String(approval.decision_count || 0));
     }
     if (rollback.rolled_back_at_gmt) {
-      lines.push("Rolled Back on Current Site: " + String(rollback.rolled_back_at_gmt));
-      lines.push("Rollback Backup: " + String(rollback.backup_id || ""));
+      lines.push("Restored on This Site: " + String(rollback.rolled_back_at_gmt));
+      lines.push("Restore Backup: " + String(rollback.backup_id || ""));
     }
-    lines.push("Current Site: This site");
+    lines.push("This Site: This site");
     els.sessionMeta.textContent = lines.join("\n");
   }
 
@@ -476,32 +478,71 @@
       return;
     }
     if (!state.currentSession) {
-      els.appliedSummary.textContent = "Apply approved changes to record approval timestamps for this package on the current site.";
+      els.appliedSummary.textContent = "Apply selected changes to record review timestamps for this transfer package on this site.";
       return;
     }
 
     const approval = state.currentSession.approval && typeof state.currentSession.approval === "object" ? state.currentSession.approval : {};
     const rollback = state.currentSession.rollback && typeof state.currentSession.rollback === "object" ? state.currentSession.rollback : {};
     if (!approval.approved_at_gmt) {
-      els.appliedSummary.innerHTML = '<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--pending">Date Applied & Approved on Current Site: Not yet recorded for this package.</div>';
+      els.appliedSummary.innerHTML = '<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--pending">Applied to This Site: Not applied yet for this transfer package.</div>';
       return;
     }
 
     const detailBits = [
-      "Approved rows: " + String(approval.decision_count || 0),
-      "Incoming writes applied: " + String(approval.mutating_decision_count || 0),
+      "Reviewed rows: " + String(approval.decision_count || 0),
+      "Transfer package changes applied: " + String(approval.mutating_decision_count || 0),
     ];
     if (approval.backup_id) {
       detailBits.push("Backup: " + String(approval.backup_id || ""));
     }
+    const receiptLine = renderReceiptInline(approval.reference_receipt || {});
+    if (receiptLine) {
+      detailBits.push(receiptLine);
+    }
     const parts = [
-      '<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--approved">' + esc("Date Applied & Approved on Current Site: " + formatTimestamp(approval.approved_at_gmt)) + "</div>",
+      '<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--approved">' + esc("Applied to This Site: " + formatTimestamp(approval.approved_at_gmt)) + "</div>",
       '<div class="description">' + esc(detailBits.join(" | ")) + "</div>",
     ];
     if (rollback.rolled_back_at_gmt) {
-      parts.push('<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--rollback">' + esc("Rolled Back on Current Site: " + formatTimestamp(rollback.rolled_back_at_gmt)) + "</div>");
+      parts.push('<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--rollback">' + esc("Restored on This Site: " + formatTimestamp(rollback.rolled_back_at_gmt)) + "</div>");
     }
     els.appliedSummary.innerHTML = parts.join("");
+  }
+
+  function renderReceiptInline(receipt) {
+    if (!receipt || typeof receipt !== "object") {
+      return "";
+    }
+    const references = receipt.references && typeof receipt.references === "object" ? receipt.references : {};
+    const media = receipt.media && typeof receipt.media === "object" ? receipt.media : {};
+    const entities = receipt.entities && typeof receipt.entities === "object" ? receipt.entities : {};
+    const parts = [];
+    const remapped = Number(references.remapped_refs || 0);
+    const preserved = Number(references.preserved_refs || 0);
+    const unknown = Number(references.unknown_refs || 0);
+    const blocked = Number(references.blocked_refs || 0);
+    const mediaChanged = Number(media.created_attachments || 0) + Number(media.reused_attachments || 0);
+    const templatesChanged = Number(entities.created_posts || 0) + Number(entities.updated_posts || 0);
+    if (remapped > 0) {
+      parts.push("Refs remapped: " + String(remapped));
+    }
+    if (preserved > 0) {
+      parts.push("Preserved: " + String(preserved));
+    }
+    if (unknown > 0) {
+      parts.push("Unknown: " + String(unknown));
+    }
+    if (blocked > 0) {
+      parts.push("Blocked: " + String(blocked));
+    }
+    if (mediaChanged > 0) {
+      parts.push("Media: " + String(mediaChanged));
+    }
+    if (templatesChanged > 0) {
+      parts.push("Templates: " + String(templatesChanged));
+    }
+    return parts.join(" | ");
   }
 
   function renderReviewState() {
@@ -510,8 +551,8 @@
     }
     if (!state.currentSession) {
       els.reviewState.innerHTML = [
-        '<div class="dbvc-bricks-portability-review-state__meta">Import a package to assess current-site freshness for this review session.</div>',
-        '<div class="dbvc-bricks-portability-review-state__actions"><button type="button" class="button" id="dbvc-bricks-portability-refresh-session" disabled="disabled">Refresh Current Site Compare</button></div>',
+        '<div class="dbvc-bricks-portability-review-state__meta">Upload a transfer package to check whether this site has changed since the comparison was created.</div>',
+        '<div class="dbvc-bricks-portability-review-state__actions"><button type="button" class="button" id="dbvc-bricks-portability-refresh-session" disabled="disabled">Refresh Comparison</button></div>',
       ].join("");
       return;
     }
@@ -520,21 +561,21 @@
     const rollback = state.currentSession.rollback && typeof state.currentSession.rollback === "object" ? state.currentSession.rollback : {};
     const isFresh = String(freshness.state || "fresh") !== "stale";
     const changedDomains = Array.isArray(freshness.changed_domains) ? freshness.changed_domains : [];
-    const freshnessBadge = '<span class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--' + esc(isFresh ? "fresh" : "stale") + '">' + esc(isFresh ? "Current Site Compare: Fresh" : "Current Site Compare: Stale") + "</span>";
+    const freshnessBadge = '<span class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--' + esc(isFresh ? "fresh" : "stale") + '">' + esc(isFresh ? "This Site Check: Current" : "This Site Check: Needs Refresh") + "</span>";
     const parts = [
       freshnessBadge,
       '<span class="description">' + esc("Last compared: " + formatTimestamp(freshness.last_compared_at_gmt || state.currentSession.refreshed_at_gmt || state.currentSession.created_at_gmt || "")) + "</span>",
     ];
     if (!isFresh && changedDomains.length) {
-      parts.push('<span class="description">' + esc("Changed domains since compare: " + changedDomains.join(", ")) + "</span>");
+      parts.push('<span class="description">' + esc("Changed settings groups since comparison: " + changedDomains.join(", ")) + "</span>");
     }
     if (rollback.rolled_back_at_gmt) {
-      parts.push('<span class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--rollback">' + esc("Rolled Back: " + formatTimestamp(rollback.rolled_back_at_gmt)) + "</span>");
+      parts.push('<span class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--rollback">' + esc("Restored: " + formatTimestamp(rollback.rolled_back_at_gmt)) + "</span>");
     }
 
     els.reviewState.innerHTML = [
       '<div class="dbvc-bricks-portability-review-state__meta">' + parts.join(" ") + "</div>",
-      '<div class="dbvc-bricks-portability-review-state__actions"><button type="button" class="button" id="dbvc-bricks-portability-refresh-session">Refresh Current Site Compare</button></div>',
+      '<div class="dbvc-bricks-portability-review-state__actions"><button type="button" class="button" id="dbvc-bricks-portability-refresh-session">Refresh Comparison</button></div>',
     ].join("");
 
     els.refreshSession = document.getElementById("dbvc-bricks-portability-refresh-session");
@@ -803,7 +844,7 @@
     }
 
     if (!state.currentSession) {
-      els.pageSummary.textContent = "Import a package to page through review rows.";
+      els.pageSummary.textContent = "Upload a transfer package to page through review rows.";
       els.pagePrev.disabled = true;
       els.pageNext.disabled = true;
       els.pageSize.disabled = true;
@@ -822,7 +863,7 @@
     els.pagePrev.disabled = totalRows <= 0 || state.page <= 1;
     els.pageNext.disabled = totalRows <= 0 || state.page >= totalPages;
     els.pageSummary.textContent = totalRows <= 0
-      ? "No filtered review rows to display."
+      ? "No matching review items to display."
       : "Showing " + String(start) + "-" + String(end) + " of " + String(totalRows) + " filtered rows | Page " + String(state.page) + " of " + String(totalPages);
   }
 
@@ -840,7 +881,7 @@
   function renderApprovalCell(row) {
     const approval = getRowApproval(row);
     if (!approval.approvedAt) {
-      return '<span class="description">Not yet recorded</span>';
+      return '<span class="description">Not applied yet</span>';
     }
 
     const badgeClass = "dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--" + safeKey(approval.status || "approved");
@@ -872,7 +913,7 @@
       const actionClass = "dbvc-bricks-portability-action-pill dbvc-bricks-portability-action-pill--" + safeKey(decision);
       return '<tr class="dbvc-bricks-portability-row' + selectedClass + '" data-row-id="' + esc(rowId) + '">' +
         "<td>" + esc(row.domain_label || row.domain_key || "") + "</td>" +
-        "<td>" + esc(row.object_label || "Untitled object") + "</td>" +
+        "<td>" + esc(row.object_label || "Untitled item") + "</td>" +
         "<td><code>" + esc(row.object_id || "") + "</code></td>" +
         "<td>" + esc(matchLabel(row.match_status || "")) + "</td>" +
         '<td><span class="' + esc(statusClass) + '">' + esc(statusLabel(row.status || "")) + "</span></td>" +
@@ -913,7 +954,7 @@
       const direction = isActive ? state.sortDirection : "";
       const arrow = !isActive ? "" : direction === "asc" ? " ↑" : " ↓";
       const label = sortKey === "approved_at_gmt"
-        ? "Applied / Approved On Current Site"
+        ? "Applied to This Site"
         : humanizeKey(sortKey);
 
       button.textContent = label + arrow;
@@ -998,9 +1039,9 @@
     }
     if (!row) {
       if (els.rowModalSubtitle) {
-        els.rowModalSubtitle.textContent = "Select a row to inspect its exact incoming versus current diff.";
+        els.rowModalSubtitle.textContent = "Select a row to inspect its exact transfer package versus this site comparison.";
       }
-      els.detail.innerHTML = '<p class="dbvc-bricks-portability-empty">Select a row to inspect its exact incoming versus current diff.</p>';
+      els.detail.innerHTML = '<p class="dbvc-bricks-portability-empty">Select a row to inspect its exact transfer package versus this site comparison.</p>';
       return;
     }
 
@@ -1014,22 +1055,22 @@
     const references = renderReferenceSummary(row.references || {});
     const verification = renderVerificationSummary(row.verification || {});
     if (els.rowModalSubtitle) {
-      els.rowModalSubtitle.textContent = String(row.domain_label || row.domain_key || "Row") + " | " + String(row.object_label || "Untitled object") + " | ID: " + String(row.object_id || "n/a");
+      els.rowModalSubtitle.textContent = String(row.domain_label || row.domain_key || "Row") + " | " + String(row.object_label || "Untitled item") + " | ID: " + String(row.object_id || "n/a");
     }
 
     const headerHtml = [
       '<div class="dbvc-bricks-portability-detail-header">',
       '<div class="dbvc-bricks-portability-detail-meta">',
-      '<div class="dbvc-bricks-portability-detail-title">' + esc(row.object_label || "Untitled object") + "</div>",
+      '<div class="dbvc-bricks-portability-detail-title">' + esc(row.object_label || "Untitled item") + "</div>",
       '<div class="dbvc-bricks-portability-detail-subtitle">' + esc(String(row.domain_label || row.domain_key || "")) + " | ID: " + esc(String(row.object_id || "n/a")) + "</div>",
       "</div>",
       '<div class="dbvc-bricks-portability-detail-badges">',
       '<span class="dbvc-bricks-portability-chip">' + esc(statusInfo.label) + "</span>",
       '<span class="dbvc-bricks-portability-chip">' + esc(matchText) + "</span>",
-      '<span class="dbvc-bricks-portability-chip">' + esc("Decision: " + decision) + "</span>",
+      '<span class="dbvc-bricks-portability-chip">' + esc("Selected Action: " + decision) + "</span>",
       "</div>",
       "</div>",
-      '<p class="dbvc-bricks-portability-detail-note">' + esc(statusInfo.description || "Review the exact normalized differences below.") + "</p>",
+      '<p class="dbvc-bricks-portability-detail-note">' + esc(statusInfo.description || "Review the exact differences below.") + "</p>",
       references,
       verification,
       warnings.length ? renderWarningList(warnings) : "",
@@ -1042,11 +1083,11 @@
     const snapshotsHtml = [
       '<div class="dbvc-bricks-portability-snapshot-grid">',
       '<div class="dbvc-bricks-portability-snapshot-panel">',
-      '<h5>Current Site</h5>',
+      '<h5>This Site</h5>',
       renderPayloadSnapshot(targetPayload),
       "</div>",
       '<div class="dbvc-bricks-portability-snapshot-panel">',
-      '<h5>Incoming Package</h5>',
+      '<h5>Transfer Package</h5>',
       renderPayloadSnapshot(sourcePayload),
       "</div>",
       "</div>",
@@ -1191,15 +1232,15 @@
     const statusMessage = feedback && feedback.message
       ? feedback.message
       : allApproved
-        ? "All linked " + nounLabel + " rows are marked for incoming apply."
-        : "Click to mark linked " + nounLabel + " rows for incoming apply.";
+        ? "All linked " + nounLabel + " rows are marked to apply from the transfer package."
+        : "Click to mark linked " + nounLabel + " rows to apply from the transfer package.";
 
     return [
       '<div class="' + esc(wrapperClass) + '">',
       actionableRowIds.length
         ? '<button type="button" class="button button-small dbvc-bricks-portability-reference-action' + (feedback && feedback.status === "success" ? ' is-success' : '') + '" data-domain-key="' + esc(domainKey) + '" data-row-ids="' + esc(actionableRowIds.join(",")) + '" data-noun-label="' + esc(nounLabel) + '">' + esc(buttonLabel) + "</button>"
         : "",
-      '<span class="description">' + esc(String(rowIds.length) + " linked " + nounLabel + " row" + (rowIds.length === 1 ? "" : "s") + (helperText ? ". " + helperText : "") + (allApproved ? " Already marked for incoming apply." : approvedCount > 0 ? " " + String(approvedCount) + " already marked." : "")) + "</span>",
+      '<span class="description">' + esc(String(rowIds.length) + " linked " + nounLabel + " row" + (rowIds.length === 1 ? "" : "s") + (helperText ? ". " + helperText : "") + (allApproved ? " Already marked to apply from the transfer package." : approvedCount > 0 ? " " + String(approvedCount) + " already marked." : "")) + "</span>",
       '<span class="dbvc-bricks-portability-reference-action-status" role="status" aria-live="polite">' + esc(statusMessage) + "</span>",
       "</div>",
     ].join("");
@@ -1236,6 +1277,22 @@
     const classDependencyWarnings = Array.isArray(references.class_dependencies_missing_on_current)
       ? references.class_dependencies_missing_on_current
       : [];
+    const templateReferenceSummary = references.template_reference_summary && typeof references.template_reference_summary === "object"
+      ? references.template_reference_summary
+      : {};
+    const hasTemplateReferenceSummary = [
+      "media_refs",
+      "nested_template_refs",
+      "entity_refs",
+      "query_refs",
+      "link_refs",
+      "dynamic_data_refs",
+      "preserved_refs",
+      "unknown_refs",
+      "blocked_refs",
+    ].some(function (key) {
+      return Number(templateReferenceSummary[key] || 0) > 0;
+    });
     const hasDependencyAnalysis = Boolean(
       classDependencyWarnings.length ||
       (Array.isArray(categoryDependencies.missing_on_current_supplied_by_incoming) && categoryDependencies.missing_on_current_supplied_by_incoming.length) ||
@@ -1244,7 +1301,7 @@
       (Array.isArray(cssVariableDependencies.missing_on_both) && cssVariableDependencies.missing_on_both.length) ||
       (Array.isArray(cssVariableDependencies.possibly_external) && cssVariableDependencies.possibly_external.length)
     );
-    if (cssVariables.length === 0 && classNames.length === 0 && categoryValues.length === 0 && !hasDependencyAnalysis) {
+    if (cssVariables.length === 0 && classNames.length === 0 && categoryValues.length === 0 && !hasDependencyAnalysis && !hasTemplateReferenceSummary) {
       return "";
     }
 
@@ -1258,43 +1315,65 @@
     if (categoryValues.length > 0) {
       parts.push("Categories: " + categoryValues.join(", "));
     }
+    if (hasTemplateReferenceSummary) {
+      const templateParts = [];
+      [
+        ["Media", "media_refs"],
+        ["Nested", "nested_template_refs"],
+        ["Content", "entity_refs"],
+        ["Query", "query_refs"],
+        ["Links", "link_refs"],
+        ["Dynamic", "dynamic_data_refs"],
+        ["Preserved", "preserved_refs"],
+        ["Unknown", "unknown_refs"],
+        ["Blocked", "blocked_refs"],
+      ].forEach(function (item) {
+        const count = Number(templateReferenceSummary[item[1]] || 0);
+        if (count > 0) {
+          templateParts.push(item[0] + ": " + String(count));
+        }
+      });
+      if (templateParts.length) {
+        parts.push("Template refs: " + templateParts.join(", "));
+      }
+    }
 
     const dependencyGroups = [
       {
-        label: "Missing on Current Site but supplied by Incoming Package",
+        label: "Missing on this site; included in transfer package",
         values: Array.isArray(cssVariableDependencies.missing_on_current_supplied_by_incoming) ? cssVariableDependencies.missing_on_current_supplied_by_incoming : [],
         action: {
           domainKey: "global_variables",
           values: Array.isArray(cssVariableDependencies.missing_on_current_supplied_by_incoming) ? cssVariableDependencies.missing_on_current_supplied_by_incoming : [],
           buttonLabel: "Include These Missing Variables",
           nounLabel: "variable",
-          helperText: "Marks the linked Bricks Global CSS Variable rows for incoming apply.",
+          helperText: "Marks the linked Bricks Global CSS Variable rows to apply from the transfer package.",
         },
       },
       {
-        label: "Missing on both Current Site and Incoming Package",
+        label: "Missing from this site and the transfer package",
         values: Array.isArray(cssVariableDependencies.missing_on_both) ? cssVariableDependencies.missing_on_both : [],
       },
       {
-        label: "Possibly external or non-Bricks managed",
+        label: "May come from another plugin or custom code",
         values: Array.isArray(cssVariableDependencies.possibly_external) ? cssVariableDependencies.possibly_external : [],
       },
     ];
 
     if (categoryDependencies.option_name) {
       dependencyGroups.push({
-        label: "Missing categories on Current Site but supplied by Incoming Package",
+        label: "Missing categories on this site; included in transfer package",
         values: Array.isArray(categoryDependencies.missing_on_current_supplied_by_incoming) ? categoryDependencies.missing_on_current_supplied_by_incoming : [],
         action: {
           domainKey: categoryDomainKeyFromOption(categoryDependencies.option_name),
           metadataOptionName: String(categoryDependencies.option_name || ""),
           buttonLabel: "Include These Missing Categories",
           nounLabel: "category metadata",
-          helperText: "Marks the related Bricks categories metadata row for incoming apply.",
+          helperText: "Marks the related Bricks categories metadata row to apply from the transfer package.",
         },
       });
       dependencyGroups.push({
-        label: "Missing categories on both Current Site and Incoming Package",
+        label: "Missing categories from this site and the transfer package",
         values: Array.isArray(categoryDependencies.missing_on_both) ? categoryDependencies.missing_on_both : [],
       });
     }
@@ -1308,14 +1387,14 @@
     });
     if (classDependencyWarnings.length) {
       dependencyHtml.push(renderDependencyGroup({
-        label: "Missing class dependencies on Current Site",
+        label: "Missing classes on this site",
         values: classDependencyWarnings,
         action: {
           domainKey: "global_classes",
           values: classDependencyWarnings,
           buttonLabel: "Include These Missing Classes",
           nounLabel: "class",
-          helperText: "Marks the linked Bricks Global Classes rows for incoming apply when available in this package.",
+          helperText: "Marks the linked Bricks Global Classes rows to apply from the transfer package when available.",
         },
       }));
     }
@@ -1323,7 +1402,7 @@
     return [
       parts.length ? '<div class="dbvc-bricks-portability-reference-summary">' + esc(parts.join(" | ")) + "</div>" : "",
       dependencyHtml.length
-        ? '<div class="dbvc-bricks-portability-reference-analysis"><strong>Dependency Analysis</strong><ul>' + dependencyHtml.join("") + "</ul></div>"
+        ? '<div class="dbvc-bricks-portability-reference-analysis"><strong>Linked Items Check</strong><ul>' + dependencyHtml.join("") + "</ul></div>"
         : "",
     ].join("");
   }
@@ -1363,17 +1442,17 @@
     const blocks = [];
 
     if (hasVerificationReport(target)) {
-      blocks.push(renderVerificationBlock("Current Site Verification", target));
+      blocks.push(renderVerificationBlock("This Site Check", target));
     }
     if (hasVerificationReport(source)) {
-      blocks.push(renderVerificationBlock("Incoming Package Verification", source));
+      blocks.push(renderVerificationBlock("Transfer Package Check", source));
     }
 
     if (!blocks.length) {
       return "";
     }
 
-    return '<div class="dbvc-bricks-portability-verification-summary"><strong>Storage Verification</strong>' + blocks.join("") + "</div>";
+    return '<div class="dbvc-bricks-portability-verification-summary"><strong>Storage Check</strong>' + blocks.join("") + "</div>";
   }
 
   function renderWarningList(warnings) {
@@ -1407,7 +1486,7 @@
     if (appliedCount > 0) {
       state.dependencyActionFeedback[dependencyActionKey(domainKey, targets)] = {
         status: "success",
-        message: "Included " + String(appliedCount) + " linked " + label + " row" + (appliedCount === 1 ? "" : "s") + ". Ready to apply approved changes.",
+        message: "Included " + String(appliedCount) + " linked " + label + " row" + (appliedCount === 1 ? "" : "s") + ". Ready to apply selected changes.",
       };
     }
 
@@ -1418,13 +1497,13 @@
     }
 
     if (!appliedCount) {
-      showNotice("error", "No linked dependency rows could be marked for incoming apply.");
+      showNotice("error", "No linked dependency rows could be marked to apply from the transfer package.");
       return;
     }
 
     showNotice(
       "success",
-      "Marked " + String(appliedCount) + " linked dependency row" + (appliedCount === 1 ? "" : "s") + " for incoming apply" + (skippedCount ? ". " + String(skippedCount) + " row" + (skippedCount === 1 ? " was" : "s were") + " skipped." : ".")
+      "Marked " + String(appliedCount) + " linked dependency row" + (appliedCount === 1 ? "" : "s") + " to apply from the transfer package" + (skippedCount ? ". " + String(skippedCount) + " row" + (skippedCount === 1 ? " was" : "s were") + " skipped." : ".")
     );
   }
 
@@ -1467,7 +1546,7 @@
       entries.push({
         bucket: "added",
         label: diffBucketLabel("added"),
-        path: "(entire object)",
+        path: "(entire item)",
         currentValue: undefined,
         incomingValue: sourcePayload,
       });
@@ -1476,7 +1555,7 @@
       entries.push({
         bucket: "removed",
         label: diffBucketLabel("removed"),
-        path: "(entire object)",
+        path: "(entire item)",
         currentValue: targetPayload,
         incomingValue: undefined,
       });
@@ -1495,11 +1574,11 @@
       "</div>",
       '<div class="dbvc-bricks-portability-diff-grid">',
       '<div class="dbvc-bricks-portability-diff-side">',
-      '<div class="dbvc-bricks-portability-diff-side-label">Current Site</div>',
+      '<div class="dbvc-bricks-portability-diff-side-label">This Site</div>',
       renderValuePreview(entry.currentValue),
       "</div>",
       '<div class="dbvc-bricks-portability-diff-side">',
-      '<div class="dbvc-bricks-portability-diff-side-label">Incoming Package</div>',
+      '<div class="dbvc-bricks-portability-diff-side-label">Transfer Package</div>',
       renderValuePreview(entry.incomingValue),
       "</div>",
       "</div>",
@@ -1529,7 +1608,7 @@
   }
 
   function getValueAtPath(payload, path) {
-    if (!path || path === "(entire object)") {
+    if (!path || path === "(entire object)" || path === "(entire item)") {
       return payload;
     }
     const segments = String(path).split(".");
@@ -1585,14 +1664,14 @@
     }
     const summaries = state.currentSession && Array.isArray(state.currentSession.domain_summaries) ? state.currentSession.domain_summaries : [];
     if (summaries.length === 0) {
-      els.domainSummary.textContent = "Import a package to load per-domain summaries.";
+      els.domainSummary.textContent = "Upload a transfer package to load settings group summaries.";
       return;
     }
 
     const lines = [];
     summaries.forEach(function (summary) {
       const statuses = summary && typeof summary.statuses === "object" ? summary.statuses : {};
-      lines.push(String(summary.domain_label || summary.domain_key || "Domain") + " [" + domainStatusLabel(summary.domain_status || "") + "]");
+      lines.push(String(summary.domain_label || summary.domain_key || "Settings Group") + " [" + domainStatusLabel(summary.domain_status || "") + "]");
       lines.push("Rows: " + String(summary.total_rows || 0) + " | Actionable: " + String(summary.actionable_rows || 0) + " | Warnings: " + String(summary.warning_rows || 0));
       Object.keys(statuses).sort().forEach(function (statusKey) {
         lines.push("  - " + statusLabel(statusKey) + ": " + String(statuses[statusKey] || 0));
@@ -1608,11 +1687,11 @@
       return;
     }
     if (!state.currentSession) {
-      els.summary.textContent = "Import a package to load drift rows.";
+      els.summary.textContent = "Upload a transfer package to load changes.";
       return;
     }
     const summary = state.currentSession.summary || {};
-    els.summary.textContent = "Rows: " + String(summary.total_rows || 0) + " | Actionable Incoming Changes: " + String(summary.actionable_rows || 0) + " | Warnings: " + String(summary.warning_rows || 0);
+    els.summary.textContent = "Rows: " + String(summary.total_rows || 0) + " | Changes to Review: " + String(summary.actionable_rows || 0) + " | Warnings: " + String(summary.warning_rows || 0);
   }
 
   function buildStatCard(label, value, detail, modifier) {
@@ -1631,7 +1710,7 @@
       return;
     }
     if (!state.currentSession) {
-      els.stats.textContent = "Import a package to load review totals.";
+      els.stats.textContent = "Upload a transfer package to load review totals.";
       return;
     }
 
@@ -1662,8 +1741,8 @@
 
     const cards = [
       buildStatCard("Total Review Rows", totalRows, visibleRows + " visible with current filters", "rows"),
-      buildStatCard("Incoming Package", incomingCount, "rows present in uploaded package", "incoming"),
-      buildStatCard("Current Site", currentCount, "rows present on this site", "current"),
+      buildStatCard("Transfer Package", incomingCount, "rows present in uploaded package", "incoming"),
+      buildStatCard("This Site", currentCount, "rows present on this site", "current"),
     ];
 
     actionKeys().forEach(function (actionKey) {
@@ -1732,7 +1811,7 @@
   function exportSelectedDomains() {
     const domains = selectedDomainKeys();
     if (domains.length === 0) {
-      showNotice("error", "Select at least one portability domain.");
+      showNotice("error", "Select at least one Bricks settings group.");
       return;
     }
     api(cfg.exportEndpoint, {
@@ -1746,17 +1825,17 @@
         notes: els.exportNotes ? String(els.exportNotes.value || "") : "",
       }),
     }).then(function () {
-      showNotice("success", (cfg.messages && cfg.messages.exported) || "Export created.");
+      showNotice("success", (cfg.messages && cfg.messages.exported) || "Transfer package created.");
       return loadStatus();
     }).catch(function (error) {
-      showNotice("error", error.message || "Export failed.");
+      showNotice("error", error.message || "Transfer package creation failed.");
     });
   }
 
   function importPackage() {
     const file = els.importFile && els.importFile.files ? els.importFile.files[0] : null;
     if (!file) {
-      showNotice("error", "Choose a ZIP package to import.");
+      showNotice("error", "Choose a Bricks settings transfer ZIP file to upload.");
       return;
     }
     const formData = new FormData();
@@ -1768,11 +1847,11 @@
       },
       body: formData,
     }).then(function (session) {
-      showNotice("success", (cfg.messages && cfg.messages.imported) || "Package imported.");
+      showNotice("success", (cfg.messages && cfg.messages.imported) || "Transfer package uploaded.");
       renderSession(session);
       return loadStatus();
     }).catch(function (error) {
-      showNotice("error", error.message || "Import failed.");
+      showNotice("error", error.message || "Transfer package upload failed.");
     });
   }
 
@@ -1791,7 +1870,7 @@
 
   function refreshCurrentSession() {
     if (!state.currentSession || !state.currentSession.session_id) {
-      showNotice("error", "Open a review session before refreshing the current-site compare.");
+      showNotice("error", "Open a review session before refreshing the comparison.");
       return;
     }
 
@@ -1803,17 +1882,17 @@
       },
       body: JSON.stringify({}),
     }).then(function (session) {
-      showNotice("success", (cfg.messages && cfg.messages.refreshed) || "Compare refreshed.");
+      showNotice("success", (cfg.messages && cfg.messages.refreshed) || "Comparison refreshed.");
       renderSession(session);
       return loadStatus();
     }).catch(function (error) {
-      showNotice("error", error.message || "Failed to refresh the current-site compare.");
+      showNotice("error", error.message || "Failed to refresh the comparison.");
     });
   }
 
   function saveDraftDecisions() {
     if (!state.currentSession) {
-      showNotice("error", "Import a package and review rows before saving a draft.");
+      showNotice("error", "Upload a transfer package and review rows before saving a draft.");
       return;
     }
 
@@ -1851,7 +1930,7 @@
       }
       showNotice("success", (cfg.messages && cfg.messages.draftSaved) || "Draft saved.");
     }).catch(function (error) {
-      showNotice("error", error.message || "Failed to save draft decisions.");
+      showNotice("error", error.message || "Failed to save review draft.");
     });
   }
 
@@ -1887,11 +1966,11 @@
 
   function applyApprovedChanges() {
     if (!state.currentSession) {
-      showNotice("error", "Import a package and review rows before apply.");
+      showNotice("error", "Upload a transfer package and review rows before applying changes.");
       return;
     }
     if (!isApplyConfirmed()) {
-      showNotice("error", "Confirm apply before continuing.");
+      showNotice("error", "Confirm that you want to apply these changes before continuing.");
       return;
     }
     api(cfg.applyEndpoint, {
@@ -1907,7 +1986,7 @@
         confirm_apply: true,
       }),
     }).then(function (result) {
-      showNotice("success", (result && result.message) || (cfg.messages && cfg.messages.applied) || "Apply completed.");
+      showNotice("success", (result && result.message) || (cfg.messages && cfg.messages.applied) || "Selected changes applied.");
       setConfirmApplyState(false);
       return loadStatus();
     }).catch(function (error) {
@@ -1919,7 +1998,7 @@
     if (!backupId) {
       return;
     }
-    if (!window.confirm("Rollback this portability backup?")) {
+    if (!window.confirm("Restore this backup?")) {
       return;
     }
     api(String(cfg.backupRollbackBase || "") + encodeURIComponent(backupId) + "/rollback", {
@@ -1932,10 +2011,10 @@
         confirm_rollback: true,
       }),
     }).then(function () {
-      showNotice("success", (cfg.messages && cfg.messages.rolledBack) || "Rollback completed.");
+      showNotice("success", (cfg.messages && cfg.messages.rolledBack) || "Restore completed.");
       return loadStatus();
     }).catch(function (error) {
-      showNotice("error", error.message || "Rollback failed.");
+      showNotice("error", error.message || "Restore failed.");
     });
   }
 
@@ -1955,7 +2034,7 @@
         openSession(String(state.currentSession.session_id));
       }
     }).catch(function (error) {
-      showNotice("error", error.message || "Failed to load portability status.");
+      showNotice("error", error.message || "Failed to load settings transfer status.");
     });
   }
 

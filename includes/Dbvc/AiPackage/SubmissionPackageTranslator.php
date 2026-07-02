@@ -1015,21 +1015,255 @@ final class SubmissionPackageTranslator
             ];
         }
 
-        switch ($type) {
-            case 'group':
-                return self::translate_acf_group_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
-
-            case 'repeater':
-                return self::translate_acf_repeater_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
-
-            case 'flexible_content':
-                return self::translate_acf_flexible_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
-
-            case 'clone':
-                return self::translate_acf_clone_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
+        $policy_result = self::evaluate_acf_authoring_policy($field, $value, $path, $storage_key);
+        $policy_issues = isset($policy_result['issues']) && is_array($policy_result['issues']) ? $policy_result['issues'] : [];
+        $policy_deferred = isset($policy_result['deferred_relationships']) && is_array($policy_result['deferred_relationships'])
+            ? $policy_result['deferred_relationships']
+            : [];
+        if (! empty($policy_result['skip'])) {
+            return [
+                'updates' => [],
+                'issues' => $policy_issues,
+                'deferred_relationships' => $policy_deferred,
+            ];
         }
 
-        return self::translate_acf_leaf_to_storage($field, $value, $path, $storage_key);
+        switch ($type) {
+            case 'group':
+                $result = self::translate_acf_group_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
+                break;
+
+            case 'repeater':
+                $result = self::translate_acf_repeater_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
+                break;
+
+            case 'flexible_content':
+                $result = self::translate_acf_flexible_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
+                break;
+
+            case 'clone':
+                $result = self::translate_acf_clone_to_storage($field, $value, $path, $storage_key, $acf_resolution, $clone_stack);
+                break;
+
+            default:
+                $result = self::translate_acf_leaf_to_storage($field, $value, $path, $storage_key);
+        }
+
+        if (! empty($policy_issues)) {
+            $result['issues'] = array_values(array_merge($policy_issues, isset($result['issues']) && is_array($result['issues']) ? $result['issues'] : []));
+        }
+        if (! empty($policy_deferred)) {
+            $result['deferred_relationships'] = self::merge_deferred_relationships(
+                isset($result['deferred_relationships']) && is_array($result['deferred_relationships'])
+                    ? $result['deferred_relationships']
+                    : [],
+                $policy_deferred
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string,mixed> $field
+     * @param mixed               $value
+     * @param string              $path
+     * @param string              $storage_key
+     * @return array<string,mixed>
+     */
+    private static function evaluate_acf_authoring_policy(array $field, $value, string $path, string $storage_key): array
+    {
+        $policy = self::resolve_acf_authoring_policy($field);
+        $cross_site_safety = isset($policy['cross_site_safety']) ? (string) $policy['cross_site_safety'] : '';
+        $authoring_priority = isset($policy['authoring_priority']) ? (string) $policy['authoring_priority'] : '';
+        if ($cross_site_safety === '' && $authoring_priority === '') {
+            return [
+                'skip' => false,
+                'issues' => [],
+                'deferred_relationships' => [],
+            ];
+        }
+
+        $issues = [];
+        $deferred_relationships = [];
+        $has_value = self::has_meaningful_value($value);
+
+        if ($cross_site_safety === 'media_deferred') {
+            if ($has_value) {
+                $issues[] = self::build_issue(
+                    'warning',
+                    'acf_field_media_deferred',
+                    sprintf(__('The ACF field `%s` is marked media_deferred by Field Context and was left empty for media hydration.', 'dbvc'), $storage_key),
+                    $path
+                );
+                $deferred_relationships['acf_media'] = [self::build_deferred_media_descriptor($storage_key, $field, $value)];
+            }
+
+            return [
+                'skip' => true,
+                'issues' => $issues,
+                'deferred_relationships' => $deferred_relationships,
+            ];
+        }
+
+        if ($cross_site_safety === 'admin_or_editor') {
+            if ($has_value) {
+                $issues[] = self::build_issue(
+                    'warning',
+                    'acf_field_admin_or_editor_removed',
+                    sprintf(__('The ACF field `%s` is marked admin_or_editor by Field Context and was not imported from the AI submission package.', 'dbvc'), $storage_key),
+                    $path
+                );
+            }
+
+            return [
+                'skip' => true,
+                'issues' => $issues,
+                'deferred_relationships' => [],
+            ];
+        }
+
+        if ($authoring_priority === 'do_not_author') {
+            if ($has_value) {
+                $issues[] = self::build_issue(
+                    'warning',
+                    'acf_field_do_not_author_removed',
+                    sprintf(__('The ACF field `%s` is marked do_not_author by Field Context and was not imported from the AI submission package.', 'dbvc'), $storage_key),
+                    $path
+                );
+            }
+
+            return [
+                'skip' => true,
+                'issues' => $issues,
+                'deferred_relationships' => [],
+            ];
+        }
+
+        if ($cross_site_safety === 'site_specific' && $has_value) {
+            $issues[] = self::build_issue(
+                'warning',
+                'acf_field_site_specific_review',
+                sprintf(__('The ACF field `%s` is marked site_specific by Field Context; DBVC preserved the submitted value but it should be reviewed against target-site equivalents.', 'dbvc'), $storage_key),
+                $path
+            );
+        }
+
+        return [
+            'skip' => false,
+            'issues' => $issues,
+            'deferred_relationships' => [],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $field
+     * @return array<string,string>
+     */
+    private static function resolve_acf_authoring_policy(array $field): array
+    {
+        $context = isset($field['field_context']) && is_array($field['field_context']) ? $field['field_context'] : [];
+        if (empty($context)) {
+            return [
+                'cross_site_safety' => '',
+                'authoring_surface' => '',
+                'authoring_priority' => '',
+            ];
+        }
+
+        $cross_site_safety = self::normalize_acf_cross_site_safety($context['cross_site_safety'] ?? '');
+        $authoring_surface = self::normalize_acf_authoring_surface($context['authoring_surface'] ?? '');
+        $authoring_priority = self::normalize_acf_authoring_priority($context['authoring_priority'] ?? '');
+
+        if ($cross_site_safety === '') {
+            if ($authoring_surface === 'media') {
+                $cross_site_safety = 'media_deferred';
+            } elseif ($authoring_surface === 'style_token') {
+                $cross_site_safety = 'site_specific';
+            } elseif (in_array($authoring_surface, ['operator_control', 'site_config'], true)) {
+                $cross_site_safety = 'admin_or_editor';
+            }
+        }
+
+        return [
+            'cross_site_safety' => $cross_site_safety,
+            'authoring_surface' => $authoring_surface,
+            'authoring_priority' => $authoring_priority,
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_acf_cross_site_safety($value): string
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['portable', 'site_specific', 'media_deferred', 'admin_or_editor'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_acf_authoring_surface($value): string
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['content', 'seo', 'cta', 'media', 'relationship', 'style_token', 'operator_control', 'site_config'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_acf_authoring_priority($value): string
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['design_expected', 'recommended', 'optional', 'do_not_author'], true) ? $value : '';
+    }
+
+    /**
+     * @param string              $field_name
+     * @param array<string,mixed> $field
+     * @param mixed               $value
+     * @return array<string,mixed>
+     */
+    private static function build_deferred_media_descriptor(string $field_name, array $field, $value): array
+    {
+        return [
+            'field_name' => $field_name,
+            'field_key' => isset($field['key']) ? (string) ($field['key'] ?? '') : '',
+            'field_type' => isset($field['type']) ? sanitize_key((string) ($field['type'] ?? '')) : '',
+            'return_format' => isset($field['return_format']) ? sanitize_key((string) ($field['return_format'] ?? '')) : '',
+            'value' => self::summarize_deferred_media_value($value),
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function summarize_deferred_media_value($value)
+    {
+        if (is_scalar($value) || $value === null) {
+            return is_bool($value) ? (int) $value : $value;
+        }
+
+        if (is_array($value)) {
+            if (isset($value['ID']) || isset($value['id']) || isset($value['url'])) {
+                return [
+                    'id' => isset($value['ID']) ? absint($value['ID']) : (isset($value['id']) ? absint($value['id']) : 0),
+                    'url' => isset($value['url']) && is_scalar($value['url']) ? esc_url_raw((string) $value['url']) : '',
+                ];
+            }
+
+            return [
+                'type' => 'array',
+                'count' => count($value),
+            ];
+        }
+
+        return '';
     }
 
     /**

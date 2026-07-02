@@ -1,8 +1,10 @@
 # Entity Editor Sync File Import Implementation Guide
 
-Last updated: 2026-06-23
+Last updated: 2026-06-24
 
-Status: `P9 MATCHED-ENTITY UPDATE PLANNED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED`
+Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED`
+
+Recurrence note: duplicate active JSON files have now been fixed in two Entity Editor paths. P7 fixed staged sync-file import and duplicate canonical grouping; P10 applies the same side-effect suppression and canonicalization guardrail to raw-intake commits.
 
 ## Objective
 
@@ -40,12 +42,46 @@ Implemented on 2026-06-09:
 - sync-file and raw-intake create-only previews now detect legacy payload-ID fallback risk: UID-less post JSON, or UID-bearing post JSON when UID fallback matching is enabled, is blocked as an existing entity if the incoming numeric ID already belongs to a local post of the same type
 - raw-intake UID extraction now matches sync-file import for top-level UID, `dbvc_object_uid`, `meta.vf_object_uid`, and post/term history UID shapes
 - raw-intake previews now return the same universal blocker detail/settings-link shape used by sync-file import, so both Entity Editor import modals surface matching configuration, existing-entity, unsupported-type, and file-collision guidance
+- raw-intake commits now reuse sync-file import side-effect suppression and canonical filename normalization so `New From Raw JSON` create/update flows do not leave both source-ID and local-ID JSON files active in the sync index
 - preview coverage now includes permission denial, invalid JSON, excluded paths, unsupported payloads, creation-disabled settings, whitelist blocking, stale duplicate blocking, bulk partial failures, and term creation
 - successful commits return the created WP entity and rebuild the Entity Editor index in the UI
 
+## P10. Minor Fix: Raw-Intake Duplicate Sync JSON Prevention
+
+Status: `CLOSED` on 2026-06-24.
+
+Regression history:
+- This is the second duplicate-file class fixed for Entity Editor imports.
+- P7 fixed source-ID/local-ID duplicate grouping and stale duplicate cleanup for staged sync-file import rows.
+- P10 fixes the equivalent raw-intake create/update path, where the importer's auto-export side effects could race ahead of raw-intake source-file normalization.
+- Future Entity Editor import paths that create or update live entities from JSON must suppress normal auto-export side effects during the importer call, rewrite source-site IDs to local IDs when needed, and normalize the active sync JSON to one canonical file before returning success.
+
+Problem:
+- `New From Raw JSON` wrote the pasted payload to its previewed sync path, then called the low-level post/term importers directly.
+- Post creation and meta writes could trigger DBVC auto-export hooks before raw intake normalized the source file, leaving both the raw source filename and the local canonical filename active.
+- Entity Editor correctly grouped those rows as duplicates because they pointed to the same matched WordPress entity or `vf_object_uid`.
+
+Implementation plan:
+- Reuse the sync-file import service's existing side-effect suppression instead of creating a separate raw-intake suppression path.
+- After a successful raw-intake import, rewrite the source JSON with the resolved local post `ID` or term `term_id` when needed.
+- Reuse the sync-file import canonical file normalization helper to move the importer-updated source JSON to the final DBVC filename and archive same-entity stale duplicates.
+- Return the final canonical `relative_path` to the UI so the existing "open after success" behavior opens the surviving file.
+- Add regression coverage for raw-intake post and term creation under local-ID-bearing filename modes, asserting that exactly one active JSON file remains.
+
+Blast-radius guardrails:
+- Applies only to `POST /dbvc/v1/entity-editor/raw-intake/commit`.
+- Does not change raw-intake preview matching, staged sync-file import preview/commit, proposal review/apply, legacy upload import, general DBVC export settings, Entity Editor `Save JSON`, `Save + Partial Import`, or `Save + Full Replace`.
+- Uses the same importer calls as before; the change is limited to temporary hook suppression during the import call and post-import file canonicalization.
+
+Acceptance checks:
+- Raw-intake post create leaves one active `page/*.json` file at the local canonical filename.
+- Raw-intake term create leaves one active `taxonomy/{taxonomy}/*.json` file at the local canonical filename.
+- The created/updated WordPress entity keeps the incoming `vf_object_uid`, meta, taxonomy, and status behavior from the existing importer.
+- Existing sync-file import duplicate-prevention tests continue to pass.
+
 ## Planned Next Slice
 
-P9 should add an explicit `Update Matched Entity` path to the Import Sync JSON modal for high-confidence matches. It should reuse the existing DBVC import engines, require a per-item confirmation checkbox, and keep the current `Create Entity` flow create-only. Config-model cleanup for how main post type/taxonomy export selections relate to the new-post creation whitelist remains a separate follow-up.
+P9 adds an explicit `Update Matched Entity` path to the Import Sync JSON modal for high-confidence post/CPT UID matches. It reuses the existing DBVC post importer, requires a per-item `I confirm` checkbox plus server-side confirmation records, and keeps the current `Create Entity` flow create-only. Config-model cleanup for how main post type/taxonomy export selections relate to the new-post creation whitelist remains a separate follow-up.
 
 ## Original Gap
 
@@ -823,7 +859,7 @@ Exit criteria:
 
 ### P9. Update Matched Entity From Sync Import
 
-Status: `PLANNED`
+Status: `IMPLEMENTED 2026-06-23`
 
 Problem:
 
@@ -890,6 +926,11 @@ Proposed preview contract additions:
 
 Backend development items:
 
+- Add one reusable confirmed-update service method that can be called by REST now and by later DBVC workflows without duplicating validation:
+  - input: sync-relative paths, per-path confirmation records, and user ID
+  - confirmation record: `confirmed = true`, `preview_hash`, and matched WP entity ID
+  - output: the same bulk-style summary/items response used by sync-file create commits
+  - responsibility: normalize paths, re-run preview immediately before writing, verify confirmation, verify preview hash, verify matched entity drift, and delegate the write to DBVC's existing import engine
 - Add a sync-file import mode/action for matched updates, for example `update_matched`.
 - Extend `SyncFileImportService::preview()` so matched post/CPT rows can expose `matched_update.eligible = true` only when the match is high-confidence.
 - Keep `available_actions.create_only = false` for matched rows.
@@ -900,6 +941,7 @@ Backend development items:
   - verifies the same matched local entity still exists
   - verifies the match source is still allowed
   - delegates post/CPT updates to the existing DBVC post importer with export suppression
+  - rewrites the staged JSON's `ID` to the matched local post ID before canonical filename normalization when the source file came from another site
   - returns `action: update_matched`, `updated: true`, and the matched WP entity
   - rebuilds/invalidates the Entity Editor index after success
 - Keep term update support deferred unless the existing term importer update behavior is verified and covered by tests.
@@ -914,12 +956,12 @@ Frontend development items:
   - target sync path
   - a concise "this will update the matched WordPress entity" notice
 - Add a checkbox per eligible item:
-  - `Update this matched WordPress entity from the selected JSON`
+  - `I confirm updating this matched WordPress entity from the selected JSON`
 - Enable `Update Matched Entity` only when all items to be updated are confirmed and the preview remains fresh.
 - For mixed selections, keep create and update counts distinct:
   - `Create 2 Entities`
   - `Update 1 Matched Entity`
-  - or defer mixed create/update commit to a later slice if the first UI becomes unclear.
+  - first implementation should use separate create and update buttons rather than one mixed commit button.
 - Continue rendering P8 blocker actions for non-eligible matched rows and stale duplicate rows.
 
 Safety rules:
@@ -939,26 +981,23 @@ Exit criteria:
 - Preview hash or match drift between preview and commit blocks the update.
 - Existing create-only behavior and bulk create behavior remain unchanged.
 
+Implemented notes:
+
+- `SyncFileImportService::commit_confirmed_matched_updates()` is the reusable matched-update entry point for REST and future DBVC workflows.
+- REST uses `mode: "update_matched"` with a `confirmations` map keyed by sync-relative path.
+- Each confirmation must include `confirmed: true`, the current `preview_hash`, and the matched WP entity ID.
+- The server re-previews immediately before writing and blocks stale hashes, missing confirmations, changed matched IDs, non-UID matches, term matches, stale duplicates, and hard blockers.
+- Successful post/CPT matched updates run through `DBVC_Sync_Posts::import_post_from_json()` with normal auto-export hooks suppressed, then rewrite the staged JSON `ID` to the matched local post ID before canonical filename normalization.
+
 ### Later Enhancement. Merge Entities
 
-Status: `DEFERRED`
+Status: `SUPERSEDED BY PROPOSED GUIDE`
 
-Direction:
+The deferred merge idea from this completed sync-file import guide has been promoted into a dedicated proposed guide:
 
-- Treat entity merge as a single-file proposal/diff workflow, not a separate importer.
-- Reuse the upgraded proposal/diff decision model when it is stable enough to avoid duplicating decision storage and apply logic.
-- Start with a read-only compare between incoming JSON and a selected live entity snapshot.
-- Add field-level decisions only after the compare output is trusted.
-- Support core post fields, meta, taxonomies, and terms before Bricks-specific element-level merging.
-- For Bricks templates, eventually add a structured diff for template settings, conditions, preview references, and Bricks content elements.
-- Require explicit backups and explicit destructive decisions before any merge apply can remove or replace current data.
+- `docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md`
 
-Deferred by design:
-
-- selective Bricks element merges
-- automatic Bricks condition resolution
-- replacing existing templates from the quick-create modal
-- shared proposal/diff v2 storage changes
+Keep this completed guide focused on current sync-file import behavior. Use the proposed guide for future selected-entity pasted JSON merge work.
 
 ## Test Plan
 
@@ -998,6 +1037,11 @@ Coverage:
 - UID-bearing post JSON ignores source numeric ID collisions when UID fallback matching is disabled
 - UID-bearing post JSON is blocked as an existing entity when UID fallback matching is enabled and the source numeric ID matches a local same-type post
 - raw-intake recognizes `meta.vf_object_uid` and history UID values before considering legacy payload-ID fallback
+- raw-intake post create leaves one active local canonical `page/*.json` file after the importer writes the created local ID
+- raw-intake term create leaves one active local canonical `taxonomy/{taxonomy}/*.json` file after the importer writes the created local term ID
+- sync-file preview exposes `matched_update` only for high-confidence UID-matched post/CPT rows
+- sync-file matched update requires a confirmation record and blocks missing confirmation, stale preview hash, match drift, slug-only matches, and payload-ID-only matches
+- sync-file matched update applies JSON-present post fields, meta, and taxonomies through the existing DBVC post importer and normalizes source-site IDs to the matched local canonical JSON filename
 
 ### Manual QA
 
@@ -1017,6 +1061,10 @@ Checks:
 - blocked Listing import with missing whitelist entry shows `Allow listing imports`, updates the setting, refreshes preview, and enables creation only if no other blockers remain
 - disabled new-post creation shows `Enable new post creation`, updates the setting, and refreshes preview
 - stale duplicate preview shows the canonical path, supports `Use canonical row`, and archives stale duplicate only after confirmation
+- UID-matched post/CPT preview shows `Update Matched Entity` only after the per-item `I confirm` checkbox is checked
+- matched update without a confirmation checkbox leaves the live WordPress entity unchanged
+- stale preview hash or changed matched ID blocks matched update until the preview is refreshed and reconfirmed
+- slug-only matched files block create and do not offer matched update in this first slice
 - hard blockers such as invalid JSON and missing post type show explanation text but no bypass action
 - index refresh shows matched WP entity after commit
 - existing `Edit JSON`, `Save JSON`, `Save + Partial Import`, `Save + Full Replace`, `New From Raw JSON`, transfer packet, and delete selected still behave as before
@@ -1026,7 +1074,7 @@ Checks:
 - No automatic import on file drop.
 - Stale duplicate cleanup backs up each redundant sync JSON into `.dbvc_entity_editor_backups` before removing it from the active sync index.
 - No direct raw meta writes from the new service.
-- No updates to existing matched entities from the create-only action; P9 matched updates must use a separate explicit confirmation path.
+- No updates to existing matched entities from the create-only action; matched updates use the separate explicit `update_matched` confirmation path.
 - Existing DBVC import settings remain authoritative.
 - Inline setting remediation is limited to explicit allowlisted DBVC import options and is logged.
 - Bypass actions are per-file and do not create duplicate entities with reused UIDs.

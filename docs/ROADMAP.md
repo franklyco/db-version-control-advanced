@@ -10,28 +10,30 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
-| AI package workflow and import authoring reference | active | `docs/reference/import-authoring/README.md` | Compact package workflow exists locally; reference docs now provide the current agent-facing import contract. Remaining package QA and metrics follow-ups stay in the AI package implementation docs. |
+| AI package workflow and import authoring reference | active | `docs/reference/import-authoring/README.md`; `docs/implementation/proposed/ai-sample-entities-guide.md` | Compact package workflow exists locally; reference docs now provide the current agent-facing import contract. P10 tracks compact context hardening; P11 now tracks the Agent Authoring Context Catalog and Connector refresh pipeline. |
+| Bricks add-on settings portability | active | `addons/bricks/docs/BRICKS_ADDON_IMPLEMENTATION_CHECKLIST.md`; `addons/bricks/docs/BRICKS_PORTABILITY_MANAGER_IMPLEMENTATION_NOTES.md` | Phase 20 has media-backed custom font/icon export/import plus add-only apply/remap/rollback support. Phase 21 adds entity-backed `bricks_templates` export/import plus add/replace apply/rollback for template posts/meta/taxonomies. Phase 22 now has initial embedded image/gallery/background/video/template-settings media hydration, nested-template remapping/blockers, preview post/term UID/slug remapping with unresolved preservation, malformed dependency descriptor import validation, stale collision guard coverage, and rollback tests. Phase 23 is in progress with first-pass query post/term include/exclude remapping, built-in link post/term remapping, skipped query/link-shape warnings, and safe login/logout dynamic post-token remapping. Phase 24 has compact row-level template reference summary counts plus apply/backup/rollback receipt counts in existing surfaces; remaining Phases 24-26 cover domain/session rollups, richer path/action details, idempotency/mixed rollback hardening, and live drill evidence without adding required per-reference user decisions. |
 
 ## Proposed Work
 
 | Topic | Status | Proposal | Notes |
 |---|---|---|---|
 | Cross-site entity packets | proposed | `docs/implementation/proposed/cross-site-entity-packet-guide.md` | Future transfer workflow. |
+| Entity Editor merge incoming JSON | proposed | `docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md` | Future selected-entity merge workflow for pasted DBVC JSON, with local identity preservation, simple override controls, preview notes, and partial-import reuse. |
 | Configuration portability tool | proposed | `docs/implementation/proposed/configuration-portability-tool-guide.md` | Future configuration transport. |
 | Bricks portability drift manager | proposed | `docs/implementation/proposed/bricks-portability-drift-manager/README.md` | Proposed package/drift design. |
 | Bricks reference mapping | proposed | `docs/implementation/proposed/bricks-reference-mapping-plan.md` | Proposed mapping work. |
+| Bricks add-on language refresh | completed | `addons/bricks/docs/BRICKS_ADDON_USER_FACING_LANGUAGE_AUDIT.md`; `addons/bricks/docs/BRICKS_ADDON_LANGUAGE_REFRESH_IMPLEMENTATION_GUIDE.md` | User-reviewed label/text map implemented for Bricks sync UI and Settings Transfer display copy; targeted syntax and PHPUnit verification passed. |
 | Media sync hydration | proposed | `docs/implementation/proposed/media-sync-hydration-guide.md` | Needs current-state review before coding. |
 | User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
 | Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
 | Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
-| Entity Editor matched sync-file updates | planned | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import` | Adds an explicit confirmed `Update Matched Entity` flow for high-confidence sync-file matches without weakening create-only import safety. |
 
 ## Completed Work
 
 | Topic | Summary | Related Docs |
 |---|---|---|
 | Progress summary | Recent shipped DBVC admin and import work. | `docs/implementation/completed/progress-summary.md` |
-| Entity Editor | Implementation checklist, enhancements, sync-file import guide, duplicate-canonical import fixes, shared import blocker guidance, blocker resolution UI, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md` |
+| Entity Editor | Implementation checklist, raw-intake enhancements, sync-file import guide, duplicate-canonical import fixes, raw-intake duplicate JSON prevention, shared import blocker guidance, blocker resolution UI, confirmed matched sync-file updates, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md`; `docs/implementation/completed/entity-editor-enhancements.md`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p10-minor-fix-raw-intake-duplicate-sync-json-prevention`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import` |
 | Legacy upload immediate import | Targeted upload/import phase plan and QA notes. | `docs/implementation/completed/legacy-upload-immediate-import-plan.md` |
 | Import identity hardening | Current matching contract plus historical hardening note. | `docs/reference/import-identity-matching.md` |
 | Meta masking | Current reference plus completed plan. | `docs/reference/meta-masking.md` |

@@ -117,6 +117,8 @@ final class PackageDocBuilder
             '## Authoring Rules',
             '',
             '- Mirror the sample JSON field names exactly.',
+            '- Use sibling `.context.json` field `cross_site_safety` when present: `portable` may be filled, `site_specific` should be mapped to a target-site equivalent or left blank, `media_deferred` should stay empty/null in v1, and `admin_or_editor` should not be AI-authored unless explicitly requested.',
+            '- Use Field Context `section_selection` metadata as the source of truth for selected/default frontend sections; do not assume section values exactly match ACF group names, because `section_group_map` may map values such as `faq_section` to groups such as `faq_group`.',
             '- Use `ID: 0` or `term_id: 0` for net-new entities.',
             '- Only include `vf_object_uid` when the update target is already known.',
             '- Prefer slug-based references instead of numeric IDs.',

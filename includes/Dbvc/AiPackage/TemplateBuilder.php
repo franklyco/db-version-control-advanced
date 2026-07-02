@@ -690,13 +690,67 @@ final class TemplateBuilder
      */
     private static function build_compact_field_context(array $field_context): array
     {
+        $context = '';
         foreach (['context', 'resolved_purpose', 'effective_purpose', 'default_purpose'] as $key) {
             if (! empty($field_context[$key]) && is_scalar($field_context[$key])) {
-                return ['context' => sanitize_textarea_field((string) $field_context[$key])];
+                $context = sanitize_textarea_field((string) $field_context[$key]);
+                break;
             }
         }
 
-        return [];
+        $payload = [];
+        if ($context !== '') {
+            $payload['context'] = $context;
+        }
+
+        foreach (['cross_site_safety', 'authoring_surface', 'authoring_priority'] as $key) {
+            if (! empty($field_context[$key]) && is_scalar($field_context[$key])) {
+                $payload[$key] = sanitize_key((string) $field_context[$key]);
+            }
+        }
+
+        if (! empty($field_context['authoring_note']) && is_scalar($field_context['authoring_note'])) {
+            $payload['authoring_note'] = sanitize_textarea_field((string) $field_context['authoring_note']);
+        }
+
+        foreach (['choice_meaning', 'section_selection'] as $key) {
+            if (isset($field_context[$key]) && is_array($field_context[$key])) {
+                $payload[$key] = self::sanitize_context_payload($field_context[$key]);
+            }
+        }
+
+        foreach (['shared_group_id', 'shared_group_label'] as $key) {
+            if (! empty($field_context[$key]) && is_scalar($field_context[$key])) {
+                $payload[$key] = sanitize_text_field((string) $field_context[$key]);
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private static function sanitize_context_payload(array $payload): array
+    {
+        $sanitized = [];
+        foreach ($payload as $key => $value) {
+            $key = sanitize_text_field((string) $key);
+            if ($key === '') {
+                continue;
+            }
+
+            if (is_array($value)) {
+                $sanitized[$key] = self::sanitize_context_payload($value);
+            } elseif (is_bool($value)) {
+                $sanitized[$key] = $value;
+            } elseif (is_scalar($value)) {
+                $sanitized[$key] = sanitize_text_field((string) $value);
+            }
+        }
+
+        return $sanitized;
     }
 
     /**

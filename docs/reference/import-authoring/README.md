@@ -38,6 +38,7 @@ For rejected packages or maintainer work, read:
 | `entity-shapes.md` | Required and optional post, CPT, page, and term JSON fields. |
 | `acf-authoring.md` | ACF value authoring rules for `meta`. |
 | `vertical-context.md` | Minimal package-facing Object Type Context and Field Context. |
+| `vertical-context-provider-feedback-2026-06-23.md` | Feedback for Vertical repo changes based on real cross-site AI package QA; not required agent context. |
 | `validation-and-import-rules.md` | What DBVC validates, warns about, and blocks. |
 | `source-code-map.md` | Maintainer map from docs contracts to runtime classes. |
 | `maintenance-contract.md` | Required doc updates when import behavior changes. |

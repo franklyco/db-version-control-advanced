@@ -387,6 +387,14 @@ final class DBVC_CC_Field_Context_Provider_Service
             'resolved_from' => sanitize_key((string) ($group['resolved_from'] ?? '')),
             'matched_by' => sanitize_key((string) ($group['matched_by'] ?? '')),
             'warnings' => $this->normalize_warning_list(isset($group['warnings']) ? $group['warnings'] : []),
+            'cross_site_safety' => $this->normalize_cross_site_safety(isset($group['cross_site_safety']) ? $group['cross_site_safety'] : ''),
+            'authoring_surface' => $this->normalize_authoring_surface(isset($group['authoring_surface']) ? $group['authoring_surface'] : ''),
+            'authoring_priority' => $this->normalize_authoring_priority(isset($group['authoring_priority']) ? $group['authoring_priority'] : ''),
+            'authoring_note' => isset($group['authoring_note']) && is_scalar($group['authoring_note']) ? sanitize_textarea_field((string) $group['authoring_note']) : '',
+            'choice_meaning' => $this->normalize_assoc_string_map(isset($group['choice_meaning']) ? $group['choice_meaning'] : []),
+            'shared_group_id' => isset($group['shared_group_id']) && is_scalar($group['shared_group_id']) ? sanitize_text_field((string) $group['shared_group_id']) : '',
+            'shared_group_label' => isset($group['shared_group_label']) && is_scalar($group['shared_group_label']) ? sanitize_text_field((string) $group['shared_group_label']) : '',
+            'section_selection' => $this->normalize_section_selection(isset($group['section_selection']) ? $group['section_selection'] : []),
         ];
     }
 
@@ -446,7 +454,105 @@ final class DBVC_CC_Field_Context_Provider_Service
             'warnings' => $this->normalize_warning_list(isset($entry['warnings']) ? $entry['warnings'] : []),
             'value_contract' => $this->normalize_value_contract($value_contract, $type),
             'clone_context' => $this->normalize_clone_context($clone_context),
+            'cross_site_safety' => $this->normalize_cross_site_safety(isset($entry['cross_site_safety']) ? $entry['cross_site_safety'] : ''),
+            'authoring_surface' => $this->normalize_authoring_surface(isset($entry['authoring_surface']) ? $entry['authoring_surface'] : ''),
+            'authoring_priority' => $this->normalize_authoring_priority(isset($entry['authoring_priority']) ? $entry['authoring_priority'] : ''),
+            'authoring_note' => isset($entry['authoring_note']) && is_scalar($entry['authoring_note']) ? sanitize_textarea_field((string) $entry['authoring_note']) : '',
+            'choice_meaning' => $this->normalize_assoc_string_map(isset($entry['choice_meaning']) ? $entry['choice_meaning'] : []),
+            'shared_group_id' => isset($entry['shared_group_id']) && is_scalar($entry['shared_group_id']) ? sanitize_text_field((string) $entry['shared_group_id']) : '',
+            'shared_group_label' => isset($entry['shared_group_label']) && is_scalar($entry['shared_group_label']) ? sanitize_text_field((string) $entry['shared_group_label']) : '',
+            'section_selection' => $this->normalize_section_selection(isset($entry['section_selection']) ? $entry['section_selection'] : []),
         ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalize_cross_site_safety($value)
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['portable', 'site_specific', 'media_deferred', 'admin_or_editor'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalize_authoring_surface($value)
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['content', 'seo', 'cta', 'media', 'relationship', 'style_token', 'operator_control', 'site_config'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private function normalize_authoring_priority($value)
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['design_expected', 'recommended', 'optional', 'do_not_author'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $map
+     * @return array<string,string>
+     */
+    private function normalize_assoc_string_map($map)
+    {
+        $normalized = [];
+        if (! is_array($map)) {
+            return $normalized;
+        }
+
+        foreach ($map as $key => $value) {
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            $key = sanitize_text_field((string) $key);
+            if ($key === '') {
+                continue;
+            }
+
+            $normalized[$key] = sanitize_text_field((string) $value);
+        }
+
+        ksort($normalized);
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $selection
+     * @return array<string,mixed>
+     */
+    private function normalize_section_selection($selection)
+    {
+        if (! is_array($selection)) {
+            return [];
+        }
+
+        $normalized = [
+            'available' => ! empty($selection['available']),
+            'field_key' => isset($selection['field_key']) && is_scalar($selection['field_key']) ? sanitize_text_field((string) $selection['field_key']) : '',
+            'field_name' => isset($selection['field_name']) && is_scalar($selection['field_name']) ? sanitize_key((string) $selection['field_name']) : '',
+            'controls_frontend_sections' => ! empty($selection['controls_frontend_sections']),
+            'source_of_truth' => ! empty($selection['source_of_truth']),
+            'default_values' => isset($selection['default_values']) && is_array($selection['default_values'])
+                ? array_values(array_filter(array_map('sanitize_key', $selection['default_values'])))
+                : [],
+            'choices' => $this->normalize_assoc_string_map(isset($selection['choices']) ? $selection['choices'] : []),
+            'section_group_map' => $this->normalize_assoc_string_map(isset($selection['section_group_map']) ? $selection['section_group_map'] : []),
+        ];
+
+        if (! empty($selection['note']) && is_scalar($selection['note'])) {
+            $normalized['note'] = sanitize_textarea_field((string) $selection['note']);
+        }
+
+        return array_filter($normalized, static function ($value) {
+            return $value !== '' && $value !== [] && $value !== false;
+        });
     }
 
     /**

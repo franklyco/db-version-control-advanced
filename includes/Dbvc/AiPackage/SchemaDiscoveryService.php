@@ -620,7 +620,7 @@ final class SchemaDiscoveryService
             $context = self::extract_runtime_purpose($group);
         }
 
-        return $context === '' ? [] : ['context' => $context];
+        return self::build_compact_authoring_context($provider_group, $context, isset($group['type']) ? (string) $group['type'] : '');
     }
 
     /**
@@ -635,7 +635,172 @@ final class SchemaDiscoveryService
             $context = self::extract_runtime_purpose($field);
         }
 
-        return $context === '' ? [] : ['context' => $context];
+        return self::build_compact_authoring_context($provider_entry, $context, isset($field['type']) ? (string) $field['type'] : '');
+    }
+
+    /**
+     * @param array<string,mixed> $source
+     * @param string              $context
+     * @param string              $field_type
+     * @return array<string,mixed>
+     */
+    private static function build_compact_authoring_context(array $source, string $context, string $field_type = ''): array
+    {
+        $authoring_surface = self::normalize_authoring_surface($source['authoring_surface'] ?? '');
+        $cross_site_safety = self::normalize_cross_site_safety($source['cross_site_safety'] ?? '');
+        if ($cross_site_safety === '') {
+            $cross_site_safety = self::infer_cross_site_safety($field_type, $authoring_surface);
+        }
+
+        $authoring_priority = self::normalize_authoring_priority($source['authoring_priority'] ?? '');
+        if ($authoring_priority === '' && in_array($cross_site_safety, ['media_deferred', 'admin_or_editor'], true)) {
+            $authoring_priority = 'do_not_author';
+        }
+
+        $context_payload = [];
+        if ($context !== '') {
+            $context_payload['context'] = $context;
+        }
+        if ($cross_site_safety !== '') {
+            $context_payload['cross_site_safety'] = $cross_site_safety;
+        }
+        if ($authoring_surface !== '') {
+            $context_payload['authoring_surface'] = $authoring_surface;
+        }
+        if ($authoring_priority !== '') {
+            $context_payload['authoring_priority'] = $authoring_priority;
+        }
+        if (! empty($source['authoring_note']) && is_scalar($source['authoring_note'])) {
+            $context_payload['authoring_note'] = sanitize_textarea_field((string) $source['authoring_note']);
+        }
+
+        $choice_meaning = self::normalize_context_string_map($source['choice_meaning'] ?? []);
+        if (! empty($choice_meaning)) {
+            $context_payload['choice_meaning'] = $choice_meaning;
+        }
+
+        if (! empty($source['shared_group_id']) && is_scalar($source['shared_group_id'])) {
+            $context_payload['shared_group_id'] = sanitize_text_field((string) $source['shared_group_id']);
+        }
+        if (! empty($source['shared_group_label']) && is_scalar($source['shared_group_label'])) {
+            $context_payload['shared_group_label'] = sanitize_text_field((string) $source['shared_group_label']);
+        }
+
+        $section_selection = self::normalize_section_selection_context($source['section_selection'] ?? []);
+        if (! empty($section_selection)) {
+            $context_payload['section_selection'] = $section_selection;
+        }
+
+        return $context_payload;
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_cross_site_safety($value): string
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['portable', 'site_specific', 'media_deferred', 'admin_or_editor'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_authoring_surface($value): string
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['content', 'seo', 'cta', 'media', 'relationship', 'style_token', 'operator_control', 'site_config'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_authoring_priority($value): string
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['design_expected', 'recommended', 'optional', 'do_not_author'], true) ? $value : '';
+    }
+
+    private static function infer_cross_site_safety(string $field_type, string $authoring_surface): string
+    {
+        $field_type = sanitize_key($field_type);
+        if (in_array($field_type, ['image', 'file', 'gallery'], true)) {
+            return 'media_deferred';
+        }
+        if ($authoring_surface === 'media') {
+            return 'media_deferred';
+        }
+        if ($authoring_surface === 'style_token') {
+            return 'site_specific';
+        }
+        if (in_array($authoring_surface, ['operator_control', 'site_config'], true)) {
+            return 'admin_or_editor';
+        }
+
+        return '';
+    }
+
+    /**
+     * @param mixed $map
+     * @return array<string,string>
+     */
+    private static function normalize_context_string_map($map): array
+    {
+        $normalized = [];
+        if (! is_array($map)) {
+            return $normalized;
+        }
+
+        foreach ($map as $key => $value) {
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            $key = sanitize_text_field((string) $key);
+            if ($key === '') {
+                continue;
+            }
+
+            $normalized[$key] = sanitize_text_field((string) $value);
+        }
+
+        ksort($normalized);
+        return $normalized;
+    }
+
+    /**
+     * @param mixed $selection
+     * @return array<string,mixed>
+     */
+    private static function normalize_section_selection_context($selection): array
+    {
+        if (! is_array($selection)) {
+            return [];
+        }
+
+        $normalized = [
+            'available' => ! empty($selection['available']),
+            'field_key' => isset($selection['field_key']) && is_scalar($selection['field_key']) ? sanitize_text_field((string) $selection['field_key']) : '',
+            'field_name' => isset($selection['field_name']) && is_scalar($selection['field_name']) ? sanitize_key((string) $selection['field_name']) : '',
+            'controls_frontend_sections' => ! empty($selection['controls_frontend_sections']),
+            'source_of_truth' => ! empty($selection['source_of_truth']),
+            'default_values' => isset($selection['default_values']) && is_array($selection['default_values'])
+                ? array_values(array_filter(array_map('sanitize_key', $selection['default_values'])))
+                : [],
+            'choices' => self::normalize_context_string_map($selection['choices'] ?? []),
+            'section_group_map' => self::normalize_context_string_map($selection['section_group_map'] ?? []),
+        ];
+
+        if (! empty($selection['note']) && is_scalar($selection['note'])) {
+            $normalized['note'] = sanitize_textarea_field((string) $selection['note']);
+        }
+
+        return array_filter($normalized, static function ($value) {
+            return $value !== '' && $value !== [] && $value !== false;
+        });
     }
 
     /**
@@ -731,8 +896,62 @@ final class SchemaDiscoveryService
     private static function build_authoring_context(array $source): array
     {
         $context = self::select_authoring_context_text($source);
+        $payload = [];
 
-        return $context === '' ? [] : ['context' => $context];
+        if ($context !== '') {
+            $payload['context'] = $context;
+        }
+
+        $authoring_profile = self::normalize_authoring_profile($source['authoring_profile'] ?? '');
+        if ($authoring_profile !== '') {
+            $payload['authoring_profile'] = $authoring_profile;
+        }
+
+        if (! empty($source['routing_hint']) && is_scalar($source['routing_hint'])) {
+            $payload['routing_hint'] = sanitize_textarea_field((string) $source['routing_hint']);
+        }
+
+        $section_authoring = self::normalize_section_authoring_context($source['section_authoring'] ?? []);
+        if (! empty($section_authoring)) {
+            $payload['section_authoring'] = $section_authoring;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function normalize_authoring_profile($value): string
+    {
+        $value = sanitize_key((string) $value);
+        return in_array($value, ['essentials', 'extended', 'all'], true) ? $value : '';
+    }
+
+    /**
+     * @param mixed $section_authoring
+     * @return array<string,mixed>
+     */
+    private static function normalize_section_authoring_context($section_authoring): array
+    {
+        if (! is_array($section_authoring)) {
+            return [];
+        }
+
+        $normalized = [
+            'available' => ! empty($section_authoring['available']),
+            'control_field' => isset($section_authoring['control_field']) && is_scalar($section_authoring['control_field']) ? sanitize_key((string) $section_authoring['control_field']) : '',
+            'field_context_required' => ! empty($section_authoring['field_context_required']),
+        ];
+
+        if (! empty($section_authoring['note']) && is_scalar($section_authoring['note'])) {
+            $normalized['note'] = sanitize_textarea_field((string) $section_authoring['note']);
+        }
+
+        return array_filter($normalized, static function ($value) {
+            return $value !== '' && $value !== [] && $value !== false;
+        });
     }
 
     /**

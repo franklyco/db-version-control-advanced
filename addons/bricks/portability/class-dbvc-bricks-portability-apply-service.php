@@ -68,6 +68,28 @@ final class DBVC_Bricks_Portability_Apply_Service
                 ],
             ];
         }
+        $unsupported_media_domains = self::collect_unsupported_media_apply_domains(array_keys($affected_domains));
+        if (! empty($unsupported_media_domains)) {
+            return new \WP_Error(
+                'dbvc_bricks_portability_media_apply_unsupported',
+                sprintf(
+                    __('The selected Bricks domains cannot be applied yet because they include media-backed fonts or icons without rollback-safe attachment remapping: %s', 'dbvc'),
+                    implode(', ', $unsupported_media_domains)
+                ),
+                ['status' => 409, 'domains' => $unsupported_media_domains]
+            );
+        }
+        $unsupported_entity_domains = self::collect_unsupported_entity_apply_domains(array_keys($affected_domains));
+        if (! empty($unsupported_entity_domains)) {
+            return new \WP_Error(
+                'dbvc_bricks_portability_entity_apply_unsupported',
+                sprintf(
+                    __('The selected Bricks domains cannot be applied yet because they include entity-backed objects without rollback-safe apply support: %s', 'dbvc'),
+                    implode(', ', $unsupported_entity_domains)
+                ),
+                ['status' => 409, 'domains' => $unsupported_entity_domains]
+            );
+        }
 
         $source_validation = self::validate_session_domain_verification($session, array_keys($affected_domains));
         if (is_wp_error($source_validation)) {
@@ -91,6 +113,9 @@ final class DBVC_Bricks_Portability_Apply_Service
             if (! is_array($domain_definition)) {
                 continue;
             }
+            if (! empty($domain_definition['media_backed']) || ! empty($domain_definition['entity_backed'])) {
+                continue;
+            }
             $source_domain = isset($session['source_domains'][$domain_key]) && is_array($session['source_domains'][$domain_key]) ? $session['source_domains'][$domain_key] : [];
             $target_domain = isset($session['target_domains'][$domain_key]) && is_array($session['target_domains'][$domain_key]) ? $session['target_domains'][$domain_key] : [];
             $domain_values = self::build_mutated_domain_option_values($domain_definition, $source_domain, $target_domain, $domain_rows, $effective_decisions);
@@ -101,11 +126,84 @@ final class DBVC_Bricks_Portability_Apply_Service
             $mutated_values = array_merge($mutated_values, $domain_values);
         }
 
-        $affected_option_names = array_keys($mutated_values);
+        $affected_option_names = array_values(array_unique(array_merge(
+            array_keys($mutated_values),
+            DBVC_Bricks_Portability_Media_Apply_Service::get_affected_option_names($affected_domains)
+        )));
         $backup = DBVC_Bricks_Portability_Backup_Service::create_backup($session, $affected_option_names, $job_id);
         if (is_wp_error($backup)) {
             self::update_job($job_id, 'failed', ['error' => $backup->get_error_code()]);
             return $backup;
+        }
+
+        $media_apply = DBVC_Bricks_Portability_Media_Apply_Service::apply_affected_domains($session, $affected_domains, $effective_decisions);
+        if (is_wp_error($media_apply)) {
+            DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+            self::update_job($job_id, 'failed', ['error' => $media_apply->get_error_code()]);
+            return $media_apply;
+        }
+
+        $media_state = isset($media_apply['media_state']) && is_array($media_apply['media_state']) ? $media_apply['media_state'] : [];
+        if (! empty($media_state['created_posts']) || ! empty($media_state['created_attachments']) || ! empty($media_state['reused_attachments'])) {
+            $backup = DBVC_Bricks_Portability_Backup_Service::record_media_state($backup, $media_state);
+            if (is_wp_error($backup)) {
+                DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
+                self::update_job($job_id, 'failed', ['error' => $backup->get_error_code()]);
+                return $backup;
+            }
+        }
+
+        $media_mutated_options = isset($media_apply['mutated_options']) && is_array($media_apply['mutated_options']) ? $media_apply['mutated_options'] : [];
+        $mutated_values = array_merge($mutated_values, $media_mutated_options);
+        $font_value_map = isset($media_apply['font_value_map']) && is_array($media_apply['font_value_map']) ? $media_apply['font_value_map'] : [];
+        if (! empty($font_value_map)) {
+            $mutated_values = self::remap_custom_font_references_in_options($mutated_values, $font_value_map);
+        }
+
+        $template_apply = DBVC_Bricks_Portability_Template_Apply_Service::apply_affected_domains($session, $affected_domains, $effective_decisions, $font_value_map, $media_state);
+        if (is_wp_error($template_apply)) {
+            DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
+            DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+            self::update_job($job_id, 'failed', ['error' => $template_apply->get_error_code()]);
+            return $template_apply;
+        }
+
+        $entity_state = isset($template_apply['entity_state']) && is_array($template_apply['entity_state']) ? $template_apply['entity_state'] : [];
+        $reference_state = isset($template_apply['reference_state']) && is_array($template_apply['reference_state']) ? $template_apply['reference_state'] : [];
+        if (! empty($media_state['created_posts']) || ! empty($media_state['created_attachments']) || ! empty($media_state['reused_attachments'])) {
+            $media_backup = DBVC_Bricks_Portability_Backup_Service::record_media_state($backup, $media_state);
+            if (is_wp_error($media_backup)) {
+                DBVC_Bricks_Portability_Backup_Service::restore_entity_state($entity_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+                self::update_job($job_id, 'failed', ['error' => $media_backup->get_error_code()]);
+                return $media_backup;
+            }
+            $backup = $media_backup;
+        }
+        if (! empty($entity_state['created_posts']) || ! empty($entity_state['updated_posts']) || ! empty($entity_state['created_terms'])) {
+            $backup_before_entity = $backup;
+            $entity_backup = DBVC_Bricks_Portability_Backup_Service::record_entity_state($backup_before_entity, $entity_state);
+            if (is_wp_error($entity_backup)) {
+                DBVC_Bricks_Portability_Backup_Service::restore_entity_state($entity_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_backup($backup_before_entity);
+                self::update_job($job_id, 'failed', ['error' => $entity_backup->get_error_code()]);
+                return $entity_backup;
+            }
+            $backup = $entity_backup;
+        }
+
+        $reference_receipt = self::build_reference_receipt($affected_domains, $effective_decisions, $media_state, $entity_state, $reference_state);
+        if (self::reference_receipt_has_content($reference_receipt)) {
+            $receipt_backup = DBVC_Bricks_Portability_Backup_Service::record_reference_receipt($backup, $reference_receipt);
+            if (is_wp_error($receipt_backup)) {
+                DBVC_Bricks_Portability_Backup_Service::restore_entity_state($entity_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_media_state($media_state);
+                DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
+                self::update_job($job_id, 'failed', ['error' => $receipt_backup->get_error_code()]);
+                return $receipt_backup;
+            }
+            $backup = $receipt_backup;
         }
 
         $write_result = self::write_mutated_options($mutated_values);
@@ -121,6 +219,7 @@ final class DBVC_Bricks_Portability_Apply_Service
             'backup_id' => sanitize_key((string) ($backup['backup_id'] ?? '')),
             'job_id' => $job_id,
             'manual_row_ids' => $manual_row_ids,
+            'reference_receipt' => $reference_receipt,
         ]);
         if (is_wp_error($persisted_session)) {
             DBVC_Bricks_Portability_Backup_Service::restore_backup($backup);
@@ -141,6 +240,17 @@ final class DBVC_Bricks_Portability_Apply_Service
                 'decision_count' => count(array_filter($effective_decisions, static function ($decision) {
                     return in_array($decision, ['add_incoming', 'replace_with_incoming'], true);
                 })),
+                'media' => [
+                    'created_posts' => count((array) ($media_state['created_posts'] ?? [])),
+                    'created_attachments' => count((array) ($media_state['created_attachments'] ?? [])),
+                    'reused_attachments' => count((array) ($media_state['reused_attachments'] ?? [])),
+                ],
+                'entities' => [
+                    'created_posts' => count((array) ($entity_state['created_posts'] ?? [])),
+                    'updated_posts' => count((array) ($entity_state['updated_posts'] ?? [])),
+                    'created_terms' => count((array) ($entity_state['created_terms'] ?? [])),
+                ],
+                'reference_receipt' => $reference_receipt,
             ],
         ];
 
@@ -204,6 +314,7 @@ final class DBVC_Bricks_Portability_Apply_Service
             'backup_id' => sanitize_key((string) ($backup['backup_id'] ?? '')),
             'session_id' => sanitize_key((string) ($backup['session_id'] ?? '')),
             'option_names' => array_values((array) ($backup['option_names'] ?? [])),
+            'reference_receipt' => isset($backup['reference_receipt']) && is_array($backup['reference_receipt']) ? $backup['reference_receipt'] : [],
         ];
 
         $session_id = sanitize_key((string) ($backup['session_id'] ?? ''));
@@ -213,6 +324,7 @@ final class DBVC_Bricks_Portability_Apply_Service
                 'backup_id' => sanitize_key((string) ($backup['backup_id'] ?? '')),
                 'job_id' => $job_id,
                 'option_names' => array_values((array) ($backup['option_names'] ?? [])),
+                'reference_receipt' => isset($backup['reference_receipt']) && is_array($backup['reference_receipt']) ? $backup['reference_receipt'] : [],
             ]);
             if (is_wp_error($session_update)) {
                 self::update_job($job_id, 'failed', ['error' => $session_update->get_error_code()]);
@@ -318,6 +430,250 @@ final class DBVC_Bricks_Portability_Apply_Service
         }
 
         return $affected;
+    }
+
+    /**
+     * @param array<string, array<int, array<string, mixed>>> $affected_domains
+     * @param array<string, string> $effective_decisions
+     * @param array<string, mixed> $media_state
+     * @param array<string, mixed> $entity_state
+     * @param array<string, mixed> $reference_state
+     * @return array<string, mixed>
+     */
+    private static function build_reference_receipt(array $affected_domains, array $effective_decisions, array $media_state, array $entity_state, array $reference_state)
+    {
+        $review_summary = self::aggregate_selected_template_reference_summary($affected_domains, $effective_decisions);
+        $actual_media_refs = self::count_reference_state_items($reference_state, 'media_refs');
+        $actual_nested_refs = self::count_reference_state_items($reference_state, 'nested_template_refs');
+        $actual_post_refs = self::count_reference_state_items($reference_state, 'post_refs');
+        $actual_term_refs = self::count_reference_state_items($reference_state, 'term_refs');
+        $actual_preserved_refs = self::count_reference_state_items($reference_state, 'preserved_refs');
+        $actual_blocked_refs = self::count_reference_state_items($reference_state, 'blocked_refs');
+
+        return [
+            'template_rows' => (int) ($review_summary['template_rows'] ?? 0),
+            'references' => [
+                'safe_refs' => (int) ($review_summary['safe_refs'] ?? 0),
+                'remapped_refs' => $actual_media_refs + $actual_nested_refs + $actual_post_refs + $actual_term_refs,
+                'media_refs' => $actual_media_refs,
+                'nested_template_refs' => $actual_nested_refs,
+                'entity_refs' => $actual_post_refs + $actual_term_refs,
+                'post_refs' => $actual_post_refs,
+                'term_refs' => $actual_term_refs,
+                'query_refs' => self::count_reference_state_items($reference_state, 'query_refs'),
+                'link_refs' => self::count_reference_state_items($reference_state, 'link_refs'),
+                'dynamic_data_refs' => self::count_reference_state_items($reference_state, 'dynamic_data_refs'),
+                'preserved_refs' => (int) ($review_summary['preserved_refs'] ?? 0) + $actual_preserved_refs,
+                'unknown_refs' => (int) ($review_summary['unknown_refs'] ?? 0),
+                'blocked_refs' => (int) ($review_summary['blocked_refs'] ?? 0) + $actual_blocked_refs,
+            ],
+            'media' => [
+                'created_posts' => count((array) ($media_state['created_posts'] ?? [])),
+                'created_attachments' => count((array) ($media_state['created_attachments'] ?? [])),
+                'reused_attachments' => count((array) ($media_state['reused_attachments'] ?? [])),
+                'template_attachment_maps' => count((array) ($media_state['template_attachment_id_map'] ?? [])),
+                'font_id_maps' => count((array) ($media_state['font_id_map'] ?? [])),
+                'font_attachment_maps' => count((array) ($media_state['font_attachment_id_map'] ?? [])),
+                'icon_attachment_maps' => count((array) ($media_state['icon_attachment_id_map'] ?? [])),
+            ],
+            'entities' => [
+                'created_posts' => count((array) ($entity_state['created_posts'] ?? [])),
+                'updated_posts' => count((array) ($entity_state['updated_posts'] ?? [])),
+                'created_terms' => count((array) ($entity_state['created_terms'] ?? [])),
+                'template_post_maps' => count(self::build_template_post_id_map($entity_state)),
+            ],
+            'maps' => [
+                'template_posts' => self::build_template_post_id_map($entity_state),
+                'template_attachments' => self::sanitize_int_map((array) ($media_state['template_attachment_id_map'] ?? [])),
+                'font_ids' => self::sanitize_int_map((array) ($media_state['font_id_map'] ?? [])),
+                'font_attachments' => self::sanitize_int_map((array) ($media_state['font_attachment_id_map'] ?? [])),
+                'icon_attachments' => self::sanitize_int_map((array) ($media_state['icon_attachment_id_map'] ?? [])),
+            ],
+            'reference_maps' => self::sanitize_reference_state($reference_state),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $receipt
+     */
+    private static function reference_receipt_has_content(array $receipt)
+    {
+        if ((int) ($receipt['template_rows'] ?? 0) > 0) {
+            return true;
+        }
+        foreach (['references', 'media', 'entities'] as $section) {
+            foreach ((array) ($receipt[$section] ?? []) as $value) {
+                if ((int) $value > 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, array<int, array<string, mixed>>> $affected_domains
+     * @param array<string, string> $effective_decisions
+     * @return array<string, int>
+     */
+    private static function aggregate_selected_template_reference_summary(array $affected_domains, array $effective_decisions)
+    {
+        $summary = [
+            'template_rows' => 0,
+            'safe_refs' => 0,
+            'preserved_refs' => 0,
+            'unknown_refs' => 0,
+            'blocked_refs' => 0,
+        ];
+
+        foreach ((array) ($affected_domains['bricks_templates'] ?? []) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $row_id = self::normalize_row_id($row['row_id'] ?? '');
+            $decision = sanitize_key((string) ($effective_decisions[$row_id] ?? ''));
+            if (! in_array($decision, ['add_incoming', 'replace_with_incoming'], true)) {
+                continue;
+            }
+            if (($row['row_type'] ?? '') !== 'object') {
+                continue;
+            }
+            $summary['template_rows']++;
+            $reference_summary = isset($row['references']['template_reference_summary']) && is_array($row['references']['template_reference_summary'])
+                ? $row['references']['template_reference_summary']
+                : [];
+            foreach (['safe_refs', 'preserved_refs', 'unknown_refs', 'blocked_refs'] as $key) {
+                $summary[$key] += max(0, (int) ($reference_summary[$key] ?? 0));
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @param array<string, mixed> $reference_state
+     */
+    private static function count_reference_state_items(array $reference_state, $bucket)
+    {
+        $bucket = sanitize_key((string) $bucket);
+        return $bucket !== '' ? count((array) ($reference_state[$bucket] ?? [])) : 0;
+    }
+
+    /**
+     * @param array<string, mixed> $entity_state
+     * @return array<string, int>
+     */
+    private static function build_template_post_id_map(array $entity_state)
+    {
+        $map = [];
+        foreach (array_merge((array) ($entity_state['created_posts'] ?? []), (array) ($entity_state['updated_posts'] ?? [])) as $post_state) {
+            if (! is_array($post_state) || sanitize_key((string) ($post_state['post_type'] ?? '')) !== 'bricks_template') {
+                continue;
+            }
+            $source_id = (int) ($post_state['source_post_id'] ?? 0);
+            $target_id = (int) ($post_state['post_id'] ?? 0);
+            if ($source_id > 0 && $target_id > 0) {
+                $map[(string) $source_id] = $target_id;
+            }
+        }
+
+        ksort($map, SORT_NATURAL);
+        return $map;
+    }
+
+    /**
+     * @param array<mixed> $map
+     * @return array<string, int>
+     */
+    private static function sanitize_int_map(array $map)
+    {
+        $sanitized = [];
+        foreach ($map as $source_id => $target_id) {
+            $source_id = (int) $source_id;
+            $target_id = (int) $target_id;
+            if ($source_id > 0 && $target_id > 0) {
+                $sanitized[(string) $source_id] = $target_id;
+            }
+        }
+
+        ksort($sanitized, SORT_NATURAL);
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $reference_state
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private static function sanitize_reference_state(array $reference_state)
+    {
+        $buckets = DBVC_Bricks_Portability_Template_Apply_Service::empty_reference_state();
+        foreach (array_keys($buckets) as $bucket) {
+            $items = [];
+            foreach ((array) ($reference_state[$bucket] ?? []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $items[] = [
+                    'source_id' => max(0, (int) ($item['source_id'] ?? 0)),
+                    'target_id' => max(0, (int) ($item['target_id'] ?? 0)),
+                    'payload_path' => sanitize_text_field((string) ($item['payload_path'] ?? '')),
+                    'control_name' => sanitize_key((string) ($item['control_name'] ?? '')),
+                    'ref_type' => sanitize_key((string) ($item['ref_type'] ?? '')),
+                    'entity_kind' => sanitize_key((string) ($item['entity_kind'] ?? '')),
+                    'object_subtype' => sanitize_key((string) ($item['object_subtype'] ?? '')),
+                    'query_ref_kind' => sanitize_key((string) ($item['query_ref_kind'] ?? '')),
+                    'link_ref_kind' => sanitize_key((string) ($item['link_ref_kind'] ?? '')),
+                    'dynamic_ref_kind' => sanitize_key((string) ($item['dynamic_ref_kind'] ?? '')),
+                    'dynamic_token_name' => sanitize_key((string) ($item['dynamic_token_name'] ?? '')),
+                ];
+            }
+            $buckets[$bucket] = $items;
+        }
+
+        return $buckets;
+    }
+
+    /**
+     * @param array<int, string> $domain_keys
+     * @return array<int, string>
+     */
+    private static function collect_unsupported_media_apply_domains(array $domain_keys)
+    {
+        $blocked = [];
+        foreach ($domain_keys as $domain_key) {
+            $domain_key = sanitize_key((string) $domain_key);
+            $definition = DBVC_Bricks_Portability_Registry::get_domain($domain_key);
+            if (! is_array($definition)) {
+                continue;
+            }
+            if (! empty($definition['media_backed']) && empty($definition['media_apply_supported'])) {
+                $blocked[] = $domain_key;
+            }
+        }
+
+        return array_values(array_unique($blocked));
+    }
+
+    /**
+     * @param array<int, string> $domain_keys
+     * @return array<int, string>
+     */
+    private static function collect_unsupported_entity_apply_domains(array $domain_keys)
+    {
+        $blocked = [];
+        foreach ($domain_keys as $domain_key) {
+            $domain_key = sanitize_key((string) $domain_key);
+            $definition = DBVC_Bricks_Portability_Registry::get_domain($domain_key);
+            if (! is_array($definition)) {
+                continue;
+            }
+            if (! empty($definition['entity_backed']) && empty($definition['entity_apply_supported'])) {
+                $blocked[] = $domain_key;
+            }
+        }
+
+        return array_values(array_unique($blocked));
     }
 
     /**
@@ -579,6 +935,48 @@ final class DBVC_Bricks_Portability_Apply_Service
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $mutated_values
+     * @param array<string, string> $font_value_map
+     * @return array<string, mixed>
+     */
+    private static function remap_custom_font_references_in_options(array $mutated_values, array $font_value_map)
+    {
+        foreach ($mutated_values as $option_name => $value) {
+            $option_name = sanitize_key((string) $option_name);
+            if ($option_name === 'bricks_font_face_rules') {
+                continue;
+            }
+            $mutated_values[$option_name] = self::remap_custom_font_references($value, $font_value_map);
+        }
+
+        return $mutated_values;
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<string, string> $font_value_map
+     * @return mixed
+     */
+    private static function remap_custom_font_references($value, array $font_value_map)
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $child) {
+                $value[$key] = self::remap_custom_font_references($child, $font_value_map);
+            }
+            return $value;
+        }
+
+        if (! is_string($value) || $value === '') {
+            return $value;
+        }
+
+        return preg_replace_callback('/custom_font_\d+/', static function ($matches) use ($font_value_map) {
+            $token = (string) ($matches[0] ?? '');
+            return isset($font_value_map[$token]) ? (string) $font_value_map[$token] : $token;
+        }, $value);
     }
 
     /**
