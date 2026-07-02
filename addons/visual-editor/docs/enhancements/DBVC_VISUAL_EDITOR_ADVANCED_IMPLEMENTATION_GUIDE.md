@@ -478,29 +478,32 @@ Current implementation state:
 - The panel renders reconstructed preview text, the original Bricks template, a partial-lock note when needed, a batch-save preflight block, and one source row per child descriptor/tag. When `canBatchSave` is true, save-ready scalar children render editable controls and the primary action becomes `Save All`.
 - Frontend `saveComposite()` now sends child index/value pairs and child base values with the existing related/shared acknowledgement model, updates the cached composite payload and base values from the save response, and patches the active marker's inner HTML from the original template plus returned child display values without a reload.
 - Composite save preflight now rejects stale child sources before any writes when a submitted base value no longer matches the backend value. The route returns `409 Conflict` with `stage = stale`, and the frontend preserves attempted values, clears the active descriptor cache, shows stale-state copy, and keeps `Save All` blocked until the field is reopened/refreshed.
-- Live disposable save QA on `/our-process/` page `24732` confirmed same-value save, changed-value save, immediate restore, stale-conflict rejection/restore, and in-memory rollback attempts for a later child write failure. Remaining follow-up work: browser-click panel QA on a visible non-header composite fixture and a live journal failure-row readback if we need durable rollback evidence beyond the current controlled rollback probe.
+- Direct ACF repeater-row child reads now use the expanded post-meta fallback when the resolved parent selector/name maps to stored row meta such as `_price_item_repeater`, including normalized Bricks selector variants. This keeps composite base values, stale checks, and writes aligned on the same stored row source instead of trusting an ACF-rendered/cache value.
+- Live disposable save QA on `/our-process/` page `24732` confirmed same-value save, changed-value save, immediate restore, stale-conflict rejection/restore, and in-memory rollback attempts for a later child write failure.
+- Live browser QA on `/our-process/` now confirms Review Fields token-based `Open`, related-owner acknowledgement gating, `Save All` no-reload DOM patching and restore, and tall composite panel viewport fitting. The field index also explicitly hides closed `<details>` item rows so closed-row actions do not overlap active summaries or intercept `Open` hit tests.
+- Remaining follow-up work: browser-rendered stale-state UI still needs a harness that mutates the exact hydrated child source path behind an open panel; backend/runtime stale probes already cover the no-write behavior. A live journal failure-row readback is optional unless durable rollback evidence beyond the current controlled rollback probe is required.
 
-Next live-browser hardening slice for composite `Save All`:
-- Objective: move composite scalar `Save All` from backend/probe-complete to browser-verified without widening source support, mutation contracts, or parser behavior in the same slice.
+Remaining live-browser hardening slice for composite `Save All`:
+- Objective: finish browser-only stale UI confirmation without widening source support, mutation contracts, or parser behavior in the same slice.
 - Primary fixtures:
   - `/our-process/` page `24732`, because the current probes already validate related-owner scalar composite descriptors, acknowledgement requirements, stale baseline protection, no-reload patching, and journal rows there.
   - A visible non-header composite marker should be preferred for click testing. If the only readily visible composite marker is clipped by the admin bar or header layering, use the Review Fields token-based `Open` path first, or add a temporary disposable visible fixture only for QA and remove it before commit.
   - `frameworkflo-live` listing post `107582` remains a secondary validation target for pure/single-embedded and future multi-tag listing composites; do not make it the first browser hardening fixture unless the patched plugin files are deployed there and the site is authenticated.
 - Step 1, panel entry hardening:
-  - Verify direct badge click opens the composite panel when the marker has a visible hoverable DOM node.
-  - Verify Review Fields `Open` opens the same panel by token even when the marker is zero-height, hidden, clipped, or otherwise not a practical click target.
-  - Ensure the `Open` action never navigates into Bricks Builder mode and does not depend on a live node hit-test when a hydrated descriptor exists.
+  - Status: Review Fields token-based `Open` is verified for the `/our-process/` zero-size composite marker path.
+  - Direct badge click remains useful to re-check when a visible non-header composite marker exists, but it is no longer required to unblock the token fallback path.
+  - Ensure the `Open` action continues to avoid Bricks Builder mode and does not depend on a live node hit-test when a hydrated descriptor exists.
 - Step 2, preflight UI verification:
-  - Confirm the panel shows reconstructed preview text, original Bricks template, child source rows, owner groups, acknowledgement requirements, and blocked child reasons.
-  - Confirm `Save All` appears only when `compositeText.saveReadiness.canBatchSave` is true and all dynamic children map to allowed scalar child descriptors.
-  - Confirm `Save All` remains blocked until required related/shared acknowledgement is checked.
+  - Status: reconstructed preview text, original Bricks template, child source rows, owner context, scalar controls, and `Save All` visibility are verified on `/our-process/`.
+  - Confirm blocked-child copy only when a live `canBatchSave = false` fixture is available.
+  - Required related/shared acknowledgement gating is verified before save.
 - Step 3, no-reload save behavior:
-  - Perform a same-value browser save and a changed-value browser save against a disposable scalar child.
+  - Status: same-value save, changed-value save, restore, URL stability, stable marker count, and active-marker patching without reload are verified on `/our-process/`.
   - Confirm the server response refreshes child base values so a second save from the still-open or reopened panel does not stale-conflict.
-  - Confirm the active marker is patched from the saved template plus returned child display values without a page reload.
   - Confirm sibling markers or unrelated source-group matches are not cross-synced unless a later explicit composite sync contract is added.
 - Step 4, stale/conflict behavior:
-  - Reuse the current stale probe for backend coverage, then confirm the browser panel renders a clear stale-state message when the route returns `409 / stage = stale`.
+  - Reuse the current stale probes for backend coverage, including direct expanded-post-meta repeater rows whose Bricks selectors normalize away a leading underscore.
+  - Confirm the browser panel renders a clear stale-state message when the route returns `409 / stage = stale`.
   - The panel should preserve the user's attempted values, explain that the backend source changed, and require refresh/reopen before another write.
 - Step 5, journal and rollback evidence:
   - Keep the existing same-value/change/restore, stale, rollback, preflight, and journal probes as the baseline.

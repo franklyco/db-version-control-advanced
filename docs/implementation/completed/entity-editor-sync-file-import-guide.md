@@ -991,11 +991,11 @@ Implemented notes:
 
 ### Later Enhancement. Merge Entities
 
-Status: `SUPERSEDED BY PROPOSED GUIDE`
+Status: `SUPERSEDED BY COMPLETED GUIDE`
 
 The deferred merge idea from this completed sync-file import guide has been promoted into a dedicated proposed guide:
 
-- `docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md`
+- `docs/implementation/completed/entity-editor-merge-incoming-json-guide.md`
 
 Keep this completed guide focused on current sync-file import behavior. Use the proposed guide for future selected-entity pasted JSON merge work.
 

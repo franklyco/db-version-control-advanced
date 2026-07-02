@@ -6,7 +6,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 
 | Topic | Status | Guide | Notes |
 |---|---|---|---|
-| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md` | Current primary implementation stream. Keep detailed state in addon-local docs. |
+| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md` | Current primary implementation stream. Keep detailed state in addon-local docs; composite browser hardening status, including expanded-post-meta repeater stale coverage, is tracked in `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md` and `addons/visual-editor/docs/qa/TEST_LOG.md`. |
 | Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
@@ -18,7 +18,6 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Topic | Status | Proposal | Notes |
 |---|---|---|---|
 | Cross-site entity packets | proposed | `docs/implementation/proposed/cross-site-entity-packet-guide.md` | Future transfer workflow. |
-| Entity Editor merge incoming JSON | proposed | `docs/implementation/proposed/entity-editor-merge-incoming-json-guide.md` | Future selected-entity merge workflow for pasted DBVC JSON, with local identity preservation, simple override controls, preview notes, and partial-import reuse. |
 | Configuration portability tool | proposed | `docs/implementation/proposed/configuration-portability-tool-guide.md` | Future configuration transport. |
 | Bricks portability drift manager | proposed | `docs/implementation/proposed/bricks-portability-drift-manager/README.md` | Proposed package/drift design. |
 | Bricks reference mapping | proposed | `docs/implementation/proposed/bricks-reference-mapping-plan.md` | Proposed mapping work. |
@@ -33,7 +32,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Topic | Summary | Related Docs |
 |---|---|---|
 | Progress summary | Recent shipped DBVC admin and import work. | `docs/implementation/completed/progress-summary.md` |
-| Entity Editor | Implementation checklist, raw-intake enhancements, sync-file import guide, duplicate-canonical import fixes, raw-intake duplicate JSON prevention, shared import blocker guidance, blocker resolution UI, confirmed matched sync-file updates, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md`; `docs/implementation/completed/entity-editor-enhancements.md`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p10-minor-fix-raw-intake-duplicate-sync-json-prevention`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import` |
+| Entity Editor | Implementation checklist, raw-intake enhancements, sync-file import guide, duplicate-canonical import fixes, raw-intake duplicate JSON prevention, shared import blocker guidance, blocker resolution UI, confirmed matched sync-file updates, selected-entity incoming JSON merge, and manual QA. | `docs/implementation/completed/entity-editor-checklist.md`; `docs/implementation/completed/entity-editor-enhancements.md`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p10-minor-fix-raw-intake-duplicate-sync-json-prevention`; `docs/implementation/completed/entity-editor-sync-file-import-guide.md#p9-update-matched-entity-from-sync-import`; `docs/implementation/completed/entity-editor-merge-incoming-json-guide.md` |
 | Legacy upload immediate import | Targeted upload/import phase plan and QA notes. | `docs/implementation/completed/legacy-upload-immediate-import-plan.md` |
 | Import identity hardening | Current matching contract plus historical hardening note. | `docs/reference/import-identity-matching.md` |
 | Meta masking | Current reference plus completed plan. | `docs/reference/meta-masking.md` |

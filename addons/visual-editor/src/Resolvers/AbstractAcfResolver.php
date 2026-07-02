@@ -638,13 +638,17 @@ abstract class AbstractAcfResolver implements ResolverInterface
     private function shouldUsePostMetaRepeaterFallback(EditableDescriptor $descriptor)
     {
         $post_id = $this->getPostId($descriptor);
-        $parent_selector = $this->getParentFieldSelector($descriptor);
+        $parent_selector = $this->getPostMetaRepeaterParentSelector($descriptor);
         if ($parent_selector === '') {
             return false;
         }
 
         if ($post_id <= 0 || ! metadata_exists('post', $post_id, $parent_selector)) {
             return false;
+        }
+
+        if ($this->hasDirectPostMetaRepeaterRowField($descriptor) && strpos($parent_selector, '_') === 0) {
+            return true;
         }
 
         if (! function_exists('get_field_object')) {
@@ -667,6 +671,82 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
     /**
      * @param EditableDescriptor $descriptor
+     * @return bool
+     */
+    private function hasDirectPostMetaRepeaterRowField(EditableDescriptor $descriptor)
+    {
+        if (! empty($this->getNestedRepeaterPath($descriptor)) || ! empty($this->getGroupPath($descriptor)) || ! empty($this->getGroupKeyPath($descriptor))) {
+            return false;
+        }
+
+        $post_id = $this->getPostId($descriptor);
+        $parent_selector = $this->getPostMetaRepeaterParentSelector($descriptor);
+        $row_index = $this->getRepeaterRowIndex($descriptor);
+        if ($post_id <= 0 || $parent_selector === '' || $row_index === null) {
+            return false;
+        }
+
+        foreach ($this->getDirectPostMetaRepeaterFieldNames($descriptor) as $field_name) {
+            $candidate = $parent_selector . '_' . $row_index . '_' . sanitize_key((string) $field_name);
+            if (metadata_exists('post', $post_id, $candidate) || metadata_exists('post', $post_id, '_' . $candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return array<int, string>
+     */
+    private function getDirectPostMetaRepeaterFieldNames(EditableDescriptor $descriptor)
+    {
+        return array_values(array_unique(array_filter([
+            $this->getLeafFieldName($descriptor),
+            $this->getFieldName($descriptor),
+        ])));
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
+     * @return string
+     */
+    private function getPostMetaRepeaterParentSelector(EditableDescriptor $descriptor)
+    {
+        $post_id = $this->getPostId($descriptor);
+        if ($post_id <= 0) {
+            return '';
+        }
+
+        $raw_candidates = array_values(array_unique(array_filter([
+            $this->getParentFieldSelector($descriptor),
+            $this->getParentFieldName($descriptor),
+        ])));
+        $candidates = [];
+
+        foreach ($raw_candidates as $raw_candidate) {
+            $raw_candidate = sanitize_key((string) $raw_candidate);
+            if ($raw_candidate === '') {
+                continue;
+            }
+
+            $candidates[] = $raw_candidate;
+            $candidates[] = '_' . ltrim($raw_candidate, '_');
+        }
+
+        foreach (array_values(array_unique($candidates)) as $candidate) {
+            $candidate = sanitize_key((string) $candidate);
+            if ($candidate !== '' && metadata_exists('post', $post_id, $candidate)) {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param EditableDescriptor $descriptor
      * @param mixed              $value
      * @return array<string, mixed>
      */
@@ -680,7 +760,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
         }
 
         $post_id = $this->getPostId($descriptor);
-        $parent_selector = $this->getParentFieldSelector($descriptor);
+        $parent_selector = $this->getPostMetaRepeaterParentSelector($descriptor);
         $row_index = $this->getRepeaterRowIndex($descriptor);
         if ($post_id <= 0 || $parent_selector === '' || $row_index === null) {
             return [
@@ -697,10 +777,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
             ];
         }
 
-        $field_names = array_values(array_unique(array_filter([
-            $this->getLeafFieldName($descriptor),
-            $this->getFieldName($descriptor),
-        ])));
+        $field_names = $this->getDirectPostMetaRepeaterFieldNames($descriptor);
         $value_key = '';
 
         foreach ($field_names as $field_name) {
@@ -847,8 +924,12 @@ abstract class AbstractAcfResolver implements ResolverInterface
             return [];
         }
 
+        if ($this->shouldUsePostMetaRepeaterFallback($descriptor)) {
+            return $this->getRawRepeaterRowsFromPostMeta($descriptor);
+        }
+
         if (! function_exists('get_field')) {
-            return [];
+            return $this->getRawRepeaterRowsFromPostMeta($descriptor);
         }
 
         $rows = get_field($parent_identifier, $object_id, false);
@@ -939,10 +1020,7 @@ abstract class AbstractAcfResolver implements ResolverInterface
     private function getRawRepeaterRowsFromPostMeta(EditableDescriptor $descriptor)
     {
         $post_id = $this->getPostId($descriptor);
-        $parent_selector = $this->getParentFieldSelector($descriptor);
-        if ($parent_selector === '') {
-            $parent_selector = $this->getParentFieldName($descriptor);
-        }
+        $parent_selector = $this->getPostMetaRepeaterParentSelector($descriptor);
 
         if ($post_id <= 0 || $parent_selector === '') {
             return [];

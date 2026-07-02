@@ -582,6 +582,36 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/entity-editor/merge-json/preview',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'preview_entity_editor_merge_json'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/merge-json/save',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'save_entity_editor_merge_json'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/merge-json/save-and-partial-import',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'save_and_partial_import_entity_editor_merge_json'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/entity-editor/transfer-preview',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -2323,6 +2353,93 @@ final class DBVC_Admin_App
         $lock_token = (string) $request->get_param('lock_token');
         $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
         $result = DBVC_Entity_Editor_Indexer::save_and_full_replace($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover, $confirm_phrase);
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: Preview merging pasted JSON into the selected Entity Editor file.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function preview_entity_editor_merge_json(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\EntityJsonMergeService')) {
+            return new \WP_Error('dbvc_entity_editor_merge_unavailable', __('Entity JSON merge service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $relative_path = isset($params['path']) ? (string) $params['path'] : '';
+        $incoming_json = isset($params['incoming_json']) ? (string) $params['incoming_json'] : '';
+        $identity = isset($params['identity']) && is_array($params['identity']) ? $params['identity'] : [];
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'save';
+
+        $preview = \Dbvc\EntityEditor\EntityJsonMergeService::preview($relative_path, $incoming_json, $identity, $mode);
+        if (is_wp_error($preview)) {
+            return $preview;
+        }
+
+        return new \WP_REST_Response($preview);
+    }
+
+    /**
+     * REST: Save a server-generated merge into the selected Entity Editor file.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function save_entity_editor_merge_json(\WP_REST_Request $request)
+    {
+        return self::save_entity_editor_merge_json_with_mode($request, false);
+    }
+
+    /**
+     * REST: Save a server-generated merge and run partial import.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function save_and_partial_import_entity_editor_merge_json(\WP_REST_Request $request)
+    {
+        return self::save_entity_editor_merge_json_with_mode($request, true);
+    }
+
+    /**
+     * @param \WP_REST_Request $request
+     * @param bool             $partial_import
+     * @return \WP_REST_Response|\WP_Error
+     */
+    private static function save_entity_editor_merge_json_with_mode(\WP_REST_Request $request, $partial_import)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\EntityJsonMergeService')) {
+            return new \WP_Error('dbvc_entity_editor_merge_unavailable', __('Entity JSON merge service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $relative_path = isset($params['path']) ? (string) $params['path'] : '';
+        $incoming_json = isset($params['incoming_json']) ? (string) $params['incoming_json'] : '';
+        $identity = isset($params['identity']) && is_array($params['identity']) ? $params['identity'] : [];
+        $lock_token = isset($params['lock_token']) ? (string) $params['lock_token'] : '';
+        $force_takeover = rest_sanitize_boolean($params['force_takeover'] ?? false);
+        $preview_hash = isset($params['preview_hash']) ? (string) $params['preview_hash'] : '';
+        $confirmed = rest_sanitize_boolean($params['confirmed'] ?? false);
+
+        $result = \Dbvc\EntityEditor\EntityJsonMergeService::save(
+            $relative_path,
+            $incoming_json,
+            $identity,
+            get_current_user_id(),
+            $lock_token,
+            $force_takeover,
+            $preview_hash,
+            $confirmed,
+            (bool) $partial_import
+        );
+
         if (is_wp_error($result)) {
             return $result;
         }

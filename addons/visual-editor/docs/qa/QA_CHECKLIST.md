@@ -48,6 +48,7 @@
 - [x] Composite-save REST requests reject unsupported, readonly, missing, or structured child controls before any child write
 - [x] Composite scalar batch saves persist same-value, changed-value, and restored child values through the composite-save route
 - [x] Composite stale child baselines return `409` before any batch writes and preserve the externally changed value
+- [x] Composite stale checks read direct expanded-post-meta repeater rows through the same fallback path used for writes, including normalized Bricks parent selectors that map to underscored ACF meta roots
 - [x] Composite batch writes attempt rollback of earlier child writes when a later child write fails in the controlled mutation-service probe
 - [x] Composite batch journal entries use one parent change set with one item per child mutation and include live failure/rollback row evidence
 
@@ -62,7 +63,7 @@
 - [ ] Shared options-page fields keep shared warnings distinct from related-post loop warnings
 - [ ] Composite text panels show reconstructed preview, original template, child source rows, and no save controls while `canBatchSave` remains false
 - [ ] Composite text panels show batch-save preflight readiness, owner groups, acknowledgement types, and blocked child reasons while `canBatchSave` remains false
-- [ ] Composite text panels expose scalar child inputs and `Save All` only when `canBatchSave` is true
-- [ ] Composite text `Save All` requires related/shared acknowledgement in the panel before any save request
-- [ ] Composite text no-reload saves patch the active marker from the template and returned child display values without cross-syncing sibling markers
-- [ ] Review Fields `Open` opens zero-height/hidden composite descriptors through the token fallback path in live browser QA
+- [x] Composite text panels expose scalar child inputs and `Save All` only when `canBatchSave` is true
+- [x] Composite text `Save All` requires related/shared acknowledgement in the panel before any save request
+- [x] Composite text no-reload saves patch the active marker from the template and returned child display values without cross-syncing sibling markers
+- [x] Review Fields `Open` opens zero-height/hidden composite descriptors through the token fallback path in live browser QA

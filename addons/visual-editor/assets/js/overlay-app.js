@@ -4649,6 +4649,24 @@
       scheduleBadgeLayout();
       schedulePanelViewportClamp();
     });
+    if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+      window.visualViewport.addEventListener('resize', function () {
+        if (state.panelPosition) {
+          applyPanelPosition(ensureEditorPanel());
+        }
+
+        scheduleBadgeLayout();
+        schedulePanelViewportClamp();
+      });
+      window.visualViewport.addEventListener('scroll', function () {
+        if (state.panelPosition) {
+          applyPanelPosition(ensureEditorPanel());
+        }
+
+        scheduleBadgeLayout();
+        schedulePanelViewportClamp();
+      });
+    }
     window.addEventListener('scroll', scheduleBadgeLayout, true);
     document.addEventListener('mouseover', handleMarkerMouseOver, true);
     document.addEventListener('mouseout', handleMarkerMouseOut, true);
@@ -5356,26 +5374,98 @@
     syncToolbarState(nextState);
   }
 
-  function clampPanelPosition(position, panel) {
-    const panelWidth = panel ? panel.offsetWidth || panel.getBoundingClientRect().width || 380 : 380;
-    const panelHeight = panel ? panel.offsetHeight || panel.getBoundingClientRect().height || 320 : 320;
-    const maxLeft = Math.max(8, window.innerWidth - panelWidth - 8);
-    const maxTop = Math.max(8, window.innerHeight - panelHeight - 8);
-    const requestedLeft = Number(position.left) || 8;
-    const requestedTop = Number(position.top) || 8;
+  function getPanelViewportBounds() {
+    const visualViewport = window.visualViewport;
+    const width = visualViewport && Number.isFinite(visualViewport.width) && visualViewport.width > 0
+      ? visualViewport.width
+      : (window.innerWidth || document.documentElement.clientWidth || 1);
+    const height = visualViewport && Number.isFinite(visualViewport.height) && visualViewport.height > 0
+      ? visualViewport.height
+      : (window.innerHeight || document.documentElement.clientHeight || 1);
+    const left = visualViewport && Number.isFinite(visualViewport.offsetLeft)
+      ? visualViewport.offsetLeft
+      : 0;
+    const top = visualViewport && Number.isFinite(visualViewport.offsetTop)
+      ? visualViewport.offsetTop
+      : 0;
 
     return {
-      left: Math.min(Math.max(8, requestedLeft), maxLeft),
-      top: requestedTop > maxTop
-        ? maxTop
-        : Math.max(8, requestedTop)
+      left,
+      top,
+      width: Math.max(1, width),
+      height: Math.max(1, height)
+    };
+  }
+
+  function syncPanelViewportSize(panel) {
+    if (!panel) {
+      return;
+    }
+
+    const bounds = getPanelViewportBounds();
+
+    panel.style.maxWidth = `${Math.max(1, bounds.width - 16)}px`;
+    panel.style.maxHeight = `${Math.max(1, bounds.height - 16)}px`;
+  }
+
+  function ensurePanelPosition(panel) {
+    if (state.panelPosition || !panel || panel.hidden) {
+      return;
+    }
+
+    syncPanelViewportSize(panel);
+
+    const bounds = getPanelViewportBounds();
+    const rect = panel.getBoundingClientRect();
+    const panelWidth = rect && rect.width ? rect.width : 380;
+    const panelHeight = rect && rect.height ? rect.height : 320;
+
+    state.panelPosition = {
+      left: bounds.left + bounds.width - panelWidth - 16,
+      top: bounds.top + bounds.height - panelHeight - 108
+    };
+  }
+
+  function clampPanelPosition(position, panel) {
+    const bounds = getPanelViewportBounds();
+    const margin = 8;
+    const minLeft = bounds.left + margin;
+    const minTop = bounds.top + margin;
+    const availableWidth = Math.max(1, bounds.width - (margin * 2));
+    const availableHeight = Math.max(1, bounds.height - (margin * 2));
+
+    if (panel) {
+      syncPanelViewportSize(panel);
+    }
+
+    const rect = panel ? panel.getBoundingClientRect() : null;
+    const panelWidth = Math.min(availableWidth, rect ? rect.width || panel.offsetWidth || 380 : 380);
+    const panelHeight = Math.min(availableHeight, rect ? rect.height || panel.offsetHeight || 320 : 320);
+    const maxLeft = Math.max(minLeft, bounds.left + bounds.width - panelWidth - margin);
+    const maxTop = Math.max(minTop, bounds.top + bounds.height - panelHeight - margin);
+    const parsedLeft = Number(position.left);
+    const parsedTop = Number(position.top);
+    const requestedLeft = Number.isFinite(parsedLeft) ? parsedLeft : minLeft;
+    const requestedTop = Number.isFinite(parsedTop) ? parsedTop : minTop;
+
+    return {
+      left: Math.min(Math.max(minLeft, requestedLeft), maxLeft),
+      top: Math.min(Math.max(minTop, requestedTop), maxTop)
     };
   }
 
   function applyPanelPosition(panel) {
-    if (!panel || !state.panelPosition) {
+    if (!panel) {
       return;
     }
+
+    ensurePanelPosition(panel);
+
+    if (!state.panelPosition) {
+      return;
+    }
+
+    syncPanelViewportSize(panel);
 
     const clamped = clampPanelPosition(state.panelPosition, panel);
 
@@ -5387,11 +5477,18 @@
   }
 
   function ensurePanelInViewport() {
-    if (!state.panelOpen || !state.panelPosition) {
+    if (!state.panelOpen) {
       return;
     }
 
     const panel = ensureEditorPanel();
+
+    ensurePanelPosition(panel);
+
+    if (!state.panelPosition) {
+      return;
+    }
+
     const clamped = clampPanelPosition(state.panelPosition, panel);
 
     if (clamped.left !== state.panelPosition.left || clamped.top !== state.panelPosition.top) {
@@ -5402,7 +5499,7 @@
   }
 
   function schedulePanelViewportClamp() {
-    if (!state.panelOpen || !state.panelPosition) {
+    if (!state.panelOpen) {
       return;
     }
 
