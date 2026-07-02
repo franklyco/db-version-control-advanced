@@ -453,22 +453,25 @@ Extend deterministic reference hydration beyond template preview refs into recog
 No new required import step or per-reference decision workflow. Safe remaps should happen automatically; optional unresolved refs should be preserved and summarized; required unresolved refs may block apply with row/path context.
 
 ### Tasks
-- [ ] P23-T1 Bricks control/key discovery pass. (Status: IN_PROGRESS - local Bricks 2.3.x query controls reviewed; first allowlist covers `settings.query.post__in`, `post__not_in`, `tax_query`, and `tax_query_not`; CSV/dynamic query inputs are preserve-only warnings for now)
-- [ ] P23-T2 Query and picker descriptor extraction. (Status: IN_PROGRESS - implemented `post_or_term` descriptors for first query include/exclude slice)
-- [ ] P23-T3 Dynamic-data token handling. (Status: NOT_STARTED)
+- [ ] P23-T1 Bricks control/key discovery pass. (Status: IN_PROGRESS - local Bricks 2.3.x query controls and built-in link controls reviewed; first allowlist covers `settings.query.post__in`, `post__not_in`, `tax_query`, `tax_query_not`, `link.postId`, `link.term`, and safe login/logout dynamic tokens; CSV/dynamic query inputs are preserve-only warnings for now)
+- [ ] P23-T2 Query and picker descriptor extraction. (Status: IN_PROGRESS - implemented `post_or_term` descriptors for first query include/exclude and built-in internal/taxonomy link slices)
+- [ ] P23-T3 Dynamic-data token handling. (Status: IN_PROGRESS - first safe post-token slice remaps Bricks core `site_login:<post_id>` and `site_logout:<post_id>` redirect tokens while preserving unrelated token/text segments)
 - [ ] P23-T4 Apply remapping and blocker policy. (Status: IN_PROGRESS - query refs reuse Phase 22 UID-first/slug fallback remappers and preserve unresolved optional refs)
-- [ ] P23-T5 Validation and tests. (Status: IN_PROGRESS - first query remap, unresolved-preserve, and skipped-shape warning fixtures added)
+- [ ] P23-T5 Validation and tests. (Status: IN_PROGRESS - first query remap, unresolved-preserve, skipped query/link warning, built-in link remap, compact reference summary, and dynamic post-token fixtures added)
 
 ### Test Evidence
 - P23-TEST-01 partial: PASS - `vendor/bin/phpunit --filter 'test_bricks_templates_(remap_query_post_and_term_references_by_uid|preserve_unresolved_query_post_and_term_references)' tests/phpunit/BricksPortabilityManagerTest.php` on 2026-06-25 (`2 tests, 56 assertions`). Coverage includes descriptor extraction for `query.post__in`, `query.post__not_in`, `query.tax_query`, and `query.tax_query_not` scalar/array values.
 - P23-TEST-02 partial: PASS - same run covers UID-first remap for recognized query post and term refs while preserving source string/integer value shape.
+- P23-TEST-01/P23-TEST-02 partial: PASS - `vendor/bin/phpunit --filter test_bricks_templates_remap_link_post_and_term_controls_by_uid tests/phpunit/BricksPortabilityManagerTest.php` on 2026-07-01 (`1 test, 24 assertions`). Coverage includes UID-first remap for Bricks built-in `link.postId` internal links and `link.term` taxonomy links.
 - P23-TEST-04 partial: PASS - same run covers optional unresolved query post/term refs preserving source values.
-- Phase 23 regression suite: PASS - `vendor/bin/phpunit --filter BricksPortabilityManagerTest` on 2026-06-25 (`34 tests, 755 assertions`).
+- Phase 23/24 regression suite: PASS - `vendor/bin/phpunit --filter BricksPortabilityManagerTest` on 2026-07-01 (`41 tests, 891 assertions`).
 - P23-TEST-05 partial: PASS - `vendor/bin/phpunit --filter 'test_bricks_templates_(remap_query_post_and_term_references_by_uid|preserve_unresolved_query_post_and_term_references|warn_about_unmapped_query_reference_shapes)' tests/phpunit/BricksPortabilityManagerTest.php` on 2026-06-30 (`3 tests, 65 assertions`). Coverage includes review-visible warnings for skipped CSV post query strings, dynamic post query strings, and unresolved scoped term query values while preserving source values.
-- P23-TEST-03 and remaining portions of P23-TEST-01/02/04/05: NOT_RUN/OPEN - dynamic-data token remapping, broader post/term picker controls, deterministic archive/author refs, unknown numeric non-query controls, and required unresolved blockers remain open.
+- P23-TEST-03/P23-TEST-05 partial: PASS - `vendor/bin/phpunit --filter 'test_bricks_template(s)?_(remap_dynamic_data_post_tokens_by_uid|import_rejects_malformed_dynamic_token_descriptors)' tests/phpunit/BricksPortabilityManagerTest.php` on 2026-07-01 (`2 tests, 45 assertions`). Coverage includes UID-first remap for `site_login:<post_id>` and `site_logout:<post_id>` token ID segments while preserving unrelated text, `{post_id}`, unknown non-numeric tokens, and token suffixes; malformed dynamic-token descriptor metadata is rejected during import.
+- P23-TEST-05 partial: PASS - `vendor/bin/phpunit --filter test_bricks_templates_warn_about_unmapped_link_reference_shapes tests/phpunit/BricksPortabilityManagerTest.php` on 2026-07-01 (`1 test, 8 assertions`). Coverage includes review-visible warnings for skipped built-in `link.postId` CSV values and unresolved `link.term` scoped term values while preserving source values.
+- Remaining portions of P23-TEST-01/02/03/04/05: NOT_RUN/OPEN - broader post/term picker controls, deterministic archive/author refs, dynamic tokens outside the safe login/logout post redirect subset, unknown numeric non-query controls, and required unresolved blockers remain open.
 
 ## Phase 24 - Low-Friction Review Summaries and Apply Receipts
-Status: NOT_STARTED
+Status: IN_PROGRESS
 Owner: Codex
 Created: 2026-06-25
 Completed: n/a
@@ -477,16 +480,18 @@ Completed: n/a
 Surface compact reference summaries and apply receipts without adding an overwhelming reference-management UI.
 
 ### UX Constraint
-Keep the existing workspace and row modal. Do not require individual remap approvals. Prefer a compact `Needs attention` summary and reuse existing filters unless one combined attention filter is necessary.
+Keep the existing workspace and row modal. Do not require individual remap approvals. Prefer a compact `Needs attention` summary and reuse existing filters unless one combined attention filter is necessary. Receipt UI should remain count-first and live in existing Applied/Backup/Rollback summaries; detailed maps are backend support data.
 
 ### Tasks
-- [ ] P24-T1 Summary aggregation. (Status: NOT_STARTED)
-- [ ] P24-T2 Row modal reference details. (Status: NOT_STARTED)
-- [ ] P24-T3 Apply receipts. (Status: NOT_STARTED)
+- [ ] P24-T1 Summary aggregation. (Status: IN_PROGRESS - row-level template reference summaries now count safe refs, media refs, nested refs, entity/query/link/dynamic refs, preserved refs, unknown refs, and blocked refs in the existing review payload)
+- [ ] P24-T2 Row modal/reference details. (Status: IN_PROGRESS - existing row modal reference summary displays a compact `Template refs` count line, and Applied/Backup summaries now display one compact receipt line after apply; path/action/reason details remain open)
+- [ ] P24-T3 Apply receipts. (Status: IN_PROGRESS - apply result, session approval, backup record, recent backup record, rollback result, and rollback session view carry compact receipts plus backend source-to-target maps)
 - [ ] P24-T4 Minimal filtering. (Status: NOT_STARTED)
 
 ### Test Evidence
-- P24-TEST-01 through P24-TEST-04: NOT_RUN/OPEN - planned coverage for REST review summaries, row detail payloads, apply receipts, and History/Rollback receipt summaries.
+- P24-TEST-01 partial: PASS - `vendor/bin/phpunit --filter test_bricks_templates_review_payload_includes_compact_reference_summary_counts tests/phpunit/BricksPortabilityManagerTest.php` on 2026-07-01 (`1 test, 18 assertions`). Coverage includes compact row-level counts for query, built-in link, dynamic-data, entity, preserved, and blocked reference buckets in the existing review payload.
+- P24-TEST-02 partial: PASS - `node --check addons/bricks/portability/assets/bricks-portability.js` on 2026-07-01. The existing row modal reference summary renderer parses after adding the compact `Template refs` count line; browser-level modal QA remains open.
+- P24-TEST-03/P24-TEST-04 partial: PASS - `vendor/bin/phpunit --filter test_bricks_template_apply_receipt_records_compact_reference_summary_without_extra_decisions tests/phpunit/BricksPortabilityManagerTest.php` on 2026-07-01 (`1 test, 32 assertions`). Coverage includes compact apply receipts for remapped query/link/dynamic/entity refs, preserved refs, template post maps, session approval view, backup records, recent backup records, rollback result, and rollback session view without adding user decisions.
 
 ## Phase 25 - Idempotency and Mixed Rollback Hardening
 Status: NOT_STARTED

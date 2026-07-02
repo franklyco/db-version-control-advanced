@@ -520,33 +520,33 @@ Scope: Extend the Phase 22 deterministic reference policy beyond template previe
 
 ### Tasks / Sub-tasks
 
-- `P23-T1` Bricks control/key discovery pass (Status: IN_PROGRESS - local Bricks 2.3.x query storage reviewed; first allowlist is `settings.query.post__in`, `post__not_in`, `tax_query`, and `tax_query_not`)
-  - `P23-T1-S1` Re-scan local Bricks 2.3.x source and exported fixture payloads for query, post picker, term picker, archive, author, and dynamic-data storage keys. (Status: IN_PROGRESS - query include/exclude and taxonomy query storage confirmed; Bricks also accepts CSV/dynamic query values that remain preserve-only for now)
-  - `P23-T1-S2` Build a narrow allowlist of remappable controls and explicitly document ignored numeric shapes. (Status: IN_PROGRESS - first slice remaps scalar/array IDs, warns for skipped CSV/dynamic/missing-source query refs, and still defers query editor PHP, user refs, and unknown numeric controls)
+- `P23-T1` Bricks control/key discovery pass (Status: IN_PROGRESS - local Bricks 2.3.x query storage and built-in link control storage reviewed; first allowlist is `settings.query.post__in`, `post__not_in`, `tax_query`, `tax_query_not`, `link.postId`, `link.term`, and safe login/logout dynamic tokens)
+  - `P23-T1-S1` Re-scan local Bricks 2.3.x source and exported fixture payloads for query, post picker, term picker, archive, author, and dynamic-data storage keys. (Status: IN_PROGRESS - query include/exclude, taxonomy query, built-in internal/taxonomy link storage, and login/logout dynamic post tokens confirmed; Bricks also accepts CSV/dynamic query values that remain preserve-only for now)
+  - `P23-T1-S2` Build a narrow allowlist of remappable controls and explicitly document ignored numeric shapes. (Status: IN_PROGRESS - first slice remaps scalar/array IDs, warns for skipped CSV/dynamic/missing-source query refs and unmapped built-in link refs, and still defers query editor PHP, user refs, and unknown numeric controls)
   - `P23-T1-S3` Reuse the existing Phase 22 `dependency_refs` descriptor contract instead of introducing a second reference schema. (Status: DONE for first query slice)
-- `P23-T2` Query and picker descriptor extraction (Status: IN_PROGRESS - first query include/exclude descriptor extraction implemented)
-  - `P23-T2-S1` Emit `post_or_term` descriptors for recognized post picker and query include/exclude controls. (Status: IN_PROGRESS - implemented for query `post__in` and `post__not_in` scalar/array IDs)
-  - `P23-T2-S2` Emit term descriptors for recognized taxonomy/query controls using DBVC term UID and taxonomy+slug context. (Status: IN_PROGRESS - implemented for query `tax_query` and `tax_query_not` scoped term values)
+- `P23-T2` Query and picker descriptor extraction (Status: IN_PROGRESS - first query include/exclude and built-in link control descriptor extraction implemented)
+  - `P23-T2-S1` Emit `post_or_term` descriptors for recognized post picker and query include/exclude controls. (Status: IN_PROGRESS - implemented for query `post__in`/`post__not_in` scalar/array IDs and built-in `link.postId` controls)
+  - `P23-T2-S2` Emit term descriptors for recognized taxonomy/query controls using DBVC term UID and taxonomy+slug context. (Status: IN_PROGRESS - implemented for query `tax_query`/`tax_query_not` scoped term values and built-in `link.term` controls)
   - `P23-T2-S3` Add author/archive descriptor handling only when identity can be resolved deterministically; otherwise preserve and warn.
-- `P23-T3` Dynamic-data token handling (Status: NOT_STARTED)
-  - `P23-T3-S1` Tokenize recognized Bricks dynamic-data strings without changing unrelated text.
-  - `P23-T3-S2` Remap only token segments with a known entity kind and resolver; preserve unknown tokens unchanged.
-  - `P23-T3-S3` Add descriptor context for token name, payload path, original token, and confidence.
+- `P23-T3` Dynamic-data token handling (Status: IN_PROGRESS - first safe post-token slice implemented for Bricks core `site_login:<post_id>` and `site_logout:<post_id>` tokens)
+  - `P23-T3-S1` Tokenize recognized Bricks dynamic-data strings without changing unrelated text. (Status: IN_PROGRESS - implemented for `site_login`/`site_logout` post redirect tokens)
+  - `P23-T3-S2` Remap only token segments with a known entity kind and resolver; preserve unknown tokens unchanged. (Status: IN_PROGRESS - implemented for UID/slug-resolved post redirect tokens; runtime-context tokens like `{post_id}` are preserved)
+  - `P23-T3-S3` Add descriptor context for token name, payload path, original token, and confidence. (Status: IN_PROGRESS - implemented `dynamic_data_token` metadata on existing `post_or_term` descriptors)
 - `P23-T4` Apply remapping and blocker policy (Status: IN_PROGRESS - query refs reuse Phase 22 apply behavior)
   - `P23-T4-S1` Reuse Phase 22 UID-first, exact subtype/taxonomy slug fallback resolvers. (Status: DONE for first query slice)
   - `P23-T4-S2` Preserve unresolved optional refs and block only controls marked as required for valid template rendering. (Status: DONE for first query slice; query refs are optional and preserve source values when unresolved)
   - `P23-T4-S3` Keep source IDs out of fallback matching unless an existing DBVC identity policy explicitly allows it.
-- `P23-T5` Validation and tests (Status: IN_PROGRESS - query fixtures and unmapped-shape warning fixture added)
-  - `P23-T5-S1` Extend import descriptor validation for any new ref kinds or value types. (Status: DONE for first query slice; no new ref/value type required)
-  - `P23-T5-S2` Add fixtures for query include/exclude, post picker, term picker, archive/author where deterministic, and dynamic-data token strings. (Status: IN_PROGRESS - query include/exclude remap/preserve and skipped-shape warnings added; broader picker/archive/author/dynamic remap fixtures open)
+- `P23-T5` Validation and tests (Status: IN_PROGRESS - query fixtures, unmapped query/link warning fixtures, built-in link control fixture, compact reference summary fixture, and first dynamic-token fixture added)
+  - `P23-T5-S1` Extend import descriptor validation for any new ref kinds or value types. (Status: IN_PROGRESS - first query slice required no new ref/value type; dynamic token metadata validation added for the safe login/logout post-token subset)
+  - `P23-T5-S2` Add fixtures for query include/exclude, post picker, term picker, archive/author where deterministic, and dynamic-data token strings. (Status: IN_PROGRESS - query include/exclude remap/preserve, skipped-shape warnings, built-in internal/taxonomy link remap, and `site_login`/`site_logout` dynamic post-token remap added; broader picker/archive/author/dynamic fixtures open)
 
 ### Required tests
 
-- `P23-TEST-01` Descriptor extraction for query/post picker/term picker controls. (Partial PASS for query post/term controls)
-- `P23-TEST-02` UID-first and exact slug fallback remap for recognized post/term picker refs. (Partial PASS for UID-first query post/term refs)
-- `P23-TEST-03` Dynamic-data token remap preserves unrelated token/text segments.
+- `P23-TEST-01` Descriptor extraction for query/post picker/term picker controls. (Partial PASS for query post/term controls and built-in link post/term controls)
+- `P23-TEST-02` UID-first and exact slug fallback remap for recognized post/term picker refs. (Partial PASS for UID-first query and built-in link post/term refs)
+- `P23-TEST-03` Dynamic-data token remap preserves unrelated token/text segments. (Partial PASS for Bricks core login/logout post redirect tokens)
 - `P23-TEST-04` Required unresolved refs block apply; optional unresolved refs preserve source values. (Partial PASS for optional unresolved query refs)
-- `P23-TEST-05` Unknown numeric IDs remain untouched and appear only as review warnings. (Partial PASS for skipped Bricks query post/term shapes)
+- `P23-TEST-05` Unknown numeric IDs remain untouched and appear only as review warnings. (Partial PASS for skipped Bricks query post/term shapes and unmapped built-in link post/term shapes)
 
 ### Exit criteria
 
@@ -557,7 +557,7 @@ Scope: Extend the Phase 22 deterministic reference policy beyond template previe
 
 ## 4.5) Phase 24: Low-Friction Review Summaries and Apply Receipts
 
-Status: `NOT_STARTED`
+Status: `IN_PROGRESS`
 Owner: Codex
 Created: 2026-06-25
 Scope: Make reference hydration understandable without creating an overwhelming interface. This phase surfaces compact counts, row-level details, and apply receipts for media, nested template, entity, dynamic-data, preserved, and blocked references.
@@ -568,32 +568,32 @@ Scope: Make reference hydration understandable without creating an overwhelming 
 - Default display should be a compact `Needs attention` summary, not a full dependency table.
 - Do not require users to approve individual remaps. Safe remaps are automatic.
 - Reuse existing warning/manual-decision filtering where possible. If one new filter is needed, prefer a single `Needs attention` filter over multiple specialized filters.
-- Apply receipts should live in History/Rollback and should not interrupt the apply flow unless apply fails.
+- Apply receipts should live in History/Rollback and should not interrupt the apply flow unless apply fails. Keep receipt UI to concise counts by default; detailed source-to-target maps are backend support/debug data, not a new operator workflow.
 
 ### Tasks / Sub-tasks
 
-- `P24-T1` Summary aggregation (Status: NOT_STARTED)
-  - `P24-T1-S1` Add backend summary counts for remapped, preserved, blocked, media-created, media-reused, and unknown refs.
-  - `P24-T1-S2` Roll counts up to domain and row summaries using existing review session payloads.
-  - `P24-T1-S3` Keep descriptor internals available for debugging but hidden by default.
-- `P24-T2` Row modal reference details (Status: NOT_STARTED)
-  - `P24-T2-S1` Add a compact reference section to the existing row modal.
-  - `P24-T2-S2` Show human-readable control path, action, and reason; avoid raw JSON unless the existing diff/debug view is expanded.
+- `P24-T1` Summary aggregation (Status: IN_PROGRESS - review rows now include compact template reference counts for safe refs, media, nested templates, entity/query/link/dynamic refs, preserved refs, unknown refs, and blocked refs)
+  - `P24-T1-S1` Add backend summary counts for remapped, preserved, blocked, media-created, media-reused, and unknown refs. (Status: IN_PROGRESS - review-time template counts implemented; apply-time media-created/reused and actual remap receipts remain in `P24-T3`)
+  - `P24-T1-S2` Roll counts up to domain and row summaries using existing review session payloads. (Status: IN_PROGRESS - row-level `template_reference_summary` is passed through existing review payloads; domain/session rollups remain open)
+  - `P24-T1-S3` Keep descriptor internals available for debugging but hidden by default. (Status: IN_PROGRESS - counts are exposed in the compact reference summary while existing descriptors remain in source payload/debug data)
+- `P24-T2` Row modal/reference details (Status: IN_PROGRESS - existing row modal reference summary now shows one compact `Template refs` count line; Applied and Backup summaries show one compact receipt line after apply; detailed path/action/reason expansion remains open)
+  - `P24-T2-S1` Add a compact reference section to the existing row modal. (Status: IN_PROGRESS - reused the existing reference summary area; no new screen or controls)
+  - `P24-T2-S2` Show human-readable control path, action, and reason; avoid raw JSON unless the existing diff/debug view is expanded. (Status: NOT_STARTED for path/action/reason details)
   - `P24-T2-S3` Link blockers to the affected row and path without adding per-reference controls.
-- `P24-T3` Apply receipts (Status: NOT_STARTED)
-  - `P24-T3-S1` Store source-to-target attachment, nested template, post, term, and dynamic-data remap summaries in backup/history records.
-  - `P24-T3-S2` Store preserved unresolved refs and blocker reasons with enough context for troubleshooting.
-  - `P24-T3-S3` Surface final template post IDs/slugs and created/reused media counts in rollback history.
+- `P24-T3` Apply receipts (Status: IN_PROGRESS - apply result, session approval, backup records, recent backup records, rollback result, and rollback session view now carry compact receipts without new operator decisions)
+  - `P24-T3-S1` Store source-to-target attachment, nested template, post, term, and dynamic-data remap summaries in backup/history records. (Status: IN_PROGRESS - backend receipt stores compact counts plus source-to-target maps for template posts, template media, font/icon media, nested templates, post/term refs, query/link refs, and dynamic-data refs)
+  - `P24-T3-S2` Store preserved unresolved refs and blocker reasons with enough context for troubleshooting. (Status: IN_PROGRESS - preserved and blocked reference counts/maps are recorded; richer failure-reason text remains open)
+  - `P24-T3-S3` Surface final template post IDs/slugs and created/reused media counts in rollback history. (Status: IN_PROGRESS - final template/media counts are surfaced in compact Applied/Backup receipt lines; slug-level history detail remains open)
 - `P24-T4` Minimal filtering (Status: NOT_STARTED)
   - `P24-T4-S1` Reuse existing warning-state filters for unresolved/blocker cases where possible.
   - `P24-T4-S2` Add only one combined `Needs attention` filter if existing filters cannot cover blockers plus preserved unresolved refs clearly.
 
 ### Required tests
 
-- `P24-TEST-01` REST review payload includes compact reference summary counts.
+- `P24-TEST-01` REST review payload includes compact reference summary counts. (Partial PASS for row-level template reference summary counts)
 - `P24-TEST-02` Row modal payload includes path/action/reason details without requiring new decisions.
-- `P24-TEST-03` Apply receipt records remapped, preserved, created/reused, and blocked reference summaries.
-- `P24-TEST-04` History/Rollback endpoint surfaces receipt summaries after apply and rollback.
+- `P24-TEST-03` Apply receipt records remapped, preserved, created/reused, and blocked reference summaries. (Partial PASS for compact template reference apply receipts)
+- `P24-TEST-04` History/Rollback endpoint surfaces receipt summaries after apply and rollback. (Partial PASS for session approval, backup record, recent backup record, rollback result, and rollback session view receipts)
 
 ### Exit criteria
 

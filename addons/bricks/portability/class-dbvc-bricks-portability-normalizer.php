@@ -447,6 +447,7 @@ final class DBVC_Bricks_Portability_Normalizer
         $media_refs = (array) ($dependencies['media_refs'] ?? []);
         $warnings = self::build_template_reference_warnings($reference_payload, $dependency_refs);
         $warnings = self::merge_warning_lists($warnings, self::build_media_reference_warnings($media_refs, 'template'));
+        $template_reference_summary = self::build_template_reference_summary($dependency_refs, $warnings);
 
         return [
             'source_key' => $source_key,
@@ -466,6 +467,7 @@ final class DBVC_Bricks_Portability_Normalizer
                 'template_refs' => array_values(array_filter($dependency_refs, static function ($ref) {
                     return is_array($ref) && sanitize_key((string) ($ref['ref_type'] ?? '')) === 'nested_template';
                 })),
+                'template_reference_summary' => $template_reference_summary,
             ],
             'warnings' => $warnings,
             'raw' => $raw,
@@ -628,6 +630,7 @@ final class DBVC_Bricks_Portability_Normalizer
         }
 
         $warnings = self::merge_warning_lists($warnings, self::build_template_query_reference_warnings($payload, $dependency_refs));
+        $warnings = self::merge_warning_lists($warnings, self::build_template_link_reference_warnings($payload, $dependency_refs));
 
         return array_values(array_unique($warnings));
     }
@@ -797,6 +800,176 @@ final class DBVC_Bricks_Portability_Normalizer
     }
 
     /**
+     * @param mixed $payload
+     * @param array<int, array<string, mixed>> $dependency_refs
+     * @return array<int, string>
+     */
+    private static function build_template_link_reference_warnings($payload, array $dependency_refs)
+    {
+        if (! is_array($payload)) {
+            return [];
+        }
+
+        $mapped_paths = [];
+        foreach ($dependency_refs as $ref) {
+            if (! is_array($ref) || sanitize_key((string) ($ref['ref_type'] ?? '')) !== 'post_or_term') {
+                continue;
+            }
+            if (sanitize_key((string) ($ref['link_ref_kind'] ?? '')) === '') {
+                continue;
+            }
+            $payload_path = (string) ($ref['payload_path'] ?? '');
+            if ($payload_path !== '') {
+                $mapped_paths[$payload_path] = true;
+            }
+        }
+
+        $warnings = [];
+        self::collect_template_link_reference_warnings($payload, [], $mapped_paths, $warnings);
+        return array_values(array_unique($warnings));
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<int, string> $path
+     * @param array<string, bool> $mapped_paths
+     * @param array<int, string> $warnings
+     * @return void
+     */
+    private static function collect_template_link_reference_warnings($value, array $path, array $mapped_paths, array &$warnings)
+    {
+        if (! is_array($value)) {
+            return;
+        }
+
+        foreach ($value as $key => $child) {
+            $child_path = array_merge($path, [(string) $key]);
+            if (sanitize_key((string) $key) === 'link' && is_array($child)) {
+                self::collect_template_link_control_warnings($child, $child_path, $mapped_paths, $warnings);
+            }
+
+            if (is_array($child)) {
+                self::collect_template_link_reference_warnings($child, $child_path, $mapped_paths, $warnings);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $link
+     * @param array<int, string> $path
+     * @param array<string, bool> $mapped_paths
+     * @param array<int, string> $warnings
+     * @return void
+     */
+    private static function collect_template_link_control_warnings(array $link, array $path, array $mapped_paths, array &$warnings)
+    {
+        $link_type = sanitize_key((string) ($link['type'] ?? ''));
+        if ($link_type === 'internal' && array_key_exists('postId', $link)) {
+            $payload_path = implode('.', array_merge($path, ['postId']));
+            if (! empty($mapped_paths[$payload_path]) || ! self::template_query_post_value_needs_warning($link['postId'])) {
+                return;
+            }
+
+            $warnings[] = sprintf(
+                'Template contains Bricks internal link reference at %s that could not be mapped safely; source value will be preserved.',
+                sanitize_text_field($payload_path)
+            );
+            return;
+        }
+
+        if ($link_type === 'taxonomy' && array_key_exists('term', $link)) {
+            $payload_path = implode('.', array_merge($path, ['term']));
+            if (! empty($mapped_paths[$payload_path]) || ! self::template_query_term_value_needs_warning($link['term'])) {
+                return;
+            }
+
+            $warnings[] = sprintf(
+                'Template contains Bricks taxonomy link reference at %s that could not be mapped safely; source value will be preserved.',
+                sanitize_text_field($payload_path)
+            );
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $dependency_refs
+     * @param array<int, string> $warnings
+     * @return array<string, int>
+     */
+    private static function build_template_reference_summary(array $dependency_refs, array $warnings)
+    {
+        $summary = [
+            'total_refs' => 0,
+            'safe_refs' => 0,
+            'media_refs' => 0,
+            'nested_template_refs' => 0,
+            'entity_refs' => 0,
+            'post_refs' => 0,
+            'term_refs' => 0,
+            'query_refs' => 0,
+            'link_refs' => 0,
+            'dynamic_data_refs' => 0,
+            'preserved_refs' => 0,
+            'unknown_refs' => 0,
+            'blocked_refs' => 0,
+        ];
+
+        foreach ($dependency_refs as $ref) {
+            if (! is_array($ref)) {
+                continue;
+            }
+            $ref_type = sanitize_key((string) ($ref['ref_type'] ?? ''));
+            if ($ref_type === '') {
+                continue;
+            }
+
+            $summary['total_refs']++;
+            $summary['safe_refs']++;
+
+            if ($ref_type === 'media') {
+                $summary['media_refs']++;
+                continue;
+            }
+            if ($ref_type === 'nested_template') {
+                $summary['nested_template_refs']++;
+                continue;
+            }
+            if ($ref_type !== 'post_or_term') {
+                continue;
+            }
+
+            $summary['entity_refs']++;
+            $entity_kind = sanitize_key((string) ($ref['entity_kind'] ?? ''));
+            if ($entity_kind === 'post') {
+                $summary['post_refs']++;
+            } elseif ($entity_kind === 'term') {
+                $summary['term_refs']++;
+            }
+            if (sanitize_key((string) ($ref['query_ref_kind'] ?? '')) !== '') {
+                $summary['query_refs']++;
+            }
+            if (sanitize_key((string) ($ref['link_ref_kind'] ?? '')) !== '') {
+                $summary['link_refs']++;
+            }
+            if (sanitize_key((string) ($ref['dynamic_ref_kind'] ?? '')) !== '') {
+                $summary['dynamic_data_refs']++;
+            }
+        }
+
+        foreach ($warnings as $warning) {
+            $warning = (string) $warning;
+            if (strpos($warning, 'source value will be preserved') !== false) {
+                $summary['preserved_refs']++;
+            }
+            if (strpos($warning, 'could not be typed safely') !== false) {
+                $summary['unknown_refs']++;
+            }
+        }
+
+        $summary['total_refs'] += $summary['preserved_refs'] + $summary['unknown_refs'];
+        return $summary;
+    }
+
+    /**
      * @param array<string, mixed> $raw
      * @param string $domain_key
      * @return array<string, array<int, array<string, mixed>>>
@@ -881,6 +1054,8 @@ final class DBVC_Bricks_Portability_Normalizer
 
             self::maybe_add_template_entity_dependency_ref((string) $key, $child, $child_path, $dependency_refs);
             self::maybe_add_template_query_dependency_refs((string) $key, $child, $child_path, $dependency_refs);
+            self::maybe_add_template_link_dependency_refs((string) $key, $child, $child_path, $dependency_refs);
+            self::maybe_add_template_dynamic_token_dependency_refs($child, $child_path, $dependency_refs);
 
             if (is_array($child)) {
                 self::walk_template_dependency_refs($child, $child_path, $domain_key, $dependency_refs, $media_refs);
@@ -951,6 +1126,118 @@ final class DBVC_Bricks_Portability_Normalizer
 
         if (in_array($control_name, ['tax_query', 'tax_query_not'], true)) {
             self::add_template_query_term_dependency_refs($control_name, $value, $path, $dependency_refs);
+        }
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<int, string> $path
+     * @param array<int, array<string, mixed>> $dependency_refs
+     * @return void
+     */
+    private static function maybe_add_template_link_dependency_refs($key, $value, array $path, array &$dependency_refs)
+    {
+        if (sanitize_key((string) $key) !== 'link' || ! is_array($value)) {
+            return;
+        }
+
+        $link_type = sanitize_key((string) ($value['type'] ?? ''));
+        if ($link_type === 'internal' && isset($value['postId'])) {
+            $post_id = self::template_positive_integer_reference_value($value['postId']);
+            if ($post_id <= 0) {
+                return;
+            }
+
+            $post = get_post($post_id);
+            if (! $post instanceof \WP_Post || $post->post_type === 'attachment') {
+                return;
+            }
+
+            self::add_template_post_dependency_ref(
+                $post_id,
+                $post,
+                $value['postId'],
+                array_merge($path, ['postId']),
+                'link_postid',
+                $dependency_refs,
+                '',
+                ['link_ref_kind' => 'internal']
+            );
+            return;
+        }
+
+        if ($link_type !== 'taxonomy' || ! isset($value['term'])) {
+            return;
+        }
+
+        $parsed = self::parse_template_scoped_term_reference($value['term']);
+        if (empty($parsed)) {
+            return;
+        }
+
+        $term_id = (int) ($parsed['term_id'] ?? 0);
+        $taxonomy = sanitize_key((string) ($parsed['taxonomy'] ?? ''));
+        $term = $term_id > 0 && $taxonomy !== '' ? get_term($term_id, $taxonomy) : null;
+        if (! $term instanceof \WP_Term || is_wp_error($term)) {
+            return;
+        }
+
+        self::add_template_term_dependency_ref(
+            $term_id,
+            $taxonomy,
+            $term,
+            $value['term'],
+            array_merge($path, ['term']),
+            'link_term',
+            $dependency_refs,
+            '',
+            ['link_ref_kind' => 'taxonomy']
+        );
+    }
+
+    /**
+     * @param mixed $value
+     * @param array<int, string> $path
+     * @param array<int, array<string, mixed>> $dependency_refs
+     * @return void
+     */
+    private static function maybe_add_template_dynamic_token_dependency_refs($value, array $path, array &$dependency_refs)
+    {
+        if (! is_string($value) || strpos($value, '{') === false) {
+            return;
+        }
+
+        $seen = [];
+        foreach (self::parse_template_dynamic_post_token_references($value) as $token_ref) {
+            $post_id = (int) ($token_ref['source_id'] ?? 0);
+            $original_token = (string) ($token_ref['original'] ?? '');
+            $seen_key = $original_token . '|' . $post_id;
+            if ($post_id <= 0 || $original_token === '' || isset($seen[$seen_key])) {
+                continue;
+            }
+            $seen[$seen_key] = true;
+
+            $post = get_post($post_id);
+            if (! $post instanceof \WP_Post || $post->post_type === 'attachment') {
+                continue;
+            }
+
+            self::add_template_post_dependency_ref(
+                $post_id,
+                $post,
+                $post_id,
+                $path,
+                (string) ($token_ref['token_name'] ?? 'dynamic_data'),
+                $dependency_refs,
+                '',
+                [
+                    'dynamic_ref_kind' => 'dynamic_data_token',
+                    'dynamic_token_name' => sanitize_key((string) ($token_ref['token_name'] ?? '')),
+                    'dynamic_token_original' => sanitize_text_field($original_token),
+                    'dynamic_token_prefix' => sanitize_text_field((string) ($token_ref['prefix'] ?? '')),
+                    'dynamic_token_suffix' => sanitize_text_field((string) ($token_ref['suffix'] ?? '')),
+                ]
+            );
         }
     }
 
@@ -1065,6 +1352,40 @@ final class DBVC_Bricks_Portability_Normalizer
     }
 
     /**
+     * @return array<int, array<string, mixed>>
+     */
+    private static function parse_template_dynamic_post_token_references($value)
+    {
+        if (! is_string($value) || strpos($value, '{') === false) {
+            return [];
+        }
+
+        $match_count = preg_match_all('/\{(site_login|site_logout):([0-9]+)([^}]*)\}/', $value, $matches, PREG_SET_ORDER);
+        if ($match_count === false || $match_count < 1) {
+            return [];
+        }
+
+        $refs = [];
+        foreach ($matches as $match) {
+            $token_name = sanitize_key((string) ($match[1] ?? ''));
+            $source_id = absint((int) ($match[2] ?? 0));
+            if ($token_name === '' || $source_id <= 0) {
+                continue;
+            }
+
+            $refs[] = [
+                'token_name' => $token_name,
+                'source_id' => $source_id,
+                'original' => (string) ($match[0] ?? ''),
+                'prefix' => '{' . $token_name . ':',
+                'suffix' => (string) ($match[3] ?? '') . '}',
+            ];
+        }
+
+        return $refs;
+    }
+
+    /**
      * @param mixed $value
      */
     private static function template_positive_integer_reference_value($value)
@@ -1089,9 +1410,10 @@ final class DBVC_Bricks_Portability_Normalizer
      * @param mixed $value
      * @param array<int, string> $path
      * @param array<int, array<string, mixed>> $dependency_refs
+     * @param array<string, mixed> $extra
      * @return void
      */
-    private static function add_template_post_dependency_ref($post_id, \WP_Post $post, $value, array $path, $control_name, array &$dependency_refs, $query_ref_kind = '')
+    private static function add_template_post_dependency_ref($post_id, \WP_Post $post, $value, array $path, $control_name, array &$dependency_refs, $query_ref_kind = '', array $extra = [])
     {
         $control_name = sanitize_key((string) $control_name);
         $context = self::build_template_post_reference_context($post_id, $post);
@@ -1118,6 +1440,13 @@ final class DBVC_Bricks_Portability_Normalizer
             $descriptor['query_ref_kind'] = $query_ref_kind;
         }
 
+        foreach ($extra as $extra_key => $extra_value) {
+            $extra_key = sanitize_key((string) $extra_key);
+            if ($extra_key !== '') {
+                $descriptor[$extra_key] = $extra_value;
+            }
+        }
+
         $dependency_refs[] = $descriptor;
     }
 
@@ -1125,9 +1454,10 @@ final class DBVC_Bricks_Portability_Normalizer
      * @param mixed $value
      * @param array<int, string> $path
      * @param array<int, array<string, mixed>> $dependency_refs
+     * @param array<string, mixed> $extra
      * @return void
      */
-    private static function add_template_term_dependency_ref($term_id, $taxonomy, \WP_Term $term, $value, array $path, $control_name, array &$dependency_refs, $query_ref_kind = '')
+    private static function add_template_term_dependency_ref($term_id, $taxonomy, \WP_Term $term, $value, array $path, $control_name, array &$dependency_refs, $query_ref_kind = '', array $extra = [])
     {
         $taxonomy = sanitize_key((string) $taxonomy);
         $control_name = sanitize_key((string) $control_name);
@@ -1153,6 +1483,13 @@ final class DBVC_Bricks_Portability_Normalizer
         $query_ref_kind = sanitize_key((string) $query_ref_kind);
         if ($query_ref_kind !== '') {
             $descriptor['query_ref_kind'] = $query_ref_kind;
+        }
+
+        foreach ($extra as $extra_key => $extra_value) {
+            $extra_key = sanitize_key((string) $extra_key);
+            if ($extra_key !== '') {
+                $descriptor[$extra_key] = $extra_value;
+            }
         }
 
         $dependency_refs[] = $descriptor;

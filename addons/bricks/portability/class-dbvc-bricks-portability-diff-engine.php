@@ -876,7 +876,39 @@ final class DBVC_Bricks_Portability_Diff_Engine
                     'missing_on_both' => [],
                 ],
             'class_dependencies_missing_on_current' => array_values((array) ($analysis['class_dependencies_missing_on_current'] ?? [])),
+            'template_reference_summary' => self::sanitize_template_reference_summary($references['template_reference_summary'] ?? []),
         ];
+    }
+
+    /**
+     * @param mixed $summary
+     * @return array<string, int>
+     */
+    private static function sanitize_template_reference_summary($summary)
+    {
+        $keys = [
+            'total_refs',
+            'safe_refs',
+            'media_refs',
+            'nested_template_refs',
+            'entity_refs',
+            'post_refs',
+            'term_refs',
+            'query_refs',
+            'link_refs',
+            'dynamic_data_refs',
+            'preserved_refs',
+            'unknown_refs',
+            'blocked_refs',
+        ];
+
+        $summary = is_array($summary) ? $summary : [];
+        $sanitized = [];
+        foreach ($keys as $key) {
+            $sanitized[$key] = max(0, (int) ($summary[$key] ?? 0));
+        }
+
+        return $sanitized;
     }
 
     /**

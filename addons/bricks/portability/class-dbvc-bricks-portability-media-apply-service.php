@@ -673,6 +673,7 @@ final class DBVC_Bricks_Portability_Media_Apply_Service
             'font_value_map' => [],
             'font_attachment_id_map' => [],
             'icon_attachment_id_map' => [],
+            'template_attachment_id_map' => [],
         ];
     }
 }

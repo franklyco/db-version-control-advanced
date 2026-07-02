@@ -42,6 +42,7 @@ final class DBVC_Bricks_Portability_Backup_Service
             'options' => $option_snapshot,
             'media_state' => [],
             'entity_state' => [],
+            'reference_receipt' => [],
         ];
 
         $record = [
@@ -102,6 +103,45 @@ final class DBVC_Bricks_Portability_Backup_Service
                 'reused_attachments' => count((array) ($backup['media_state']['reused_attachments'] ?? [])),
             ],
         ];
+        $record_write = DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'record.json', $record);
+        if (is_wp_error($record_write)) {
+            return $record_write;
+        }
+
+        return $backup;
+    }
+
+    /**
+     * @param array<string, mixed> $backup
+     * @param array<string, mixed> $reference_receipt
+     * @return array<string, mixed>|\WP_Error
+     */
+    public static function record_reference_receipt(array $backup, array $reference_receipt)
+    {
+        $backup_id = sanitize_key((string) ($backup['backup_id'] ?? ''));
+        if ($backup_id === '') {
+            return new \WP_Error('dbvc_bricks_portability_backup_invalid', __('Bricks portability backup identifier is invalid.', 'dbvc'), ['status' => 500]);
+        }
+
+        $backup['reference_receipt'] = self::sanitize_reference_receipt($reference_receipt);
+        $backup['checksum'] = DBVC_Bricks_Portability_Utils::fingerprint([
+            'options' => isset($backup['options']) && is_array($backup['options']) ? $backup['options'] : [],
+            'media_state' => isset($backup['media_state']) && is_array($backup['media_state']) ? $backup['media_state'] : [],
+            'entity_state' => isset($backup['entity_state']) && is_array($backup['entity_state']) ? $backup['entity_state'] : [],
+            'reference_receipt' => $backup['reference_receipt'],
+        ]);
+
+        $backup_dir = DBVC_Bricks_Portability_Storage::resolve_backup_directory($backup_id);
+        if (is_wp_error($backup_dir)) {
+            return $backup_dir;
+        }
+
+        $write = DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'backup.json', $backup);
+        if (is_wp_error($write)) {
+            return $write;
+        }
+
+        $record = self::build_backup_record($backup);
         $record_write = DBVC_Bricks_Portability_Storage::write_json_file($backup_dir, 'record.json', $record);
         if (is_wp_error($record_write)) {
             return $record_write;
@@ -308,6 +348,7 @@ final class DBVC_Bricks_Portability_Backup_Service
             'font_value_map' => array_map('sanitize_text_field', (array) ($media_state['font_value_map'] ?? [])),
             'font_attachment_id_map' => array_map('intval', (array) ($media_state['font_attachment_id_map'] ?? [])),
             'icon_attachment_id_map' => array_map('intval', (array) ($media_state['icon_attachment_id_map'] ?? [])),
+            'template_attachment_id_map' => array_map('intval', (array) ($media_state['template_attachment_id_map'] ?? [])),
         ];
     }
 
@@ -348,6 +389,121 @@ final class DBVC_Bricks_Portability_Backup_Service
                 'updated_posts' => count((array) ($backup['entity_state']['updated_posts'] ?? [])),
                 'created_terms' => count((array) ($backup['entity_state']['created_terms'] ?? [])),
             ],
+            'reference_receipt' => self::sanitize_reference_receipt(isset($backup['reference_receipt']) && is_array($backup['reference_receipt']) ? $backup['reference_receipt'] : []),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $receipt
+     * @return array<string, mixed>
+     */
+    private static function sanitize_reference_receipt(array $receipt)
+    {
+        return [
+            'template_rows' => max(0, (int) ($receipt['template_rows'] ?? 0)),
+            'references' => self::sanitize_receipt_count_section((array) ($receipt['references'] ?? []), [
+                'safe_refs',
+                'remapped_refs',
+                'media_refs',
+                'nested_template_refs',
+                'entity_refs',
+                'post_refs',
+                'term_refs',
+                'query_refs',
+                'link_refs',
+                'dynamic_data_refs',
+                'preserved_refs',
+                'unknown_refs',
+                'blocked_refs',
+            ]),
+            'media' => self::sanitize_receipt_count_section((array) ($receipt['media'] ?? []), [
+                'created_posts',
+                'created_attachments',
+                'reused_attachments',
+                'template_attachment_maps',
+                'font_id_maps',
+                'font_attachment_maps',
+                'icon_attachment_maps',
+            ]),
+            'entities' => self::sanitize_receipt_count_section((array) ($receipt['entities'] ?? []), [
+                'created_posts',
+                'updated_posts',
+                'created_terms',
+                'template_post_maps',
+            ]),
+            'maps' => self::sanitize_receipt_maps((array) ($receipt['maps'] ?? [])),
+            'reference_maps' => self::sanitize_receipt_reference_maps((array) ($receipt['reference_maps'] ?? [])),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     * @param array<int, string> $keys
+     * @return array<string, int>
+     */
+    private static function sanitize_receipt_count_section(array $section, array $keys)
+    {
+        $sanitized = [];
+        foreach ($keys as $key) {
+            $sanitized[$key] = max(0, (int) ($section[$key] ?? 0));
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $maps
+     * @return array<string, array<string, int>>
+     */
+    private static function sanitize_receipt_maps(array $maps)
+    {
+        $keys = ['template_posts', 'template_attachments', 'font_ids', 'font_attachments', 'icon_attachments'];
+        $sanitized = [];
+        foreach ($keys as $key) {
+            $sanitized[$key] = [];
+            foreach ((array) ($maps[$key] ?? []) as $source_id => $target_id) {
+                $source_id = (int) $source_id;
+                $target_id = (int) $target_id;
+                if ($source_id > 0 && $target_id > 0) {
+                    $sanitized[$key][(string) $source_id] = $target_id;
+                }
+            }
+            ksort($sanitized[$key], SORT_NATURAL);
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $reference_maps
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private static function sanitize_receipt_reference_maps(array $reference_maps)
+    {
+        $buckets = DBVC_Bricks_Portability_Template_Apply_Service::empty_reference_state();
+        foreach (array_keys($buckets) as $bucket) {
+            $items = [];
+            foreach ((array) ($reference_maps[$bucket] ?? []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $items[] = [
+                    'source_id' => max(0, (int) ($item['source_id'] ?? 0)),
+                    'target_id' => max(0, (int) ($item['target_id'] ?? 0)),
+                    'payload_path' => sanitize_text_field((string) ($item['payload_path'] ?? '')),
+                    'control_name' => sanitize_key((string) ($item['control_name'] ?? '')),
+                    'ref_type' => sanitize_key((string) ($item['ref_type'] ?? '')),
+                    'entity_kind' => sanitize_key((string) ($item['entity_kind'] ?? '')),
+                    'object_subtype' => sanitize_key((string) ($item['object_subtype'] ?? '')),
+                    'query_ref_kind' => sanitize_key((string) ($item['query_ref_kind'] ?? '')),
+                    'link_ref_kind' => sanitize_key((string) ($item['link_ref_kind'] ?? '')),
+                    'dynamic_ref_kind' => sanitize_key((string) ($item['dynamic_ref_kind'] ?? '')),
+                    'dynamic_token_name' => sanitize_key((string) ($item['dynamic_token_name'] ?? '')),
+                ];
+            }
+            $buckets[$bucket] = $items;
+        }
+
+        return $buckets;
     }
 }

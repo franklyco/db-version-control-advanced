@@ -29,6 +29,7 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
 
         $extract_dir = wp_normalize_path((string) ($session['extract_dir'] ?? ''));
         $template_id_map = self::build_initial_template_id_map($rows);
+        $reference_state = self::empty_reference_state();
         $pending = self::collect_selected_template_rows($rows, $effective_decisions);
 
         while (! empty($pending)) {
@@ -47,7 +48,7 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
                     continue;
                 }
 
-                $result = self::apply_template_row($row, $effective_decisions, $font_value_map, $extract_dir, $template_id_map, $state, $media_state);
+                $result = self::apply_template_row($row, $effective_decisions, $font_value_map, $extract_dir, $template_id_map, $state, $media_state, $reference_state);
                 if (is_wp_error($result)) {
                     DBVC_Bricks_Portability_Backup_Service::restore_entity_state($state);
                     return $result;
@@ -67,7 +68,10 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
             }
         }
 
-        return ['entity_state' => $state];
+        return [
+            'entity_state' => $state,
+            'reference_state' => $reference_state,
+        ];
     }
 
     /**
@@ -78,9 +82,10 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
      * @param array<string, int> $template_id_map
      * @param array<string, array<int, array<string, mixed>>> $state
      * @param array<string, mixed> $media_state
+     * @param array<string, array<int, array<string, mixed>>> $reference_state
      * @return int|true|\WP_Error
      */
-    private static function apply_template_row(array $row, array $effective_decisions, array $font_value_map, $extract_dir, array &$template_id_map, array &$state, array &$media_state)
+    private static function apply_template_row(array $row, array $effective_decisions, array $font_value_map, $extract_dir, array &$template_id_map, array &$state, array &$media_state, array &$reference_state)
     {
         if (($row['row_type'] ?? '') !== 'object') {
             return true;
@@ -97,15 +102,15 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
 
         $source = (array) $row['source'];
         $source_raw = self::remap_custom_font_references((array) $source['raw'], $font_value_map);
-        $source_raw = self::hydrate_template_media_references($source_raw, $source, $extract_dir, $media_state);
+        $source_raw = self::hydrate_template_media_references($source_raw, $source, $extract_dir, $media_state, $reference_state);
         if (is_wp_error($source_raw)) {
             return $source_raw;
         }
-        $source_raw = self::remap_nested_template_references($source_raw, $source, $template_id_map);
+        $source_raw = self::remap_nested_template_references($source_raw, $source, $template_id_map, $reference_state);
         if (is_wp_error($source_raw)) {
             return $source_raw;
         }
-        $source_raw = self::remap_post_or_term_references($source_raw, $source);
+        $source_raw = self::remap_post_or_term_references($source_raw, $source, $reference_state);
 
         $target_post_id = 0;
         if ($decision === 'replace_with_incoming' && ! empty($row['target']) && is_array($row['target']) && ! empty($row['target']['raw']) && is_array($row['target']['raw'])) {
@@ -275,6 +280,24 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
     }
 
     /**
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    public static function empty_reference_state()
+    {
+        return [
+            'media_refs' => [],
+            'nested_template_refs' => [],
+            'post_refs' => [],
+            'term_refs' => [],
+            'query_refs' => [],
+            'link_refs' => [],
+            'dynamic_data_refs' => [],
+            'preserved_refs' => [],
+            'blocked_refs' => [],
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $source_raw
      * @param string $decision
      * @param int $target_post_id
@@ -298,6 +321,7 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
                 $state['updated_posts'][] = [
                     'post_id' => (int) $target_post_id,
                     'post_type' => 'bricks_template',
+                    'source_post_id' => (int) ($source_raw['post_id'] ?? 0),
                     'before' => $snapshot,
                 ];
             }
@@ -572,9 +596,10 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
      * @param array<string, mixed> $source
      * @param string $extract_dir
      * @param array<string, mixed> $media_state
+     * @param array<string, array<int, array<string, mixed>>> $reference_state
      * @return array<string, mixed>|\WP_Error
      */
-    private static function hydrate_template_media_references(array $raw, array $source, $extract_dir, array &$media_state)
+    private static function hydrate_template_media_references(array $raw, array $source, $extract_dir, array &$media_state, array &$reference_state)
     {
         $media_refs = self::index_media_refs((array) ($source['media_refs'] ?? []));
         foreach (self::get_dependency_refs($source, 'media') as $ref) {
@@ -591,6 +616,12 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
             if (is_wp_error($attachment_id)) {
                 return $attachment_id;
             }
+
+            $source_attachment_id = (int) ($ref['source_id'] ?? $media_refs[$media_key]['source_attachment_id'] ?? 0);
+            if ($source_attachment_id > 0) {
+                $media_state['template_attachment_id_map'][(string) $source_attachment_id] = (int) $attachment_id;
+            }
+            self::record_reference_state_item($reference_state, 'media_refs', $ref, $source_attachment_id, (int) $attachment_id);
 
             $path = self::normalize_dependency_path((array) ($ref['path'] ?? []));
             if (! empty($path)) {
@@ -611,9 +642,10 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
      * @param array<string, mixed> $raw
      * @param array<string, mixed> $source
      * @param array<string, int> $template_id_map
+     * @param array<string, array<int, array<string, mixed>>> $reference_state
      * @return array<string, mixed>|\WP_Error
      */
-    private static function remap_nested_template_references(array $raw, array $source, array $template_id_map)
+    private static function remap_nested_template_references(array $raw, array $source, array $template_id_map, array &$reference_state)
     {
         foreach (self::get_dependency_refs($source, 'nested_template') as $ref) {
             $source_id = (int) ($ref['source_id'] ?? 0);
@@ -621,12 +653,14 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
                 continue;
             }
             if (empty($template_id_map[(string) $source_id])) {
+                self::record_reference_state_item($reference_state, 'blocked_refs', $ref, $source_id, 0);
                 return new \WP_Error(
                     'dbvc_bricks_portability_template_nested_unresolved',
                     sprintf(__('A Bricks template references nested template ID `%d`, but no selected or matched target template could resolve it.', 'dbvc'), $source_id),
                     ['status' => 409]
                 );
             }
+            self::record_reference_state_item($reference_state, 'nested_template_refs', $ref, $source_id, (int) $template_id_map[(string) $source_id]);
             $path = self::normalize_dependency_path((array) ($ref['path'] ?? []));
             if (! empty($path)) {
                 self::set_payload_path_value($raw, $path, (int) $template_id_map[(string) $source_id]);
@@ -639,9 +673,10 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
     /**
      * @param array<string, mixed> $raw
      * @param array<string, mixed> $source
+     * @param array<string, array<int, array<string, mixed>>> $reference_state
      * @return array<string, mixed>
      */
-    private static function remap_post_or_term_references(array $raw, array $source)
+    private static function remap_post_or_term_references(array $raw, array $source, array &$reference_state)
     {
         foreach (self::get_dependency_refs($source, 'post_or_term') as $ref) {
             $entity_kind = sanitize_key((string) ($ref['entity_kind'] ?? ''));
@@ -649,6 +684,7 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
                 ? self::resolve_term_dependency_ref($ref)
                 : self::resolve_post_dependency_ref($ref);
             if ($target_id <= 0) {
+                self::record_reference_state_item($reference_state, 'preserved_refs', $ref, (int) ($ref['source_id'] ?? 0), 0);
                 continue;
             }
 
@@ -657,11 +693,22 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
                 continue;
             }
 
+            if ($entity_kind === 'post' && self::dependency_ref_is_dynamic_token($ref)) {
+                $current_value = self::get_payload_path_value($raw, $path);
+                $value = self::localized_dynamic_post_token_value($ref, $current_value, $target_id);
+                if ($value !== null) {
+                    self::set_payload_path_value($raw, $path, $value);
+                    self::record_post_or_term_reference_state($reference_state, $ref, $target_id);
+                }
+                continue;
+            }
+
             $value = $entity_kind === 'term'
                 ? self::localized_term_dependency_value($ref, $target_id)
                 : self::localized_post_dependency_value($ref, $target_id);
             if ($value !== null) {
                 self::set_payload_path_value($raw, $path, $value);
+                self::record_post_or_term_reference_state($reference_state, $ref, $target_id);
             }
         }
 
@@ -724,6 +771,91 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
     {
         $value_type = sanitize_key((string) ($ref['source_value_type'] ?? 'integer'));
         return $value_type === 'string' ? (string) (int) $target_id : (int) $target_id;
+    }
+
+    private static function dependency_ref_is_dynamic_token(array $ref)
+    {
+        return sanitize_key((string) ($ref['dynamic_ref_kind'] ?? '')) === 'dynamic_data_token'
+            && (string) ($ref['dynamic_token_original'] ?? '') !== '';
+    }
+
+    private static function localized_dynamic_post_token_value(array $ref, $current_value, $target_id)
+    {
+        if (! is_string($current_value)) {
+            return null;
+        }
+
+        $original_token = (string) ($ref['dynamic_token_original'] ?? '');
+        if ($original_token === '' || strpos($current_value, $original_token) === false) {
+            return null;
+        }
+
+        $token_name = sanitize_key((string) ($ref['dynamic_token_name'] ?? ''));
+        $prefix = (string) ($ref['dynamic_token_prefix'] ?? '');
+        $suffix = (string) ($ref['dynamic_token_suffix'] ?? '');
+        if ($token_name === '') {
+            return null;
+        }
+        if ($prefix === '') {
+            $prefix = '{' . $token_name . ':';
+        }
+        if ($suffix === '') {
+            $suffix = '}';
+        }
+
+        $target_token = $prefix . (int) $target_id . $suffix;
+        return str_replace($original_token, $target_token, $current_value);
+    }
+
+    private static function record_post_or_term_reference_state(array &$reference_state, array $ref, $target_id)
+    {
+        $entity_kind = sanitize_key((string) ($ref['entity_kind'] ?? ''));
+        $bucket = $entity_kind === 'term' ? 'term_refs' : 'post_refs';
+        self::record_reference_state_item($reference_state, $bucket, $ref, (int) ($ref['source_id'] ?? 0), (int) $target_id);
+
+        if (sanitize_key((string) ($ref['query_ref_kind'] ?? '')) !== '') {
+            self::record_reference_state_item($reference_state, 'query_refs', $ref, (int) ($ref['source_id'] ?? 0), (int) $target_id);
+        }
+        if (sanitize_key((string) ($ref['link_ref_kind'] ?? '')) !== '') {
+            self::record_reference_state_item($reference_state, 'link_refs', $ref, (int) ($ref['source_id'] ?? 0), (int) $target_id);
+        }
+        if (sanitize_key((string) ($ref['dynamic_ref_kind'] ?? '')) !== '') {
+            self::record_reference_state_item($reference_state, 'dynamic_data_refs', $ref, (int) ($ref['source_id'] ?? 0), (int) $target_id);
+        }
+    }
+
+    private static function record_reference_state_item(array &$reference_state, $bucket, array $ref, $source_id, $target_id)
+    {
+        $bucket = sanitize_key((string) $bucket);
+        if ($bucket === '') {
+            return;
+        }
+        if (! isset($reference_state[$bucket]) || ! is_array($reference_state[$bucket])) {
+            $reference_state[$bucket] = [];
+        }
+
+        $item = [
+            'source_id' => (int) $source_id,
+            'target_id' => (int) $target_id,
+            'payload_path' => sanitize_text_field((string) ($ref['payload_path'] ?? '')),
+            'control_name' => sanitize_key((string) ($ref['control_name'] ?? '')),
+            'ref_type' => sanitize_key((string) ($ref['ref_type'] ?? '')),
+            'entity_kind' => sanitize_key((string) ($ref['entity_kind'] ?? '')),
+            'object_subtype' => sanitize_key((string) ($ref['object_subtype'] ?? '')),
+            'query_ref_kind' => sanitize_key((string) ($ref['query_ref_kind'] ?? '')),
+            'link_ref_kind' => sanitize_key((string) ($ref['link_ref_kind'] ?? '')),
+            'dynamic_ref_kind' => sanitize_key((string) ($ref['dynamic_ref_kind'] ?? '')),
+            'dynamic_token_name' => sanitize_key((string) ($ref['dynamic_token_name'] ?? '')),
+        ];
+
+        $fingerprint = DBVC_Bricks_Portability_Utils::fingerprint($item);
+        foreach ($reference_state[$bucket] as $existing) {
+            if (is_array($existing) && DBVC_Bricks_Portability_Utils::fingerprint($existing) === $fingerprint) {
+                return;
+            }
+        }
+
+        $reference_state[$bucket][] = $item;
     }
 
     private static function localized_term_dependency_value(array $ref, $target_id)
@@ -875,6 +1007,24 @@ final class DBVC_Bricks_Portability_Template_Apply_Service
             }
             $cursor =& $cursor[$segment];
         }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<int, string|int> $path
+     * @return mixed|null
+     */
+    private static function get_payload_path_value(array $payload, array $path)
+    {
+        $cursor = $payload;
+        foreach ($path as $segment) {
+            if (! is_array($cursor) || ! array_key_exists($segment, $cursor)) {
+                return null;
+            }
+            $cursor = $cursor[$segment];
+        }
+
+        return $cursor;
     }
 
     /**

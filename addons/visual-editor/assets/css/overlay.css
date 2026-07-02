@@ -912,7 +912,8 @@
   border-color: var(--dbvc-ve-color-inspect-border);
 }
 
-.dbvc-ve-panel[data-state="error"] {
+.dbvc-ve-panel[data-state="error"],
+.dbvc-ve-panel[data-state="stale"] {
   border-color: var(--dbvc-ve-color-error-border-strong);
 }
 
@@ -2332,7 +2333,8 @@ button.dbvc-ve-toolbar__button.dbvc-ve-toolbar__button--dock {
 }
 
 .dbvc-ve-statusbar[data-state="error"],
-.dbvc-ve-panel[data-state="error"] {
+.dbvc-ve-panel[data-state="error"],
+.dbvc-ve-panel[data-state="stale"] {
   border-color: var(--dbvc-ve-color-error-border);
 }
 

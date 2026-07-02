@@ -438,6 +438,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'applied_to_site' => $applied_to_site,
             'backup_id' => $backup_id,
             'job_id' => $job_id,
+            'reference_receipt' => self::sanitize_reference_receipt(isset($args['reference_receipt']) && is_array($args['reference_receipt']) ? $args['reference_receipt'] : []),
             'rows' => self::build_row_approval_state($rows, $effective_decisions, $approved_at_gmt, $applied_to_site, $manual_row_ids),
         ];
 
@@ -519,6 +520,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'backup_id' => sanitize_key((string) ($rollback['backup_id'] ?? '')),
             'job_id' => (int) ($rollback['job_id'] ?? 0),
             'option_count' => count((array) ($rollback['option_names'] ?? [])),
+            'reference_receipt' => self::sanitize_reference_receipt(isset($rollback['reference_receipt']) && is_array($rollback['reference_receipt']) ? $rollback['reference_receipt'] : []),
         ];
 
         $persist = self::persist_session($session);
@@ -927,6 +929,89 @@ final class DBVC_Bricks_Portability_Package_Service
             return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template entity dependency descriptor value type is invalid.', 'dbvc'));
         }
 
+        $dynamic_ref_kind = sanitize_key((string) ($ref['dynamic_ref_kind'] ?? ''));
+        if ($dynamic_ref_kind !== '') {
+            $dynamic_validation = self::validate_template_dynamic_token_dependency_descriptor($ref, $entity_kind, $operation, $object_index, $ref_index);
+            if (is_wp_error($dynamic_validation)) {
+                return $dynamic_validation;
+            }
+        }
+
+        $link_ref_kind = sanitize_key((string) ($ref['link_ref_kind'] ?? ''));
+        if ($link_ref_kind !== '') {
+            $link_validation = self::validate_template_link_dependency_descriptor($ref, $entity_kind, $operation, $object_index, $ref_index);
+            if (is_wp_error($link_validation)) {
+                return $link_validation;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param string $entity_kind
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @return true|\WP_Error
+     */
+    private static function validate_template_dynamic_token_dependency_descriptor(array $ref, $entity_kind, $operation, $object_index, $ref_index)
+    {
+        if ($entity_kind !== 'post' || sanitize_key((string) ($ref['dynamic_ref_kind'] ?? '')) !== 'dynamic_data_token') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor has an invalid token reference kind.', 'dbvc'));
+        }
+
+        $token_name = sanitize_key((string) ($ref['dynamic_token_name'] ?? ''));
+        if (! in_array($token_name, ['site_login', 'site_logout'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor has an unsupported token name.', 'dbvc'));
+        }
+
+        foreach (['dynamic_token_original', 'dynamic_token_prefix', 'dynamic_token_suffix'] as $field) {
+            if (! isset($ref[$field]) || ! is_scalar($ref[$field]) || trim((string) $ref[$field]) === '') {
+                return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor is missing token metadata.', 'dbvc'));
+            }
+        }
+
+        $source_id = isset($ref['source_id']) && is_numeric($ref['source_id']) ? (int) $ref['source_id'] : 0;
+        $original = (string) $ref['dynamic_token_original'];
+        $prefix = (string) $ref['dynamic_token_prefix'];
+        $suffix = (string) $ref['dynamic_token_suffix'];
+        if ($source_id <= 0 || $prefix !== '{' . $token_name . ':' || substr($suffix, -1) !== '}') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor has invalid token metadata.', 'dbvc'));
+        }
+
+        $pattern = '/^\{' . preg_quote($token_name, '/') . ':' . preg_quote((string) $source_id, '/') . '[^}]*\}$/';
+        if (preg_match($pattern, $original) !== 1) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template dynamic token dependency descriptor original token does not match its source entity.', 'dbvc'));
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $ref
+     * @param string $entity_kind
+     * @param string $operation
+     * @param int $object_index
+     * @param int $ref_index
+     * @return true|\WP_Error
+     */
+    private static function validate_template_link_dependency_descriptor(array $ref, $entity_kind, $operation, $object_index, $ref_index)
+    {
+        $link_ref_kind = sanitize_key((string) ($ref['link_ref_kind'] ?? ''));
+        if (! in_array($link_ref_kind, ['internal', 'taxonomy'], true)) {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template link dependency descriptor has an unsupported link reference kind.', 'dbvc'));
+        }
+
+        if ($link_ref_kind === 'internal' && $entity_kind !== 'post') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template internal link dependency descriptor must reference a post entity.', 'dbvc'));
+        }
+
+        if ($link_ref_kind === 'taxonomy' && $entity_kind !== 'term') {
+            return self::template_dependency_descriptor_error($operation, $object_index, $ref_index, __('Template taxonomy link dependency descriptor must reference a term entity.', 'dbvc'));
+        }
+
         return true;
     }
 
@@ -1130,6 +1215,7 @@ final class DBVC_Bricks_Portability_Package_Service
             'applied_to_site' => ! empty($approval['applied_to_site']),
             'backup_id' => sanitize_key((string) ($approval['backup_id'] ?? '')),
             'job_id' => (int) ($approval['job_id'] ?? 0),
+            'reference_receipt' => self::sanitize_reference_receipt(isset($approval['reference_receipt']) && is_array($approval['reference_receipt']) ? $approval['reference_receipt'] : []),
         ];
         if (! $include_rows) {
             return $view;
@@ -1174,7 +1260,122 @@ final class DBVC_Bricks_Portability_Package_Service
             'backup_id' => sanitize_key((string) ($rollback['backup_id'] ?? '')),
             'job_id' => (int) ($rollback['job_id'] ?? 0),
             'option_count' => (int) ($rollback['option_count'] ?? 0),
+            'reference_receipt' => self::sanitize_reference_receipt(isset($rollback['reference_receipt']) && is_array($rollback['reference_receipt']) ? $rollback['reference_receipt'] : []),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $receipt
+     * @return array<string, mixed>
+     */
+    private static function sanitize_reference_receipt(array $receipt)
+    {
+        return [
+            'template_rows' => max(0, (int) ($receipt['template_rows'] ?? 0)),
+            'references' => self::sanitize_receipt_count_section((array) ($receipt['references'] ?? []), [
+                'safe_refs',
+                'remapped_refs',
+                'media_refs',
+                'nested_template_refs',
+                'entity_refs',
+                'post_refs',
+                'term_refs',
+                'query_refs',
+                'link_refs',
+                'dynamic_data_refs',
+                'preserved_refs',
+                'unknown_refs',
+                'blocked_refs',
+            ]),
+            'media' => self::sanitize_receipt_count_section((array) ($receipt['media'] ?? []), [
+                'created_posts',
+                'created_attachments',
+                'reused_attachments',
+                'template_attachment_maps',
+                'font_id_maps',
+                'font_attachment_maps',
+                'icon_attachment_maps',
+            ]),
+            'entities' => self::sanitize_receipt_count_section((array) ($receipt['entities'] ?? []), [
+                'created_posts',
+                'updated_posts',
+                'created_terms',
+                'template_post_maps',
+            ]),
+            'maps' => self::sanitize_receipt_maps((array) ($receipt['maps'] ?? [])),
+            'reference_maps' => self::sanitize_receipt_reference_maps((array) ($receipt['reference_maps'] ?? [])),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     * @param array<int, string> $keys
+     * @return array<string, int>
+     */
+    private static function sanitize_receipt_count_section(array $section, array $keys)
+    {
+        $sanitized = [];
+        foreach ($keys as $key) {
+            $sanitized[$key] = max(0, (int) ($section[$key] ?? 0));
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $maps
+     * @return array<string, array<string, int>>
+     */
+    private static function sanitize_receipt_maps(array $maps)
+    {
+        $keys = ['template_posts', 'template_attachments', 'font_ids', 'font_attachments', 'icon_attachments'];
+        $sanitized = [];
+        foreach ($keys as $key) {
+            $sanitized[$key] = [];
+            foreach ((array) ($maps[$key] ?? []) as $source_id => $target_id) {
+                $source_id = (int) $source_id;
+                $target_id = (int) $target_id;
+                if ($source_id > 0 && $target_id > 0) {
+                    $sanitized[$key][(string) $source_id] = $target_id;
+                }
+            }
+            ksort($sanitized[$key], SORT_NATURAL);
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * @param array<string, mixed> $reference_maps
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private static function sanitize_receipt_reference_maps(array $reference_maps)
+    {
+        $buckets = DBVC_Bricks_Portability_Template_Apply_Service::empty_reference_state();
+        foreach (array_keys($buckets) as $bucket) {
+            $items = [];
+            foreach ((array) ($reference_maps[$bucket] ?? []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $items[] = [
+                    'source_id' => max(0, (int) ($item['source_id'] ?? 0)),
+                    'target_id' => max(0, (int) ($item['target_id'] ?? 0)),
+                    'payload_path' => sanitize_text_field((string) ($item['payload_path'] ?? '')),
+                    'control_name' => sanitize_key((string) ($item['control_name'] ?? '')),
+                    'ref_type' => sanitize_key((string) ($item['ref_type'] ?? '')),
+                    'entity_kind' => sanitize_key((string) ($item['entity_kind'] ?? '')),
+                    'object_subtype' => sanitize_key((string) ($item['object_subtype'] ?? '')),
+                    'query_ref_kind' => sanitize_key((string) ($item['query_ref_kind'] ?? '')),
+                    'link_ref_kind' => sanitize_key((string) ($item['link_ref_kind'] ?? '')),
+                    'dynamic_ref_kind' => sanitize_key((string) ($item['dynamic_ref_kind'] ?? '')),
+                    'dynamic_token_name' => sanitize_key((string) ($item['dynamic_token_name'] ?? '')),
+                ];
+            }
+            $buckets[$bucket] = $items;
+        }
+
+        return $buckets;
     }
 
     /**

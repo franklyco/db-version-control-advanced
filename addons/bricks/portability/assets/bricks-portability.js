@@ -414,7 +414,9 @@
     }
     els.backupsBody.innerHTML = state.backups.map(function (item) {
       const optionNames = Array.isArray(item.option_names) ? item.option_names.join(", ") : "";
-      return '<tr><td><code>' + esc(item.backup_id || "") + '</code></td><td>' + esc(item.created_at_gmt || "") + '</td><td>' + esc(optionNames) + '</td><td><button type="button" class="button button-small dbvc-bricks-portability-rollback" data-backup-id="' + esc(item.backup_id || "") + '">Restore</button></td></tr>';
+      const receipt = renderReceiptInline(item.reference_receipt || {});
+      const detail = [optionNames, receipt].filter(Boolean).join(" | ");
+      return '<tr><td><code>' + esc(item.backup_id || "") + '</code></td><td>' + esc(item.created_at_gmt || "") + '</td><td>' + esc(detail) + '</td><td><button type="button" class="button button-small dbvc-bricks-portability-rollback" data-backup-id="' + esc(item.backup_id || "") + '">Restore</button></td></tr>';
     }).join("");
     Array.prototype.forEach.call(els.backupsBody.querySelectorAll(".dbvc-bricks-portability-rollback"), function (button) {
       button.addEventListener("click", function () {
@@ -494,6 +496,10 @@
     if (approval.backup_id) {
       detailBits.push("Backup: " + String(approval.backup_id || ""));
     }
+    const receiptLine = renderReceiptInline(approval.reference_receipt || {});
+    if (receiptLine) {
+      detailBits.push(receiptLine);
+    }
     const parts = [
       '<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--approved">' + esc("Applied to This Site: " + formatTimestamp(approval.approved_at_gmt)) + "</div>",
       '<div class="description">' + esc(detailBits.join(" | ")) + "</div>",
@@ -502,6 +508,41 @@
       parts.push('<div class="dbvc-bricks-portability-inline-badge dbvc-bricks-portability-inline-badge--rollback">' + esc("Restored on This Site: " + formatTimestamp(rollback.rolled_back_at_gmt)) + "</div>");
     }
     els.appliedSummary.innerHTML = parts.join("");
+  }
+
+  function renderReceiptInline(receipt) {
+    if (!receipt || typeof receipt !== "object") {
+      return "";
+    }
+    const references = receipt.references && typeof receipt.references === "object" ? receipt.references : {};
+    const media = receipt.media && typeof receipt.media === "object" ? receipt.media : {};
+    const entities = receipt.entities && typeof receipt.entities === "object" ? receipt.entities : {};
+    const parts = [];
+    const remapped = Number(references.remapped_refs || 0);
+    const preserved = Number(references.preserved_refs || 0);
+    const unknown = Number(references.unknown_refs || 0);
+    const blocked = Number(references.blocked_refs || 0);
+    const mediaChanged = Number(media.created_attachments || 0) + Number(media.reused_attachments || 0);
+    const templatesChanged = Number(entities.created_posts || 0) + Number(entities.updated_posts || 0);
+    if (remapped > 0) {
+      parts.push("Refs remapped: " + String(remapped));
+    }
+    if (preserved > 0) {
+      parts.push("Preserved: " + String(preserved));
+    }
+    if (unknown > 0) {
+      parts.push("Unknown: " + String(unknown));
+    }
+    if (blocked > 0) {
+      parts.push("Blocked: " + String(blocked));
+    }
+    if (mediaChanged > 0) {
+      parts.push("Media: " + String(mediaChanged));
+    }
+    if (templatesChanged > 0) {
+      parts.push("Templates: " + String(templatesChanged));
+    }
+    return parts.join(" | ");
   }
 
   function renderReviewState() {
@@ -1236,6 +1277,22 @@
     const classDependencyWarnings = Array.isArray(references.class_dependencies_missing_on_current)
       ? references.class_dependencies_missing_on_current
       : [];
+    const templateReferenceSummary = references.template_reference_summary && typeof references.template_reference_summary === "object"
+      ? references.template_reference_summary
+      : {};
+    const hasTemplateReferenceSummary = [
+      "media_refs",
+      "nested_template_refs",
+      "entity_refs",
+      "query_refs",
+      "link_refs",
+      "dynamic_data_refs",
+      "preserved_refs",
+      "unknown_refs",
+      "blocked_refs",
+    ].some(function (key) {
+      return Number(templateReferenceSummary[key] || 0) > 0;
+    });
     const hasDependencyAnalysis = Boolean(
       classDependencyWarnings.length ||
       (Array.isArray(categoryDependencies.missing_on_current_supplied_by_incoming) && categoryDependencies.missing_on_current_supplied_by_incoming.length) ||
@@ -1244,7 +1301,7 @@
       (Array.isArray(cssVariableDependencies.missing_on_both) && cssVariableDependencies.missing_on_both.length) ||
       (Array.isArray(cssVariableDependencies.possibly_external) && cssVariableDependencies.possibly_external.length)
     );
-    if (cssVariables.length === 0 && classNames.length === 0 && categoryValues.length === 0 && !hasDependencyAnalysis) {
+    if (cssVariables.length === 0 && classNames.length === 0 && categoryValues.length === 0 && !hasDependencyAnalysis && !hasTemplateReferenceSummary) {
       return "";
     }
 
@@ -1257,6 +1314,28 @@
     }
     if (categoryValues.length > 0) {
       parts.push("Categories: " + categoryValues.join(", "));
+    }
+    if (hasTemplateReferenceSummary) {
+      const templateParts = [];
+      [
+        ["Media", "media_refs"],
+        ["Nested", "nested_template_refs"],
+        ["Content", "entity_refs"],
+        ["Query", "query_refs"],
+        ["Links", "link_refs"],
+        ["Dynamic", "dynamic_data_refs"],
+        ["Preserved", "preserved_refs"],
+        ["Unknown", "unknown_refs"],
+        ["Blocked", "blocked_refs"],
+      ].forEach(function (item) {
+        const count = Number(templateReferenceSummary[item[1]] || 0);
+        if (count > 0) {
+          templateParts.push(item[0] + ": " + String(count));
+        }
+      });
+      if (templateParts.length) {
+        parts.push("Template refs: " + templateParts.join(", "));
+      }
     }
 
     const dependencyGroups = [
