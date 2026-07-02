@@ -679,6 +679,11 @@
   gap: 8px;
 }
 
+.dbvc-ve-field-index__group:not([open]) > .dbvc-ve-field-index__sections,
+.dbvc-ve-field-index__section:not([open]) > .dbvc-ve-field-index__subgroups {
+  display: none;
+}
+
 .dbvc-ve-field-index__section-summary {
   margin: 2px 0 4px;
   padding: 7px 8px;
@@ -777,6 +782,10 @@
 
 .dbvc-ve-field-index__item .dbvc-ve-field-index__rows {
   padding: 0 8px 8px;
+}
+
+.dbvc-ve-field-index__item:not([open]) > .dbvc-ve-field-index__rows {
+  display: none;
 }
 
 .dbvc-ve-field-index__row {
@@ -883,12 +892,16 @@
 }
 
 .dbvc-ve-panel {
+  box-sizing: border-box;
   position: fixed;
   right: 16px;
   bottom: 108px;
   z-index: 9999;
+  display: flex;
+  flex-direction: column;
   width: min(380px, calc(100vw - 32px));
   max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
   padding: 16px;
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--m);
@@ -896,7 +909,7 @@
   box-shadow: var(--dbvc-ve-box-shadow--panel);
   color: var(--dbvc-ve-color-text-dark);
   font: 500 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
@@ -926,6 +939,7 @@
 }
 
 .dbvc-ve-panel__header {
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -972,6 +986,7 @@ body.dbvc-ve-panel-dragging {
 }
 
 .dbvc-ve-panel__entity-links {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -990,6 +1005,7 @@ body.dbvc-ve-panel-dragging {
 }
 
 .dbvc-ve-panel__notice {
+  flex: 0 0 auto;
   display: grid;
   gap: 10px;
   margin-top: 12px;
@@ -1050,7 +1066,12 @@ body.dbvc-ve-panel-dragging {
 }
 
 .dbvc-ve-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
   margin-top: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .dbvc-ve-panel__field-label {
@@ -1790,6 +1811,7 @@ textarea.dbvc-ve-panel__input--textlike {
 }
 
 .dbvc-ve-panel__status {
+  flex: 0 0 auto;
   min-height: 20px;
   margin-top: 12px;
   color: var(--dbvc-ve-color-text-muted);
@@ -1797,6 +1819,7 @@ textarea.dbvc-ve-panel__input--textlike {
 }
 
 .dbvc-ve-panel__footer-notice {
+  flex: 0 0 auto;
   position: relative;
   display: flex;
   align-items: flex-start;
@@ -1908,6 +1931,7 @@ textarea.dbvc-ve-panel__input--textlike {
 }
 
 .dbvc-ve-panel__actions {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
   gap: 10px;

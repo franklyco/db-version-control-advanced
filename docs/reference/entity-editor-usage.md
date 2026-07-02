@@ -59,6 +59,17 @@ Brief usage notes for the DBVC Entity Editor.
   - Updates only JSON-present core fields/meta/taxonomies.
   - Does not delete missing meta keys.
 
+- `Merge Incoming JSON`
+  - Appears inside the selected entity JSON editor modal.
+  - Lets the operator paste one incoming DBVC post/CPT or term JSON payload and preview a proposed merge into the selected file.
+  - Keeps the matched local WordPress entity as the authority for ID and, by default, UID and slug, even when the selected sync JSON has drifted to a source-site UID.
+  - Includes simple controls for UID, slug, and title policy; post/term ID remains local-only.
+  - Shows blockers, soft notes, and proposed merged JSON before any write.
+  - Requires `I confirm merging this incoming JSON into the selected entity file` before save actions enable.
+  - Supports `Save Merged JSON` and `Save Merged JSON + Partial Import`.
+  - Reuses existing Entity Editor save, backup, lock-token, and partial-import paths.
+  - For Bricks templates, preserves local template type/condition/preview reference values when incoming values differ and surfaces notes instead of attempting element-level merging.
+
 - `Save + Full Replace`
   - Saves JSON first.
   - Requires typed `REPLACE` confirmation in modal.
@@ -79,6 +90,7 @@ Brief usage notes for the DBVC Entity Editor.
 
 - `Import as New` supports post/CPT and taxonomy term JSON only; media, menu, and option JSON are intentionally excluded.
 - Sync-file `Update Matched Entity` is post/CPT-only in the first slice; term updates remain deferred until term update semantics are separately audited.
+- `Merge Incoming JSON` v1 does not provide field-by-field accept/reject decisions, destructive full-replace merge, media hydration, or selective Bricks element-level merging.
 - Full replace confirmation modal does not currently include preflight delete-count preview; counts are returned after operation.
 - CodeMirror JSON editor/linting is not yet integrated; editor currently uses textarea.
 
@@ -86,4 +98,5 @@ Brief usage notes for the DBVC Entity Editor.
 
 - `docs/reference/import-identity-matching.md`
 - `docs/implementation/completed/entity-editor-sync-file-import-guide.md`
+- `docs/implementation/completed/entity-editor-merge-incoming-json-guide.md`
 - `docs/implementation/completed/entity-editor-enhancements.md`

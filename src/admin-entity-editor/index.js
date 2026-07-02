@@ -268,6 +268,26 @@ const isRawIntakeMatchedUpdateEligible = (preview, mode) => (
 
 const getEntityImportStatusRank = (item) => (item?.matched_wp?.id ? 1 : 0);
 
+const DEFAULT_MERGE_IDENTITY = {
+	uid: 'keep_local',
+	slug: 'keep_local',
+	title: 'use_incoming',
+};
+
+const MergeJsonNotes = ({ notes = [] }) => {
+	if (!Array.isArray(notes) || notes.length === 0) return null;
+	return (
+		<div className="notice notice-info" style={{ margin: '8px 0 0' }}>
+			<p><strong>Merge notes</strong></p>
+			<ul style={{ marginLeft: '18px' }}>
+				{notes.map((note, index) => (
+					<li key={`${note?.code || 'merge-note'}-${index}`}>{note?.message || 'Review this merge note.'}</li>
+				))}
+			</ul>
+		</div>
+	);
+};
+
 const EntityEditorApp = () => {
 	const [entityIndex, setEntityIndex] = useState([]);
 	const [entityIndexStats, setEntityIndexStats] = useState(null);
@@ -331,6 +351,15 @@ const EntityEditorApp = () => {
 	const [syncImportNotice, setSyncImportNotice] = useState('');
 	const [syncImportPreview, setSyncImportPreview] = useState(null);
 	const [syncImportUpdateConfirmations, setSyncImportUpdateConfirmations] = useState({});
+	const [mergeJsonOpen, setMergeJsonOpen] = useState(false);
+	const [mergeJsonDraft, setMergeJsonDraft] = useState('');
+	const [mergeJsonIdentity, setMergeJsonIdentity] = useState(DEFAULT_MERGE_IDENTITY);
+	const [mergeJsonPreviewBusy, setMergeJsonPreviewBusy] = useState(false);
+	const [mergeJsonSaveBusy, setMergeJsonSaveBusy] = useState(false);
+	const [mergeJsonPartialBusy, setMergeJsonPartialBusy] = useState(false);
+	const [mergeJsonError, setMergeJsonError] = useState('');
+	const [mergeJsonPreview, setMergeJsonPreview] = useState(null);
+	const [mergeJsonConfirmed, setMergeJsonConfirmed] = useState(false);
 	const entityEditorTextareaRef = useRef(null);
 
 	const entityPerPage = 20;
@@ -457,6 +486,12 @@ const EntityEditorApp = () => {
 		setRawIntakePreview(null);
 		setRawIntakeError('');
 	}, [rawIntakeDraft, rawIntakeMode]);
+
+	useEffect(() => {
+		setMergeJsonPreview(null);
+		setMergeJsonConfirmed(false);
+		setMergeJsonError('');
+	}, [mergeJsonDraft, mergeJsonIdentity]);
 
 	useEffect(() => {
 		const available = new Set(entityIndex.map((item) => item.relative_path).filter(Boolean));
@@ -630,6 +665,117 @@ const EntityEditorApp = () => {
 		setSyncImportPreview(null);
 		setSyncImportUpdateConfirmations({});
 	}, []);
+
+	const openMergeJsonPanel = useCallback(() => {
+		setMergeJsonOpen(true);
+		setMergeJsonDraft('');
+		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonPreview(null);
+		setMergeJsonError('');
+		setMergeJsonConfirmed(false);
+	}, []);
+
+	const closeMergeJsonPanel = useCallback(() => {
+		setMergeJsonOpen(false);
+		setMergeJsonDraft('');
+		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonPreview(null);
+		setMergeJsonError('');
+		setMergeJsonConfirmed(false);
+		setMergeJsonPreviewBusy(false);
+		setMergeJsonSaveBusy(false);
+		setMergeJsonPartialBusy(false);
+	}, []);
+
+	const setMergeIdentityChoice = useCallback((key, value) => {
+		setMergeJsonIdentity((current) => ({
+			...current,
+			[key]: value,
+		}));
+	}, []);
+
+	const previewMergeJson = useCallback(async () => {
+		if (!selectedEntityFile) return;
+		setMergeJsonPreviewBusy(true);
+		setMergeJsonError('');
+		setMergeJsonConfirmed(false);
+		try {
+			const data = await apiPost('entity-editor/merge-json/preview', {
+				path: selectedEntityFile,
+				incoming_json: mergeJsonDraft,
+				identity: mergeJsonIdentity,
+			});
+			setMergeJsonPreview(data);
+		} catch (error) {
+			setMergeJsonError(error?.message || 'Failed to preview incoming JSON merge');
+			setMergeJsonPreview(error?.body?.data?.preview || null);
+		} finally {
+			setMergeJsonPreviewBusy(false);
+		}
+	}, [selectedEntityFile, mergeJsonDraft, mergeJsonIdentity]);
+
+	const saveMergeJson = useCallback(async (partialImport = false, forceTakeover = false) => {
+		if (!selectedEntityFile || !mergeJsonPreview || !mergeJsonConfirmed) return;
+
+		const setBusy = partialImport ? setMergeJsonPartialBusy : setMergeJsonSaveBusy;
+		setBusy(true);
+		setMergeJsonError('');
+		setEntitySaveError('');
+		setEntitySaveNotice('');
+		setEntityLockConflict(null);
+
+		try {
+			const endpoint = partialImport
+				? 'entity-editor/merge-json/save-and-partial-import'
+				: 'entity-editor/merge-json/save';
+			const data = await apiPost(endpoint, {
+				path: selectedEntityFile,
+				incoming_json: mergeJsonDraft,
+				identity: mergeJsonIdentity,
+				lock_token: entityLockToken || '',
+				force_takeover: !!forceTakeover,
+				preview_hash: mergeJsonPreview?.preview_hash || '',
+				confirmed: true,
+			});
+
+			setEntityFileData((current) => ({ ...current, ...data }));
+			setEntityEditorDraft(data?.content || entityEditorDraft);
+			setEntityLockToken(data?.lock?.token || entityLockToken);
+			setEntityLockInfo(data?.lock || entityLockInfo);
+
+			if (partialImport) {
+				const counts = data?.import_result?.counts || {};
+				setEntitySaveNotice(
+					`Merged JSON saved + partial import complete (fields: ${counts.core_fields_updated ?? 0}, meta: ${counts.meta_keys_updated ?? 0}, tax: ${counts.taxonomies_updated ?? 0}).`
+				);
+			} else {
+				setEntitySaveNotice('Merged JSON saved to sync folder.');
+			}
+
+			closeMergeJsonPanel();
+			setEntityIndex([]);
+			setEntityIndexLoaded(false);
+		} catch (error) {
+			setMergeJsonError(error?.message || 'Failed to save merged JSON');
+			setMergeJsonPreview(error?.body?.data?.preview || mergeJsonPreview);
+			if (error?.body?.code === 'dbvc_entity_editor_merge_stale_preview' || error?.body?.code === 'dbvc_entity_editor_merge_blocked') {
+				setMergeJsonConfirmed(false);
+			}
+			setEntityLockConflict(error?.body?.data?.lock || null);
+		} finally {
+			setBusy(false);
+		}
+	}, [
+		selectedEntityFile,
+		mergeJsonPreview,
+		mergeJsonConfirmed,
+		mergeJsonDraft,
+		mergeJsonIdentity,
+		entityLockToken,
+		entityLockInfo,
+		entityEditorDraft,
+		closeMergeJsonPanel,
+	]);
 
 	const previewRawIntake = useCallback(async () => {
 		setRawIntakePreviewBusy(true);
@@ -945,7 +1091,7 @@ const EntityEditorApp = () => {
 		() => entityIndex.reduce((count, item) => count + (getEntityImportStatusRank(item) === 0 ? 1 : 0), 0),
 		[entityIndex]
 	);
-	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy;
+	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy || mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy;
 	const entityBulkActionNeedsSelection = entityBulkAction === 'download_selected'
 		|| entityBulkAction === 'remove_selected'
 		|| entityBulkAction === 'clear_selection'
@@ -978,6 +1124,12 @@ const EntityEditorApp = () => {
 		setFullReplaceConfirmPhrase('');
 		setFullReplaceModalError('');
 		setFullReplaceNeedsTakeover(false);
+		setMergeJsonOpen(false);
+		setMergeJsonDraft('');
+		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonPreview(null);
+		setMergeJsonError('');
+		setMergeJsonConfirmed(false);
 	};
 
 	const toggleEntityRowSelection = (path, checked) => {
@@ -1236,6 +1388,18 @@ const EntityEditorApp = () => {
 	const syncImportPreviewEmpty = !!syncImportPreview && !syncImportPreviewBusy && syncImportItems.length === 0;
 	const syncImportNoCreatable = !!syncImportPreview && !syncImportPreviewBusy && syncImportItems.length > 0 && syncImportCreatableCount === 0 && syncImportUpdateableCount === 0;
 	const syncImportBlockedMessages = collectImportBlockerMessages(syncImportItems);
+	const mergeJsonBlockers = Array.isArray(mergeJsonPreview?.blockers)
+		? mergeJsonPreview.blockers
+		: (Array.isArray(mergeJsonPreview?.blocking) ? mergeJsonPreview.blocking : []);
+	const mergeJsonNotes = Array.isArray(mergeJsonPreview?.notes) ? mergeJsonPreview.notes : [];
+	const mergeJsonSummary = mergeJsonPreview?.summary || {};
+	const mergeJsonAvailable = mergeJsonPreview?.available_actions || {};
+	const mergeJsonCanSave = !!mergeJsonPreview
+		&& mergeJsonBlockers.length === 0
+		&& !!mergeJsonAvailable?.save
+		&& mergeJsonConfirmed
+		&& !!entityLockToken;
+	const mergeJsonCanPartialImport = mergeJsonCanSave && !!mergeJsonAvailable?.save_and_partial_import;
 
 	const canOfferSyncFileImport = (item) => {
 		if (!item?.relative_path || !['post', 'term'].includes(item?.entity_kind)) return false;
@@ -1600,6 +1764,9 @@ const EntityEditorApp = () => {
 											<Button variant="secondary" onClick={() => partialImportEntityEditorFile(false)} disabled={busyAny || !entityLockToken} isBusy={entityImportBusy} title="Save JSON and merge only fields/meta present in JSON">
 												{entityImportBusy ? 'Importing…' : 'Save + Partial Import'}
 											</Button>
+											<Button variant="secondary" onClick={mergeJsonOpen ? closeMergeJsonPanel : openMergeJsonPanel} disabled={busyAny || !entityLockToken} title="Paste incoming entity JSON and preview a merge into this selected file">
+												{mergeJsonOpen ? 'Close Merge' : 'Merge Incoming JSON'}
+											</Button>
 											<Button variant="secondary" onClick={() => openFullReplaceModal(false)} disabled={busyAny || !entityLockToken} isBusy={entityReplaceBusy} title="Save JSON and fully replace entity data (destructive)">
 												{entityReplaceBusy ? 'Replacing…' : 'Save + Full Replace'}
 											</Button>
@@ -1607,6 +1774,162 @@ const EntityEditorApp = () => {
 												Close
 											</Button>
 										</div>
+										{mergeJsonOpen && (
+											<div className="notice notice-info" style={{ margin: '12px 0', padding: '12px' }}>
+												<p>
+													<strong>Merge incoming JSON into selected entity</strong>
+													{' · '}Target: {selectedEntityFile}
+												</p>
+												<p className="description">
+													DBVC will preserve the selected entity as the local authority, generate a proposed JSON merge, and require confirmation before saving.
+												</p>
+												<div style={{ display: 'grid', gap: '10px', marginTop: '10px' }}>
+													<label>
+														Incoming JSON
+														<textarea
+															className="dbvc-entity-editor__textarea"
+															value={mergeJsonDraft}
+															onChange={(e) => setMergeJsonDraft(e.target.value)}
+															placeholder="Paste incoming DBVC entity JSON here..."
+															style={{ minHeight: '180px', marginTop: '6px' }}
+															disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
+														/>
+													</label>
+													<div style={{ display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+														<label>
+															UID
+															<select
+																value={mergeJsonIdentity.uid}
+																onChange={(e) => setMergeIdentityChoice('uid', e.target.value)}
+																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
+																style={{ width: '100%', marginTop: '4px' }}
+															>
+																<option value="keep_local">Keep local</option>
+																<option value="use_incoming">Use incoming</option>
+															</select>
+														</label>
+														<label>
+															Slug
+															<select
+																value={mergeJsonIdentity.slug}
+																onChange={(e) => setMergeIdentityChoice('slug', e.target.value)}
+																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
+																style={{ width: '100%', marginTop: '4px' }}
+															>
+																<option value="keep_local">Keep local</option>
+																<option value="use_incoming">Use incoming</option>
+															</select>
+														</label>
+														<label>
+															ID
+															<input
+																type="text"
+																value={`Keep local${mergeJsonSummary?.local_id ? ` #${mergeJsonSummary.local_id}` : ''}${mergeJsonSummary?.incoming_id ? `; incoming #${mergeJsonSummary.incoming_id} ignored` : ''}`}
+																readOnly
+																style={{ width: '100%', marginTop: '4px' }}
+															/>
+														</label>
+														<label>
+															Title
+															<select
+																value={mergeJsonIdentity.title}
+																onChange={(e) => setMergeIdentityChoice('title', e.target.value)}
+																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
+																style={{ width: '100%', marginTop: '4px' }}
+															>
+																<option value="use_incoming">Use incoming</option>
+																<option value="keep_local">Keep local</option>
+															</select>
+														</label>
+													</div>
+													<div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+														<Button
+															variant="secondary"
+															onClick={previewMergeJson}
+															disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy || !mergeJsonDraft.trim()}
+															isBusy={mergeJsonPreviewBusy}
+														>
+															{mergeJsonPreviewBusy ? 'Previewing…' : 'Preview Merge'}
+														</Button>
+														{mergeJsonPreview && (
+															<span className="description">
+																{mergeJsonBlockers.length
+																	? `${mergeJsonBlockers.length} blocker${mergeJsonBlockers.length === 1 ? '' : 's'}`
+																	: 'Preview ready'}
+																{mergeJsonNotes.length ? ` · ${mergeJsonNotes.length} note${mergeJsonNotes.length === 1 ? '' : 's'}` : ''}
+															</span>
+														)}
+													</div>
+												</div>
+												{mergeJsonError && (
+													<div className="notice notice-error" style={{ marginTop: '12px' }}>
+														<p>{mergeJsonError}</p>
+														{entityLockConflict && (
+															<div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+																<Button variant="secondary" onClick={() => saveMergeJson(false, true)} disabled={!mergeJsonCanSave || mergeJsonSaveBusy || mergeJsonPartialBusy}>
+																	Take over lock and save merge
+																</Button>
+																<Button variant="secondary" onClick={() => saveMergeJson(true, true)} disabled={!mergeJsonCanPartialImport || mergeJsonSaveBusy || mergeJsonPartialBusy}>
+																	Take over lock and partial import
+																</Button>
+															</div>
+														)}
+													</div>
+												)}
+												{mergeJsonPreview && (
+													<div style={{ marginTop: '12px' }}>
+														<div className="notice notice-info" style={{ margin: 0 }}>
+															<p>
+																Kind: {mergeJsonSummary?.kind || '—'}
+																{' · '}Subtype: {mergeJsonSummary?.subtype || '—'}
+																{' · '}Local match: {mergeJsonSummary?.local_match?.status === 'matched' ? `${mergeJsonSummary.local_match.kind || 'entity'} #${mergeJsonSummary.local_match.id}` : 'none'}
+															</p>
+															<p>
+																UID: {mergeJsonSummary?.uid_policy === 'use_incoming' ? (mergeJsonSummary?.incoming_uid || 'incoming empty') : (mergeJsonSummary?.local_uid || 'local empty')}
+																{' · '}Slug: {mergeJsonSummary?.slug_policy === 'use_incoming' ? (mergeJsonSummary?.incoming_slug || 'incoming empty') : (mergeJsonSummary?.local_slug || 'local empty')}
+																{' · '}Title: {mergeJsonSummary?.title_policy === 'keep_local' ? (mergeJsonSummary?.local_title || 'local empty') : (mergeJsonSummary?.incoming_title || 'incoming empty')}
+															</p>
+														</div>
+														<ImportBlockerPanel blocking={mergeJsonBlockers} disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy} />
+														<MergeJsonNotes notes={mergeJsonNotes} />
+														{mergeJsonBlockers.length === 0 && !mergeJsonAvailable?.save_and_partial_import && (
+															<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+																<p>Save + Partial Import is unavailable because the selected JSON does not currently match a local WordPress entity. You can still save the merged JSON file.</p>
+															</div>
+														)}
+														<label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '10px' }}>
+															<input
+																type="checkbox"
+																checked={mergeJsonConfirmed}
+																onChange={(event) => setMergeJsonConfirmed(event.target.checked)}
+																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy || mergeJsonBlockers.length > 0}
+															/>
+															<span>I confirm merging this incoming JSON into the selected entity file.</span>
+														</label>
+														<label style={{ display: 'block', marginTop: '10px' }}>
+															Proposed merged JSON
+															<textarea
+																className="dbvc-entity-editor__textarea"
+																value={mergeJsonPreview?.proposed_json || ''}
+																readOnly
+																style={{ minHeight: '220px', marginTop: '6px' }}
+															/>
+														</label>
+														<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '12px' }}>
+															<Button variant="tertiary" onClick={closeMergeJsonPanel} disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}>
+																Cancel Merge
+															</Button>
+															<Button variant="secondary" onClick={() => saveMergeJson(false, false)} disabled={!mergeJsonCanSave || mergeJsonSaveBusy || mergeJsonPartialBusy} isBusy={mergeJsonSaveBusy}>
+																{mergeJsonSaveBusy ? 'Saving…' : 'Save Merged JSON'}
+															</Button>
+															<Button variant="primary" onClick={() => saveMergeJson(true, false)} disabled={!mergeJsonCanPartialImport || mergeJsonSaveBusy || mergeJsonPartialBusy} isBusy={mergeJsonPartialBusy}>
+																{mergeJsonPartialBusy ? 'Importing…' : 'Save Merged JSON + Partial Import'}
+															</Button>
+														</div>
+													</div>
+												)}
+											</div>
+										)}
 										<textarea
 											className="dbvc-entity-editor__textarea"
 											ref={entityEditorTextareaRef}

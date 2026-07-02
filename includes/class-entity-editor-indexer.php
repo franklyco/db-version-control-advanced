@@ -766,9 +766,10 @@ final class DBVC_Entity_Editor_Indexer
      * @param int    $user_id
      * @param string $lock_token
      * @param bool   $force_takeover
+     * @param array<string,mixed> $forced_match
      * @return array<string,mixed>|\WP_Error
      */
-    public static function save_and_partial_import($relative_path, $content, $user_id = 0, $lock_token = '', $force_takeover = false)
+    public static function save_and_partial_import($relative_path, $content, $user_id = 0, $lock_token = '', $force_takeover = false, array $forced_match = [])
     {
         $saved = self::save_entity_file($relative_path, $content, $user_id, $lock_token, $force_takeover);
         if (is_wp_error($saved)) {
@@ -786,9 +787,9 @@ final class DBVC_Entity_Editor_Indexer
         }
 
         if ($kind === 'post') {
-            $result = self::partial_import_post($decoded);
+            $result = self::partial_import_post($decoded, $forced_match);
         } else {
-            $result = self::partial_import_term($decoded);
+            $result = self::partial_import_term($decoded, $forced_match);
         }
 
         if (is_wp_error($result)) {
@@ -1199,15 +1200,19 @@ final class DBVC_Entity_Editor_Indexer
 
     /**
      * @param array<string,mixed> $decoded
+     * @param array<string,mixed> $forced_match
      * @return array<string,mixed>|\WP_Error
      */
-    private static function partial_import_post(array $decoded)
+    private static function partial_import_post(array $decoded, array $forced_match = [])
     {
         $post_type = isset($decoded['post_type']) ? sanitize_key((string) $decoded['post_type']) : '';
         $slug = isset($decoded['post_name']) ? sanitize_title((string) $decoded['post_name']) : '';
         $uid = self::extract_entity_uid($decoded);
 
-        $match = self::match_single_post($post_type, $slug, $uid);
+        $match = self::resolve_forced_post_match($forced_match, $post_type);
+        if ($match === null) {
+            $match = self::match_single_post($post_type, $slug, $uid);
+        }
         if (is_wp_error($match)) {
             return $match;
         }
@@ -1306,15 +1311,19 @@ final class DBVC_Entity_Editor_Indexer
 
     /**
      * @param array<string,mixed> $decoded
+     * @param array<string,mixed> $forced_match
      * @return array<string,mixed>|\WP_Error
      */
-    private static function partial_import_term(array $decoded)
+    private static function partial_import_term(array $decoded, array $forced_match = [])
     {
         $taxonomy = isset($decoded['taxonomy']) ? sanitize_key((string) $decoded['taxonomy']) : '';
         $slug = isset($decoded['slug']) ? sanitize_title((string) $decoded['slug']) : '';
         $uid = self::extract_entity_uid($decoded);
 
-        $match = self::match_single_term($taxonomy, $slug, $uid);
+        $match = self::resolve_forced_term_match($forced_match, $taxonomy);
+        if ($match === null) {
+            $match = self::match_single_term($taxonomy, $slug, $uid);
+        }
         if (is_wp_error($match)) {
             return $match;
         }
@@ -1624,6 +1633,84 @@ final class DBVC_Entity_Editor_Indexer
             ],
             'counts' => $counts,
             'snapshot_path' => $snapshot_path,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $forced_match
+     * @param string              $post_type
+     * @return array<string,mixed>|\WP_Error|null
+     */
+    private static function resolve_forced_post_match(array $forced_match, $post_type)
+    {
+        $id = isset($forced_match['id']) ? (int) $forced_match['id'] : 0;
+        if ($id <= 0) {
+            return null;
+        }
+
+        $post_type = sanitize_key((string) $post_type);
+        $post = get_post($id);
+        if (! $post instanceof \WP_Post) {
+            return new \WP_Error(
+                'dbvc_entity_editor_forced_post_match_missing',
+                __('The selected local post could not be found for partial import.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        if ($post_type !== '' && (string) $post->post_type !== $post_type) {
+            return new \WP_Error(
+                'dbvc_entity_editor_forced_post_match_type_mismatch',
+                __('The selected local post type does not match the JSON post type.', 'dbvc'),
+                ['status' => 409]
+            );
+        }
+
+        return [
+            'id' => (int) $post->ID,
+            'kind' => 'post',
+            'match_source' => isset($forced_match['source']) && (string) $forced_match['source'] !== ''
+                ? (string) $forced_match['source']
+                : 'selected_entity',
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $forced_match
+     * @param string              $taxonomy
+     * @return array<string,mixed>|\WP_Error|null
+     */
+    private static function resolve_forced_term_match(array $forced_match, $taxonomy)
+    {
+        $id = isset($forced_match['id']) ? (int) $forced_match['id'] : 0;
+        if ($id <= 0) {
+            return null;
+        }
+
+        $taxonomy = sanitize_key((string) $taxonomy);
+        if ($taxonomy === '') {
+            return new \WP_Error(
+                'dbvc_entity_editor_forced_term_match_taxonomy_missing',
+                __('The JSON taxonomy is required for selected term partial import.', 'dbvc'),
+                ['status' => 400]
+            );
+        }
+
+        $term = get_term($id, $taxonomy);
+        if (! $term || is_wp_error($term)) {
+            return new \WP_Error(
+                'dbvc_entity_editor_forced_term_match_missing',
+                __('The selected local term could not be found for partial import.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        return [
+            'id' => (int) $term->term_id,
+            'kind' => 'term',
+            'match_source' => isset($forced_match['source']) && (string) $forced_match['source'] !== ''
+                ? (string) $forced_match['source']
+                : 'selected_entity',
         ];
     }
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed tall Visual Editor panel positioning for default/unmoved panels by deriving a viewport-clamped position as soon as the panel opens, using visual viewport dimensions, and keeping tall panel content scrollable inside the panel body so headers and actions remain reachable.
+- Fixed Review Fields accordion hit testing by explicitly hiding closed `<details>` item rows; action buttons from closed rows no longer visually overlap open rows or intercept/obscure `Open` actions.
 - Added stale-baseline protection for composite text `Save All`: the frontend now submits child base values, the server rejects changed child sources with `409 Conflict` before any batch writes, successful no-reload saves refresh the panel baselines for repeat saves, and stale browser responses preserve attempted values while blocking repeat `Save All` until the descriptor is reopened/refreshed with conflict-state panel styling.
 - Hardened Review Fields `Open` handling for zero-height or hidden markers by falling back to token-based descriptor panel loading, closing the Toolbar 2.0 popover before panel open, ignoring toolbar clicks in panel outside-close handling, and avoiding preview/badge activation for non-openable marker nodes.
 - Enabled guarded scalar composite text `Save All` controls when every child field has an allowed scalar save contract; the panel now renders child inputs, requires related/shared acknowledgement, submits child index/value pairs to the composite-save endpoint, and patches the marked Bricks text from the saved template plus returned child display values without a reload.
@@ -201,3 +203,4 @@
 - Added finer render-data repair profiler counters for anchor checks, existing-marker skips, cached injection, missing-media fallback, marker-token checks, gallery duplicate cleanup, opening-tag regex scans, and offset shifting.
 - Reduced marker-heavy final render repair by skipping normal repair when the exact current Bricks opening-tag occurrence already has the descriptor marker, then using a fast single-tag window lookup before the heavier full-page opening-tag regex fallback.
 - Moved missing-media parent-anchor repair onto the same fast single-tag lookup path, keeping marker parity on `/our-process/`, `/gallery/`, and `/vertical/dentists/` while cutting the `/our-process/` full final repair probe from roughly 770 ms to roughly 214 ms.
+- Hardened direct ACF repeater-row reads and writes for expanded post-meta roots such as `_price_item_repeater`, including normalized Bricks selector variants, so composite `Save All` stale checks compare against the real stored row value and do not patch the page from an ACF-rendered value that was not persisted.

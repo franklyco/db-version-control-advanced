@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.8.7
+ * Version:     1.8.8
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -44,7 +44,7 @@ new WPComPluginHandler(plugin_basename(__FILE__), 'https://robertdevore.com/why-
 define('DBVC_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('DBVC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBVC_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('DBVC_PLUGIN_VERSION', '1.8.7');
+define('DBVC_PLUGIN_VERSION', '1.8.8');
 if (! defined('DBVC_NEW_ENTITY_DECISION_KEY')) {
 	define('DBVC_NEW_ENTITY_DECISION_KEY', '__dbvc_new_entity__');
 }
@@ -124,6 +124,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageImport
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackagePostImportResolver.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/RawJsonIntakeService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/SyncFileImportService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/EntityJsonMergeService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Transfer/EntityPacketBuilder.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-export-manager.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-import-router.php';
