@@ -274,6 +274,70 @@ const DEFAULT_MERGE_IDENTITY = {
 	title: 'use_incoming',
 };
 
+const DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY = 'strict_uid';
+const DEFAULT_MERGE_MATCHING_POLICY = 'selected_entity';
+
+const MATCHING_POLICY_OPTIONS = [
+	{
+		value: 'strict_uid',
+		label: 'Strict UID-first',
+		description: 'UID must match; slug is used only when JSON has no UID.',
+	},
+	{
+		value: 'allow_slug_fallback',
+		label: 'Allow slug fallback once',
+		description: 'If UID is unmatched, match one local entity by slug and subtype for this operation.',
+	},
+	{
+		value: 'selected_entity',
+		label: 'Selected entity / ID',
+		description: 'Use the selected JSON entity as the target: ID first, then UID or slug.',
+	},
+];
+
+const getMatchingPayload = (policy) => ({
+	policy: MATCHING_POLICY_OPTIONS.some((option) => option.value === policy)
+		? policy
+		: 'strict_uid',
+});
+
+const MatchingPolicyControl = ({
+	idPrefix,
+	value,
+	onChange,
+	disabled = false,
+	globalUidFallbackEnabled = false,
+}) => (
+	<fieldset className="dbvc-entity-editor__matching">
+		<legend>Advanced Matching</legend>
+		<p className="description">
+			Site default UID fallback: {globalUidFallbackEnabled ? 'enabled' : 'disabled'}
+		</p>
+		<div className="dbvc-entity-editor__matching-options">
+			{MATCHING_POLICY_OPTIONS.map((option) => {
+				const id = `${idPrefix}-${option.value}`;
+				return (
+					<label key={option.value} className="dbvc-entity-editor__matching-option" htmlFor={id}>
+						<input
+							id={id}
+							type="radio"
+							name={idPrefix}
+							value={option.value}
+							checked={value === option.value}
+							onChange={(event) => onChange(event.target.value)}
+							disabled={disabled}
+						/>
+						<span>
+							<strong>{option.label}</strong>
+							<span className="description">{option.description}</span>
+						</span>
+					</label>
+				);
+			})}
+		</div>
+	</fieldset>
+);
+
 const MergeJsonNotes = ({ notes = [] }) => {
 	if (!Array.isArray(notes) || notes.length === 0) return null;
 	return (
@@ -310,6 +374,7 @@ const EntityEditorApp = () => {
 	const [entityFileLoading, setEntityFileLoading] = useState(false);
 	const [entityFileError, setEntityFileError] = useState('');
 	const [entityEditorDraft, setEntityEditorDraft] = useState('');
+	const [entityPartialMatchingPolicy, setEntityPartialMatchingPolicy] = useState(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
 
 	const [entityLockToken, setEntityLockToken] = useState('');
 	const [entityLockInfo, setEntityLockInfo] = useState(null);
@@ -354,6 +419,7 @@ const EntityEditorApp = () => {
 	const [mergeJsonOpen, setMergeJsonOpen] = useState(false);
 	const [mergeJsonDraft, setMergeJsonDraft] = useState('');
 	const [mergeJsonIdentity, setMergeJsonIdentity] = useState(DEFAULT_MERGE_IDENTITY);
+	const [mergeJsonMatchingPolicy, setMergeJsonMatchingPolicy] = useState(DEFAULT_MERGE_MATCHING_POLICY);
 	const [mergeJsonPreviewBusy, setMergeJsonPreviewBusy] = useState(false);
 	const [mergeJsonSaveBusy, setMergeJsonSaveBusy] = useState(false);
 	const [mergeJsonPartialBusy, setMergeJsonPartialBusy] = useState(false);
@@ -449,6 +515,8 @@ const EntityEditorApp = () => {
 	}, [entityIndexLoaded, entityIndexLoading, entityIndexError, loadEntityIndex]);
 
 	useEffect(() => {
+		setEntityPartialMatchingPolicy(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		if (!selectedEntityFile) {
 			setEntityFileData(null);
 			setEntityLockToken('');
@@ -491,7 +559,7 @@ const EntityEditorApp = () => {
 		setMergeJsonPreview(null);
 		setMergeJsonConfirmed(false);
 		setMergeJsonError('');
-	}, [mergeJsonDraft, mergeJsonIdentity]);
+	}, [mergeJsonDraft, mergeJsonIdentity, mergeJsonMatchingPolicy]);
 
 	useEffect(() => {
 		const available = new Set(entityIndex.map((item) => item.relative_path).filter(Boolean));
@@ -550,6 +618,7 @@ const EntityEditorApp = () => {
 				content: entityEditorDraft,
 				lock_token: entityLockToken || '',
 				force_takeover: !!forceTakeover,
+				matching: getMatchingPayload(entityPartialMatchingPolicy),
 			});
 			const counts = data?.import_result?.counts || {};
 			setEntityFileData((current) => ({ ...current, ...data }));
@@ -567,7 +636,7 @@ const EntityEditorApp = () => {
 		} finally {
 			setEntityImportBusy(false);
 		}
-	}, [selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo]);
+	}, [selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo, entityPartialMatchingPolicy]);
 
 	const fullReplaceEntityEditorFile = useCallback(async (forceTakeover = false, confirmPhrase = '') => {
 		if (!selectedEntityFile) return;
@@ -670,6 +739,7 @@ const EntityEditorApp = () => {
 		setMergeJsonOpen(true);
 		setMergeJsonDraft('');
 		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		setMergeJsonPreview(null);
 		setMergeJsonError('');
 		setMergeJsonConfirmed(false);
@@ -679,6 +749,7 @@ const EntityEditorApp = () => {
 		setMergeJsonOpen(false);
 		setMergeJsonDraft('');
 		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		setMergeJsonPreview(null);
 		setMergeJsonError('');
 		setMergeJsonConfirmed(false);
@@ -704,6 +775,7 @@ const EntityEditorApp = () => {
 				path: selectedEntityFile,
 				incoming_json: mergeJsonDraft,
 				identity: mergeJsonIdentity,
+				matching: getMatchingPayload(mergeJsonMatchingPolicy),
 			});
 			setMergeJsonPreview(data);
 		} catch (error) {
@@ -712,7 +784,7 @@ const EntityEditorApp = () => {
 		} finally {
 			setMergeJsonPreviewBusy(false);
 		}
-	}, [selectedEntityFile, mergeJsonDraft, mergeJsonIdentity]);
+	}, [selectedEntityFile, mergeJsonDraft, mergeJsonIdentity, mergeJsonMatchingPolicy]);
 
 	const saveMergeJson = useCallback(async (partialImport = false, forceTakeover = false) => {
 		if (!selectedEntityFile || !mergeJsonPreview || !mergeJsonConfirmed) return;
@@ -732,6 +804,7 @@ const EntityEditorApp = () => {
 				path: selectedEntityFile,
 				incoming_json: mergeJsonDraft,
 				identity: mergeJsonIdentity,
+				matching: getMatchingPayload(mergeJsonMatchingPolicy),
 				lock_token: entityLockToken || '',
 				force_takeover: !!forceTakeover,
 				preview_hash: mergeJsonPreview?.preview_hash || '',
@@ -771,6 +844,7 @@ const EntityEditorApp = () => {
 		mergeJsonConfirmed,
 		mergeJsonDraft,
 		mergeJsonIdentity,
+		mergeJsonMatchingPolicy,
 		entityLockToken,
 		entityLockInfo,
 		entityEditorDraft,
@@ -1115,6 +1189,7 @@ const EntityEditorApp = () => {
 		setSelectedEntityFile('');
 		setEntityFileData(null);
 		setEntityEditorDraft('');
+		setEntityPartialMatchingPolicy(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
 		setEntitySaveNotice('');
 		setEntitySaveError('');
 		setEntityLockToken('');
@@ -1127,6 +1202,7 @@ const EntityEditorApp = () => {
 		setMergeJsonOpen(false);
 		setMergeJsonDraft('');
 		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		setMergeJsonPreview(null);
 		setMergeJsonError('');
 		setMergeJsonConfirmed(false);
@@ -1394,6 +1470,7 @@ const EntityEditorApp = () => {
 	const mergeJsonNotes = Array.isArray(mergeJsonPreview?.notes) ? mergeJsonPreview.notes : [];
 	const mergeJsonSummary = mergeJsonPreview?.summary || {};
 	const mergeJsonAvailable = mergeJsonPreview?.available_actions || {};
+	const globalUidFallbackEnabled = DBVC_ENTITY_EDITOR_APP?.uid_fallback_matching_enabled === true;
 	const mergeJsonCanSave = !!mergeJsonPreview
 		&& mergeJsonBlockers.length === 0
 		&& !!mergeJsonAvailable?.save
@@ -1774,6 +1851,13 @@ const EntityEditorApp = () => {
 												Close
 											</Button>
 										</div>
+										<MatchingPolicyControl
+											idPrefix="dbvc-entity-editor-partial-matching"
+											value={entityPartialMatchingPolicy}
+											onChange={setEntityPartialMatchingPolicy}
+											disabled={busyAny || !entityLockToken}
+											globalUidFallbackEnabled={globalUidFallbackEnabled}
+										/>
 										{mergeJsonOpen && (
 											<div className="notice notice-info" style={{ margin: '12px 0', padding: '12px' }}>
 												<p>
@@ -1783,6 +1867,13 @@ const EntityEditorApp = () => {
 												<p className="description">
 													DBVC will preserve the selected entity as the local authority, generate a proposed JSON merge, and require confirmation before saving.
 												</p>
+												<MatchingPolicyControl
+													idPrefix="dbvc-entity-editor-merge-matching"
+													value={mergeJsonMatchingPolicy}
+													onChange={setMergeJsonMatchingPolicy}
+													disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
+													globalUidFallbackEnabled={globalUidFallbackEnabled}
+												/>
 												<div style={{ display: 'grid', gap: '10px', marginTop: '10px' }}>
 													<label>
 														Incoming JSON
@@ -1883,6 +1974,7 @@ const EntityEditorApp = () => {
 																Kind: {mergeJsonSummary?.kind || '—'}
 																{' · '}Subtype: {mergeJsonSummary?.subtype || '—'}
 																{' · '}Local match: {mergeJsonSummary?.local_match?.status === 'matched' ? `${mergeJsonSummary.local_match.kind || 'entity'} #${mergeJsonSummary.local_match.id}` : 'none'}
+																{' · '}Matching: {mergeJsonSummary?.matching_policy_label || mergeJsonMatchingPolicy}
 															</p>
 															<p>
 																UID: {mergeJsonSummary?.uid_policy === 'use_incoming' ? (mergeJsonSummary?.incoming_uid || 'incoming empty') : (mergeJsonSummary?.local_uid || 'local empty')}

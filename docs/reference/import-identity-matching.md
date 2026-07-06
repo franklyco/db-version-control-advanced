@@ -37,6 +37,7 @@ The option is available in:
 
 - **DBVC Export -> Configure -> Import Defaults**
 - the legacy import form
+- the Entity Editor modal as a one-run `Advanced Matching` override for `Save + Partial Import` and `Merge Incoming JSON`
 - configuration portability under the `core_import_export` import defaults group
 
 ## Flow-Specific Notes
@@ -44,7 +45,8 @@ The option is available in:
 - **Legacy post import:** `DBVC_Sync_Posts::import_post_from_json()` reads UID from top-level `vf_object_uid`, `dbvc_object_uid`, `meta.vf_object_uid`, or `dbvc_post_history`.
 - **Legacy term import:** `DBVC_Sync_Taxonomies::import_term_json_file()` reads UID from top-level, meta, or `dbvc_term_history`, and resolves local terms by UID before any slug fallback.
 - **Proposal term imports:** `DBVC_Sync_Posts::identify_local_term()` uses UID first. If the UID is unmatched and fallback is disabled, taxonomy slug/ID and `entity_refs` are not used for that UID-bearing item.
-- **Entity Editor:** partial and full replace use the same UID-first policy. With fallback disabled, an unmatched incoming UID blocks slug fallback.
+- **Entity Editor:** direct `Save + Partial Import` defaults to the same UID-first policy. The modal can apply a one-run `Allow slug fallback once` policy without changing `dbvc_allow_uid_fallback_matching`, or a one-run `Selected entity / ID` policy that targets the selected JSON entity by local ID first, then UID or slug. Full replace still uses the global UID-first policy and its typed destructive confirmation.
+- **Entity Editor merge:** `Merge Incoming JSON` defaults to `Selected entity / ID` matching so the server-generated merged JSON can be saved and partially imported into the matched local entity even if the selected sync JSON currently carries a source-site UID. UID/slug/title identity choices still control the proposed merged JSON; post/term ID remains local-only.
 - **Entity Editor create-only intake:** sync-file import and raw JSON intake block legacy post payload-ID fallback before commit. UID-less post JSON is treated as an existing-entity match when its numeric `ID` belongs to a local post of the same type. UID-bearing post JSON ignores the source numeric `ID` while UID fallback matching is disabled, but blocks as an existing-entity match if UID fallback matching is enabled and that numeric `ID` belongs to a local same-type post.
 - **Upload routing/normalization:** incoming UIDs are preserved. Local slug-matched UIDs are used only when the incoming JSON has no UID.
 

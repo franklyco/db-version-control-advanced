@@ -2327,7 +2327,12 @@ final class DBVC_Admin_App
         $content = (string) $request->get_param('content');
         $lock_token = (string) $request->get_param('lock_token');
         $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
-        $result = DBVC_Entity_Editor_Indexer::save_and_partial_import($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover);
+        $params = $request->get_json_params();
+        if (! is_array($params)) {
+            $params = $request->get_params();
+        }
+        $matching_options = self::normalize_entity_editor_matching_options($params, 'strict_uid');
+        $result = DBVC_Entity_Editor_Indexer::save_and_partial_import($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover, $matching_options);
         if (is_wp_error($result)) {
             return $result;
         }
@@ -2377,8 +2382,9 @@ final class DBVC_Admin_App
         $incoming_json = isset($params['incoming_json']) ? (string) $params['incoming_json'] : '';
         $identity = isset($params['identity']) && is_array($params['identity']) ? $params['identity'] : [];
         $mode = isset($params['mode']) ? (string) $params['mode'] : 'save';
+        $matching_options = self::normalize_entity_editor_matching_options($params, 'selected_entity');
 
-        $preview = \Dbvc\EntityEditor\EntityJsonMergeService::preview($relative_path, $incoming_json, $identity, $mode);
+        $preview = \Dbvc\EntityEditor\EntityJsonMergeService::preview($relative_path, $incoming_json, $identity, $mode, $matching_options);
         if (is_wp_error($preview)) {
             return $preview;
         }
@@ -2427,6 +2433,7 @@ final class DBVC_Admin_App
         $force_takeover = rest_sanitize_boolean($params['force_takeover'] ?? false);
         $preview_hash = isset($params['preview_hash']) ? (string) $params['preview_hash'] : '';
         $confirmed = rest_sanitize_boolean($params['confirmed'] ?? false);
+        $matching_options = self::normalize_entity_editor_matching_options($params, 'selected_entity');
 
         $result = \Dbvc\EntityEditor\EntityJsonMergeService::save(
             $relative_path,
@@ -2437,7 +2444,8 @@ final class DBVC_Admin_App
             $force_takeover,
             $preview_hash,
             $confirmed,
-            (bool) $partial_import
+            (bool) $partial_import,
+            $matching_options
         );
 
         if (is_wp_error($result)) {
@@ -2445,6 +2453,49 @@ final class DBVC_Admin_App
         }
 
         return new \WP_REST_Response($result);
+    }
+
+    /**
+     * Normalize one-run Entity Editor matching policy overrides from REST input.
+     *
+     * @param array<string,mixed> $params
+     * @param string              $default_policy
+     * @return array<string,mixed>
+     */
+    private static function normalize_entity_editor_matching_options(array $params, $default_policy = 'strict_uid')
+    {
+        $matching = [];
+        if (isset($params['matching']) && is_array($params['matching'])) {
+            $matching = $params['matching'];
+        } elseif (isset($params['matching_options']) && is_array($params['matching_options'])) {
+            $matching = $params['matching_options'];
+        }
+
+        $policy = '';
+        if (isset($matching['policy'])) {
+            $policy = sanitize_key((string) $matching['policy']);
+        } elseif (isset($params['matching_policy'])) {
+            $policy = sanitize_key((string) $params['matching_policy']);
+        }
+
+        $default_policy = sanitize_key((string) $default_policy);
+        if (! in_array($default_policy, ['strict_uid', 'allow_slug_fallback', 'selected_entity'], true)) {
+            $default_policy = 'strict_uid';
+        }
+
+        if (! in_array($policy, ['strict_uid', 'allow_slug_fallback', 'selected_entity'], true)) {
+            $policy = $default_policy;
+        }
+
+        $options = [
+            'policy' => $policy,
+        ];
+
+        if (array_key_exists('allow_uid_fallback', $matching)) {
+            $options['allow_uid_fallback'] = rest_sanitize_boolean($matching['allow_uid_fallback']);
+        }
+
+        return $options;
     }
 
     /**

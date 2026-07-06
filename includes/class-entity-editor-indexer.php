@@ -15,6 +15,9 @@ final class DBVC_Entity_Editor_Indexer
     private const LOCK_TTL = 300;
     private const LOCK_KEY_PREFIX = 'dbvc_entity_editor_lock_';
     private const FULL_REPLACE_CONFIRM_PHRASE = 'REPLACE';
+    private const MATCHING_POLICY_STRICT_UID = 'strict_uid';
+    private const MATCHING_POLICY_ALLOW_SLUG_FALLBACK = 'allow_slug_fallback';
+    private const MATCHING_POLICY_SELECTED_ENTITY = 'selected_entity';
     private const PROTECTED_POST_META_KEYS = [
         '_edit_lock',
         '_edit_last',
@@ -766,10 +769,10 @@ final class DBVC_Entity_Editor_Indexer
      * @param int    $user_id
      * @param string $lock_token
      * @param bool   $force_takeover
-     * @param array<string,mixed> $forced_match
+     * @param array<string,mixed> $matching_options
      * @return array<string,mixed>|\WP_Error
      */
-    public static function save_and_partial_import($relative_path, $content, $user_id = 0, $lock_token = '', $force_takeover = false, array $forced_match = [])
+    public static function save_and_partial_import($relative_path, $content, $user_id = 0, $lock_token = '', $force_takeover = false, array $matching_options = [])
     {
         $saved = self::save_entity_file($relative_path, $content, $user_id, $lock_token, $force_takeover);
         if (is_wp_error($saved)) {
@@ -786,10 +789,12 @@ final class DBVC_Entity_Editor_Indexer
             return new \WP_Error('dbvc_entity_editor_unknown_kind', __('Unable to detect entity type for partial import.', 'dbvc'), ['status' => 400]);
         }
 
+        $matching_options = self::normalize_partial_import_matching_options($matching_options);
+
         if ($kind === 'post') {
-            $result = self::partial_import_post($decoded, $forced_match);
+            $result = self::partial_import_post($decoded, $matching_options);
         } else {
-            $result = self::partial_import_term($decoded, $forced_match);
+            $result = self::partial_import_term($decoded, $matching_options);
         }
 
         if (is_wp_error($result)) {
@@ -1199,19 +1204,103 @@ final class DBVC_Entity_Editor_Indexer
     }
 
     /**
+     * @param array<string,mixed> $options
+     * @return array{policy:string,forced_match:array<string,mixed>,allow_uid_fallback:?bool}
+     */
+    private static function normalize_partial_import_matching_options(array $options)
+    {
+        if (isset($options['id']) && ! isset($options['forced_match'])) {
+            $options = [
+                'policy' => self::MATCHING_POLICY_SELECTED_ENTITY,
+                'forced_match' => $options,
+            ];
+        }
+
+        $policy = '';
+        if (isset($options['policy'])) {
+            $policy = sanitize_key((string) $options['policy']);
+        } elseif (isset($options['matching_policy'])) {
+            $policy = sanitize_key((string) $options['matching_policy']);
+        }
+
+        if (! in_array($policy, [
+            self::MATCHING_POLICY_STRICT_UID,
+            self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK,
+            self::MATCHING_POLICY_SELECTED_ENTITY,
+        ], true)) {
+            $policy = self::MATCHING_POLICY_STRICT_UID;
+        }
+
+        $allow_uid_fallback = $policy === self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK ? true : null;
+        if (array_key_exists('allow_uid_fallback', $options)) {
+            $coerced = self::coerce_nullable_bool($options['allow_uid_fallback']);
+            if ($coerced !== null) {
+                $allow_uid_fallback = $coerced;
+            }
+        }
+
+        $forced_match = isset($options['forced_match']) && is_array($options['forced_match'])
+            ? $options['forced_match']
+            : [];
+
+        return [
+            'policy' => $policy,
+            'forced_match' => $forced_match,
+            'allow_uid_fallback' => $allow_uid_fallback,
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return bool|null
+     */
+    private static function coerce_nullable_bool($value)
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (int) $value !== 0;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+                return true;
+            }
+            if (in_array($normalized, ['0', 'false', 'no', 'off', ''], true)) {
+                return false;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<string,mixed> $decoded
-     * @param array<string,mixed> $forced_match
+     * @param array<string,mixed> $matching_options
      * @return array<string,mixed>|\WP_Error
      */
-    private static function partial_import_post(array $decoded, array $forced_match = [])
+    private static function partial_import_post(array $decoded, array $matching_options = [])
     {
         $post_type = isset($decoded['post_type']) ? sanitize_key((string) $decoded['post_type']) : '';
         $slug = isset($decoded['post_name']) ? sanitize_title((string) $decoded['post_name']) : '';
         $uid = self::extract_entity_uid($decoded);
+        $policy = isset($matching_options['policy']) ? (string) $matching_options['policy'] : self::MATCHING_POLICY_STRICT_UID;
+        $forced_match = isset($matching_options['forced_match']) && is_array($matching_options['forced_match'])
+            ? $matching_options['forced_match']
+            : [];
+        $allow_uid_fallback = array_key_exists('allow_uid_fallback', $matching_options)
+            ? $matching_options['allow_uid_fallback']
+            : null;
 
         $match = self::resolve_forced_post_match($forced_match, $post_type);
+        if ($match === null && $policy === self::MATCHING_POLICY_SELECTED_ENTITY) {
+            $match = self::match_selected_post_entity($decoded, $post_type, $slug, $uid);
+        }
         if ($match === null) {
-            $match = self::match_single_post($post_type, $slug, $uid);
+            $match = self::match_single_post($post_type, $slug, $uid, $allow_uid_fallback);
         }
         if (is_wp_error($match)) {
             return $match;
@@ -1311,18 +1400,28 @@ final class DBVC_Entity_Editor_Indexer
 
     /**
      * @param array<string,mixed> $decoded
-     * @param array<string,mixed> $forced_match
+     * @param array<string,mixed> $matching_options
      * @return array<string,mixed>|\WP_Error
      */
-    private static function partial_import_term(array $decoded, array $forced_match = [])
+    private static function partial_import_term(array $decoded, array $matching_options = [])
     {
         $taxonomy = isset($decoded['taxonomy']) ? sanitize_key((string) $decoded['taxonomy']) : '';
         $slug = isset($decoded['slug']) ? sanitize_title((string) $decoded['slug']) : '';
         $uid = self::extract_entity_uid($decoded);
+        $policy = isset($matching_options['policy']) ? (string) $matching_options['policy'] : self::MATCHING_POLICY_STRICT_UID;
+        $forced_match = isset($matching_options['forced_match']) && is_array($matching_options['forced_match'])
+            ? $matching_options['forced_match']
+            : [];
+        $allow_uid_fallback = array_key_exists('allow_uid_fallback', $matching_options)
+            ? $matching_options['allow_uid_fallback']
+            : null;
 
         $match = self::resolve_forced_term_match($forced_match, $taxonomy);
+        if ($match === null && $policy === self::MATCHING_POLICY_SELECTED_ENTITY) {
+            $match = self::match_selected_term_entity($decoded, $taxonomy, $slug, $uid);
+        }
         if ($match === null) {
-            $match = self::match_single_term($taxonomy, $slug, $uid);
+            $match = self::match_single_term($taxonomy, $slug, $uid, $allow_uid_fallback);
         }
         if (is_wp_error($match)) {
             return $match;
@@ -1389,6 +1488,80 @@ final class DBVC_Entity_Editor_Indexer
             ],
             'counts' => $counts,
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $decoded
+     * @param string              $post_type
+     * @param string              $slug
+     * @param string              $uid
+     * @return array<string,mixed>|\WP_Error|null
+     */
+    private static function match_selected_post_entity(array $decoded, $post_type, $slug, $uid)
+    {
+        $post_type = sanitize_key((string) $post_type);
+        $post_id = isset($decoded['ID']) ? (int) $decoded['ID'] : 0;
+        if ($post_id > 0) {
+            $post = get_post($post_id);
+            if ($post instanceof \WP_Post && ($post_type === '' || (string) $post->post_type === $post_type)) {
+                return [
+                    'id' => (int) $post->ID,
+                    'kind' => 'post',
+                    'match_source' => 'selected_entity_id',
+                ];
+            }
+        }
+
+        $sources = [];
+        if ($uid !== '') {
+            $sources[] = ['source' => 'selected_entity_uid', 'ids' => self::find_post_ids_by_uid($uid, $post_type)];
+        }
+        if ($slug !== '' && $post_type !== '') {
+            $sources[] = ['source' => 'selected_entity_slug', 'ids' => self::find_post_ids_by_slug($slug, $post_type)];
+        }
+
+        if (empty($sources)) {
+            return null;
+        }
+
+        return self::resolve_single_candidate($sources, 'post');
+    }
+
+    /**
+     * @param array<string,mixed> $decoded
+     * @param string              $taxonomy
+     * @param string              $slug
+     * @param string              $uid
+     * @return array<string,mixed>|\WP_Error|null
+     */
+    private static function match_selected_term_entity(array $decoded, $taxonomy, $slug, $uid)
+    {
+        $taxonomy = sanitize_key((string) $taxonomy);
+        $term_id = isset($decoded['term_id']) ? (int) $decoded['term_id'] : 0;
+        if ($term_id > 0 && $taxonomy !== '') {
+            $term = get_term($term_id, $taxonomy);
+            if ($term && ! is_wp_error($term)) {
+                return [
+                    'id' => (int) $term->term_id,
+                    'kind' => 'term',
+                    'match_source' => 'selected_entity_id',
+                ];
+            }
+        }
+
+        $sources = [];
+        if ($uid !== '') {
+            $sources[] = ['source' => 'selected_entity_uid', 'ids' => self::find_term_ids_by_uid($uid, $taxonomy)];
+        }
+        if ($slug !== '' && $taxonomy !== '') {
+            $sources[] = ['source' => 'selected_entity_slug', 'ids' => self::find_term_ids_by_slug($slug, $taxonomy)];
+        }
+
+        if (empty($sources)) {
+            return null;
+        }
+
+        return self::resolve_single_candidate($sources, 'term');
     }
 
     /**
@@ -1718,18 +1891,22 @@ final class DBVC_Entity_Editor_Indexer
      * @param string $post_type
      * @param string $slug
      * @param string $uid
+     * @param bool|null $allow_uid_fallback
      * @return array<string,mixed>|\WP_Error
      */
-    private static function match_single_post($post_type, $slug, $uid)
+    private static function match_single_post($post_type, $slug, $uid, $allow_uid_fallback = null)
     {
         $post_type = sanitize_key((string) $post_type);
         $slug = sanitize_title((string) $slug);
         $uid = trim((string) $uid);
+        $allow_uid_fallback = is_bool($allow_uid_fallback)
+            ? $allow_uid_fallback
+            : self::allow_uid_fallback_matching();
 
         $sources = [];
         if ($uid !== '') {
             $sources[] = ['source' => 'uid', 'ids' => self::find_post_ids_by_uid($uid, $post_type)];
-            if (! self::allow_uid_fallback_matching()) {
+            if (! $allow_uid_fallback) {
                 return self::resolve_single_candidate($sources, 'post');
             }
         }
@@ -1744,18 +1921,22 @@ final class DBVC_Entity_Editor_Indexer
      * @param string $taxonomy
      * @param string $slug
      * @param string $uid
+     * @param bool|null $allow_uid_fallback
      * @return array<string,mixed>|\WP_Error
      */
-    private static function match_single_term($taxonomy, $slug, $uid)
+    private static function match_single_term($taxonomy, $slug, $uid, $allow_uid_fallback = null)
     {
         $taxonomy = sanitize_key((string) $taxonomy);
         $slug = sanitize_title((string) $slug);
         $uid = trim((string) $uid);
+        $allow_uid_fallback = is_bool($allow_uid_fallback)
+            ? $allow_uid_fallback
+            : self::allow_uid_fallback_matching();
 
         $sources = [];
         if ($uid !== '') {
             $sources[] = ['source' => 'uid', 'ids' => self::find_term_ids_by_uid($uid, $taxonomy)];
-            if (! self::allow_uid_fallback_matching()) {
+            if (! $allow_uid_fallback) {
                 return self::resolve_single_candidate($sources, 'term');
             }
         }

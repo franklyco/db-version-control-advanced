@@ -54,8 +54,11 @@ Brief usage notes for the DBVC Entity Editor.
 
 - `Save + Partial Import`
   - Saves JSON first.
-  - Matches one local entity by UID/history first. If JSON contains a UID and fallback matching is disabled, an unmatched UID blocks slug fallback.
-  - Falls back to slug+subtype only when the JSON has no UID or the `dbvc_allow_uid_fallback_matching` option is explicitly enabled.
+  - Defaults to strict UID-first matching. If JSON contains a UID and fallback matching is disabled, an unmatched UID blocks slug fallback even when the JSON ID or slug matches a local entity.
+  - Includes an `Advanced Matching` one-run override:
+    - `Strict UID-first`: UID must match; slug+subtype is used only when JSON has no UID.
+    - `Allow slug fallback once`: lets this operation match one local entity by slug+subtype when the JSON UID is unmatched, without changing `dbvc_allow_uid_fallback_matching`.
+    - `Selected entity / ID`: targets the selected JSON entity by local ID first, then UID or slug. The JSON content still controls imported identity values, including UID.
   - Updates only JSON-present core fields/meta/taxonomies.
   - Does not delete missing meta keys.
 
@@ -63,6 +66,7 @@ Brief usage notes for the DBVC Entity Editor.
   - Appears inside the selected entity JSON editor modal.
   - Lets the operator paste one incoming DBVC post/CPT or term JSON payload and preview a proposed merge into the selected file.
   - Keeps the matched local WordPress entity as the authority for ID and, by default, UID and slug, even when the selected sync JSON has drifted to a source-site UID.
+  - Defaults `Advanced Matching` to `Selected entity / ID` so `Save Merged JSON + Partial Import` can update the matched local entity even when the selected sync JSON currently carries a source-site UID.
   - Includes simple controls for UID, slug, and title policy; post/term ID remains local-only.
   - Shows blockers, soft notes, and proposed merged JSON before any write.
   - Requires `I confirm merging this incoming JSON into the selected entity file` before save actions enable.
