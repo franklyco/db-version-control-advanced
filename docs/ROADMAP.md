@@ -26,6 +26,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
 | Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
 | Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
+| WS Form Entity Editor provider mode | proposed | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#stage-w-ws-form-entity-editor-provider-mode` | Adds a phased Entity Editor plan for WS Form provider rows, JSON edit/save, preflight, create, UID-matched whole-form updates, settings merge handling, and QA. |
 
 ## Completed Work
 
