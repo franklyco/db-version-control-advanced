@@ -2,7 +2,7 @@
 
 Last updated: 2026-07-06
 
-Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED; STAGE W WS FORM PROVIDER MODE PROPOSED`
+Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED; STAGE W WS FORM PROVIDER MODE INITIAL SLICE IMPLEMENTED`
 
 Recurrence note: duplicate active JSON files have now been fixed in two Entity Editor paths. P7 fixed staged sync-file import and duplicate canonical grouping; P10 applies the same side-effect suppression and canonicalization guardrail to raw-intake commits.
 
@@ -1001,7 +1001,7 @@ Keep this completed guide focused on current sync-file import behavior. Use the 
 
 ## Stage W. WS Form Entity Editor Provider Mode
 
-Status: `PROPOSED 2026-07-06`
+Status: `INITIAL SLICE IMPLEMENTED 2026-07-06; W5/W6 REMAIN PROPOSED`
 
 Purpose:
 
@@ -1011,7 +1011,7 @@ Purpose:
 
 ### W0. Discovery Findings And Contract Lock
 
-Status: `PROPOSED`
+Status: `IMPLEMENTED 2026-07-06`
 
 Findings from WS Form and DBVC code:
 
@@ -1044,7 +1044,7 @@ Contract decisions for the first implementation:
 
 ### W1. Provider-Aware Entity Index
 
-Status: `PROPOSED`
+Status: `IMPLEMENTED 2026-07-06`
 
 Backend tasks:
 
@@ -1077,12 +1077,12 @@ Frontend tasks:
 Exit criteria:
 
 - A WS Form form JSON in `third-party/ws-form/forms/` appears in the Entity Editor table after rebuild.
-- A WS Form settings JSON appears as a provider settings row with apply disabled.
+- A WS Form settings JSON appears as a provider settings row.
 - Existing post/term indexing, duplicate grouping, and import affordances are unchanged.
 
 ### W2. Safe Provider JSON Read, Lock, And Save
 
-Status: `PROPOSED`
+Status: `IMPLEMENTED 2026-07-06`
 
 Backend tasks:
 
@@ -1108,7 +1108,7 @@ Frontend tasks:
 - Hide post/term-only buttons for provider rows:
   - `Save + Partial Import`
   - `Save + Full Replace`
-- Add provider-specific disabled/help text for actions that are not yet implemented.
+- Add provider-specific help text and a provider preview action.
 
 Exit criteria:
 
@@ -1117,7 +1117,7 @@ Exit criteria:
 
 ### W3. WS Form Preflight Service
 
-Status: `PROPOSED`
+Status: `IMPLEMENTED 2026-07-06`
 
 Backend tasks:
 
@@ -1136,7 +1136,7 @@ Backend tasks:
   - compute a stable preview hash over the file path, file mtime/checksum, UID, detected match, and requested mode
   - surface whether the file is eligible for create or UID-matched update
   - report warnings for missing style references, incoming source status, and payloads that will have checksums/published checksums regenerated
-  - block unsupported object types, ambiguous UID matches, duplicate noncanonical rows, WS Form unavailable, malformed object graphs, and settings apply attempts
+  - block unsupported object types, ambiguous UID matches, duplicate noncanonical rows, WS Form unavailable, and malformed object graphs
 - Add a preflight hook for add-on/field compatibility:
   - inspect incoming field `type` values when available
   - block or warn when WS Form would skip unlicensed or unavailable field types
@@ -1195,7 +1195,7 @@ Exit criteria:
 
 ### W4. Create And UID-Matched Update Commit
 
-Status: `PROPOSED`
+Status: `IMPLEMENTED 2026-07-06`
 
 Backend tasks:
 
@@ -1297,7 +1297,7 @@ Exit criteria:
 
 ### W7. WS Form Settings Payload Handling
 
-Status: `PROPOSED`
+Status: `IMPLEMENTED 2026-07-06`
 
 Backend tasks:
 
@@ -1324,12 +1324,12 @@ Exit criteria:
 
 ### W8. QA, Tests, And Operator Documentation
 
-Status: `PROPOSED`
+Status: `PARTIAL AUTOMATED COVERAGE IMPLEMENTED 2026-07-06; BROWSER QA OPEN`
 
 PHPUnit coverage:
 
 - index includes WS Form form payload rows from `third-party/ws-form/forms/`
-- index includes WS Form settings payload rows with apply disabled until W7
+- index includes WS Form settings payload rows
 - provider duplicate grouping uses `provider:object_type:uid`
 - preview blocks when WS Form classes/constants are unavailable
 - preview blocks malformed WS Form form payloads

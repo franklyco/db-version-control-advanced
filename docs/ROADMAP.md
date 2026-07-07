@@ -6,7 +6,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 
 | Topic | Status | Guide | Notes |
 |---|---|---|---|
-| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md` | Current primary implementation stream. Keep detailed state in addon-local docs; composite browser hardening status, including expanded-post-meta repeater stale coverage, is tracked in `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md` and `addons/visual-editor/docs/qa/TEST_LOG.md`. |
+| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md` | Current primary implementation stream. Keep detailed state in addon-local docs; composite browser hardening status and the descriptor-session footer-persistence fix are tracked in `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md`, `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_PERFORMANCE_UPGRADE_GUIDE.md`, and `addons/visual-editor/docs/qa/TEST_LOG.md`. |
 | Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
@@ -26,7 +26,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
 | Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
 | Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
-| WS Form Entity Editor provider mode | proposed | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#stage-w-ws-form-entity-editor-provider-mode` | Adds a phased Entity Editor plan for WS Form provider rows, JSON edit/save, preflight, create, UID-matched whole-form updates, settings merge handling, and QA. |
+| WS Form Entity Editor provider mode | initial-implemented | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#stage-w-ws-form-entity-editor-provider-mode` | Initial provider row, JSON edit/save, preflight, create, UID-matched whole-form update, settings merge, and automated coverage are in place; snapshot/diff/browser QA hardening remains. |
 
 ## Completed Work
 

@@ -124,6 +124,7 @@ require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackageImport
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/AiPackage/SubmissionPackagePostImportResolver.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/RawJsonIntakeService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/SyncFileImportService.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/ThirdPartySyncFileImportService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/EntityEditor/EntityJsonMergeService.php';
 require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Transfer/EntityPacketBuilder.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-export-manager.php';

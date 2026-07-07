@@ -108,6 +108,7 @@ final class Addon
         $this->hook_registrar->register();
         $this->routes->register();
         $this->journal->register();
+        add_action('wp_footer', [$this->registry, 'persistRequestSession'], 19);
         add_action('shutdown', [$this->registry, 'persistRequestSession'], 20);
         add_action('shutdown', [$this->profiler, 'flush'], 999);
     }
@@ -123,6 +124,7 @@ final class Addon
         $this->hook_registrar->unregister();
         $this->routes->unregister();
         $this->journal->unregister();
+        remove_action('wp_footer', [$this->registry, 'persistRequestSession'], 19);
         remove_action('shutdown', [$this->registry, 'persistRequestSession'], 20);
         remove_action('shutdown', [$this->profiler, 'flush'], 999);
     }

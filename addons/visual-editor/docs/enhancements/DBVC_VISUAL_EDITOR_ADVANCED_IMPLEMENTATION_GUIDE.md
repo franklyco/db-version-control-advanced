@@ -93,6 +93,7 @@ Recommended approach:
 - keep on-demand descriptor lookup as the only source of full field payloads
 - reuse the existing in-memory descriptor cache and in-flight request reuse
 - add a low-priority viewport-aware prefetch queue for visible uncached markers
+- keep request descriptor-session persistence ahead of frontend boot scripts; `wp_footer` priority 19 persistence avoids the marker/session race, while shutdown remains only a fallback
 
 Guardrails:
 - no `hydrate=1` warmup for the whole page
@@ -822,6 +823,8 @@ Require all of the following before enabling save:
 ## Current Pause Note
 
 Advanced grouped/flexible follow-up is intentionally paused after the recent contract work and live marker verification.
+
+Descriptor-session availability issue investigated on 2026-07-06: the frontend message `Markers were found, but the descriptor session was unavailable for this request.` means DOM markers were present but the REST session lookup could not load the user-scoped transient. The active mitigation is to persist the registry at `wp_footer` priority 19 before footer scripts execute, with shutdown retained as a fallback.
 
 Resume from here:
 0. current active slice before resuming the grouped-save smoke:

@@ -172,6 +172,11 @@ final class DBVC_Entity_Editor_Indexer
             return null;
         }
 
+        $third_party_item = self::build_third_party_item_from_json($decoded, $path, $relative);
+        if (is_array($third_party_item)) {
+            return $third_party_item;
+        }
+
         $kind = self::detect_kind($decoded);
         if ($kind === '') {
             return null;
@@ -213,6 +218,122 @@ final class DBVC_Entity_Editor_Indexer
             'is_canonical_duplicate' => false,
             'duplicate_group' => null,
         ];
+    }
+
+    /**
+     * Describe a decoded Entity Editor JSON payload without reading the index.
+     *
+     * @param array<string,mixed> $decoded
+     * @param string              $relative
+     * @return array<string,mixed>
+     */
+    public static function describe_payload(array $decoded, $relative = '')
+    {
+        $third_party = self::build_third_party_item_from_json($decoded, '', (string) $relative);
+        if (is_array($third_party)) {
+            return [
+                'entity_kind'             => 'third_party',
+                'subtype'                 => (string) ($third_party['subtype'] ?? ''),
+                'provider'                => (string) ($third_party['provider'] ?? ''),
+                'object_type'             => (string) ($third_party['object_type'] ?? ''),
+                'title'                   => (string) ($third_party['title'] ?? ''),
+                'uid'                     => (string) ($third_party['uid'] ?? ''),
+                'source_id'               => $third_party['source_id'] ?? null,
+                'source_status'           => (string) ($third_party['source_status'] ?? ''),
+                'matched_provider_entity' => $third_party['matched_provider_entity'] ?? null,
+            ];
+        }
+
+        $kind = self::detect_kind($decoded);
+        $subtype = $kind === 'term'
+            ? (string) ($decoded['taxonomy'] ?? '')
+            : (string) ($decoded['post_type'] ?? '');
+
+        return [
+            'entity_kind' => $kind !== '' ? $kind : 'post',
+            'subtype'     => $subtype,
+            'provider'    => '',
+            'object_type' => '',
+            'title'       => $kind === 'term'
+                ? (string) ($decoded['name'] ?? $decoded['term_name'] ?? '')
+                : (string) ($decoded['post_title'] ?? ''),
+            'uid'         => self::extract_entity_uid($decoded),
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $decoded
+     * @param string              $path
+     * @param string              $relative
+     * @return array<string,mixed>|null
+     */
+    private static function build_third_party_item_from_json(array $decoded, $path, $relative)
+    {
+        if (! class_exists('DBVC_Third_Party_Portability')) {
+            return null;
+        }
+
+        $relative = str_replace('\\', '/', ltrim((string) $relative, '/'));
+        $mtime = is_string($path) && $path !== '' && is_file($path) ? (int) filemtime($path) : 0;
+
+        if (DBVC_Third_Party_Portability::is_wsform_form_payload($decoded)) {
+            $summary = DBVC_Third_Party_Portability::summarize_wsform_form_payload($decoded);
+            $uid = isset($summary['uid']) ? (string) $summary['uid'] : '';
+            $source_id = isset($summary['source_id']) ? (int) $summary['source_id'] : 0;
+            $match = $uid !== '' ? DBVC_Third_Party_Portability::get_wsform_form_match_by_uid($uid) : null;
+            $title = isset($summary['label']) && (string) $summary['label'] !== ''
+                ? (string) $summary['label']
+                : __('WS Form', 'dbvc');
+
+            return [
+                'entity_kind'             => 'third_party',
+                'provider'                => DBVC_Third_Party_Portability::PROVIDER_WSFORM,
+                'object_type'             => 'form',
+                'subtype'                 => 'ws_form_form',
+                'title'                   => $title,
+                'slug'                    => sanitize_title($title),
+                'uid'                     => $uid,
+                'matched_wp'              => null,
+                'matched_provider_entity' => $match,
+                'payload_entity_id'       => $source_id > 0 ? $source_id : null,
+                'filename_entity_id'      => self::extract_wsform_filename_entity_id($relative),
+                'source_id'               => $source_id > 0 ? $source_id : null,
+                'source_status'           => isset($summary['source_status']) ? (string) $summary['source_status'] : '',
+                'counts'                  => isset($summary['counts']) && is_array($summary['counts']) ? $summary['counts'] : [],
+                'relative_path'           => $relative,
+                'filename'                => basename($relative),
+                'mtime'                   => $mtime,
+                'mtime_gmt'               => $mtime > 0 ? gmdate('c', $mtime) : '',
+                'is_duplicate'            => false,
+                'is_canonical_duplicate'  => false,
+                'duplicate_group'         => null,
+            ];
+        }
+
+        if (DBVC_Third_Party_Portability::is_wsform_settings_payload($decoded)) {
+            return [
+                'entity_kind'             => 'third_party',
+                'provider'                => DBVC_Third_Party_Portability::PROVIDER_WSFORM,
+                'object_type'             => 'settings',
+                'subtype'                 => 'ws_form_settings',
+                'title'                   => __('WS Form Settings', 'dbvc'),
+                'slug'                    => 'ws-form-settings',
+                'uid'                     => '',
+                'matched_wp'              => null,
+                'matched_provider_entity' => null,
+                'payload_entity_id'       => null,
+                'filename_entity_id'      => null,
+                'relative_path'           => $relative,
+                'filename'                => basename($relative),
+                'mtime'                   => $mtime,
+                'mtime_gmt'               => $mtime > 0 ? gmdate('c', $mtime) : '',
+                'is_duplicate'            => false,
+                'is_canonical_duplicate'  => false,
+                'duplicate_group'         => null,
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -288,6 +409,39 @@ final class DBVC_Entity_Editor_Indexer
     private static function build_duplicate_group_descriptor(array $item): array
     {
         $kind = isset($item['entity_kind']) ? sanitize_key((string) $item['entity_kind']) : 'entity';
+        if ($kind === 'third_party') {
+            $provider = isset($item['provider']) ? sanitize_key((string) $item['provider']) : 'provider';
+            $object_type = isset($item['object_type']) ? sanitize_key((string) $item['object_type']) : 'object';
+            $matched_id = isset($item['matched_provider_entity']['id']) ? (int) $item['matched_provider_entity']['id'] : 0;
+            if ($matched_id > 0) {
+                return [
+                    'key' => sprintf('%s:%s:%s:db:%d', $kind, $provider, $object_type, $matched_id),
+                    'match_basis' => 'matched_provider_entity_id',
+                ];
+            }
+
+            $uid = isset($item['uid']) ? trim((string) $item['uid']) : '';
+            if ($uid !== '') {
+                return [
+                    'key' => sprintf('%s:%s:%s:uid:%s', $kind, $provider, $object_type, $uid),
+                    'match_basis' => 'dbvc_portability_uid',
+                ];
+            }
+
+            $payload_id = isset($item['payload_entity_id']) ? (int) $item['payload_entity_id'] : 0;
+            if ($payload_id > 0) {
+                return [
+                    'key' => sprintf('%s:%s:%s:payload:%d', $kind, $provider, $object_type, $payload_id),
+                    'match_basis' => 'payload_entity_id',
+                ];
+            }
+
+            return [
+                'key' => '',
+                'match_basis' => '',
+            ];
+        }
+
         $matched_id = isset($item['matched_wp']['id']) ? (int) $item['matched_wp']['id'] : 0;
 
         if ($matched_id > 0) {
@@ -434,6 +588,20 @@ final class DBVC_Entity_Editor_Indexer
         }
 
         if (preg_match('/(?:^|-)(\d+)$/', (string) $token, $matches)) {
+            return isset($matches[1]) ? (int) $matches[1] : 0;
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param string $relative
+     * @return int
+     */
+    private static function extract_wsform_filename_entity_id(string $relative): int
+    {
+        $basename = basename($relative, '.json');
+        if (preg_match('/^ws-form-(\d+)(?:-|$)/', $basename, $matches)) {
             return isset($matches[1]) ? (int) $matches[1] : 0;
         }
 
@@ -588,6 +756,37 @@ final class DBVC_Entity_Editor_Indexer
     }
 
     /**
+     * @param array<string,mixed> $decoded
+     * @param string              $relative_path
+     * @return true|\WP_Error
+     */
+    private static function validate_provider_payload_for_path(array $decoded, string $relative_path)
+    {
+        $relative_path = str_replace('\\', '/', ltrim($relative_path, '/'));
+        if (strpos($relative_path, 'third-party/ws-form/') !== 0) {
+            return true;
+        }
+
+        if (! class_exists('DBVC_Third_Party_Portability')) {
+            return new \WP_Error('dbvc_entity_editor_provider_unavailable', __('Third-party portability support is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (strpos($relative_path, 'third-party/ws-form/forms/') === 0 && DBVC_Third_Party_Portability::is_wsform_form_payload($decoded)) {
+            return true;
+        }
+
+        if ($relative_path === 'third-party/ws-form/settings.json' && DBVC_Third_Party_Portability::is_wsform_settings_payload($decoded)) {
+            return true;
+        }
+
+        return new \WP_Error(
+            'dbvc_entity_editor_provider_payload_mismatch',
+            __('This WS Form provider path must contain a WS Form form or settings payload.', 'dbvc'),
+            ['status' => 400]
+        );
+    }
+
+    /**
      * @param string $root
      * @param string $path
      * @return string
@@ -710,6 +909,11 @@ final class DBVC_Entity_Editor_Indexer
 
         if (self::is_excluded_payload($decoded, (string) $relative_path)) {
             return new \WP_Error('dbvc_entity_editor_excluded_payload', __('This JSON file type is excluded from Entity Editor edits.', 'dbvc'), ['status' => 400]);
+        }
+
+        $provider_validation = self::validate_provider_payload_for_path($decoded, (string) $relative_path);
+        if (is_wp_error($provider_validation)) {
+            return $provider_validation;
         }
 
         $lock = self::validate_file_lock_for_save($relative_path, (int) $user_id, (string) $lock_token, (bool) $force_takeover);

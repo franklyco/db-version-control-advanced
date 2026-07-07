@@ -6,17 +6,18 @@ Brief usage notes for the DBVC Entity Editor.
 
 ## Scope
 
-- Supports JSON entities for posts and terms.
-- Excludes media/attachments, menus/nav menu items, options.
+- Supports JSON entities for posts, terms, and WS Form provider payloads under `third-party/ws-form/`.
+- WS Form support covers form definitions and non-sensitive settings payloads.
+- Excludes media/attachments, menus/nav menu items, generic options, WS Form submissions/stats, and WS Form style entities.
 
 ---
 
 ## Actions
 
 - `Entity index`
-  - Lists indexed post/CPT and taxonomy term JSON files from the sync folder.
+  - Lists indexed post/CPT, taxonomy term, and supported third-party provider JSON files from the sync folder.
   - The `Import status` column is sortable; click it once to bring unimported/unmatched files to the top.
-  - Rows with no matched WordPress entity are labeled `Not imported` and can show `Import as New` when the payload is eligible.
+  - Rows with no matched WordPress or provider entity are labeled `Not imported` and can show an import/preview action when the payload is eligible.
 
 - `New From Raw JSON`
   - Opens a dedicated intake modal from the Entity Editor toolbar.
@@ -46,13 +47,25 @@ Brief usage notes for the DBVC Entity Editor.
   - Rewrites source-site IDs to the matched local post ID and normalizes the sync JSON to the local canonical filename when needed.
   - Does not appear for slug-only matches, payload-ID-only matches, stale duplicate files, taxonomy terms, or hard blockers.
 
+- `Preview Provider Import`
+  - Appears on supported WS Form provider rows.
+  - Uses `third-party/ws-form/forms/*.json` for form definitions and `third-party/ws-form/settings.json` for settings.
+  - Previews provider, object type, UID, source ID, WS Form graph counts, local UID match, warnings, and blockers.
+  - Creates unmatched WS Forms through DBVC's WS Form portability adapter.
+  - Updates matched WS Forms only when the local form matches `dbvc_portability_uid` and the operator confirms the whole-form replacement.
+  - Merges WS Form settings by applying supported non-sensitive option keys and preserving local secrets.
+  - Does not match WS Forms by label or numeric source ID.
+  - Does not import submissions, stats, or style entities.
+
 - `Save JSON`
   - Validates JSON.
   - Creates backup.
   - Atomically replaces sync file.
   - Does not update WP DB.
+  - For WS Form provider files, this remains file-only; use `Preview Provider Import` to apply through the provider adapter.
 
 - `Save + Partial Import`
+  - Hidden for WS Form provider files.
   - Saves JSON first.
   - Defaults to strict UID-first matching. If JSON contains a UID and fallback matching is disabled, an unmatched UID blocks slug fallback even when the JSON ID or slug matches a local entity.
   - Includes an `Advanced Matching` one-run override:
@@ -63,6 +76,7 @@ Brief usage notes for the DBVC Entity Editor.
   - Does not delete missing meta keys.
 
 - `Merge Incoming JSON`
+  - Hidden for WS Form provider files.
   - Appears inside the selected entity JSON editor modal.
   - Lets the operator paste one incoming DBVC post/CPT or term JSON payload and preview a proposed merge into the selected file.
   - Keeps the matched local WordPress entity as the authority for ID and, by default, UID and slug, even when the selected sync JSON has drifted to a source-site UID.
@@ -75,6 +89,7 @@ Brief usage notes for the DBVC Entity Editor.
   - For Bricks templates, preserves local template type/condition/preview reference values when incoming values differ and surfaces notes instead of attempting element-level merging.
 
 - `Save + Full Replace`
+  - Hidden for WS Form provider files.
   - Saves JSON first.
   - Requires typed `REPLACE` confirmation in modal.
   - Deletes non-protected meta keys not present in JSON.
@@ -92,8 +107,9 @@ Brief usage notes for the DBVC Entity Editor.
 
 ## Known limitations
 
-- `Import as New` supports post/CPT and taxonomy term JSON only; media, menu, and option JSON are intentionally excluded.
+- `Import as New` remains post/CPT and taxonomy term focused; WS Form rows use `Preview Provider Import`.
 - Sync-file `Update Matched Entity` is post/CPT-only in the first slice; term updates remain deferred until term update semantics are separately audited.
+- WS Form matched updates are whole-form replacements through WS Form APIs; field-level WS Form diffs and restore UI are not yet implemented.
 - `Merge Incoming JSON` v1 does not provide field-by-field accept/reject decisions, destructive full-replace merge, media hydration, or selective Bricks element-level merging.
 - Full replace confirmation modal does not currently include preflight delete-count preview; counts are returned after operation.
 - CodeMirror JSON editor/linting is not yet integrated; editor currently uses textarea.
