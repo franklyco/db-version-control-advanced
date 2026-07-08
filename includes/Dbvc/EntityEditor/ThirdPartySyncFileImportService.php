@@ -15,7 +15,178 @@ final class ThirdPartySyncFileImportService
     private const MODE_CREATE_FORM = 'create_form';
     private const MODE_UPDATE_MATCHED_FORM = 'update_matched_form';
     private const MODE_MERGE_SETTINGS = 'merge_settings';
+    private const RAW_MODE_CREATE_ONLY = 'create_only';
+    private const RAW_MODE_CREATE_OR_UPDATE = 'create_or_update_matched';
+    private const RAW_MODE_STAGE_ONLY = 'stage_only';
     private const BATCH_LIMIT = 25;
+
+    /**
+     * @param string $content
+     * @return bool
+     */
+    public static function can_handle_raw_content($content)
+    {
+        if (! \class_exists('DBVC_Third_Party_Portability')) {
+            return false;
+        }
+
+        $payload = self::decode_raw_payload($content);
+        if (\is_wp_error($payload)) {
+            return false;
+        }
+
+        return \DBVC_Third_Party_Portability::is_wsform_payload($payload)
+            || \DBVC_Third_Party_Portability::is_wsform_form_payload($payload)
+            || \DBVC_Third_Party_Portability::is_wsform_settings_payload($payload);
+    }
+
+    /**
+     * @param string $content
+     * @param string $mode
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function preview_raw($content, $mode = self::RAW_MODE_CREATE_ONLY)
+    {
+        $payload = self::decode_raw_payload($content);
+        if (\is_wp_error($payload)) {
+            return $payload;
+        }
+
+        return self::build_raw_preview($payload, $mode);
+    }
+
+    /**
+     * @param string              $content
+     * @param string              $mode
+     * @param int                 $user_id
+     * @param array<string,mixed> $args
+     * @return array<string,mixed>|\WP_Error
+     */
+    public static function commit_raw($content, $mode = self::RAW_MODE_CREATE_ONLY, $user_id = 0, array $args = [])
+    {
+        $payload = self::decode_raw_payload($content);
+        if (\is_wp_error($payload)) {
+            return $payload;
+        }
+
+        $mode = self::normalize_raw_mode($mode);
+        $preview = self::build_raw_preview($payload, $mode);
+        if (\is_wp_error($preview)) {
+            return $preview;
+        }
+
+        $blocking = isset($preview['blocking']) && \is_array($preview['blocking']) ? $preview['blocking'] : [];
+        if (! empty($blocking)) {
+            $message = isset($blocking[0]['message']) ? (string) $blocking[0]['message'] : __('This provider JSON payload is blocked for the selected action.', 'dbvc');
+
+            return new \WP_Error(
+                'dbvc_entity_editor_raw_provider_intake_blocked',
+                $message,
+                [
+                    'status'  => 409,
+                    'preview' => $preview,
+                ]
+            );
+        }
+
+        $action = isset($preview['detected_action']) ? (string) $preview['detected_action'] : 'blocked';
+        if ($action === self::MODE_UPDATE_MATCHED_FORM) {
+            $confirmation = isset($args['confirmation']) && \is_array($args['confirmation'])
+                ? $args['confirmation']
+                : null;
+            $confirmed = self::validate_raw_matched_update_confirmation($preview, $confirmation);
+            if (\is_wp_error($confirmed)) {
+                return $confirmed;
+            }
+
+            $uid = \DBVC_Third_Party_Portability::extract_wsform_form_uid($payload);
+            $current_match = $uid !== '' ? \DBVC_Third_Party_Portability::get_wsform_form_match_by_uid($uid) : null;
+            $preview_match_id = isset($preview['matched_update']['wp_entity']['id']) ? (int) $preview['matched_update']['wp_entity']['id'] : 0;
+            if (! \is_array($current_match) || (int) ($current_match['id'] ?? 0) !== $preview_match_id) {
+                return new \WP_Error(
+                    'dbvc_entity_editor_raw_provider_update_match_drift',
+                    __('The matched WS Form no longer matches this payload UID. Refresh the preview before updating.', 'dbvc'),
+                    [
+                        'status'  => 409,
+                        'preview' => $preview,
+                    ]
+                );
+            }
+        }
+
+        $relative_path = isset($preview['target_relative_path']) ? (string) $preview['target_relative_path'] : '';
+        if ($relative_path === '') {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_missing_path', __('Unable to determine a safe sync path for this provider JSON payload.', 'dbvc'), ['status' => 422]);
+        }
+
+        if ($action === self::MODE_CREATE_FORM && \DBVC_Third_Party_Portability::is_wsform_form_payload($payload)) {
+            $uid = \DBVC_Third_Party_Portability::extract_wsform_form_uid($payload);
+            if ($uid === '') {
+                $uid = wp_generate_uuid4();
+                $payload = self::stamp_wsform_uid($payload, $uid);
+                $preview['uid'] = $uid;
+            }
+        }
+
+        $allow_overwrite = \in_array($action, [self::MODE_UPDATE_MATCHED_FORM, self::MODE_MERGE_SETTINGS], true);
+        $written = self::write_raw_payload_to_sync($relative_path, $payload, $allow_overwrite);
+        if (\is_wp_error($written)) {
+            return $written;
+        }
+
+        $imported = false;
+        $created = false;
+        $updated = false;
+        $import_result = null;
+        $wp_entity = null;
+
+        if ($action === 'stage') {
+            // File-only operation.
+        } elseif ($action === self::MODE_MERGE_SETTINGS) {
+            $import_result = \DBVC_Third_Party_Portability::import_wsform_settings_for_entity_editor($payload);
+            if (\is_wp_error($import_result)) {
+                return $import_result;
+            }
+            $imported = true;
+            $updated = true;
+        } else {
+            $import_result = \DBVC_Third_Party_Portability::import_wsform_form_for_entity_editor($payload);
+            if (\is_wp_error($import_result)) {
+                return $import_result;
+            }
+            $imported = true;
+            $created = ! empty($import_result['created']);
+            $updated = ! empty($import_result['updated']);
+            $wp_entity = isset($import_result['wp_entity']) && \is_array($import_result['wp_entity']) ? $import_result['wp_entity'] : null;
+        }
+
+        delete_transient('dbvc_entity_editor_index_v1');
+
+        $result = [
+            'action'               => $action,
+            'mode'                 => $mode,
+            'entity_kind'          => 'third_party',
+            'provider'             => isset($preview['provider']) ? (string) $preview['provider'] : '',
+            'object_type'          => isset($preview['object_type']) ? (string) $preview['object_type'] : '',
+            'subtype'              => isset($preview['subtype']) ? (string) $preview['subtype'] : '',
+            'title'                => isset($preview['title']) ? (string) $preview['title'] : '',
+            'slug'                 => isset($preview['slug']) ? (string) $preview['slug'] : '',
+            'uid'                  => isset($preview['uid']) ? (string) $preview['uid'] : '',
+            'relative_path'        => $relative_path,
+            'source_relative_path' => $relative_path,
+            'backup_path'          => isset($written['backup_path']) ? (string) $written['backup_path'] : '',
+            'created'              => $created,
+            'updated'              => $updated,
+            'imported'             => $imported,
+            'matched'              => isset($preview['match']) && \is_array($preview['match']) ? $preview['match'] : ['status' => 'none'],
+            'wp_entity'            => $wp_entity,
+            'import_result'        => $import_result,
+            'warnings'             => isset($preview['warnings']) && \is_array($preview['warnings']) ? $preview['warnings'] : [],
+        ];
+
+        self::log_commit('Entity Editor raw provider intake', $result, (int) $user_id);
+        return $result;
+    }
 
     /**
      * @param array<int,string>|string $paths
@@ -97,6 +268,474 @@ final class ThirdPartySyncFileImportService
     }
 
     /**
+     * @param string $content
+     * @return array<string,mixed>|\WP_Error
+     */
+    private static function decode_raw_payload($content)
+    {
+        $content = \is_string($content) ? trim($content) : '';
+        if ($content === '') {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_empty', __('Paste a WS Form provider JSON payload before previewing or importing.', 'dbvc'), ['status' => 400]);
+        }
+
+        $decoded = json_decode($content, true);
+        if (! \is_array($decoded)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_invalid_json', __('Raw provider JSON is invalid.', 'dbvc'), ['status' => 422]);
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param string              $mode
+     * @return array<string,mixed>|\WP_Error
+     */
+    private static function build_raw_preview(array $payload, $mode)
+    {
+        if (! \class_exists('DBVC_Third_Party_Portability')) {
+            return new \WP_Error('dbvc_entity_editor_third_party_import_unavailable', __('Third-party Entity Editor import service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $mode = self::normalize_raw_mode($mode);
+
+        if (
+            \DBVC_Third_Party_Portability::is_wsform_form_payload($payload)
+            || \DBVC_Third_Party_Portability::is_wsform_settings_payload($payload)
+        ) {
+            $relative_path = self::build_raw_target_relative_path($payload);
+            if (\is_wp_error($relative_path)) {
+                return $relative_path;
+            }
+
+            $base = self::default_preview_item((string) $relative_path);
+            $base['target_relative_path'] = (string) $relative_path;
+
+            if (\DBVC_Third_Party_Portability::is_wsform_form_payload($payload)) {
+                $item = self::build_wsform_form_preview($base, $payload, null);
+                return self::adapt_provider_item_for_raw_mode($item, $payload, $mode);
+            }
+
+            $item = self::build_wsform_settings_preview($base, $payload, null);
+            return self::adapt_provider_item_for_raw_mode($item, $payload, $mode);
+        }
+
+        if (\DBVC_Third_Party_Portability::is_wsform_payload($payload)) {
+            return self::build_unsupported_wsform_raw_preview($payload, $mode);
+        }
+
+        return new \WP_Error(
+            'dbvc_entity_editor_raw_provider_unsupported',
+            __('Raw provider intake supports WS Form form and settings JSON only.', 'dbvc'),
+            ['status' => 422]
+        );
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return string|\WP_Error
+     */
+    private static function build_raw_target_relative_path(array $payload)
+    {
+        if (! \class_exists('DBVC_Third_Party_Portability')) {
+            return new \WP_Error('dbvc_entity_editor_third_party_import_unavailable', __('Third-party Entity Editor import service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (\DBVC_Third_Party_Portability::is_wsform_form_payload($payload)) {
+            $filename = \DBVC_Third_Party_Portability::determine_wsform_form_filename_from_payload($payload);
+            if ($filename === '' || substr($filename, -5) !== '.json') {
+                return new \WP_Error('dbvc_entity_editor_raw_provider_invalid_filename', __('Unable to determine a WS Form sync filename for this payload.', 'dbvc'), ['status' => 422]);
+            }
+
+            return \DBVC_Third_Party_Portability::SYNC_DIR . '/forms/' . $filename;
+        }
+
+        if (\DBVC_Third_Party_Portability::is_wsform_settings_payload($payload)) {
+            return \DBVC_Third_Party_Portability::SYNC_DIR . '/settings.json';
+        }
+
+        return new \WP_Error('dbvc_entity_editor_raw_provider_unsupported', __('Raw provider intake supports WS Form form and settings JSON only.', 'dbvc'), ['status' => 422]);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param string              $mode
+     * @return array<string,mixed>
+     */
+    private static function build_unsupported_wsform_raw_preview(array $payload, $mode)
+    {
+        $base = self::default_preview_item('');
+        $object_type = \DBVC_Third_Party_Portability::get_wsform_payload_object_type($payload);
+        if ($object_type === '') {
+            $object_type = 'unknown';
+        }
+
+        $label = isset($payload['label']) ? sanitize_text_field((string) $payload['label']) : '';
+        $title = $label !== '' ? $label : __('WS Form JSON', 'dbvc');
+
+        $base['provider'] = \DBVC_Third_Party_Portability::PROVIDER_WSFORM;
+        $base['object_type'] = $object_type;
+        $base['subtype'] = 'ws_form_' . sanitize_key($object_type);
+        $base['title'] = $title;
+        $base['slug'] = sanitize_title($title);
+        $base['blocking'][] = self::reason(
+            'unsupported_wsform_object_type',
+            $object_type === 'unknown'
+                ? __('This WS Form JSON does not identify itself as a form or settings payload. Raw WS Form intake currently imports forms and settings only.', 'dbvc')
+                : sprintf(__('Raw WS Form intake does not support "%s" JSON yet. It currently imports forms and settings only.', 'dbvc'), $object_type)
+        );
+
+        return self::adapt_provider_item_for_raw_mode($base, $payload, $mode);
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @param array<string,mixed> $payload
+     * @param string              $mode
+     * @return array<string,mixed>
+     */
+    private static function adapt_provider_item_for_raw_mode(array $item, array $payload, $mode)
+    {
+        $mode = self::normalize_raw_mode($mode);
+        $object_type = isset($item['object_type']) ? (string) $item['object_type'] : '';
+        $relative_path = isset($item['target_relative_path']) ? (string) $item['target_relative_path'] : (string) ($item['relative_path'] ?? '');
+        $collision = self::inspect_raw_file_collision($relative_path, $payload);
+        $match = isset($item['match']) && \is_array($item['match']) ? $item['match'] : ['status' => 'none'];
+        $matched = isset($match['status']) && (string) $match['status'] === 'matched';
+
+        $provider_blocking = isset($item['blocking']) && \is_array($item['blocking']) ? $item['blocking'] : [];
+        $hard_blockers = [];
+        foreach ($provider_blocking as $blocker) {
+            if (! \is_array($blocker)) {
+                continue;
+            }
+
+            $code = isset($blocker['code']) ? (string) $blocker['code'] : '';
+            if (\in_array($code, ['matched_provider_entity', 'wsform_settings_no_mergeable_options'], true)) {
+                continue;
+            }
+
+            if ($code === 'wsform_unavailable' && $mode === self::RAW_MODE_STAGE_ONLY) {
+                continue;
+            }
+
+            $hard_blockers[] = $blocker;
+        }
+
+        $create_form = false;
+        $update_form = false;
+        $merge_settings = false;
+        $stage = false;
+        $detected_action = 'blocked';
+        $blocking = $hard_blockers;
+
+        if ($object_type === 'form') {
+            if ($mode === self::RAW_MODE_CREATE_ONLY) {
+                if ($matched) {
+                    $blocking[] = self::reason('matched_provider_entity', __('Create only is unavailable because this WS Form payload already matches a local WS Form by portability UID.', 'dbvc'));
+                }
+                if (! empty($collision['exists'])) {
+                    $blocking[] = self::reason('file_collision', __('The target WS Form sync file already exists.', 'dbvc'));
+                }
+                $create_form = empty($blocking) && ! empty($item['available_actions'][self::MODE_CREATE_FORM]);
+                $detected_action = $create_form ? self::MODE_CREATE_FORM : 'blocked';
+            } elseif ($mode === self::RAW_MODE_CREATE_OR_UPDATE) {
+                if (! empty($collision['exists']) && ! ($matched && ! empty($collision['compatible_with_match']))) {
+                    $blocking[] = self::reason('file_collision', __('The target WS Form sync file already exists and could not be safely associated with the matched local WS Form.', 'dbvc'));
+                }
+
+                if ($matched) {
+                    $update_form = empty($blocking) && ! empty($item['available_actions'][self::MODE_UPDATE_MATCHED_FORM]);
+                    $detected_action = $update_form ? self::MODE_UPDATE_MATCHED_FORM : 'blocked';
+                } else {
+                    $create_form = empty($blocking) && ! empty($item['available_actions'][self::MODE_CREATE_FORM]);
+                    $detected_action = $create_form ? self::MODE_CREATE_FORM : 'blocked';
+                }
+            } else {
+                if (! empty($collision['exists'])) {
+                    $blocking[] = self::reason('file_collision', __('The target WS Form sync file already exists.', 'dbvc'));
+                }
+                $stage = empty($blocking);
+                $detected_action = $stage ? 'stage' : 'blocked';
+            }
+        } elseif ($object_type === 'settings') {
+            if ($mode === self::RAW_MODE_STAGE_ONLY) {
+                if (! empty($collision['exists'])) {
+                    $blocking[] = self::reason('file_collision', __('The target WS Form settings sync file already exists.', 'dbvc'));
+                }
+                $stage = empty($blocking);
+                $detected_action = $stage ? 'stage' : 'blocked';
+            } else {
+                if ($mode === self::RAW_MODE_CREATE_ONLY) {
+                    $blocking[] = self::reason('provider_settings_merge_mode_required', __('WS Form settings are merge-only. Choose Create or Update Matched to merge settings, or Stage JSON Only to save the file.', 'dbvc'));
+                }
+                if (empty($item['available_actions'][self::MODE_MERGE_SETTINGS])) {
+                    foreach ($provider_blocking as $blocker) {
+                        if (\is_array($blocker) && (string) ($blocker['code'] ?? '') === 'wsform_settings_no_mergeable_options') {
+                            $blocking[] = $blocker;
+                        }
+                    }
+                }
+                $merge_settings = empty($blocking) && ! empty($item['available_actions'][self::MODE_MERGE_SETTINGS]);
+                $detected_action = $merge_settings ? self::MODE_MERGE_SETTINGS : 'blocked';
+            }
+        }
+
+        $warnings = isset($item['warnings']) && \is_array($item['warnings']) ? $item['warnings'] : [];
+        if (! empty($collision['exists'])) {
+            $warnings[] = self::reason('file_collision', __('The target provider sync file already exists.', 'dbvc'));
+        }
+
+        $item['mode'] = $mode;
+        $item['target_relative_path'] = $relative_path;
+        $item['file_collision'] = $collision;
+        $item['warnings'] = $warnings;
+        $item['blocking'] = $blocking;
+        $item['detected_action'] = $detected_action;
+        $item['available_actions'][self::RAW_MODE_CREATE_ONLY] = $mode === self::RAW_MODE_CREATE_ONLY && $create_form;
+        $item['available_actions'][self::RAW_MODE_CREATE_OR_UPDATE] = $mode === self::RAW_MODE_CREATE_OR_UPDATE && ($create_form || $update_form || $merge_settings);
+        $item['available_actions'][self::RAW_MODE_STAGE_ONLY] = $mode === self::RAW_MODE_STAGE_ONLY && $stage;
+        $item['available_actions'][self::MODE_CREATE_FORM] = $create_form;
+        $item['available_actions'][self::MODE_UPDATE_MATCHED_FORM] = $update_form || (! empty($item['available_actions'][self::MODE_UPDATE_MATCHED_FORM]) && $mode !== self::RAW_MODE_CREATE_ONLY);
+        $item['available_actions'][self::MODE_MERGE_SETTINGS] = $merge_settings;
+        $item['blocker_details'] = self::build_blocker_details($item);
+        $item['preview_hash'] = self::build_preview_hash($item, $payload, null);
+
+        return $item;
+    }
+
+    /**
+     * @param string              $relative_path
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private static function inspect_raw_file_collision($relative_path, array $payload)
+    {
+        $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
+        if ($relative_path === '') {
+            return [
+                'exists' => false,
+            ];
+        }
+
+        $sync_real = realpath(\dbvc_get_sync_path());
+        if (! $sync_real || ! is_dir($sync_real)) {
+            return [
+                'exists' => false,
+            ];
+        }
+
+        $absolute_path = trailingslashit($sync_real) . $relative_path;
+        if (! is_file($absolute_path)) {
+            return [
+                'exists' => false,
+            ];
+        }
+
+        $decoded = self::read_json_file($absolute_path);
+        $incoming_uid = \DBVC_Third_Party_Portability::is_wsform_form_payload($payload)
+            ? \DBVC_Third_Party_Portability::extract_wsform_form_uid($payload)
+            : '';
+        $existing_uid = \is_array($decoded) && \DBVC_Third_Party_Portability::is_wsform_form_payload($decoded)
+            ? \DBVC_Third_Party_Portability::extract_wsform_form_uid($decoded)
+            : '';
+
+        return [
+            'exists'                => true,
+            'relative_path'         => $relative_path,
+            'absolute_path'         => $absolute_path,
+            'valid_json'            => \is_array($decoded),
+            'uid'                   => $existing_uid,
+            'compatible_with_match' => $incoming_uid !== '' && $existing_uid !== '' && hash_equals($incoming_uid, $existing_uid),
+        ];
+    }
+
+    /**
+     * @param array<string,mixed>      $preview
+     * @param array<string,mixed>|null $confirmation
+     * @return true|\WP_Error
+     */
+    private static function validate_raw_matched_update_confirmation(array $preview, $confirmation)
+    {
+        $matched_update = isset($preview['matched_update']) && \is_array($preview['matched_update']) ? $preview['matched_update'] : [];
+        $matched_entity = isset($matched_update['wp_entity']) && \is_array($matched_update['wp_entity']) ? $matched_update['wp_entity'] : [];
+        $matched_id = isset($matched_entity['id']) ? (int) $matched_entity['id'] : 0;
+
+        if (! \is_array($confirmation) || empty($confirmation['confirmed'])) {
+            return new \WP_Error(
+                'dbvc_entity_editor_raw_provider_update_confirmation_required',
+                __('Confirm the matched WS Form update before DBVC applies this raw JSON payload.', 'dbvc'),
+                [
+                    'status'  => 409,
+                    'preview' => $preview,
+                ]
+            );
+        }
+
+        $provided_hash = isset($confirmation['preview_hash']) ? (string) $confirmation['preview_hash'] : '';
+        $current_hash = isset($preview['preview_hash']) ? (string) $preview['preview_hash'] : '';
+        if ($provided_hash === '' || $current_hash === '' || ! hash_equals($current_hash, $provided_hash)) {
+            return new \WP_Error(
+                'dbvc_entity_editor_raw_provider_update_stale_preview',
+                __('The WS Form preview changed. Refresh the preview before updating.', 'dbvc'),
+                [
+                    'status'  => 409,
+                    'preview' => $preview,
+                ]
+            );
+        }
+
+        $confirmed_id = isset($confirmation['matched_entity_id'])
+            ? (int) $confirmation['matched_entity_id']
+            : (isset($confirmation['match_id']) ? (int) $confirmation['match_id'] : 0);
+        if ($matched_id <= 0 || $confirmed_id <= 0 || $matched_id !== $confirmed_id) {
+            return new \WP_Error(
+                'dbvc_entity_editor_raw_provider_update_match_drift',
+                __('The matched WS Form changed. Refresh the preview before updating.', 'dbvc'),
+                [
+                    'status'  => 409,
+                    'preview' => $preview,
+                ]
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * @param string              $relative_path
+     * @param array<string,mixed> $payload
+     * @param bool                $allow_overwrite
+     * @return array<string,string>|\WP_Error
+     */
+    private static function write_raw_payload_to_sync($relative_path, array $payload, $allow_overwrite = false)
+    {
+        $absolute_path = self::resolve_raw_target_absolute_path($relative_path);
+        if (\is_wp_error($absolute_path)) {
+            return $absolute_path;
+        }
+
+        if (is_file($absolute_path) && ! $allow_overwrite) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_file_collision', __('The target provider sync file already exists.', 'dbvc'), ['status' => 409]);
+        }
+
+        $backup_path = '';
+        if (is_file($absolute_path)) {
+            $backup = self::backup_existing_raw_file((string) $absolute_path, (string) $relative_path);
+            if (\is_wp_error($backup)) {
+                return $backup;
+            }
+            $backup_path = (string) $backup;
+        }
+
+        $normalized = \function_exists('dbvc_normalize_for_json') ? dbvc_normalize_for_json($payload) : $payload;
+        $encoded = wp_json_encode($normalized, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (! \is_string($encoded) || $encoded === '') {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_encode_failed', __('Unable to encode the provider JSON payload for sync.', 'dbvc'), ['status' => 500]);
+        }
+
+        $tmp_path = (string) $absolute_path . '.tmp-' . wp_generate_password(8, false, false);
+        $bytes = file_put_contents($tmp_path, $encoded . "\n");
+        if (! \is_int($bytes) || $bytes <= 0) {
+            @unlink($tmp_path);
+            return new \WP_Error('dbvc_entity_editor_raw_provider_write_failed', __('Unable to write the provider JSON payload into sync.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (! @rename($tmp_path, $absolute_path)) {
+            @unlink($tmp_path);
+            return new \WP_Error('dbvc_entity_editor_raw_provider_replace_failed', __('Unable to replace the target provider sync JSON file atomically.', 'dbvc'), ['status' => 500]);
+        }
+
+        return [
+            'relative_path' => (string) $relative_path,
+            'absolute_path' => (string) $absolute_path,
+            'backup_path'   => $backup_path,
+        ];
+    }
+
+    /**
+     * @param string $relative_path
+     * @return string|\WP_Error
+     */
+    private static function resolve_raw_target_absolute_path($relative_path)
+    {
+        $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
+        if (
+            $relative_path === ''
+            || strpos($relative_path, '..') !== false
+            || substr($relative_path, -5) !== '.json'
+            || strpos($relative_path, \DBVC_Third_Party_Portability::SYNC_DIR . '/') !== 0
+        ) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_invalid_path', __('Unable to determine a safe sync path for this provider JSON payload.', 'dbvc'), ['status' => 400]);
+        }
+
+        $sync_root = \dbvc_get_sync_path();
+        if (! is_dir($sync_root) && ! \wp_mkdir_p($sync_root)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_sync_missing', __('The DBVC sync folder is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $sync_real = realpath($sync_root);
+        if (! $sync_real || ! is_dir($sync_real)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_sync_missing', __('The DBVC sync folder is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $absolute_path = trailingslashit($sync_real) . $relative_path;
+        $directory = dirname($absolute_path);
+        if (! is_dir($directory) && ! \wp_mkdir_p($directory)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_directory_failed', __('Unable to prepare the destination provider sync directory.', 'dbvc'), ['status' => 500]);
+        }
+
+        $dir_real = realpath($directory);
+        $sync_norm = rtrim(str_replace('\\', '/', $sync_real), '/');
+        $dir_norm = $dir_real ? rtrim(str_replace('\\', '/', $dir_real), '/') : '';
+        if ($dir_norm === '' || ($dir_norm !== $sync_norm && strpos($dir_norm, $sync_norm . '/') !== 0)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_path_escape', __('Provider sync file path escapes sync folder.', 'dbvc'), ['status' => 400]);
+        }
+
+        if (\class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
+            \DBVC_Sync_Posts::ensure_directory_security($directory);
+        }
+
+        if (! \dbvc_is_safe_file_path($absolute_path)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_invalid_path', __('The resolved provider sync path is not safe for writing.', 'dbvc'), ['status' => 400]);
+        }
+
+        return $absolute_path;
+    }
+
+    /**
+     * @param string $absolute_path
+     * @param string $relative_path
+     * @return string|\WP_Error
+     */
+    private static function backup_existing_raw_file($absolute_path, $relative_path)
+    {
+        $sync_real = realpath(\dbvc_get_sync_path());
+        if (! $sync_real || ! is_dir($sync_real)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_sync_missing', __('The DBVC sync folder is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $backup_dir = trailingslashit($sync_real) . '.dbvc_entity_editor_backups';
+        if (! is_dir($backup_dir) && ! \wp_mkdir_p($backup_dir)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_backup_dir_failed', __('Unable to create the Entity Editor backup directory.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (\class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
+            \DBVC_Sync_Posts::ensure_directory_security($backup_dir);
+        }
+
+        $safe_name = str_replace(['/', '\\'], '__', ltrim((string) $relative_path, '/'));
+        $backup_name = $safe_name . '.' . gmdate('Ymd-His') . '.bak.json';
+        $backup_path = trailingslashit($backup_dir) . $backup_name;
+
+        if (! @copy($absolute_path, $backup_path)) {
+            return new \WP_Error('dbvc_entity_editor_raw_provider_backup_failed', __('Unable to create a backup before replacing the provider sync JSON file.', 'dbvc'), ['status' => 500]);
+        }
+
+        return '.dbvc_entity_editor_backups/' . $backup_name;
+    }
+
+    /**
      * @param string $relative_path
      * @return array<string,mixed>
      */
@@ -105,29 +744,7 @@ final class ThirdPartySyncFileImportService
         $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/'));
         $payload = [];
         $index_item = null;
-        $base = [
-            'relative_path'        => $relative_path,
-            'entity_kind'          => 'third_party',
-            'provider'             => '',
-            'object_type'          => '',
-            'subtype'              => '',
-            'title'                => '',
-            'slug'                 => '',
-            'uid'                  => '',
-            'source_id'            => null,
-            'source_status'        => '',
-            'detected_action'      => 'blocked',
-            'match'                => ['status' => 'none'],
-            'warnings'             => [],
-            'blocking'             => [],
-            'blocker_details'      => [],
-            'preview_hash'         => '',
-            'available_actions'    => [
-                self::MODE_CREATE_FORM => false,
-                self::MODE_UPDATE_MATCHED_FORM => false,
-                self::MODE_MERGE_SETTINGS => false,
-            ],
-        ];
+        $base = self::default_preview_item($relative_path);
 
         if (! \class_exists('DBVC_Entity_Editor_Indexer')) {
             $base['blocking'][] = self::reason('indexer_unavailable', __('Entity Editor indexer is unavailable.', 'dbvc'));
@@ -171,6 +788,40 @@ final class ThirdPartySyncFileImportService
 
         $base['blocking'][] = self::reason('unsupported_third_party_payload', __('Entity Editor third-party import supports WS Form form and settings JSON only.', 'dbvc'));
         return self::finalize_preview_item($base, $payload, $index_item);
+    }
+
+    /**
+     * @param string $relative_path
+     * @return array<string,mixed>
+     */
+    private static function default_preview_item($relative_path)
+    {
+        return [
+            'relative_path'        => str_replace('\\', '/', ltrim((string) $relative_path, '/')),
+            'entity_kind'          => 'third_party',
+            'provider'             => '',
+            'object_type'          => '',
+            'subtype'              => '',
+            'title'                => '',
+            'slug'                 => '',
+            'uid'                  => '',
+            'source_id'            => null,
+            'source_status'        => '',
+            'detected_action'      => 'blocked',
+            'match'                => ['status' => 'none'],
+            'warnings'             => [],
+            'blocking'             => [],
+            'blocker_details'      => [],
+            'preview_hash'         => '',
+            'available_actions'    => [
+                self::MODE_CREATE_FORM => false,
+                self::MODE_UPDATE_MATCHED_FORM => false,
+                self::MODE_MERGE_SETTINGS => false,
+                self::RAW_MODE_CREATE_ONLY => false,
+                self::RAW_MODE_CREATE_OR_UPDATE => false,
+                self::RAW_MODE_STAGE_ONLY => false,
+            ],
+        ];
     }
 
     /**
@@ -533,6 +1184,13 @@ final class ThirdPartySyncFileImportService
                 if (! empty($item['canonical_relative_path'])) {
                     $detail['canonical_relative_path'] = (string) $item['canonical_relative_path'];
                 }
+            } elseif ($code === 'file_collision') {
+                $detail['category'] = __('Provider sync file collision', 'dbvc');
+                if (! empty($item['file_collision']['relative_path'])) {
+                    $detail['relative_path'] = (string) $item['file_collision']['relative_path'];
+                }
+            } elseif ($code === 'provider_settings_merge_mode_required') {
+                $detail['category'] = __('Provider settings mode', 'dbvc');
             }
 
             $details[] = $detail;
@@ -616,6 +1274,20 @@ final class ThirdPartySyncFileImportService
         $mode = sanitize_key((string) $mode);
         if (! \in_array($mode, [self::MODE_PREVIEW, self::MODE_CREATE_FORM, self::MODE_UPDATE_MATCHED_FORM, self::MODE_MERGE_SETTINGS], true)) {
             return self::MODE_PREVIEW;
+        }
+
+        return $mode;
+    }
+
+    /**
+     * @param string $mode
+     * @return string
+     */
+    private static function normalize_raw_mode($mode)
+    {
+        $mode = sanitize_key((string) $mode);
+        if (! \in_array($mode, [self::RAW_MODE_CREATE_ONLY, self::RAW_MODE_CREATE_OR_UPDATE, self::RAW_MODE_STAGE_ONLY], true)) {
+            return self::RAW_MODE_CREATE_ONLY;
         }
 
         return $mode;

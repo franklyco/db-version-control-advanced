@@ -16,13 +16,16 @@ Brief usage notes for the DBVC Entity Editor.
 
 - `Entity index`
   - Lists indexed post/CPT, taxonomy term, and supported third-party provider JSON files from the sync folder.
+  - The `Kind` filter includes `Forms` for WS Form form payloads, `WS Form Settings`, `Posts`, `Terms`, and `Third-party`.
   - The `Import status` column is sortable; click it once to bring unimported/unmatched files to the top.
   - Rows with no matched WordPress or provider entity are labeled `Not imported` and can show an import/preview action when the payload is eligible.
 
 - `New From Raw JSON`
   - Opens a dedicated intake modal from the Entity Editor toolbar.
-  - Accepts one DBVC post/CPT or term JSON payload.
+  - Accepts one DBVC post/CPT, term, or supported WS Form provider JSON payload.
   - Previews detected kind, subtype, target sync path, live match state, warnings, and blocking reasons before commit.
+  - For WS Form form JSON, routes to the provider flow, writes to `third-party/ws-form/forms/`, and can create or UID-update forms when WS Form is available.
+  - `Stage JSON Only` can save supported WS Form provider JSON into the sync folder without applying it to WS Form.
   - Uses the same blocker detail and settings-link guidance as staged sync-file import for configuration, existing-entity, unsupported-type, and file-collision blockers.
   - Supports `Create only`, `Create or Update Matched`, and `Stage JSON Only`.
   - After successful create/update, returns the final canonical sync file path and does not leave both source-ID and local-ID JSON files active in the index.

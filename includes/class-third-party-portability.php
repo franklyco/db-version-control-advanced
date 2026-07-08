@@ -171,23 +171,109 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             return self::is_wsform_form_payload($payload) || self::is_wsform_settings_payload($payload);
         }
 
+        public static function is_wsform_payload(array $payload): bool
+        {
+            $identifier = isset($payload['identifier']) ? (string) $payload['identifier'] : '';
+            $provider = isset($payload['provider']) ? (string) $payload['provider'] : '';
+            $dbvc_provider = isset($payload['dbvc_portability']['provider']) ? (string) $payload['dbvc_portability']['provider'] : '';
+
+            return self::is_wsform_provider_value($identifier)
+                || self::is_wsform_provider_value($provider)
+                || self::is_wsform_provider_value($dbvc_provider);
+        }
+
         public static function is_wsform_form_payload(array $payload): bool
         {
             $identifier = isset($payload['identifier']) ? (string) $payload['identifier'] : '';
-            $provider = isset($payload['dbvc_portability']['provider']) ? (string) $payload['dbvc_portability']['provider'] : '';
-            $object_type = isset($payload['dbvc_portability']['object_type']) ? (string) $payload['dbvc_portability']['object_type'] : '';
-            $export_object = isset($payload['meta']['export_object']) ? (string) $payload['meta']['export_object'] : '';
+            $provider = isset($payload['dbvc_portability']['provider'])
+                ? (string) $payload['dbvc_portability']['provider']
+                : (isset($payload['provider']) ? (string) $payload['provider'] : '');
+            $object_type = isset($payload['dbvc_portability']['object_type'])
+                ? self::normalize_wsform_payload_type((string) $payload['dbvc_portability']['object_type'])
+                : (isset($payload['object_type']) ? self::normalize_wsform_payload_type((string) $payload['object_type']) : '');
+            $export_object = isset($payload['meta']['export_object'])
+                ? self::normalize_wsform_payload_type((string) $payload['meta']['export_object'])
+                : '';
 
-            return ($identifier === self::PROVIDER_WSFORM && $export_object === 'form')
-                || ($provider === self::PROVIDER_WSFORM && $object_type === 'form');
+            if (self::is_wsform_provider_value($provider) && $object_type !== '') {
+                return $object_type === 'form';
+            }
+
+            if (! self::is_wsform_provider_value($identifier)) {
+                return false;
+            }
+
+            if ($export_object !== '') {
+                return $export_object === 'form';
+            }
+
+            if ($object_type !== '') {
+                return $object_type === 'form';
+            }
+
+            return self::looks_like_wsform_form_payload($payload);
         }
 
         public static function is_wsform_settings_payload(array $payload): bool
         {
             return isset($payload['entity_type'], $payload['provider'], $payload['object_type'])
                 && $payload['entity_type'] === 'third_party'
-                && $payload['provider'] === self::PROVIDER_WSFORM
-                && $payload['object_type'] === 'settings';
+                && self::is_wsform_provider_value((string) $payload['provider'])
+                && self::normalize_wsform_payload_type((string) $payload['object_type']) === 'settings';
+        }
+
+        public static function get_wsform_payload_object_type(array $payload): string
+        {
+            $object_type = isset($payload['dbvc_portability']['object_type'])
+                ? self::normalize_wsform_payload_type((string) $payload['dbvc_portability']['object_type'])
+                : (isset($payload['object_type']) ? self::normalize_wsform_payload_type((string) $payload['object_type']) : '');
+            if ($object_type !== '') {
+                return $object_type;
+            }
+
+            $export_object = isset($payload['meta']['export_object'])
+                ? self::normalize_wsform_payload_type((string) $payload['meta']['export_object'])
+                : '';
+            if ($export_object !== '') {
+                return $export_object;
+            }
+
+            if (self::is_wsform_settings_payload($payload)) {
+                return 'settings';
+            }
+
+            if (self::is_wsform_form_payload($payload)) {
+                return 'form';
+            }
+
+            return self::is_wsform_payload($payload) ? 'unknown' : '';
+        }
+
+        private static function is_wsform_provider_value(string $value): bool
+        {
+            return self::normalize_wsform_payload_type($value) === self::PROVIDER_WSFORM;
+        }
+
+        private static function normalize_wsform_payload_type(string $value): string
+        {
+            $value = strtolower(trim($value));
+            $value = str_replace(['-', ' '], '_', $value);
+
+            return sanitize_key($value);
+        }
+
+        private static function looks_like_wsform_form_payload(array $payload): bool
+        {
+            $label = isset($payload['label']) ? trim((string) $payload['label']) : '';
+            if ($label === '' || ! isset($payload['meta']) || ! is_array($payload['meta'])) {
+                return false;
+            }
+
+            return (isset($payload['groups']) && is_array($payload['groups']))
+                || isset($payload['version'])
+                || isset($payload['status'])
+                || isset($payload['checksum'])
+                || isset($payload['count_submit']);
         }
 
         public static function determine_wsform_form_filename_from_payload(array $payload): string

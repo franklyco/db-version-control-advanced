@@ -1,11 +1,75 @@
 # DBVC Visual Editor Phases
 
-## Thread Status Snapshot - 2026-05-23
-- Toolbar 2.0 is now the active Visual Editor chrome direction: bottom-center dock, upward status/review popover, Go To Object navigation, Shared Globals launcher, active-object edit link, and mode exit control.
-- Shared Globals is intentionally scoped to configured option-owned ACF `relationship` / `post_object` fields. The default configured field is `settings_globals_default_posts`; current-page fallback query-loop descriptors stay in the normal status/review flow.
-- The panel warning UX has moved from tall top warning blocks to compact footer warning icons with typed context (`Shared`, `Related`, `Query Loop collection`, `Current Post`) and tooltip/title/ARIA warning text. Shared/related acknowledgement controls now sit near Save / Save and Reload.
-- Overlay styling has been consolidated around Visual Editor design tokens while preserving editable element outlines and badge source colors.
-- Browser/live QA still needs to confirm shared global save, tooltip hover/focus behavior, and large connected-items list scrolling in the actual editor.
+## Production Backlog Snapshot - 2026-07-07
+
+This section is the canonical ranking for remaining Visual Editor work. Older thread-style notes were archived in `../archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md` and should not be used as the execution order.
+
+Priority scale:
+- `P0` - production blocker or confidence gap for already-supported client-site editing paths.
+- `P1` - high-value client-site coverage gap for common Bricks/ACF patterns.
+- `P2` - important widening or hardening after P0/P1 are stable.
+- `P3` - UX and operator efficiency improvements that reduce friction but are not blockers.
+- `P4` - advanced mutation work that changes collection/row structure and needs stronger rollback/contracts.
+- `P5` - strategic/future work, broad generic support, analytics, or optimizations that should wait for evidence.
+
+### P0 - Production Confidence And Existing-Path Closeout
+
+| Priority | Item | Current State | Next Action | Source Guide |
+|---|---|---|---|---|
+| `P0` | Composite text `Save All` stale-state browser UI | Backend/runtime stale probes cover no-write behavior; browser-rendered stale message still needs exact live confirmation. | Build or identify a safe browser harness that mutates the exact hydrated child source while the panel is open, then confirm attempted values are preserved and refresh/reopen is required. | `DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md` |
+| `P0` | Existing-path regression QA on representative pages | User testing has confirmed many recent fixes, but the QA docs still need final closeout against the current behavior. | Update `docs/qa/TEST_LOG.md` and `docs/qa/QA_CHECKLIST.md` for composite `Save All`, collection Save vs Save and Reload, empty loop badges, missing media anchors, gallery reorder/save, and session keepalive. | `docs/qa/QA_CHECKLIST.md` |
+| `P0` | Session/descriptor availability after idle or cross-page editing | TTL, touch, focus refresh, and explicit expired-session messaging are implemented. | Confirm authenticated browser behavior on a marker-heavy page after idle and after opening several descriptors; record any failed REST responses. | `DBVC_VISUAL_EDITOR_PERFORMANCE_UPGRADE_GUIDE.md` |
+| `P0` | Builder-mode exclusion regression | Runtime and panel should remain absent in Bricks Builder mode. | Keep a lightweight builder-mode smoke check in the QA checklist whenever frontend bootstrapping or enqueue guards change. | `frontend-plugin-builder-mode-guard.md` |
+
+### P1 - Common Client-Site Source Coverage
+
+| Priority | Item | Current State | Next Action | Source Guide |
+|---|---|---|---|---|
+| `P1` | Native `relationship -> flexible` descendants | No current native fixture was found; branch remains WIP until a real template is identified or added. | Find or create a controlled fixture, then verify scalar/media/gallery descendants with concrete related-post owner and canonical flexible ancestry. | `DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md` |
+| `P1` | Native `post_object -> repeater/flexible` live save confirmation | Classification and resolver-read groundwork exist; live fixture work is paused and must not be marked confirmed. | Resume only when a real client-site fixture exists or the user explicitly approves a disposable fixture. | `DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md` |
+| `P1` | Taxonomy nested repeater/flexible descendants | Direct term fields work; nested term-owned descendants are guarded to existing rows/layouts with concrete term owner and canonical ancestry. | Identify a rendered fixture for term-owned nested rows and test existing-row scalar/media saves without enabling row/layout lifecycle mutation. | `DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md` |
+| `P1` | Post-owned linked-term collection editing in loop cards | Dedicated branch is WIP for Bricks term roots and native taxonomy/terms elements. | Finish live QA so every loop card with a concrete owner post can expose its own terms badge, not only the first rendered card. | `DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md` |
+| `P1` | Archive-page regression suite | CPT/taxonomy archive entry points, option-backed fields, queried-term fields, native term name/description, and concrete loop descendants are implemented. | Add/refresh a small archive QA matrix covering Features, Services, and at least one taxonomy archive with option-backed and term-owned fields. | `DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md` |
+
+### P2 - Query Collection And Fallback Widening
+
+| Priority | Item | Current State | Next Action | Source Guide |
+|---|---|---|---|---|
+| `P2` | Native include/post__in dynamic-control widening | Writable only when saved Bricks control exposes ACF dynamic-tag evidence and the final IDs prove a source field. | Add fixtures for native include controls that use ACF dynamic tags; keep static/manual and opaque ID lists locked. | `DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md` |
+| `P2` | Custom Query Editor exact fallback QA | Current-owner exact matches, exact shared-option fallback matches, and explicit current-page seed actions are implemented narrowly. | Browser-smoke Save, Save and Reload, seed, undo, and reload controls on real fallback loops; record branch labels and acknowledgement copy. | `DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md` |
+| `P2` | Nested grouped query-collection matching | Nested-group current-owner and exact shared-option matching is implemented when flattened selector and grouped metadata are proven. | Add focused QA for grouped selectors such as `benefits_section_benefitsContent_related_items` and preserve raw selector evidence in panel/source summaries. | `DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md` |
+| `P2` | Empty query-loop collection badges | Synthetic registration and parent-anchor mounting are implemented for proven empty current-owner derived loops. | Add regression QA for empty loops where no Bricks row renders and for loops where raw IDs exist but all are outside the target post type. | `DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md` |
+| `P2` | Missing/conditional media anchors | Missing image and empty gallery parent-anchor flows are implemented for proven sources. | Widen only with concrete fixtures for conditional Bricks image/gallery elements; keep badges anchored to safe parent/wrapper containers. | `DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md` |
+
+### P3 - Editor UX And Large-Page Usability
+
+| Priority | Item | Current State | Next Action | Source Guide |
+|---|---|---|---|---|
+| `P3` | Field index search/filter | Review Fields grouping is implemented; search/filter is deferred. | Add lightweight search and source-scope filters without hydrating full descriptors on page load. | `DBVC_VISUAL_EDITOR_FIELD_INDEX_PLAN.md` |
+| `P3` | Field index virtualization and persisted state | Grouping and scroll preservation exist; virtualized list rendering and persisted expanded group state are deferred. | Add only after testing large pages shows list rendering or state reset is a real pain point. | `DBVC_VISUAL_EDITOR_FIELD_INDEX_PLAN.md` |
+| `P3` | Toolbar 2.0 polish | Shell, upward status/review, Go To Object, Shared Globals, active-object links, and mode exit are implemented. | Confirm tooltip hover/focus behavior, large connected-items list scrolling, and shared global save UX in the browser. | `DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md` |
+| `P3` | Mobile/tablet touch selection | Shared badge supports touch selection, but real-device refinement is still planned. | Test first-tap/second-tap behavior on real devices before changing touch semantics. | `DBVC_VISUAL_EDITOR_BADGE_AND_HYDRATION_PLAN.md` |
+| `P3` | Panel ergonomics for tall/complex controls | Dragging, close-on-outside-click, viewport fitting, Save, Save and Reload, media/gallery controls, and gallery drag sorting are implemented. | Keep minor panel UI fixes tied to concrete usability bugs; avoid broad redesign until production QA stabilizes. | `UI_STATES_AND_COPY.md` |
+
+### P4 - Advanced Mutation Contracts
+
+| Priority | Item | Current State | Next Action | Source Guide |
+|---|---|---|---|---|
+| `P4` | Relationship/post_object collection editing beyond proven current/shared-option paths | Direct current-owner, related-post loop-owned, and exact shared-option cases exist; broader shared/loop-owned/non-post collections are deferred. | Define each owner family separately with source proof, stale checks, acknowledgement, rollback, and journal detail before enabling writes. | `DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md` |
+| `P4` | Taxonomy collection mutation | Post-owned linked terms are WIP; shared term collection mutation and taxonomy selector collection mutation remain deferred. | Finish post-owned terms first, then design term/shared-term contracts separately. | `DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md` |
+| `P4` | Repeater row insert/remove/reorder | Field-level row descendants can save; row lifecycle mutation is deferred. | Add row inventory, stable row identity, snapshots, journal item detail, and rollback rules before any row create/delete/reorder UI. | `DBVC_VISUAL_EDITOR_REPEATER_IMPLEMENTATION_PLAN.md` |
+| `P4` | Flexible row insert/remove/reorder | Existing layout descendants can save; layout lifecycle mutation is deferred. | Add layout inventory, stable row identity, layout-key validation, snapshots, and rollback rules before any layout create/delete/reorder UI. | `DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md` |
+| `P4` | Structured descendants beyond gallery | Gallery has a dedicated flow; file/oEmbed/other structured projections remain inspect-first. | Add one explicit mutation contract and verifier per structured field family. | `DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md` |
+
+### P5 - Strategic, Broad, Or Evidence-Driven Work
+
+| Priority | Item | Current State | Next Action | Source Guide |
+|---|---|---|---|---|
+| `P5` | Materialized inventory/cache | Request-time registry remains authoritative; inventory cache is optional only if profiling proves request-time classification is the bottleneck. | Do not build until profiling identifies classification as the user-visible bottleneck. | `DBVC_VISUAL_EDITOR_PERFORMANCE_UPGRADE_GUIDE.md` |
+| `P5` | Generic non-ACF or opaque Bricks query editing | Unsupported unless a resolver-owned content source can be proven. | Keep inspect-only or no badge for static/manual builder settings and opaque final-ID lists. | `DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md` |
+| `P5` | Generic options editing | Shared Globals is intentionally allowlisted to configured option-owned relationship/post_object fields. | Avoid generic options editor until there is an explicit source inventory, capability model, and UX boundary. | `DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md` |
+| `P5` | Cross-page live DOM patching after shared/global saves | Current page projections can update; cross-page live patching is deferred. | Treat as future collaboration/realtime work, not part of current production readiness. | `DBVC_VISUAL_EDITOR_TOOLBAR_2_0_IMPLEMENTATION_GUIDE.md` |
+| `P5` | Approval workflows, analytics, exportable diffs | Listed as future Phase 4 ideas, not current production blockers. | Revisit after core editing contracts and client-site QA stabilize. | This guide |
 
 ## Phase 1
 - activation
@@ -153,82 +217,8 @@
   - linked-term searches omit excluded taxonomies
   - mixed relationship fields preserve hidden excluded IDs on save
 
-## Current Hold Context
-- The next paused advanced-data follow-up is nested ACF group and deeper flexible/repeater descendant save verification, not marker discovery.
-- Active implementation focus has shifted to Bricks native ACF query loops so the addon can classify and edit fields rendered through native repeater, relationship, and post-object loop types before returning to the paused grouped-save smoke work.
-- Active implementation focus has shifted to Bricks native ACF query loops so the addon can classify and edit fields rendered through native repeater, relationship, post-object, and taxonomy loop types before returning to the paused grouped-save smoke work.
-- Native Bricks ACF repeater loops are now materially hardened:
-  - full native root selectors are used for row reads and writes
-  - duplicate child keys can be rebound against the real container definition
-  - nested group descendants inside native repeater rows now inherit the repeater context correctly
-  - row-four false negatives caused by fake concrete post owners from bare numeric loop indices are now fixed
-  - nested repeater-in-repeater descendants now canonicalize to the outer repeater root and carry explicit nested repeater row segments instead of flattening to the innermost repeater only
-  - native flexible descendants now canonicalize against the actual row `acf_fc_layout` and layout key before subfield matching, which fixes duplicate Bricks layout aliases like `acf_flexible_layouts_dynamic_section_image` rendering inside real `standard_section` rows
-  - native loop provenance now travels through descriptor source/path/mutation metadata so panel summaries and save-contract details can distinguish repeater vs relationship vs post-object vs taxonomy origins
-  - nested native-loop descendants now also carry parent native loop ancestry so `relationship -> repeater`, `post_object -> repeater/flexible`, and similar nested native paths can be summarized and keyed explicitly instead of only showing the innermost loop
-  - the descriptor contract now carries full native ancestor chains, not only one `parent_native_query`, through loop export, source/path metadata, live source/sync grouping, panel summaries, and mutation detail
-- Recent implemented state before the hold:
-  - live FrameworkFLO browser probing confirmed related-owner VE markers are present on previously failing elements such as `.brxe-ozyswq` and `.brxe-zecvno`
-  - nested ACF group ancestry now participates in descriptor `source` / `path` metadata
-  - repeater/flexible row reads and writes now traverse nested group ancestry before touching the leaf field
-  - live `source_group` / `sync_group` hashing now includes nested group ancestry plus leaf selector identity so same-named grouped descendants do not cross-update after save
-  - direct grouped ACF fields now preserve parent group ancestry in descriptor paths and prefer selector-based writes over ambiguous leaf-name writes
-  - the running code-map and consolidation reference for these native ACF loop fixes now lives in `docs/knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md`
-- the ordered scenario matrix for the next native owner-loop, mixed-nesting, and later collection-mutation branches now lives in `docs/enhancements/DBVC_VISUAL_EDITOR_NATIVE_LOOP_EXPANSION_PLAN.md`
-- the dedicated narrow current-owner connected-items roadmap now lives in `docs/enhancements/DBVC_VISUAL_EDITOR_COLLECTION_EDITOR_PLAN.md`
-- Resume point after the current panel UX slice:
-  - current active slice:
-  - start with native `relationship -> repeater` and `relationship -> flexible` descendants
-  - then widen to native `post_object -> repeater` and `post_object -> flexible` descendants
-  - keep native loop provenance first-class in descriptor/source/save-contract summaries, including parent native ancestry for nested loops
-  - native taxonomy nested descendants are now entering a guarded existing-row tranche: current taxonomy archive terms and concrete loop-owned term owners only, canonical row/group ancestry required, no row/layout lifecycle mutation
-  - use the native loop expansion plan as the runtime ordering source of truth before opening later mutation branches
-  - stable flexible row mutation is now widened across shared post/term/user/option owners for the existing safe flexible field set, including gallery descendants when Bricks renders a direct gallery collection
-  - direct gallery collections now support ordered Media Library replacement for top-level, repeater-row, and flexible-row ACF gallery fields, with page reload after save so Bricks can rebuild gallery markup cleanly
-  - empty/conditional direct Bricks gallery collections now share the missing-media parent-anchor path when the ACF gallery source resolves empty, with `Add Gallery` badge treatment and reload-after-save
-  - current WIP/paused items on the user side:
-    - shared non-current post flexible descendants through `shared_flexible_layout`
-    - populated direct/repeater/flexible gallery collection replacement browser flow
-  - current active collection-editor slice:
-    - current-owner native ACF `relationship` query roots can now surface as `Edit Connected` container markers instead of only descendant field markers
-    - current-owner native ACF `post_object` query roots can now use that same connected-items container contract
-    - direct current-owner repeater-row and flexible-row `relationship` / `post_object` query roots now target that same connected-items contract in code when the active row path is stable
-    - mixed current-owner `repeater -> flexible` and `flexible -> repeater` `relationship` / `post_object` query roots now carry explicit container ancestry in code so the connected-items editor can traverse canonical nested row paths instead of only direct row roots
-    - grouped current-owner row-owned `relationship` / `post_object` query roots now also flow through that same contract when the native query path can prove the intermediate group ancestry canonically
-    - loop-owned related-post native ACF `relationship` / `post_object` query roots now also flow through the connected-items contract in code, with related-owner acknowledgement and collection-specific mutation contracts instead of falling back to generic loop-owned field messaging
-    - reload-after-save reconciliation remains the intentional default for the whole collection-editor branch
-- session-lifecycle hardening:
-  - transient-backed VE sessions now default to a longer filterable TTL instead of the original short idle window
-  - the frontend now refreshes the active session on an interval plus focus/visibility return so an open unattended page does not silently lose descriptor access as quickly
-  - descriptor and save endpoints now return an explicit “session expired, refresh the page” message instead of a generic missing-descriptor failure when the session is gone
-- runtime UX optimization after the current session-lifecycle hardening:
-  - keep the current lightweight public-map bootstrap and active-marker dwell prefetch model
-  - bounded viewport-aware descriptor warmup for nearby visible uncached markers is now implemented
-  - it is driven by `IntersectionObserver` plus a small root margin, not by eager full-page hydration
-  - it reuses the existing descriptor cache and in-flight request map so background warmup does not diverge from explicit field-open behavior
-  - active field opens, saves, reload-after-save flows, and Media Library interactions remain higher priority than background warmup
-- active within the collection-editor branch:
-  - derived Bricks Query Editor loops backed by one current-owner relationship/post_object field now have a writable filtered-subset contract when the final `post__in` subset exactly matches one current-owner ACF field; the save path preserves non-target IDs in mixed fields such as `page_related_items`
-  - Bricks native dynamic include/post__in controls are now part of that filtered-subset/full-collection branch when the saved control exposes ACF dynamic-tag evidence; native static/manual ID lists and opaque native final-ID lists stay unsupported because Visual Editor cannot safely infer a writable source
-  - direct current-owner `get_field('field_name')` calls inside Query Editor PHP now contribute source hints for exact current-owner filtered-subset matching; option/user/explicit-object reads are still deferred
-  - custom Query Editor `post__in` fallback branches now surface inspect-only evidence when they cannot prove a current-owner source; exact ACF options fallback matches are labelled as shared-option fallback sources, and exact target-CPT or exact full-field option matches can use shared collection contracts with acknowledgement
-  - exact ACF options fallback matches can also expose an explicit current-page seed action when one direct current-owner relationship/post_object hint is proven and the current field is empty for that target branch
-  - locked fallback branches now use a read-only connected-items preview in the panel, with grouped queried items and active-branch copy instead of raw descriptor JSON
-  - mixed/`any` derived post queries can use the full collection contract only when source evidence exists and the final ordered query IDs exactly equal one current-owner relationship/post_object field's full value
-  - nested ACF group relationship/post_object fields are now included in current-owner derived Query Editor collection matching when the flattened field selector and final queried ID subset prove one source, including mixed-case selectors that require a preserved `field_selector_raw`
-  - nested-group matching now also applies to exact shared-option fallback collections and explicit seed-current-field targets, with grouped metadata preserved before shared-option or seed contracts become writable
-  - source-summary details now expose trusted raw grouped selectors when they differ from normalized field names, so panel/status QA can verify the exact flattened ACF selector behind nested-group collection badges
-  - current-owner empty derived query loops use a narrow first-slice plan: explicit ACF source evidence, concrete target post type, empty stored target subset, synthetic descriptor registration from captured query-vars, hidden marker injection after the Bricks loop-start comment or query-trail placeholder, and the existing filtered-subset save contract for adding the first connected item; raw `post__in` IDs outside the target post type are preserved as non-target IDs
-  - post-owned linked-term collections are now WIP/live QA as a separate branch from ACF connected posts: Bricks `objectType: term` roots with `current_post_term` and exactly one taxonomy can map to the owner post's assigned terms through a dedicated `post_terms_collection` contract
-  - Bricks native taxonomy/terms elements such as `post-taxonomy` are planned as the next guarded branch: one explicit element taxonomy, current or concrete loop-owned post owner, marker on the element root, and the existing `post_terms_collection` save contract
-- deferred within the collection-editor branch:
-  - custom Query Editor fallback branch writes beyond exact shared-option target-CPT/full-field matches and the narrow explicit current-page seed action, including recent-post fallbacks, empty shared-option fallback branches, and ambiguous branch selection
-  - shared connected-item collections
-  - loop-owned non-post connected-item collections
-  - taxonomy collection mutation
-  - shared term collection mutation
-  - true row insert/remove/reorder branches
-- paused slice to return to after the native loop work:
-  - live-save smoke test nested grouped descendants inside supported repeater/flexible/related-owner paths
-  - widen any remaining collection-safe structured paths only after those grouped save paths are proven stable
-  - defer broader relationship collection editing and repeater/flexible row insert-remove-reorder until after the native owner-loop and grouped-save branches are stable
+## Archived Running Context
+
+Older thread-style implementation notes that previously lived in this file were moved to `../archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md`.
+
+Use this file's P0-P5 backlog for active planning. Use the archive only when recovering historical fixture details or understanding why an item was deferred.

@@ -2563,6 +2563,18 @@ final class DBVC_Admin_App
         $content = isset($params['content']) ? (string) $params['content'] : '';
         $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
 
+        if (
+            class_exists('\Dbvc\EntityEditor\ThirdPartySyncFileImportService')
+            && \Dbvc\EntityEditor\ThirdPartySyncFileImportService::can_handle_raw_content($content)
+        ) {
+            $preview = \Dbvc\EntityEditor\ThirdPartySyncFileImportService::preview_raw($content, $mode);
+            if (is_wp_error($preview)) {
+                return $preview;
+            }
+
+            return new \WP_REST_Response($preview);
+        }
+
         $preview = \Dbvc\EntityEditor\RawJsonIntakeService::preview($content, $mode);
         if (is_wp_error($preview)) {
             return $preview;
@@ -2594,6 +2606,18 @@ final class DBVC_Admin_App
                 ? $params['confirmations']
                 : [],
         ];
+
+        if (
+            class_exists('\Dbvc\EntityEditor\ThirdPartySyncFileImportService')
+            && \Dbvc\EntityEditor\ThirdPartySyncFileImportService::can_handle_raw_content($content)
+        ) {
+            $result = \Dbvc\EntityEditor\ThirdPartySyncFileImportService::commit_raw($content, $mode, get_current_user_id(), $args);
+            if (is_wp_error($result)) {
+                return $result;
+            }
+
+            return new \WP_REST_Response($result);
+        }
 
         $result = \Dbvc\EntityEditor\RawJsonIntakeService::commit($content, $mode, get_current_user_id(), $args);
         if (is_wp_error($result)) {

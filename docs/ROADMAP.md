@@ -6,7 +6,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 
 | Topic | Status | Guide | Notes |
 |---|---|---|---|
-| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md` | Current primary implementation stream. Keep detailed state in addon-local docs; composite browser hardening status and the descriptor-session footer-persistence fix are tracked in `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md`, `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_PERFORMANCE_UPGRADE_GUIDE.md`, and `addons/visual-editor/docs/qa/TEST_LOG.md`. |
+| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md`; `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_PHASES.md` | Current primary implementation stream. The addon-local phases guide now contains the canonical P0-P5 production backlog. Older running open-item notes were moved to `addons/visual-editor/docs/archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md`; use that archive only for historical fixture/context recovery, not execution order. |
 | Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
@@ -50,3 +50,4 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Bricks assets planning | `docs/archives/bricks-assets/` | `docs/architecture/bricks-assets-engine-contract-draft.md` | Discovery/handoff material. |
 | Bricks addon decisions | `docs/archives/bricks-addon/` | `addons/bricks/docs/BRICKS_ADDON_PLAN.md` | Historical addon handoff and recommendation. |
 | Content migration workbench handoff | `docs/archives/content-migration-workbench-handoff/` | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Historical standalone handoff pack. |
+| Visual Editor running open-item notes | `addons/visual-editor/docs/archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md` | `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_PHASES.md` | Superseded thread-style backlog preserved after consolidation into the P0-P5 production backlog. |

@@ -102,9 +102,30 @@ const getDuplicateMatchBasisLabel = (basis) => {
 
 const getRawIntakeActionLabel = (action) => {
 	if (action === 'update_matched') return 'update matched entity';
+	if (action === 'create_form') return 'create WS Form';
+	if (action === 'update_matched_form') return 'update matched WS Form';
+	if (action === 'merge_settings') return 'merge settings';
 	if (action === 'stage') return 'stage JSON only';
 	if (action === 'blocked') return 'blocked';
 	return 'create new entity';
+};
+
+const getRawIntakeDraftValidationError = (content) => {
+	const raw = (content || '').trim();
+	if (!raw) {
+		return 'Paste a DBVC entity JSON payload before previewing or importing.';
+	}
+
+	try {
+		const parsed = JSON.parse(raw);
+		if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+			return 'Raw intake JSON must be one JSON object.';
+		}
+	} catch (error) {
+		return `Raw intake JSON is invalid: ${error?.message || 'Unable to parse JSON.'}`;
+	}
+
+	return '';
 };
 
 const getSyncImportActionLabel = (action) => {
@@ -266,12 +287,31 @@ const isSyncImportMatchedUpdateEligible = (item) => (
 
 const isRawIntakeMatchedUpdateEligible = (preview, mode) => (
 	mode === 'create_or_update_matched'
-	&& preview?.detected_action === 'update_matched'
+	&& ['update_matched', 'update_matched_form'].includes(preview?.detected_action)
 	&& !!preview?.matched_update?.eligible
-	&& !!preview?.available_actions?.create_or_update_matched
+	&& (!!preview?.available_actions?.create_or_update_matched || !!preview?.available_actions?.update_matched_form)
 );
 
 const getEntityImportStatusRank = (item) => (item?.matched_wp?.id || item?.matched_provider_entity?.id ? 1 : 0);
+
+const isWsFormFormItem = (item) => item?.provider === 'ws_form' && item?.object_type === 'form';
+const isWsFormSettingsItem = (item) => item?.provider === 'ws_form' && item?.object_type === 'settings';
+
+const matchesEntityKindFilter = (item, filter) => {
+	if (filter === 'all') return true;
+	if (filter === 'ws_form_form') return isWsFormFormItem(item);
+	if (filter === 'ws_form_settings') return isWsFormSettingsItem(item);
+	return item?.entity_kind === filter;
+};
+
+const formatEntityKindLabel = (item) => {
+	if (isWsFormFormItem(item)) return 'Forms';
+	if (isWsFormSettingsItem(item)) return 'WS Form Settings';
+	if (item?.entity_kind === 'post') return 'Posts';
+	if (item?.entity_kind === 'term') return 'Terms';
+	if (item?.entity_kind === 'third_party') return 'Third-party';
+	return item?.entity_kind || '—';
+};
 
 const DEFAULT_MERGE_IDENTITY = {
 	uid: 'keep_local',
@@ -859,9 +899,16 @@ const EntityEditorApp = () => {
 	]);
 
 	const previewRawIntake = useCallback(async () => {
-		setRawIntakePreviewBusy(true);
 		setRawIntakeError('');
 		setRawIntakeUpdateConfirmation(null);
+		const validationError = getRawIntakeDraftValidationError(rawIntakeDraft);
+		if (validationError) {
+			setRawIntakePreview(null);
+			setRawIntakeError(validationError);
+			return;
+		}
+
+		setRawIntakePreviewBusy(true);
 		try {
 			const data = await apiPost('entity-editor/raw-intake/preview', {
 				content: rawIntakeDraft,
@@ -1077,8 +1124,16 @@ const EntityEditorApp = () => {
 	}, [loadEntityIndex, syncImportPreview, syncImportUpdateConfirmations, syncImportRoute]);
 
 	const commitRawIntake = useCallback(async () => {
-		setRawIntakeCommitBusy(true);
 		setRawIntakeError('');
+		const validationError = getRawIntakeDraftValidationError(rawIntakeDraft);
+		if (validationError) {
+			setRawIntakePreview(null);
+			setRawIntakeUpdateConfirmation(null);
+			setRawIntakeError(validationError);
+			return;
+		}
+
+		setRawIntakeCommitBusy(true);
 		const matchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
 		const confirmation = matchedUpdate && rawIntakeUpdateConfirmation?.confirmed
 			? {
@@ -1127,7 +1182,7 @@ const EntityEditorApp = () => {
 	const entitySubtypeOptions = useMemo(() => {
 		const values = new Set();
 		entityIndex.forEach((item) => {
-			if ((entityKindFilter === 'all' || item.entity_kind === entityKindFilter) && item.subtype) {
+			if (matchesEntityKindFilter(item, entityKindFilter) && item.subtype) {
 				values.add(item.subtype);
 			}
 		});
@@ -1137,10 +1192,10 @@ const EntityEditorApp = () => {
 	const filteredEntityIndex = useMemo(() => {
 		const query = entitySearch.trim().toLowerCase();
 		return entityIndex.filter((item) => {
-			if (entityKindFilter !== 'all' && item.entity_kind !== entityKindFilter) return false;
+			if (!matchesEntityKindFilter(item, entityKindFilter)) return false;
 			if (entitySubtypeFilter !== 'all' && item.subtype !== entitySubtypeFilter) return false;
 			if (!query) return true;
-			const values = [item.title, item.slug, item.uid, item.relative_path, item.subtype, item.entity_kind]
+			const values = [item.title, item.slug, item.uid, item.relative_path, item.subtype, item.entity_kind, item.provider, item.object_type]
 				.map((value) => (value || '').toString().toLowerCase());
 			return values.some((value) => value.includes(query));
 		});
@@ -1462,6 +1517,8 @@ const EntityEditorApp = () => {
 	const rawIntakeWarnings = Array.isArray(rawIntakePreview?.warnings) ? rawIntakePreview.warnings : [];
 	const rawIntakeBlocking = Array.isArray(rawIntakePreview?.blocking) ? rawIntakePreview.blocking : [];
 	const rawIntakeAvailable = rawIntakePreview?.available_actions || {};
+	const rawIntakeIsThirdParty = rawIntakePreview?.entity_kind === 'third_party';
+	const rawIntakeProviderCounts = rawIntakePreview?.counts || {};
 	const rawIntakeMatchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
 	const rawIntakeMatchedUpdateEntity = rawIntakePreview?.matched_update?.wp_entity || {};
 	const rawIntakeUpdateConfirmed = !!rawIntakeUpdateConfirmation?.confirmed
@@ -1633,6 +1690,8 @@ const EntityEditorApp = () => {
 							<option value="all">All</option>
 							<option value="post">Posts</option>
 							<option value="term">Terms</option>
+							<option value="ws_form_form">Forms</option>
+							<option value="ws_form_settings">WS Form Settings</option>
 							<option value="third_party">Third-party</option>
 						</select>
 					</label>
@@ -1747,7 +1806,7 @@ const EntityEditorApp = () => {
 											title="Select this entity row"
 										/>
 									</td>
-									<td>{item.entity_kind || '—'}</td>
+									<td>{formatEntityKindLabel(item)}</td>
 									<td>
 										{item.matched_wp?.id || item.matched_provider_entity?.id ? (
 											<>
@@ -2533,7 +2592,7 @@ const EntityEditorApp = () => {
 						<Modal title="New From Raw JSON" onRequestClose={closeRawIntakeModal} className="dbvc-entity-editor-modal" overlayClassName="dbvc-entity-editor-modal-overlay">
 							<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor">
 								<p className="description">
-									Paste one DBVC post/CPT or term JSON payload. Preview will detect the entity kind, target sync path, and whether DBVC will create, update, stage, or block the action.
+									Paste one DBVC post/CPT, term, or WS Form provider JSON payload. Preview will detect the entity kind, target sync path, and whether DBVC will create, update, stage, or block the action.
 								</p>
 								<label style={{ display: 'block', marginBottom: '12px' }}>
 									Mode
@@ -2579,25 +2638,42 @@ const EntityEditorApp = () => {
 									<div style={{ marginTop: '12px' }}>
 										<div className="notice notice-info">
 											<p>
-												Detected: {rawIntakePreview?.entity_kind || '—'}
-												{' · '}Subtype: {rawIntakePreview?.subtype || '—'}
+												Detected: {rawIntakeIsThirdParty
+													? `Provider: ${rawIntakePreview?.provider || '—'} / ${rawIntakePreview?.object_type || '—'}`
+													: (rawIntakePreview?.entity_kind || '—')}
+												{!rawIntakeIsThirdParty ? ` · Subtype: ${rawIntakePreview?.subtype || '—'}` : ''}
 												{' · '}Action: {getRawIntakeActionLabel(rawIntakePreview?.detected_action)}
 											</p>
 											<p>
 												Title/Name: {rawIntakePreview?.title || '—'}
 												{' · '}Slug: {rawIntakePreview?.slug || '—'}
 												{' · '}UID: {rawIntakePreview?.uid || '—'}
+												{rawIntakePreview?.source_id ? ` · Source ID: ${rawIntakePreview.source_id}` : ''}
 											</p>
+											{rawIntakePreview?.object_type === 'form' && (
+												<p>
+													WS Form graph: groups {rawIntakeProviderCounts?.groups ?? 0}
+													{' · '}sections {rawIntakeProviderCounts?.sections ?? 0}
+													{' · '}fields {rawIntakeProviderCounts?.fields ?? 0}
+													{' · '}actions {rawIntakeProviderCounts?.actions ?? 0}
+												</p>
+											)}
+											{rawIntakePreview?.object_type === 'settings' && rawIntakePreview?.settings_preview && (
+												<p>
+													Settings merge: {(rawIntakePreview.settings_preview?.mergeable_options || []).join(', ') || 'none'}
+													{' · '}local secrets preserved
+												</p>
+											)}
 											<p>Target sync file: {rawIntakePreview?.target_relative_path || '—'}</p>
 											{rawIntakePreview?.match?.status === 'matched' && (
 												<p>
-													Matched live entity:{' '}
+													Matched live {rawIntakeIsThirdParty ? 'provider entity' : 'entity'}:{' '}
 													{rawIntakePreview?.match?.edit_url ? (
 														<a href={rawIntakePreview.match.edit_url}>
-															{rawIntakePreview?.match?.kind || 'entity'} #{rawIntakePreview?.match?.id || 0}
+															{rawIntakePreview?.match?.label || rawIntakePreview?.match?.kind || rawIntakePreview?.match?.provider || 'entity'} #{rawIntakePreview?.match?.id || 0}
 														</a>
 													) : (
-														<span>{rawIntakePreview?.match?.kind || 'entity'} #{rawIntakePreview?.match?.id || 0}</span>
+														<span>{rawIntakePreview?.match?.label || rawIntakePreview?.match?.kind || rawIntakePreview?.match?.provider || 'entity'} #{rawIntakePreview?.match?.id || 0}</span>
 													)}
 													{' · '}match source: {rawIntakePreview?.match?.match_source || 'unknown'}
 												</p>
@@ -2609,7 +2685,9 @@ const EntityEditorApp = () => {
 														{rawIntakePreview?.matched_update?.match_source ? ` · Match source: ${rawIntakePreview.matched_update.match_source}` : ''}
 													</p>
 													<p>
-														DBVC will apply JSON-present core fields, meta, and taxonomies from this raw JSON payload to{' '}
+														{rawIntakeIsThirdParty
+															? 'DBVC will replace the matched WS Form form graph from this raw JSON payload for '
+															: 'DBVC will apply JSON-present core fields, meta, and taxonomies from this raw JSON payload to '}
 														{rawIntakeMatchedUpdateEntity?.edit_url ? (
 															<a href={rawIntakeMatchedUpdateEntity.edit_url}>
 																{rawIntakeMatchedUpdateEntity?.label || rawIntakeMatchedUpdateEntity?.subtype || 'entity'} #{rawIntakeMatchedUpdateEntity?.id || 0}

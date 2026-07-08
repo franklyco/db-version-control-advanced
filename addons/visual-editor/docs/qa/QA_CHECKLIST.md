@@ -1,5 +1,7 @@
 # QA Checklist
 
+Use this as validation coverage, not implementation priority. Current P0-P5 execution order lives in `../enhancements/DBVC_VISUAL_EDITOR_PHASES.md`.
+
 ## Activation
 - [ ] Non-editor cannot activate visual edit mode
 - [ ] Editor can activate visual edit mode

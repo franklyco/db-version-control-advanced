@@ -1,5 +1,7 @@
 # Visual Editor Test Log
 
+This file is chronological QA evidence, not the active implementation backlog. For current P0-P5 execution priority, use `../enhancements/DBVC_VISUAL_EDITOR_PHASES.md`.
+
 ## 2026-04-28
 
 ### Confirmed manually in this thread
