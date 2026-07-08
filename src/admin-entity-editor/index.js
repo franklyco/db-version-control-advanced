@@ -166,6 +166,28 @@ const ImportWarningNotes = ({ warnings = [] }) => {
 	);
 };
 
+const WsFormMatchedProviderNotice = ({ entity, source = 'sync file' }) => {
+	if (!entity?.id) return null;
+	return (
+		<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+			<p>
+				<strong>This WS Form JSON already matches a local WS Form.</strong>
+				{' '}Create is unavailable for this payload.
+			</p>
+			<p>
+				Matched form:{' '}
+				{entity?.edit_url ? (
+					<a href={entity.edit_url}>{entity?.label || 'WS Form'} #{entity.id}</a>
+				) : (
+					<span>{entity?.label || 'WS Form'} #{entity.id}</span>
+				)}
+				{entity?.match_source ? ` · match source: ${entity.match_source}` : ''}
+				. Use Update Matched if you intend to replace this form from the {source}, or use a new portability UID if this should become a separate form.
+			</p>
+		</div>
+	);
+};
+
 const ImportBlockerPanel = ({
 	blocking = [],
 	blockerDetails = [],
@@ -1816,6 +1838,12 @@ const EntityEditorApp = () => {
 														{item.matched_wp?.kind || item.matched_provider_entity?.provider || 'entity'} #{item.matched_wp?.id || item.matched_provider_entity?.id}
 													</a>
 												</div>
+												{item.matched_provider_entity?.id && (
+													<div className="description">
+														Matched WS Form: {item.matched_provider_entity?.label || `#${item.matched_provider_entity.id}`}
+														{item.matched_provider_entity?.match_source ? ` · ${item.matched_provider_entity.match_source}` : ''}
+													</div>
+												)}
 											</>
 										) : (
 											<span className="dbvc-badge dbvc-badge--pending">Not imported</span>
@@ -2477,6 +2505,9 @@ const EntityEditorApp = () => {
 																{' · '}match source: {item?.match?.match_source || 'unknown'}
 															</p>
 														)}
+														{item?.entity_kind === 'third_party' && item?.object_type === 'form' && (
+															<WsFormMatchedProviderNotice entity={item?.matched_provider_entity || item?.matched_update?.wp_entity} source="sync file" />
+														)}
 														{matchedUpdate && (
 															<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
 																<p>
@@ -2677,6 +2708,9 @@ const EntityEditorApp = () => {
 													)}
 													{' · '}match source: {rawIntakePreview?.match?.match_source || 'unknown'}
 												</p>
+											)}
+											{rawIntakeIsThirdParty && rawIntakePreview?.object_type === 'form' && (
+												<WsFormMatchedProviderNotice entity={rawIntakePreview?.matched_provider_entity || rawIntakePreview?.matched_update?.wp_entity} source="raw JSON" />
 											)}
 											{rawIntakeMatchedUpdate && (
 												<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>

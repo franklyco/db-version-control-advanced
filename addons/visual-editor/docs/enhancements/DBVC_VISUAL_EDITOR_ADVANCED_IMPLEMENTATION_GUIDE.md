@@ -481,8 +481,8 @@ Current implementation state:
 - Composite save preflight now rejects stale child sources before any writes when a submitted base value no longer matches the backend value. The route returns `409 Conflict` with `stage = stale`, and the frontend preserves attempted values, clears the active descriptor cache, shows stale-state copy, and keeps `Save All` blocked until the field is reopened/refreshed.
 - Direct ACF repeater-row child reads now use the expanded post-meta fallback when the resolved parent selector/name maps to stored row meta such as `_price_item_repeater`, including normalized Bricks selector variants. This keeps composite base values, stale checks, and writes aligned on the same stored row source instead of trusting an ACF-rendered/cache value.
 - Live disposable save QA on `/our-process/` page `24732` confirmed same-value save, changed-value save, immediate restore, stale-conflict rejection/restore, and in-memory rollback attempts for a later child write failure.
-- Live browser QA on `/our-process/` now confirms Review Fields token-based `Open`, related-owner acknowledgement gating, `Save All` no-reload DOM patching and restore, and tall composite panel viewport fitting. The field index also explicitly hides closed `<details>` item rows so closed-row actions do not overlap active summaries or intercept `Open` hit tests.
-- Remaining follow-up work: browser-rendered stale-state UI still needs a harness that mutates the exact hydrated child source path behind an open panel; backend/runtime stale probes already cover the no-write behavior. A live journal failure-row readback is optional unless durable rollback evidence beyond the current controlled rollback probe is required.
+- Live browser QA on `/our-process/` now confirms Review Fields token-based `Open`, related-owner acknowledgement gating, `Save All` no-reload DOM patching and restore, tall composite panel viewport fitting, and browser-rendered stale-state UI after the exact hydrated child source changes while the panel is open. The stale UI preserves attempted child values, disables `Save All`, shows refresh/reopen copy, and performs no write.
+- Remaining follow-up work: a live journal failure-row readback is optional unless durable rollback evidence beyond the current controlled rollback probe is required. Composite stale-state browser UI is verified for the current scalar child path and should stay in regression coverage.
 
 Remaining live-browser hardening slice for composite `Save All`:
 - Objective: finish browser-only stale UI confirmation without widening source support, mutation contracts, or parser behavior in the same slice.
@@ -503,9 +503,10 @@ Remaining live-browser hardening slice for composite `Save All`:
   - Confirm the server response refreshes child base values so a second save from the still-open or reopened panel does not stale-conflict.
   - Confirm sibling markers or unrelated source-group matches are not cross-synced unless a later explicit composite sync contract is added.
 - Step 4, stale/conflict behavior:
+  - Status: authenticated browser QA on `/our-process/` page `24732` verified stale UI by changing the active LocalWP source `_price_item_repeater_0_months` behind an open `Product: Go Plan` composite panel, then attempting a different browser value.
   - Reuse the current stale probes for backend coverage, including direct expanded-post-meta repeater rows whose Bricks selectors normalize away a leading underscore.
-  - Confirm the browser panel renders a clear stale-state message when the route returns `409 / stage = stale`.
-  - The panel should preserve the user's attempted values, explain that the backend source changed, and require refresh/reopen before another write.
+  - Confirmed: the browser panel renders a clear stale-state message when the route returns `409 / stage = stale`.
+  - Confirmed: the panel preserves the user's attempted values, explains that the backend source changed, and requires refresh/reopen before another write.
 - Step 5, journal and rollback evidence:
   - Keep the existing same-value/change/restore, stale, rollback, preflight, and journal probes as the baseline.
   - Only add live durable failure-row browser QA if a real browser path can safely force a controlled second-child failure without leaving content mutated; otherwise the current controlled rollback probe remains sufficient for this slice.
@@ -525,8 +526,8 @@ Acceptance for this slice:
 - A composite marker can be opened from a real badge and from Review Fields `Open`.
 - A `canBatchSave = true` composite shows scalar child controls and `Save All` only after required acknowledgement is satisfied.
 - Same-value, changed-value, restore, and repeat-save flows work from the browser without a reload and without stale false positives.
-- A stale backend source returns clear browser UI and performs no writes.
-- No Visual Editor console errors are introduced, and Builder-mode guard still leaves composite marker count at zero under `?bricks=run`.
+- A stale backend source returns clear browser UI and performs no writes: verified on `/our-process/` page `24732` with active LocalWP source mutation.
+- No Visual Editor console errors are introduced, and Builder-mode guard still leaves composite marker count at zero under `?bricks=run`: verified in the current P0 browser smoke; only the pre-existing NextBricks `gsap is not defined` error was present.
 
 Docs to update during implementation:
 - `CHANGELOG.md`
@@ -693,9 +694,12 @@ Concrete gallery fixtures:
 
 Current validation status:
 - `xxrpfg` gallery regression check is closed by user QA on 2026-06-13 for add/replace/remove/reorder/no-reload save.
+- Runtime save smoke on 2026-07-07 confirmed `gallery_section_gallery` for requested post `28148` still validates, sanitizes, and saves the ordered attachment IDs `[29113, 29112, 29110, 29109, 29335]`; the smoke used the manual descriptor fallback because current browser renders did not expose a `gallery_collection` marker.
+- Browser checks on 2026-07-07 did not find the historical `xxrpfg` element or any `gallery_collection` marker on `/vertical/websites-for-contractors/`, `/our-process/`, `/gallery/`, or `/vertical/dentists/`; populated gallery browser save/reload needs a refreshed live fixture before it can be reclosed.
+- A reversible browser fixture probe on 2026-07-07 confirmed `dbvc-codexchanges.local/vertical/websites-for-contractors/` renders the gallery parent `#brxe-hmupao` as an empty container even when `gallery_section_gallery` is temporarily swapped to the older known attachment list `[29113, 29112, 29110, 29109, 29335]`; the original stored gallery value was restored. `frameworkflo-live.local/vertical/websites-for-contractors/` renders `xxrpfg`, but the browser session did not have authenticated Visual Editor bootstrap on that site.
 - Read-only render probes on 2026-06-13 confirmed server-side marker coverage for rendered `image_src` paths on `/vertical/websites-for-contractors/` and `/our-process/`, and one concrete `background_image` marker on `/service-areas/ohio/akron/` from template `120111`, element `117a72`, term `437`, field `vf_service_area_hero_image`.
 - Direct rendered ACF image, featured image, and background-image replace/clear/add-back browser checks remain open because the in-app browser session was not authenticated and could not load Visual Editor assets or markers.
-- Missing-media markers remain reload-only by design; confirm the single-media clear helper stays limited to rendered `image_src` and `background_image` markers.
+- Missing-media browser QA on 2026-07-07 confirmed the `/vertical/websites-for-contractors/` `ktiaxo` image anchors still open through Review Fields to a related-owner media panel with `No media is currently set`, Media Library selection, URL fallback, acknowledgement, and disabled save controls until media is selected. Missing-media markers remain reload-only by design; confirm the single-media clear helper stays limited to rendered `image_src` and `background_image` markers.
 
 ### Immediate next implementation order
 

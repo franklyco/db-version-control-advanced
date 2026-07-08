@@ -689,7 +689,7 @@ Implementation status:
 - Overlay query-collection badge grouping now treats `post_terms_collection` as owner-scoped first, so repeated card instances with the same Bricks element/query ID can each surface their own term-management badge for their own owner post.
 - Native taxonomy element descriptors now carry a rendered-post owner hint in the inspection expression/source candidate. This lets repeated Bricks post cards resolve to each card post when Bricks does not expose a full query-loop context during the attributes hook.
 - `post_terms_collection` markers are allowed to use the standard hover/focus badge as a fallback instead of being hidden behind container-only query-collection badges, so outlined term elements remain actionable even if a container-level badge cannot be placed.
-- Live browser QA is still open for marker placement, panel load, term search, no-reload save, optional reload, and rendered term chip updates.
+- Live browser QA on 2026-07-07 confirmed the contractors vertical renders two distinct `Category Terms` markers with separate public source groups, but the active LocalWP plugin collapsed the visible container badge to the first post card when the compact public descriptor omitted full `source.type` metadata. The worktree fix adds a public-marker fallback so related term badges key by `data-dbvc-ve-source-group` when the badge label is term-shaped; browser retest against the active LocalWP plugin remains pending. Term search, no-reload save, optional reload, and rendered chip update checks are still open.
 
 ## Acceptance For The First Slice
 

@@ -162,7 +162,7 @@ Current status:
 - The probe confirmed `scope=related_entity`, owner post `863` (`faq`), row-backed source type `acf_repeater_subfield`, and descriptor ancestry with `parent_native_query_kind=relationship`.
 - User testing confirmed the FAQ repeater descendant can be edited and saved successfully, so this fixture closes the narrow `relationship -> repeater` scalar descendant branch for the current implementation tranche.
 - Structured synced-template scanning found 25 native `relationship -> repeater` occurrences, including FAQ and gallery-group descendants; use these for wider manual smoke, but do not infer save safety for gallery/media projections without the existing media/galleries final checks.
-- The same structured scan did not find a current native `relationship -> flexible` fixture. Keep that branch WIP until a real template is added or identified.
+- The same structured scan did not find a current native `relationship -> flexible` fixture. A refreshed active-DB scan on 2026-07-07 found `32` native relationship-to-repeater-like candidates and still found no relationship-to-flexible, post-object nested, or taxonomy nested saved Bricks loop fixture. Keep the relationship-flexible branch WIP until a real template is added or identified.
 - A custom Bricks Query Editor post loop that reads an ACF relationship field is not the same source shape. It can still resolve as a related-owner repeater path when Bricks exposes a concrete `WP_Post`, but it should not be counted as native `relationship -> repeater` coverage.
 
 #### A2. Post-object loops
