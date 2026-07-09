@@ -4325,12 +4325,20 @@
   function getQueryCollectionContainerGroupKey(marker) {
     const descriptor = lookupDescriptorForNode(marker);
     const source = descriptor && descriptor.source ? descriptor.source : {};
+    const context = getDescriptorRenderContext(descriptor, marker);
+    const scope = getDescriptorScope(descriptor, marker);
     const queryElementId = getMarkerQueryElementId(marker, descriptor);
     const nativeSelector = source.native_query_selector ? String(source.native_query_selector) : '';
     const sourceGroup = getDescriptorSourceGroup(descriptor, marker);
     const expression = source.expression ? String(source.expression) : '';
     const badgeLabel = getDescriptorBadgeLabel(descriptor, marker);
-    const isPostTermsCollection = source.type === 'post_terms_collection';
+    const isPostTermsCollection = source.type === 'post_terms_collection'
+      || (
+        context === 'query_collection'
+        && scope === 'related_entity'
+        && sourceGroup !== ''
+        && /terms$/i.test(badgeLabel || '')
+      );
 
     return [
       isPostTermsCollection

@@ -15,6 +15,9 @@ final class DBVC_Entity_Editor_Indexer
     private const LOCK_TTL = 300;
     private const LOCK_KEY_PREFIX = 'dbvc_entity_editor_lock_';
     private const FULL_REPLACE_CONFIRM_PHRASE = 'REPLACE';
+    private const MATCHING_POLICY_STRICT_UID = 'strict_uid';
+    private const MATCHING_POLICY_ALLOW_SLUG_FALLBACK = 'allow_slug_fallback';
+    private const MATCHING_POLICY_SELECTED_ENTITY = 'selected_entity';
     private const PROTECTED_POST_META_KEYS = [
         '_edit_lock',
         '_edit_last',
@@ -169,6 +172,11 @@ final class DBVC_Entity_Editor_Indexer
             return null;
         }
 
+        $third_party_item = self::build_third_party_item_from_json($decoded, $path, $relative);
+        if (is_array($third_party_item)) {
+            return $third_party_item;
+        }
+
         $kind = self::detect_kind($decoded);
         if ($kind === '') {
             return null;
@@ -210,6 +218,122 @@ final class DBVC_Entity_Editor_Indexer
             'is_canonical_duplicate' => false,
             'duplicate_group' => null,
         ];
+    }
+
+    /**
+     * Describe a decoded Entity Editor JSON payload without reading the index.
+     *
+     * @param array<string,mixed> $decoded
+     * @param string              $relative
+     * @return array<string,mixed>
+     */
+    public static function describe_payload(array $decoded, $relative = '')
+    {
+        $third_party = self::build_third_party_item_from_json($decoded, '', (string) $relative);
+        if (is_array($third_party)) {
+            return [
+                'entity_kind'             => 'third_party',
+                'subtype'                 => (string) ($third_party['subtype'] ?? ''),
+                'provider'                => (string) ($third_party['provider'] ?? ''),
+                'object_type'             => (string) ($third_party['object_type'] ?? ''),
+                'title'                   => (string) ($third_party['title'] ?? ''),
+                'uid'                     => (string) ($third_party['uid'] ?? ''),
+                'source_id'               => $third_party['source_id'] ?? null,
+                'source_status'           => (string) ($third_party['source_status'] ?? ''),
+                'matched_provider_entity' => $third_party['matched_provider_entity'] ?? null,
+            ];
+        }
+
+        $kind = self::detect_kind($decoded);
+        $subtype = $kind === 'term'
+            ? (string) ($decoded['taxonomy'] ?? '')
+            : (string) ($decoded['post_type'] ?? '');
+
+        return [
+            'entity_kind' => $kind !== '' ? $kind : 'post',
+            'subtype'     => $subtype,
+            'provider'    => '',
+            'object_type' => '',
+            'title'       => $kind === 'term'
+                ? (string) ($decoded['name'] ?? $decoded['term_name'] ?? '')
+                : (string) ($decoded['post_title'] ?? ''),
+            'uid'         => self::extract_entity_uid($decoded),
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $decoded
+     * @param string              $path
+     * @param string              $relative
+     * @return array<string,mixed>|null
+     */
+    private static function build_third_party_item_from_json(array $decoded, $path, $relative)
+    {
+        if (! class_exists('DBVC_Third_Party_Portability')) {
+            return null;
+        }
+
+        $relative = str_replace('\\', '/', ltrim((string) $relative, '/'));
+        $mtime = is_string($path) && $path !== '' && is_file($path) ? (int) filemtime($path) : 0;
+
+        if (DBVC_Third_Party_Portability::is_wsform_form_payload($decoded)) {
+            $summary = DBVC_Third_Party_Portability::summarize_wsform_form_payload($decoded);
+            $uid = isset($summary['uid']) ? (string) $summary['uid'] : '';
+            $source_id = isset($summary['source_id']) ? (int) $summary['source_id'] : 0;
+            $match = $uid !== '' ? DBVC_Third_Party_Portability::get_wsform_form_match_by_uid($uid) : null;
+            $title = isset($summary['label']) && (string) $summary['label'] !== ''
+                ? (string) $summary['label']
+                : __('WS Form', 'dbvc');
+
+            return [
+                'entity_kind'             => 'third_party',
+                'provider'                => DBVC_Third_Party_Portability::PROVIDER_WSFORM,
+                'object_type'             => 'form',
+                'subtype'                 => 'ws_form_form',
+                'title'                   => $title,
+                'slug'                    => sanitize_title($title),
+                'uid'                     => $uid,
+                'matched_wp'              => null,
+                'matched_provider_entity' => $match,
+                'payload_entity_id'       => $source_id > 0 ? $source_id : null,
+                'filename_entity_id'      => self::extract_wsform_filename_entity_id($relative),
+                'source_id'               => $source_id > 0 ? $source_id : null,
+                'source_status'           => isset($summary['source_status']) ? (string) $summary['source_status'] : '',
+                'counts'                  => isset($summary['counts']) && is_array($summary['counts']) ? $summary['counts'] : [],
+                'relative_path'           => $relative,
+                'filename'                => basename($relative),
+                'mtime'                   => $mtime,
+                'mtime_gmt'               => $mtime > 0 ? gmdate('c', $mtime) : '',
+                'is_duplicate'            => false,
+                'is_canonical_duplicate'  => false,
+                'duplicate_group'         => null,
+            ];
+        }
+
+        if (DBVC_Third_Party_Portability::is_wsform_settings_payload($decoded)) {
+            return [
+                'entity_kind'             => 'third_party',
+                'provider'                => DBVC_Third_Party_Portability::PROVIDER_WSFORM,
+                'object_type'             => 'settings',
+                'subtype'                 => 'ws_form_settings',
+                'title'                   => __('WS Form Settings', 'dbvc'),
+                'slug'                    => 'ws-form-settings',
+                'uid'                     => '',
+                'matched_wp'              => null,
+                'matched_provider_entity' => null,
+                'payload_entity_id'       => null,
+                'filename_entity_id'      => null,
+                'relative_path'           => $relative,
+                'filename'                => basename($relative),
+                'mtime'                   => $mtime,
+                'mtime_gmt'               => $mtime > 0 ? gmdate('c', $mtime) : '',
+                'is_duplicate'            => false,
+                'is_canonical_duplicate'  => false,
+                'duplicate_group'         => null,
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -285,6 +409,39 @@ final class DBVC_Entity_Editor_Indexer
     private static function build_duplicate_group_descriptor(array $item): array
     {
         $kind = isset($item['entity_kind']) ? sanitize_key((string) $item['entity_kind']) : 'entity';
+        if ($kind === 'third_party') {
+            $provider = isset($item['provider']) ? sanitize_key((string) $item['provider']) : 'provider';
+            $object_type = isset($item['object_type']) ? sanitize_key((string) $item['object_type']) : 'object';
+            $matched_id = isset($item['matched_provider_entity']['id']) ? (int) $item['matched_provider_entity']['id'] : 0;
+            if ($matched_id > 0) {
+                return [
+                    'key' => sprintf('%s:%s:%s:db:%d', $kind, $provider, $object_type, $matched_id),
+                    'match_basis' => 'matched_provider_entity_id',
+                ];
+            }
+
+            $uid = isset($item['uid']) ? trim((string) $item['uid']) : '';
+            if ($uid !== '') {
+                return [
+                    'key' => sprintf('%s:%s:%s:uid:%s', $kind, $provider, $object_type, $uid),
+                    'match_basis' => 'dbvc_portability_uid',
+                ];
+            }
+
+            $payload_id = isset($item['payload_entity_id']) ? (int) $item['payload_entity_id'] : 0;
+            if ($payload_id > 0) {
+                return [
+                    'key' => sprintf('%s:%s:%s:payload:%d', $kind, $provider, $object_type, $payload_id),
+                    'match_basis' => 'payload_entity_id',
+                ];
+            }
+
+            return [
+                'key' => '',
+                'match_basis' => '',
+            ];
+        }
+
         $matched_id = isset($item['matched_wp']['id']) ? (int) $item['matched_wp']['id'] : 0;
 
         if ($matched_id > 0) {
@@ -431,6 +588,20 @@ final class DBVC_Entity_Editor_Indexer
         }
 
         if (preg_match('/(?:^|-)(\d+)$/', (string) $token, $matches)) {
+            return isset($matches[1]) ? (int) $matches[1] : 0;
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param string $relative
+     * @return int
+     */
+    private static function extract_wsform_filename_entity_id(string $relative): int
+    {
+        $basename = basename($relative, '.json');
+        if (preg_match('/^ws-form-(\d+)(?:-|$)/', $basename, $matches)) {
             return isset($matches[1]) ? (int) $matches[1] : 0;
         }
 
@@ -585,6 +756,37 @@ final class DBVC_Entity_Editor_Indexer
     }
 
     /**
+     * @param array<string,mixed> $decoded
+     * @param string              $relative_path
+     * @return true|\WP_Error
+     */
+    private static function validate_provider_payload_for_path(array $decoded, string $relative_path)
+    {
+        $relative_path = str_replace('\\', '/', ltrim($relative_path, '/'));
+        if (strpos($relative_path, 'third-party/ws-form/') !== 0) {
+            return true;
+        }
+
+        if (! class_exists('DBVC_Third_Party_Portability')) {
+            return new \WP_Error('dbvc_entity_editor_provider_unavailable', __('Third-party portability support is unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        if (strpos($relative_path, 'third-party/ws-form/forms/') === 0 && DBVC_Third_Party_Portability::is_wsform_form_payload($decoded)) {
+            return true;
+        }
+
+        if ($relative_path === 'third-party/ws-form/settings.json' && DBVC_Third_Party_Portability::is_wsform_settings_payload($decoded)) {
+            return true;
+        }
+
+        return new \WP_Error(
+            'dbvc_entity_editor_provider_payload_mismatch',
+            __('This WS Form provider path must contain a WS Form form or settings payload.', 'dbvc'),
+            ['status' => 400]
+        );
+    }
+
+    /**
      * @param string $root
      * @param string $path
      * @return string
@@ -709,6 +911,11 @@ final class DBVC_Entity_Editor_Indexer
             return new \WP_Error('dbvc_entity_editor_excluded_payload', __('This JSON file type is excluded from Entity Editor edits.', 'dbvc'), ['status' => 400]);
         }
 
+        $provider_validation = self::validate_provider_payload_for_path($decoded, (string) $relative_path);
+        if (is_wp_error($provider_validation)) {
+            return $provider_validation;
+        }
+
         $lock = self::validate_file_lock_for_save($relative_path, (int) $user_id, (string) $lock_token, (bool) $force_takeover);
         if (is_wp_error($lock)) {
             return $lock;
@@ -766,10 +973,10 @@ final class DBVC_Entity_Editor_Indexer
      * @param int    $user_id
      * @param string $lock_token
      * @param bool   $force_takeover
-     * @param array<string,mixed> $forced_match
+     * @param array<string,mixed> $matching_options
      * @return array<string,mixed>|\WP_Error
      */
-    public static function save_and_partial_import($relative_path, $content, $user_id = 0, $lock_token = '', $force_takeover = false, array $forced_match = [])
+    public static function save_and_partial_import($relative_path, $content, $user_id = 0, $lock_token = '', $force_takeover = false, array $matching_options = [])
     {
         $saved = self::save_entity_file($relative_path, $content, $user_id, $lock_token, $force_takeover);
         if (is_wp_error($saved)) {
@@ -786,10 +993,12 @@ final class DBVC_Entity_Editor_Indexer
             return new \WP_Error('dbvc_entity_editor_unknown_kind', __('Unable to detect entity type for partial import.', 'dbvc'), ['status' => 400]);
         }
 
+        $matching_options = self::normalize_partial_import_matching_options($matching_options);
+
         if ($kind === 'post') {
-            $result = self::partial_import_post($decoded, $forced_match);
+            $result = self::partial_import_post($decoded, $matching_options);
         } else {
-            $result = self::partial_import_term($decoded, $forced_match);
+            $result = self::partial_import_term($decoded, $matching_options);
         }
 
         if (is_wp_error($result)) {
@@ -1199,19 +1408,103 @@ final class DBVC_Entity_Editor_Indexer
     }
 
     /**
+     * @param array<string,mixed> $options
+     * @return array{policy:string,forced_match:array<string,mixed>,allow_uid_fallback:?bool}
+     */
+    private static function normalize_partial_import_matching_options(array $options)
+    {
+        if (isset($options['id']) && ! isset($options['forced_match'])) {
+            $options = [
+                'policy' => self::MATCHING_POLICY_SELECTED_ENTITY,
+                'forced_match' => $options,
+            ];
+        }
+
+        $policy = '';
+        if (isset($options['policy'])) {
+            $policy = sanitize_key((string) $options['policy']);
+        } elseif (isset($options['matching_policy'])) {
+            $policy = sanitize_key((string) $options['matching_policy']);
+        }
+
+        if (! in_array($policy, [
+            self::MATCHING_POLICY_STRICT_UID,
+            self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK,
+            self::MATCHING_POLICY_SELECTED_ENTITY,
+        ], true)) {
+            $policy = self::MATCHING_POLICY_STRICT_UID;
+        }
+
+        $allow_uid_fallback = $policy === self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK ? true : null;
+        if (array_key_exists('allow_uid_fallback', $options)) {
+            $coerced = self::coerce_nullable_bool($options['allow_uid_fallback']);
+            if ($coerced !== null) {
+                $allow_uid_fallback = $coerced;
+            }
+        }
+
+        $forced_match = isset($options['forced_match']) && is_array($options['forced_match'])
+            ? $options['forced_match']
+            : [];
+
+        return [
+            'policy' => $policy,
+            'forced_match' => $forced_match,
+            'allow_uid_fallback' => $allow_uid_fallback,
+        ];
+    }
+
+    /**
+     * @param mixed $value
+     * @return bool|null
+     */
+    private static function coerce_nullable_bool($value)
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (int) $value !== 0;
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+                return true;
+            }
+            if (in_array($normalized, ['0', 'false', 'no', 'off', ''], true)) {
+                return false;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<string,mixed> $decoded
-     * @param array<string,mixed> $forced_match
+     * @param array<string,mixed> $matching_options
      * @return array<string,mixed>|\WP_Error
      */
-    private static function partial_import_post(array $decoded, array $forced_match = [])
+    private static function partial_import_post(array $decoded, array $matching_options = [])
     {
         $post_type = isset($decoded['post_type']) ? sanitize_key((string) $decoded['post_type']) : '';
         $slug = isset($decoded['post_name']) ? sanitize_title((string) $decoded['post_name']) : '';
         $uid = self::extract_entity_uid($decoded);
+        $policy = isset($matching_options['policy']) ? (string) $matching_options['policy'] : self::MATCHING_POLICY_STRICT_UID;
+        $forced_match = isset($matching_options['forced_match']) && is_array($matching_options['forced_match'])
+            ? $matching_options['forced_match']
+            : [];
+        $allow_uid_fallback = array_key_exists('allow_uid_fallback', $matching_options)
+            ? $matching_options['allow_uid_fallback']
+            : null;
 
         $match = self::resolve_forced_post_match($forced_match, $post_type);
+        if ($match === null && $policy === self::MATCHING_POLICY_SELECTED_ENTITY) {
+            $match = self::match_selected_post_entity($decoded, $post_type, $slug, $uid);
+        }
         if ($match === null) {
-            $match = self::match_single_post($post_type, $slug, $uid);
+            $match = self::match_single_post($post_type, $slug, $uid, $allow_uid_fallback);
         }
         if (is_wp_error($match)) {
             return $match;
@@ -1311,18 +1604,28 @@ final class DBVC_Entity_Editor_Indexer
 
     /**
      * @param array<string,mixed> $decoded
-     * @param array<string,mixed> $forced_match
+     * @param array<string,mixed> $matching_options
      * @return array<string,mixed>|\WP_Error
      */
-    private static function partial_import_term(array $decoded, array $forced_match = [])
+    private static function partial_import_term(array $decoded, array $matching_options = [])
     {
         $taxonomy = isset($decoded['taxonomy']) ? sanitize_key((string) $decoded['taxonomy']) : '';
         $slug = isset($decoded['slug']) ? sanitize_title((string) $decoded['slug']) : '';
         $uid = self::extract_entity_uid($decoded);
+        $policy = isset($matching_options['policy']) ? (string) $matching_options['policy'] : self::MATCHING_POLICY_STRICT_UID;
+        $forced_match = isset($matching_options['forced_match']) && is_array($matching_options['forced_match'])
+            ? $matching_options['forced_match']
+            : [];
+        $allow_uid_fallback = array_key_exists('allow_uid_fallback', $matching_options)
+            ? $matching_options['allow_uid_fallback']
+            : null;
 
         $match = self::resolve_forced_term_match($forced_match, $taxonomy);
+        if ($match === null && $policy === self::MATCHING_POLICY_SELECTED_ENTITY) {
+            $match = self::match_selected_term_entity($decoded, $taxonomy, $slug, $uid);
+        }
         if ($match === null) {
-            $match = self::match_single_term($taxonomy, $slug, $uid);
+            $match = self::match_single_term($taxonomy, $slug, $uid, $allow_uid_fallback);
         }
         if (is_wp_error($match)) {
             return $match;
@@ -1389,6 +1692,80 @@ final class DBVC_Entity_Editor_Indexer
             ],
             'counts' => $counts,
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $decoded
+     * @param string              $post_type
+     * @param string              $slug
+     * @param string              $uid
+     * @return array<string,mixed>|\WP_Error|null
+     */
+    private static function match_selected_post_entity(array $decoded, $post_type, $slug, $uid)
+    {
+        $post_type = sanitize_key((string) $post_type);
+        $post_id = isset($decoded['ID']) ? (int) $decoded['ID'] : 0;
+        if ($post_id > 0) {
+            $post = get_post($post_id);
+            if ($post instanceof \WP_Post && ($post_type === '' || (string) $post->post_type === $post_type)) {
+                return [
+                    'id' => (int) $post->ID,
+                    'kind' => 'post',
+                    'match_source' => 'selected_entity_id',
+                ];
+            }
+        }
+
+        $sources = [];
+        if ($uid !== '') {
+            $sources[] = ['source' => 'selected_entity_uid', 'ids' => self::find_post_ids_by_uid($uid, $post_type)];
+        }
+        if ($slug !== '' && $post_type !== '') {
+            $sources[] = ['source' => 'selected_entity_slug', 'ids' => self::find_post_ids_by_slug($slug, $post_type)];
+        }
+
+        if (empty($sources)) {
+            return null;
+        }
+
+        return self::resolve_single_candidate($sources, 'post');
+    }
+
+    /**
+     * @param array<string,mixed> $decoded
+     * @param string              $taxonomy
+     * @param string              $slug
+     * @param string              $uid
+     * @return array<string,mixed>|\WP_Error|null
+     */
+    private static function match_selected_term_entity(array $decoded, $taxonomy, $slug, $uid)
+    {
+        $taxonomy = sanitize_key((string) $taxonomy);
+        $term_id = isset($decoded['term_id']) ? (int) $decoded['term_id'] : 0;
+        if ($term_id > 0 && $taxonomy !== '') {
+            $term = get_term($term_id, $taxonomy);
+            if ($term && ! is_wp_error($term)) {
+                return [
+                    'id' => (int) $term->term_id,
+                    'kind' => 'term',
+                    'match_source' => 'selected_entity_id',
+                ];
+            }
+        }
+
+        $sources = [];
+        if ($uid !== '') {
+            $sources[] = ['source' => 'selected_entity_uid', 'ids' => self::find_term_ids_by_uid($uid, $taxonomy)];
+        }
+        if ($slug !== '' && $taxonomy !== '') {
+            $sources[] = ['source' => 'selected_entity_slug', 'ids' => self::find_term_ids_by_slug($slug, $taxonomy)];
+        }
+
+        if (empty($sources)) {
+            return null;
+        }
+
+        return self::resolve_single_candidate($sources, 'term');
     }
 
     /**
@@ -1718,18 +2095,22 @@ final class DBVC_Entity_Editor_Indexer
      * @param string $post_type
      * @param string $slug
      * @param string $uid
+     * @param bool|null $allow_uid_fallback
      * @return array<string,mixed>|\WP_Error
      */
-    private static function match_single_post($post_type, $slug, $uid)
+    private static function match_single_post($post_type, $slug, $uid, $allow_uid_fallback = null)
     {
         $post_type = sanitize_key((string) $post_type);
         $slug = sanitize_title((string) $slug);
         $uid = trim((string) $uid);
+        $allow_uid_fallback = is_bool($allow_uid_fallback)
+            ? $allow_uid_fallback
+            : self::allow_uid_fallback_matching();
 
         $sources = [];
         if ($uid !== '') {
             $sources[] = ['source' => 'uid', 'ids' => self::find_post_ids_by_uid($uid, $post_type)];
-            if (! self::allow_uid_fallback_matching()) {
+            if (! $allow_uid_fallback) {
                 return self::resolve_single_candidate($sources, 'post');
             }
         }
@@ -1744,18 +2125,22 @@ final class DBVC_Entity_Editor_Indexer
      * @param string $taxonomy
      * @param string $slug
      * @param string $uid
+     * @param bool|null $allow_uid_fallback
      * @return array<string,mixed>|\WP_Error
      */
-    private static function match_single_term($taxonomy, $slug, $uid)
+    private static function match_single_term($taxonomy, $slug, $uid, $allow_uid_fallback = null)
     {
         $taxonomy = sanitize_key((string) $taxonomy);
         $slug = sanitize_title((string) $slug);
         $uid = trim((string) $uid);
+        $allow_uid_fallback = is_bool($allow_uid_fallback)
+            ? $allow_uid_fallback
+            : self::allow_uid_fallback_matching();
 
         $sources = [];
         if ($uid !== '') {
             $sources[] = ['source' => 'uid', 'ids' => self::find_term_ids_by_uid($uid, $taxonomy)];
-            if (! self::allow_uid_fallback_matching()) {
+            if (! $allow_uid_fallback) {
                 return self::resolve_single_candidate($sources, 'term');
             }
         }

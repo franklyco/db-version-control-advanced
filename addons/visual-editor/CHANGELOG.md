@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed repeated native `post-taxonomy` term badges when the public descriptor map omits full source metadata. Related query-collection markers with owner-scoped source groups and term badge labels now key container badges by public source group, so repeated post cards can mount separate `Category Terms` badges instead of collapsing to the first card's descriptor.
+- Fixed a Visual Editor bootstrap race where marker attributes could reach the browser before the request-scoped descriptor session transient was written on slow/heavy frontend renders. Descriptor sessions now persist at `wp_footer` priority 19 before footer scripts execute, while the shutdown write remains as a fallback.
+- Raised Visual Editor chrome and badge stacking above local frontend developer toolboxes while keeping it below WordPress media modals, so toolbar/review controls remain clickable on listing pages with Vertical's `vf-uipostbody` toolbox overlay.
 - Fixed tall Visual Editor panel positioning for default/unmoved panels by deriving a viewport-clamped position as soon as the panel opens, using visual viewport dimensions, and keeping tall panel content scrollable inside the panel body so headers and actions remain reachable.
 - Fixed Review Fields accordion hit testing by explicitly hiding closed `<details>` item rows; action buttons from closed rows no longer visually overlap open rows or intercept/obscure `Open` actions.
 - Added stale-baseline protection for composite text `Save All`: the frontend now submits child base values, the server rejects changed child sources with `409 Conflict` before any batch writes, successful no-reload saves refresh the panel baselines for repeat saves, and stale browser responses preserve attempted values while blocking repeat `Save All` until the descriptor is reopened/refreshed with conflict-state panel styling.

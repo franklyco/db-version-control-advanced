@@ -669,6 +669,26 @@ final class DBVC_Admin_App
                 'permission_callback' => [self::class, 'can_manage'],
             ]
         );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/third-party/preview',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'preview_entity_editor_third_party_import'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/entity-editor/third-party/commit',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'commit_entity_editor_third_party_import'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
     }
 
     /**
@@ -2243,19 +2263,22 @@ final class DBVC_Admin_App
         }
 
         $decoded = isset($loaded['decoded']) && is_array($loaded['decoded']) ? $loaded['decoded'] : [];
-        $kind = isset($decoded['taxonomy']) ? 'term' : 'post';
-        $subtype = $kind === 'term'
-            ? (string) ($decoded['taxonomy'] ?? '')
-            : (string) ($decoded['post_type'] ?? '');
+        $description = DBVC_Entity_Editor_Indexer::describe_payload($decoded, $relative_path);
 
         return new \WP_REST_Response([
             'relative_path' => $loaded['relative_path'],
             'content' => $loaded['content'],
             'mtime' => $loaded['mtime'],
             'mtime_gmt' => $loaded['mtime_gmt'],
-            'entity_kind' => $kind,
-            'subtype' => $subtype,
-            'uid' => (string) ($decoded['vf_object_uid'] ?? $decoded['dbvc_object_uid'] ?? ''),
+            'entity_kind' => (string) ($description['entity_kind'] ?? ''),
+            'subtype' => (string) ($description['subtype'] ?? ''),
+            'provider' => (string) ($description['provider'] ?? ''),
+            'object_type' => (string) ($description['object_type'] ?? ''),
+            'title' => (string) ($description['title'] ?? ''),
+            'uid' => (string) ($description['uid'] ?? ''),
+            'source_id' => $description['source_id'] ?? null,
+            'source_status' => (string) ($description['source_status'] ?? ''),
+            'matched_provider_entity' => $description['matched_provider_entity'] ?? null,
             'lock' => isset($loaded['lock']) && is_array($loaded['lock']) ? $loaded['lock'] : null,
         ]);
     }
@@ -2327,7 +2350,12 @@ final class DBVC_Admin_App
         $content = (string) $request->get_param('content');
         $lock_token = (string) $request->get_param('lock_token');
         $force_takeover = rest_sanitize_boolean($request->get_param('force_takeover'));
-        $result = DBVC_Entity_Editor_Indexer::save_and_partial_import($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover);
+        $params = $request->get_json_params();
+        if (! is_array($params)) {
+            $params = $request->get_params();
+        }
+        $matching_options = self::normalize_entity_editor_matching_options($params, 'strict_uid');
+        $result = DBVC_Entity_Editor_Indexer::save_and_partial_import($relative_path, $content, get_current_user_id(), $lock_token, $force_takeover, $matching_options);
         if (is_wp_error($result)) {
             return $result;
         }
@@ -2377,8 +2405,9 @@ final class DBVC_Admin_App
         $incoming_json = isset($params['incoming_json']) ? (string) $params['incoming_json'] : '';
         $identity = isset($params['identity']) && is_array($params['identity']) ? $params['identity'] : [];
         $mode = isset($params['mode']) ? (string) $params['mode'] : 'save';
+        $matching_options = self::normalize_entity_editor_matching_options($params, 'selected_entity');
 
-        $preview = \Dbvc\EntityEditor\EntityJsonMergeService::preview($relative_path, $incoming_json, $identity, $mode);
+        $preview = \Dbvc\EntityEditor\EntityJsonMergeService::preview($relative_path, $incoming_json, $identity, $mode, $matching_options);
         if (is_wp_error($preview)) {
             return $preview;
         }
@@ -2427,6 +2456,7 @@ final class DBVC_Admin_App
         $force_takeover = rest_sanitize_boolean($params['force_takeover'] ?? false);
         $preview_hash = isset($params['preview_hash']) ? (string) $params['preview_hash'] : '';
         $confirmed = rest_sanitize_boolean($params['confirmed'] ?? false);
+        $matching_options = self::normalize_entity_editor_matching_options($params, 'selected_entity');
 
         $result = \Dbvc\EntityEditor\EntityJsonMergeService::save(
             $relative_path,
@@ -2437,7 +2467,8 @@ final class DBVC_Admin_App
             $force_takeover,
             $preview_hash,
             $confirmed,
-            (bool) $partial_import
+            (bool) $partial_import,
+            $matching_options
         );
 
         if (is_wp_error($result)) {
@@ -2445,6 +2476,49 @@ final class DBVC_Admin_App
         }
 
         return new \WP_REST_Response($result);
+    }
+
+    /**
+     * Normalize one-run Entity Editor matching policy overrides from REST input.
+     *
+     * @param array<string,mixed> $params
+     * @param string              $default_policy
+     * @return array<string,mixed>
+     */
+    private static function normalize_entity_editor_matching_options(array $params, $default_policy = 'strict_uid')
+    {
+        $matching = [];
+        if (isset($params['matching']) && is_array($params['matching'])) {
+            $matching = $params['matching'];
+        } elseif (isset($params['matching_options']) && is_array($params['matching_options'])) {
+            $matching = $params['matching_options'];
+        }
+
+        $policy = '';
+        if (isset($matching['policy'])) {
+            $policy = sanitize_key((string) $matching['policy']);
+        } elseif (isset($params['matching_policy'])) {
+            $policy = sanitize_key((string) $params['matching_policy']);
+        }
+
+        $default_policy = sanitize_key((string) $default_policy);
+        if (! in_array($default_policy, ['strict_uid', 'allow_slug_fallback', 'selected_entity'], true)) {
+            $default_policy = 'strict_uid';
+        }
+
+        if (! in_array($policy, ['strict_uid', 'allow_slug_fallback', 'selected_entity'], true)) {
+            $policy = $default_policy;
+        }
+
+        $options = [
+            'policy' => $policy,
+        ];
+
+        if (array_key_exists('allow_uid_fallback', $matching)) {
+            $options['allow_uid_fallback'] = rest_sanitize_boolean($matching['allow_uid_fallback']);
+        }
+
+        return $options;
     }
 
     /**
@@ -2489,6 +2563,18 @@ final class DBVC_Admin_App
         $content = isset($params['content']) ? (string) $params['content'] : '';
         $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_only';
 
+        if (
+            class_exists('\Dbvc\EntityEditor\ThirdPartySyncFileImportService')
+            && \Dbvc\EntityEditor\ThirdPartySyncFileImportService::can_handle_raw_content($content)
+        ) {
+            $preview = \Dbvc\EntityEditor\ThirdPartySyncFileImportService::preview_raw($content, $mode);
+            if (is_wp_error($preview)) {
+                return $preview;
+            }
+
+            return new \WP_REST_Response($preview);
+        }
+
         $preview = \Dbvc\EntityEditor\RawJsonIntakeService::preview($content, $mode);
         if (is_wp_error($preview)) {
             return $preview;
@@ -2520,6 +2606,18 @@ final class DBVC_Admin_App
                 ? $params['confirmations']
                 : [],
         ];
+
+        if (
+            class_exists('\Dbvc\EntityEditor\ThirdPartySyncFileImportService')
+            && \Dbvc\EntityEditor\ThirdPartySyncFileImportService::can_handle_raw_content($content)
+        ) {
+            $result = \Dbvc\EntityEditor\ThirdPartySyncFileImportService::commit_raw($content, $mode, get_current_user_id(), $args);
+            if (is_wp_error($result)) {
+                return $result;
+            }
+
+            return new \WP_REST_Response($result);
+        }
 
         $result = \Dbvc\EntityEditor\RawJsonIntakeService::commit($content, $mode, get_current_user_id(), $args);
         if (is_wp_error($result)) {
@@ -2603,6 +2701,59 @@ final class DBVC_Admin_App
         ];
 
         $result = \Dbvc\EntityEditor\SyncFileImportService::remediate($path, $mode, $remediation, $args, get_current_user_id());
+        if (is_wp_error($result)) {
+            return $result;
+        }
+
+        return new \WP_REST_Response($result);
+    }
+
+    /**
+     * REST: Preview importing third-party sync JSON from Entity Editor.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function preview_entity_editor_third_party_import(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\ThirdPartySyncFileImportService')) {
+            return new \WP_Error('dbvc_entity_editor_third_party_import_unavailable', __('Third-party Entity Editor import service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $paths = $params['paths'] ?? ($params['path'] ?? []);
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'preview';
+
+        $preview = \Dbvc\EntityEditor\ThirdPartySyncFileImportService::preview($paths, $mode);
+        if (is_wp_error($preview)) {
+            return $preview;
+        }
+
+        return new \WP_REST_Response($preview);
+    }
+
+    /**
+     * REST: Commit third-party sync JSON imports from Entity Editor.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function commit_entity_editor_third_party_import(\WP_REST_Request $request)
+    {
+        if (! class_exists('\Dbvc\EntityEditor\ThirdPartySyncFileImportService')) {
+            return new \WP_Error('dbvc_entity_editor_third_party_import_unavailable', __('Third-party Entity Editor import service unavailable.', 'dbvc'), ['status' => 500]);
+        }
+
+        $params = $request->get_json_params();
+        $paths = $params['paths'] ?? ($params['path'] ?? []);
+        $mode = isset($params['mode']) ? (string) $params['mode'] : 'create_form';
+        $args = [
+            'confirmations' => isset($params['confirmations']) && is_array($params['confirmations'])
+                ? $params['confirmations']
+                : [],
+        ];
+
+        $result = \Dbvc\EntityEditor\ThirdPartySyncFileImportService::commit($paths, $mode, get_current_user_id(), $args);
         if (is_wp_error($result)) {
             return $result;
         }

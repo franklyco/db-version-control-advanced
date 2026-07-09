@@ -83,13 +83,18 @@
   --dbvc-ve-filter-backdrop--blur: blur(8px);
   --dbvc-ve-transparent--l: transparent 20%;
   --dbvc-ve-notice-dot--color-bg: var(--dbvc-ve-color-primary);
+  --dbvc-ve-z-statusbar: 119970;
+  --dbvc-ve-z-section-badge: 119980;
+  --dbvc-ve-z-badge-layer: 119990;
+  --dbvc-ve-z-panel: 120010;
+  --dbvc-ve-z-toolbar: 120020;
 }
 
 .dbvc-ve-toolbar {
   position: fixed;
   left: 50%;
   bottom: 16px;
-  z-index: 10002;
+  z-index: var(--dbvc-ve-z-toolbar);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -540,7 +545,7 @@
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 9998;
+  z-index: var(--dbvc-ve-z-statusbar);
   width: min(320px, calc(100vw - 32px));
   padding: 12px 14px;
   border: 1px solid var(--dbvc-ve-color-border);
@@ -896,7 +901,7 @@
   position: fixed;
   right: 16px;
   bottom: 108px;
-  z-index: 9999;
+  z-index: var(--dbvc-ve-z-panel);
   display: flex;
   flex-direction: column;
   width: min(380px, calc(100vw - 32px));
@@ -2504,7 +2509,7 @@ body.dbvc-ve-active img[data-dbvc-ve].dbvc-ve-target {
 .dbvc-ve-badge-layer {
   position: fixed;
   inset: 0;
-  z-index: 10001;
+  z-index: var(--dbvc-ve-z-badge-layer);
   pointer-events: none;
 }
 
@@ -2546,7 +2551,7 @@ body.dbvc-ve-active img[data-dbvc-ve].dbvc-ve-target {
   position: fixed;
   top: calc(50vh + var(--dbvc-ve-section-badge-offset, 0px));
   left: 16px;
-  z-index: 10000;
+  z-index: var(--dbvc-ve-z-section-badge);
   border: 0;
   border-radius: 999px;
   padding: 7px 10px;

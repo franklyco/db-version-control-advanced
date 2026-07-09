@@ -1,8 +1,8 @@
 # Entity Editor Sync File Import Implementation Guide
 
-Last updated: 2026-06-24
+Last updated: 2026-07-06
 
-Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED`
+Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED; STAGE W WS FORM PROVIDER MODE INITIAL SLICE IMPLEMENTED`
 
 Recurrence note: duplicate active JSON files have now been fixed in two Entity Editor paths. P7 fixed staged sync-file import and duplicate canonical grouping; P10 applies the same side-effect suppression and canonicalization guardrail to raw-intake commits.
 
@@ -998,6 +998,373 @@ The deferred merge idea from this completed sync-file import guide has been prom
 - `docs/implementation/completed/entity-editor-merge-incoming-json-guide.md`
 
 Keep this completed guide focused on current sync-file import behavior. Use the proposed guide for future selected-entity pasted JSON merge work.
+
+## Stage W. WS Form Entity Editor Provider Mode
+
+Status: `INITIAL SLICE IMPLEMENTED 2026-07-06; W5/W6 REMAIN PROPOSED`
+
+Purpose:
+
+- Add a provider-aware Entity Editor path for WS Form JSON under `third-party/ws-form/`.
+- Preserve the overall Entity Editor workflow operators already use for posts and terms: index, inspect JSON, save file edits, preview live impact, explicitly apply, report results, and rebuild the index.
+- Adapt the write model for WS Form. A WS Form form is a custom-table object graph, not a WordPress post or term, so the safe apply unit is a whole WS Form form object through WS Form's own import/update APIs.
+
+### W0. Discovery Findings And Contract Lock
+
+Status: `IMPLEMENTED 2026-07-06`
+
+Findings from WS Form and DBVC code:
+
+- WS Form stores forms in custom tables: `wsf_form`, `wsf_form_meta`, `wsf_group`, `wsf_group_meta`, `wsf_section`, `wsf_section_meta`, `wsf_field`, and `wsf_field_meta`.
+- Form submissions, submission meta, stats, and style entities are separate WS Form concerns and must stay out of the first Entity Editor provider slice.
+- WS Form's supported form read/write path is object-based:
+  - `WS_Form_Form::db_read(true, true, false, false, true)` reads a full form with groups, sections, fields, and meta.
+  - `WS_Form_Form::db_import_reset()` clears the existing form graph before rebuild.
+  - `WS_Form_Form::db_update_from_object($form_object, true, true, true)` imports the full form object.
+  - `db_conditional_repair()`, `db_action_repair()`, `db_meta_repair()`, `db_checksum()`, `db_style_resolve()`, and `db_publish()` are required post-import repair/publish steps.
+- DBVC already has a WS Form portability adapter in `includes/class-third-party-portability.php`.
+- DBVC's WS Form adapter already:
+  - exports forms to `third-party/ws-form/forms/ws-form-<source-id>-<slug>.json`
+  - exports non-sensitive settings to `third-party/ws-form/settings.json`
+  - stamps `dbvc_portability.provider = "ws_form"`, `object_type`, `uid`, `source_id`, and source status metadata
+  - adds WS Form meta key `dbvc_portability_uid`
+  - matches existing local forms by `dbvc_portability_uid` only
+  - imports forms with WS Form APIs instead of direct table writes
+  - preserves sensitive settings keys during settings import
+- The current Entity Editor indexer only detects post/CPT and taxonomy term payloads, so WS Form JSON files are ignored or blocked as `unsupported_entity_kind`.
+- The current sync-file import service is intentionally post/term-shaped. It should not be widened into a generic provider importer without a provider contract layer.
+
+Contract decisions for the first implementation:
+
+- WS Form identity is UID-only. Do not match by WS Form numeric source ID or label.
+- WS Form form apply is whole-form replacement of the matched WS Form form graph.
+- The first UI can offer file save, preview, create unmatched form, and update UID-matched form. It must not offer field-level partial import.
+- Settings payloads can be indexed and edited as JSON, but applying `settings.json` should be a later gated phase unless the preview shows exactly which non-sensitive options will be merged.
+- Style entities, submissions, stats, and add-on credential data remain out of scope.
+
+### W1. Provider-Aware Entity Index
+
+Status: `IMPLEMENTED 2026-07-06`
+
+Backend tasks:
+
+- Extend `DBVC_Entity_Editor_Indexer` with a provider payload branch, or add a narrow `Dbvc\EntityEditor\ProviderPayloadInspector` used by the indexer.
+- Detect WS Form form payloads by reusing the same shape accepted by `DBVC_Third_Party_Portability::is_wsform_form_payload()`:
+  - `identifier = WS_FORM_IDENTIFIER` plus `meta.export_object = "form"`
+  - or `dbvc_portability.provider = "ws_form"` and `dbvc_portability.object_type = "form"`
+- Detect WS Form settings payloads by `entity_type = "third_party"`, `provider = "ws_form"`, `object_type = "settings"`.
+- Add index rows with:
+  - `entity_kind: "third_party"`
+  - `provider: "ws_form"`
+  - `object_type: "form"` or `"settings"`
+  - `title` from WS Form `label`
+  - `uid` from `dbvc_portability.uid`, `meta.dbvc_portability_uid`, or equivalent adapter extraction
+  - `source_id`, `source_status`, `relative_path`, `mtime`, `checksum`, and provider counts for groups/sections/fields/actions when available
+  - `matched_provider_entity` with local WS Form ID/status/edit URL when one local form matches the UID
+- Add duplicate grouping for provider rows by `provider:object_type:uid`.
+- Treat duplicate provider rows without a UID as hard blockers until W4 can safely stamp and normalize the winning file.
+
+Frontend tasks:
+
+- Add provider columns or row badges without disrupting post/term rows:
+  - provider
+  - object type
+  - source status
+  - matched WS Form ID
+- Add a filter or segmented control for `All`, `Posts/Terms`, and `Third-party`.
+- Keep existing post/term row actions unchanged.
+
+Exit criteria:
+
+- A WS Form form JSON in `third-party/ws-form/forms/` appears in the Entity Editor table after rebuild.
+- A WS Form settings JSON appears as a provider settings row.
+- Existing post/term indexing, duplicate grouping, and import affordances are unchanged.
+
+### W2. Safe Provider JSON Read, Lock, And Save
+
+Status: `IMPLEMENTED 2026-07-06`
+
+Backend tasks:
+
+- Generalize the Entity Editor file response so provider rows do not have to masquerade as posts or terms.
+- Return provider metadata from `GET /dbvc/v1/entity-editor/file`:
+  - `entity_kind`
+  - `provider`
+  - `object_type`
+  - `uid`
+  - `source_id`
+  - `source_status`
+  - `matched_provider_entity`
+- Keep the existing lock token, backup, JSON validation, and atomic save behavior.
+- Validate saved WS Form JSON enough to block obvious wrong-file edits:
+  - form payloads must still identify as WS Form form payloads
+  - settings payloads must still identify as WS Form settings payloads
+  - path must remain under `third-party/ws-form/`
+- Do not import or repair the live WS Form database from `Save JSON`.
+
+Frontend tasks:
+
+- Reuse the JSON editor modal for provider rows.
+- Hide post/term-only buttons for provider rows:
+  - `Save + Partial Import`
+  - `Save + Full Replace`
+- Add provider-specific help text and a provider preview action.
+
+Exit criteria:
+
+- Operators can open, edit, validate, and save a WS Form JSON sync file without touching the live WS Form tables.
+- Provider file saves create the same kind of Entity Editor backup and log trail as post/term file saves.
+
+### W3. WS Form Preflight Service
+
+Status: `IMPLEMENTED 2026-07-06`
+
+Backend tasks:
+
+- Add a provider import preview layer instead of overloading the post/term `SyncFileImportService` internals. Suggested shape:
+  - `includes/Dbvc/EntityEditor/ThirdPartySyncFileImportService.php`
+  - provider adapter method for `ws_form`
+- Add REST routes under the existing Entity Editor namespace:
+  - `POST /dbvc/v1/entity-editor/third-party/preview`
+  - `POST /dbvc/v1/entity-editor/third-party/commit`
+- Use the existing `can_manage()` permission callback.
+- For WS Form form previews:
+  - verify WS Form plugin/API availability
+  - verify payload shape and path
+  - extract label, UID, source ID, source status, and counts
+  - find the local match by `dbvc_portability_uid` only
+  - compute a stable preview hash over the file path, file mtime/checksum, UID, detected match, and requested mode
+  - surface whether the file is eligible for create or UID-matched update
+  - report warnings for missing style references, incoming source status, and payloads that will have checksums/published checksums regenerated
+  - block unsupported object types, ambiguous UID matches, duplicate noncanonical rows, WS Form unavailable, and malformed object graphs
+- Add a preflight hook for add-on/field compatibility:
+  - inspect incoming field `type` values when available
+  - block or warn when WS Form would skip unlicensed or unavailable field types
+  - keep the first pass conservative if the exact WS Form license API cannot be proven
+
+Preview response sketch:
+
+```json
+{
+  "mode": "ws_form_preview",
+  "summary": {
+    "requested": 1,
+    "creatable": 0,
+    "updatable": 1,
+    "blocked": 0,
+    "warnings": 2
+  },
+  "items": [
+    {
+      "relative_path": "third-party/ws-form/forms/ws-form-15-contact.json",
+      "entity_kind": "third_party",
+      "provider": "ws_form",
+      "object_type": "form",
+      "label": "Contact",
+      "uid": "dbvc_wsform_...",
+      "source_id": 15,
+      "source_status": "publish",
+      "counts": {
+        "groups": 1,
+        "sections": 2,
+        "fields": 8,
+        "actions": 1
+      },
+      "match": {
+        "status": "matched",
+        "match_source": "dbvc_portability_uid",
+        "id": 42
+      },
+      "available_actions": {
+        "create_form": false,
+        "update_matched_form": true
+      },
+      "warnings": [],
+      "blocking": [],
+      "preview_hash": "..."
+    }
+  ]
+}
+```
+
+Exit criteria:
+
+- Preview never writes WS Form tables.
+- Preview clearly distinguishes unmatched create, UID-matched update, duplicate/ambiguous, unsupported, and settings-only rows.
+- The provider preview response can be rendered by the same bulk modal shell used by post/term import.
+
+### W4. Create And UID-Matched Update Commit
+
+Status: `IMPLEMENTED 2026-07-06`
+
+Backend tasks:
+
+- Re-preview immediately before every commit.
+- Require a confirmation record for every write:
+  - `confirmed = true`
+  - `preview_hash`
+  - intended action
+  - matched WS Form ID for updates
+- For create:
+  - allow only when no local form matches the incoming UID
+  - if the incoming payload has no UID, generate one and write it back into the sync JSON after the create succeeds so repeated previews do not create duplicates
+  - call the existing WS Form portability import path where possible
+- For update:
+  - allow only when exactly one local form matches the incoming UID
+  - verify the confirmed local WS Form ID still matches the UID immediately before import
+  - require explicit per-file confirmation because `db_import_reset()` clears and rebuilds the whole form graph
+- Use WS Form's APIs through the DBVC portability adapter:
+  - temporary WS Form capabilities through the existing `with_wsform_caps()` pattern
+  - `db_import_reset()`
+  - `db_update_from_object()`
+  - repair/checksum/style resolve/publish calls
+- Return provider entity metadata:
+  - local WS Form ID
+  - status
+  - edit URL when available
+  - action `create_form` or `update_matched_form`
+  - warnings and repair notes
+- Rebuild the Entity Editor index after success.
+
+Frontend tasks:
+
+- Add WS Form preview/apply buttons in the provider modal:
+  - `Create WS Form`
+  - `Update Matched WS Form`
+- Require a checkbox per update item:
+  - `I confirm replacing this matched WS Form from the selected JSON`
+- Keep mixed create/update selections explicit. The first implementation should use separate buttons rather than one mixed apply button.
+
+Exit criteria:
+
+- An unmatched WS Form JSON creates one local WS Form and appears as matched after index rebuild.
+- A UID-matched WS Form JSON updates the matched local form only after confirmation.
+- Stale preview hash, changed local match, duplicate provider row, or missing WS Form plugin blocks commit.
+- Re-running preview after a successful create does not offer a second create for the same UID.
+
+### W5. Whole-Form Replace Snapshots And Restore Path
+
+Status: `PROPOSED`
+
+Problem:
+
+- WS Form update semantics are more destructive than post/CPT partial import. The safe unit is the whole form object, and WS Form's import path resets groups, sections, fields, and meta before rebuild.
+
+Development items:
+
+- Before every UID-matched update, export the live local form with the DBVC WS Form export payload builder and save it under `.dbvc_entity_editor_backups`.
+- Include the backup path in the commit response and log entry.
+- Add a compact scope summary before confirmation:
+  - form label/status changes
+  - group count
+  - section count
+  - field count
+  - action count
+  - conditionals present
+  - style reference handling
+- Add a documented restore procedure that uses the backed-up WS Form JSON through the same provider commit path.
+- Consider a typed confirmation for matched updates, for example `WSFORM REPLACE`, if browser QA shows the checkbox is too easy to miss.
+
+Exit criteria:
+
+- Every matched update has a recoverable pre-update WS Form JSON backup.
+- Commit responses expose the backup path.
+- Operators see that the operation is whole-form replacement before they can write.
+
+### W6. WS Form-Aware Review Surface
+
+Status: `PROPOSED`
+
+Development items:
+
+- Add a provider summary panel to the import modal before adding any field-level merge decisions.
+- Show grouped diff summaries:
+  - form label/status
+  - groups/tabs
+  - sections
+  - fields
+  - actions
+  - conditionals
+  - style references
+  - settings references
+- Keep the first diff surface read-only. Do not let the user select individual WS Form fields or sections to apply until WS Form's dependency and repair semantics are proven safe for partial writes.
+- Include a `Raw JSON` view so advanced operators can still inspect the exact payload.
+
+Exit criteria:
+
+- The modal explains the incoming WS Form structure without requiring users to read raw JSON first.
+- The apply operation remains whole-form create or whole-form matched update.
+
+### W7. WS Form Settings Payload Handling
+
+Status: `IMPLEMENTED 2026-07-06`
+
+Backend tasks:
+
+- Keep `third-party/ws-form/settings.json` visible in the index as `object_type: "settings"`.
+- Add preview support that reports:
+  - allowed option keys
+  - sensitive keys that will be ignored/preserved
+  - settings groups that are not recognized by the current adapter
+- Apply settings only through `DBVC_Third_Party_Portability::import_wsform_settings()` or a small public wrapper around the same logic.
+- Preserve local secrets and credentials. Incoming sensitive keys must not overwrite local values.
+- Do not expose a raw arbitrary option writer from Entity Editor.
+
+Frontend tasks:
+
+- Render settings previews separately from form previews.
+- Label the action as a merge, not a replace.
+- Show preserved sensitive-key counts before commit.
+
+Exit criteria:
+
+- Settings JSON can be inspected and saved from Entity Editor.
+- Applying settings merges non-sensitive WS Form settings and preserves local secrets.
+- Form create/update behavior is not coupled to settings apply.
+
+### W8. QA, Tests, And Operator Documentation
+
+Status: `PARTIAL AUTOMATED COVERAGE IMPLEMENTED 2026-07-06; BROWSER QA OPEN`
+
+PHPUnit coverage:
+
+- index includes WS Form form payload rows from `third-party/ws-form/forms/`
+- index includes WS Form settings payload rows
+- provider duplicate grouping uses `provider:object_type:uid`
+- preview blocks when WS Form classes/constants are unavailable
+- preview blocks malformed WS Form form payloads
+- preview exposes create for unmatched UID-bearing form payloads
+- preview exposes update only for exactly one UID-matched local WS Form
+- preview blocks label-only and numeric-source-ID-only matches
+- commit requires confirmation and current preview hash
+- commit blocks match drift between preview and write
+- create writes or preserves `dbvc_portability_uid` so a second preview becomes matched
+- update uses WS Form adapter APIs and returns the matched local form ID
+- settings merge preserves sensitive local keys
+- submissions, stats, and style objects are not imported by the WS Form Entity Editor path
+
+Manual QA:
+
+- WS Form form JSON appears in the Entity Editor index after rebuild.
+- Provider rows can be filtered separately from post/term rows.
+- `Edit JSON` opens WS Form form JSON with provider metadata and no post/term-only import buttons.
+- `Save JSON` updates only the sync file and backup trail.
+- Unmatched form preview shows counts and `Create WS Form`.
+- UID-matched form preview shows the matched local WS Form ID and requires confirmation before update.
+- Updating a matched form changes the live WS Form editor result and leaves a backup of the pre-update form JSON.
+- WS Form unavailable state blocks preview/apply with a clear message.
+- Settings JSON preview shows preserved sensitive keys before apply.
+- Existing post/term Entity Editor flows continue to pass the current manual QA list.
+
+Rollback and safety additions:
+
+- No direct WS Form table writes from Entity Editor provider services.
+- No matching by label or numeric source ID.
+- No deletion of local WS Forms from Entity Editor provider mode.
+- No submissions, submission meta, stats, or style entity imports in the first WS Form slice.
+- No automatic provider import when a file appears in the sync folder.
+- Matched updates require fresh preflight plus explicit per-file confirmation.
+- Settings applies preserve local secrets and never write unrecognized arbitrary options.
 
 ## Test Plan
 

@@ -55,6 +55,7 @@ Current Path is the discovery-time path before this cleanup. Proposed Path is th
 | addons/visual-editor/CODEX_KICKOFF_DBVC_VISUAL_EDITOR.md | reference/doc | active | keep | addons/visual-editor/CODEX_KICKOFF_DBVC_VISUAL_EDITOR.md | Kept in place. |
 | addons/visual-editor/CONTRIBUTING.md | reference/doc | active | keep | addons/visual-editor/CONTRIBUTING.md | Kept in place. |
 | addons/visual-editor/docs/archives/README.md | README/router | archive | keep | addons/visual-editor/docs/archives/README.md | Kept in place. |
+| addons/visual-editor/docs/archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md | implementation notes | archive | created | addons/visual-editor/docs/archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md | Superseded Visual Editor running open-item notes moved out of active discovery after P0-P5 production backlog consolidation. |
 | addons/visual-editor/docs/DBVC_VISUAL_EDITOR_REPO_PLAN.md | implementation guide | active | keep | addons/visual-editor/docs/DBVC_VISUAL_EDITOR_REPO_PLAN.md | Kept in place. |
 | addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md | implementation guide | active | keep | addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md | Kept in place. |
 | addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md | implementation guide | active | keep | addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ARCHIVE_CONTEXT_PLAN.md | Kept in place. |

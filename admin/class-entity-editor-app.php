@@ -78,6 +78,7 @@ final class DBVC_Entity_Editor_App
                 'download_nonce' => wp_create_nonce('dbvc_entity_editor_download'),
                 'download_bulk_nonce' => wp_create_nonce('dbvc_entity_editor_download_bulk'),
                 'transfer_packet_nonce' => wp_create_nonce('dbvc_entity_editor_transfer_packet'),
+                'uid_fallback_matching_enabled' => get_option('dbvc_allow_uid_fallback_matching', '0') === '1',
             ]
         );
     }

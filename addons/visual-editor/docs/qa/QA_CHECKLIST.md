@@ -1,9 +1,12 @@
 # QA Checklist
 
+Use this as validation coverage, not implementation priority. Current P0-P5 execution order lives in `../enhancements/DBVC_VISUAL_EDITOR_PHASES.md`.
+
 ## Activation
 - [ ] Non-editor cannot activate visual edit mode
 - [ ] Editor can activate visual edit mode
 - [ ] Assets do not load when mode is off
+- [x] Bricks Builder mode does not load Visual Editor runtime, markers, toolbar, panel, or bootstrap payload in lightweight smoke QA
 
 ## Instrumentation
 - [ ] Supported nodes receive marker attributes
@@ -51,6 +54,9 @@
 - [x] Composite stale checks read direct expanded-post-meta repeater rows through the same fallback path used for writes, including normalized Bricks parent selectors that map to underscored ACF meta roots
 - [x] Composite batch writes attempt rollback of earlier child writes when a later child write fails in the controlled mutation-service probe
 - [x] Composite batch journal entries use one parent change set with one item per child mutation and include live failure/rollback row evidence
+- [x] Query collection no-op `Save` writes without reload, closes the panel, preserves URL/marker count, and reports reload-when-ready copy on the vertical Benefits collection fixture
+- [x] Query collection no-op `Save and Reload` reloads back into Visual Editor mode with mounted markers and query-collection markers intact on the same vertical fixture
+- [x] Gallery save contract round-trips the ordered attachment-ID list in the targeted runtime smoke for `gallery_section_gallery`
 
 ## UX
 - [ ] Editable fields open expected input
@@ -66,4 +72,9 @@
 - [x] Composite text panels expose scalar child inputs and `Save All` only when `canBatchSave` is true
 - [x] Composite text `Save All` requires related/shared acknowledgement in the panel before any save request
 - [x] Composite text no-reload saves patch the active marker from the template and returned child display values without cross-syncing sibling markers
+- [x] Composite text stale browser UI preserves attempted child values, shows refresh/reopen copy, disables `Save All`, and performs no write after the exact hydrated child source changes while the panel is open
 - [x] Review Fields `Open` opens zero-height/hidden composite descriptors through the token fallback path in live browser QA
+- [x] Marker-heavy pages keep the descriptor session available after idle; `/our-process/` reopened `Hero H1` to a ready editable panel after the idle window
+- [x] Missing image anchors surface as editable related-owner media panels with `No media is currently set`, Media Library selection, URL fallback, related-owner acknowledgement, and disabled save controls until media is selected
+- [ ] Empty query-loop synthetic badge browser QA still needs a current rendered fixture; checked vertical fixtures rendered normal non-empty query-collection markers only, and a reversible empty-current-benefits probe fell back to a shared populated source rather than an empty loop
+- [ ] Populated gallery browser save/reload QA still needs a current page where a `gallery_collection` marker renders; current browser checks did not expose the historical `xxrpfg` marker, and reversible gallery value swaps still rendered the `hmupao` gallery container empty

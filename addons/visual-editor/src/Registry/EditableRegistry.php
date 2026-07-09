@@ -34,6 +34,16 @@ final class EditableRegistry
     private $session_id = '';
 
     /**
+     * @var bool
+     */
+    private $session_persisted = false;
+
+    /**
+     * @var bool
+     */
+    private $session_dirty = false;
+
+    /**
      * @var array<string, string>
      */
     private $public_entity_label_cache = [];
@@ -63,6 +73,7 @@ final class EditableRegistry
 
         $this->descriptors[$descriptor->token] = $descriptor;
         $this->getSessionId();
+        $this->session_dirty = true;
 
         if ($this->profiler instanceof PerformanceProfiler) {
             $source = isset($descriptor->source['type']) ? sanitize_key((string) $descriptor->source['type']) : 'unknown';
@@ -86,7 +97,10 @@ final class EditableRegistry
             return;
         }
 
-        unset($this->descriptors[$token]);
+        if (isset($this->descriptors[$token])) {
+            unset($this->descriptors[$token]);
+            $this->session_dirty = true;
+        }
 
         if ($this->profiler instanceof PerformanceProfiler) {
             $this->profiler->increment('registry.descriptors.removed');
@@ -120,6 +134,10 @@ final class EditableRegistry
      */
     public function persistRequestSession()
     {
+        if ($this->session_persisted && ! $this->session_dirty) {
+            return;
+        }
+
         if (empty($this->descriptors)) {
             return;
         }
@@ -168,6 +186,8 @@ final class EditableRegistry
 
         $write_started_at = $this->startProfileTimer();
         set_transient($this->getTransientKey($this->session_id), $payload, $this->getSessionTtl());
+        $this->session_persisted = true;
+        $this->session_dirty = false;
         $this->recordProfileDuration('registry.persist.set_transient', $write_started_at);
 
         if ($this->profiler instanceof PerformanceProfiler && $started_at > 0) {

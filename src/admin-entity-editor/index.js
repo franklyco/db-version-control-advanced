@@ -94,21 +94,47 @@ const formatTransferReferenceWarning = (warning) => {
 const getDuplicateMatchBasisLabel = (basis) => {
 	if (basis === 'payload_entity_id') return 'Matched by local DB ID';
 	if (basis === 'matched_wp_id') return 'Matched by current WP ID';
+	if (basis === 'matched_provider_entity_id') return 'Matched by provider DB ID';
+	if (basis === 'dbvc_portability_uid') return 'Matched by provider UID';
 	if (basis === 'vf_object_uid') return 'Matched by vf_object_uid';
 	return 'Duplicate file group';
 };
 
 const getRawIntakeActionLabel = (action) => {
 	if (action === 'update_matched') return 'update matched entity';
+	if (action === 'create_form') return 'create WS Form';
+	if (action === 'update_matched_form') return 'update matched WS Form';
+	if (action === 'merge_settings') return 'merge settings';
 	if (action === 'stage') return 'stage JSON only';
 	if (action === 'blocked') return 'blocked';
 	return 'create new entity';
 };
 
+const getRawIntakeDraftValidationError = (content) => {
+	const raw = (content || '').trim();
+	if (!raw) {
+		return 'Paste a DBVC entity JSON payload before previewing or importing.';
+	}
+
+	try {
+		const parsed = JSON.parse(raw);
+		if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+			return 'Raw intake JSON must be one JSON object.';
+		}
+	} catch (error) {
+		return `Raw intake JSON is invalid: ${error?.message || 'Unable to parse JSON.'}`;
+	}
+
+	return '';
+};
+
 const getSyncImportActionLabel = (action) => {
 	if (action === 'create') return 'create new entity';
+	if (action === 'create_form') return 'create WS Form';
 	if (action === 'created') return 'created entity';
 	if (action === 'update_matched') return 'update matched entity';
+	if (action === 'update_matched_form') return 'update matched WS Form';
+	if (action === 'merge_settings') return 'merge settings';
 	if (action === 'updated') return 'updated entity';
 	if (action === 'blocked') return 'blocked';
 	return 'preview';
@@ -136,6 +162,28 @@ const ImportWarningNotes = ({ warnings = [] }) => {
 					<li key={`${warning?.code || 'warning'}-${index}`}>{warning?.message || 'Warning'}</li>
 				))}
 			</ul>
+		</div>
+	);
+};
+
+const WsFormMatchedProviderNotice = ({ entity, source = 'sync file' }) => {
+	if (!entity?.id) return null;
+	return (
+		<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+			<p>
+				<strong>This WS Form JSON already matches a local WS Form.</strong>
+				{' '}Create is unavailable for this payload.
+			</p>
+			<p>
+				Matched form:{' '}
+				{entity?.edit_url ? (
+					<a href={entity.edit_url}>{entity?.label || 'WS Form'} #{entity.id}</a>
+				) : (
+					<span>{entity?.label || 'WS Form'} #{entity.id}</span>
+				)}
+				{entity?.match_source ? ` · match source: ${entity.match_source}` : ''}
+				. Use Update Matched if you intend to replace this form from the {source}, or use a new portability UID if this should become a separate form.
+			</p>
 		</div>
 	);
 };
@@ -256,23 +304,106 @@ const getSyncImportItemPath = (item) => item?.relative_path || item?.source_rela
 const isSyncImportMatchedUpdateEligible = (item) => (
 	!item?.updated
 	&& !!item?.matched_update?.eligible
-	&& !!item?.available_actions?.update_matched
+	&& (!!item?.available_actions?.update_matched || !!item?.available_actions?.update_matched_form)
 );
 
 const isRawIntakeMatchedUpdateEligible = (preview, mode) => (
 	mode === 'create_or_update_matched'
-	&& preview?.detected_action === 'update_matched'
+	&& ['update_matched', 'update_matched_form'].includes(preview?.detected_action)
 	&& !!preview?.matched_update?.eligible
-	&& !!preview?.available_actions?.create_or_update_matched
+	&& (!!preview?.available_actions?.create_or_update_matched || !!preview?.available_actions?.update_matched_form)
 );
 
-const getEntityImportStatusRank = (item) => (item?.matched_wp?.id ? 1 : 0);
+const getEntityImportStatusRank = (item) => (item?.matched_wp?.id || item?.matched_provider_entity?.id ? 1 : 0);
+
+const isWsFormFormItem = (item) => item?.provider === 'ws_form' && item?.object_type === 'form';
+const isWsFormSettingsItem = (item) => item?.provider === 'ws_form' && item?.object_type === 'settings';
+
+const matchesEntityKindFilter = (item, filter) => {
+	if (filter === 'all') return true;
+	if (filter === 'ws_form_form') return isWsFormFormItem(item);
+	if (filter === 'ws_form_settings') return isWsFormSettingsItem(item);
+	return item?.entity_kind === filter;
+};
+
+const formatEntityKindLabel = (item) => {
+	if (isWsFormFormItem(item)) return 'Forms';
+	if (isWsFormSettingsItem(item)) return 'WS Form Settings';
+	if (item?.entity_kind === 'post') return 'Posts';
+	if (item?.entity_kind === 'term') return 'Terms';
+	if (item?.entity_kind === 'third_party') return 'Third-party';
+	return item?.entity_kind || '—';
+};
 
 const DEFAULT_MERGE_IDENTITY = {
 	uid: 'keep_local',
 	slug: 'keep_local',
 	title: 'use_incoming',
 };
+
+const DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY = 'strict_uid';
+const DEFAULT_MERGE_MATCHING_POLICY = 'selected_entity';
+
+const MATCHING_POLICY_OPTIONS = [
+	{
+		value: 'strict_uid',
+		label: 'Strict UID-first',
+		description: 'UID must match; slug is used only when JSON has no UID.',
+	},
+	{
+		value: 'allow_slug_fallback',
+		label: 'Allow slug fallback once',
+		description: 'If UID is unmatched, match one local entity by slug and subtype for this operation.',
+	},
+	{
+		value: 'selected_entity',
+		label: 'Selected entity / ID',
+		description: 'Use the selected JSON entity as the target: ID first, then UID or slug.',
+	},
+];
+
+const getMatchingPayload = (policy) => ({
+	policy: MATCHING_POLICY_OPTIONS.some((option) => option.value === policy)
+		? policy
+		: 'strict_uid',
+});
+
+const MatchingPolicyControl = ({
+	idPrefix,
+	value,
+	onChange,
+	disabled = false,
+	globalUidFallbackEnabled = false,
+}) => (
+	<fieldset className="dbvc-entity-editor__matching">
+		<legend>Advanced Matching</legend>
+		<p className="description">
+			Site default UID fallback: {globalUidFallbackEnabled ? 'enabled' : 'disabled'}
+		</p>
+		<div className="dbvc-entity-editor__matching-options">
+			{MATCHING_POLICY_OPTIONS.map((option) => {
+				const id = `${idPrefix}-${option.value}`;
+				return (
+					<label key={option.value} className="dbvc-entity-editor__matching-option" htmlFor={id}>
+						<input
+							id={id}
+							type="radio"
+							name={idPrefix}
+							value={option.value}
+							checked={value === option.value}
+							onChange={(event) => onChange(event.target.value)}
+							disabled={disabled}
+						/>
+						<span>
+							<strong>{option.label}</strong>
+							<span className="description">{option.description}</span>
+						</span>
+					</label>
+				);
+			})}
+		</div>
+	</fieldset>
+);
 
 const MergeJsonNotes = ({ notes = [] }) => {
 	if (!Array.isArray(notes) || notes.length === 0) return null;
@@ -310,6 +441,7 @@ const EntityEditorApp = () => {
 	const [entityFileLoading, setEntityFileLoading] = useState(false);
 	const [entityFileError, setEntityFileError] = useState('');
 	const [entityEditorDraft, setEntityEditorDraft] = useState('');
+	const [entityPartialMatchingPolicy, setEntityPartialMatchingPolicy] = useState(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
 
 	const [entityLockToken, setEntityLockToken] = useState('');
 	const [entityLockInfo, setEntityLockInfo] = useState(null);
@@ -344,6 +476,7 @@ const EntityEditorApp = () => {
 	const [syncImportOpen, setSyncImportOpen] = useState(false);
 	const [syncImportPath, setSyncImportPath] = useState('');
 	const [syncImportPaths, setSyncImportPaths] = useState([]);
+	const [syncImportRoute, setSyncImportRoute] = useState('core');
 	const [syncImportPreviewBusy, setSyncImportPreviewBusy] = useState(false);
 	const [syncImportCommitBusy, setSyncImportCommitBusy] = useState(false);
 	const [syncImportRemediationBusy, setSyncImportRemediationBusy] = useState('');
@@ -354,6 +487,7 @@ const EntityEditorApp = () => {
 	const [mergeJsonOpen, setMergeJsonOpen] = useState(false);
 	const [mergeJsonDraft, setMergeJsonDraft] = useState('');
 	const [mergeJsonIdentity, setMergeJsonIdentity] = useState(DEFAULT_MERGE_IDENTITY);
+	const [mergeJsonMatchingPolicy, setMergeJsonMatchingPolicy] = useState(DEFAULT_MERGE_MATCHING_POLICY);
 	const [mergeJsonPreviewBusy, setMergeJsonPreviewBusy] = useState(false);
 	const [mergeJsonSaveBusy, setMergeJsonSaveBusy] = useState(false);
 	const [mergeJsonPartialBusy, setMergeJsonPartialBusy] = useState(false);
@@ -449,6 +583,8 @@ const EntityEditorApp = () => {
 	}, [entityIndexLoaded, entityIndexLoading, entityIndexError, loadEntityIndex]);
 
 	useEffect(() => {
+		setEntityPartialMatchingPolicy(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		if (!selectedEntityFile) {
 			setEntityFileData(null);
 			setEntityLockToken('');
@@ -491,7 +627,7 @@ const EntityEditorApp = () => {
 		setMergeJsonPreview(null);
 		setMergeJsonConfirmed(false);
 		setMergeJsonError('');
-	}, [mergeJsonDraft, mergeJsonIdentity]);
+	}, [mergeJsonDraft, mergeJsonIdentity, mergeJsonMatchingPolicy]);
 
 	useEffect(() => {
 		const available = new Set(entityIndex.map((item) => item.relative_path).filter(Boolean));
@@ -550,6 +686,7 @@ const EntityEditorApp = () => {
 				content: entityEditorDraft,
 				lock_token: entityLockToken || '',
 				force_takeover: !!forceTakeover,
+				matching: getMatchingPayload(entityPartialMatchingPolicy),
 			});
 			const counts = data?.import_result?.counts || {};
 			setEntityFileData((current) => ({ ...current, ...data }));
@@ -567,7 +704,7 @@ const EntityEditorApp = () => {
 		} finally {
 			setEntityImportBusy(false);
 		}
-	}, [selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo]);
+	}, [selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo, entityPartialMatchingPolicy]);
 
 	const fullReplaceEntityEditorFile = useCallback(async (forceTakeover = false, confirmPhrase = '') => {
 		if (!selectedEntityFile) return;
@@ -657,6 +794,7 @@ const EntityEditorApp = () => {
 		setSyncImportOpen(false);
 		setSyncImportPath('');
 		setSyncImportPaths([]);
+		setSyncImportRoute('core');
 		setSyncImportPreviewBusy(false);
 		setSyncImportCommitBusy(false);
 		setSyncImportRemediationBusy('');
@@ -670,6 +808,7 @@ const EntityEditorApp = () => {
 		setMergeJsonOpen(true);
 		setMergeJsonDraft('');
 		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		setMergeJsonPreview(null);
 		setMergeJsonError('');
 		setMergeJsonConfirmed(false);
@@ -679,6 +818,7 @@ const EntityEditorApp = () => {
 		setMergeJsonOpen(false);
 		setMergeJsonDraft('');
 		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		setMergeJsonPreview(null);
 		setMergeJsonError('');
 		setMergeJsonConfirmed(false);
@@ -704,6 +844,7 @@ const EntityEditorApp = () => {
 				path: selectedEntityFile,
 				incoming_json: mergeJsonDraft,
 				identity: mergeJsonIdentity,
+				matching: getMatchingPayload(mergeJsonMatchingPolicy),
 			});
 			setMergeJsonPreview(data);
 		} catch (error) {
@@ -712,7 +853,7 @@ const EntityEditorApp = () => {
 		} finally {
 			setMergeJsonPreviewBusy(false);
 		}
-	}, [selectedEntityFile, mergeJsonDraft, mergeJsonIdentity]);
+	}, [selectedEntityFile, mergeJsonDraft, mergeJsonIdentity, mergeJsonMatchingPolicy]);
 
 	const saveMergeJson = useCallback(async (partialImport = false, forceTakeover = false) => {
 		if (!selectedEntityFile || !mergeJsonPreview || !mergeJsonConfirmed) return;
@@ -732,6 +873,7 @@ const EntityEditorApp = () => {
 				path: selectedEntityFile,
 				incoming_json: mergeJsonDraft,
 				identity: mergeJsonIdentity,
+				matching: getMatchingPayload(mergeJsonMatchingPolicy),
 				lock_token: entityLockToken || '',
 				force_takeover: !!forceTakeover,
 				preview_hash: mergeJsonPreview?.preview_hash || '',
@@ -771,6 +913,7 @@ const EntityEditorApp = () => {
 		mergeJsonConfirmed,
 		mergeJsonDraft,
 		mergeJsonIdentity,
+		mergeJsonMatchingPolicy,
 		entityLockToken,
 		entityLockInfo,
 		entityEditorDraft,
@@ -778,9 +921,16 @@ const EntityEditorApp = () => {
 	]);
 
 	const previewRawIntake = useCallback(async () => {
-		setRawIntakePreviewBusy(true);
 		setRawIntakeError('');
 		setRawIntakeUpdateConfirmation(null);
+		const validationError = getRawIntakeDraftValidationError(rawIntakeDraft);
+		if (validationError) {
+			setRawIntakePreview(null);
+			setRawIntakeError(validationError);
+			return;
+		}
+
+		setRawIntakePreviewBusy(true);
 		try {
 			const data = await apiPost('entity-editor/raw-intake/preview', {
 				content: rawIntakeDraft,
@@ -813,18 +963,29 @@ const EntityEditorApp = () => {
 			.map((path) => (path || '').toString())
 			.filter(Boolean);
 		if (!normalizedPaths.length) return;
+		const selectedItemsForPreview = normalizedPaths
+			.map((path) => entityIndex.find((item) => item?.relative_path === path))
+			.filter(Boolean);
+		const thirdPartyCount = selectedItemsForPreview.filter((item) => item?.entity_kind === 'third_party').length;
+		const coreCount = selectedItemsForPreview.filter((item) => item?.entity_kind !== 'third_party').length;
+		const route = thirdPartyCount > 0 ? 'third_party' : 'core';
 		setSyncImportOpen(true);
 		setSyncImportPath(normalizedPaths[0] || '');
 		setSyncImportPaths(normalizedPaths);
+		setSyncImportRoute(route);
 		setSyncImportPreview(null);
 		setSyncImportError('');
 		setSyncImportNotice('');
 		setSyncImportUpdateConfirmations({});
+		if (thirdPartyCount > 0 && coreCount > 0) {
+			setSyncImportError('Select either third-party provider JSON or post/term JSON, not both in the same import preview.');
+			return;
+		}
 		setSyncImportPreviewBusy(true);
 		try {
-			const data = await apiPost('entity-editor/sync-file-import/preview', {
+			const data = await apiPost(route === 'third_party' ? 'entity-editor/third-party/preview' : 'entity-editor/sync-file-import/preview', {
 				paths: normalizedPaths,
-				mode: 'create_only',
+				mode: route === 'third_party' ? 'preview' : 'create_only',
 			});
 			setSyncImportPreview(data);
 		} catch (error) {
@@ -833,7 +994,7 @@ const EntityEditorApp = () => {
 		} finally {
 			setSyncImportPreviewBusy(false);
 		}
-	}, []);
+	}, [entityIndex]);
 
 	const remediateSyncImport = useCallback(async (item, remediation) => {
 		const path = item?.relative_path || item?.source_relative_path || '';
@@ -895,21 +1056,33 @@ const EntityEditorApp = () => {
 		});
 	}, []);
 
-	const commitSyncImport = useCallback(async () => {
-		const paths = syncImportPaths.length ? syncImportPaths : (syncImportPath ? [syncImportPath] : []);
+	const commitSyncImport = useCallback(async (modeOverride = '') => {
+		let paths = syncImportPaths.length ? syncImportPaths : (syncImportPath ? [syncImportPath] : []);
+		if (modeOverride) {
+			const previewItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
+			const actionPaths = previewItems
+				.filter((item) => !!item?.available_actions?.[modeOverride])
+				.map(getSyncImportItemPath)
+				.filter(Boolean);
+			if (actionPaths.length) {
+				paths = actionPaths;
+			}
+		}
 		if (!paths.length) return;
+		const isThirdParty = syncImportRoute === 'third_party';
+		const mode = modeOverride || (isThirdParty ? 'create_form' : 'create_only');
 		setSyncImportCommitBusy(true);
 		setSyncImportError('');
 		try {
-			const data = await apiPost('entity-editor/sync-file-import/commit', {
+			const data = await apiPost(isThirdParty ? 'entity-editor/third-party/commit' : 'entity-editor/sync-file-import/commit', {
 				paths,
-				mode: 'create_only',
+				mode,
 			});
 			const summary = data?.summary || {};
 			setSyncImportPreview(data);
 			setSyncImportUpdateConfirmations({});
 			setEntityIndexNotice(
-				`Sync-file import complete: created ${summary?.created ?? 0}, blocked ${summary?.blocked ?? 0}, skipped ${summary?.skipped ?? 0}, errors ${summary?.errors ?? 0}.`
+				`${isThirdParty ? 'Third-party sync import' : 'Sync-file import'} complete: created ${summary?.created ?? 0}, updated ${summary?.updated ?? 0}, blocked ${summary?.blocked ?? 0}, skipped ${summary?.skipped ?? 0}, errors ${summary?.errors ?? 0}.`
 			);
 			setEntityIndexError('');
 			setEntityIndexErrorItems([]);
@@ -920,7 +1093,7 @@ const EntityEditorApp = () => {
 		} finally {
 			setSyncImportCommitBusy(false);
 		}
-	}, [loadEntityIndex, syncImportPath, syncImportPaths, syncImportPreview]);
+	}, [loadEntityIndex, syncImportPath, syncImportPaths, syncImportPreview, syncImportRoute]);
 
 	const commitSyncImportMatchedUpdates = useCallback(async () => {
 		const previewItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
@@ -949,16 +1122,17 @@ const EntityEditorApp = () => {
 		setSyncImportCommitBusy(true);
 		setSyncImportError('');
 		try {
-			const data = await apiPost('entity-editor/sync-file-import/commit', {
+			const isThirdParty = syncImportRoute === 'third_party';
+			const data = await apiPost(isThirdParty ? 'entity-editor/third-party/commit' : 'entity-editor/sync-file-import/commit', {
 				paths,
-				mode: 'update_matched',
+				mode: isThirdParty ? 'update_matched_form' : 'update_matched',
 				confirmations,
 			});
 			const summary = data?.summary || {};
 			setSyncImportPreview(data);
 			setSyncImportUpdateConfirmations({});
 			setEntityIndexNotice(
-				`Sync-file matched update complete: updated ${summary?.updated ?? 0}, blocked ${summary?.blocked ?? 0}, skipped ${summary?.skipped ?? 0}, errors ${summary?.errors ?? 0}.`
+				`${isThirdParty ? 'Third-party matched update' : 'Sync-file matched update'} complete: updated ${summary?.updated ?? 0}, blocked ${summary?.blocked ?? 0}, skipped ${summary?.skipped ?? 0}, errors ${summary?.errors ?? 0}.`
 			);
 			setEntityIndexError('');
 			setEntityIndexErrorItems([]);
@@ -969,11 +1143,19 @@ const EntityEditorApp = () => {
 		} finally {
 			setSyncImportCommitBusy(false);
 		}
-	}, [loadEntityIndex, syncImportPreview, syncImportUpdateConfirmations]);
+	}, [loadEntityIndex, syncImportPreview, syncImportUpdateConfirmations, syncImportRoute]);
 
 	const commitRawIntake = useCallback(async () => {
-		setRawIntakeCommitBusy(true);
 		setRawIntakeError('');
+		const validationError = getRawIntakeDraftValidationError(rawIntakeDraft);
+		if (validationError) {
+			setRawIntakePreview(null);
+			setRawIntakeUpdateConfirmation(null);
+			setRawIntakeError(validationError);
+			return;
+		}
+
+		setRawIntakeCommitBusy(true);
 		const matchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
 		const confirmation = matchedUpdate && rawIntakeUpdateConfirmation?.confirmed
 			? {
@@ -1022,7 +1204,7 @@ const EntityEditorApp = () => {
 	const entitySubtypeOptions = useMemo(() => {
 		const values = new Set();
 		entityIndex.forEach((item) => {
-			if ((entityKindFilter === 'all' || item.entity_kind === entityKindFilter) && item.subtype) {
+			if (matchesEntityKindFilter(item, entityKindFilter) && item.subtype) {
 				values.add(item.subtype);
 			}
 		});
@@ -1032,10 +1214,10 @@ const EntityEditorApp = () => {
 	const filteredEntityIndex = useMemo(() => {
 		const query = entitySearch.trim().toLowerCase();
 		return entityIndex.filter((item) => {
-			if (entityKindFilter !== 'all' && item.entity_kind !== entityKindFilter) return false;
+			if (!matchesEntityKindFilter(item, entityKindFilter)) return false;
 			if (entitySubtypeFilter !== 'all' && item.subtype !== entitySubtypeFilter) return false;
 			if (!query) return true;
-			const values = [item.title, item.slug, item.uid, item.relative_path, item.subtype, item.entity_kind]
+			const values = [item.title, item.slug, item.uid, item.relative_path, item.subtype, item.entity_kind, item.provider, item.object_type]
 				.map((value) => (value || '').toString().toLowerCase());
 			return values.some((value) => value.includes(query));
 		});
@@ -1115,6 +1297,7 @@ const EntityEditorApp = () => {
 		setSelectedEntityFile('');
 		setEntityFileData(null);
 		setEntityEditorDraft('');
+		setEntityPartialMatchingPolicy(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
 		setEntitySaveNotice('');
 		setEntitySaveError('');
 		setEntityLockToken('');
@@ -1127,6 +1310,7 @@ const EntityEditorApp = () => {
 		setMergeJsonOpen(false);
 		setMergeJsonDraft('');
 		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
+		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
 		setMergeJsonPreview(null);
 		setMergeJsonError('');
 		setMergeJsonConfirmed(false);
@@ -1355,6 +1539,8 @@ const EntityEditorApp = () => {
 	const rawIntakeWarnings = Array.isArray(rawIntakePreview?.warnings) ? rawIntakePreview.warnings : [];
 	const rawIntakeBlocking = Array.isArray(rawIntakePreview?.blocking) ? rawIntakePreview.blocking : [];
 	const rawIntakeAvailable = rawIntakePreview?.available_actions || {};
+	const rawIntakeIsThirdParty = rawIntakePreview?.entity_kind === 'third_party';
+	const rawIntakeProviderCounts = rawIntakePreview?.counts || {};
 	const rawIntakeMatchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
 	const rawIntakeMatchedUpdateEntity = rawIntakePreview?.matched_update?.wp_entity || {};
 	const rawIntakeUpdateConfirmed = !!rawIntakeUpdateConfirmation?.confirmed
@@ -1368,9 +1554,15 @@ const EntityEditorApp = () => {
 	const rawIntakeModeBlocked = !!rawIntakePreview && !rawIntakePreviewBusy && !rawIntakeCanCommitBase;
 	const syncImportItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
 	const syncImportSummary = syncImportPreview?.summary || {};
+	const syncImportIsThirdParty = syncImportRoute === 'third_party';
+	const syncImportCreateActionKey = syncImportIsThirdParty ? 'create_form' : 'create_only';
 	const syncImportCreatableCount = syncImportItems.reduce((count, item) => {
 		const blocking = Array.isArray(item?.blocking) ? item.blocking : [];
-		return count + (!item?.created && !!item?.available_actions?.create_only && blocking.length === 0 ? 1 : 0);
+		return count + (!item?.created && !!item?.available_actions?.[syncImportCreateActionKey] && blocking.length === 0 ? 1 : 0);
+	}, 0);
+	const syncImportMergeableCount = syncImportItems.reduce((count, item) => {
+		const blocking = Array.isArray(item?.blocking) ? item.blocking : [];
+		return count + (!item?.updated && !!item?.available_actions?.merge_settings && blocking.length === 0 ? 1 : 0);
 	}, 0);
 	const syncImportUpdateableItems = syncImportItems.filter(isSyncImportMatchedUpdateEligible);
 	const syncImportUpdateableCount = syncImportUpdateableItems.length;
@@ -1384,9 +1576,10 @@ const EntityEditorApp = () => {
 		return count + (confirmed ? 1 : 0);
 	}, 0);
 	const syncImportCanCommit = syncImportCreatableCount > 0;
+	const syncImportCanMergeSettings = syncImportIsThirdParty && syncImportMergeableCount > 0;
 	const syncImportCanUpdateMatched = syncImportUpdateableCount > 0 && syncImportConfirmedUpdateCount === syncImportUpdateableCount;
 	const syncImportPreviewEmpty = !!syncImportPreview && !syncImportPreviewBusy && syncImportItems.length === 0;
-	const syncImportNoCreatable = !!syncImportPreview && !syncImportPreviewBusy && syncImportItems.length > 0 && syncImportCreatableCount === 0 && syncImportUpdateableCount === 0;
+	const syncImportNoCreatable = !!syncImportPreview && !syncImportPreviewBusy && syncImportItems.length > 0 && syncImportCreatableCount === 0 && syncImportUpdateableCount === 0 && syncImportMergeableCount === 0;
 	const syncImportBlockedMessages = collectImportBlockerMessages(syncImportItems);
 	const mergeJsonBlockers = Array.isArray(mergeJsonPreview?.blockers)
 		? mergeJsonPreview.blockers
@@ -1394,15 +1587,22 @@ const EntityEditorApp = () => {
 	const mergeJsonNotes = Array.isArray(mergeJsonPreview?.notes) ? mergeJsonPreview.notes : [];
 	const mergeJsonSummary = mergeJsonPreview?.summary || {};
 	const mergeJsonAvailable = mergeJsonPreview?.available_actions || {};
+	const globalUidFallbackEnabled = DBVC_ENTITY_EDITOR_APP?.uid_fallback_matching_enabled === true;
 	const mergeJsonCanSave = !!mergeJsonPreview
 		&& mergeJsonBlockers.length === 0
 		&& !!mergeJsonAvailable?.save
 		&& mergeJsonConfirmed
 		&& !!entityLockToken;
 	const mergeJsonCanPartialImport = mergeJsonCanSave && !!mergeJsonAvailable?.save_and_partial_import;
+	const selectedEntityIsThirdParty = entityFileData?.entity_kind === 'third_party';
 
 	const canOfferSyncFileImport = (item) => {
-		if (!item?.relative_path || !['post', 'term'].includes(item?.entity_kind)) return false;
+		if (!item?.relative_path) return false;
+		if (item?.entity_kind === 'third_party') {
+			if (item?.is_duplicate && !item?.is_canonical_duplicate) return false;
+			return item?.provider === 'ws_form' && ['form', 'settings'].includes(item?.object_type);
+		}
+		if (!['post', 'term'].includes(item?.entity_kind)) return false;
 		if (item?.matched_wp?.id) return false;
 		if (item?.is_duplicate && !item?.is_canonical_duplicate) return false;
 		return true;
@@ -1486,7 +1686,7 @@ const EntityEditorApp = () => {
 			<section className="dbvc-entity-editor-shell">
 				<h2>Entity index</h2>
 				<p className="description">
-					Showing {sortedEntityIndex.length} indexed entities from sync (posts + terms only). Unimported: {unimportedEntityCount}.
+					Showing {sortedEntityIndex.length} indexed entities from sync. Unimported: {unimportedEntityCount}.
 				</p>
 				{entityIndexError && (
 					<div className="notice notice-error">
@@ -1512,6 +1712,9 @@ const EntityEditorApp = () => {
 							<option value="all">All</option>
 							<option value="post">Posts</option>
 							<option value="term">Terms</option>
+							<option value="ws_form_form">Forms</option>
+							<option value="ws_form_settings">WS Form Settings</option>
+							<option value="third_party">Third-party</option>
 						</select>
 					</label>
 					<label className="dbvc-entity-editor__toolbar-field">
@@ -1625,14 +1828,22 @@ const EntityEditorApp = () => {
 											title="Select this entity row"
 										/>
 									</td>
-									<td>{item.entity_kind || '—'}</td>
+									<td>{formatEntityKindLabel(item)}</td>
 									<td>
-										{item.matched_wp?.id ? (
+										{item.matched_wp?.id || item.matched_provider_entity?.id ? (
 											<>
 												<span className="dbvc-badge dbvc-badge--accept">Imported</span>
 												<div>
-													<a href={item.matched_wp?.edit_url || '#'}>{item.matched_wp?.kind || 'wp'} #{item.matched_wp?.id}</a>
+													<a href={item.matched_wp?.edit_url || item.matched_provider_entity?.edit_url || '#'}>
+														{item.matched_wp?.kind || item.matched_provider_entity?.provider || 'entity'} #{item.matched_wp?.id || item.matched_provider_entity?.id}
+													</a>
 												</div>
+												{item.matched_provider_entity?.id && (
+													<div className="description">
+														Matched WS Form: {item.matched_provider_entity?.label || `#${item.matched_provider_entity.id}`}
+														{item.matched_provider_entity?.match_source ? ` · ${item.matched_provider_entity.match_source}` : ''}
+													</div>
+												)}
 											</>
 										) : (
 											<span className="dbvc-badge dbvc-badge--pending">Not imported</span>
@@ -1653,14 +1864,14 @@ const EntityEditorApp = () => {
 												className="button button-small"
 												onClick={() => openSyncImportPreview(item.relative_path)}
 												disabled={busyAny}
-												title="Preview creating a new live WordPress entity from this sync JSON file"
+												title={item.entity_kind === 'third_party' ? 'Preview applying this provider sync JSON file' : 'Preview creating a new live WordPress entity from this sync JSON file'}
 												style={{ marginLeft: '6px' }}
 											>
-												Import as New
+												{item.entity_kind === 'third_party' ? 'Preview Provider Import' : 'Import as New'}
 											</button>
 										)}
 									</td>
-									<td>{item.subtype || '—'}</td>
+									<td>{item.entity_kind === 'third_party' ? `${item.provider || 'provider'} / ${item.object_type || item.subtype || 'object'}` : (item.subtype || '—')}</td>
 									<td>
 										<div className="dbvc-entity-editor__title-cell">
 											<div>{item.title || '—'}</div>
@@ -1723,7 +1934,12 @@ const EntityEditorApp = () => {
 								)}
 								{entityFileData && (
 									<>
-										<p className="description">Kind: {entityFileData.entity_kind || '—'} · Subtype: {entityFileData.subtype || '—'} · UID: {entityFileData.uid || '—'}</p>
+										<p className="description">
+											Kind: {entityFileData.entity_kind || '—'}
+											{' · '}Subtype: {selectedEntityIsThirdParty ? `${entityFileData.provider || 'provider'} / ${entityFileData.object_type || 'object'}` : (entityFileData.subtype || '—')}
+											{' · '}UID: {entityFileData.uid || '—'}
+											{entityFileData.source_id ? ` · Source ID: ${entityFileData.source_id}` : ''}
+										</p>
 										{entityLockInfo && (
 											<p className="description">Editor lock: {entityLockInfo?.user_display || 'unknown'}{entityLockInfo?.expires_at ? ` · expires ${formatDate(entityLockInfo.expires_at)}` : ''}</p>
 										)}
@@ -1761,20 +1977,41 @@ const EntityEditorApp = () => {
 											<Button variant="primary" onClick={() => saveEntityEditorFile(false)} disabled={busyAny || !entityLockToken} isBusy={entitySaveBusy} title="Save JSON file only (no database changes)">
 												{entitySaveBusy ? 'Saving…' : 'Save JSON'}
 											</Button>
-											<Button variant="secondary" onClick={() => partialImportEntityEditorFile(false)} disabled={busyAny || !entityLockToken} isBusy={entityImportBusy} title="Save JSON and merge only fields/meta present in JSON">
-												{entityImportBusy ? 'Importing…' : 'Save + Partial Import'}
-											</Button>
-											<Button variant="secondary" onClick={mergeJsonOpen ? closeMergeJsonPanel : openMergeJsonPanel} disabled={busyAny || !entityLockToken} title="Paste incoming entity JSON and preview a merge into this selected file">
-												{mergeJsonOpen ? 'Close Merge' : 'Merge Incoming JSON'}
-											</Button>
-											<Button variant="secondary" onClick={() => openFullReplaceModal(false)} disabled={busyAny || !entityLockToken} isBusy={entityReplaceBusy} title="Save JSON and fully replace entity data (destructive)">
-												{entityReplaceBusy ? 'Replacing…' : 'Save + Full Replace'}
-											</Button>
+											{selectedEntityIsThirdParty ? (
+												<Button variant="secondary" onClick={() => openSyncImportPreview(selectedEntityFile)} disabled={busyAny || !selectedEntityFile} title="Preview applying this provider JSON through its provider adapter">
+													Preview Provider Import
+												</Button>
+											) : (
+												<>
+													<Button variant="secondary" onClick={() => partialImportEntityEditorFile(false)} disabled={busyAny || !entityLockToken} isBusy={entityImportBusy} title="Save JSON and merge only fields/meta present in JSON">
+														{entityImportBusy ? 'Importing…' : 'Save + Partial Import'}
+													</Button>
+													<Button variant="secondary" onClick={mergeJsonOpen ? closeMergeJsonPanel : openMergeJsonPanel} disabled={busyAny || !entityLockToken} title="Paste incoming entity JSON and preview a merge into this selected file">
+														{mergeJsonOpen ? 'Close Merge' : 'Merge Incoming JSON'}
+													</Button>
+													<Button variant="secondary" onClick={() => openFullReplaceModal(false)} disabled={busyAny || !entityLockToken} isBusy={entityReplaceBusy} title="Save JSON and fully replace entity data (destructive)">
+														{entityReplaceBusy ? 'Replacing…' : 'Save + Full Replace'}
+													</Button>
+												</>
+											)}
 											<Button variant="tertiary" onClick={clearEntityEditorFile} disabled={busyAny} title="Close editor and return to entity table">
 												Close
 											</Button>
 										</div>
-										{mergeJsonOpen && (
+										{selectedEntityIsThirdParty ? (
+											<div className="notice notice-info" style={{ margin: '12px 0' }}>
+												<p>Provider JSON saves update the sync file only. Use Preview Provider Import to apply WS Form JSON through the WS Form portability adapter.</p>
+											</div>
+										) : (
+											<MatchingPolicyControl
+												idPrefix="dbvc-entity-editor-partial-matching"
+												value={entityPartialMatchingPolicy}
+												onChange={setEntityPartialMatchingPolicy}
+												disabled={busyAny || !entityLockToken}
+												globalUidFallbackEnabled={globalUidFallbackEnabled}
+											/>
+										)}
+										{mergeJsonOpen && !selectedEntityIsThirdParty && (
 											<div className="notice notice-info" style={{ margin: '12px 0', padding: '12px' }}>
 												<p>
 													<strong>Merge incoming JSON into selected entity</strong>
@@ -1783,6 +2020,13 @@ const EntityEditorApp = () => {
 												<p className="description">
 													DBVC will preserve the selected entity as the local authority, generate a proposed JSON merge, and require confirmation before saving.
 												</p>
+												<MatchingPolicyControl
+													idPrefix="dbvc-entity-editor-merge-matching"
+													value={mergeJsonMatchingPolicy}
+													onChange={setMergeJsonMatchingPolicy}
+													disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
+													globalUidFallbackEnabled={globalUidFallbackEnabled}
+												/>
 												<div style={{ display: 'grid', gap: '10px', marginTop: '10px' }}>
 													<label>
 														Incoming JSON
@@ -1883,6 +2127,7 @@ const EntityEditorApp = () => {
 																Kind: {mergeJsonSummary?.kind || '—'}
 																{' · '}Subtype: {mergeJsonSummary?.subtype || '—'}
 																{' · '}Local match: {mergeJsonSummary?.local_match?.status === 'matched' ? `${mergeJsonSummary.local_match.kind || 'entity'} #${mergeJsonSummary.local_match.id}` : 'none'}
+																{' · '}Matching: {mergeJsonSummary?.matching_policy_label || mergeJsonMatchingPolicy}
 															</p>
 															<p>
 																UID: {mergeJsonSummary?.uid_policy === 'use_incoming' ? (mergeJsonSummary?.incoming_uid || 'incoming empty') : (mergeJsonSummary?.local_uid || 'local empty')}
@@ -2107,10 +2352,12 @@ const EntityEditorApp = () => {
 
 				{syncImportOpen && (
 					(Modal ? (
-						<Modal title="Import Sync JSON" onRequestClose={closeSyncImportModal} className="dbvc-entity-editor-modal" overlayClassName="dbvc-entity-editor-modal-overlay">
+						<Modal title={syncImportIsThirdParty ? 'Import Provider JSON' : 'Import Sync JSON'} onRequestClose={closeSyncImportModal} className="dbvc-entity-editor-modal" overlayClassName="dbvc-entity-editor-modal-overlay">
 							<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor">
 								<p className="description">
-									Preview creates unmatched post/CPT or term entities from JSON files that already exist in the DBVC sync folder.
+									{syncImportIsThirdParty
+										? 'Preview applies provider-owned JSON files that already exist in the DBVC sync folder. WS Form form updates replace the whole matched form graph by UID.'
+										: 'Preview creates unmatched post/CPT or term entities from JSON files that already exist in the DBVC sync folder.'}
 								</p>
 								{syncImportPreviewBusy && (
 									<p style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Spinner /> Checking sync file…</p>
@@ -2132,6 +2379,7 @@ const EntityEditorApp = () => {
 												Selected: {syncImportSummary?.requested ?? syncImportItems.length}
 												{' · '}Creatable: {syncImportSummary?.creatable ?? syncImportCreatableCount}
 												{' · '}Updatable: {syncImportSummary?.updatable ?? syncImportUpdateableCount}
+												{syncImportIsThirdParty ? ` · Mergeable: ${syncImportSummary?.mergeable ?? syncImportMergeableCount}` : ''}
 												{' · '}Created: {syncImportSummary?.created ?? 0}
 												{' · '}Updated: {syncImportSummary?.updated ?? 0}
 												{' · '}Blocked: {syncImportSummary?.blocked ?? 0}
@@ -2142,7 +2390,9 @@ const EntityEditorApp = () => {
 										{syncImportNoCreatable && (
 											<div className="notice notice-warning">
 												<p>
-													<strong>No entities can be created from this preview.</strong> Create stays disabled until at least one selected JSON is unmatched and passes import preflight.
+													<strong>No apply action is available from this preview.</strong> {syncImportIsThirdParty
+														? 'Apply stays disabled until at least one selected provider JSON passes preflight.'
+														: 'Create stays disabled until at least one selected JSON is unmatched and passes import preflight.'}
 												</p>
 												{syncImportBlockedMessages.length > 0 && (
 													<ul style={{ marginLeft: '18px' }}>
@@ -2169,6 +2419,8 @@ const EntityEditorApp = () => {
 												const action = item?.created ? 'created' : (item?.action || item?.detected_action);
 												const matchedUpdate = isSyncImportMatchedUpdateEligible(item) ? item.matched_update : null;
 												const matchedUpdateEntity = matchedUpdate?.wp_entity || {};
+												const providerCounts = item?.counts || {};
+												const settingsPreview = item?.settings_preview || null;
 												const itemPath = getSyncImportItemPath(item);
 												const itemUpdateConfirmation = itemPath ? syncImportUpdateConfirmations[itemPath] : null;
 												const itemUpdateConfirmed = !!itemUpdateConfirmation?.confirmed
@@ -2178,13 +2430,30 @@ const EntityEditorApp = () => {
 													<div key={`${item?.relative_path || item?.source_relative_path || 'sync-import'}-${itemIndex}`} className={`notice ${itemBlocking.length ? 'notice-error' : ((itemWarnings.length || hasBricksAdvisoryWarning) ? 'notice-warning' : 'notice-info')}`} style={{ margin: 0 }}>
 														<p>
 															<strong>{item?.title || item?.relative_path || 'Sync JSON'}</strong>
-															{' · '}Subtype: {item?.subtype || '—'}
+															{' · '}{item?.entity_kind === 'third_party'
+																? `Provider: ${item?.provider || '—'} / ${item?.object_type || '—'}`
+																: `Subtype: ${item?.subtype || '—'}`}
 															{' · '}Action: {getSyncImportActionLabel(action)}
 														</p>
 														<p>
 															Slug: {item?.slug || '—'}
 															{' · '}UID: {item?.uid || '—'}
+															{item?.source_id ? ` · Source ID: ${item.source_id}` : ''}
 														</p>
+														{item?.object_type === 'form' && (
+															<p>
+																WS Form graph: groups {providerCounts?.groups ?? 0}
+																{' · '}sections {providerCounts?.sections ?? 0}
+																{' · '}fields {providerCounts?.fields ?? 0}
+																{' · '}actions {providerCounts?.actions ?? 0}
+															</p>
+														)}
+														{settingsPreview && (
+															<p>
+																Settings merge: {(settingsPreview?.mergeable_options || []).join(', ') || 'none'}
+																{' · '}local secrets preserved
+															</p>
+														)}
 														<p>Source sync file: {item?.source_relative_path || item?.relative_path || '—'}</p>
 														{item?.source_relative_path && item?.relative_path && item.source_relative_path !== item.relative_path && (
 															<p>Canonical sync file: {item.relative_path}</p>
@@ -2236,6 +2505,9 @@ const EntityEditorApp = () => {
 																{' · '}match source: {item?.match?.match_source || 'unknown'}
 															</p>
 														)}
+														{item?.entity_kind === 'third_party' && item?.object_type === 'form' && (
+															<WsFormMatchedProviderNotice entity={item?.matched_provider_entity || item?.matched_update?.wp_entity} source="sync file" />
+														)}
 														{matchedUpdate && (
 															<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
 																<p>
@@ -2243,7 +2515,9 @@ const EntityEditorApp = () => {
 																	{matchedUpdate?.match_source ? ` · Match source: ${matchedUpdate.match_source}` : ''}
 																</p>
 																<p>
-																	DBVC will apply JSON-present core fields, meta, and taxonomies from this sync file to{' '}
+																	{item?.entity_kind === 'third_party'
+																		? 'DBVC will replace the matched WS Form form graph from this sync file for '
+																		: 'DBVC will apply JSON-present core fields, meta, and taxonomies from this sync file to '}
 																	{matchedUpdateEntity?.edit_url ? (
 																		<a href={matchedUpdateEntity.edit_url}>
 																			{matchedUpdateEntity?.label || matchedUpdateEntity?.subtype || 'entity'} #{matchedUpdateEntity?.id || 0}
@@ -2264,15 +2538,15 @@ const EntityEditorApp = () => {
 																</label>
 															</div>
 														)}
-														{item?.wp_entity?.status === 'matched' && (
+														{(item?.wp_entity?.status === 'matched' || item?.wp_entity?.id) && (
 															<p>
 																{item?.updated ? 'Updated live entity:' : (item?.created ? 'Created live entity:' : 'Live entity:')}{' '}
 																{item?.wp_entity?.edit_url ? (
 																	<a href={item.wp_entity.edit_url}>
-																		{item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}
+																		{item?.wp_entity?.provider || item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}
 																	</a>
 																) : (
-																	<span>{item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}</span>
+																	<span>{item?.wp_entity?.provider || item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}</span>
 																)}
 															</p>
 														)}
@@ -2318,14 +2592,19 @@ const EntityEditorApp = () => {
 									<Button variant="secondary" onClick={() => openSyncImportPreview(syncImportPaths.length ? syncImportPaths : syncImportPath)} disabled={(!syncImportPath && !syncImportPaths.length) || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportPreviewBusy}>
 										Refresh Preview
 									</Button>
-									<Button variant="primary" onClick={commitSyncImport} disabled={!syncImportCanCommit || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
+									<Button variant="primary" onClick={() => commitSyncImport()} disabled={!syncImportCanCommit || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
 										{syncImportCreatableCount > 0
-											? `Create ${syncImportCreatableCount} ${syncImportCreatableCount === 1 ? 'Entity' : 'Entities'}`
-											: 'Create Entity'}
+											? `${syncImportIsThirdParty ? 'Create' : 'Create'} ${syncImportCreatableCount} ${syncImportIsThirdParty ? (syncImportCreatableCount === 1 ? 'WS Form' : 'WS Forms') : (syncImportCreatableCount === 1 ? 'Entity' : 'Entities')}`
+											: (syncImportIsThirdParty ? 'Create WS Form' : 'Create Entity')}
 									</Button>
+									{syncImportCanMergeSettings && (
+										<Button variant="primary" onClick={() => commitSyncImport('merge_settings')} disabled={!syncImportCanMergeSettings || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
+											Merge {syncImportMergeableCount} Settings {syncImportMergeableCount === 1 ? 'File' : 'Files'}
+										</Button>
+									)}
 									{syncImportUpdateableCount > 0 && (
 										<Button variant="primary" onClick={commitSyncImportMatchedUpdates} disabled={!syncImportCanUpdateMatched || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
-											Update {syncImportUpdateableCount} Matched {syncImportUpdateableCount === 1 ? 'Entity' : 'Entities'}
+											Update {syncImportUpdateableCount} Matched {syncImportIsThirdParty ? (syncImportUpdateableCount === 1 ? 'WS Form' : 'WS Forms') : (syncImportUpdateableCount === 1 ? 'Entity' : 'Entities')}
 										</Button>
 									)}
 								</div>
@@ -2344,7 +2623,7 @@ const EntityEditorApp = () => {
 						<Modal title="New From Raw JSON" onRequestClose={closeRawIntakeModal} className="dbvc-entity-editor-modal" overlayClassName="dbvc-entity-editor-modal-overlay">
 							<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor">
 								<p className="description">
-									Paste one DBVC post/CPT or term JSON payload. Preview will detect the entity kind, target sync path, and whether DBVC will create, update, stage, or block the action.
+									Paste one DBVC post/CPT, term, or WS Form provider JSON payload. Preview will detect the entity kind, target sync path, and whether DBVC will create, update, stage, or block the action.
 								</p>
 								<label style={{ display: 'block', marginBottom: '12px' }}>
 									Mode
@@ -2390,28 +2669,48 @@ const EntityEditorApp = () => {
 									<div style={{ marginTop: '12px' }}>
 										<div className="notice notice-info">
 											<p>
-												Detected: {rawIntakePreview?.entity_kind || '—'}
-												{' · '}Subtype: {rawIntakePreview?.subtype || '—'}
+												Detected: {rawIntakeIsThirdParty
+													? `Provider: ${rawIntakePreview?.provider || '—'} / ${rawIntakePreview?.object_type || '—'}`
+													: (rawIntakePreview?.entity_kind || '—')}
+												{!rawIntakeIsThirdParty ? ` · Subtype: ${rawIntakePreview?.subtype || '—'}` : ''}
 												{' · '}Action: {getRawIntakeActionLabel(rawIntakePreview?.detected_action)}
 											</p>
 											<p>
 												Title/Name: {rawIntakePreview?.title || '—'}
 												{' · '}Slug: {rawIntakePreview?.slug || '—'}
 												{' · '}UID: {rawIntakePreview?.uid || '—'}
+												{rawIntakePreview?.source_id ? ` · Source ID: ${rawIntakePreview.source_id}` : ''}
 											</p>
+											{rawIntakePreview?.object_type === 'form' && (
+												<p>
+													WS Form graph: groups {rawIntakeProviderCounts?.groups ?? 0}
+													{' · '}sections {rawIntakeProviderCounts?.sections ?? 0}
+													{' · '}fields {rawIntakeProviderCounts?.fields ?? 0}
+													{' · '}actions {rawIntakeProviderCounts?.actions ?? 0}
+												</p>
+											)}
+											{rawIntakePreview?.object_type === 'settings' && rawIntakePreview?.settings_preview && (
+												<p>
+													Settings merge: {(rawIntakePreview.settings_preview?.mergeable_options || []).join(', ') || 'none'}
+													{' · '}local secrets preserved
+												</p>
+											)}
 											<p>Target sync file: {rawIntakePreview?.target_relative_path || '—'}</p>
 											{rawIntakePreview?.match?.status === 'matched' && (
 												<p>
-													Matched live entity:{' '}
+													Matched live {rawIntakeIsThirdParty ? 'provider entity' : 'entity'}:{' '}
 													{rawIntakePreview?.match?.edit_url ? (
 														<a href={rawIntakePreview.match.edit_url}>
-															{rawIntakePreview?.match?.kind || 'entity'} #{rawIntakePreview?.match?.id || 0}
+															{rawIntakePreview?.match?.label || rawIntakePreview?.match?.kind || rawIntakePreview?.match?.provider || 'entity'} #{rawIntakePreview?.match?.id || 0}
 														</a>
 													) : (
-														<span>{rawIntakePreview?.match?.kind || 'entity'} #{rawIntakePreview?.match?.id || 0}</span>
+														<span>{rawIntakePreview?.match?.label || rawIntakePreview?.match?.kind || rawIntakePreview?.match?.provider || 'entity'} #{rawIntakePreview?.match?.id || 0}</span>
 													)}
 													{' · '}match source: {rawIntakePreview?.match?.match_source || 'unknown'}
 												</p>
+											)}
+											{rawIntakeIsThirdParty && rawIntakePreview?.object_type === 'form' && (
+												<WsFormMatchedProviderNotice entity={rawIntakePreview?.matched_provider_entity || rawIntakePreview?.matched_update?.wp_entity} source="raw JSON" />
 											)}
 											{rawIntakeMatchedUpdate && (
 												<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
@@ -2420,7 +2719,9 @@ const EntityEditorApp = () => {
 														{rawIntakePreview?.matched_update?.match_source ? ` · Match source: ${rawIntakePreview.matched_update.match_source}` : ''}
 													</p>
 													<p>
-														DBVC will apply JSON-present core fields, meta, and taxonomies from this raw JSON payload to{' '}
+														{rawIntakeIsThirdParty
+															? 'DBVC will replace the matched WS Form form graph from this raw JSON payload for '
+															: 'DBVC will apply JSON-present core fields, meta, and taxonomies from this raw JSON payload to '}
 														{rawIntakeMatchedUpdateEntity?.edit_url ? (
 															<a href={rawIntakeMatchedUpdateEntity.edit_url}>
 																{rawIntakeMatchedUpdateEntity?.label || rawIntakeMatchedUpdateEntity?.subtype || 'entity'} #{rawIntakeMatchedUpdateEntity?.id || 0}

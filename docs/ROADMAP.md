@@ -6,7 +6,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 
 | Topic | Status | Guide | Notes |
 |---|---|---|---|
-| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md` | Current primary implementation stream. Keep detailed state in addon-local docs; composite browser hardening status, including expanded-post-meta repeater stale coverage, is tracked in `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md` and `addons/visual-editor/docs/qa/TEST_LOG.md`. |
+| Visual Editor add-on | active | `addons/visual-editor/AGENTS.md`; `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_PHASES.md` | Current primary implementation stream. The addon-local phases guide now contains the canonical P0-P5 production backlog; P0 browser evidence now covers composite stale UI, marker-heavy idle descriptor availability, Builder-mode exclusion, query-collection save/reload, and missing-image anchor panel open. Remaining P0 fixture gaps are current rendered gallery browser save/reload and empty query-loop synthetic badge browser QA; reversible fixture probes found the current contractors vertical still renders the gallery container empty and falls back to shared populated benefits instead of producing an empty loop. P1 linked-term badge hardening is in progress after browser QA found repeated native `post-taxonomy` term markers collapsed to the first card when compact descriptors omitted full source metadata. Older running open-item notes were moved to `addons/visual-editor/docs/archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md`; use that archive only for historical fixture/context recovery, not execution order. |
 | Admin app refactor | active | `docs/implementation/active/admin-app-refactor.md` | Long-running refactor plan plus UI architecture companion. |
 | Term entity polish | needs-review | `docs/implementation/active/term-entity-polish.md` | Confirm whether this remains active before implementation. |
 | Content Migration V2 | active | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Module-local context pack remains the shortest resume path. |
@@ -26,6 +26,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 | User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
 | Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
 | Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
+| WS Form Entity Editor provider mode | initial-implemented | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#stage-w-ws-form-entity-editor-provider-mode` | Initial provider row, JSON edit/save, preflight, create, UID-matched whole-form update, settings merge, and automated coverage are in place; snapshot/diff/browser QA hardening remains. |
 
 ## Completed Work
 
@@ -49,3 +50,4 @@ This is the single repo-level planning index. Module-local plans remain with the
 | Bricks assets planning | `docs/archives/bricks-assets/` | `docs/architecture/bricks-assets-engine-contract-draft.md` | Discovery/handoff material. |
 | Bricks addon decisions | `docs/archives/bricks-addon/` | `addons/bricks/docs/BRICKS_ADDON_PLAN.md` | Historical addon handoff and recommendation. |
 | Content migration workbench handoff | `docs/archives/content-migration-workbench-handoff/` | `addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md` | Historical standalone handoff pack. |
+| Visual Editor running open-item notes | `addons/visual-editor/docs/archives/DBVC_VISUAL_EDITOR_OPEN_ITEMS_CONTEXT_2026_07_07.md` | `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_PHASES.md` | Superseded thread-style backlog preserved after consolidation into the P0-P5 production backlog. |

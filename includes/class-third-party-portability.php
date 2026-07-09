@@ -171,23 +171,109 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             return self::is_wsform_form_payload($payload) || self::is_wsform_settings_payload($payload);
         }
 
+        public static function is_wsform_payload(array $payload): bool
+        {
+            $identifier = isset($payload['identifier']) ? (string) $payload['identifier'] : '';
+            $provider = isset($payload['provider']) ? (string) $payload['provider'] : '';
+            $dbvc_provider = isset($payload['dbvc_portability']['provider']) ? (string) $payload['dbvc_portability']['provider'] : '';
+
+            return self::is_wsform_provider_value($identifier)
+                || self::is_wsform_provider_value($provider)
+                || self::is_wsform_provider_value($dbvc_provider);
+        }
+
         public static function is_wsform_form_payload(array $payload): bool
         {
             $identifier = isset($payload['identifier']) ? (string) $payload['identifier'] : '';
-            $provider = isset($payload['dbvc_portability']['provider']) ? (string) $payload['dbvc_portability']['provider'] : '';
-            $object_type = isset($payload['dbvc_portability']['object_type']) ? (string) $payload['dbvc_portability']['object_type'] : '';
-            $export_object = isset($payload['meta']['export_object']) ? (string) $payload['meta']['export_object'] : '';
+            $provider = isset($payload['dbvc_portability']['provider'])
+                ? (string) $payload['dbvc_portability']['provider']
+                : (isset($payload['provider']) ? (string) $payload['provider'] : '');
+            $object_type = isset($payload['dbvc_portability']['object_type'])
+                ? self::normalize_wsform_payload_type((string) $payload['dbvc_portability']['object_type'])
+                : (isset($payload['object_type']) ? self::normalize_wsform_payload_type((string) $payload['object_type']) : '');
+            $export_object = isset($payload['meta']['export_object'])
+                ? self::normalize_wsform_payload_type((string) $payload['meta']['export_object'])
+                : '';
 
-            return ($identifier === self::PROVIDER_WSFORM && $export_object === 'form')
-                || ($provider === self::PROVIDER_WSFORM && $object_type === 'form');
+            if (self::is_wsform_provider_value($provider) && $object_type !== '') {
+                return $object_type === 'form';
+            }
+
+            if (! self::is_wsform_provider_value($identifier)) {
+                return false;
+            }
+
+            if ($export_object !== '') {
+                return $export_object === 'form';
+            }
+
+            if ($object_type !== '') {
+                return $object_type === 'form';
+            }
+
+            return self::looks_like_wsform_form_payload($payload);
         }
 
         public static function is_wsform_settings_payload(array $payload): bool
         {
             return isset($payload['entity_type'], $payload['provider'], $payload['object_type'])
                 && $payload['entity_type'] === 'third_party'
-                && $payload['provider'] === self::PROVIDER_WSFORM
-                && $payload['object_type'] === 'settings';
+                && self::is_wsform_provider_value((string) $payload['provider'])
+                && self::normalize_wsform_payload_type((string) $payload['object_type']) === 'settings';
+        }
+
+        public static function get_wsform_payload_object_type(array $payload): string
+        {
+            $object_type = isset($payload['dbvc_portability']['object_type'])
+                ? self::normalize_wsform_payload_type((string) $payload['dbvc_portability']['object_type'])
+                : (isset($payload['object_type']) ? self::normalize_wsform_payload_type((string) $payload['object_type']) : '');
+            if ($object_type !== '') {
+                return $object_type;
+            }
+
+            $export_object = isset($payload['meta']['export_object'])
+                ? self::normalize_wsform_payload_type((string) $payload['meta']['export_object'])
+                : '';
+            if ($export_object !== '') {
+                return $export_object;
+            }
+
+            if (self::is_wsform_settings_payload($payload)) {
+                return 'settings';
+            }
+
+            if (self::is_wsform_form_payload($payload)) {
+                return 'form';
+            }
+
+            return self::is_wsform_payload($payload) ? 'unknown' : '';
+        }
+
+        private static function is_wsform_provider_value(string $value): bool
+        {
+            return self::normalize_wsform_payload_type($value) === self::PROVIDER_WSFORM;
+        }
+
+        private static function normalize_wsform_payload_type(string $value): string
+        {
+            $value = strtolower(trim($value));
+            $value = str_replace(['-', ' '], '_', $value);
+
+            return sanitize_key($value);
+        }
+
+        private static function looks_like_wsform_form_payload(array $payload): bool
+        {
+            $label = isset($payload['label']) ? trim((string) $payload['label']) : '';
+            if ($label === '' || ! isset($payload['meta']) || ! is_array($payload['meta'])) {
+                return false;
+            }
+
+            return (isset($payload['groups']) && is_array($payload['groups']))
+                || isset($payload['version'])
+                || isset($payload['status'])
+                || isset($payload['checksum'])
+                || isset($payload['count_submit']);
         }
 
         public static function determine_wsform_form_filename_from_payload(array $payload): string
@@ -205,6 +291,68 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             }
 
             return sanitize_file_name('ws-form-' . $part . '.json');
+        }
+
+        public static function extract_wsform_form_uid(array $payload): string
+        {
+            return self::extract_wsform_uid($payload);
+        }
+
+        public static function summarize_wsform_form_payload(array $payload): array
+        {
+            return [
+                'label'         => isset($payload['label']) ? sanitize_text_field((string) $payload['label']) : '',
+                'uid'           => self::extract_wsform_uid($payload),
+                'source_id'     => isset($payload['dbvc_portability']['source_id']) ? absint($payload['dbvc_portability']['source_id']) : absint($payload['id'] ?? 0),
+                'source_status' => isset($payload['dbvc_portability']['source_status'])
+                    ? sanitize_key((string) $payload['dbvc_portability']['source_status'])
+                    : sanitize_key((string) ($payload['status'] ?? '')),
+                'counts'        => self::count_wsform_payload_graph($payload),
+            ];
+        }
+
+        public static function get_wsform_form_match_by_uid(string $uid): ?array
+        {
+            $uid = sanitize_text_field($uid);
+            if ($uid === '' || ! self::is_wsform_available()) {
+                return null;
+            }
+
+            $form_id = self::find_wsform_form_id_by_uid($uid);
+            if ($form_id <= 0) {
+                return null;
+            }
+
+            return self::format_wsform_form_entity($form_id, 'dbvc_portability_uid');
+        }
+
+        public static function import_wsform_form_for_entity_editor(array $payload)
+        {
+            return self::import_wsform_form($payload, true);
+        }
+
+        public static function import_wsform_settings_for_entity_editor(array $payload)
+        {
+            $result = self::import_wsform_settings($payload);
+            if (! $result) {
+                return new WP_Error('dbvc_wsform_settings_import_skipped', __('No WS Form settings were imported.', 'dbvc'));
+            }
+
+            return [
+                'status'      => 'applied',
+                'provider'    => self::PROVIDER_WSFORM,
+                'object_type' => 'settings',
+                'merged'      => true,
+                'option_names' => array_values(array_intersect(
+                    array_map('strval', array_keys((array) ($payload['options'] ?? []))),
+                    self::wsform_setting_option_names()
+                )),
+            ];
+        }
+
+        public static function get_wsform_setting_option_names(): array
+        {
+            return self::wsform_setting_option_names();
         }
 
         private static function export_wsform_forms(bool $include_trash = false): int
@@ -362,7 +510,7 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             });
         }
 
-        private static function import_wsform_form(array $payload)
+        private static function import_wsform_form(array $payload, bool $return_details = false)
         {
             if (! self::is_wsform_available()) {
                 return new WP_Error('dbvc_wsform_unavailable', __('WS Form is not available on this site.', 'dbvc'));
@@ -382,7 +530,7 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                 return new WP_Error('dbvc_wsform_import_prepare_failed', __('Failed to prepare WS Form payload for import.', 'dbvc'));
             }
 
-            return self::with_wsform_caps(function () use ($form_object, $uid, $source_status) {
+            return self::with_wsform_caps(function () use ($form_object, $uid, $source_status, $return_details) {
                 $existing_id = self::find_wsform_form_id_by_uid($uid);
                 $ws_form = new WS_Form_Form();
 
@@ -410,7 +558,25 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                     return new WP_Error('dbvc_wsform_import_failed', $e->getMessage());
                 }
 
-                return true;
+                if (! $return_details) {
+                    return true;
+                }
+
+                $form_id = (int) $ws_form->id;
+                $created = $existing_id <= 0;
+
+                return [
+                    'status'        => 'applied',
+                    'provider'      => self::PROVIDER_WSFORM,
+                    'object_type'   => 'form',
+                    'uid'           => $uid,
+                    'form_id'       => $form_id,
+                    'action'        => $created ? 'create_form' : 'update_matched_form',
+                    'created'       => $created,
+                    'updated'       => ! $created,
+                    'source_status' => $source_status,
+                    'wp_entity'     => self::format_wsform_form_entity($form_id, 'dbvc_portability_uid'),
+                ];
             });
         }
 
@@ -463,6 +629,50 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
             }
 
             return '';
+        }
+
+        private static function count_wsform_payload_graph(array $payload): array
+        {
+            $groups = isset($payload['groups']) && is_array($payload['groups']) ? $payload['groups'] : [];
+            $group_count = 0;
+            $section_count = 0;
+            $field_count = 0;
+
+            foreach ($groups as $group) {
+                if (! is_array($group)) {
+                    continue;
+                }
+
+                $group_count++;
+                $sections = isset($group['sections']) && is_array($group['sections']) ? $group['sections'] : [];
+                foreach ($sections as $section) {
+                    if (! is_array($section)) {
+                        continue;
+                    }
+
+                    $section_count++;
+                    $fields = isset($section['fields']) && is_array($section['fields']) ? $section['fields'] : [];
+                    foreach ($fields as $field) {
+                        if (is_array($field)) {
+                            $field_count++;
+                        }
+                    }
+                }
+            }
+
+            $actions = [];
+            if (isset($payload['meta']['action']) && is_array($payload['meta']['action'])) {
+                $actions = $payload['meta']['action'];
+            } elseif (isset($payload['meta']['actions']) && is_array($payload['meta']['actions'])) {
+                $actions = $payload['meta']['actions'];
+            }
+
+            return [
+                'groups'   => $group_count,
+                'sections' => $section_count,
+                'fields'   => $field_count,
+                'actions'  => count($actions),
+            ];
         }
 
         private static function get_wsform_form_ids(bool $include_trash): array
@@ -569,6 +779,42 @@ if (! class_exists('DBVC_Third_Party_Portability')) {
                 self::META_PORTABILITY_UID,
                 $uid
             ));
+        }
+
+        private static function format_wsform_form_entity(int $form_id, string $match_source = ''): array
+        {
+            $entity = [
+                'id'           => $form_id,
+                'kind'         => 'third_party',
+                'provider'     => self::PROVIDER_WSFORM,
+                'object_type'  => 'form',
+                'label'        => sprintf(__('WS Form #%d', 'dbvc'), $form_id),
+                'status'       => '',
+                'edit_url'     => admin_url('admin.php?page=ws-form-edit&id=' . $form_id),
+                'match_source' => $match_source,
+            ];
+
+            if (! self::is_wsform_available()) {
+                return $entity;
+            }
+
+            global $wpdb;
+            $form_table = self::wsform_table('form');
+            $row = $wpdb->get_row($wpdb->prepare(
+                "SELECT label, status FROM {$form_table} WHERE id = %d LIMIT 1",
+                $form_id
+            ), ARRAY_A);
+
+            if (is_array($row)) {
+                if (isset($row['label']) && (string) $row['label'] !== '') {
+                    $entity['label'] = (string) $row['label'];
+                }
+                if (isset($row['status'])) {
+                    $entity['status'] = (string) $row['status'];
+                }
+            }
+
+            return $entity;
         }
 
         private static function ensure_wsform_form_uid(int $form_id): string

@@ -143,7 +143,7 @@ This function iterates descriptors and performs string operations against the fu
 
 ### 7. Session persistence
 
-`EditableRegistry::persistRequestSession()` stores the request descriptors in a user-scoped transient at shutdown.
+`EditableRegistry::persistRequestSession()` stores the request descriptors in a user-scoped transient during `wp_footer` priority 19, before Visual Editor footer scripts execute. The shutdown hook remains as a fallback for late descriptor changes.
 
 The transient contains:
 
@@ -157,6 +157,8 @@ The transient contains:
 Default TTL is 8 hours, filterable from 5 minutes to 48 hours.
 
 `loadSession()` refreshes the transient TTL every time a session is loaded.
+
+This ordering is intentional. The frontend boot script immediately requests the session public map after finding DOM markers. If persistence waits only for `shutdown`, slow or marker-heavy pages can expose markers before the transient exists, causing the frontend to report that markers were found but the descriptor session was unavailable.
 
 ### 8. Frontend boot
 
@@ -492,6 +494,7 @@ Acceptance:
 
 Current implementation note:
 
+- `EditableRegistry::persistRequestSession()` now also runs at `wp_footer` priority 19 so descriptor sessions exist before `overlay-app.js` requests the public map; the shutdown hook remains as a late fallback and the registry skips duplicate writes unless descriptors changed.
 - `SessionController` now exposes `POST /visual-editor/session/{session_id}/touch`, returning only session status, TTL, and server time.
 - `DescriptorController` now exposes `POST /visual-editor/session/{session_id}/descriptors`, with a default cap of 10 tokens via `dbvc_visual_editor_descriptor_batch_limit`, hard-capped at 25.
 - `api-client.js` exposes `touchSession()` and `getDescriptors()`.

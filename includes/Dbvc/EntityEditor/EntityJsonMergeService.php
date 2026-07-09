@@ -13,6 +13,9 @@ final class EntityJsonMergeService
 {
     private const MODE_SAVE = 'save';
     private const MODE_SAVE_AND_PARTIAL_IMPORT = 'save_and_partial_import';
+    private const MATCHING_POLICY_STRICT_UID = 'strict_uid';
+    private const MATCHING_POLICY_ALLOW_SLUG_FALLBACK = 'allow_slug_fallback';
+    private const MATCHING_POLICY_SELECTED_ENTITY = 'selected_entity';
     private const PROTECTED_POST_META_KEYS = [
         '_edit_lock',
         '_edit_last',
@@ -32,9 +35,10 @@ final class EntityJsonMergeService
      * @param string              $incoming_json
      * @param array<string,mixed> $identity
      * @param string              $mode
+     * @param array<string,mixed> $matching
      * @return array<string,mixed>|\WP_Error
      */
-    public static function preview($relative_path, $incoming_json, array $identity = [], $mode = self::MODE_SAVE)
+    public static function preview($relative_path, $incoming_json, array $identity = [], $mode = self::MODE_SAVE, array $matching = [])
     {
         if (! \class_exists('DBVC_Entity_Editor_Indexer')) {
             return new \WP_Error(
@@ -47,6 +51,7 @@ final class EntityJsonMergeService
         $relative_path = self::normalize_relative_path($relative_path);
         $mode = self::normalize_mode($mode);
         $identity = self::normalize_identity_choices($identity);
+        $matching = self::normalize_matching_options($matching, self::MATCHING_POLICY_SELECTED_ENTITY);
 
         $current_file = \DBVC_Entity_Editor_Indexer::load_entity_file_for_download($relative_path);
         if (\is_wp_error($current_file)) {
@@ -92,7 +97,7 @@ final class EntityJsonMergeService
             );
         }
 
-        $local_match = self::find_local_match($current_info, $current);
+        $local_match = self::find_local_match($current_info, $current, $matching['policy']);
         $current_authority_info = self::apply_local_match_authority($current_info, $local_match, $notes);
         if ($mode === self::MODE_SAVE_AND_PARTIAL_IMPORT && empty($local_match['id'])) {
             $blockers[] = self::message(
@@ -142,6 +147,8 @@ final class EntityJsonMergeService
             'slug_policy'  => $identity['slug'],
             'id_policy'    => 'keep_local',
             'title_policy' => $identity['title'],
+            'matching_policy' => $matching['policy'],
+            'matching_policy_label' => self::matching_policy_label((string) $matching['policy']),
             'selected_file_identity' => [
                 'id'    => (int) $current_info['id'],
                 'uid'   => $current_info['uid'],
@@ -157,6 +164,7 @@ final class EntityJsonMergeService
             isset($current_file['content']) ? (string) $current_file['content'] : '',
             (string) $incoming_json,
             $identity,
+            $matching,
             (string) $proposed_json
         );
 
@@ -167,6 +175,7 @@ final class EntityJsonMergeService
             'preview_hash'      => $preview_hash,
             'entity_kind'       => $current_info['kind'],
             'subtype'           => $current_info['subtype'],
+            'matching'          => $matching,
             'summary'           => $summary,
             'blockers'          => $blockers,
             'blocking'          => $blockers,
@@ -191,9 +200,10 @@ final class EntityJsonMergeService
      * @param string              $preview_hash
      * @param bool                $confirmed
      * @param bool                $partial_import
+     * @param array<string,mixed> $matching
      * @return array<string,mixed>|\WP_Error
      */
-    public static function save($relative_path, $incoming_json, array $identity, $user_id, $lock_token, $force_takeover, $preview_hash, $confirmed, $partial_import = false)
+    public static function save($relative_path, $incoming_json, array $identity, $user_id, $lock_token, $force_takeover, $preview_hash, $confirmed, $partial_import = false, array $matching = [])
     {
         if (! $confirmed) {
             return new \WP_Error(
@@ -204,7 +214,8 @@ final class EntityJsonMergeService
         }
 
         $mode = $partial_import ? self::MODE_SAVE_AND_PARTIAL_IMPORT : self::MODE_SAVE;
-        $preview = self::preview($relative_path, $incoming_json, $identity, $mode);
+        $matching = self::normalize_matching_options($matching, self::MATCHING_POLICY_SELECTED_ENTITY);
+        $preview = self::preview($relative_path, $incoming_json, $identity, $mode, $matching);
         if (\is_wp_error($preview)) {
             return $preview;
         }
@@ -235,12 +246,14 @@ final class EntityJsonMergeService
         }
 
         $content = isset($preview['proposed_json']) ? (string) $preview['proposed_json'] : '';
-        $forced_match = [];
+        $matching_options = [
+            'policy' => $matching['policy'],
+        ];
         if ($partial_import) {
             $summary = isset($preview['summary']) && \is_array($preview['summary']) ? $preview['summary'] : [];
             $local_match = isset($summary['local_match']) && \is_array($summary['local_match']) ? $summary['local_match'] : [];
-            if (! empty($local_match['id'])) {
-                $forced_match = [
+            if ($matching['policy'] === self::MATCHING_POLICY_SELECTED_ENTITY && ! empty($local_match['id'])) {
+                $matching_options['forced_match'] = [
                     'id'      => (int) $local_match['id'],
                     'kind'    => isset($local_match['kind']) ? (string) $local_match['kind'] : '',
                     'subtype' => isset($local_match['subtype']) ? (string) $local_match['subtype'] : '',
@@ -249,7 +262,7 @@ final class EntityJsonMergeService
             }
         }
         $result = $partial_import
-            ? \DBVC_Entity_Editor_Indexer::save_and_partial_import($relative_path, $content, (int) $user_id, (string) $lock_token, (bool) $force_takeover, $forced_match)
+            ? \DBVC_Entity_Editor_Indexer::save_and_partial_import($relative_path, $content, (int) $user_id, (string) $lock_token, (bool) $force_takeover, $matching_options)
             : \DBVC_Entity_Editor_Indexer::save_entity_file($relative_path, $content, (int) $user_id, (string) $lock_token, (bool) $force_takeover);
 
         if (\is_wp_error($result)) {
@@ -706,13 +719,17 @@ final class EntityJsonMergeService
     /**
      * @param array<string,mixed> $entity_info
      * @param array<string,mixed> $entity
+     * @param string              $matching_policy
      * @return array<string,mixed>
      */
-    private static function find_local_match(array $entity_info, array $entity)
+    private static function find_local_match(array $entity_info, array $entity, $matching_policy = self::MATCHING_POLICY_SELECTED_ENTITY)
     {
+        $matching_policy = self::normalize_matching_options(['policy' => $matching_policy], self::MATCHING_POLICY_SELECTED_ENTITY)['policy'];
+        $allow_slug_fallback = $matching_policy !== self::MATCHING_POLICY_STRICT_UID;
+
         if ($entity_info['kind'] === 'post') {
-            $post_id = (int) $entity_info['id'];
-            if ($post_id > 0) {
+            if ($matching_policy === self::MATCHING_POLICY_SELECTED_ENTITY && (int) $entity_info['id'] > 0) {
+                $post_id = (int) $entity_info['id'];
                 $post = \get_post($post_id);
                 if ($post instanceof \WP_Post && (string) $post->post_type === (string) $entity_info['subtype']) {
                     return self::format_match('post', (string) $entity_info['subtype'], $post_id, 'id', (string) $post->post_title);
@@ -725,29 +742,57 @@ final class EntityJsonMergeService
                     $post = \get_post($post_id);
                     return self::format_match('post', (string) $entity_info['subtype'], $post_id, 'uid', $post instanceof \WP_Post ? (string) $post->post_title : '');
                 }
+
+                if (! $allow_slug_fallback) {
+                    return [
+                        'status' => 'none',
+                        'id'     => 0,
+                    ];
+                }
             }
 
             if ($entity_info['slug'] !== '' && \function_exists('get_page_by_path')) {
                 $post = \get_page_by_path((string) $entity_info['slug'], OBJECT, (string) $entity_info['subtype']);
                 if ($post instanceof \WP_Post) {
-                    return self::format_match('post', (string) $entity_info['subtype'], (int) $post->ID, 'slug', (string) $post->post_title);
+                    $source = $matching_policy === self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK
+                        ? 'slug_fallback'
+                        : 'slug';
+                    return self::format_match('post', (string) $entity_info['subtype'], (int) $post->ID, $source, (string) $post->post_title);
                 }
             }
         }
 
         if ($entity_info['kind'] === 'term') {
-            $term_id = (int) $entity_info['id'];
-            if ($term_id > 0) {
+            if ($matching_policy === self::MATCHING_POLICY_SELECTED_ENTITY && (int) $entity_info['id'] > 0) {
+                $term_id = (int) $entity_info['id'];
                 $term = \get_term($term_id, (string) $entity_info['subtype']);
                 if ($term && ! \is_wp_error($term)) {
                     return self::format_match('term', (string) $entity_info['subtype'], $term_id, 'id', (string) $term->name);
                 }
             }
 
+            if ($entity_info['uid'] !== '') {
+                $term_id = self::lookup_term_id_by_uid((string) $entity_info['uid'], (string) $entity_info['subtype']);
+                if ($term_id > 0) {
+                    $term = \get_term($term_id, (string) $entity_info['subtype']);
+                    return self::format_match('term', (string) $entity_info['subtype'], $term_id, 'uid', $term && ! \is_wp_error($term) ? (string) $term->name : '');
+                }
+
+                if (! $allow_slug_fallback) {
+                    return [
+                        'status' => 'none',
+                        'id'     => 0,
+                    ];
+                }
+            }
+
             if ($entity_info['slug'] !== '' && \function_exists('get_term_by')) {
                 $term = \get_term_by('slug', (string) $entity_info['slug'], (string) $entity_info['subtype']);
                 if ($term && ! \is_wp_error($term)) {
-                    return self::format_match('term', (string) $entity_info['subtype'], (int) $term->term_id, 'slug', (string) $term->name);
+                    $source = $matching_policy === self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK
+                        ? 'slug_fallback'
+                        : 'slug';
+                    return self::format_match('term', (string) $entity_info['subtype'], (int) $term->term_id, $source, (string) $term->name);
                 }
             }
         }
@@ -920,6 +965,54 @@ final class EntityJsonMergeService
     }
 
     /**
+     * @param string $uid
+     * @param string $taxonomy
+     * @return int
+     */
+    private static function lookup_term_id_by_uid($uid, $taxonomy = '')
+    {
+        $uid = trim((string) $uid);
+        $taxonomy = sanitize_key((string) $taxonomy);
+        if ($uid === '' || $taxonomy === '') {
+            return 0;
+        }
+
+        if (\class_exists('DBVC_Database')) {
+            $record = \DBVC_Database::get_entity_by_uid($uid);
+            if (
+                \is_object($record)
+                && ! empty($record->object_id)
+                && isset($record->object_type)
+                && (string) $record->object_type === 'term:' . $taxonomy
+            ) {
+                $term = \get_term((int) $record->object_id, $taxonomy);
+                if ($term && ! \is_wp_error($term)) {
+                    return (int) $term->term_id;
+                }
+            }
+        }
+
+        $terms = \get_terms([
+            'taxonomy' => $taxonomy,
+            'hide_empty' => false,
+            'number' => 1,
+            'fields' => 'ids',
+            'meta_query' => [
+                [
+                    'key' => 'vf_object_uid',
+                    'value' => $uid,
+                ],
+            ],
+        ]);
+
+        if (\is_array($terms) && ! empty($terms)) {
+            return (int) reset($terms);
+        }
+
+        return 0;
+    }
+
+    /**
      * @param array<string,mixed> $entity
      * @return string
      */
@@ -1066,6 +1159,54 @@ final class EntityJsonMergeService
     }
 
     /**
+     * @param array<string,mixed> $matching
+     * @param string              $default_policy
+     * @return array<string,string>
+     */
+    private static function normalize_matching_options(array $matching, $default_policy = self::MATCHING_POLICY_SELECTED_ENTITY)
+    {
+        $policy = isset($matching['policy']) ? sanitize_key((string) $matching['policy']) : '';
+        $default_policy = sanitize_key((string) $default_policy);
+
+        if (! \in_array($default_policy, [
+            self::MATCHING_POLICY_STRICT_UID,
+            self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK,
+            self::MATCHING_POLICY_SELECTED_ENTITY,
+        ], true)) {
+            $default_policy = self::MATCHING_POLICY_SELECTED_ENTITY;
+        }
+
+        if (! \in_array($policy, [
+            self::MATCHING_POLICY_STRICT_UID,
+            self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK,
+            self::MATCHING_POLICY_SELECTED_ENTITY,
+        ], true)) {
+            $policy = $default_policy;
+        }
+
+        return [
+            'policy' => $policy,
+        ];
+    }
+
+    /**
+     * @param string $policy
+     * @return string
+     */
+    private static function matching_policy_label($policy)
+    {
+        if ($policy === self::MATCHING_POLICY_SELECTED_ENTITY) {
+            return __('Selected local entity', 'dbvc');
+        }
+
+        if ($policy === self::MATCHING_POLICY_ALLOW_SLUG_FALLBACK) {
+            return __('Allow slug fallback once', 'dbvc');
+        }
+
+        return __('Strict UID-first', 'dbvc');
+    }
+
+    /**
      * @param string $mode
      * @return string
      */
@@ -1200,16 +1341,18 @@ final class EntityJsonMergeService
      * @param string              $current_content
      * @param string              $incoming_json
      * @param array<string,string> $identity
+     * @param array<string,string> $matching
      * @param string              $proposed_json
      * @return string
      */
-    private static function build_preview_hash($relative_path, $current_content, $incoming_json, array $identity, $proposed_json)
+    private static function build_preview_hash($relative_path, $current_content, $incoming_json, array $identity, array $matching, $proposed_json)
     {
         return \hash('sha256', \wp_json_encode([
             'path' => self::normalize_relative_path($relative_path),
             'current' => \hash('sha256', (string) $current_content),
             'incoming' => \hash('sha256', (string) $incoming_json),
             'identity' => $identity,
+            'matching' => $matching,
             'proposed' => \hash('sha256', (string) $proposed_json),
         ]));
     }
