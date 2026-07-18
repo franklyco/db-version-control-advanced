@@ -57,6 +57,8 @@ Use this as validation coverage, not implementation priority. Current P0-P5 exec
 - [x] Query collection no-op `Save` writes without reload, closes the panel, preserves URL/marker count, and reports reload-when-ready copy on the vertical Benefits collection fixture
 - [x] Query collection no-op `Save and Reload` reloads back into Visual Editor mode with mounted markers and query-collection markers intact on the same vertical fixture
 - [x] Gallery save contract round-trips the ordered attachment-ID list in the targeted runtime smoke for `gallery_section_gallery`
+- [x] Post-owned linked-term collection descriptors in repeated post cards keep distinct owner-scoped source groups and validate no-op term saves without changing assigned terms in runtime QA
+- [x] Post-owned linked-term collection runtime mutation QA can remove a term, append an existing unused term, and restore the original assigned term IDs for a concrete loop-owned card
 
 ## UX
 - [ ] Editable fields open expected input
@@ -76,5 +78,6 @@ Use this as validation coverage, not implementation priority. Current P0-P5 exec
 - [x] Review Fields `Open` opens zero-height/hidden composite descriptors through the token fallback path in live browser QA
 - [x] Marker-heavy pages keep the descriptor session available after idle; `/our-process/` reopened `Hero H1` to a ready editable panel after the idle window
 - [x] Missing image anchors surface as editable related-owner media panels with `No media is currently set`, Media Library selection, URL fallback, related-owner acknowledgement, and disabled save controls until media is selected
+- [ ] Post-owned linked-term collection browser panel QA still needs panel open, owner/source copy, add/remove no-reload save, optional reload, and rendered chip update/restore confirmation for concrete owner cards; term reorder should stay disabled/hidden or get a dedicated order contract because runtime QA did not persist reverse order
 - [ ] Empty query-loop synthetic badge browser QA still needs a current rendered fixture; checked vertical fixtures rendered normal non-empty query-collection markers only, and a reversible empty-current-benefits probe fell back to a shared populated source rather than an empty loop
 - [ ] Populated gallery browser save/reload QA still needs a current page where a `gallery_collection` marker renders; current browser checks did not expose the historical `xxrpfg` marker, and reversible gallery value swaps still rendered the `hmupao` gallery container empty

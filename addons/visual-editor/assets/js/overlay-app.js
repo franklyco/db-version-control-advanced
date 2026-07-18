@@ -8051,7 +8051,9 @@
       if (!currentItems.length) {
         const emptyMessage = isFilteredSubset
           ? formatTemplateString(strings().panelCollectionSubsetEmpty || 'No connected {target} are set yet.', { target: targetLabel })
-          : (strings().panelCollectionEmpty || 'No connected posts are set yet.');
+          : (isPostTermsCollection
+            ? (strings().panelCollectionTermsEmpty || 'No linked terms are set yet.')
+            : (strings().panelCollectionEmpty || 'No connected posts are set yet.'));
 
         selectedList.innerHTML = `<div class="dbvc-ve-panel__placeholder">${escapeHtml(emptyMessage)}</div>`;
         return;
@@ -8184,7 +8186,9 @@
       lastSearchItems = Array.isArray(renderItems) ? renderItems : [];
 
       if (!renderItems.length) {
-        setSearchState(strings().panelCollectionNoResults || 'No matching posts were found.');
+        setSearchState(isPostTermsCollection
+          ? (strings().panelCollectionTermsNoResults || 'No matching terms were found.')
+          : (strings().panelCollectionNoResults || 'No matching posts were found.'));
         return;
       }
 

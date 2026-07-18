@@ -217,6 +217,8 @@ final class AssetLoader
                     'panelCollectionResults' => __('Search results', 'dbvc'),
                     'panelCollectionEmpty' => __('No connected posts are set yet.', 'dbvc'),
                     'panelCollectionNoResults' => __('No matching posts were found.', 'dbvc'),
+                    'panelCollectionTermsEmpty' => __('No linked terms are set yet.', 'dbvc'),
+                    'panelCollectionTermsNoResults' => __('No matching terms were found.', 'dbvc'),
                     'panelCollectionSearching' => __('Searching…', 'dbvc'),
                     'panelCollectionAdd' => __('Add', 'dbvc'),
                     'panelCollectionReplace' => __('Replace', 'dbvc'),
