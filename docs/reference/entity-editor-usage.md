@@ -25,6 +25,8 @@ Brief usage notes for the DBVC Entity Editor.
   - Accepts one DBVC post/CPT, term, or supported WS Form provider JSON payload.
   - Previews detected kind, subtype, target sync path, live match state, warnings, and blocking reasons before commit.
   - For WS Form form JSON, routes to the provider flow, writes to `third-party/ws-form/forms/`, and can create or UID-update forms when WS Form is available.
+  - For matched WS Form updates, captures a pre-update live-form snapshot under `.dbvc_entity_editor_backups` before applying the incoming provider JSON.
+  - If a raw matched WS Form update fails after writing the sync JSON, DBVC attempts backend recovery by restoring/removing the written sync file and reapplying the captured live-form snapshot where available.
   - `Stage JSON Only` can save supported WS Form provider JSON into the sync folder without applying it to WS Form.
   - Uses the same blocker detail and settings-link guidance as staged sync-file import for configuration, existing-entity, unsupported-type, and file-collision blockers.
   - Supports `Create only`, `Create or Update Matched`, and `Stage JSON Only`.
@@ -56,6 +58,8 @@ Brief usage notes for the DBVC Entity Editor.
   - Previews provider, object type, UID, source ID, WS Form graph counts, local UID match, warnings, and blockers.
   - Creates unmatched WS Forms through DBVC's WS Form portability adapter.
   - Updates matched WS Forms only when the local form matches `dbvc_portability_uid` and the operator confirms the whole-form replacement.
+  - Captures a pre-update live-form snapshot under `.dbvc_entity_editor_backups` before matched whole-form replacement and returns/logs `snapshot_path`.
+  - If a matched whole-form replacement fails, DBVC attempts to reapply the captured live-form snapshot and returns recovery status on the failed item.
   - Merges WS Form settings by applying supported non-sensitive option keys and preserving local secrets.
   - Does not match WS Forms by label or numeric source ID.
   - Does not import submissions, stats, or style entities.
@@ -112,7 +116,8 @@ Brief usage notes for the DBVC Entity Editor.
 
 - `Import as New` remains post/CPT and taxonomy term focused; WS Form rows use `Preview Provider Import`.
 - Sync-file `Update Matched Entity` is post/CPT-only in the first slice; term updates remain deferred until term update semantics are separately audited.
-- WS Form matched updates are whole-form replacements through WS Form APIs; field-level WS Form diffs and restore UI are not yet implemented.
+- WS Form matched updates are whole-form replacements through WS Form APIs; field-level WS Form diffs and one-click restore UI are not yet implemented.
+- WS Form failed matched updates attempt backend snapshot recovery, and snapshots are stored as provider JSON under `.dbvc_entity_editor_backups`; selecting/restoring an arbitrary snapshot still requires a manual provider-import/reapply workflow.
 - `Merge Incoming JSON` v1 does not provide field-by-field accept/reject decisions, destructive full-replace merge, media hydration, or selective Bricks element-level merging.
 - Full replace confirmation modal does not currently include preflight delete-count preview; counts are returned after operation.
 - CodeMirror JSON editor/linting is not yet integrated; editor currently uses textarea.

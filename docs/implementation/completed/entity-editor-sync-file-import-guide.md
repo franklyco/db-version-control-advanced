@@ -1,8 +1,8 @@
 # Entity Editor Sync File Import Implementation Guide
 
-Last updated: 2026-07-06
+Last updated: 2026-07-18
 
-Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED; STAGE W WS FORM PROVIDER MODE INITIAL SLICE IMPLEMENTED`
+Status: `P10 RAW-INTAKE DUPLICATE JSON MINOR FIX IMPLEMENTED; P9 MATCHED-ENTITY UPDATE IMPLEMENTED; P8 BLOCKER RESOLUTION UI IMPLEMENTED; P7 DUPLICATE CANONICAL BUG FIX IMPLEMENTED; STAGE W WS FORM PROVIDER MODE INITIAL SLICE IMPLEMENTED; W9 WS FORM AUDIT BACKLOG RECORDED`
 
 Recurrence note: duplicate active JSON files have now been fixed in two Entity Editor paths. P7 fixed staged sync-file import and duplicate canonical grouping; P10 applies the same side-effect suppression and canonicalization guardrail to raw-intake commits.
 
@@ -1001,7 +1001,7 @@ Keep this completed guide focused on current sync-file import behavior. Use the 
 
 ## Stage W. WS Form Entity Editor Provider Mode
 
-Status: `INITIAL SLICE IMPLEMENTED 2026-07-06; W5/W6 REMAIN PROPOSED`
+Status: `INITIAL SLICE IMPLEMENTED 2026-07-06; W5/W6/W9 REMAIN PROPOSED`
 
 Purpose:
 
@@ -1326,7 +1326,13 @@ Exit criteria:
 
 Status: `PARTIAL AUTOMATED COVERAGE IMPLEMENTED 2026-07-06; BROWSER QA OPEN`
 
-PHPUnit coverage:
+Audit note, 2026-07-18:
+
+- Current PHPUnit coverage observed in `EntityEditorRawIntakeTest` and `ThirdPartyPortabilityTest` covers WS Form payload detection, index exposure, provider-unavailable preview, settings preview, raw-intake routing, unsupported WS Form objects, sensitive settings filtering/merge behavior, and stage-only provider sync writes.
+- The current suite does not yet prove live WS Form create, UID-matched update, whole-form restore, browser modal behavior, or compatibility preflight against an installed WS Form runtime.
+- The coverage list below is the target Stage W coverage contract. Items not currently backed by automated tests are tracked in W9.8.
+
+PHPUnit coverage target:
 
 - index includes WS Form form payload rows from `third-party/ws-form/forms/`
 - index includes WS Form settings payload rows
@@ -1343,7 +1349,7 @@ PHPUnit coverage:
 - settings merge preserves sensitive local keys
 - submissions, stats, and style objects are not imported by the WS Form Entity Editor path
 
-Manual QA:
+Manual QA target:
 
 - WS Form form JSON appears in the Entity Editor index after rebuild.
 - Provider rows can be filtered separately from post/term rows.
@@ -1365,6 +1371,100 @@ Rollback and safety additions:
 - No automatic provider import when a file appears in the sync folder.
 - Matched updates require fresh preflight plus explicit per-file confirmation.
 - Settings applies preserve local secrets and never write unrecognized arbitrary options.
+
+### W9. WS Form Support Audit Backlog
+
+Status: `PARTIAL IMPLEMENTATION IN PROGRESS 2026-07-19`
+
+Audit scope:
+
+- Reviewed `includes/Dbvc/EntityEditor/ThirdPartySyncFileImportService.php`, `includes/class-third-party-portability.php`, `includes/class-entity-editor-indexer.php`, `src/admin-entity-editor/index.js`, and the current targeted PHPUnit coverage.
+- The initial WS Form Entity Editor slice is functional for provider row indexing, JSON edit/save, preview routing, create/update preflight shape, settings merge preview, raw stage-only writes, and UID-matched update gating.
+- 2026-07-19 backend safety slices: matched WS Form updates now capture live pre-update snapshots, raw provider matched-update failures attempt automatic sync/live recovery, and provider form writes catch `Throwable` instead of only `Exception`.
+- The remaining work is mostly restore UI, automatic rollback, compatibility preflight, canonicalization, settings backup/reporting, and live QA evidence.
+
+Areas to improve or implement:
+
+#### W9.1. Whole-Form Snapshots And Restore Path
+
+Status: `INITIAL IMPLEMENTED 2026-07-19`
+
+- Before every sync-file or raw `update_matched_form`, DBVC exports the current local WS Form graph and stores a recoverable `.dbvc_entity_editor_backups/*.snapshot.json` provider snapshot.
+- Provider commit responses and log entries now include `snapshot_path` when a matched WS Form update captures one.
+- Snapshot payloads keep WS Form provider shape and add `dbvc_portability.snapshot` metadata (`source`, `captured_at`, `captured_by`, `matched_form_id`, and `relative_path`) so the artifact can be reapplied through the provider adapter if needed.
+- Remaining: add a visible restore UI/action that can select a snapshot and reapply it through the same provider adapter.
+- Consider a typed confirmation such as `WSFORM REPLACE` for matched updates after browser QA.
+
+#### W9.2. Provider Import Atomicity And Rollback
+
+Status: `BACKEND RECOVERY IMPLEMENTED 2026-07-19`
+
+- Raw provider commits can overwrite or create the sync JSON before the live WS Form import runs. If the WS Form import fails, the sync file can remain changed while the live form did not apply cleanly.
+- Raw provider matched-update failures now attempt rollback before returning the error: restore the previous sync JSON from `.dbvc_entity_editor_backups` when a backup exists, remove the newly written provider sync JSON when no prior file existed, and reapply the live-form snapshot when one was captured.
+- Raw provider import failures return a clear recovery object through `WP_Error` data with `relative_path`, `preview`, `sync_backup_path` when an existing sync JSON was backed up, `snapshot_path` when a matched live WS Form snapshot was captured, and per-step recovery status/errors.
+- Sync-file matched update failures now attempt to reapply the captured live-form snapshot and return the recovery result on the failed item.
+- Remaining: live WS Form/browser QA proving failed provider writes surface recovery details clearly in the UI, plus a deliberate operator-facing restore action for manual snapshot selection.
+
+#### W9.3. Post-Create Canonicalization And Stale Duplicate Cleanup
+
+- WS Form create currently preserves the incoming source filename/source ID. A later full third-party export can create a second local-ID filename for the same `dbvc_portability_uid`.
+- After create, rewrite `dbvc_portability.source_id` to the new local WS Form ID where appropriate, move the active sync JSON to the local canonical filename, and archive stale same-UID files.
+- Add provider-specific stale duplicate remediation instead of relying on generic delete-selected cleanup.
+
+#### W9.4. Ambiguous Local UID Detection
+
+- `find_wsform_form_id_by_uid()` currently selects one `parent_id` with `LIMIT 1`.
+- Add a query/count path that detects multiple local WS Forms with the same `dbvc_portability_uid`.
+- Preview must block ambiguous matches and show the conflicting form IDs rather than updating an arbitrary first match.
+
+#### W9.5. Stronger WS Form Payload And Compatibility Preflight
+
+- Preview currently summarizes label, UID, source ID/status, and graph counts, but it does not deeply validate the group/section/field/action graph before import.
+- Add structural checks for expected arrays/objects, missing labels/types, invalid IDs, malformed action rows, conditional references, and style references.
+- Inspect incoming field/action types against the installed WS Form runtime and add-on availability where possible. Block known unsupported types; warn when support cannot be determined.
+- Surface checksum/published-checksum regeneration as an explicit warning for operator clarity.
+
+#### W9.6. Throwable-Safe Provider Writes
+
+Status: `CODE IMPLEMENTED 2026-07-19`
+
+- `import_wsform_form()` now catches `Throwable` around WS Form API calls, logs UID, source status, existing form ID, current form ID, error class, and message, then returns a bounded `WP_Error` to Entity Editor.
+- Remaining: add regression coverage with a stubbed WS Form import failure that proves the REST response is JSON and the UI can show the failure.
+
+#### W9.7. Settings Merge Reporting And Backup
+
+- Settings preview should compute sensitive incoming key paths from the payload, not only echo `excluded_keys` generated by DBVC exports.
+- Report mergeable options, unsupported options, sensitive paths preserved, and actual option names updated.
+- Create a pre-merge backup of current WS Form setting option values so settings merges are reversible.
+- Keep arbitrary option writes out of scope.
+
+#### W9.8. Live WS Form Integration And Browser QA Coverage
+
+- Add integration smoke coverage for an environment with WS Form active:
+  - unmatched form create
+  - UID-matched whole-form update
+  - settings merge
+  - stale preview hash and match drift blocks
+  - duplicate UID ambiguity block
+- Add authenticated browser QA for:
+  - toolbar filters showing Forms and WS Form Settings
+  - raw-intake validation and error notices
+  - provider preview modal warnings/blockers
+  - update confirmation enable/disable behavior
+  - successful create/update index refresh
+
+#### W9.9. Provider UI Clarity And Diagnostics
+
+- Rename provider matched-update copy from generic `Update matched entity` to `Update matched WS Form` wherever the item is a WS Form form.
+- Show the whole-form replacement scope in one compact panel before the confirmation checkbox.
+- Add a diagnostic note when `admin_url()` host differs from the current browser host, because WS Form edit links can otherwise look like they point at the wrong LocalWP site.
+- Keep errors visible in the modal and avoid relying on console/network failures for operator feedback.
+
+#### W9.10. Provider Service Boundary For Future Third-Party Entities
+
+- `ThirdPartySyncFileImportService` is currently intentionally WS Form specific.
+- Before adding another provider, extract a small provider contract for detect, summarize, preview, commit, backup, restore, and settings merge semantics.
+- Do not generalize the service until WS Form backup/restore and compatibility preflight are proven.
 
 ## Test Plan
 

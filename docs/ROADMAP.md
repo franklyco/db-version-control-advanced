@@ -26,7 +26,20 @@ This is the single repo-level planning index. Module-local plans remain with the
 | User documentation library | proposed | `docs/implementation/proposed/user-documentation-library.md` | Seed for future in-plugin/user-facing docs. |
 | Post-field masking expansion | proposed | `docs/implementation/proposed/post-field-masking-expansion-plan.md` | Future masking extension. |
 | Third-party portability | proposed | `docs/implementation/proposed/3rd-party-portability/provider-inventory.md` | Discovery and provider inventory. |
-| WS Form Entity Editor provider mode | initial-implemented | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#stage-w-ws-form-entity-editor-provider-mode` | Initial provider row, JSON edit/save, preflight, create, UID-matched whole-form update, settings merge, and automated coverage are in place; snapshot/diff/browser QA hardening remains. |
+| WS Form Entity Editor provider mode | initial-implemented | `docs/implementation/completed/entity-editor-sync-file-import-guide.md#stage-w-ws-form-entity-editor-provider-mode` | Initial provider row, JSON edit/save, preflight, create, UID-matched whole-form update, settings merge, backend matched-update snapshots/recovery, and throwable-safe provider writes are in place. See the itemized W9 backlog below. |
+
+### WS Form Entity Editor Provider Mode Backlog
+
+- [W9.1 Whole-form snapshots and restore path](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w91-whole-form-snapshots-and-restore-path) - initial backend snapshot implementation; restore UI remains.
+- [W9.2 Provider import atomicity and rollback](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w92-provider-import-atomicity-and-rollback) - backend best-effort recovery implemented; live/browser QA remains.
+- [W9.3 Post-create canonicalization and stale duplicate cleanup](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w93-post-create-canonicalization-and-stale-duplicate-cleanup)
+- [W9.4 Ambiguous local UID detection](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w94-ambiguous-local-uid-detection)
+- [W9.5 Stronger WS Form payload and compatibility preflight](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w95-stronger-ws-form-payload-and-compatibility-preflight)
+- [W9.6 Throwable-safe provider writes](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w96-throwable-safe-provider-writes) - code implemented; stub/live failure-response coverage remains.
+- [W9.7 Settings merge reporting and backup](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w97-settings-merge-reporting-and-backup)
+- [W9.8 Live WS Form integration and browser QA coverage](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w98-live-ws-form-integration-and-browser-qa-coverage)
+- [W9.9 Provider UI clarity and diagnostics](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w99-provider-ui-clarity-and-diagnostics)
+- [W9.10 Provider service boundary for future third-party entities](docs/implementation/completed/entity-editor-sync-file-import-guide.md#w910-provider-service-boundary-for-future-third-party-entities)
 
 ## Completed Work
 
