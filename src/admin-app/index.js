@@ -121,6 +121,26 @@
               ignore: "Ignore masked field",
               auto_accept: "Auto-accept & suppress",
               override: "Override masked value"
+            }, snapshotStateLabels = {
+              available: "Snapshot ready",
+              missing: "Snapshot missing",
+              stale: "Snapshot stale",
+              recapturing: "Snapshot recapturing",
+              failed: "Snapshot failed",
+              not_required: "Snapshot not required"
+            }, snapshotStateBadge = e => {
+              const t = {
+                available: "resolved",
+                missing: "missing",
+                stale: "conflict",
+                recapturing: "pending",
+                failed: "missing",
+                not_required: "unknown"
+              }[e] || "unknown";
+              return (0, s.jsx)("span", {
+                className: `dbvc-badge dbvc-badge--${t}`,
+                children: snapshotStateLabels[e] || e || "Snapshot unknown"
+              });
             }, v = e => {
               const t = m[e] || e;
               return (0, s.jsx)("span", {
@@ -257,6 +277,11 @@
                     marginLeft: "0.25rem"
                   },
                   children: "Pending"
+                }), t.snapshotState && "not_required" !== t.snapshotState && (0, s.jsx)("span", {
+                  style: {
+                    marginLeft: "0.25rem"
+                  },
+                  children: snapshotStateBadge(t.snapshotState)
                 }) ]
               })
             }, {
@@ -344,6 +369,8 @@
                     }), (0, s.jsx)("th", {
                       children: "Status"
                     }), (0, s.jsx)("th", {
+                      children: "Readiness"
+                    }), (0, s.jsx)("th", {
                       children: "Decisions"
                     }), (0, s.jsx)("th", {
                       children: "Resolver reused"
@@ -356,7 +383,7 @@
                 }), (0, s.jsx)("tbody", {
                   children: e.map(e => {
                     var c, d, u, p, h, m, v, b;
-                    const f = null !== (c = e.resolver?.metrics) && void 0 !== c ? c : {}, g = e.id === n, x = null !== (d = e.decisions) && void 0 !== d ? d : {}, j = null !== (u = x.accepted) && void 0 !== u ? u : 0, _ = null !== (p = x.kept) && void 0 !== p ? p : 0, y = null !== (h = x.entities_reviewed) && void 0 !== h ? h : 0, w = (null !== (m = x.total) && void 0 !== m ? m : 0) > 0, C = "closed" === e.status ? "Closed" : "Open", N = isTransferProposal(e), k = getTransferWarningCount(e), S = getTransferSelectionSummaryParts(e);
+                    const f = null !== (c = e.resolver?.metrics) && void 0 !== c ? c : {}, g = e.id === n, x = null !== (d = e.decisions) && void 0 !== d ? d : {}, j = null !== (u = x.accepted) && void 0 !== u ? u : 0, _ = null !== (p = x.kept) && void 0 !== p ? p : 0, y = null !== (h = x.entities_reviewed) && void 0 !== h ? h : 0, w = (null !== (m = x.total) && void 0 !== m ? m : 0) > 0, C = "closed" === e.status ? "Closed" : "Open", N = isTransferProposal(e), k = getTransferWarningCount(e), S = getTransferSelectionSummaryParts(e), applyGates = e?.apply_gates || {}, gateBlockers = Array.isArray(applyGates.blocking) ? applyGates.blocking : [], snapshotUntrusted = applyGates?.counts?.snapshots?.untrusted || 0, readinessTitle = gateBlockers.map(e => e?.message || e?.category).filter(Boolean).join(" ");
                     return (0, s.jsxs)("tr", {
                       className: `${g ? "is-active" : ""} ${"closed" === e.status ? "is-archived" : ""}`,
                       onClick: () => i(e.id),
@@ -392,6 +419,18 @@
                         children: (0, s.jsx)("span", {
                           className: `dbvc-status-badge dbvc-status-badge--${e.status ?? "draft"}`,
                           children: C
+                        })
+                      }), (0, s.jsx)("td", {
+                        children: (0, s.jsxs)("div", {
+                          className: "dbvc-decisions",
+                          children: [ (0, s.jsx)("span", {
+                            className: `dbvc-badge dbvc-badge--${applyGates.ready ? "resolved" : "needs_review"}`,
+                            title: readinessTitle || void 0,
+                            children: applyGates.ready ? "Ready" : `Blocked (${gateBlockers.length})`
+                          }), snapshotUntrusted > 0 && (0, s.jsxs)("span", {
+                            className: "dbvc-badge dbvc-badge--missing",
+                            children: [ snapshotUntrusted, " snapshot", 1 === snapshotUntrusted ? "" : "s" ]
+                          }) ]
                         })
                       }), (0, s.jsx)("td", {
                         children: w ? (0, s.jsxs)("div", {
@@ -650,7 +689,8 @@
                         entityKept: C,
                         isNewEntity: S,
                         newDecision: $,
-                        identityMatch: I
+                        identityMatch: I,
+                        snapshotState: e.snapshot_state || e.snapshot_status?.state || ""
                       };
                       return (0, s.jsxs)("tr", {
                         className: A,
@@ -700,7 +740,7 @@
                   document.removeEventListener("keydown", t), ie.current && "function" == typeof ie.current.focus && ie.current.focus();
                 };
               }, [ U, $, se ]);
-              const {item: le, current: ae, proposed: oe = {}, diff: re} = null != n ? n : {}, ce = null !== (V = n?.decision_summary) && void 0 !== V ? V : {}, de = null !== (L = null !== (z = n?.diff_state) && void 0 !== z ? z : le?.diff_state) && void 0 !== L ? L : null, ue = ((e, t) => {
+              const {item: le, current: ae, proposed: oe = {}, diff: re} = null != n ? n : {}, ce = null !== (V = n?.decision_summary) && void 0 !== V ? V : {}, de = null !== (L = null !== (z = n?.diff_state) && void 0 !== z ? z : le?.diff_state) && void 0 !== L ? L : null, snapshotStatus = n?.snapshot_status || le?.snapshot_status || {}, snapshotState = n?.snapshot_state || le?.snapshot_state || snapshotStatus.state || "", snapshotNeedsAction = [ "missing", "stale", "recapturing", "failed" ].includes(snapshotState), snapshotCanRecapture = ![ "not_required", "recapturing" ].includes(snapshotState) && !1 !== snapshotStatus.can_recapture, ue = ((e, t) => {
                 if (!t) return "";
                 if ("term" === f(e)) {
                   const s = e?.term_taxonomy || e?.taxonomy || "";
@@ -716,7 +756,7 @@
                 if (!e || !qt[e]) return [];
                 return qt[e];
               }, [ qt, n, le ]), allMetaItems = (0, e.useMemo)(() => {
-                if ("all" !== A) return [];
+                if ("all" !== A || !1 === re?.available) return [];
                 const e = (t, n = "") => {
                   const s = {};
                   if (!t || "object" != typeof t) return s;
@@ -737,7 +777,7 @@
                     is_equal: l
                   };
                 });
-              }, [ A, ae, oe ]), Ce = (0, e.useMemo)(() => "all" === A ? allMetaItems : we, [ allMetaItems, we, A ]), Ne = (0, e.useMemo)(() => (e => {
+              }, [ A, ae, oe, re?.available ]), Ce = (0, e.useMemo)(() => "all" === A ? allMetaItems : we, [ allMetaItems, we, A ]), Ne = (0, e.useMemo)(() => (e => {
                 const t = {};
                 return e.forEach(e => {
                   const [s] = e.path.split("."), n = (d.has(s) ? "post_fields" : u.has(s) ? "term_fields" : s) || "other";
@@ -895,7 +935,16 @@
                     }) ]
                   }), (0, s.jsx)("p", {
                     className: "dbvc-entity-toolbar__count",
-                    children: $e ? `${Ae} field(s) awaiting review · ${Ie} total` : "all" === A ? `${Ee} meta field(s) shown.` : `${Ee} field(s) shown.`
+                    children: !1 === re?.available && snapshotNeedsAction ? "Recapture the current-site snapshot before reviewing fields." : $e ? `${Ae} field(s) awaiting review · ${Ie} total` : "all" === A ? `${Ee} meta field(s) shown.` : `${Ee} field(s) shown.`
+                  }), snapshotNeedsAction && (0, s.jsxs)("div", {
+                    className: `notice ${"failed" === snapshotState ? "notice-error" : "notice-warning"}`,
+                    children: [ (0, s.jsx)("p", {
+                      children: (0, s.jsx)("strong", {
+                        children: snapshotStateLabels[snapshotState] || "Snapshot unavailable"
+                      })
+                    }), (0, s.jsx)("p", {
+                      children: snapshotStatus.message || "The current-site baseline cannot be trusted yet."
+                    }) ]
                   }), fe && T && (0, s.jsxs)("div", {
                     className: "notice notice-warning",
                     children: [ (0, s.jsx)("p", {
@@ -941,7 +990,7 @@
                           children: "Locks in the live values for each visible field without importing."
                         }) ]
                       })
-                    })), "function" == typeof m && e.push({
+                    })), "function" == typeof m && snapshotCanRecapture && e.push({
                       key: "snapshot",
                       content: (0, s.jsxs)(s.Fragment, {
                         children: [ (0, s.jsx)("button", {
@@ -949,7 +998,7 @@
                           className: "button dbvc-button-inverted",
                           onClick: m,
                           disabled: O || !m,
-                          children: O ? "Capturing snapshot…" : "Capture current snapshot"
+                          children: O ? "Recapturing snapshot…" : "available" === snapshotState ? "Refresh snapshot" : "Recapture snapshot"
                         }), (0, s.jsx)("p", {
                           className: "description",
                           children: `Refreshes the “current” baseline from the live ${"term" === ve ? "term" : "post"} before you compare.`
@@ -1497,12 +1546,25 @@
                     selection: void 0 !== a.selection ? a.selection : t.selection,
                     requirements: void 0 !== a.requirements ? a.requirements : t.requirements,
                     preflight: void 0 !== a.preflight ? a.preflight : t.preflight,
-                    warnings: void 0 !== a.warnings ? a.warnings : t.warnings
+                    warnings: void 0 !== a.warnings ? a.warnings : t.warnings,
+                    bricks_references: void 0 !== a.bricks_references ? a.bricks_references : t.bricks_references,
+                    apply_gates: a.apply_gates || t.apply_gates
                   } : t)), r;
                 } catch (e) {
                   return "AbortError" !== e.name && Ae(e.message), [];
                 } finally {
                   Ce(!1);
+                }
+              }, []), refreshApplyGates = (0, e.useCallback)(async proposalId => {
+                if (!proposalId) return null;
+                try {
+                  const response = await n(`proposals/${encodeURIComponent(proposalId)}/readiness`), gates = response?.apply_gates || null;
+                  return gates && X(items => items.map(item => item.id === proposalId ? {
+                    ...item,
+                    apply_gates: gates
+                  } : item)), gates;
+                } catch (error) {
+                  return null;
                 }
               }, []), MASK_UNDO_STORAGE_KEY = "DBVC_MASK_UNDO", MASK_CACHE_PREFIX = "DBVC_MASK_CACHE_", MASK_CACHE_TTL = 3e5;
               const fetchAllEntities = (0, e.useCallback)(async (e, t) => {
@@ -1867,8 +1929,6 @@
               (0, e.useEffect)(() => {
                 Je(null), We(null), Te(!1), Xe(!1), Qe("full"), et(!1), it([]);
               }, [ Z ]), (0, e.useEffect)(() => {
-                "partial" !== Ze && et(!1);
-              }, [ Ze ]), (0, e.useEffect)(() => {
                 if (0 === nt.length) return;
                 const e = setTimeout(() => {
                   it(e => e.slice(1));
@@ -2217,7 +2277,7 @@
                     const r = null !== (e = o?.result?.imported) && void 0 !== e ? e : 0, c = null !== (t = o?.result?.skipped) && void 0 !== t ? t : 0, d = Array.isArray(o?.result?.errors) ? o.result.errors : [], u = (new Date).toISOString(), p = Date.now(), h = [];
                     var s, n, l, a;
                     d.length > 0 && h.push(d[0]), o.decisions_cleared && o.auto_clear_enabled && h.push("Reviewer decisions cleared."), 
-                    o.ignore_missing_hash && h.push("Hash check override enabled."), o.resolver_decisions && h.push(`Resolver decisions — reuse: ${null !== (s = o.resolver_decisions.reuse) && void 0 !== s ? s : 0}, map: ${null !== (n = o.resolver_decisions.map) && void 0 !== n ? n : 0}, download: ${null !== (l = o.resolver_decisions.download) && void 0 !== l ? l : 0}, skip: ${null !== (a = o.resolver_decisions.skip) && void 0 !== a ? a : 0}`), 
+                    o.ignore_missing_hash && h.push("Hash check override enabled."), o.resolver_outcomes?.total && h.push(`Resolver decisions — applied: ${o.resolver_outcomes.applied || 0}, failed: ${o.resolver_outcomes.failed || 0}`),
                     "closed" === o.status && h.push("Proposal marked closed."), it(e => [ ...e, {
                       id: p,
                       severity: d.length ? "warning" : "success",
@@ -2238,13 +2298,19 @@
                         errors: d,
                         decisionsCleared: Boolean(o.decisions_cleared && o.auto_clear_enabled),
                         ignoreMissingHash: Boolean(o.ignore_missing_hash),
-                        resolverDecisions: null !== (s = o.resolver_decisions) && void 0 !== s ? s : null
+                        resolverDecisions: null !== (s = o.resolver_decisions) && void 0 !== s ? s : null,
+                        resolverOutcomes: o.resolver_outcomes || null
                       }, ...e ].slice(0, 10);
                     }), re(null), pe(!1), de(null), me({}), be({});
                     const m = await Ht(Z, ne);
                     m.length && (re(m[0].vf_object_uid), pe(!0)), await os(Z);
                   } catch (e) {
                     const t = e?.message || "Apply request failed.";
+                    const responseGates = e?.body?.data?.gates;
+                    responseGates && X(items => items.map(item => item.id === Z ? {
+                      ...item,
+                      apply_gates: responseGates
+                    } : item));
                     We(t);
                     const s = (new Date).toISOString(), n = Date.now(), i = [ t ];
                     Ye && i.push("Hash check override requested."), it(e => [ ...e, {
@@ -2300,7 +2366,7 @@
                     })), l.proposal_summary && X(e => e.map(e => e.id === Z ? {
                       ...e,
                       decisions: l.proposal_summary
-                    } : e));
+                    } : e)), await refreshApplyGates(Z);
                   } catch (e) {
                     ge(e.message);
                   } finally {
@@ -2312,7 +2378,7 @@
                     });
                   }
                 }
-              }, [ Z, oe ]), ws = (0, e.useCallback)(async (e, t) => {
+              }, [ Z, oe, refreshApplyGates ]), ws = (0, e.useCallback)(async (e, t) => {
                 if (Z) {
                   dt(null), rt(t => ({
                     ...t,
@@ -2321,7 +2387,7 @@
                   try {
                     var s;
                     const n = await i(`proposals/${encodeURIComponent(Z)}/resolver/${encodeURIComponent(e)}`, t);
-                    return rs(e, null !== (s = n.decision) && void 0 !== s ? s : null), n;
+                    return rs(e, null !== (s = n.decision) && void 0 !== s ? s : null), await refreshApplyGates(Z), n;
                   } catch (e) {
                     throw dt(e.message), e;
                   } finally {
@@ -2333,7 +2399,7 @@
                     });
                   }
                 }
-              }, [ Z, rs ]), Cs = (0, e.useCallback)(async (e, t) => {
+              }, [ Z, rs, refreshApplyGates ]), Cs = (0, e.useCallback)(async (e, t) => {
                 await ws(e, t);
               }, [ ws ]), Ns = (0, e.useCallback)(async (e, t = "proposal") => {
                 if (Z) {
@@ -2344,7 +2410,7 @@
                   try {
                     var s;
                     const n = await l(`proposals/${encodeURIComponent(Z)}/resolver/${encodeURIComponent(e)}?scope=${encodeURIComponent(t)}`);
-                    rs(e, null !== (s = n.decision) && void 0 !== s ? s : null);
+                    rs(e, null !== (s = n.decision) && void 0 !== s ? s : null), await refreshApplyGates(Z);
                   } catch (e) {
                     dt(e.message);
                   } finally {
@@ -2356,7 +2422,7 @@
                     });
                   }
                 }
-              }, [ Z, rs ]), ks = (0, e.useCallback)(async (e, t) => {
+              }, [ Z, rs, refreshApplyGates ]), ks = (0, e.useCallback)(async (e, t) => {
                 const s = e.reason || "";
                 if (!s || !qt.length) return;
                 const n = qt.filter(t => t.original_id !== e.original_id && (t.reason || "") === s);
@@ -2383,14 +2449,14 @@
                     } : e)), s.proposal_summary && X(e => e.map(e => e.id === Z ? {
                       ...e,
                       decisions: s.proposal_summary
-                    } : e));
+                    } : e)), await refreshApplyGates(Z);
                   } catch (e) {
                     ge(e.message);
                   } finally {
                     pt(!1);
                   }
                 }
-              }, [ Z, oe ]), Ds = (0, e.useCallback)(async () => {
+              }, [ Z, oe, refreshApplyGates ]), Ds = (0, e.useCallback)(async () => {
                 if (Z && oe) {
                   mt(!0), ge(null);
                   try {
@@ -2408,26 +2474,24 @@
                         ...e,
                         decision_summary: null !== (t = l.decision_summary) && void 0 !== t ? t : e.decision_summary
                       } : e;
-                    }));
+                    })), await refreshApplyGates(Z);
                   } catch (e) {
                     ge(e.message);
                   } finally {
                     mt(!1);
                   }
                 }
-              }, [ Z, oe ]), Rs = (0, e.useCallback)(async () => {
+              }, [ Z, oe, refreshApplyGates ]), Rs = (0, e.useCallback)(async () => {
                 if (Z) {
                   bt(!0), ge(null);
                   try {
                     var e, t;
-                    const l = await n(`proposals/${encodeURIComponent(Z)}/entities?status=needs_review`), a = Array.isArray(l.items) ? l.items : [], o = a.map(e => e.vf_object_uid).filter(e => "string" == typeof e && e.length > 0), r = o.length ? {
-                      entity_ids: o
-                    } : {}, c = await i(`proposals/${encodeURIComponent(Z)}/snapshot`, r), d = null !== (e = c.captured) && void 0 !== e ? e : 0, u = null !== (t = c.targets) && void 0 !== t ? t : o.length || a.length || 0, p = (new Date).toISOString();
+                    const c = await i(`proposals/${encodeURIComponent(Z)}/snapshot`, {}), d = null !== (e = c.captured) && void 0 !== e ? e : 0, u = null !== (t = c.targets) && void 0 !== t ? t : 0, failed = c.failed || 0, p = (new Date).toISOString();
                     if (it(e => [ ...e, {
                       id: Date.now(),
-                      severity: "info",
-                      title: "Snapshots captured",
-                      message: `Captured ${d}/${u || d} snapshot(s) for proposal ${Z}.`,
+                      severity: failed > 0 ? "warning" : "info",
+                      title: failed > 0 ? "Snapshot recapture needs attention" : "Snapshots recaptured",
+                      message: `Captured ${d}/${u || d} snapshot(s) for proposal ${Z}${failed > 0 ? `; ${failed} failed` : ""}.`,
                       timestamp: p
                     } ]), await Ht(Z, ne), await os(Z), oe) {
                       var s;
@@ -2491,7 +2555,7 @@
                       action: e,
                       paths: s
                     });
-                    n(t), be({});
+                    n(t), be({}), await refreshApplyGates(Z);
                   } catch (t) {
                     if (404 !== t.status) throw t;
                     await (async () => {
@@ -2507,24 +2571,24 @@
                           return delete s[t], s;
                         });
                       }
-                    })();
+                    })(), await refreshApplyGates(Z);
                   }
                 } catch (e) {
                   ge(e.message);
                 } finally {
                   Zt(!1), be({});
                 }
-              }, [ Z, oe ]), As = null !== (o = ps?.decisions) && void 0 !== o ? o : null, Es = null !== (r = As?.total) && void 0 !== r ? r : 0, Ms = null !== (c = As?.accepted) && void 0 !== c ? c : 0, Us = null !== (d = As?.kept) && void 0 !== d ? d : 0, Bs = null !== (u = As?.accepted_new) && void 0 !== u ? u : 0, Os = null !== (p = As?.entities_reviewed) && void 0 !== p ? p : 0, Ts = null !== (v = ps?.resolver_decisions) && void 0 !== v ? v : null, Ps = null !== (f = Ts?.reuse) && void 0 !== f ? f : 0, Fs = null !== (R = Ts?.map) && void 0 !== R ? R : 0, Vs = null !== ($ = Ts?.download) && void 0 !== $ ? $ : 0, Ls = null !== (I = Ts?.skip) && void 0 !== I ? I : 0, zs = null !== (A = null !== (E = Y?.metrics?.unresolved) && void 0 !== E ? E : ps?.resolver?.metrics?.unresolved) && void 0 !== A ? A : 0, Hs = Array.isArray(Ke?.result?.errors) ? Ke.result.errors : [], Ks = Hs.length ? "notice notice-warning" : "notice notice-success", Js = null !== (U = Ke?.result?.imported) && void 0 !== U ? U : 0, qs = null !== (B = Ke?.result?.skipped) && void 0 !== B ? B : 0, Ws = null !== (O = Ke?.result?.media_resolver?.metrics) && void 0 !== O ? O : {}, Gs = null !== (T = Ws?.unresolved) && void 0 !== T ? T : 0, Xs = null !== (P = Ke?.result?.media_reconcile) && void 0 !== P ? P : null, bricksReferenceSummary = ps?.bricks_references || {}, bricksReferenceTotal = null !== (P = bricksReferenceSummary?.total) && void 0 !== P ? P : 0, bricksReferenceResolved = null !== (P = bricksReferenceSummary?.resolved) && void 0 !== P ? P : 0, bricksReferenceUnresolved = null !== (P = bricksReferenceSummary?.unresolved) && void 0 !== P ? P : 0, bricksReferenceRows = Array.isArray(bricksReferenceSummary?.items) ? bricksReferenceSummary.items : [], bricksReferenceProblemRows = bricksReferenceRows.filter(e => "resolved" !== e?.status), transferPacketActive = isTransferProposal(ps), transferSourceLabel = transferPacketActive ? getProposalSourceLabel(ps) : "", transferSummaryParts = transferPacketActive ? getTransferSelectionSummaryParts(ps) : [], transferSelectionSummary = ps?.selection?.summary || {}, transferInfoNotes = Array.isArray(ps?.requirements?.notes) ? ps.requirements.notes : [], transferMissingPostTypes = Array.isArray(ps?.preflight?.missing_post_types) ? ps.preflight.missing_post_types : [], transferMissingTaxonomies = Array.isArray(ps?.preflight?.missing_taxonomies) ? ps.preflight.missing_taxonomies : [], transferUnsupportedItems = Array.isArray(ps?.preflight?.unsupported_items) ? ps.preflight.unsupported_items : [], transferReferenceWarnings = Array.isArray(ps?.warnings?.unsupported_post_references) ? ps.warnings.unsupported_post_references : [], transferPreflightWarningCount = [ transferMissingPostTypes, transferMissingTaxonomies, transferUnsupportedItems ].reduce((e, t) => e + (Array.isArray(t) ? t.length : 0), 0), transferWarningCount = getTransferWarningCount(ps), Zs = (0,
-              e.useCallback)(e => {
+              }, [ Z, oe, refreshApplyGates ]), As = null !== (o = ps?.decisions) && void 0 !== o ? o : null, Es = null !== (r = As?.total) && void 0 !== r ? r : 0, Ms = null !== (c = As?.accepted) && void 0 !== c ? c : 0, Us = null !== (d = As?.kept) && void 0 !== d ? d : 0, Bs = null !== (u = As?.accepted_new) && void 0 !== u ? u : 0, Os = null !== (p = As?.entities_reviewed) && void 0 !== p ? p : 0, Ts = null !== (v = ps?.resolver_decisions) && void 0 !== v ? v : null, Ps = null !== (f = Ts?.reuse) && void 0 !== f ? f : 0, Fs = null !== (R = Ts?.map) && void 0 !== R ? R : 0, Vs = null !== ($ = Ts?.download) && void 0 !== $ ? $ : 0, Ls = null !== (I = Ts?.skip) && void 0 !== I ? I : 0, zs = null !== (A = null !== (E = Y?.metrics?.unresolved) && void 0 !== E ? E : ps?.resolver?.metrics?.unresolved) && void 0 !== A ? A : 0, Hs = Array.isArray(Ke?.result?.errors) ? Ke.result.errors : [], Ks = Hs.length ? "notice notice-warning" : "notice notice-success", Js = null !== (U = Ke?.result?.imported) && void 0 !== U ? U : 0, qs = null !== (B = Ke?.result?.skipped) && void 0 !== B ? B : 0, Ws = null !== (O = Ke?.result?.media_resolver?.metrics) && void 0 !== O ? O : {}, Gs = null !== (T = Ws?.unresolved) && void 0 !== T ? T : 0, Xs = null !== (P = Ke?.result?.media_reconcile) && void 0 !== P ? P : null, bricksReferenceSummary = ps?.bricks_references || {}, bricksReferenceTotal = null !== (P = bricksReferenceSummary?.total) && void 0 !== P ? P : 0, bricksReferenceResolved = null !== (P = bricksReferenceSummary?.resolved) && void 0 !== P ? P : 0, bricksReferenceUnresolved = null !== (P = bricksReferenceSummary?.unresolved) && void 0 !== P ? P : 0, bricksReferenceRows = Array.isArray(bricksReferenceSummary?.items) ? bricksReferenceSummary.items : [], bricksReferenceProblemRows = bricksReferenceRows.filter(e => "resolved" !== e?.status), transferPacketActive = isTransferProposal(ps), transferSourceLabel = transferPacketActive ? getProposalSourceLabel(ps) : "", transferSummaryParts = transferPacketActive ? getTransferSelectionSummaryParts(ps) : [], transferSelectionSummary = ps?.selection?.summary || {}, transferInfoNotes = Array.isArray(ps?.requirements?.notes) ? ps.requirements.notes : [], transferMissingPostTypes = Array.isArray(ps?.preflight?.missing_post_types) ? ps.preflight.missing_post_types : [], transferMissingTaxonomies = Array.isArray(ps?.preflight?.missing_taxonomies) ? ps.preflight.missing_taxonomies : [], transferUnsupportedItems = Array.isArray(ps?.preflight?.unsupported_items) ? ps.preflight.unsupported_items : [], transferReferenceWarnings = Array.isArray(ps?.warnings?.unsupported_post_references) ? ps.warnings.unsupported_post_references : [], transferPreflightWarningCount = [ transferMissingPostTypes, transferMissingTaxonomies, transferUnsupportedItems ].reduce((e, t) => e + (Array.isArray(t) ? t.length : 0), 0), transferWarningCount = getTransferWarningCount(ps), applyGates = ps?.apply_gates || {}, snapshotCounts = applyGates?.counts?.snapshots || {}, snapshotUntrusted = snapshotCounts.untrusted || 0, snapshotRecapturable = snapshotCounts.recapturable || 0, applyBlockers = Array.isArray(applyGates.blocking) ? applyGates.blocking : [], applyWarnings = Array.isArray(applyGates.warnings) ? applyGates.warnings : [], hashOverrideAllowed = Array.isArray(applyGates.override_tokens) && applyGates.override_tokens.some(e => "ignore_missing_hash" === e?.token), effectiveApplyBlockers = applyBlockers.filter(e => !(Ye && hashOverrideAllowed && "hashes" === e?.category)), hardApplyBlockers = applyBlockers.filter(e => !(hashOverrideAllowed && "hashes" === e?.category)), applyBlocked = effectiveApplyBlockers.length > 0, applyBlockerTitle = hardApplyBlockers.map(e => e?.message || e?.category).filter(Boolean).join(" "), Zs = (0,
+              e.useCallback)((e, uploadResult = {}) => {
                 zt({
                   focusProposalId: e
                 });
-                const t = (new Date).toISOString(), s = Date.now();
+                const t = (new Date).toISOString(), s = Date.now(), failedSnapshots = uploadResult?.snapshot_capture?.failed || 0;
                 it(n => [ ...n, {
                   id: s,
-                  severity: "success",
-                  title: "Proposal uploaded",
-                  message: `Bundle registered as ${e}`,
+                  severity: failedSnapshots > 0 ? "warning" : "success",
+                  title: failedSnapshots > 0 ? "Proposal uploaded with snapshot failures" : "Proposal uploaded",
+                  message: failedSnapshots > 0 ? `Bundle registered as ${e}; ${failedSnapshots} current-site snapshot${1 === failedSnapshots ? "" : "s"} must be recaptured.` : `Bundle registered as ${e}`,
                   timestamp: t
                 } ]);
               }, [ zt ]), Qs = (0, e.useCallback)(e => {
@@ -3365,8 +3429,8 @@
                       type: "button",
                       className: "button button-primary",
                       onClick: gs,
-                      disabled: Oe || "closed" === ps.status,
-                      title: "closed" === ps.status ? "Reopen this proposal before applying new changes." : void 0,
+                      disabled: Oe || "closed" === ps.status || hardApplyBlockers.length > 0,
+                      title: "closed" === ps.status ? "Reopen this proposal before applying new changes." : applyBlockerTitle || void 0,
                       children: Oe ? "Applying…" : "Close & Apply Proposal"
                     }), "closed" === ps.status ? (0, s.jsxs)("div", {
                       className: "dbvc-admin-app__status-note",
@@ -3398,6 +3462,22 @@
                         children: [ Os, " reviewed" ]
                       }) ]
                     }) ]
+                  }), applyBlockers.length > 0 && (0, s.jsxs)("div", {
+                    className: "notice notice-warning",
+                    children: [ (0, s.jsx)("p", {
+                      children: "Apply is blocked until these reviews are complete:"
+                    }), (0, s.jsx)("ul", {
+                      children: applyBlockers.map(issue => (0, s.jsx)("li", {
+                        children: issue?.message || issue?.category
+                      }, issue?.category || issue?.message))
+                    }) ]
+                  }), applyWarnings.length > 0 && (0, s.jsx)("div", {
+                    className: "notice notice-info",
+                    children: (0, s.jsx)("ul", {
+                      children: applyWarnings.map(issue => (0, s.jsx)("li", {
+                        children: issue?.message || issue?.category
+                      }, issue?.category || issue?.message))
+                    })
                   }), qe && (0, s.jsx)("div", {
                     className: "notice notice-error",
                     children: (0, s.jsxs)("p", {
@@ -3410,9 +3490,9 @@
                     }), Xs && (0, s.jsxs)("p", {
                       className: "dbvc-resolver-summary",
                       children: [ "Media reconciliation — created: ", null !== (z = Xs.created) && void 0 !== z ? z : 0, ", unresolved: ", null !== (H = Xs.unresolved) && void 0 !== H ? H : 0 ]
-                    }), Ke.resolver_decisions && (0, s.jsxs)("p", {
+                    }), Ke?.resolver_outcomes?.total > 0 && (0, s.jsxs)("p", {
                       className: "dbvc-resolver-summary",
-                      children: [ "Resolver decisions applied — reuse: ", null !== (K = Ke.resolver_decisions.reuse) && void 0 !== K ? K : 0, ", map:", " ", null !== (J = Ke.resolver_decisions.map) && void 0 !== J ? J : 0, ", download: ", null !== (q = Ke.resolver_decisions.download) && void 0 !== q ? q : 0, ", skip:", " ", null !== (W = Ke.resolver_decisions.skip) && void 0 !== W ? W : 0 ]
+                      children: [ "Resolver decisions applied — reuse: ", Ke.resolver_outcomes.reuse || 0, ", map: ", Ke.resolver_outcomes.map || 0, ", download: ", Ke.resolver_outcomes.download || 0, ", skip: ", Ke.resolver_outcomes.skip || 0, ", failed: ", Ke.resolver_outcomes.failed || 0 ]
                     }), Hs.length > 0 && (0, s.jsx)("ul", {
                       children: Hs.map((e, t) => (0, s.jsx)("li", {
                         children: o(e)
@@ -3470,6 +3550,15 @@
                         className: "dbvc-apply-modal__warning",
                         children: "No reviewer selections have been recorded. Applying now only imports entities with Accept/Keep selections or new entities you marked “Accept & import.” All other entities are skipped."
                       }) ]
+                    }), applyBlockers.length > 0 && (0, s.jsxs)("div", {
+                      className: "notice notice-warning",
+                      children: [ (0, s.jsx)("p", {
+                        children: "Apply readiness checks:"
+                      }), (0, s.jsx)("ul", {
+                        children: applyBlockers.map(issue => (0, s.jsx)("li", {
+                          children: issue?.message || issue?.category
+                        }, issue?.category || issue?.message))
+                      }) ]
                     }), (0, s.jsx)(t.RadioControl, {
                       label: "Import mode",
                       selected: Ze,
@@ -3492,7 +3581,7 @@
                           children: "Partial import (legacy):"
                         }), " Only needed for old proposals missing import hashes. Behavior otherwise matches full import." ]
                       }) ]
-                    }), "partial" === Ze && (0, s.jsx)(t.CheckboxControl, {
+                    }), hashOverrideAllowed && (0, s.jsx)(t.CheckboxControl, {
                       label: "Ignore missing import hash validation",
                       checked: Ye,
                       onChange: e => et(e),
@@ -3508,10 +3597,10 @@
                         disabled: Oe,
                         children: "Cancel"
                       }), (0, s.jsx)(t.Button, {
-                        variant: "primary",
-                        onClick: _s,
-                        isBusy: Oe,
-                        disabled: Oe,
+                      variant: "primary",
+                      onClick: _s,
+                      isBusy: Oe,
+                      disabled: Oe || applyBlocked,
                         children: "Close & Apply Proposal"
                       }) ]
                     }) ]
@@ -3916,11 +4005,11 @@
                             children: [ (0, s.jsx)(t.Button, {
                               variant: "secondary",
                               onClick: Rs,
-                              disabled: vt,
+                              disabled: vt || 0 === snapshotRecapturable && snapshotUntrusted > 0,
                               isBusy: vt,
-                              children: vt ? "Capturing snapshots…" : "Capture full snapshot"
+                              children: vt ? "Recapturing snapshots…" : snapshotUntrusted > 0 ? `Recapture snapshots (${snapshotUntrusted})` : "Refresh all snapshots"
                             }), (0, s.jsx)("p", {
-                              children: zs > 0 ? `Capture JSON snapshots for ${zs} unresolved entity ${1 === zs ? "diff" : "diffs"}.` : "Capture fresh JSON snapshots for every entity."
+                              children: snapshotUntrusted > 0 ? `${snapshotRecapturable} existing ${1 === snapshotRecapturable ? "entity can" : "entities can"} be recaptured now.` : "Refresh current-site baselines for every existing post and term."
                             }) ]
                           }), us.length > 0 && (0, s.jsxs)("div", {
                             className: "dbvc-actions-tray__item",

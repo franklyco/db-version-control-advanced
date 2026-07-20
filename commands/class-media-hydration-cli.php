@@ -11,8 +11,6 @@ if (! defined('WPINC')) {
 }
 
 if (defined('WP_CLI') && WP_CLI && ! class_exists('DBVC_WP_CLI_Media')) {
-    WP_CLI::add_command('dbvc media', 'DBVC_WP_CLI_Media');
-
     /**
      * Read-only media inventory commands for hydration planning.
      */
@@ -422,4 +420,6 @@ if (defined('WP_CLI') && WP_CLI && ! class_exists('DBVC_WP_CLI_Media')) {
             return \Dbvc\Media\Hydration\HydrationReceiptStore::write($type, $payload);
         }
     }
+
+    WP_CLI::add_command('dbvc media', 'DBVC_WP_CLI_Media');
 }

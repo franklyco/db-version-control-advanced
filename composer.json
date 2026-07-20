@@ -5,5 +5,10 @@
     "require-dev": {
         "yoast/phpunit-polyfills": "^2",
         "phpunit/phpunit": "^9.6"
+    },
+    "scripts": {
+        "test": "phpunit --testsuite \"DBVC Plugin\"",
+        "test:smoke": "phpunit --filter PluginBootstrapSmokeTest",
+        "test:proposal-diff": "phpunit --group proposal-diff"
     }
 }

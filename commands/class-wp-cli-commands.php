@@ -19,12 +19,6 @@ if ( ! defined( 'WPINC' ) ) {
  * @since  1.0.0
  * @return string
  */
-if ( defined( 'WP_CLI' ) && WP_CLI ) {
-	WP_CLI::add_command( 'dbvc', 'DBVC_WP_CLI_Commands' );
-	WP_CLI::add_command( 'dbvc proposals', 'DBVC_WP_CLI_Proposals' );
-	WP_CLI::add_command( 'dbvc resolver-rules', 'DBVC_WP_CLI_Resolver_Rules' );
-}
-
 class DBVC_WP_CLI_Commands {
 
 	/**
@@ -387,13 +381,21 @@ class DBVC_WP_CLI_Commands {
 				(int) $media_stats['resolver']['metrics']['unresolved']
 			);
 		}
-		if ( ! empty( $media_stats['resolver']['conflicts'] ) ) {
-			$resolver_summary[] = sprintf(
+			if ( ! empty( $media_stats['resolver']['conflicts'] ) ) {
+				$resolver_summary[] = sprintf(
 				/* translators: %d: number of resolver conflicts */
 				__( '%d resolver conflicts', 'dbvc' ),
 				count( (array) $media_stats['resolver']['conflicts'] )
-			);
-		}
+				);
+			}
+			if ( ! empty( $media_stats['resolver_decisions']['total'] ) ) {
+				$resolver_summary[] = sprintf(
+					/* translators: 1: applied resolver decisions, 2: failed resolver decisions */
+					__( '%1$d explicit decisions applied, %2$d failed', 'dbvc' ),
+					(int) ( $media_stats['resolver_decisions']['applied'] ?? 0 ),
+					(int) ( $media_stats['resolver_decisions']['failed'] ?? 0 )
+				);
+			}
 
 		if ( ! empty( $summary ) ) {
 			WP_CLI::log(
@@ -724,10 +726,10 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 		 * ## OPTIONS
 		 *
 		 * [--fields=<fields>]
-		 * : Comma-separated list of fields to display. Default: id,status,files,media,missing_hashes,decisions
+		 * : Comma-separated list of fields to display. Default: id,status,readiness,files,media,snapshot_untrusted,missing_hashes,decisions
 		 *
 		 * [--fail-on-pending]
-		 * : Exit with an error if any proposal has unresolved resolver items or pending new-entity approvals.
+		 * : Exit with an error if any proposal has apply-readiness blockers.
 		 *
 		 * [--recapture-snapshots[=<ids>]]
 		 * : Recapture snapshots for the listed proposals (comma-separated IDs). Without a value, recaptures every proposal in the table.
@@ -739,6 +741,8 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 		 * wp dbvc proposals list
 		 * wp dbvc proposals list --fields=id,status,decisions --fail-on-pending
 		 * wp dbvc proposals list --recapture-snapshots=2024-11-05,2024-11-07
+		 *
+		 * @subcommand list
 		 *
 		 * @param array $args
 		 * @param array $assoc_args
@@ -774,6 +778,12 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 				$new_entities = isset( $item['new_entities'] ) && is_array( $item['new_entities'] )
 					? $item['new_entities']
 					: [];
+				$apply_gates = isset( $item['apply_gates'] ) && is_array( $item['apply_gates'] )
+					? $item['apply_gates']
+					: [];
+				$snapshot_counts = isset( $apply_gates['counts']['snapshots'] ) && is_array( $apply_gates['counts']['snapshots'] )
+					? $apply_gates['counts']['snapshots']
+					: [];
 
 				$resolver_pending = (int) ( $resolver_metrics['unresolved'] ?? 0 )
 					+ (int) ( $resolver_metrics['conflicts'] ?? 0 )
@@ -781,7 +791,20 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 					+ (int) ( $resolver_metrics['missing'] ?? 0 );
 				$new_pending = (int) ( $new_entities['pending'] ?? 0 );
 
-				if ( $resolver_pending > 0 || $new_pending > 0 ) {
+				$blocking_categories = [];
+				foreach ( (array) ( $apply_gates['blocking'] ?? [] ) as $blocker ) {
+					if ( is_array( $blocker ) && ! empty( $blocker['category'] ) ) {
+						$blocking_categories[] = sanitize_key( $blocker['category'] );
+					} elseif ( is_string( $blocker ) && $blocker !== '' ) {
+						$blocking_categories[] = sanitize_key( $blocker );
+					}
+				}
+				$blocking_categories = array_values( array_unique( array_filter( $blocking_categories ) ) );
+				$is_ready = array_key_exists( 'ready', $apply_gates )
+					? ! empty( $apply_gates['ready'] )
+					: ( $resolver_pending === 0 && $new_pending === 0 );
+
+				if ( ! $is_ready ) {
 					$has_pending = true;
 				}
 
@@ -800,12 +823,21 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 					'resolver_pending'=> $resolver_pending,
 					'new_pending'     => $new_pending,
 					'new_total'       => (int) ( $new_entities['total'] ?? 0 ),
+					'snapshots'       => sprintf(
+						'%d/%d',
+						(int) ( $snapshot_counts['available'] ?? 0 ),
+						(int) ( $snapshot_counts['required'] ?? 0 )
+					),
+					'snapshot_untrusted' => (int) ( $snapshot_counts['untrusted'] ?? 0 ),
+					'readiness'       => $is_ready
+						? 'ready'
+						: 'blocked:' . implode( ',', $blocking_categories ),
 				];
 			}
 
 			$fields = isset( $assoc_args['fields'] ) && is_string( $assoc_args['fields'] )
 				? array_map( 'trim', explode( ',', $assoc_args['fields'] ) )
-				: [ 'id', 'status', 'files', 'media', 'missing_hashes', 'duplicate_count', 'resolver_pending', 'new_pending', 'new_total', 'decisions' ];
+				: [ 'id', 'status', 'readiness', 'files', 'media', 'snapshots', 'snapshot_untrusted', 'missing_hashes', 'duplicate_count', 'resolver_pending', 'new_pending', 'new_total', 'decisions' ];
 
 			\WP_CLI\Utils\format_items( 'table', $rows, $fields );
 
@@ -818,10 +850,22 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 					$target_ids = array_filter( wp_list_pluck( $items, 'id' ) );
 				}
 				$this->recapture_snapshots( $target_ids );
+
+				if ( $fail_on_pending ) {
+					$refreshed = \DBVC_Admin_App::get_proposals( new \WP_REST_Request( 'GET', '/dbvc/v1/proposals' ) );
+					$refreshed_data = ( $refreshed instanceof \WP_REST_Response ) ? $refreshed->get_data() : $refreshed;
+					$has_pending = false;
+					foreach ( (array) ( $refreshed_data['items'] ?? [] ) as $refreshed_item ) {
+						if ( empty( $refreshed_item['apply_gates']['ready'] ) ) {
+							$has_pending = true;
+							break;
+						}
+					}
+				}
 			}
 
 			if ( $fail_on_pending && $has_pending ) {
-				\WP_CLI::error( 'Pending resolver conflicts or new-entity approvals detected.' );
+				\WP_CLI::error( 'Proposal apply-readiness blockers detected.' );
 			}
 			if ( $cleanup ) {
 				$this->cleanup_duplicates_bulk( array_filter( wp_list_pluck( $items, 'id' ) ) );
@@ -940,7 +984,26 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 
 			$response = \DBVC_Admin_App::apply_proposal( $request );
 			if ( is_wp_error( $response ) ) {
-				\WP_CLI::error( $response->get_error_message() );
+				$message = $response->get_error_message();
+				if ( $response->get_error_code() === 'dbvc_proposal_not_ready' ) {
+					$error_data = $response->get_error_data();
+					$gates = is_array( $error_data ) && isset( $error_data['gates'] ) && is_array( $error_data['gates'] )
+						? $error_data['gates']
+						: [];
+					$categories = [];
+					foreach ( (array) ( $gates['blocking'] ?? [] ) as $blocker ) {
+						if ( is_array( $blocker ) && ! empty( $blocker['category'] ) ) {
+							$categories[] = sanitize_key( $blocker['category'] );
+						} elseif ( is_string( $blocker ) && $blocker !== '' ) {
+							$categories[] = sanitize_key( $blocker );
+						}
+					}
+					$categories = array_values( array_unique( array_filter( $categories ) ) );
+					if ( ! empty( $categories ) ) {
+						$message .= ' Blockers: ' . implode( ', ', $categories ) . '.';
+					}
+				}
+				\WP_CLI::error( $message );
 			}
 
 			$data = ( $response instanceof \WP_REST_Response ) ? $response->get_data() : $response;
@@ -954,6 +1017,23 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 					! empty( $result['errors'] ) ? count( (array) $result['errors'] ) : 0
 				)
 			);
+
+			$resolver_outcomes = isset( $data['resolver_outcomes'] ) && is_array( $data['resolver_outcomes'] )
+				? $data['resolver_outcomes']
+				: [];
+			if ( ! empty( $resolver_outcomes['total'] ) ) {
+				\WP_CLI::log(
+					sprintf(
+						'Resolver decisions: %d applied | %d failed | reuse %d | map %d | download %d | skip %d',
+						(int) ( $resolver_outcomes['applied'] ?? 0 ),
+						(int) ( $resolver_outcomes['failed'] ?? 0 ),
+						(int) ( $resolver_outcomes['reuse'] ?? 0 ),
+						(int) ( $resolver_outcomes['map'] ?? 0 ),
+						(int) ( $resolver_outcomes['download'] ?? 0 ),
+						(int) ( $resolver_outcomes['skip'] ?? 0 )
+					)
+				);
+			}
 
 			if ( ! empty( $result['errors'] ) && is_array( $result['errors'] ) ) {
 				foreach ( $result['errors'] as $error_message ) {
@@ -1020,12 +1100,14 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 				return;
 			}
 
-			if ( ! class_exists( 'DBVC_Snapshot_Manager' ) || ! class_exists( 'DBVC_Backup_Manager' ) ) {
-				\WP_CLI::error( 'Snapshot manager or backup manager is unavailable.' );
+			if ( ! class_exists( 'DBVC_Admin_App' ) || ! class_exists( 'DBVC_Backup_Manager' ) ) {
+				\WP_CLI::error( 'Proposal review or backup manager is unavailable.' );
 			}
 
 			$base_path = trailingslashit( DBVC_Backup_Manager::get_base_path() );
-			$success   = 0;
+			$processed = 0;
+			$captured  = 0;
+			$failed    = 0;
 
 			foreach ( $proposal_ids as $proposal_id ) {
 				$manifest_path = $base_path . $proposal_id . '/' . DBVC_Backup_Manager::MANIFEST_FILENAME;
@@ -1042,10 +1124,40 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 				}
 
 				try {
-					DBVC_Snapshot_Manager::capture_for_proposal( $proposal_id, $manifest );
-					$success++;
-					\WP_CLI::log( sprintf( 'Snapshots recaptured for %s.', $proposal_id ) );
+					$result = DBVC_Admin_App::recapture_proposal_snapshots( $proposal_id, $manifest );
+					$processed++;
+					$proposal_captured = (int) ( $result['captured'] ?? 0 );
+					$proposal_failed   = (int) ( $result['failed'] ?? 0 );
+					$proposal_targets  = (int) ( $result['targets'] ?? 0 );
+					$captured += $proposal_captured;
+					$failed   += $proposal_failed;
+
+					$message = sprintf(
+						'Snapshot recapture for %s: %d/%d captured, %d failed.',
+						$proposal_id,
+						$proposal_captured,
+						$proposal_targets,
+						$proposal_failed
+					);
+					if ( $proposal_failed > 0 ) {
+						\WP_CLI::warning( $message );
+						foreach ( (array) ( $result['results'] ?? [] ) as $entity_result ) {
+							if ( ! is_array( $entity_result ) || ( $entity_result['state'] ?? '' ) !== 'failed' ) {
+								continue;
+							}
+							\WP_CLI::warning(
+								sprintf(
+									'  %s: %s',
+									$entity_result['vf_object_uid'] ?? 'unknown entity',
+									$entity_result['message'] ?? 'Snapshot capture failed.'
+								)
+							);
+						}
+					} else {
+						\WP_CLI::log( $message );
+					}
 				} catch ( \Throwable $e ) {
+					$failed++;
 					\WP_CLI::warning(
 						sprintf(
 							'Snapshot capture failed for %s: %s',
@@ -1056,12 +1168,22 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 				}
 			}
 
-			if ( $success > 0 ) {
+			if ( $processed > 0 && $failed === 0 ) {
 				\WP_CLI::success(
 					sprintf(
-						'Snapshots recaptured for %d proposal%s.',
-						$success,
-						$success === 1 ? '' : 's'
+						'Recaptured %d snapshot%s across %d proposal%s.',
+						$captured,
+						$captured === 1 ? '' : 's',
+						$processed,
+						$processed === 1 ? '' : 's'
+					)
+				);
+				} elseif ( $processed > 0 ) {
+				\WP_CLI::warning(
+					sprintf(
+						'Snapshot recapture finished with %d captured and %d failed.',
+						$captured,
+						$failed
 					)
 				);
 			} else {
@@ -1295,4 +1417,10 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Resolver_Rule
 			}
 		}
 	}
+}
+
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+	WP_CLI::add_command( 'dbvc', 'DBVC_WP_CLI_Commands' );
+	WP_CLI::add_command( 'dbvc proposals', 'DBVC_WP_CLI_Proposals' );
+	WP_CLI::add_command( 'dbvc resolver-rules', 'DBVC_WP_CLI_Resolver_Rules' );
 }

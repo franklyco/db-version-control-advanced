@@ -1084,6 +1084,9 @@ HT;
         }
 
         self::import_resolver_decisions_from_manifest($manifest, $backup_name);
+        $resolver_decisions = class_exists('DBVC_Media_Sync')
+            ? DBVC_Media_Sync::get_effective_resolver_decisions($backup_name)
+            : [];
 
         $decision_store = get_option(self::PROPOSAL_DECISIONS_OPTION, []);
         if (! is_array($decision_store)) {
@@ -1208,6 +1211,7 @@ HT;
                 $media_reconcile = \Dbvc\Media\Reconciler::enqueue($backup_name, $manifest, [
                     'allow_remote' => class_exists('DBVC_Media_Sync') ? DBVC_Media_Sync::allow_external_sources() : false,
                     'backup_path'  => $backup_path,
+                    'resolver_decisions' => $resolver_decisions,
                 ]);
             } catch (\Throwable $media_exception) {
                 if (class_exists('DBVC_Sync_Logger') && method_exists('DBVC_Sync_Logger', 'log_media')) {
@@ -1595,6 +1599,7 @@ HT;
             $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest, [
                 'proposal_id' => $backup_name,
                 'manifest_dir'=> $backup_path,
+                'media_reconcile' => $media_reconcile,
             ]);
         }
 

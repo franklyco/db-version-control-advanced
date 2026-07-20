@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.8.9
+ * Version:     1.9.0
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -18,18 +18,18 @@ if (! defined('WPINC')) {
 }
 
 // Current Version 1.8.6
-require 'vendor/plugin-update-checker/plugin-update-checker.php';
+if (! defined('DBVC_PHPUNIT') || ! DBVC_PHPUNIT) {
+	require 'vendor/plugin-update-checker/plugin-update-checker.php';
 
-use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+	$myUpdateChecker = YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+		'https://github.com/franklyco/db-version-control-advanced/',
+		__FILE__,
+		'db-version-control'
+	);
 
-$myUpdateChecker = PucFactory::buildUpdateChecker(
-	'https://github.com/franklyco/db-version-control-advanced/',
-	__FILE__,
-	'db-version-control'
-);
-
-// Set the branch that contains the stable release.
-$myUpdateChecker->setBranch('main');
+	// Set the branch that contains the stable release.
+	$myUpdateChecker->setBranch('main');
+}
 
 // Check if Composer's autoloader is already registered globally.
 if (! class_exists('RobertDevore\WPComCheck\WPComPluginHandler')) {
@@ -41,10 +41,11 @@ use RobertDevore\WPComCheck\WPComPluginHandler;
 new WPComPluginHandler(plugin_basename(__FILE__), 'https://robertdevore.com/why-this-plugin-doesnt-support-wordpress-com-hosting/');
 
 // Define constants for the plugin.
+define('DBVC_PLUGIN_FILE', __FILE__);
 define('DBVC_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('DBVC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBVC_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('DBVC_PLUGIN_VERSION', '1.8.9');
+define('DBVC_PLUGIN_VERSION', '1.9.0');
 if (! defined('DBVC_NEW_ENTITY_DECISION_KEY')) {
 	define('DBVC_NEW_ENTITY_DECISION_KEY', '__dbvc_new_entity__');
 }
