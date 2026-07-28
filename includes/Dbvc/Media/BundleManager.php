@@ -231,6 +231,34 @@ final class BundleManager
     }
 
     /**
+     * Delete the ingested media bundle owned by one proposal.
+     *
+     * @param string $proposal_id
+     * @return bool
+     */
+    public static function delete_bundle(string $proposal_id): bool
+    {
+        $proposal_id = trim($proposal_id);
+        if ($proposal_id === '' || sanitize_file_name($proposal_id) !== $proposal_id) {
+            return false;
+        }
+
+        $bundle_dir = self::get_proposal_directory($proposal_id);
+        if (! $bundle_dir) {
+            return true;
+        }
+
+        self::purge_directory($bundle_dir);
+        $deleted = ! is_dir($bundle_dir) || @rmdir($bundle_dir);
+        Logger::log('media:download', $deleted ? 'Proposal media bundle deleted' : 'Proposal media bundle deletion failed', [
+            'proposal_id' => $proposal_id,
+            'path'        => $bundle_dir,
+        ]);
+
+        return $deleted;
+    }
+
+    /**
      * Locate a bundle file using descriptor data.
      *
      * @param string $proposal_id

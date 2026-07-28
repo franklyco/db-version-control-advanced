@@ -1010,6 +1010,16 @@ HT;
         }
     }
 
+    /**
+     * Seed missing proposal resolver choices from an imported manifest.
+     *
+     * Manifest choices are historical intake data. Existing proposal choices
+     * and site-wide rules are live local authority and must not be replaced.
+     *
+     * @param array  $manifest    Imported proposal manifest.
+     * @param string $proposal_id Local proposal identifier.
+     * @return void
+     */
     public static function import_resolver_decisions_from_manifest(array $manifest, $proposal_id = ''): void
     {
         if (empty($manifest['resolver_decisions']) || ! is_array($manifest['resolver_decisions'])) {
@@ -1018,25 +1028,41 @@ HT;
 
         $bundle = $manifest['resolver_decisions'];
         $store  = get_option('dbvc_resolver_decisions', []);
+        if (! is_array($store)) {
+            $store = [];
+        }
 
         if ($proposal_id === '' && ! empty($manifest['backup_name'])) {
             $proposal_id = sanitize_text_field($manifest['backup_name']);
         }
+        $proposal_id = sanitize_text_field((string) $proposal_id);
 
         if ($proposal_id !== '' && isset($bundle['proposal']) && is_array($bundle['proposal'])) {
-            $store[$proposal_id] = $bundle['proposal'];
-        }
+            $proposal_store = isset($store[$proposal_id]) && is_array($store[$proposal_id])
+                ? $store[$proposal_id]
+                : [];
+            $global_store = isset($store['__global']) && is_array($store['__global'])
+                ? $store['__global']
+                : [];
+            $changed = false;
 
-        if (isset($bundle['global']) && is_array($bundle['global'])) {
-            if (! isset($store['__global']) || ! is_array($store['__global'])) {
-                $store['__global'] = [];
+            foreach ($bundle['proposal'] as $original_id => $decision) {
+                if (
+                    $original_id === '__summary'
+                    || array_key_exists($original_id, $proposal_store)
+                    || array_key_exists($original_id, $global_store)
+                ) {
+                    continue;
+                }
+                $proposal_store[$original_id] = $decision;
+                $changed = true;
             }
-            foreach ($bundle['global'] as $original_id => $decision) {
-                $store['__global'][$original_id] = $decision;
+
+            if ($changed) {
+                $store[$proposal_id] = $proposal_store;
+                update_option('dbvc_resolver_decisions', $store, false);
             }
         }
-
-        update_option('dbvc_resolver_decisions', $store, false);
     }
 
     /**
@@ -1083,7 +1109,8 @@ HT;
             \Dbvc\Media\BundleManager::ingest_from_backup($backup_name, $backup_path);
         }
 
-        self::import_resolver_decisions_from_manifest($manifest, $backup_name);
+        // Intake seeds archived choices once. Apply must consume the current
+        // local store so reviewer changes cannot be replayed from the manifest.
         $resolver_decisions = class_exists('DBVC_Media_Sync')
             ? DBVC_Media_Sync::get_effective_resolver_decisions($backup_name)
             : [];
@@ -1133,6 +1160,8 @@ HT;
         $errors      = [];
         $items_total = isset($manifest['items']) ? count($manifest['items']) : 0;
         $media_reconcile = [];
+        $media_failures = [];
+        $no_changes_message = '';
 
         if ($mode === 'copy') {
             self::copy_backup_to_sync($backup_path, true);
@@ -1191,12 +1220,7 @@ HT;
             }
 
             if (empty($targets)) {
-                return [
-                    'imported' => 0,
-                    'skipped'  => $items_total,
-                    'mode'     => $mode,
-                    'message'  => __('No changes detected – nothing to restore.', 'dbvc'),
-                ];
+                $no_changes_message = __('No entity changes detected; media actions were still checked.', 'dbvc');
             }
         } else {
             $targets = $manifest['items'];
@@ -1214,6 +1238,14 @@ HT;
                     'resolver_decisions' => $resolver_decisions,
                 ]);
             } catch (\Throwable $media_exception) {
+                $media_failures[] = [
+                    'domain'  => 'media_reconcile',
+                    'code'    => 'media_reconcile_exception',
+                    'message' => sprintf(
+                        __('Media reconciliation failed: %s', 'dbvc'),
+                        sanitize_text_field($media_exception->getMessage())
+                    ),
+                ];
                 if (class_exists('DBVC_Sync_Logger') && method_exists('DBVC_Sync_Logger', 'log_media')) {
                     DBVC_Sync_Logger::log_media('Media reconciliation failed', [
                         'proposal' => $backup_name,
@@ -1449,6 +1481,24 @@ HT;
                     $normalized_decisions = null;
                 }
 
+                $decision_validation = self::validate_entity_decisions($normalized_decisions);
+                if (is_wp_error($decision_validation)) {
+                    $errors[] = $decision_validation->get_error_message();
+                    continue;
+                }
+
+                if ($normalized_decisions !== null && ! self::decisions_have_accept($normalized_decisions)) {
+                    $skipped++;
+                    if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+                        DBVC_Sync_Logger::log_term_import('Term import skipped - no accepted fields', [
+                            'file'     => $entry['path'],
+                            'term_uid' => $vf_object_uid,
+                            'proposal' => $backup_name,
+                        ]);
+                    }
+                    continue;
+                }
+
                 $term_import = self::apply_term_entity(
                     $existing_term_id,
                     $term_payload,
@@ -1553,41 +1603,6 @@ HT;
             self::$suppress_export_on_import = false;
         }
 
-        if (! empty($errors)) {
-            DBVC_Sync_Logger::log('Restore completed with warnings', ['errors' => $errors]);
-        } elseif (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-            DBVC_Sync_Logger::log_import('Proposal import summary', [
-                'proposal'      => $backup_name,
-                'mode'          => $mode,
-                'entities_applied' => $applied_entities,
-                'entities_skipped' => $skipped,
-                'media_downloaded' => $media_stats['downloaded'] ?? 0,
-            ]);
-        }
-
-        if (
-            $auto_clear_decisions
-            && $proposal_processed
-            && $has_entity_decisions
-            && empty($errors)
-        ) {
-            $latest_store = get_option(self::PROPOSAL_DECISIONS_OPTION, []);
-            if (is_array($latest_store) && isset($latest_store[$backup_name])) {
-                unset($latest_store[$backup_name]);
-                update_option(self::PROPOSAL_DECISIONS_OPTION, $latest_store, false);
-
-                if (
-                    class_exists('DBVC_Sync_Logger')
-                    && method_exists('DBVC_Sync_Logger', 'log_import')
-                ) {
-                    DBVC_Sync_Logger::log_import('Cleared proposal decisions after import', [
-                        'proposal'   => $backup_name,
-                        'auto_clear' => true,
-                    ]);
-                }
-            }
-        }
-
         $media_stats      = [];
         $resolver_payload = [
             'attachments' => [],
@@ -1596,11 +1611,28 @@ HT;
             'metrics'     => [],
         ];
         if (class_exists('DBVC_Media_Sync') && DBVC_Media_Sync::is_enabled()) {
-            $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest, [
-                'proposal_id' => $backup_name,
-                'manifest_dir'=> $backup_path,
-                'media_reconcile' => $media_reconcile,
-            ]);
+            try {
+                $media_stats = DBVC_Media_Sync::sync_manifest_media($manifest, [
+                    'proposal_id' => $backup_name,
+                    'manifest_dir'=> $backup_path,
+                    'media_reconcile' => $media_reconcile,
+                ]);
+            } catch (\Throwable $media_exception) {
+                $media_failures[] = [
+                    'domain'  => 'media_sync',
+                    'code'    => 'media_sync_exception',
+                    'message' => sprintf(
+                        __('Media synchronization failed: %s', 'dbvc'),
+                        sanitize_text_field($media_exception->getMessage())
+                    ),
+                ];
+                if (class_exists('DBVC_Sync_Logger') && method_exists('DBVC_Sync_Logger', 'log_media')) {
+                    DBVC_Sync_Logger::log_media('Media synchronization failed', [
+                        'proposal' => $backup_name,
+                        'error'    => $media_exception->getMessage(),
+                    ]);
+                }
+            }
         }
 
         if (isset($media_stats['resolver']) && is_array($media_stats['resolver'])) {
@@ -1625,6 +1657,14 @@ HT;
                     ]);
                 }
             } catch (\Throwable $resolver_error) {
+                $media_failures[] = [
+                    'domain'  => 'media_resolver',
+                    'code'    => 'media_resolver_exception',
+                    'message' => sprintf(
+                        __('Media resolver failed: %s', 'dbvc'),
+                        sanitize_text_field($resolver_error->getMessage())
+                    ),
+                ];
                 if (
                     class_exists('DBVC_Sync_Logger')
                     && method_exists('DBVC_Sync_Logger', 'log_media')
@@ -1636,7 +1676,60 @@ HT;
             }
         }
 
-        return [
+        $outcome = self::build_import_outcome(
+            $imported,
+            $skipped,
+            $errors,
+            $media_reconcile,
+            $media_stats,
+            $resolver_payload,
+            $media_failures
+        );
+        $errors = array_values(array_unique(array_filter(array_map(static function ($failure) {
+            return is_array($failure) ? (string) ($failure['message'] ?? '') : '';
+        }, $outcome['errors']))));
+
+        if (empty($outcome['success'])) {
+            DBVC_Sync_Logger::log('Restore completed with errors', [
+                'proposal' => $backup_name,
+                'mode'     => $mode,
+                'errors'   => $errors,
+                'outcome'  => $outcome,
+            ]);
+        } elseif (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
+            DBVC_Sync_Logger::log_import('Proposal import summary', [
+                'proposal'         => $backup_name,
+                'mode'             => $mode,
+                'entities_applied' => $applied_entities,
+                'entities_skipped' => $skipped,
+                'media_downloaded' => $media_stats['downloaded'] ?? 0,
+            ]);
+        }
+
+        if (
+            $auto_clear_decisions
+            && $proposal_processed
+            && $has_entity_decisions
+            && ! empty($outcome['success'])
+        ) {
+            $latest_store = get_option(self::PROPOSAL_DECISIONS_OPTION, []);
+            if (is_array($latest_store) && isset($latest_store[$backup_name])) {
+                unset($latest_store[$backup_name]);
+                update_option(self::PROPOSAL_DECISIONS_OPTION, $latest_store, false);
+
+                if (
+                    class_exists('DBVC_Sync_Logger')
+                    && method_exists('DBVC_Sync_Logger', 'log_import')
+                ) {
+                    DBVC_Sync_Logger::log_import('Cleared proposal decisions after successful import', [
+                        'proposal'   => $backup_name,
+                        'auto_clear' => true,
+                    ]);
+                }
+            }
+        }
+
+        $response = [
             'imported' => $imported,
             'skipped'  => $skipped,
             'errors'   => $errors,
@@ -1644,6 +1737,204 @@ HT;
             'media'    => $media_stats,
             'media_resolver' => $resolver_payload,
             'media_reconcile' => $media_reconcile,
+            'outcome'  => $outcome,
+        ];
+        if ($no_changes_message !== '') {
+            $response['message'] = $no_changes_message;
+        }
+
+        return $response;
+    }
+
+    /**
+     * Build one truthful result across entity import and required media actions.
+     *
+     * @param int   $imported
+     * @param int   $skipped
+     * @param array $entity_errors
+     * @param array $media_reconcile
+     * @param array $media_stats
+     * @param array $resolver_payload
+     * @param array $media_failures
+     * @return array
+     */
+    private static function build_import_outcome(
+        int $imported,
+        int $skipped,
+        array $entity_errors,
+        array $media_reconcile,
+        array $media_stats,
+        array $resolver_payload,
+        array $media_failures
+    ): array {
+        $failures = [];
+        $failure_keys = [];
+        $append_failure = static function (
+            string $domain,
+            string $code,
+            string $message,
+            array $context = []
+        ) use (&$failures, &$failure_keys): void {
+            $domain = sanitize_key($domain);
+            $code = sanitize_key($code);
+            $original_id = isset($context['original_id']) ? absint($context['original_id']) : 0;
+            $key = $domain . '|' . $code . '|' . $original_id . '|' . $message;
+            if (isset($failure_keys[$key])) {
+                return;
+            }
+            $failure_keys[$key] = true;
+            $failure = [
+                'domain'  => $domain,
+                'code'    => $code !== '' ? $code : 'unknown_failure',
+                'message' => sanitize_text_field($message),
+            ];
+            if (! empty($context)) {
+                $failure['context'] = $context;
+            }
+            $failures[] = $failure;
+        };
+
+        foreach ($entity_errors as $index => $message) {
+            $append_failure(
+                'entity',
+                'entity_import_failed',
+                (string) $message,
+                ['index' => (int) $index]
+            );
+        }
+        foreach ($media_failures as $failure) {
+            if (! is_array($failure)) {
+                continue;
+            }
+            $append_failure(
+                (string) ($failure['domain'] ?? 'media'),
+                (string) ($failure['code'] ?? 'media_failed'),
+                (string) ($failure['message'] ?? __('A required media action failed.', 'dbvc')),
+                isset($failure['context']) && is_array($failure['context']) ? $failure['context'] : []
+            );
+        }
+
+        $final_summary = isset($media_stats['resolver_decisions']) && is_array($media_stats['resolver_decisions'])
+            ? $media_stats['resolver_decisions']
+            : [];
+        $reconcile_summary = isset($media_reconcile['decision_summary']) && is_array($media_reconcile['decision_summary'])
+            ? $media_reconcile['decision_summary']
+            : [];
+        $final_outcomes = [];
+        foreach ((array) ($final_summary['results'] ?? []) as $result) {
+            if (! is_array($result)) {
+                continue;
+            }
+            $original_id = absint($result['original_id'] ?? 0);
+            $status = sanitize_key((string) ($result['status'] ?? 'failed'));
+            if ($original_id > 0) {
+                $final_outcomes[$original_id] = $status;
+            }
+            if ($status === 'applied') {
+                continue;
+            }
+            $action = sanitize_key((string) ($result['action'] ?? 'media'));
+            $reason = sanitize_key((string) ($result['reason'] ?? 'media_action_failed'));
+            $append_failure(
+                'media',
+                $reason !== '' ? $reason : 'media_action_failed',
+                sprintf(
+                    __('Required media action %1$s did not complete for attachment %2$d.', 'dbvc'),
+                    $action !== '' ? $action : 'unknown',
+                    $original_id
+                ),
+                [
+                    'original_id' => $original_id,
+                    'action'      => $action,
+                    'status'      => $status,
+                ]
+            );
+        }
+
+        foreach ((array) ($media_reconcile['decision_results'] ?? []) as $result) {
+            if (! is_array($result)) {
+                continue;
+            }
+            $original_id = absint($result['original_id'] ?? 0);
+            if ($original_id > 0 && isset($final_outcomes[$original_id])) {
+                continue;
+            }
+            $status = sanitize_key((string) ($result['status'] ?? 'failed'));
+            if ($status === 'applied') {
+                continue;
+            }
+            $action = sanitize_key((string) ($result['action'] ?? 'media'));
+            $reason = sanitize_key((string) ($result['reason'] ?? 'media_reconcile_failed'));
+            $append_failure(
+                'media_reconcile',
+                $reason !== '' ? $reason : 'media_reconcile_failed',
+                sprintf(
+                    __('Required media action %1$s could not be reconciled for attachment %2$d.', 'dbvc'),
+                    $action !== '' ? $action : 'unknown',
+                    $original_id
+                ),
+                [
+                    'original_id' => $original_id,
+                    'action'      => $action,
+                    'status'      => $status,
+                ]
+            );
+        }
+
+        $media_failure_count = count(array_filter($failures, static function ($failure) {
+            return ($failure['domain'] ?? '') !== 'entity';
+        }));
+        $required_media = max(
+            (int) ($final_summary['total'] ?? 0),
+            (int) ($reconcile_summary['total'] ?? 0)
+        );
+        if ((int) ($media_stats['errors'] ?? 0) > 0 && $media_failure_count === 0) {
+            $append_failure(
+                'media_sync',
+                'media_sync_errors',
+                sprintf(
+                    _n('%d media synchronization error occurred.', '%d media synchronization errors occurred.', (int) $media_stats['errors'], 'dbvc'),
+                    (int) $media_stats['errors']
+                )
+            );
+        }
+
+        $resolver_unresolved = isset($resolver_payload['metrics']['unresolved'])
+            ? (int) $resolver_payload['metrics']['unresolved']
+            : (int) ($media_reconcile['unresolved'] ?? 0);
+        $media_failure_count = count(array_filter($failures, static function ($failure) {
+            return ($failure['domain'] ?? '') !== 'entity';
+        }));
+        if ($required_media > 0 && $resolver_unresolved > 0 && $media_failure_count === 0) {
+            $append_failure(
+                'media_resolver',
+                'required_media_unresolved',
+                sprintf(
+                    _n('%d required media item remains unresolved.', '%d required media items remain unresolved.', $resolver_unresolved, 'dbvc'),
+                    $resolver_unresolved
+                )
+            );
+        }
+
+        $media_failure_count = count(array_filter($failures, static function ($failure) {
+            return ($failure['domain'] ?? '') !== 'entity';
+        }));
+        $success = empty($failures);
+
+        return [
+            'success' => $success,
+            'status'  => $success ? 'success' : ($imported > 0 ? 'partial' : 'failed'),
+            'errors'  => array_values($failures),
+            'counts'  => [
+                'imported'          => $imported,
+                'skipped'           => $skipped,
+                'entity_failed'     => count($entity_errors),
+                'media_failed'      => $media_failure_count,
+                'required_media'    => $required_media,
+                'resolver_failed'   => (int) ($final_summary['failed'] ?? ($reconcile_summary['failed'] ?? 0)),
+                'resolver_pending'  => (int) ($final_summary['pending'] ?? ($reconcile_summary['pending'] ?? 0)),
+                'media_unresolved'  => $resolver_unresolved,
+            ],
         ];
     }
 
@@ -1744,6 +2035,8 @@ HT;
 
             if (! empty($term_ids)) {
                 wp_set_object_terms($post_id, $term_ids, $taxonomy, false);
+            } elseif (empty($items)) {
+                wp_set_object_terms($post_id, [], $taxonomy, false);
             }
         }
     }
@@ -1813,7 +2106,12 @@ HT;
         $normalized = [];
 
         foreach ($decisions as $path => $action) {
-            if (! is_string($path) || $path === '') {
+            if (! is_string($path)) {
+                continue;
+            }
+
+            $path = trim($path);
+            if ($path === '' || ! in_array($action, ['accept', 'keep'], true)) {
                 continue;
             }
 
@@ -1821,10 +2119,153 @@ HT;
                 continue;
             }
 
-            $normalized[$path] = ($action === 'accept') ? 'accept' : 'keep';
+            if (! self::is_supported_import_decision_path($path)) {
+                continue;
+            }
+
+            $normalized[$path] = $action;
         }
 
         return $normalized;
+    }
+
+    private static function normalize_post_decision_aliases(?array $decisions): ?array
+    {
+        if ($decisions === null) {
+            return null;
+        }
+
+        foreach (array_keys($decisions) as $path) {
+            $canonical_path = self::canonicalize_decision_path((string) $path);
+            if ($canonical_path !== 'slug') {
+                continue;
+            }
+            if (! isset($decisions['post_name'])) {
+                $decisions['post_name'] = $decisions[$path];
+            }
+            unset($decisions[$path]);
+        }
+
+        return $decisions;
+    }
+
+    /**
+     * Reject contradictory choices that target the same value or overlap by ancestry.
+     * Sibling paths may still carry different choices for safe nested-meta merges.
+     *
+     * @param array|null $decisions
+     * @return true|WP_Error
+     */
+    private static function validate_entity_decisions(?array $decisions)
+    {
+        if ($decisions === null || empty($decisions)) {
+            return true;
+        }
+
+        $normalized_paths = [];
+        $taxonomy_actions = [];
+        foreach ($decisions as $path => $action) {
+            $canonical_path = self::canonicalize_decision_path((string) $path);
+            if ($canonical_path === '') {
+                continue;
+            }
+
+            if (isset($normalized_paths[$canonical_path]) && $normalized_paths[$canonical_path] !== $action) {
+                return new WP_Error(
+                    'dbvc_import_conflicting_decisions',
+                    sprintf(__('Conflicting reviewer choices target the same apply path: %s.', 'dbvc'), $canonical_path)
+                );
+            }
+            $normalized_paths[$canonical_path] = $action;
+
+            $parts = explode('.', $canonical_path);
+            if (($parts[0] ?? '') === 'tax_input' && ! empty($parts[1])) {
+                $taxonomy_root = 'tax_input.' . $parts[1];
+                $taxonomy_actions[$taxonomy_root][$action] = true;
+            }
+        }
+
+        $paths = array_keys($normalized_paths);
+        $path_count = count($paths);
+        for ($index = 0; $index < $path_count; $index++) {
+            for ($compare_index = $index + 1; $compare_index < $path_count; $compare_index++) {
+                $left = $paths[$index];
+                $right = $paths[$compare_index];
+                $overlaps = strpos($left, $right . '.') === 0 || strpos($right, $left . '.') === 0;
+                if ($overlaps && $normalized_paths[$left] !== $normalized_paths[$right]) {
+                    return new WP_Error(
+                        'dbvc_import_conflicting_decisions',
+                        sprintf(
+                            __('Conflicting reviewer choices overlap at %1$s and %2$s.', 'dbvc'),
+                            $left,
+                            $right
+                        )
+                    );
+                }
+            }
+        }
+
+        foreach ($taxonomy_actions as $taxonomy_root => $actions) {
+            if (count($actions) > 1) {
+                return new WP_Error(
+                    'dbvc_import_conflicting_decisions',
+                    sprintf(
+                        __('A taxonomy assignment must use one reviewer choice for the complete apply unit: %s.', 'dbvc'),
+                        $taxonomy_root
+                    )
+                );
+            }
+        }
+
+        return true;
+    }
+
+    private static function canonicalize_decision_path(string $path): string
+    {
+        $path = trim($path);
+        if (strpos($path, 'post.') === 0 && strpos(substr($path, 5), '.') === false) {
+            $path = substr($path, 5);
+        } elseif (strpos($path, 'taxonomies.') === 0) {
+            $path = 'tax_input.' . substr($path, 11);
+        }
+
+        $term_aliases = [
+            'term_name'   => 'name',
+            'term_slug'   => 'slug',
+            'parent_slug' => 'parent',
+            'parent_uid'  => 'parent',
+        ];
+
+        return $term_aliases[$path] ?? $path;
+    }
+
+    private static function is_supported_import_decision_path(string $path): bool
+    {
+        $path = self::canonicalize_decision_path($path);
+        $post_fields = [
+            'post_title',
+            'post_content',
+            'post_excerpt',
+            'post_status',
+            'post_name',
+            'post_date',
+            'post_modified',
+        ];
+        $term_fields = ['name', 'slug', 'description', 'parent'];
+
+        if (in_array($path, $post_fields, true) || in_array($path, $term_fields, true)) {
+            return true;
+        }
+
+        $parts = explode('.', $path);
+        if (($parts[0] ?? '') === 'meta' && ! empty($parts[1])) {
+            return true;
+        }
+        if (($parts[0] ?? '') === 'tax_input' && ! empty($parts[1])) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -1883,6 +2324,7 @@ HT;
 
     private static function resolve_decision_action(array $decisions, string $path): ?string
     {
+        $path = self::canonicalize_decision_path($path);
         $best_action = null;
         $best_length = -1;
 
@@ -1891,9 +2333,9 @@ HT;
                 continue;
             }
 
+            $decision_path = self::canonicalize_decision_path($decision_path);
+
             if ($decision_path === $path) {
-                $length = strlen($decision_path);
-            } elseif (strpos($decision_path, $path . '.') === 0) {
                 $length = strlen($decision_path);
             } elseif (strpos($path, $decision_path . '.') === 0) {
                 $length = strlen($decision_path);
@@ -1908,6 +2350,290 @@ HT;
         }
 
         return $best_action;
+    }
+
+    private static function get_descendant_decisions(?array $decisions, string $root_path): array
+    {
+        if ($decisions === null) {
+            return [];
+        }
+
+        $root_path = self::canonicalize_decision_path($root_path);
+        $descendants = [];
+        foreach ($decisions as $path => $action) {
+            $path = self::canonicalize_decision_path((string) $path);
+            if (strpos($path, $root_path . '.') === 0) {
+                $descendants[$path] = $action;
+            }
+        }
+
+        ksort($descendants, SORT_STRING);
+        return $descendants;
+    }
+
+    /**
+     * Resolve one complete apply unit while accepting legacy child decisions only
+     * when every child carries the same action.
+     *
+     * @return string|null|WP_Error
+     */
+    private static function resolve_complete_apply_unit_action(?array $decisions, string $root_path)
+    {
+        if ($decisions === null) {
+            return 'accept';
+        }
+
+        $action = self::resolve_decision_action($decisions, $root_path);
+        if ($action !== null) {
+            return $action;
+        }
+
+        $descendants = self::get_descendant_decisions($decisions, $root_path);
+        if (empty($descendants)) {
+            return null;
+        }
+
+        $actions = array_values(array_unique(array_values($descendants)));
+        if (count($actions) > 1) {
+            return new WP_Error(
+                'dbvc_import_conflicting_decisions',
+                sprintf(__('Mixed reviewer choices cannot split the complete apply unit %s.', 'dbvc'), $root_path)
+            );
+        }
+
+        return $actions[0];
+    }
+
+    private static function get_nested_array_value(array $data, array $segments, &$exists)
+    {
+        $exists = true;
+        $value = $data;
+
+        foreach ($segments as $segment) {
+            $key = ctype_digit((string) $segment) ? (int) $segment : $segment;
+            if (! is_array($value) || ! array_key_exists($key, $value)) {
+                $exists = false;
+                return null;
+            }
+            $value = $value[$key];
+        }
+
+        return $value;
+    }
+
+    private static function set_nested_array_value(array &$data, array $segments, $value): void
+    {
+        if (empty($segments)) {
+            $data = is_array($value) ? $value : [$value];
+            return;
+        }
+
+        $cursor =& $data;
+        foreach ($segments as $index => $segment) {
+            $key = ctype_digit((string) $segment) ? (int) $segment : $segment;
+            if ($index === count($segments) - 1) {
+                $cursor[$key] = $value;
+                return;
+            }
+            if (! isset($cursor[$key]) || ! is_array($cursor[$key])) {
+                $cursor[$key] = [];
+            }
+            $cursor =& $cursor[$key];
+        }
+    }
+
+    private static function unset_nested_array_value(array &$data, array $segments): void
+    {
+        if (empty($segments)) {
+            $data = [];
+            return;
+        }
+
+        $cursor =& $data;
+        foreach ($segments as $index => $segment) {
+            $key = ctype_digit((string) $segment) ? (int) $segment : $segment;
+            if (! is_array($cursor) || ! array_key_exists($key, $cursor)) {
+                return;
+            }
+            if ($index === count($segments) - 1) {
+                unset($cursor[$key]);
+                return;
+            }
+            $cursor =& $cursor[$key];
+        }
+    }
+
+    private static function get_mask_directive_for_path(array $directives, string $path): ?array
+    {
+        $path = self::canonicalize_decision_path($path);
+        $best = null;
+        $best_length = -1;
+
+        foreach ($directives as $directive_path => $directive) {
+            if (! is_array($directive)) {
+                continue;
+            }
+            $directive_path = isset($directive['path']) ? (string) $directive['path'] : (string) $directive_path;
+            $directive_path = self::canonicalize_decision_path($directive_path);
+            if ($directive_path !== $path && strpos($path, $directive_path . '.') !== 0) {
+                continue;
+            }
+            if (strlen($directive_path) > $best_length) {
+                $best = $directive;
+                $best_length = strlen($directive_path);
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Build the complete stored meta-value list after applying full-key or leaf decisions.
+     */
+    private static function build_meta_apply_plan(
+        array $current_values,
+        array $incoming_values,
+        ?array $decisions,
+        string $root_path,
+        array $overrides = [],
+        array $suppressions = []
+    ): array {
+        $root_action = $decisions === null ? 'accept' : self::resolve_decision_action($decisions, $root_path);
+        if ($root_action === 'keep') {
+            return ['apply' => false, 'values' => $current_values];
+        }
+
+        $descendants = self::get_descendant_decisions($decisions, $root_path);
+        $full_apply = $root_action === 'accept';
+        if (! $full_apply && empty($descendants)) {
+            return ['apply' => false, 'values' => $current_values];
+        }
+
+        if (self::get_mask_directive_for_path($suppressions, $root_path)) {
+            return ['apply' => false, 'values' => $current_values];
+        }
+
+        $root_override = self::get_mask_directive_for_path($overrides, $root_path);
+        $root_override_path = $root_override
+            ? self::canonicalize_decision_path((string) ($root_override['path'] ?? ''))
+            : '';
+        if ($root_override && $root_override_path === $root_path && array_key_exists('value', $root_override)) {
+            $incoming_values = [maybe_unserialize($root_override['value'])];
+        }
+
+        $next_values = $full_apply ? $incoming_values : $current_values;
+        $did_select_value = $full_apply;
+
+        if ($full_apply) {
+            foreach ($suppressions as $path => $directive) {
+                $path = self::canonicalize_decision_path((string) ($directive['path'] ?? $path));
+                if (strpos($path, $root_path . '.') !== 0) {
+                    continue;
+                }
+                $segments = explode('.', substr($path, strlen($root_path) + 1));
+                $current_value = self::get_nested_array_value($current_values, $segments, $exists);
+                if ($exists) {
+                    self::set_nested_array_value($next_values, $segments, $current_value);
+                } else {
+                    self::unset_nested_array_value($next_values, $segments);
+                }
+            }
+
+            foreach ($overrides as $path => $directive) {
+                $path = self::canonicalize_decision_path((string) ($directive['path'] ?? $path));
+                if (strpos($path, $root_path . '.') !== 0 || ! array_key_exists('value', $directive)) {
+                    continue;
+                }
+                $segments = explode('.', substr($path, strlen($root_path) + 1));
+                self::set_nested_array_value($next_values, $segments, maybe_unserialize($directive['value']));
+            }
+        } else {
+            foreach ($descendants as $path => $action) {
+                if ($action !== 'accept' || self::get_mask_directive_for_path($suppressions, $path)) {
+                    continue;
+                }
+
+                $segments = explode('.', substr($path, strlen($root_path) + 1));
+                $override = self::get_mask_directive_for_path($overrides, $path);
+                $override_path = $override
+                    ? self::canonicalize_decision_path((string) ($override['path'] ?? ''))
+                    : '';
+                if ($override && $override_path === $path && array_key_exists('value', $override)) {
+                    $value = maybe_unserialize($override['value']);
+                    $exists = true;
+                } else {
+                    $value = self::get_nested_array_value($incoming_values, $segments, $exists);
+                }
+
+                if ($exists) {
+                    self::set_nested_array_value($next_values, $segments, $value);
+                } else {
+                    self::unset_nested_array_value($next_values, $segments);
+                }
+                $did_select_value = true;
+            }
+        }
+
+        return [
+            'apply'  => $did_select_value && $next_values !== $current_values,
+            'values' => $next_values,
+        ];
+    }
+
+    private static function replace_post_meta_values(int $post_id, string $meta_key, array $values, array $bricks_keys): void
+    {
+        delete_post_meta($post_id, $meta_key);
+        foreach ($values as $value) {
+            if (in_array($meta_key, $bricks_keys, true)) {
+                $value = self::reslash_isolated_backslashes($value);
+            }
+            add_post_meta($post_id, $meta_key, maybe_unserialize($value));
+        }
+    }
+
+    private static function replace_term_meta_values(int $term_id, string $meta_key, array $values): void
+    {
+        delete_term_meta($term_id, $meta_key);
+        foreach ($values as $value) {
+            add_term_meta($term_id, $meta_key, maybe_unserialize($value));
+        }
+    }
+
+    /**
+     * WordPress always stamps updates with the current modified time. Restore
+     * the reviewed value after wp_update_post() so Keep remains literal.
+     *
+     * @return true|WP_Error
+     */
+    private static function set_post_modified_dates(int $post_id, string $modified, string $modified_gmt = '')
+    {
+        global $wpdb;
+
+        $modified = sanitize_text_field($modified);
+        $modified_gmt = sanitize_text_field($modified_gmt);
+        if ($modified === '') {
+            return new WP_Error('dbvc_import_invalid_modified_date', __('The reviewed modified date is empty.', 'dbvc'));
+        }
+        if ($modified_gmt === '') {
+            $modified_gmt = get_gmt_from_date($modified);
+        }
+
+        $updated = $wpdb->update(
+            $wpdb->posts,
+            [
+                'post_modified'     => $modified,
+                'post_modified_gmt' => $modified_gmt,
+            ],
+            ['ID' => $post_id],
+            ['%s', '%s'],
+            ['%d']
+        );
+        if ($updated === false) {
+            return new WP_Error('dbvc_import_modified_date_failed', __('The reviewed modified date could not be stored.', 'dbvc'));
+        }
+
+        clean_post_cache($post_id);
+        return true;
     }
 
     /**
@@ -1926,7 +2652,11 @@ HT;
             if ($path === DBVC_NEW_ENTITY_DECISION_KEY) {
                 continue;
             }
-            if (in_array($action, ['accept', 'keep'], true)) {
+            if (
+                is_string($path)
+                && self::is_supported_import_decision_path($path)
+                && in_array($action, ['accept', 'keep'], true)
+            ) {
                 return true;
             }
         }
@@ -2252,17 +2982,8 @@ HT;
             $allow_parent_update
         );
 
-		if (isset($payload['meta']) && is_array($payload['meta'])) {
-			$term_mask_overrides = isset($proposal_mask_overrides[$vf_object_uid]) && is_array($proposal_mask_overrides[$vf_object_uid])
-				? self::flatten_mask_meta_entries($proposal_mask_overrides[$vf_object_uid])
-				: ['meta' => [], 'post' => []];
-			self::apply_term_meta(
-				$term_id,
-				$payload['meta'],
-				$decisions,
-				$term_mask_overrides['meta'] ?? []
-			);
-		}
+        $term_meta = isset($payload['meta']) && is_array($payload['meta']) ? $payload['meta'] : [];
+        self::apply_term_meta($term_id, $term_meta, $decisions);
 
         return [
             'term_id'  => $term_id,
@@ -2277,28 +2998,47 @@ HT;
      * @param int        $term_id
      * @param array      $meta
      * @param array|null $decisions
-     * @return void
+     * @return bool
      */
-    private static function apply_term_meta(int $term_id, array $meta, ?array $decisions, array $mask_overrides = []): void
+    private static function apply_term_meta(int $term_id, array $meta, ?array $decisions, array $mask_overrides = []): bool
     {
         $mask_overrides = is_array($mask_overrides) ? $mask_overrides : [];
-        foreach ($meta as $key => $values) {
-            $meta_path = 'meta.' . $key;
-            if ($decisions !== null && ! self::decision_allows_path($decisions, $meta_path)) {
-                continue;
+        $did_apply = false;
+        $meta_keys = array_fill_keys(array_keys($meta), true);
+        if ($decisions !== null) {
+            foreach ($decisions as $decision_path => $action) {
+                $decision_path = self::canonicalize_decision_path((string) $decision_path);
+                $parts = explode('.', $decision_path);
+                if (($parts[0] ?? '') === 'meta' && ! empty($parts[1])) {
+                    $meta_keys[$parts[1]] = true;
+                }
             }
+        }
 
+        foreach (array_keys($meta_keys) as $key) {
+            $meta_path = 'meta.' . $key;
             $meta_key = sanitize_key($key);
-            delete_term_meta($term_id, $meta_key);
-
+            $values = array_key_exists($key, $meta) ? $meta[$key] : [];
             $values = is_array($values) ? $values : [$values];
             if (isset($mask_overrides[$meta_key]['value'])) {
                 $values = [$mask_overrides[$meta_key]['value']];
             }
-            foreach ($values as $value) {
-                add_term_meta($term_id, $meta_key, maybe_unserialize($value));
+
+            $plan = self::build_meta_apply_plan(
+                get_term_meta($term_id, $meta_key, false),
+                $values,
+                $decisions,
+                $meta_path
+            );
+            if (empty($plan['apply'])) {
+                continue;
             }
+
+            self::replace_term_meta_values($term_id, $meta_key, $plan['values']);
+            $did_apply = true;
         }
+
+        return $did_apply;
     }
 
     /**
@@ -2933,23 +3673,31 @@ $acf_relationship_fields = [
         if (! $existing && $original_id && $original_id !== $resolved_post_id && ($incoming_entity_uid === '' || $allow_uid_fallback)) {
             $existing = get_post($original_id);
         }
+
+        $normalized_decisions = self::normalize_post_decision_aliases(
+            self::normalize_entity_decisions($field_decisions)
+        );
+        if ($force_new_entity_accept) {
+            $normalized_decisions = null;
+        }
+        $decision_validation = self::validate_entity_decisions($normalized_decisions);
+        if (is_wp_error($decision_validation)) {
+            return $decision_validation;
+        }
+
         if ($existing && $incoming_entity_uid !== '') {
             update_post_meta($existing->ID, 'vf_object_uid', $incoming_entity_uid);
             self::sync_entity_registry($incoming_entity_uid, $existing->ID, $existing->post_type);
         }
         $post_id = null;
-        $normalized_decisions = self::normalize_entity_decisions($field_decisions);
-        if ($force_new_entity_accept) {
-            $normalized_decisions = null;
-        }
         $mask_overrides = isset($mask_directives['overrides']) && is_array($mask_directives['overrides'])
             ? $mask_directives['overrides']
             : [];
-        $mask_overrides = self::flatten_mask_meta_entries($mask_overrides);
+        $mask_overrides = self::expand_mask_meta_entries($mask_overrides);
         $mask_suppressions_raw = isset($mask_directives['suppressions']) && is_array($mask_directives['suppressions'])
             ? $mask_directives['suppressions']
             : [];
-        $mask_suppressions = self::flatten_mask_meta_entries($mask_suppressions_raw);
+        $mask_suppressions = self::expand_mask_meta_entries($mask_suppressions_raw);
 
         $meta_overrides = $mask_overrides['meta'] ?? [];
         $post_field_overrides = $mask_overrides['post'] ?? [];
@@ -2992,9 +3740,11 @@ $acf_relationship_fields = [
         if ($existing && $existing->post_type === $post_type) {
             $post_id = $existing->ID;
             $post_array = [
-                'ID'        => $post_id,
-                'post_type' => $post_type,
+                'ID' => $post_id,
             ];
+            $requested_modified = null;
+            $requested_modified_gmt = '';
+            $selected_post_field = false;
 
             $field_map = [
                 'post_title'   => static function () use ($json) { return sanitize_text_field($json['post_title']); },
@@ -3028,30 +3778,58 @@ $acf_relationship_fields = [
                 }
 
                 $bucket_key = self::build_mask_storage_key('post', $path);
-                if (! empty($post_field_suppressions[$bucket_key])) {
+                $mask_path = 'post.' . $path;
+                $suppression = self::get_mask_directive_for_path(
+                    $post_field_suppressions[$bucket_key] ?? [],
+                    $mask_path
+                );
+                if ($suppression) {
                     continue;
                 }
 
                 $value = $callback();
-                if (isset($post_field_overrides[$bucket_key]['value'])) {
-                    $value = $post_field_overrides[$bucket_key]['value'];
+                $override = self::get_mask_directive_for_path(
+                    $post_field_overrides[$bucket_key] ?? [],
+                    $mask_path
+                );
+                if ($override && array_key_exists('value', $override)) {
+                    $value = $override['value'];
                 }
                 if ($value !== null) {
-                    $post_array[$path] = $value;
+                    if ($path === 'post_modified') {
+                        $requested_modified = (string) $value;
+                        if (! $override && ! empty($json['post_modified_gmt'])) {
+                            $requested_modified_gmt = sanitize_text_field($json['post_modified_gmt']);
+                        }
+                    } else {
+                        $post_array[$path] = $value;
+                    }
+                    $selected_post_field = true;
                 }
             }
 
-            if (count($post_array) > 2) {
-                $result = wp_insert_post($post_array);
+            $updated_post_fields = count($post_array) > 1;
+            if ($updated_post_fields) {
+                $result = wp_update_post($post_array, true);
                 if (is_wp_error($result)) {
                     return $result;
                 }
                 $post_id = $result;
-                $did_apply_post_fields = true;
                 error_log("[DBVC] Updated existing post ID {$post_id}");
-            } else {
-                $post_id = $existing->ID;
             }
+
+            if ($updated_post_fields || $requested_modified !== null) {
+                $modified_result = self::set_post_modified_dates(
+                    $post_id,
+                    $requested_modified !== null ? $requested_modified : (string) $existing->post_modified,
+                    $requested_modified !== null ? $requested_modified_gmt : (string) $existing->post_modified_gmt
+                );
+                if (is_wp_error($modified_result)) {
+                    return $modified_result;
+                }
+            }
+
+            $did_apply_post_fields = $selected_post_field;
         } else {
             // Treat decisions as default accept for creations to avoid blocking required fields.
             $normalized_decisions = null;
@@ -3123,7 +3901,19 @@ $acf_relationship_fields = [
         }
 
         // Import meta
-        if (! is_wp_error($post_id) && isset($json['meta']) && is_array($json['meta'])) {
+        $incoming_meta = isset($json['meta']) && is_array($json['meta']) ? $json['meta'] : [];
+        $meta_keys = array_fill_keys(array_keys($incoming_meta), true);
+        if ($normalized_decisions !== null) {
+            foreach ($normalized_decisions as $decision_path => $action) {
+                $decision_path = self::canonicalize_decision_path((string) $decision_path);
+                $parts = explode('.', $decision_path);
+                if (($parts[0] ?? '') === 'meta' && ! empty($parts[1])) {
+                    $meta_keys[$parts[1]] = true;
+                }
+            }
+        }
+
+        if (! is_wp_error($post_id) && ! empty($meta_keys)) {
 
             // Bricks meta keys to protect
             $bricks_keys = apply_filters('dbvc_bricks_meta_keys', [
@@ -3146,39 +3936,30 @@ $acf_relationship_fields = [
                 $hooked[] = $tag;
             }
 
-            foreach ($json['meta'] as $key => $values) {
+            foreach (array_keys($meta_keys) as $key) {
                 $meta_path = 'meta.' . $key;
-                if ($normalized_decisions !== null && ! self::decision_allows_path($normalized_decisions, $meta_path)) {
-                    continue;
-                }
-
                 // Use sanitize_key for the meta key (preserves underscores)
                 $meta_key = sanitize_key($key);
                 $bucket_key = self::build_mask_storage_key('meta', $meta_key);
 
-                if (! empty($meta_suppressions[$bucket_key])) {
-                    continue;
-                }
-
+                $values = array_key_exists($key, $incoming_meta) ? $incoming_meta[$key] : [];
                 if (! is_array($values)) {
                     $values = [$values];
                 }
 
-                if (isset($meta_overrides[$bucket_key]['value'])) {
-                    $values = [$meta_overrides[$bucket_key]['value']];
+                $plan = self::build_meta_apply_plan(
+                    get_post_meta($post_id, $meta_key, false),
+                    $values,
+                    $normalized_decisions,
+                    $meta_path,
+                    $meta_overrides[$bucket_key] ?? [],
+                    $meta_suppressions[$bucket_key] ?? []
+                );
+                if (empty($plan['apply'])) {
+                    continue;
                 }
 
-                foreach ($values as $value) {
-
-                    // Re-double isolated singles for Bricks keys only
-                    if (in_array($meta_key, $bricks_keys, true)) {
-                        $value = self::reslash_isolated_backslashes($value);
-                    }
-
-                    // Do not unslash/sanitize the value here; just maybe_unserialize
-                    update_post_meta($post_id, $meta_key, maybe_unserialize($value));
-                }
-
+                self::replace_post_meta_values($post_id, $meta_key, $plan['values'], $bricks_keys);
                 $did_apply_meta = true;
             }
 
@@ -3201,13 +3982,30 @@ $acf_relationship_fields = [
         }
 
         // Import taxonomies
-        if (! is_wp_error($post_id) && isset($json['tax_input']) && is_array($json['tax_input'])) {
+        $incoming_tax_input = isset($json['tax_input']) && is_array($json['tax_input']) ? $json['tax_input'] : [];
+        if (! is_wp_error($post_id)) {
             $create_terms = (bool) get_option('dbvc_auto_create_terms', true);
             $tax_subset = [];
+            $taxonomy_keys = array_fill_keys(array_keys($incoming_tax_input), true);
 
-            foreach ($json['tax_input'] as $taxonomy => $items) {
+            if ($normalized_decisions !== null) {
+                foreach ($normalized_decisions as $decision_path => $action) {
+                    $decision_path = self::canonicalize_decision_path((string) $decision_path);
+                    $parts = explode('.', $decision_path);
+                    if (($parts[0] ?? '') === 'tax_input' && ! empty($parts[1])) {
+                        $taxonomy_keys[$parts[1]] = true;
+                    }
+                }
+            }
+
+            foreach (array_keys($taxonomy_keys) as $taxonomy) {
+                $items = array_key_exists($taxonomy, $incoming_tax_input) ? $incoming_tax_input[$taxonomy] : [];
                 $tax_path = 'tax_input.' . $taxonomy;
-                if ($normalized_decisions !== null && ! self::decision_allows_path($normalized_decisions, $tax_path)) {
+                $tax_action = self::resolve_complete_apply_unit_action($normalized_decisions, $tax_path);
+                if (is_wp_error($tax_action)) {
+                    return $tax_action;
+                }
+                if ($tax_action !== 'accept') {
                     continue;
                 }
                 $tax_subset[$taxonomy] = $items;
@@ -5298,6 +6096,27 @@ $acf_relationship_fields = [
         }
 
         return $flattened;
+    }
+
+    /**
+     * Preserve every mask directive path so nested overrides and suppressions
+     * can be applied to the exact reviewed leaf.
+     */
+    private static function expand_mask_meta_entries(array $entries): array
+    {
+        $expanded = [
+            'meta' => [],
+            'post' => [],
+        ];
+        $normalized = self::normalize_mask_meta_entry_bucket($entries);
+
+        foreach (['meta', 'post'] as $scope) {
+            if (! empty($normalized[$scope]) && is_array($normalized[$scope])) {
+                $expanded[$scope] = $normalized[$scope];
+            }
+        }
+
+        return $expanded;
     }
 
     private static function flatten_mask_scope_bucket(array $entries): array

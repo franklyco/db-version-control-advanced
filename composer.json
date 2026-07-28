@@ -9,6 +9,8 @@
     "scripts": {
         "test": "phpunit --testsuite \"DBVC Plugin\"",
         "test:smoke": "phpunit --filter PluginBootstrapSmokeTest",
-        "test:proposal-diff": "phpunit --group proposal-diff"
+        "test:proposal-diff": "phpunit --group proposal-diff",
+        "test:proposal-diff-resolved": "phpunit --group proposal-diff --exclude-group proposal-diff-pending --do-not-cache-result",
+        "test:proposal-diff-pending": "phpunit --group proposal-diff-pending --do-not-cache-result"
     }
 }

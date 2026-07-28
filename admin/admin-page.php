@@ -3877,6 +3877,11 @@ document.addEventListener('DOMContentLoaded', function () {
               <?php if (empty($available_options_groups)) : ?>
                 <p><?php esc_html_e('No ACF options groups detected. Ensure ACF is active and options pages/field groups exist.', 'dbvc'); ?></p>
               <?php else : ?>
+                <p style="margin:.5rem 0;">
+                  <button type="button" class="button button-small" id="dbvc-options-groups-select-all">
+                    <?php esc_html_e('Select All', 'dbvc'); ?>
+                  </button>
+                </p>
                 <div class="dbvc-options-groups" style="display:flex;flex-wrap:wrap;gap:0.75rem;">
                   <?php foreach ($available_options_groups as $group) : ?>
                     <?php
@@ -6750,6 +6755,13 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
           event.preventDefault();
           $taxSelect.find('option').prop('selected', false);
           $taxSelect.trigger('change');
+        });
+      }
+
+      const $optionsGroups = $('.dbvc-options-groups input[type="checkbox"]');
+      if ($optionsGroups.length) {
+        $('#dbvc-options-groups-select-all').on('click', function() {
+          $optionsGroups.prop('checked', true).trigger('change');
         });
       }
 

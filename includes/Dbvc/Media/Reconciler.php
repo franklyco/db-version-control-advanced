@@ -176,7 +176,26 @@ final class Reconciler
                 if ($action === 'download') {
                     unset($resolver['id_map'][$asset_key]);
                     $registered = self::register_from_bundle($proposal_id, $descriptor, $resolver_options);
-                    if ($registered) {
+                    if (is_wp_error($registered)) {
+                        $reason = sanitize_key($registered->get_error_code());
+                        $unresolved++;
+                        $resolver['attachments'][$asset_key]['target_id']    = null;
+                        $resolver['attachments'][$asset_key]['status']       = 'decision_failed';
+                        $resolver['attachments'][$asset_key]['resolved_via'] = 'decision:' . $source;
+                        $resolver['attachments'][$asset_key]['reason']       = $reason;
+                        $decision_results[$original_id] = self::decision_result(
+                            $original_id,
+                            $decision,
+                            'failed',
+                            0,
+                            $reason
+                        );
+                        Logger::log('media:download', 'Bundled attachment failed resolver validation', [
+                            'proposal_id' => $proposal_id,
+                            'asset_uid'   => $descriptor['asset_uid'] ?? '',
+                            'reason'      => $reason,
+                        ]);
+                    } elseif ($registered) {
                         $created++;
                         $resolver['attachments'][$asset_key]['target_id']    = $registered;
                         $resolver['attachments'][$asset_key]['status']       = 'downloaded';
@@ -227,7 +246,18 @@ final class Reconciler
             }
 
             $registered = self::register_from_bundle($proposal_id, $descriptor, $resolver_options);
-            if ($registered) {
+            if (is_wp_error($registered)) {
+                $unresolved++;
+                $resolver['attachments'][$asset_key]['target_id'] = null;
+                $resolver['attachments'][$asset_key]['status']    = 'decision_failed';
+                $resolver['attachments'][$asset_key]['reason']    = sanitize_key($registered->get_error_code());
+                unset($resolver['id_map'][$asset_key]);
+                Logger::log('media:download', 'Bundled attachment failed resolver validation', [
+                    'proposal_id' => $proposal_id,
+                    'asset_uid'   => $descriptor['asset_uid'] ?? '',
+                    'reason'      => sanitize_key($registered->get_error_code()),
+                ]);
+            } elseif ($registered) {
                 $created++;
                 $resolver['attachments'][$asset_key]['target_id'] = $registered;
                 $resolver['attachments'][$asset_key]['status']    = 'downloaded';
@@ -417,9 +447,9 @@ final class Reconciler
      * @param string $proposal_id
      * @param array  $descriptor
      * @param array  $options
-     * @return int|null
+     * @return int|null|\WP_Error
      */
-    private static function register_from_bundle(string $proposal_id, array $descriptor, array $options): ?int
+    private static function register_from_bundle(string $proposal_id, array $descriptor, array $options)
     {
         $bundle_file = BundleManager::locate_bundle_file(
             $proposal_id,
@@ -433,6 +463,28 @@ final class Reconciler
 
         if (! $bundle_file || ! file_exists($bundle_file)) {
             return null;
+        }
+
+        $expected_hash = strtolower(trim((string) ($descriptor['file_hash'] ?? '')));
+        if ($expected_hash !== '') {
+            if (strpos($expected_hash, ':') !== false) {
+                [, $expected_hash] = explode(':', $expected_hash, 2);
+                $expected_hash = trim($expected_hash);
+            }
+            if (! preg_match('/^[a-f0-9]{64}$/', $expected_hash)) {
+                return new \WP_Error(
+                    'bundle_hash_invalid',
+                    __('Bundled media has an invalid expected hash.', 'dbvc')
+                );
+            }
+
+            $actual_hash = hash_file('sha256', $bundle_file);
+            if (! is_string($actual_hash) || ! hash_equals($expected_hash, strtolower($actual_hash))) {
+                return new \WP_Error(
+                    'bundle_hash_mismatch',
+                    __('Bundled media did not match its expected hash.', 'dbvc')
+                );
+            }
         }
 
         $uploads = wp_get_upload_dir();
@@ -455,7 +507,10 @@ final class Reconciler
         $target = trailingslashit($target_dir) . wp_unique_filename($target_dir, basename($relative));
 
         if (! @copy($bundle_file, $target)) {
-            return null;
+            return new \WP_Error(
+                'bundle_copy_failed',
+                __('Bundled media could not be copied into uploads.', 'dbvc')
+            );
         }
 
         $attachment = [
@@ -468,7 +523,8 @@ final class Reconciler
         require_once ABSPATH . 'wp-admin/includes/image.php';
         $attachment_id = wp_insert_attachment($attachment, $target);
         if (is_wp_error($attachment_id)) {
-            return null;
+            @unlink($target);
+            return $attachment_id;
         }
 
         update_attached_file($attachment_id, $target);

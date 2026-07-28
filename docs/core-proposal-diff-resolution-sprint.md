@@ -1,6 +1,6 @@
 # Core Proposal Diff Resolution Sprint
 
-Last updated: 2026-07-20
+Last updated: 2026-07-22
 
 This guide tracks the remediation sprint for DBVC's core Proposal Diff workflow. It turns the Proposal Diff review findings into implementation-ready work, ordered from P0 through P5, with explicit dependent surfaces to QA after each change.
 
@@ -59,7 +59,7 @@ These flags identify code paths that are not the Proposal Diff UI itself but can
 
 | Flag | Dependent surface | Shared touchpoints | CPD items most likely to affect it | Conflict risk | Required QA / observation |
 | --- | --- | --- | --- | --- | --- |
-| CDF-001 | Entity Editor REST + UI | `DBVC_Entity_Editor_Indexer`, `/dbvc/v1/entity-editor/*`, `src/admin-entity-editor/index.js`, `build/admin-entity-editor.js` | CPD-003, CPD-006, CPD-007, CPD-010, CPD-012, CPD-013 | Entity Editor uses the same entity identity, sync JSON, post/term meta, taxonomy import, and shared CSS conventions, but it is not a proposal-review flow. Proposal gates, decision stores, and snapshot-missing states must not block save-only, partial import, or full replace actions. | Run `EntityEditorEndpointsTest`; manually verify index, file load, save-only, partial import, full replace snapshot, lock takeover, and bulk download. |
+| CDF-001 | Entity Editor REST + UI | `DBVC_Entity_Editor_Indexer`, `/dbvc/v1/entity-editor/*`, `src/admin-entity-editor/index.js`, `build/admin-entity-editor.js` | CPD-003, CPD-006, CPD-007, CPD-010, CPD-012, CPD-013 | Entity Editor uses the same entity identity, sync JSON, post/term meta, taxonomy import, and shared CSS conventions, but it is not a proposal-review flow. Proposal gates, decision stores, and snapshot-missing states must not block save-only, partial import, or full replace actions. | Run `EntityEditorEndpointsTest`; manually verify index, file load, save-only, partial import, full replace snapshot, lock takeover, bulk download, and deletion of a theme-backed raw-intake sync path. |
 | CDF-002 | Entity Editor partial/full import semantics | `import_tax_input_for_post`, `export_tax_input_portable`, `export_post_to_json`, `dbvc_run_auto_export_with_mask`, protected meta filters | CPD-006, CPD-007, CPD-010 | Changing decision/apply granularity or masking helpers can accidentally alter Entity Editor's contract: partial import must not delete absent meta, full replace must delete only unprotected absent meta, and save-only must not touch the database. | Re-test post + term partial/full import with protected meta filters `dbvc_entity_editor_protected_post_meta_keys` and `dbvc_entity_editor_protected_term_meta_keys`. |
 | CDF-003 | Classic admin backup restore/import | `admin/admin-page.php`, `DBVC_Sync_Posts::import_backup`, `DBVC_Backup_Manager::read_manifest`, `dbvc_import_backup_override` | CPD-001, CPD-002, CPD-003, CPD-006, CPD-008, CPD-009 | If apply gates are added inside `import_backup()` without context, legacy backup restore and classic import can be blocked by proposal-only requirements. Keep Proposal Diff gates scoped to proposal apply wrappers or add an explicit `context => proposal` option. | Restore a non-proposal backup in full, partial, and copy modes. Confirm `dbvc_import_backup_override` still works. |
 | CDF-004 | WP-CLI proposal and legacy commands | `commands/class-wp-cli-commands.php`, `wp dbvc proposals list|upload|apply`, `--fail-on-pending`, `--recapture-snapshots`, `--cleanup-duplicates`, legacy `wp dbvc import/export` | CPD-001, CPD-002, CPD-003, CPD-004, CPD-008, CPD-009 | REST and CLI must share blocker semantics, but legacy import/export should keep working. Output fields and exit codes are automation contracts. | Run CLI proposal list/upload/apply smoke tests, including blocked apply exit code, duplicate cleanup, snapshot recapture, and legacy import media sync. |
@@ -76,12 +76,15 @@ These flags identify code paths that are not the Proposal Diff UI itself but can
 | CDF-015 | Shared build assets and CSS | `build/style-admin-app.css`, `build/style-admin-app-rtl.css`, `build/admin-app.js`, `build/admin-entity-editor.js`, asset PHP manifests | CPD-011, CPD-012, CPD-013, CPD-014 | Proposal UI and Entity Editor currently share the admin app stylesheet. Label/layout/virtualization changes can regress Entity Editor modals, table paging, or Bricks submenu styling if global selectors are broadened. | Browser-check Proposal Review, Entity Editor, and Bricks submenu after any build/style change. |
 | CDF-016 | Logging, activity, and diagnostics | `DBVC_Sync_Logger`, `DBVC_Database::log_activity`, `/logs/client`, Bricks diagnostics/UI events, media/import/upload logging toggles | CPD-001, CPD-002, CPD-003, CPD-004, CPD-007, CPD-009, CPD-015 | New gate failures and blocker states need observability, but log payload shape changes can affect Bricks diagnostics, CLI summaries, and activity-table consumers. | Enable `dbvc_logging_*`; verify blocked apply, media resolver, term import, upload rejection, client log, and Bricks UI event records. |
 | CDF-017 | Content migration runtime guard | `dbvc_cc_guard_no_source_runtime_imports`, `_source/content-collector/*` | CPD-005, CPD-015 | New tests, fixtures, or helper includes must not load `_source/content-collector` runtime files. The guard exits hard under WP-CLI. | Run bootstrap/tests with content-migration guard active and confirm no `_source/content-collector` files are included at runtime. |
-| CDF-018 | Public hook/filter contracts | `dbvc_import_backup_override`, `dbvc_enable_snapshot_capture`, `dbvc_media_use_legacy_sync`, `dbvc_masking_chunk_size`, `dbvc_bricks_*` hooks, Entity Editor protected-meta filters | CPD-001, CPD-002, CPD-003, CPD-006, CPD-007, CPD-010, CPD-013 | Several tests and possible site customizations rely on these hooks. Changing signatures, timing, or defaults can break downstream custom tools even when core behavior passes. | Preserve hook signatures or document migrations; add regression tests for filters/actions that are part of shipped docs or PHPUnit coverage. |
+| CDF-018 | Public hook/filter contracts | `dbvc_import_backup_override`, `dbvc_enable_snapshot_capture`, `dbvc_media_use_legacy_sync`, `dbvc_masking_chunk_size`, `dbvc_proposal_zip_resource_limits`, `dbvc_bricks_*` hooks, Entity Editor protected-meta filters | CPD-001, CPD-002, CPD-003, CPD-006, CPD-007, CPD-010, CPD-013, CPD-019 | Several tests and possible site customizations rely on these hooks. Changing signatures, timing, or defaults can break downstream custom tools even when core behavior passes. Proposal ZIP ceilings must remain mandatory when filtered. | Preserve hook signatures or document migrations; add regression tests for filters/actions that are part of shipped docs or PHPUnit coverage, including invalid ZIP-limit values falling back to safe defaults. |
 | CDF-019 | Bricks connected-site transport and onboarding | `DBVC_Bricks_Connected_Sites`, `DBVC_Bricks_Command_Auth`, `DBVC_Bricks_Command_Queue`, `DBVC_Bricks_Onboarding`, `dbvc_bricks_clients`, `dbvc_bricks_onboarding_transport`, remote publish/pull/ack settings | CPD-004, CPD-005, CPD-010, CPD-015 | Package schema, artifact diff, ZIP/payload validation, auth settings, and admin asset changes can affect client/mothership transport even when local Bricks apply still passes. | QA connection test, publish remote, pull latest, pull ack, intro packet, handshake, command ping, registry mode, TLS/timeout/auth settings, and diagnostics. |
 | CDF-020 | Non-post proposal domains | `DBVC_Sync_Taxonomies`, `DBVC_Options_Groups`, `DBVC_Menu_Importer`, FSE theme data import/export, term/options/menu/FSE filters | CPD-001, CPD-003, CPD-006, CPD-007, CPD-008, CPD-010, CPD-011, CPD-012, CPD-014, CPD-015 | Proposal Diff fixes can drift toward post/meta assumptions. Options groups, menus, FSE data, and taxonomy entities need stable manifest refs, diff sections, apply units, masking behavior, and duplicate/new-entity states. | Build proposals for terms, options groups, menus, and FSE theme data; verify review counts, decisions, apply, rollback/snapshot behavior, and export filters. |
 | CDF-021 | Live auto-export and change hooks | `includes/hooks.php`, `dbvc_after_post_meta_update`, `dbvc_after_term_changes`, `dbvc_after_option_update`, `dbvc_after_menu_updates`, `dbvc_after_fse_changes`, hook-triggered export helpers | CPD-003, CPD-006, CPD-007, CPD-010, CPD-015 | Snapshot capture, masking, export shape, and entity hash changes can change the live baselines that later Proposal Diff compares against. Hook timing regressions are easy to miss in proposal-only tests. | Trigger post save, meta update, term edit, option update, menu save/delete, and FSE changes; verify exported JSON, entity registry updates, and later proposal diff baselines. |
 | CDF-022 | Media Hydration inventory/planner/apply | `includes/Dbvc/Media/Hydration/*`, `_wp_attached_file`, `vf_asset_uid`, `vf_file_hash`, `_dbvc_original_attachment_id`, hydration plans/receipts/jobs | CPD-002, CPD-012 | Resolver `download`, `map`, and `reuse` can create or select attachments using the same identity and file metadata that hydration scans and updates. Duplicate creation, missing attached-file metadata, or overwritten paths can change hydration matching and inventory results. | Run `MediaHydrationInventoryTest`; dry-run a hydration plan after each resolver action; verify inventory identity, file state, hashes, overwrite policy, receipts, and job summaries. |
 | CDF-023 | Configuration Portability and transfer/Bricks media packages | `MediaHandlingProvider`, `EntityPacketBuilder`, `DBVC_Bricks_Portability_Media_Apply_Service`, media options, `media_bundle`, transfer package metadata | CPD-002, CPD-012, CPD-015 | Resolver work shares media transport settings and bundled attachment metadata with configuration exports, transfer packets, and Bricks Portability. Option-key, manifest, or bundle-path drift could make a core fix alter package contents or downstream media apply behavior. | Run `ConfigurationPortabilityRegistryTest`, `TransferPacketWorkflowTest`, `BricksPortabilityManagerTest`, and `BricksReferenceMappingTest`; compare media option and bundle metadata before/after. |
+| CDF-024 | Proposal/AI shared upload routing | `Dbvc\AiPackage\SubmissionPackageDetector`, `DBVC_Admin_App::maybe_stage_ai_package_upload`, `DBVC_Sync_Posts` single-ZIP upload routing, `manifest.json`, `dbvc-ai-manifest.json` | CPD-004, CPD-019, CPD-021 | Core proposals and legacy AI packages can both contain `manifest.json`. A broad detector can divert a valid proposal or transfer packet into AI intake before Proposal Review validation, registration, and cleanup run. | Upload a core proposal through Proposal Review and the classic sync uploader; verify canonical and legacy AI fixtures still enter AI intake; check REST/CLI results, retained reports, workspace cleanup, and upload logs. |
+| CDF-025 | Proposal deletion and media-bundle lifecycle | `DBVC_Admin_App::delete_proposal`, `DBVC_Backup_Manager::delete_backup`, `Dbvc\Media\BundleManager`, `sync/media-bundles`, decision/snapshot/mask stores | CPD-017, CPD-022 | Proposal deletion can remove the proposal record and review stores while leaving its deterministic media-bundle directory behind. This can grow storage and allow stale bundle data to survive if a proposal ID is reused. | Ingest two proposal bundles, delete one proposal through REST/UI/CLI, and confirm only its proposal directory, review stores, and media bundle are removed while the neighboring bundle remains. |
+| CDF-026 | LocalWP ACF page REST serialization | Bricks Advanced Themer bundled ACF Pro, `acf_format_value_for_rest()`, `/wp/v2/pages`, page read/delete QA | CPD-006, CPD-007 | The current LocalWP stack can throw an external ACF formatter fatal after DBVC creates or updates a disposable page. DBVC apply may succeed while a follow-up core page REST read or delete returns HTTP 500, so that response cannot be treated as importer outcome evidence. | Until the ACF/Bricks conflict is fixed, verify Proposal Diff applies through DBVC snapshot/detail data or direct WordPress state; separately retest normal page REST read/delete after the external plugin is updated. |
 
 ## CPD Conflict Flag Quick Map
 
@@ -92,7 +95,7 @@ These flags identify code paths that are not the Proposal Diff UI itself but can
 | CPD-003 Snapshot state | CDF-001, CDF-006, CDF-011, CDF-012, CDF-013, CDF-018, CDF-020, CDF-021 |
 | CPD-004 ZIP intake hardening | CDF-006, CDF-007, CDF-016, CDF-017, CDF-019 |
 | CPD-005 Test harness | CDF-001, CDF-008, CDF-009, CDF-010, CDF-017, CDF-018, CDF-019, CDF-020, CDF-021 |
-| CPD-006 Decision granularity | CDF-001, CDF-002, CDF-010, CDF-011, CDF-012, CDF-013, CDF-014, CDF-018, CDF-020, CDF-021 |
+| CPD-006 Decision granularity | CDF-001, CDF-002, CDF-010, CDF-011, CDF-012, CDF-013, CDF-014, CDF-018, CDF-020, CDF-021, CDF-026 |
 | CPD-007 Term masking overrides | CDF-002, CDF-014, CDF-016, CDF-018, CDF-020, CDF-021 |
 | CPD-008 Duplicate detection | CDF-003, CDF-004, CDF-006, CDF-011, CDF-013, CDF-020 |
 | CPD-009 New entity decline | CDF-004, CDF-010, CDF-012, CDF-013, CDF-016 |
@@ -105,8 +108,10 @@ These flags identify code paths that are not the Proposal Diff UI itself but can
 | CPD-016 Resolver decision authority | CDF-003, CDF-004, CDF-005, CDF-006, CDF-016, CDF-018, CDF-022, CDF-023 |
 | CPD-017 Apply outcome truth | CDF-003, CDF-004, CDF-005, CDF-012, CDF-015, CDF-016, CDF-018, CDF-022, CDF-023 |
 | CPD-018 Non-post apply coverage | CDF-006, CDF-007, CDF-012, CDF-013, CDF-016, CDF-018, CDF-020, CDF-021 |
-| CPD-019 ZIP extraction resource limits | CDF-004, CDF-006, CDF-007, CDF-016, CDF-017, CDF-019, CDF-023 |
+| CPD-019 ZIP extraction resource limits | CDF-004, CDF-006, CDF-007, CDF-016, CDF-017, CDF-018, CDF-019, CDF-023, CDF-024 |
 | CPD-020 Resolved-phase regression lane | CDF-001, CDF-003, CDF-004, CDF-005, CDF-008, CDF-009, CDF-010, CDF-017, CDF-018, CDF-020, CDF-022, CDF-023 |
+| CPD-021 Proposal/AI upload routing | CDF-004, CDF-006, CDF-007, CDF-016, CDF-019, CDF-024 |
+| CPD-022 Proposal media-bundle cleanup | CDF-003, CDF-004, CDF-005, CDF-006, CDF-016, CDF-023, CDF-025 |
 
 ## Sprint Board
 
@@ -116,8 +121,8 @@ These flags identify code paths that are not the Proposal Diff UI itself but can
 | CPD-002 | P0 | In review | Resolver decisions were stored/displayed but were not authoritative during reconciliation. | Use one normalized proposal/global decision map across reconciliation and media sync, with actual outcome reporting. | `media-resolver`, `core-importer`, `admin-ui`, `wp-cli`, `settings`, `media-hydration`, `configuration-portability`, `transfer-media`, `bricks-addon`, `logging` |
 | CPD-003 | P0 | Done | Missing snapshots can compare proposed payloads against themselves. | Replace silent fallback with explicit snapshot states, recapture path, and apply gating. | `snapshot-manager`, `core-rest`, `admin-ui`, `terms`, `wp-cli`, `bricks-addon`, `tests` |
 | CPD-004 | P0 | Done | Proposal ZIP extraction is not visibly hardened before `extractTo`. | Validate ZIP entries before extraction and reject unsafe paths. | `core-rest`, `wp-cli`, `logging`, `tests` |
-| CPD-005 | P0 | In review | Automated test harness is not runnable in this checkout. | Restore/verify WP PHPUnit installation path and make Proposal Diff tests required. | `tests`, CI/dev tooling, `README.md`, `docs/progress-summary.md` |
-| CPD-006 | P1 | Not started | Review decisions can be more granular than importer apply units. | Align diff decision paths with actual apply units or implement safe nested merge semantics. | `core-importer`, `core-rest`, `admin-ui`, `masking`, `terms`, `bricks-addon`, `official-collections` |
+| CPD-005 | P0 | Done | The automated test harness was not runnable and had no required green Proposal Diff target. | WP PHPUnit is reproducible, Proposal Diff coverage is grouped, and the resolved Composer command is suitable for local or CI enforcement. | `tests`, CI/dev tooling, `README.md`, `docs/progress-summary.md` |
+| CPD-006 | P1 | Done | Review decisions can be more granular than importer apply units. | Diff rows now declare canonical apply units, read-only boundaries, and safe nested merge/removal behavior that the importer validates and applies. | `core-importer`, `core-rest`, `admin-ui`, `masking`, `terms`, `bricks-addon`, `official-collections` |
 | CPD-007 | P1 | Not started | Term masking overrides are not wired into term import. | Pass mask overrides/suppressions through term apply and term meta apply. | `core-importer`, `masking`, `terms`, `settings`, `logging`, `tests` |
 | CPD-008 | P1 | Not started | Duplicate detection is inconsistent between upload, report, UI, and apply. | Unify duplicate detector and enforce it at upload, list, UI gate, REST apply, and CLI apply. | `duplicate-cleanup`, `core-rest`, `core-importer`, `admin-ui`, `terms`, `bricks-addon`, `wp-cli` |
 | CPD-009 | P1 | Not started | Declined new entities still count as pending in proposal summaries. | Treat decline decisions as resolved-skip states across summaries, gates, apply, and history. | `terms`, `admin-ui`, `core-importer`, `core-rest`, `wp-cli`, `settings` |
@@ -127,11 +132,13 @@ These flags identify code paths that are not the Proposal Diff UI itself but can
 | CPD-013 | P3 | Not started | Proposal listing performs expensive live resolution and entity table virtualization is documented but not implemented. | Bound proposal-summary work and add practical list filtering/pagination, then implement real entity windowing or correct the docs. | `admin-ui`, `wp-cli`, `media-resolver`, large proposals, `terms`, `bricks-addon`, `tests` |
 | CPD-014 | P4 | Not started | Dev fixture upload is exposed in the core admin UI. | Hide behind an explicit dev capability/constant or remove from production bundle. | `admin-ui`, `core-rest`, `docs/fixtures/README.md`, packaging QA |
 | CPD-015 | P5 | Not started | Docs claim completed behavior that current code does not fully provide. | Update docs after fixes land and mark old claims as corrected. | `README.md`, `docs/progress-summary.md`, `docs/UI-ARCHITECTURE.md`, `docs/terms.md`, `docs/media-sync-design.md` |
-| CPD-016 | P0 | Not started | Manifest resolver snapshots can replace newer proposal-specific and global reviewer choices during upload or apply. | Separate imported seed/snapshot data from the live resolver decision store and never re-import over reviewed choices. | `media-resolver`, `core-importer`, `core-rest`, `admin-ui`, `wp-cli`, `classic-restore`, `settings`, `media-hydration`, `configuration-portability`, `transfer-media`, `bricks-addon`, `logging` |
-| CPD-017 | P0 | Not started | Required resolver/media actions can fail after readiness passes, while apply still closes the proposal and reports success. | Make apply success and closure depend on both entity and media outcomes; retain draft state and decisions on failure. | `media-resolver`, `core-importer`, `core-rest`, `admin-ui`, `wp-cli`, `classic-restore`, `settings`, `media-hydration`, `configuration-portability`, `transfer-media`, `bricks-addon`, `official-collections`, `logging` |
-| CPD-018 | P1 | Not started | Options, option groups, and menus can bypass field-decision review and trusted-snapshot gates. | Add domain-specific review and baseline gates, or explicitly block unsupported domains until those gates exist. | `core-importer`, `core-rest`, `admin-ui`, `wp-cli`, `options-groups`, `menus`, `configuration-portability`, `auto-export-hooks`, `official-collections`, `logging` |
-| CPD-019 | P0 | Not started | ZIP path/type validation has no entry-count, expanded-size, per-entry-size, or compression-ratio ceilings before extraction. | Enforce filterable extraction budgets before `extractTo` and reject archives with unsafe or unknowable resource use. | `core-rest`, `wp-cli`, `logging`, `configuration-portability`, `transfer-media`, `bricks-addon`, connected-site transport, packaging QA |
-| CPD-020 | P2 | Not started | Implemented Phase 0-4 behavior has no deterministic green regression target separate from expected Phase 5 failures. | Split resolved and pending contract tests, add a required green command, and isolate order-dependent test state. | PHPUnit bootstrap, CI/dev tooling, `core-rest`, `core-importer`, `admin-ui`, `wp-cli`, `media-hydration`, `configuration-portability`, `transfer-media`, `bricks-addon` |
+| CPD-016 | P0 | Done | Manifest resolver snapshots can replace newer proposal-specific and global reviewer choices during upload or apply. | Separate imported seed/snapshot data from the live resolver decision store and never re-import over reviewed choices. | `media-resolver`, `core-importer`, `core-rest`, `admin-ui`, `wp-cli`, `classic-restore`, `settings`, `media-hydration`, `configuration-portability`, `transfer-media`, `bricks-addon`, `logging` |
+| CPD-017 | P0 | Done | Required resolver/media actions can fail after readiness passes, while apply still closes the proposal and reports success. | Apply now returns one entity/media outcome, preserves decisions and draft status on failure, and closes only after all required work succeeds. | `media-resolver`, `core-importer`, `core-rest`, `admin-ui`, `wp-cli`, `classic-restore`, `settings`, `media-hydration`, `configuration-portability`, `transfer-media`, `bricks-addon`, `official-collections`, `logging` |
+| CPD-018 | P1 | Done | Options, option groups, and menus could bypass field-decision review and trusted-snapshot gates. | Proposal Review now blocks these writable domains explicitly until domain-specific review and trusted baselines exist; dedicated import tools remain available. | `core-importer`, `core-rest`, `admin-ui`, `wp-cli`, `options-groups`, `menus`, `configuration-portability`, `auto-export-hooks`, `official-collections`, `logging` |
+| CPD-019 | P0 | Done | ZIP path/type validation had no entry-count, expanded-size, per-entry-size, or compression-ratio ceilings before extraction. | Proposal intake now enforces mandatory filterable budgets and rejects unsafe or unknowable resource use before `extractTo`. | `core-rest`, `wp-cli`, `logging`, public filters, AI intake, classic ZIP import, `configuration-portability`, `transfer-media`, `bricks-addon`, connected-site transport, packaging QA |
+| CPD-020 | P2 | Done | Implemented Phase 0-4 behavior had no deterministic green regression target separate from expected Phase 5 failures. | Resolved contracts have a green Composer command, while the two remaining unfinished contracts stay executable in their own pending lane. | PHPUnit bootstrap, CI/dev tooling, `core-rest`, `core-importer`, `admin-ui`, `wp-cli`, `media-hydration`, `configuration-portability`, `transfer-media`, `bricks-addon` |
+| CPD-021 | P0 | Done | The active LocalWP AI detector claimed ordinary Proposal Diff ZIPs because both package types can use `manifest.json`. | Keep canonical AI manifests authoritative, but require an AI-specific signature before treating legacy `manifest.json` as an AI package. | `core-rest`, `admin-ui`, classic sync upload, AI intake/validation, WP-CLI upload, transfer packets, retained reports/workspaces, `logging` |
+| CPD-022 | P2 | Done | Deleting a proposal left its ingested `sync/media-bundles/<proposal-id>` cache behind. | Add proposal-scoped media-bundle deletion and report/log its result as part of proposal deletion. | `core-rest`, `admin-ui`, `wp-cli`, `media-resolver`, `backup-manager`, `transfer-media`, `bricks-addon`, `logging` |
 
 ## P0 Implementation Plans
 
@@ -305,6 +312,11 @@ Dependent QA:
 - GitHub Actions or local CI once available.
 - Admin browser smoke tooling.
 
+Implementation checkpoint (2026-07-21):
+- `composer test:proposal-diff-resolved` is the required green local/CI-ready command, and `composer test:proposal-diff-pending` keeps planned Phase 5 contracts executable and visible.
+- The existing broad `composer test:proposal-diff` command remains unchanged and intentionally reports the complete resolved-plus-pending state.
+- Authenticated Proposal Review browser smoke was completed during the connected implementation phases; this test-only slice does not change browser behavior.
+
 ## P1 Implementation Plans
 
 ### CPD-006: Align Decision Granularity With Apply Granularity
@@ -332,6 +344,17 @@ Dependent QA:
 - Meta masking suppress/override.
 - Bricks templates and options with deeply nested payloads.
 - Official collection snapshots after apply.
+
+Implementation checkpoint (2026-07-22):
+- Diff rows now expose `apply_scope`, `apply_path`, `apply_label`, and `can_apply`. Post fields, nested meta leaves, complete meta keys, and complete taxonomy assignments use canonical paths; identity and unsupported rows remain reference-only.
+- Removed nested meta children roll up to one complete-key decision, while supported nested leaves use deterministic read-modify-write merge and deletion. Mixed Accept/Keep choices preserve untouched siblings, repeated meta rows, local identity, and explicit timestamp behavior.
+- The importer validates decision paths before mutation, rejects writable identity/unsupported paths, applies post-field masking, and uses complete taxonomy assignment semantics. Term masking remains isolated to CPD-007 rather than being partially claimed here.
+- Proposal Review saves, clears, bulk-selects, counts, and renders canonical apply paths. Rows sharing one parent unit display that unit and share one saved decision without double-counting readiness.
+- Live QA exposed one connected masking regression: opening entity detail pruned valid masking decisions that were not ordinary diff paths. Detail refresh and snapshot-driven rebuild now preserve current masking review paths while still pruning genuinely stale decisions.
+- Source and LocalWP resolved Proposal Diff lanes pass 87 tests and 548 assertions; the active randomized run with seed `20260722` matches. The source full suite excluding only pending contracts passes 222 tests and 1,313 assertions, and the active Entity Editor/Bricks Portability/configuration/UID/migration matrix passes 173 tests and 2,301 assertions.
+- The pending lane now contains exactly two expected failures and five assertions: term masking override (Phase 5.2) and declined-new summary state (Phase 5.4). The active full diagnostic runs 602 tests and 5,855 assertions with five unchanged failures in Bricks language/disabled mode and Content Collector/settings work; the focused shared-dependency matrix is green, so those are recorded as external conflicts rather than CPD-006 regressions.
+- Authenticated LocalWP browser/REST QA confirmed 19 display rows map to 17 apply units, identity is read-only, two removed children share one parent unit, 11 masking reviews survive detail refresh, and no browser console errors occur. A disposable apply then preserved the local ID and kept nested sibling, applied the accepted title/color, removed the accepted complete meta key, closed successfully, and left no proposal, post, sync file, or ZIP fixture.
+- Official Collections promotion still has no direct automated case in this checkout. The LocalWP ACF REST fatal is tracked as CDF-026, and the missed theme-backed raw-intake file cleanup is retained under CDF-001 for focused Entity Editor QA.
 
 ### CPD-007: Wire Term Masking Overrides Into Term Import
 
@@ -474,6 +497,30 @@ Dependent QA:
 - Masking badges.
 - Apply warnings.
 
+### CPD-022: Proposal Deletion Owns Its Media Bundle
+
+Problem:
+- Proposal deletion removed the proposal backup and review stores but did not remove the proposal-scoped media bundle copied into `sync/media-bundles/<proposal-id>` during intake.
+
+Resolution plan:
+1. Add a strict `BundleManager` deletion method that accepts only an already-sanitized proposal ID.
+2. Remove only that proposal's bundle directory after its proposal backup is deleted.
+3. Return the media cleanup result from proposal deletion and log a warning if the directory cannot be removed.
+4. Add a regression test with neighboring proposal bundles so broad or parent-directory deletion cannot pass unnoticed.
+
+Acceptance criteria:
+- Deleting a proposal removes its ingested media bundle and leaves neighboring proposal bundles untouched.
+- Proposal cleanup continues to remove its decisions, snapshots, masks, and resolver choices.
+- A filesystem cleanup failure is observable in the deletion response and logs.
+
+Implementation state:
+- Done in Phase 4A.2a, with source and active LocalWP regression coverage and cleanup of the five disposable bundle directories created during authenticated Phase 4A QA.
+
+Dependent QA:
+- Proposal Review delete action and REST/CLI callers.
+- Media Resolver, transfer packets, and Bricks media workflows that create or read proposal-scoped bundles.
+- Backup manager, activity logging, and proposal decision/snapshot/mask cleanup.
+
 ## P3 Implementation Plans
 
 ### CPD-013: Proposal And Entity List Scaling
@@ -551,30 +598,52 @@ Dependent QA:
 
 - Audit date: 2026-07-20
 - Audit status: `Done`
-- Remediation status: `Not started`
+- Remediation status: `Done`
 
-This checkpoint reviewed the implemented Phase 0 through Phase 4 code paths before beginning Phase 5.1. The audit found five evidence-backed follow-up items: three P0 issues, one P1 gap, and one P2 test-control gap. No production code was changed during this audit.
+This checkpoint reviewed the implemented Phase 0 through Phase 4 code paths before beginning Phase 5.1. The initial audit found five evidence-backed follow-up items: three P0 issues, one P1 gap, and one P2 test-control gap. Authenticated implementation QA later exposed one additional P0 conflict in the active LocalWP AI upload router, tracked as CPD-021, and final cleanup review exposed one P2 proposal media-lifecycle gap, tracked as CPD-022; both were fixed during Phase 4A.
 
 ### Audit Findings
 
 | ID | Priority | Status | Verified finding | Evidence and failure mode | Flagged dependents |
 | --- | --- | --- | --- | --- | --- |
-| CPD-016 | P0 | Not started | Manifest resolver data can overwrite newer live reviewer decisions. | `DBVC_Admin_App::import_proposal_from_zip()` imports manifest resolver choices, and `DBVC_Sync_Posts::import_backup()` imports them again immediately before apply. `DBVC_Sync_Posts::import_resolver_decisions_from_manifest()` replaces the proposal map and writes bundled global entries into `__global`; choices later saved through `DBVC_Admin_App::set_resolver_decision()` are not written back to the manifest. A saved proposal or site-wide choice can therefore be silently replaced by an older archive snapshot at apply time. | Proposal Review, REST apply, admin UI, WP-CLI, classic admin restore, resolver CSV/settings, future proposals using global rules, Media Hydration, Configuration Portability, transfer/Bricks media packages, logs and metrics. |
-| CPD-017 | P0 | Not started | Resolver/media failures can pass readiness and still end as a closed, successful apply. | `resolver_decision_is_actionable()` treats `download` and `skip` as actionable without proving that a required download can complete. `DBVC_Sync_Posts::import_backup()` catches reconciliation failures without promoting them into the importer error list, while `DBVC_Admin_App::apply_proposal()` derives closure from remaining entity decisions and does not make closure or the success response depend on failed resolver outcomes. A forced download with neither a bundled file nor an allowed reachable source was reproduced as `ready=true`, followed by `download_not_completed`. | Proposal Review, REST response contract, success/error notices, WP-CLI exit code, classic admin restore, activity logging, Media Hydration, Configuration Portability, transfer/Bricks packages, Official Collections promotion flows. |
-| CPD-019 | P0 | Not started | Proposal ZIP validation does not bound decompression work. | `validate_proposal_zip()` validates paths, duplicates, link/special types, encryption, extensions, layout, and required files, but it does not cap archive entries, per-entry expanded bytes, total expanded bytes, or compression ratio before `ZipArchive::extractTo()`. A small compressed upload can therefore consume excessive disk or processing resources after passing the current boundary checks. | REST upload, WP-CLI upload, temp storage and cleanup, logging, package producers, Configuration Portability, transfer/Bricks packages, connected-site transport observation. |
-| CPD-018 | P1 | Not started | Non-post proposal domains bypass implemented review and snapshot protections. | `summarize_field_decision_apply_readiness()` only evaluates post and term items, while `get_entity_snapshot_status()` marks all other item types as `not_required` and trusted. An options item was reproduced as `ready=true` with zero field decisions, even though options, option groups, and menus are written directly by importer paths. FSE entities are post-backed and are not included in this finding. | Options and option groups, menu import, Configuration Portability, live auto-export hooks, proposal counters and labels, WP-CLI, rollback expectations, Official Collections. |
-| CPD-020 | P2 | Not started | There is no green cumulative regression lane for the phases already marked implemented. | `composer test:proposal-diff` intentionally includes four still-failing Phase 5 contracts, so it cannot act as a required green gate for Phase 0-4. No checkout CI workflow supplies a separate gate, and a previously observed Content Migration media rollback failure is order-dependent: its complete class passes alone and after the Phase 4 resolver tests. | PHPUnit bootstrap, local/CI commands, Phase 0 completion evidence, core Proposal Diff tests, Content Migration test isolation, dependent add-on regression checks. |
+| CPD-016 | P0 | Done | Manifest resolver data can overwrite newer live reviewer decisions. | `DBVC_Admin_App::import_proposal_from_zip()` imported manifest resolver choices, and `DBVC_Sync_Posts::import_backup()` imported them again immediately before apply. The resolved flow now seeds only missing local choices, never imports archived global rules, and does not replay the manifest during apply. Authenticated upload/edit/apply QA confirmed that newer proposal and explicit global choices remain authoritative. | Proposal Review, REST apply, admin UI, WP-CLI, classic admin restore, resolver CSV/settings, future proposals using global rules, Media Hydration, Configuration Portability, transfer/Bricks media packages, logs and metrics. |
+| CPD-021 | P0 | Done | The active LocalWP AI package detector intercepted ordinary Proposal Diff ZIPs. | `SubmissionPackageDetector::inspect_uploaded_zip()` treated any ZIP containing the supported legacy alias `manifest.json` as an AI package. Because the Proposal Review REST uploader and classic single-ZIP router call that detector before normal routing, a disposable proposal was staged as a blocked AI intake instead of being registered. The detector now requires AI-specific fields for the legacy alias while continuing to accept canonical `dbvc-ai-manifest.json`. | Proposal Review REST upload, classic sync upload, AI package validation/import, transfer packet intake, WP-CLI upload observation, retained AI reports/workspaces, upload logs, and package compatibility. |
+| CPD-017 | P0 | Done | Resolver/media failures could pass readiness and still end as a closed, successful apply. | The importer now combines entity, reconciliation, resolver, and media-sync results before clearing decisions. The REST apply endpoint restores this proposal's prior decisions, persists `draft`, logs a failure, and returns HTTP 409 when that outcome is not successful; bundled downloads also verify their declared SHA-256 hash before attachment creation. Authenticated LocalWP QA reproduced `ready=true` followed by a required download failure and confirmed the corrected failure contract and cleanup. | Proposal Review, REST response contract, success/error notices, WP-CLI exit code, classic admin restore, activity logging, Media Hydration, Configuration Portability, transfer/Bricks packages, Official Collections promotion flows. |
+| CPD-019 | P0 | Done | Proposal ZIP validation did not bound decompression work. | `validate_proposal_zip()` now checks all central-directory records before `ZipArchive::extractTo()`: no more than 10,000 entries, 256 MiB per expanded file, 1 GiB total expansion, and a 200:1 per-file compression ratio by default. Missing, negative, zero-when-nonempty, inconsistent, or directory-with-data size metadata is rejected; the mandatory positive ceilings are filterable through `dbvc_proposal_zip_resource_limits`. Authenticated REST and live WP-CLI QA both rejected a 1,014:1 fixture before proposal registration. | REST upload, WP-CLI upload, temp storage and cleanup, logging, public filter consumers, package producers, AI intake, classic ZIP import, Configuration Portability, transfer/Bricks packages, connected-site transport observation. |
+| CPD-018 | P1 | Done | Non-post proposal domains bypassed implemented review and snapshot protections. | The apply contract now reports one non-overridable `unsupported_domains` blocker with stable counts for `options`, `options_group`, and `menus`. REST, the admin UI, WP-CLI, and blocked-apply logs consume the same result; post-backed FSE items remain on the normal post path, and classic/dedicated import tools are not proposal-gated. | Options and option groups, menu import, Configuration Portability, live auto-export hooks, proposal counters and labels, WP-CLI, rollback expectations, Official Collections. |
+| CPD-020 | P2 | Done | There was no green cumulative regression lane for the phases already marked implemented. | Four Phase 5 methods now carry the `proposal-diff-pending` group. `composer test:proposal-diff-resolved` runs the broad Proposal Diff group while excluding only those methods, and `composer test:proposal-diff-pending` executes them directly; no test is skipped or deleted. Default and randomized runs were green in source and LocalWP, including the previously flagged Content Migration ordering boundary. | PHPUnit bootstrap, local/CI commands, Phase 0 completion evidence, core Proposal Diff tests, Content Migration test isolation, dependent add-on regression checks. |
+| CPD-022 | P2 | Done | Proposal deletion left the ingested media-bundle directory behind. | Authenticated cleanup removed the proposal record and review state but a filesystem audit found five disposable Phase 4A bundle directories still under `sync/media-bundles`. Proposal deletion now invokes a proposal-scoped `BundleManager` cleanup, returns its result, and preserves neighboring bundles; all five Codex-created leftovers were then removed. | Proposal Review delete action, REST/CLI deletion callers, backup manager, decision/snapshot/mask stores, Media Resolver, transfer/Bricks media packages, logging, and disk lifecycle checks. |
 
 ### Resolution Order
 
 #### 4A.1 - Preserve Live Resolver Authority (`CPD-016`, P0)
 
 1. Treat manifest resolver content as an import-time seed or historical snapshot, not the live decision authority.
-2. Seed proposal choices only when no live proposal choice exists; do not overwrite `__global` without a separate, explicit global-rule import action.
+2. Seed proposal choices only when no live proposal or global choice exists; do not overwrite `__global` without a separate, explicit global-rule import action.
 3. Remove or guard the second manifest import in `import_backup()`, then take one immutable effective-decision snapshot after readiness passes.
 4. Add tests where older manifest proposal/global choices conflict with newer local choices, including classic restore and global-rule reuse by another proposal.
 
 Acceptance checkpoint: the exact proposal and global choices shown immediately before apply are the choices consumed by reconciliation and media sync.
+
+Implementation checkpoint (2026-07-20):
+- Manifest proposal choices now seed only attachment IDs that have neither a local proposal choice nor a local global rule; archived global rules are not imported into the live site-wide store.
+- `import_backup()` no longer replays manifest resolver data and instead takes one effective snapshot from the live local store before reconciliation and media sync.
+- Source and LocalWP intake/apply regression coverage is green, as are the connected Entity Editor, Media Hydration, Configuration Portability, transfer, Bricks, and Content Migration checks.
+- Authenticated LocalWP QA uploaded a disposable proposal carrying archived choices, saved a newer local `skip`, applied it, and confirmed that the local choice remained authoritative before and after apply. Archived global data was not imported, an explicit global-rule round trip succeeded, and the proposal folder and temporary rule were removed; the later Phase 4A.2 cleanup audit found and resolved its separate media-bundle cache under CPD-022.
+
+#### 4A.1a - Preserve Proposal/AI Upload Routing (`CPD-021`, P0)
+
+1. Treat canonical `dbvc-ai-manifest.json` as an AI package without weakening its existing validation path.
+2. For the legacy `manifest.json` alias, require an AI package type or schema plus AI-specific marker fields before routing to AI intake.
+3. Keep ordinary Proposal Diff and transfer ZIPs on the normal proposal/classic upload paths.
+4. Cover both sides of the boundary: a core proposal must not be claimed, while a legacy AI package must remain compatible.
+
+Acceptance checkpoint: an ordinary Proposal Diff ZIP reaches Proposal Review, canonical and legacy AI packages reach AI intake, and neither path leaves the other path's report or workspace behind.
+
+Implementation checkpoint (2026-07-20):
+- The active LocalWP-only `SubmissionPackageDetector` now applies the AI signature check to legacy `manifest.json`; the source worktree does not contain the AI Package subsystem and required no equivalent code change.
+- Direct detector coverage excludes a core proposal manifest and preserves the existing legacy AI fixture contract.
+- Authenticated REST and browser QA confirmed that a disposable proposal registers in Proposal Review, the AI workbench stays hidden after cleanup, 11 existing proposal rows load without console errors, and the disposable AI report/workspace are removed.
 
 #### 4A.2 - Make Apply Outcomes Truthful (`CPD-017`, P0)
 
@@ -585,6 +654,29 @@ Acceptance checkpoint: the exact proposal and global choices shown immediately b
 
 Acceptance checkpoint: REST, UI, WP-CLI, proposal status, logs, and outcome counters agree on success versus failure.
 
+Implementation checkpoint (2026-07-20):
+- `DBVC_Sync_Posts::import_backup()` now returns a structured outcome across entity writes, reconciliation, resolver decisions, and media sync; partial mode also checks required media when no entity rows need work.
+- Automatic entity-decision clearing runs only after a successful combined outcome. `DBVC_Admin_App::apply_proposal()` restores this proposal's prior decision entry, keeps the manifest in `draft`, logs the structured failure, and returns `dbvc_proposal_apply_failed` with HTTP 409 when required work fails.
+- Bundled resolver downloads validate the declared SHA-256 hash before copying or registering an attachment, and failed copy/registration results remain visible as failed resolver outcomes. The source importer also now counts a successfully created post as applied, matching the already-correct active LocalWP path.
+- Focused source and LocalWP failure contracts pass. After the cleanup follow-up test was added, the source Proposal Diff group ran 63 tests and 411 assertions and the active group ran 63 tests and 410 assertions, both with only the same four planned Phase 5 failures; the connected package/import matrix passed 48 tests and 435 assertions, and Content Migration passed 32 tests and 568 assertions.
+- Authenticated LocalWP QA confirmed a media-only proposal was ready before apply, then returned HTTP 409 with one media failure, preserved its required download choice, persisted `draft`, and removed its proposal record. The follow-up filesystem check exposed the separate media-bundle cleanup gap now fixed in Phase 4A.2a; the proposal-list status read again showed the already-tracked CPD-013 latency.
+- The existing React request catch renders the REST failure as an Apply failed notice without clearing local decisions. The existing WP-CLI proposal command passes the same REST result to `WP_CLI::error`, preserving a non-zero CLI exit without a separate behavior fork.
+
+#### 4A.2a - Close Proposal Media-Bundle Lifecycle (`CPD-022`, P2)
+
+1. Make proposal deletion remove the exact media bundle copied for that proposal during intake.
+2. Keep deletion proposal-scoped and prove that a neighboring proposal bundle is retained.
+3. Return and log the media cleanup result so a filesystem failure is visible without hiding the proposal deletion result.
+4. Remove the disposable bundle directories left by prior authenticated Phase 4A checks.
+
+Acceptance checkpoint: deleting a proposal removes its proposal record, review stores, and owned media bundle without deleting another proposal's media.
+
+Implementation checkpoint (2026-07-20):
+- `Dbvc\Media\BundleManager::delete_bundle()` now validates an already-sanitized proposal ID and removes only that proposal's bundle directory.
+- `DBVC_Admin_App::delete_proposal()` invokes the cleanup, returns `media_bundle_deleted`, and records warning logs when filesystem cleanup fails while retaining the existing proposal-state cleanup.
+- The new source and active regression passed with 1 test and 8 assertions in each checkout, including the neighboring-bundle guard. The cumulative Proposal Diff totals are now 63 tests and 411 assertions in source and 63 tests and 410 assertions in LocalWP, with only the same four planned Phase 5 failures.
+- A live cleanup probe removed all five Codex-created Phase 4A bundle directories and confirmed none remained.
+
 #### 4A.3 - Bound ZIP Extraction Resources (`CPD-019`, P0)
 
 1. Add filterable limits for entry count, per-entry expanded bytes, total expanded bytes, and compression ratio before extraction.
@@ -593,6 +685,15 @@ Acceptance checkpoint: REST, UI, WP-CLI, proposal status, logs, and outcome coun
 4. Re-run REST and WP-CLI upload QA and observe package-producing add-ons for archives near the supported limits.
 
 Acceptance checkpoint: no archive reaches `extractTo()` unless its complete extraction budget has been validated.
+
+Implementation checkpoint (2026-07-20):
+- Proposal intake now validates entry count, per-file expanded bytes, total expanded bytes, compression ratio, and central-directory size consistency before any archive entry is written.
+- Defaults are 10,000 archive entries, 256 MiB per expanded file, 1 GiB total expansion, and a 200:1 per-file ratio. `dbvc_proposal_zip_resource_limits` can lower or raise positive ceilings, while invalid and non-positive values fall back to the mandatory defaults.
+- Rejections return `dbvc_zip_resource_limit` for exceeded budgets or `dbvc_zip_stats_invalid` for unusable metadata, include safe numeric limit details, and continue through the existing sanitized upload/activity logging path.
+- Focused source and LocalWP intake coverage passed 32 tests and 206 assertions each, including mandatory-default fallback for invalid filter values. The cumulative Proposal Diff groups ran 75 tests with 472 source assertions and 471 LocalWP assertions, with only the same four planned Phase 5 failures.
+- The connected Proposal/AI/import/transfer matrix passed 60 tests and 496 assertions. Separate core, Configuration Portability, and Bricks package/extraction consumers passed 72 tests and 1,162 assertions; Bricks connected-site transport passed 40 tests and 231 assertions; Content Migration passed 32 tests and 568 assertions.
+- Authenticated LocalWP REST QA rejected a 1,014:1 ZIP with HTTP 400 and `compression_ratio_exceeded` before registration, accepted a normal proposal with HTTP 200, and deleted it cleanly. Live WP-CLI rejected the same unsafe fixture with exit code 1.
+- AI intake, classic upload extraction, Configuration Portability, and Bricks Portability retain separate extraction implementations. This phase did not silently apply Proposal Diff limits to those tools; their regression checks are green, and their independent extraction-security boundaries remain flagged for tool-specific review.
 
 #### 4A.4 - Gate Non-Post Apply Domains (`CPD-018`, P1)
 
@@ -603,6 +704,15 @@ Acceptance checkpoint: no archive reaches `extractTo()` unless its complete extr
 
 Acceptance checkpoint: every writable proposal domain is either review-gated with a trusted baseline or visibly blocked as unsupported.
 
+Implementation checkpoint (2026-07-20):
+- The writable non-post inventory is the three manifest item types consumed directly by the shared importer: `options`, `options_group`, and `menus`. Post-backed FSE entities remain `post` items and are not included.
+- `build_proposal_apply_gates()` now adds a mandatory `unsupported_domains` blocker and stable per-type counts. No hash override or other apply option can remove it, and the existing list, detail, apply-modal, REST, WP-CLI, and logging consumers display the same message without a frontend schema change.
+- The gate is scoped to the Proposal Review wrapper. Classic restore, flat JSON routing, ACF option-group tools, menu import, Configuration Portability, Entity Editor, and Bricks option artifacts retain their existing dedicated contracts.
+- Source and LocalWP focused contracts passed 3 tests and 21 assertions each. The complete Proposal Diff groups ran 77 tests with 489 source assertions and 488 LocalWP assertions, with only the same four planned Phase 5 failures.
+- LocalWP router coverage passed 2 tests and 29 assertions, and the combined Configuration Portability, UID, Entity Editor, third-party portability, Bricks Portability, and Bricks reference set passed 99 tests and 1,350 assertions.
+- Authenticated LocalWP QA uploaded one three-domain proposal, confirmed `ready=false` and exact per-type counts, received HTTP 409 from REST apply and exit code 1 from WP-CLI apply, saw `Blocked (1)` plus the same reason and a disabled Apply button in Proposal Review, and confirmed two activity-log records. A controlled administrator classic import still processed the options/menu payload outside Proposal Review; its sentinel option and the disposable proposal were then removed.
+- This phase resolves the bypass by blocking unsupported domains. It does not claim field-level option/menu review, non-post snapshots, or non-post rollback; those capabilities would require a separate domain-specific design before this blocker can be removed.
+
 #### 4A.5 - Add a Green Resolved-Phase Lane (`CPD-020`, P2)
 
 1. Add a `proposal-diff-resolved` test group/command for implemented Phase 0-4 contracts and keep pending Phase 5+ contracts in a separate lane.
@@ -612,17 +722,26 @@ Acceptance checkpoint: every writable proposal domain is either review-gated wit
 
 Acceptance checkpoint: implemented Proposal Diff contracts have a repeatable green command, while planned failures remain visible in their own lane.
 
+Implementation checkpoint (2026-07-21):
+- Added `test:proposal-diff-resolved` and `test:proposal-diff-pending` Composer scripts in source and LocalWP. Both disable PHPUnit result-cache writes so required runs do not churn `.phpunit.result.cache`.
+- Tagged only the four existing Phase 5 contracts: post-field masking and nested-meta apply units for Phase 5.1, term masking for Phase 5.2, and declined-new summary state for Phase 5.4. Fixing one requires removing its pending tag so it immediately joins the required lane.
+- The resolved command passed 73 tests and 481 assertions in both checkouts in default order and randomized order with seed `20260721`. The source full suite excluding only pending contracts passed 208 tests and 1,246 assertions.
+- The pending command ran exactly four tests and reproduced exactly four failures: 8 source assertions and 7 LocalWP assertions, reflecting the known checkout-specific importer boundary without changing the failing contract identities.
+- The active resolved-plus-Content-Migration diagnostic passed 105 tests and 1,049 assertions in default and randomized order. The previously observed media rollback ordering failure did not reproduce, so no dependent production or test code needed modification.
+- The connected Configuration Portability, UID, Entity Editor, third-party portability, Bricks Portability, and Bricks reference matrix remained green at 99 tests and 1,350 assertions.
+- This phase changes test metadata and Composer commands only. It does not replace authenticated browser, REST, or WP-CLI apply QA for behavior-changing phases.
+
 ### Confirmed Stable Or Not Misclassified
 
-- The complete Proposal Diff group ran 57 tests and 360 assertions. Its only failures were the four already-planned Phase 5 contracts for nested post-meta decisions, post-field masking, term masking, and declined-new-entity summaries; these are not new audit findings.
-- The source checkout's non-Proposal-Diff suite ran 135 tests and 765 assertions without failures.
-- The active LocalWP dependent matrix for Entity Editor, Media Hydration, Configuration Portability, transfer packets, Bricks Portability, and Bricks reference mapping ran 163 tests and 1,892 assertions without failures. No new regression was demonstrated in those dependents.
-- The active LocalWP Content Migration Phase 4 importer class ran 32 tests and 568 assertions without failures. Its earlier full-suite-only media rollback failure remains a test-isolation concern under CPD-020, not a confirmed runtime regression from Phase 4.
-- Classic restore uses the affected shared importer and is therefore flagged under CPD-016 and CPD-017, but its existing gate-boundary test still passes.
-- `Dbvc\Official\Collections::mark_official()` has no caller or direct test in the current source checkout. Promotion QA remains unverified, but this audit did not invent or demonstrate a runtime failure there.
-- Authenticated visual apply QA, direct live WP-CLI apply/recapture, and the already-recorded proposal-list latency remain open connected-site checks. They are not additional defects discovered by this audit.
+- The resolved Proposal Diff lane now passes 87 tests and 548 assertions in source and LocalWP. Only the two planned contracts for term masking and declined-new summaries remain in the pending lane.
+- The source checkout's full suite excluding those two pending methods passes 222 tests and 1,313 assertions.
+- The active LocalWP dependent matrix for Entity Editor, Bricks Portability, Bricks reference mapping, Configuration Portability, third-party portability, UID preservation, and Content Migration Phase 4 passes 173 tests and 2,301 assertions in randomized order.
+- The active full diagnostic still has five failures outside Proposal Diff: two Bricks language/disabled-mode checks and three Content Collector/settings checks. Each reproduces outside the CPD-006 paths, while the focused shared-dependency matrix remains green.
+- Classic restore uses the affected shared importer and remains flagged under CPD-016 and CPD-017, but its proposal-gate boundary coverage passes.
+- `Dbvc\Official\Collections::mark_official()` still has no caller or direct test in the current source checkout. Promotion QA remains unverified, but no runtime failure was invented or demonstrated there.
+- Authenticated disposable browser, readiness, apply, and cleanup QA for Phase 5.1 is complete. The external ACF page REST fatal is tracked under CDF-026, and the proposal-list latency remains assigned to Phase 7.2 rather than being misclassified as an apply-unit failure.
 
-Sequencing decision: complete the Phase 4A P0 items before starting Phase 5.1. Phase 5 remains planned, but advancing apply semantics while resolver authority, result truth, or ZIP resource controls are unresolved would make later QA unreliable.
+Sequencing decision: Phase 5.1 is complete. Proceed to Phase 5.2 / CPD-007 for term masking parity while keeping CPD-002's resolver-specific connected QA in its existing review lane.
 
 ## Implementation Phase / Sub-Phase Tracker
 
@@ -642,12 +761,14 @@ Status values: `Not started`, `In progress`, `Blocked`, `In review`, `Done`.
 | Phase 4 - Media Resolution | 4.1 Preserve and formalize existing resolver decision bridge. | In review | CPD-002 | One normalized proposal/global map governs reconciliation and media sync; actual source and outcomes are returned without changing existing keys or filter signatures. | CDF-003, CDF-004, CDF-005, CDF-006, CDF-016, CDF-018, CDF-022, CDF-023 |
 | Phase 4 - Media Resolution | 4.2 Verify all resolver actions during proposal apply. | In review | CPD-002, CPD-012 | Automated LocalWP coverage proves `reuse`, `map`, `download`, and `skip` produce consistent maps, creation behavior, metrics, and failures; authenticated visual apply QA remains. | CDF-003, CDF-004, CDF-005, CDF-014, CDF-015, CDF-016, CDF-018, CDF-022, CDF-023 |
 | Phase 4A - Cumulative Audit Remediation | 4A.0 Audit implemented Phase 0-4 behavior and connected dependents. | Done | CPD-001 through CPD-005, CPD-016 through CPD-020 | Code-path tracing, focused runtime probes, cumulative tests, and LocalWP dependent suites identify only evidence-backed findings before Phase 5.1. | CDF-001, CDF-003, CDF-004, CDF-005, CDF-006, CDF-007, CDF-008, CDF-009, CDF-010, CDF-012, CDF-013, CDF-015, CDF-016, CDF-017, CDF-018, CDF-019, CDF-020, CDF-021, CDF-022, CDF-023 |
-| Phase 4A - Cumulative Audit Remediation | 4A.1 Preserve live resolver authority over manifest snapshots. | Not started | CPD-016 | Upload and apply cannot replace newer proposal/global choices with archived manifest values. | CDF-003, CDF-004, CDF-005, CDF-006, CDF-016, CDF-018, CDF-022, CDF-023 |
-| Phase 4A - Cumulative Audit Remediation | 4A.2 Make proposal closure and success depend on entity and media outcomes. | Not started | CPD-017 | Required media failures preserve draft/review state and produce matching REST, UI, CLI, and log results. | CDF-003, CDF-004, CDF-005, CDF-012, CDF-015, CDF-016, CDF-018, CDF-022, CDF-023 |
-| Phase 4A - Cumulative Audit Remediation | 4A.3 Enforce ZIP extraction resource ceilings. | Not started | CPD-019 | Entry, expanded-size, and compression-ratio budgets are validated before extraction. | CDF-004, CDF-006, CDF-007, CDF-016, CDF-017, CDF-019, CDF-023 |
-| Phase 4A - Cumulative Audit Remediation | 4A.4 Add or enforce review gates for non-post domains. | Not started | CPD-018 | Options, option groups, and menus cannot bypass trusted baseline and decision requirements. | CDF-006, CDF-007, CDF-012, CDF-013, CDF-016, CDF-018, CDF-020, CDF-021 |
-| Phase 4A - Cumulative Audit Remediation | 4A.5 Add a deterministic green regression lane for resolved phases. | Not started | CPD-020 | Phase 0-4 contracts have a required green command separate from planned Phase 5+ failures. | CDF-001, CDF-003, CDF-004, CDF-005, CDF-008, CDF-009, CDF-010, CDF-017, CDF-018, CDF-020, CDF-022, CDF-023 |
-| Phase 5 - Apply Semantics | 5.1 Align review decision paths with importer apply units. | Not started | CPD-006 | Review choices cannot imply nested behavior the importer cannot safely perform. | CDF-001, CDF-002, CDF-010, CDF-011, CDF-012, CDF-013, CDF-014, CDF-018, CDF-020, CDF-021 |
+| Phase 4A - Cumulative Audit Remediation | 4A.1 Preserve live resolver authority over manifest snapshots. | Done | CPD-016 | Manifest choices seed only when no local proposal/global authority exists; apply consumes the live store without replay. Authenticated disposable upload/edit/apply and cleanup passed. | CDF-003, CDF-004, CDF-005, CDF-006, CDF-016, CDF-018, CDF-022, CDF-023 |
+| Phase 4A - Cumulative Audit Remediation | 4A.1a Preserve Proposal Diff routing at the shared AI upload boundary. | Done | CPD-021 | Legacy `manifest.json` enters AI intake only with an AI signature; ordinary proposals retain the normal REST/classic upload path. | CDF-004, CDF-006, CDF-007, CDF-016, CDF-019, CDF-024 |
+| Phase 4A - Cumulative Audit Remediation | 4A.2 Make proposal closure and success depend on entity and media outcomes. | Done | CPD-017 | Required media failures preserve draft/review state and produce matching REST, UI, CLI, and log results. | CDF-003, CDF-004, CDF-005, CDF-012, CDF-015, CDF-016, CDF-018, CDF-022, CDF-023 |
+| Phase 4A - Cumulative Audit Remediation | 4A.2a Remove proposal-owned media bundles during proposal deletion. | Done | CPD-022 | Proposal deletion removes only its media bundle, reports cleanup, and preserves neighboring bundles. | CDF-003, CDF-004, CDF-005, CDF-006, CDF-016, CDF-023, CDF-025 |
+| Phase 4A - Cumulative Audit Remediation | 4A.3 Enforce ZIP extraction resource ceilings. | Done | CPD-019 | Mandatory entry, per-file, total expanded-size, compression-ratio, and stat-consistency budgets are validated before extraction. | CDF-004, CDF-006, CDF-007, CDF-016, CDF-017, CDF-018, CDF-019, CDF-023, CDF-024 |
+| Phase 4A - Cumulative Audit Remediation | 4A.4 Add or enforce review gates for non-post domains. | Done | CPD-018 | Proposal Review blocks options, option groups, and menus with stable counts until trusted baseline and decision support exists; dedicated import paths remain available. | CDF-006, CDF-007, CDF-012, CDF-013, CDF-016, CDF-018, CDF-020, CDF-021 |
+| Phase 4A - Cumulative Audit Remediation | 4A.5 Add a deterministic green regression lane for resolved phases. | Done | CPD-020 | `composer test:proposal-diff-resolved` is green and the remaining executable contracts stay isolated under `proposal-diff-pending`. | CDF-001, CDF-003, CDF-004, CDF-005, CDF-008, CDF-009, CDF-010, CDF-017, CDF-018, CDF-020, CDF-022, CDF-023 |
+| Phase 5 - Apply Semantics | 5.1 Align review decision paths with importer apply units. | Done | CPD-006 | Canonical row metadata, read-only boundaries, safe nested merge/removal, masking decision preservation, and LocalWP apply QA now match reviewer choices to importer behavior. | CDF-001, CDF-002, CDF-010, CDF-011, CDF-012, CDF-013, CDF-014, CDF-018, CDF-020, CDF-021, CDF-026 |
 | Phase 5 - Apply Semantics | 5.2 Wire term masking overrides into term and term-meta import. | Not started | CPD-007 | Term masking decisions are honored during import and reflected in logs/counters. | CDF-002, CDF-014, CDF-016, CDF-018, CDF-020, CDF-021 |
 | Phase 5 - Apply Semantics | 5.3 Unify duplicate detection across upload, list, UI gate, REST, CLI, and cleanup. | Not started | CPD-008 | Duplicate findings use one detector and one resolved/blocked definition. | CDF-003, CDF-004, CDF-006, CDF-011, CDF-013, CDF-020 |
 | Phase 5 - Apply Semantics | 5.4 Treat declined new entities as resolved skip states. | Not started | CPD-009 | Declined new entities stop counting as pending and are skipped in apply/history/promotion. | CDF-004, CDF-010, CDF-012, CDF-013, CDF-016 |
@@ -670,7 +791,7 @@ Status values: `Not started`, `In progress`, `Blocked`, `In review`, `Done`.
 | REST API | Direct blocked apply, successful apply, duplicate report/cleanup, masking endpoints, resolver decisions, snapshot recapture. |
 | WP-CLI | `proposals list`, `upload`, `apply`, `--fail-on-pending`, `--recapture-snapshots`, `resolver-rules`, list latency, and bounded proposal selection. |
 | Importer | Post fields, post meta, nested meta, taxonomies, terms, termmeta, media maps, declined new entities. |
-| Settings | `dbvc_import_require_review`, `dbvc_auto_clear_decisions`, `dbvc_force_reapply_new_posts`, media transport, masking presets, logging toggles. |
+| Settings | `dbvc_import_require_review`, `dbvc_auto_clear_decisions`, `dbvc_force_reapply_new_posts`, `dbvc_proposal_zip_resource_limits`, media transport, masking presets, logging toggles. |
 | Add-ons/future features | Bricks entity-backed artifacts, Bricks options-backed artifacts, Official Collections marking, user docs library. |
 
 ## Definition of Done For The Sprint
@@ -681,7 +802,9 @@ Status values: `Not started`, `In progress`, `Blocked`, `In review`, `Done`.
 - Resolver and masking decisions affect actual importer behavior.
 - Duplicate, new entity, media, masking, and snapshot blockers are visible and enforced.
 - Imported manifest resolver snapshots cannot overwrite newer reviewed proposal or global choices.
+- Shared upload routing cannot divert an ordinary Proposal Diff ZIP into AI package intake.
 - A proposal cannot close or report success while a required entity or media action has failed.
+- Deleting a proposal removes its owned media bundle without removing neighboring proposal bundles.
 - Every writable proposal domain is review-gated with a trusted baseline or explicitly blocked as unsupported.
 - Proposal ZIP extraction is bounded by validated entry and expanded-size budgets.
 - Implemented phases have a deterministic green regression command separate from planned contract failures.

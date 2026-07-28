@@ -765,16 +765,20 @@
                     if (l && "object" == typeof l) Object.assign(s, e(l, a)); else s[a] = void 0 === l ? null : l;
                   });
                   return s;
-                }, t = e(ae?.meta || {}, "meta"), s = e(oe?.meta || {}, "meta"), n = new Set([ ...Object.keys(t), ...Object.keys(s) ]), i = Array.from(n);
+                }, t = e(ae?.meta || {}, "meta"), s = e(oe?.meta || {}, "meta"), proposedMetaRoots = new Set(Object.keys(s).map(e => e.split(".").slice(0, 2).join("."))), n = new Set([ ...Object.keys(t), ...Object.keys(s) ]), i = Array.from(n);
                 return i.sort(), i.map(e => {
-                  const n = Object.prototype.hasOwnProperty.call(t, e) ? t[e] : null, i = Object.prototype.hasOwnProperty.call(s, e) ? s[e] : null, l = r(n) === r(i);
+                  const n = Object.prototype.hasOwnProperty.call(t, e) ? t[e] : null, i = Object.prototype.hasOwnProperty.call(s, e) ? s[e] : null, l = r(n) === r(i), metaRoot = e.split(".").slice(0, 2).join("."), removesMetaKey = !proposedMetaRoots.has(metaRoot);
                   return {
                     path: e,
                     label: e,
                     section: "meta",
                     from: n,
                     to: i,
-                    is_equal: l
+                    is_equal: l,
+                    apply_scope: removesMetaKey || e.split(".").length <= 2 ? "meta_key" : "meta_leaf",
+                    apply_path: removesMetaKey ? metaRoot : e,
+                    apply_label: removesMetaKey || e.split(".").length <= 2 ? "This complete meta key" : "This nested meta value",
+                    can_apply: !0
                   };
                 });
               }, [ A, ae, oe, re?.available ]), Ce = (0, e.useMemo)(() => "all" === A ? allMetaItems : we, [ allMetaItems, we, A ]), Ne = (0, e.useMemo)(() => (e => {
@@ -795,10 +799,11 @@
                   const s = t.descriptor || {};
                   return [ t.original_id, t.reason, t.status, t.decision?.note, s.asset_uid, s.bundle_path, s.path ].filter(Boolean).join(" ").toLowerCase().includes(e);
                 });
-              }, [ ke, Se ]), $e = "conflicts" === A, Ie = we.length, Ae = (0, e.useMemo)(() => we.filter(e => {
+              }, [ ke, Se ]), $e = "conflicts" === A, Ie = we.length, Ae = (0, e.useMemo)(() => new Set(we.filter(e => {
                 var t;
-                return "accept" !== (null !== (t = a?.[e.path]) && void 0 !== t ? t : "");
-              }).length, [ we, a ]), Ee = Ce.length, [Me, Ue] = (0, e.useState)(!1), [Be, Oe] = (0, 
+                const s = e.apply_path || e.path;
+                return !1 !== e.can_apply && s && "accept" !== (null !== (t = a?.[s]) && void 0 !== t ? t : "");
+              }).map(e => e.apply_path || e.path)).size, [ we, a ]), Ee = Ce.length, [Me, Ue] = (0, e.useState)(!1), [Be, Oe] = (0,
               e.useState)(""), [Te, Pe] = (0, e.useState)("reason"), [Fe, Ve] = (0, e.useState)(""), [Le, ze] = (0, 
               e.useState)(""), [He, Ke] = (0, e.useState)(""), [Je, qe] = (0, e.useState)(""), [We, Ge] = (0, 
               e.useState)(!1), [Xe, Ze] = (0, e.useState)(!1), [Qe, Ye] = (0, e.useState)("");
@@ -810,7 +815,7 @@
                 if (Me) return Ce;
                 const e = Ne.find(e => e.key === Be);
                 return e ? e.items : [];
-              }, [ Me, Ce, Ne, Be ]), st = (0, e.useMemo)(() => tt.filter(e => !e.is_equal).map(e => e.path).filter(Boolean), [ tt ]), nt = (0, 
+              }, [ Me, Ce, Ne, Be ]), st = (0, e.useMemo)(() => Array.from(new Set(tt.filter(e => !e.is_equal && !1 !== e.can_apply).map(e => e.apply_path || e.path).filter(Boolean))), [ tt ]), nt = (0,
               e.useMemo)(() => {
                 const e = new Set, t = new Set, s = new Set;
                 return ke.forEach(n => {
@@ -4338,9 +4343,9 @@
                             after: n.slice(o + 1)
                           }
                         };
-                      })(e.from, e.to), d = null !== (t = n?.[e.path]) && void 0 !== t ? t : "", u = !!l[e.path], m = !!e.is_equal, p = [ "dbvc-diff-row" ];
+                      })(e.from, e.to), decisionPath = e.apply_path || e.path, canApply = !1 !== e.can_apply && Boolean(decisionPath), d = canApply ? null !== (t = n?.[decisionPath]) && void 0 !== t ? t : "" : "", u = canApply && !!l[decisionPath], m = !!e.is_equal, p = [ "dbvc-diff-row" ];
                       (isThenable(e.from) || isThenable(e.to)) && logAsyncValue(n?.item?.vf_object_uid || n?.vf_object_uid || "", e.path, isThenable(e.from) ? e.from : e.to);
-                      return m ? p.push("is-equal") : "accept" === d ? p.push("is-accepted") : "keep" === d ? p.push("is-kept") : p.push("is-unreviewed"), 
+                      return m ? p.push("is-equal") : canApply ? "accept" === d ? p.push("is-accepted") : "keep" === d ? p.push("is-kept") : p.push("is-unreviewed") : p.push("is-read-only"),
                       (0, s.jsxs)("tr", {
                         className: p.join(" "),
                         children: [ (0, s.jsx)("td", {
@@ -4349,6 +4354,9 @@
                             children: [ o(e.label || e.path), e.path && (0, s.jsx)("div", {
                               className: "dbvc-field-label__key",
                               children: o(e.path)
+                            }), (!canApply || decisionPath !== e.path) && (0, s.jsx)("div", {
+                              className: "dbvc-field-label__key",
+                              children: canApply ? `Apply unit: ${e.apply_label || decisionPath} (${decisionPath})` : e.apply_label || "Reference only"
                             }) ]
                           })
                         }), (0, s.jsx)("td", {
@@ -4358,6 +4366,8 @@
                         }), (0, s.jsxs)("td", {
                           children: [ m ? (0, s.jsx)("em", {
                             children: "No difference"
+                          }) : !canApply ? (0, s.jsx)("em", {
+                            children: e.apply_label || "Reference only"
                           }) : (0, s.jsxs)("div", {
                             className: "dbvc-decision-controls",
                             children: [ (0, s.jsxs)("div", {
@@ -4365,30 +4375,30 @@
                               children: [ (0, s.jsxs)("label", {
                                 children: [ (0, s.jsx)("input", {
                                   type: "radio",
-                                  name: `decision-${e.path}`,
+                                  name: `decision-${decisionPath}`,
                                   value: "keep",
                                   checked: "keep" === d,
                                   disabled: u,
-                                  onChange: () => i && i(e.path, "keep")
+                                  onChange: () => i && i(decisionPath, "keep")
                                 }), "Keep" ]
                               }), (0, s.jsxs)("label", {
                                 children: [ (0, s.jsx)("input", {
                                   type: "radio",
-                                  name: `decision-${e.path}`,
+                                  name: `decision-${decisionPath}`,
                                   value: "accept",
                                   checked: "accept" === d,
                                   disabled: u,
-                                  onChange: () => i && i(e.path, "accept")
+                                  onChange: () => i && i(decisionPath, "accept")
                                 }), "Accept" ]
                               }) ]
                             }), (0, s.jsx)("button", {
                               type: "button",
                               className: "button-link dbvc-decision-clear",
-                              onClick: () => i && i(e.path, "clear"),
+                              onClick: () => i && i(decisionPath, "clear"),
                               disabled: u || !d,
                               children: "Clear decision"
                             }) ]
-                          }), !m && (0, s.jsxs)("div", {
+                          }), !m && canApply && (0, s.jsxs)("div", {
                             className: "dbvc-decision-state",
                             children: [ (0, s.jsx)("span", {
                               className: "dbvc-decision-status",
