@@ -5,6 +5,7 @@ This is the repo-level documentation entry point for DBVC. It is a router, not a
 ## Start Here
 
 - `agent-entrypoints.md` - choose the smallest useful docs path for a task.
+- `agents/README.md` - query the opt-in capability inventory for CLI, REST, admin, add-on, settings, safety, and gap analysis work.
 - `roadmap.md` - active, proposed, completed, and archived work index.
 - `requests.md` - unresolved documentation questions and requested corrections.
 
@@ -19,4 +20,3 @@ This is the repo-level documentation entry point for DBVC. It is a router, not a
 - `_meta/` - docs-library maintenance files.
 
 Do not use archived docs as current guidance unless a current entry point links to them for historical context.
-

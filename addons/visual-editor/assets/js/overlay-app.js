@@ -8472,6 +8472,15 @@
     const label = summary.label ? String(summary.label) : '';
     const sourceSummary = summary.summary ? String(summary.summary) : '';
     const expression = summary.expression ? String(summary.expression) : '';
+    const descriptor = result && result.descriptor && typeof result.descriptor === 'object'
+      ? result.descriptor
+      : {};
+    const source = descriptor.source && typeof descriptor.source === 'object' ? descriptor.source : {};
+    const render = descriptor.render && typeof descriptor.render === 'object' ? descriptor.render : {};
+    const renderedHtmlTag = render.html_tag && /^[a-z][a-z0-9-]*$/i.test(String(render.html_tag))
+      ? String(render.html_tag).toLowerCase()
+      : '';
+    const renderedFieldName = source.leaf_field_name || source.field_name || summary.fieldName || label || '';
 
     panelNodes.meta.innerHTML = '';
 
@@ -8499,6 +8508,13 @@
 
     if (sourceSummary) {
       lines.push(`<div><strong>${escapeHtml(strings().panelSource || 'Source')}:</strong> ${escapeHtml(sourceSummary)}</div>`);
+    }
+
+    if (renderedHtmlTag) {
+      const renderedHtmlValue = renderedFieldName
+        ? `${String(renderedFieldName)} = <${renderedHtmlTag}>`
+        : `<${renderedHtmlTag}>`;
+      lines.push(`<div><strong>${escapeHtml(strings().panelRenderedHtmlTag || 'Rendered HTML tag')}:</strong> <code>${escapeHtml(renderedHtmlValue)}</code></div>`);
     }
 
     if (result.saveContractSummary && result.saveContractSummary.label) {

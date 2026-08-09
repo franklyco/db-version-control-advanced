@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added the rendered Bricks HTML tag to panel Source details as escaped `field_name = <tag>` metadata, preferring verified semantic field markup and rendered image nodes before the marker-tag fallback while omitting unrendered/missing source elements.
+- Hardened missing-media parent anchoring for unique Bricks wrappers: the final-HTML matcher can now opt into exact `id="brxe-{element_id}"` lookup for server-proven empty image/gallery ancestor paths while preserving the existing class-only behavior for general and repeated marker repair.
 - Fixed repeated native `post-taxonomy` term badges when the public descriptor map omits full source metadata. Related query-collection markers with owner-scoped source groups and term badge labels now key container badges by public source group, so repeated post cards can mount separate `Category Terms` badges instead of collapsing to the first card's descriptor.
 - Improved linked-term collection panel empty states so term editors say “linked terms” / “matching terms” instead of post-specific collection copy.
 - Fixed a Visual Editor bootstrap race where marker attributes could reach the browser before the request-scoped descriptor session transient was written on slow/heavy frontend renders. Descriptor sessions now persist at `wp_footer` priority 19 before footer scripts execute, while the shutdown write remains as a fallback.

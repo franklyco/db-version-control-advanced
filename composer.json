@@ -7,6 +7,14 @@
         "phpunit/phpunit": "^9.6"
     },
     "scripts": {
+        "agent-docs:discover": "php scripts/agent-docs.php discover",
+        "agent-docs:build": "php scripts/agent-docs.php build",
+        "agent-docs:refresh": [
+            "@agent-docs:discover",
+            "@agent-docs:build"
+        ],
+        "agent-docs:check": "php scripts/agent-docs.php check",
+        "agent-docs:query": "php scripts/agent-docs.php query",
         "test": "phpunit --testsuite \"DBVC Plugin\"",
         "test:smoke": "phpunit --filter PluginBootstrapSmokeTest",
         "test:proposal-diff": "phpunit --group proposal-diff",

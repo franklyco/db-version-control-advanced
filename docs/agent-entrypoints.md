@@ -60,6 +60,16 @@ Read:
 2. `docs/architecture/admin-app-ui-architecture.md`
 3. `docs/reference/entity-editor-usage.md` when Entity Editor behavior is involved
 
+## Capability Inventory, CLI/API Gap Analysis, or Automation Planning
+
+Read:
+
+1. `docs/agents/README.md`
+2. The smallest matching facet under `docs/agents/facets/`
+3. `docs/agents/manifest.json` or `composer agent-docs:query -- <tags>` for exact records and source references
+
+This library is opt-in task context. Do not load the full manifest for unrelated implementation work.
+
 ## Documentation Maintenance
 
 Read:

@@ -62,6 +62,8 @@ Use this as validation coverage, not implementation priority. Current P0-P5 exec
 
 ## UX
 - [ ] Editable fields open expected input
+- [x] Source details displays escaped semantic markup for the Butler Automation WYSIWYG hero heading (`hero_section_hero_h1 = <h1>`) and omits the line for its missing/unrendered Card Image panel
+- [ ] Populated image and CSS-background browser fixtures still need panel-open confirmation; focused/runtime coverage confirms populated `image_src` descriptors report `<img>` and missing-media descriptors do not inherit parent tags
 - [ ] Unsupported fields show honest state
 - [ ] Success and error messages render correctly
 - [ ] Loop-owned fields show related-post ownership context in the modal
@@ -78,6 +80,7 @@ Use this as validation coverage, not implementation priority. Current P0-P5 exec
 - [x] Review Fields `Open` opens zero-height/hidden composite descriptors through the token fallback path in live browser QA
 - [x] Marker-heavy pages keep the descriptor session available after idle; `/our-process/` reopened `Hero H1` to a ready editable panel after the idle window
 - [x] Missing image anchors surface as editable related-owner media panels with `No media is currently set`, Media Library selection, URL fallback, related-owner acknowledgement, and disabled save controls until media is selected
+- [x] Missing image anchors can use a server-proven unique Bricks parent rendered as `id="brxe-{element_id}"`; Butler Automation homepage `19` exposes `Add Hero Image` on `a43ea9` without widening general or repeated class-based marker repair
 - [ ] Post-owned linked-term collection browser panel QA still needs panel open, owner/source copy, add/remove no-reload save, optional reload, and rendered chip update/restore confirmation for concrete owner cards; term reorder should stay disabled/hidden or get a dedicated order contract because runtime QA did not persist reverse order
 - [ ] Empty query-loop synthetic badge browser QA still needs a current rendered fixture; checked vertical fixtures rendered normal non-empty query-collection markers only, and a reversible empty-current-benefits probe fell back to a shared populated source rather than an empty loop
 - [ ] Populated gallery browser save/reload QA still needs a current page where a `gallery_collection` marker renders; current browser checks did not expose the historical `xxrpfg` marker, and reversible gallery value swaps still rendered the `hmupao` gallery container empty

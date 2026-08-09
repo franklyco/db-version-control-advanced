@@ -60,14 +60,14 @@ Start with `docs/README.md` for the documentation library and `docs/agent-entryp
 - Click **Open Proposal Review** inside the DBVC Export page or use the floating “Review proposals” button.
 - Upload a proposal zip via drag-and-drop or pick an existing one from `/uploads/dbvc/proposals/`.
 - The React app loads proposal metadata, resolver metrics, duplicate counts, and new-entity stats.
-- Filter entities by status (needs review, conflicts, media needs attention, with decisions, new posts) or search by title/slug/type.
+- Filter entities with the canonical review lanes: **Fields need review**, **Meta needs review**, **Media needs review**, **Resolver conflicts**, **Masking candidates**, **Duplicate groups**, and **New entities pending**. Legacy broad filters such as all review work, resolved entities, and entities with selections remain available.
 - Open an entity to see per-field diffs. Accept means “apply this change from the proposal”; Keep leaves the current site value untouched. Bulk actions exist at section level (content/meta/media) and globally for unresolved sets.
 - “New post” badges highlight entities without a local counterpart. Reviewers can accept/decline the new entity directly from the table header or inside the drawer. Bulk accept controls run `scope=new_only` actions over the REST API.
 - Media attachments render inside the resolver panel. Reviewers can reuse an existing attachment, force a download, skip entirely, or remap to a different attachment ID—optionally persisting the rule globally. Attachments also expose advanced bulk filters (reason, UID, manifest path).
 - Duplicate overlays block navigation until canonical entries are chosen. Cleanup calls ensure extra JSON artifacts are deleted so reviewers only see authoritative data.
 
 ### 3. Apply curated changes
-- When every required entity decision is made (no unresolved conflicts, duplicates cleared), reviewers click **Apply Proposal** in the React app. The REST apply endpoint enforces permissions, writes per-field updates, and logs summaries.
+- When every required field, media, masking, duplicate, snapshot, and new-entity decision is resolved, reviewers click **Apply Proposal** in the React app. The REST apply endpoint enforces the same readiness contract, writes reviewed changes, and logs summaries.
 - Importer honors Accept/Keep decisions path-by-path. Entities without accepted paths are skipped, and skipped/new-entity declines appear in the apply history so reviewers know why content stayed untouched.
 - After a successful apply the UI can auto-clear proposal decisions (Config → Import Defaults) to keep the option table lean; toggles exist to retain them for auditing.
 - Optional: download deterministic zips or share them with downstream sites. All resolver decisions and bundles travel with the zip so another environment can replay the review process without starting over.
@@ -130,6 +130,7 @@ Practical guidance:
 
 - `wp dbvc export` / `wp dbvc import` keep the legacy JSON sync flows for automation.
 - `wp dbvc proposals list` prints proposal IDs, status, hashes, duplicate counts, resolver pending counts, and new-entity pending totals (add `--fail-on-pending` to exit with an error when anything still needs attention, `--recapture-snapshots` to regenerate snapshots for legacy proposals, or `--cleanup-duplicates` to run the manifest dedupe routine).
+- Use `wp dbvc proposals list --fields=id,field_needs_review,meta_needs_review,media_needs_review,resolver_conflicts,masking_candidates,duplicates,new_entities_pending` when automation needs the same seven review lanes shown in Proposal Review. Existing default and legacy field names remain available for compatibility.
 - `wp dbvc proposals upload path/to/proposal.zip [--id=<custom>] [--overwrite]` ingests a proposal ZIP, mirrors media bundles, and captures snapshots without visiting WP Admin.
 - `wp dbvc proposals apply <proposal_id> [--mode=partial] [--ignore-missing-hash] [--force-reapply-new-posts]` reuses the React workflow’s importer so CI/staging can apply reviewed bundles.
 - `wp dbvc resolver-rules list|add|delete|import` lets you manage global resolver rules from the terminal, mirroring the React UI’s CSV and inline editors.
@@ -143,7 +144,7 @@ npm install
 npm run build
 ```
 
-This regenerates `build/admin-app.js`/`build/admin-app.css`, which the plugin enqueues inside WP Admin. Without this step you will not see updates like the masking tools drawer or status badges in the browser.
+Run the full build rather than a single named entry. It regenerates the Proposal Review, Entity Editor, and Content Collector V2 bundles plus their shared styles; a partial build can clean an unrelated admin entry point from `build/` and leave its page blank.
 
 ## Content Collector V2 Context Pack
 
@@ -160,10 +161,13 @@ Use those docs as the shortest resume path before reopening the larger V2 planni
 ## UI → CLI Tutorial Notes
 
 - **Review queue:** Everything you can do in the DBVC Export React screen (list proposals, inspect counts, recapture snapshots, dedupe manifests) now has a CLI counterpart through `wp dbvc proposals list` flags.
+- **Canonical counts:** Use the seven-field `wp dbvc proposals list --fields=...` command above when UI and terminal runbooks need matching status names and values.
 - **Uploading & applying:** The UI’s “Upload proposal” and “Apply selections” drawer directly map to `wp dbvc proposals upload` and `wp dbvc proposals apply`, so deployment docs can link to these commands when describing the UI workflow.
 - **Resolver rules:** The Configure → Media Handling UI references the `dbvc_resolver_decisions` store; add the `wp dbvc resolver-rules …` snippets to help reviewers follow along when they prefer terminal tutorials.
 - Whenever UI docs mention a button (e.g., “Cleanup duplicates” or “Recapture snapshots”), include the equivalent CLI snippet above so runbooks can embed both approaches side-by-side.
 
 ## Roadmap
+
+- **Meta masking follow-up** – the live masking tool now reports outstanding configured fields as **Masking candidates**, separately from **Meta needs review** and all media resolver counts. Keep export-time masking behavior untouched while extending presets or help text.
 
 Use `docs/roadmap.md` as the single planning index. Supporting docs include `docs/implementation/completed/progress-summary.md`, `docs/reference/import-identity-matching.md`, `docs/reference/meta-masking.md`, and `docs/architecture/media-sync-design.md`.

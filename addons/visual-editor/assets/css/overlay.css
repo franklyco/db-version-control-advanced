@@ -1830,7 +1830,7 @@ textarea.dbvc-ve-panel__input--textlike {
   align-items: flex-start;
   gap: 8px;
   margin-top: 2px;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .dbvc-ve-panel__footer-notice[hidden] {

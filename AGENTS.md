@@ -15,3 +15,4 @@ Rules:
 - Update `docs/roadmap.md` when active, proposed, completed, or archived implementation docs change.
 - Prefer updating existing docs over creating duplicate planning files.
 - For module-specific work, follow the module-local instructions first, such as `addons/visual-editor/AGENTS.md`.
+- If a public CLI, REST, admin, hook, setting, table, scheduled-hook, add-on, or safety contract changes, follow `docs/agents/MAINTENANCE.md` and run `composer agent-docs:check`.

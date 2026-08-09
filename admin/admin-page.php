@@ -5231,6 +5231,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-snapshots" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Snapshots & Backups', 'dbvc'); ?></button>
             <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-monitoring" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Monitoring & Logs', 'dbvc'); ?></button>
             <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-automation" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Automation & Extensions', 'dbvc'); ?></button>
+            <button class="dbvc-subtabs-nav__item" data-dbvc-subtab="docs-capabilities" role="tab" aria-selected="false" tabindex="-1"><?php esc_html_e('Capability Landscape', 'dbvc'); ?></button>
           </nav>
 
           <div class="dbvc-subtabs-panels">
@@ -5424,6 +5425,10 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
                   </ul>
                 </div>
               </article>
+            </div>
+
+            <div class="dbvc-docs-panel" data-dbvc-subpanel="docs-capabilities">
+              <?php dbvc_render_capability_landscape_panel(); ?>
             </div>
           </div>
         </div>

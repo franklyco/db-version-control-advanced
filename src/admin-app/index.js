@@ -84,7 +84,7 @@
               } catch (t) {
                 return String(e);
               }
-            }, c = e => e && (e.diff || e.before || e.after) ? (0, s.jsxs)(s.Fragment, {
+            }, formatDisplayValue = o, c = e => e && (e.diff || e.before || e.after) ? (0, s.jsxs)(s.Fragment, {
               children: [ e.before && (0, s.jsx)("span", {
                 children: e.before
               }), e.diff && (0, s.jsx)("mark", {
@@ -106,8 +106,16 @@
               other: "Other"
             }, h = "__dbvc_new_entity__", m = {
               all: "All entities",
-              needs_review: "Needs Review",
-              needs_review_media: "Needs Review (Media)",
+              needs_review: "Needs review (all)",
+              field_needs_review: "Fields need review",
+              meta_needs_review: "Meta needs review",
+              media_needs_review: "Media needs review",
+              resolver_conflicts: "Resolver conflicts",
+              masking_candidates: "Masking candidates",
+              duplicates: "Duplicate groups",
+              new_entities_pending: "New entities pending",
+              snapshot_needs_review: "Snapshots need recapture",
+              needs_review_media: "Media needs review",
               resolved: "Resolved",
               reused: "Resolved",
               conflict: "Conflict",
@@ -117,6 +125,36 @@
               new_entities: "New entities",
               with_decisions: "With selections",
               uid_mismatch: "UID mismatch"
+            }, statusCountLabels = {
+              field_needs_review: "Fields need review",
+              meta_needs_review: "Meta needs review",
+              media_needs_review: "Media needs review",
+              resolver_conflicts: "Resolver conflicts",
+              masking_candidates: "Masking candidates",
+              duplicates: "Duplicate groups",
+              new_entities_pending: "New entities pending"
+            }, statusCountOrder = Object.keys(statusCountLabels), normalizeStatusCounts = e => {
+              const t = e?.apply_gates || e || {}, s = e?.status_counts || t?.status_counts || {}, n = t?.counts || {};
+              return {
+                field_needs_review: Number(s.field_needs_review ?? n?.field_decisions?.pending ?? 0),
+                meta_needs_review: Number(s.meta_needs_review ?? 0),
+                media_needs_review: Number(s.media_needs_review ?? n?.resolver?.pending ?? e?.resolver?.metrics?.unresolved ?? 0),
+                resolver_conflicts: Number(s.resolver_conflicts ?? n?.resolver?.conflicts ?? 0),
+                masking_candidates: Number(s.masking_candidates ?? n?.masking?.pending ?? 0),
+                duplicates: Number(s.duplicates ?? n?.duplicates?.groups ?? e?.duplicate_count ?? 0),
+                new_entities_pending: Number(s.new_entities_pending ?? n?.new_entities?.pending ?? e?.new_entities?.pending ?? 0)
+              };
+            }, StatusCountBadges = ({counts: e, keys: t = statusCountOrder, includeZero: n = !1, className: i = ""}) => {
+              const l = t.filter(t => n || Number(e?.[t] || 0) > 0);
+              return l.length ? (0, s.jsx)("div", {
+                className: `dbvc-decisions dbvc-status-counts${i ? ` ${i}` : ""}`,
+                "data-component": "proposal-status-counts",
+                children: l.map(t => (0, s.jsxs)("span", {
+                  className: `dbvc-badge dbvc-badge--${"resolver_conflicts" === t || "duplicates" === t ? "conflict" : "new_entities_pending" === t ? "new" : "pending"}`,
+                  "data-status-count": t,
+                  children: [ statusCountLabels[t], ": ", Number(e?.[t] || 0) ]
+                }, t))
+              }) : null;
             }, maskActionLabels = {
               ignore: "Ignore masked field",
               auto_accept: "Auto-accept & suppress",
@@ -261,10 +299,14 @@
               }
             }, {
               id: "diff",
-              label: "Diff",
+              label: statusCountLabels.field_needs_review,
               defaultVisible: !0,
               renderCell: (e, t) => (0, s.jsxs)(s.Fragment, {
-                children: [ v(t.diffState.needs_review ? "needs_review" : "resolved"), t.hashMissing && (0, 
+                children: [ (0, s.jsx)("span", {
+                  className: `dbvc-badge dbvc-badge--${Number(t.statusCounts?.field_needs_review || 0) > 0 ? "needs_review" : "resolved"}`,
+                  "data-status-count": "field_needs_review",
+                  children: Number(t.statusCounts?.field_needs_review || 0)
+                }), t.hashMissing && (0,
                 s.jsx)("span", {
                   className: "dbvc-badge dbvc-badge--missing",
                   style: {
@@ -276,7 +318,7 @@
                   style: {
                     marginLeft: "0.25rem"
                   },
-                  children: "Pending"
+                  children: "Selected"
                 }), t.snapshotState && "not_required" !== t.snapshotState && (0, s.jsx)("span", {
                   style: {
                     marginLeft: "0.25rem"
@@ -312,28 +354,28 @@
                 });
               }
             }, {
-              id: "unresolved_media",
-              label: "Unresolved media",
+              id: "media_needs_review",
+              label: statusCountLabels.media_needs_review,
               defaultVisible: !0,
               renderCell: (e, t) => {
                 var s;
-                return null !== (s = t.summary.unresolved) && void 0 !== s ? s : 0;
+                return null !== (s = t.statusCounts?.media_needs_review) && void 0 !== s ? s : 0;
               }
             }, {
-              id: "meta_diff_count",
-              label: "Unresolved meta",
-              defaultVisible: !0,
-              renderCell: e => {
-                var t;
-                return null !== (t = e.meta_diff_count) && void 0 !== t ? t : 0;
-              }
-            }, {
-              id: "conflicts",
-              label: "Conflicts",
+              id: "meta_needs_review",
+              label: statusCountLabels.meta_needs_review,
               defaultVisible: !0,
               renderCell: (e, t) => {
                 var s;
-                return null !== (s = t.summary.conflicts) && void 0 !== s ? s : 0;
+                return null !== (s = t.statusCounts?.meta_needs_review) && void 0 !== s ? s : 0;
+              }
+            }, {
+              id: "resolver_conflicts",
+              label: statusCountLabels.resolver_conflicts,
+              defaultVisible: !0,
+              renderCell: (e, t) => {
+                var s;
+                return null !== (s = t.statusCounts?.resolver_conflicts) && void 0 !== s ? s : 0;
               }
             }, {
               id: "decisions",
@@ -375,7 +417,7 @@
                     }), (0, s.jsx)("th", {
                       children: "Resolver reused"
                     }), (0, s.jsx)("th", {
-                      children: "Resolver unresolved"
+                      children: statusCountLabels.media_needs_review
                     }), (0, s.jsx)("th", {
                       children: "Actions"
                     }) ]
@@ -383,7 +425,7 @@
                 }), (0, s.jsx)("tbody", {
                   children: e.map(e => {
                     var c, d, u, p, h, m, v, b;
-                    const f = null !== (c = e.resolver?.metrics) && void 0 !== c ? c : {}, g = e.id === n, x = null !== (d = e.decisions) && void 0 !== d ? d : {}, j = null !== (u = x.accepted) && void 0 !== u ? u : 0, _ = null !== (p = x.kept) && void 0 !== p ? p : 0, y = null !== (h = x.entities_reviewed) && void 0 !== h ? h : 0, w = (null !== (m = x.total) && void 0 !== m ? m : 0) > 0, C = "closed" === e.status ? "Closed" : "Open", N = isTransferProposal(e), k = getTransferWarningCount(e), S = getTransferSelectionSummaryParts(e), applyGates = e?.apply_gates || {}, gateBlockers = Array.isArray(applyGates.blocking) ? applyGates.blocking : [], snapshotUntrusted = applyGates?.counts?.snapshots?.untrusted || 0, readinessTitle = gateBlockers.map(e => e?.message || e?.category).filter(Boolean).join(" ");
+                    const f = null !== (c = e.resolver?.metrics) && void 0 !== c ? c : {}, g = e.id === n, x = null !== (d = e.decisions) && void 0 !== d ? d : {}, j = null !== (u = x.accepted) && void 0 !== u ? u : 0, _ = null !== (p = x.kept) && void 0 !== p ? p : 0, y = null !== (h = x.entities_reviewed) && void 0 !== h ? h : 0, w = (null !== (m = x.total) && void 0 !== m ? m : 0) > 0, C = "closed" === e.status ? "Closed" : "Open", N = isTransferProposal(e), k = getTransferWarningCount(e), S = getTransferSelectionSummaryParts(e), applyGates = e?.apply_gates || {}, statusCounts = normalizeStatusCounts(e), readinessLoaded = "boolean" == typeof applyGates.ready, gateBlockers = Array.isArray(applyGates.blocking) ? applyGates.blocking : [], snapshotUntrusted = applyGates?.counts?.snapshots?.untrusted || 0, readinessTitle = readinessLoaded ? gateBlockers.map(e => e?.message || e?.category).filter(Boolean).join(" ") : "Readiness is checked when this proposal is selected.";
                     return (0, s.jsxs)("tr", {
                       className: `${g ? "is-active" : ""} ${"closed" === e.status ? "is-archived" : ""}`,
                       onClick: () => i(e.id),
@@ -424,12 +466,14 @@
                         children: (0, s.jsxs)("div", {
                           className: "dbvc-decisions",
                           children: [ (0, s.jsx)("span", {
-                            className: `dbvc-badge dbvc-badge--${applyGates.ready ? "resolved" : "needs_review"}`,
+                            className: `dbvc-badge dbvc-badge--${readinessLoaded ? applyGates.ready ? "resolved" : "needs_review" : "pending"}`,
                             title: readinessTitle || void 0,
-                            children: applyGates.ready ? "Ready" : `Blocked (${gateBlockers.length})`
+                            children: readinessLoaded ? applyGates.ready ? "Ready" : `Blocked (${gateBlockers.length})` : g ? "Checking…" : "Select to check"
                           }), snapshotUntrusted > 0 && (0, s.jsxs)("span", {
                             className: "dbvc-badge dbvc-badge--missing",
-                            children: [ snapshotUntrusted, " snapshot", 1 === snapshotUntrusted ? "" : "s" ]
+                            children: [ "Snapshots need recapture: ", snapshotUntrusted ]
+                          }), readinessLoaded && (0, s.jsx)(StatusCountBadges, {
+                            counts: statusCounts
                           }) ]
                         })
                       }), (0, s.jsx)("td", {
@@ -449,7 +493,7 @@
                       }), (0, s.jsx)("td", {
                         children: null !== (c = f.reused) && void 0 !== c ? c : "—"
                       }), (0, s.jsx)("td", {
-                        children: null !== (d = f.unresolved) && void 0 !== d ? d : "—"
+                        children: readinessLoaded ? statusCounts.media_needs_review : null !== (d = f.unresolved) && void 0 !== d ? d : "—"
                       }), (0, s.jsx)("td", {
                         className: "dbvc-proposal-table__actions",
                         children: !g ? (0, s.jsx)(t.Button, {
@@ -633,12 +677,12 @@
                   }), (0, s.jsxs)("li", {
                     children: [ "Downloaded: ", null !== (i = a.downloaded) && void 0 !== i ? i : 0 ]
                   }), (0, s.jsxs)("li", {
-                    children: [ "Unresolved: ", null !== (l = a.unresolved) && void 0 !== l ? l : 0 ]
+                    children: [ statusCountLabels.media_needs_review, ": ", null !== (l = a.unresolved) && void 0 !== l ? l : 0 ]
                   }), (0, s.jsxs)("li", {
-                    children: [ "Conflicts: ", o.length ]
+                    children: [ statusCountLabels.resolver_conflicts, ": ", o.length ]
                   }) ]
                 }), o.length > 0 && (0, s.jsx)("div", {
-                  className: "notice notice-warning",
+                  className: "dbvc-inline-notice dbvc-inline-notice--warning",
                   children: (0, s.jsxs)("p", {
                     children: [ "The resolver reported ", o.length, " conflict(s). Review before applying." ]
                   })
@@ -675,7 +719,7 @@
                   }), (0, s.jsx)("tbody", {
                     children: t.map(e => {
                       var t, n, a, o, c, u, p, h;
-                      const m = e.vf_object_uid === i, v = D && R.has(e.vf_object_uid), f = null !== (t = e.resolver?.summary) && void 0 !== t ? t : {}, g = null !== (n = e.diff_state) && void 0 !== n ? n : {}, x = e.media_needs_review ? "needs_review" : null !== (a = e.resolver?.status) && void 0 !== a ? a : "resolved", j = e.overall_status || (g.needs_review ? "needs_review" : "resolved"), _ = "missing_local_hash" === g.reason, y = null !== (o = e.decision_summary) && void 0 !== o ? o : {}, w = null !== (c = y.accepted) && void 0 !== c ? c : 0, C = null !== (u = y.kept) && void 0 !== u ? u : 0, N = null !== (p = y.accepted_new) && void 0 !== p ? p : 0, k = (null !== (h = y.total) && void 0 !== h ? h : 0) > 0, S = b(e), $ = e.new_entity_decision || "", I = e.identity_match || "", A = [ `resolver-${j}`, m ? "is-active" : "", v ? "is-selected" : "" ].filter(Boolean).join(" "), E = t => {
+                      const m = e.vf_object_uid === i, v = D && R.has(e.vf_object_uid), f = null !== (t = e.resolver?.summary) && void 0 !== t ? t : {}, g = null !== (n = e.diff_state) && void 0 !== n ? n : {}, statusCounts = normalizeStatusCounts(e), x = statusCounts.media_needs_review > 0 ? "needs_review" : null !== (a = e.resolver?.status) && void 0 !== a ? a : "resolved", j = e.overall_status || (g.needs_review ? "needs_review" : "resolved"), _ = "missing_local_hash" === g.reason, y = null !== (o = e.decision_summary) && void 0 !== o ? o : {}, w = null !== (c = y.accepted) && void 0 !== c ? c : 0, C = null !== (u = y.kept) && void 0 !== u ? u : 0, N = null !== (p = y.accepted_new) && void 0 !== p ? p : 0, k = w + C + N > 0, S = b(e), $ = e.new_entity_decision || ("accepted_new" === e.new_entity_state ? "accept_new" : "declined_new" === e.new_entity_state ? "decline_new" : ""), I = e.identity_match || "", A = [ `resolver-${j}`, m ? "is-active" : "", v ? "is-selected" : "" ].filter(Boolean).join(" "), E = t => {
                         t.preventDefault(), t.stopPropagation(), l(e.vf_object_uid);
                       }, M = {
                         summary: f,
@@ -690,6 +734,7 @@
                         isNewEntity: S,
                         newDecision: $,
                         identityMatch: I,
+                        statusCounts: statusCounts,
                         snapshotState: e.snapshot_state || e.snapshot_status?.state || ""
                       };
                       return (0, s.jsxs)("tr", {
@@ -724,15 +769,128 @@
                   }) ]
                 })
               });
-            }, S = ({entityDetail: n, resolverInfo: i, resolverDecisionSummary: l = null, decisions: a = {}, onDecisionChange: handleDecisionChange, onBulkDecision: bulkDecision, onResetDecisions: c, onCaptureSnapshot: m, onResolverDecision: v, onResolverDecisionReset: x, onApplyResolverDecisionToSimilar: y, savingPaths: w = {}, bulkSaving: C = !1, resolverSaving: N = {}, resolverError: k = null, decisionError: S, loading: D, error: R, onClose: $, filterMode: A, onFilterModeChange: M, isOpen: U = !0, resettingDecisions: B = !1, snapshotCapturing: O = !1, onHashSync: T, hashSyncing: P = !1, hashSyncTarget: F = "", maskFieldsByEntity: qt = {}}) => {
+            }, RawDiffView = ({rawView: t}) => {
+              const n = t?.current || {}, i = t?.proposed || {}, l = t?.change_index || {}, a = Array.isArray(l.rows) ? l.rows : [], renderPreview = (e, t, n) => (0,
+              s.jsxs)("section", {
+                className: "dbvc-raw-diff__panel",
+                "data-slot": n,
+                children: [ (0, s.jsxs)("div", {
+                  className: "dbvc-raw-diff__panel-header",
+                  children: [ (0, s.jsx)("h4", {
+                    children: t
+                  }), e.download && (0, s.jsx)("a", {
+                    href: e.download,
+                    children: "Download full JSON"
+                  }) ]
+                }), e.available ? (0, s.jsxs)(s.Fragment, {
+                  children: [ (0, s.jsxs)("p", {
+                    className: "dbvc-raw-diff__meta",
+                    children: [ Number(e.bytes || 0).toLocaleString(), " bytes · ", Number(e.lines || 0).toLocaleString(), " lines", e.truncated ? " · Preview truncated" : "" ]
+                  }), (0, s.jsx)("pre", {
+                    tabIndex: 0,
+                    children: e.content || "{}"
+                  }), (0, s.jsxs)("p", {
+                    className: "dbvc-raw-diff__hash",
+                    children: [ "SHA-256: ", (0, s.jsx)("code", {
+                      children: e.sha256 || "—"
+                    }) ]
+                  }) ]
+                }) : (0, s.jsx)("div", {
+                  className: "dbvc-inline-notice dbvc-inline-notice--warning",
+                  children: (0, s.jsx)("p", {
+                    children: `This payload is unavailable (${e.reason || "unknown reason"}).`
+                  })
+                }) ]
+              });
+              return (0, s.jsxs)("div", {
+                className: "dbvc-raw-diff",
+                "data-component": "raw-diff-view",
+                "data-surface": "proposal-diff",
+                children: [ (0, s.jsxs)("div", {
+                  className: "dbvc-raw-diff__summary",
+                  children: [ (0, s.jsx)("h3", {
+                    children: "Raw JSON"
+                  }), (0, s.jsxs)("p", {
+                    children: [ "Structured preview of the current and proposed payloads. ", Number(l.total || 0).toLocaleString(), " changed field(s) are indexed below." ]
+                  }) ]
+                }), (n.truncated || i.truncated) && (0, s.jsx)("div", {
+                  className: "dbvc-inline-notice dbvc-inline-notice--warning",
+                  children: (0, s.jsx)("p", {
+                    children: "One or both previews are shortened to keep this drawer responsive. Use the full JSON links for complete payloads."
+                  })
+                }), (0, s.jsxs)("div", {
+                  className: "dbvc-raw-diff__previews",
+                  children: [ renderPreview(n, "Current", "raw-current"), renderPreview(i, "Proposed (Bundle)", "raw-proposed") ]
+                }), (0, s.jsxs)("section", {
+                  className: "dbvc-raw-diff__index",
+                  "data-slot": "raw-change-index",
+                  children: [ (0, s.jsx)("h4", {
+                    children: "Change index"
+                  }), l.truncated && (0, s.jsx)("div", {
+                    className: "dbvc-inline-notice dbvc-inline-notice--warning",
+                    children: (0, s.jsxs)("p", {
+                      children: [ "Showing ", Number(l.displayed_total || a.length).toLocaleString(), " of ", Number(l.total || a.length).toLocaleString(), " changed fields." ]
+                    })
+                  }), a.length ? (0, s.jsxs)("table", {
+                    className: "widefat dbvc-raw-diff__table",
+                    children: [ (0, s.jsx)("thead", {
+                      children: (0, s.jsxs)("tr", {
+                        children: [ (0, s.jsx)("th", {
+                          children: "Field"
+                        }), (0, s.jsx)("th", {
+                          children: "Section"
+                        }), (0, s.jsx)("th", {
+                          children: "Change"
+                        }), (0, s.jsx)("th", {
+                          children: "Apply unit / decision"
+                        }) ]
+                      })
+                    }), (0, s.jsx)("tbody", {
+                      children: a.map(e => {
+                        const t = {
+                          added: "addition",
+                          deleted: "deletion",
+                          modified: "modification",
+                          unchanged: "unchanged"
+                        }[e.changeType] || "modification", n = "accept" === e.decision ? "accept-proposed" : "keep" === e.decision ? "keep-current" : "unresolved";
+                        return (0, s.jsxs)("tr", {
+                          "data-slot": "field-row",
+                          "data-field-key": e.path || "",
+                          "data-change-type": t,
+                          "data-decision-state": n,
+                          children: [ (0, s.jsxs)("td", {
+                            children: [ (0, s.jsx)("strong", {
+                              children: e.label || e.path || "Unnamed field"
+                            }), (0, s.jsx)("code", {
+                              children: e.path || "—"
+                            }) ]
+                          }), (0, s.jsx)("td", {
+                            children: p[e.section] || e.section || "Other"
+                          }), (0, s.jsx)("td", {
+                            children: {
+                              added: "Added",
+                              deleted: "Removed",
+                              modified: "Changed",
+                              unchanged: "Unchanged"
+                            }[e.changeType] || "Changed"
+                          }), (0, s.jsx)("td", {
+                            children: e.apply_path ? `${e.apply_path} · ${e.decision || "Not reviewed"}` : "Reference only"
+                          }) ]
+                        }, e.id || e.path);
+                      })
+                    }) ]
+                  }) : (0, s.jsx)("p", {
+                    children: "No changed fields were found."
+                  }) ]
+                }) ]
+              });
+            }, S = ({entityDetail: n, resolverInfo: i, resolverDecisionSummary: l = null, statusCounts: entityStatusCounts = {}, decisions: a = {}, onDecisionChange: handleDecisionChange, onBulkDecision: bulkDecision, onResetDecisions: c, onCaptureSnapshot: m, onResolverDecision: v, onResolverDecisionReset: x, onApplyResolverDecisionToSimilar: y, savingPaths: w = {}, bulkSaving: C = !1, resolverSaving: N = {}, resolverError: k = null, decisionError: S, loading: D, error: R, onClose: $, filterMode: A, onFilterModeChange: M, isOpen: U = !0, resettingDecisions: B = !1, snapshotCapturing: O = !1, onHashSync: T, hashSyncing: P = !1, hashSyncTarget: F = "", maskFieldsByEntity: qt = {}}) => {
               var V, L, z, H, K, J, q, W, G, X, Z, Q, Y, ee, te;
               const se = (0, e.useMemo)(() => n?.item?.vf_object_uid ? `dbvc-entity-detail-${n.item.vf_object_uid}` : n?.vf_object_uid ? `dbvc-entity-detail-${n.vf_object_uid}` : "dbvc-entity-detail", [ n ]), ne = (0, 
               e.useRef)(null), ie = (0, e.useRef)(null);
               (0, e.useEffect)(() => {
                 if (!$ || !U) return;
                 ie.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-                const e = ne.current;
-                e && e.focus();
                 const t = e => {
                   "Escape" === e.key && (e.preventDefault(), $());
                 };
@@ -740,6 +898,13 @@
                   document.removeEventListener("keydown", t), ie.current && "function" == typeof ie.current.focus && ie.current.focus();
                 };
               }, [ U, $, se ]);
+              (0, e.useEffect)(() => {
+                if (!$ || !U || D || R || !n) return;
+                const e = ne.current;
+                if (!e) return;
+                const t = e.closest('[data-component="entity-drawer"]'), s = document.activeElement;
+                (!t || !(s instanceof HTMLElement) || !t.contains(s)) && e.focus();
+              }, [ U, $, D, R, n, se ]);
               const {item: le, current: ae, proposed: oe = {}, diff: re} = null != n ? n : {}, ce = null !== (V = n?.decision_summary) && void 0 !== V ? V : {}, de = null !== (L = null !== (z = n?.diff_state) && void 0 !== z ? z : le?.diff_state) && void 0 !== L ? L : null, snapshotStatus = n?.snapshot_status || le?.snapshot_status || {}, snapshotState = n?.snapshot_state || le?.snapshot_state || snapshotStatus.state || "", snapshotNeedsAction = [ "missing", "stale", "recapturing", "failed" ].includes(snapshotState), snapshotCanRecapture = ![ "not_required", "recapturing" ].includes(snapshotState) && !1 !== snapshotStatus.can_recapture, ue = ((e, t) => {
                 if (!t) return "";
                 if ("term" === f(e)) {
@@ -750,41 +915,18 @@
               })(le, null !== (H = de?.local_post_id) && void 0 !== H ? H : null), pe = _(le), he = j(le), me = (e => "term" === f(e) ? "Term slug:" : "Slug:")(le), ve = f(le), be = le?.term_taxonomy || le?.taxonomy || "", fe = (g(le), 
               "missing_local_hash" === de?.reason), ge = b(null != n ? n : {
                 diff_state: de
-              }), xe = null !== (K = null !== (J = a?.[h]) && void 0 !== J ? J : n?.new_entity_decision) && void 0 !== K ? K : "", je = Boolean(w?.[h]), _e = null !== (q = ce.total) && void 0 !== q ? q : 0, ye = _e > 0 ? `${null !== (W = ce.accepted) && void 0 !== W ? W : 0} accepted · ${null !== (G = ce.kept) && void 0 !== G ? G : 0} kept` : "No selections captured yet.", we = null !== (X = re?.changes) && void 0 !== X ? X : [], entityMaskFields = (0, 
+              }), xe = null !== (K = null !== (J = a?.[h]) && void 0 !== J ? J : n?.new_entity_decision) && void 0 !== K ? K : "accepted_new" === n?.new_entity_state ? "accept_new" : "declined_new" === n?.new_entity_state ? "decline_new" : "", je = Boolean(w?.[h]), _e = null !== (q = ce.total) && void 0 !== q ? q : 0, ye = _e > 0 ? `${null !== (W = ce.accepted) && void 0 !== W ? W : 0} accepted · ${null !== (G = ce.kept) && void 0 !== G ? G : 0} kept · ${ce.declined_new || 0} declined` : "No selections captured yet.", we = null !== (X = re?.changes) && void 0 !== X ? X : [], diffRawDownloads = re?.raw_downloads || n?.raw_downloads || {}, entityMaskFields = (0,
               e.useMemo)(() => {
                 const e = n?.vf_object_uid || le?.vf_object_uid || "";
                 if (!e || !qt[e]) return [];
                 return qt[e];
-              }, [ qt, n, le ]), allMetaItems = (0, e.useMemo)(() => {
-                if ("all" !== A || !1 === re?.available) return [];
-                const e = (t, n = "") => {
-                  const s = {};
-                  if (!t || "object" != typeof t) return s;
-                  Object.keys(t).forEach(i => {
-                    const l = t[i], a = n ? `${n}.${i}` : String(i);
-                    if (l && "object" == typeof l) Object.assign(s, e(l, a)); else s[a] = void 0 === l ? null : l;
-                  });
-                  return s;
-                }, t = e(ae?.meta || {}, "meta"), s = e(oe?.meta || {}, "meta"), proposedMetaRoots = new Set(Object.keys(s).map(e => e.split(".").slice(0, 2).join("."))), n = new Set([ ...Object.keys(t), ...Object.keys(s) ]), i = Array.from(n);
-                return i.sort(), i.map(e => {
-                  const n = Object.prototype.hasOwnProperty.call(t, e) ? t[e] : null, i = Object.prototype.hasOwnProperty.call(s, e) ? s[e] : null, l = r(n) === r(i), metaRoot = e.split(".").slice(0, 2).join("."), removesMetaKey = !proposedMetaRoots.has(metaRoot);
-                  return {
-                    path: e,
-                    label: e,
-                    section: "meta",
-                    from: n,
-                    to: i,
-                    is_equal: l,
-                    apply_scope: removesMetaKey || e.split(".").length <= 2 ? "meta_key" : "meta_leaf",
-                    apply_path: removesMetaKey ? metaRoot : e,
-                    apply_label: removesMetaKey || e.split(".").length <= 2 ? "This complete meta key" : "This nested meta value",
-                    can_apply: !0
-                  };
-                });
-              }, [ A, ae, oe, re?.available ]), Ce = (0, e.useMemo)(() => "all" === A ? allMetaItems : we, [ allMetaItems, we, A ]), Ne = (0, e.useMemo)(() => (e => {
+              }, [ qt, n, le ]), canonicalEntityStatusCounts = normalizeStatusCounts({
+                status_counts: entityStatusCounts
+              }), rawView = n?.raw_view || null, isRawView = "raw" === A, Ce = (0,
+              e.useMemo)(() => isRawView ? [] : we, [ isRawView, we ]), Ne = (0, e.useMemo)(() => (e => {
                 const t = {};
                 return e.forEach(e => {
-                  const [s] = e.path.split("."), n = (d.has(s) ? "post_fields" : u.has(s) ? "term_fields" : s) || "other";
+                  const [s] = e.path.split("."), n = e.section || (d.has(s) ? "post_fields" : u.has(s) ? "term_fields" : s) || "other";
                   t[n] || (t[n] = []), t[n].push(e);
                 }), Object.entries(t).map(([e, t]) => ({
                   key: e,
@@ -799,7 +941,7 @@
                   const s = t.descriptor || {};
                   return [ t.original_id, t.reason, t.status, t.decision?.note, s.asset_uid, s.bundle_path, s.path ].filter(Boolean).join(" ").toLowerCase().includes(e);
                 });
-              }, [ ke, Se ]), $e = "conflicts" === A, Ie = we.length, Ae = (0, e.useMemo)(() => new Set(we.filter(e => {
+              }, [ ke, Se ]), $e = "changed" === A, Ie = we.length, Ae = (0, e.useMemo)(() => new Set(we.filter(e => {
                 var t;
                 const s = e.apply_path || e.path;
                 return !1 !== e.can_apply && s && "accept" !== (null !== (t = a?.[s]) && void 0 !== t ? t : "");
@@ -856,6 +998,10 @@
               return $ && !U ? null : (e => {
                 const t = (0, s.jsx)("div", {
                   className: "dbvc-admin-app__entity-detail",
+                  "data-component": "entity-drawer",
+                  "data-surface": "proposal-diff",
+                  "data-entity-id": n?.vf_object_uid || le?.vf_object_uid || "",
+                  "data-state": D ? "loading" : R ? "error" : n ? "ready" : "empty",
                   children: e
                 });
                 return $ ? (0, s.jsxs)("div", {
@@ -876,7 +1022,7 @@
               })(D ? (0, s.jsx)("p", {
                 children: "Loading entity detail…"
               }) : R ? (0, s.jsx)("div", {
-                className: "notice notice-error",
+                className: "dbvc-inline-notice dbvc-inline-notice--error",
                 children: (0, s.jsxs)("p", {
                   children: [ "Failed to load entity detail: ", R ]
                 })
@@ -920,29 +1066,52 @@
                     children: "Close"
                   }), (0, s.jsxs)("div", {
                     className: "dbvc-diff-filter",
+                    "data-slot": "view-mode-controls",
                     children: [ (0, s.jsx)("span", {
                       children: "View:"
                     }), (0, s.jsx)("button", {
                       type: "button",
                       className: $e ? "is-active" : "",
-                      onClick: () => M && M("conflicts"),
-                      children: "Conflicts & Resolver"
-                    }), (0, s.jsx)("button", {
-                      type: "button",
-                      className: "full" === A ? "is-active" : "",
-                      onClick: () => M && M("full"),
-                      children: "Full Overview"
+                      onClick: () => M && M("changed"),
+                      "data-view-mode": "changed",
+                      "aria-pressed": $e,
+                      children: "Changed"
                     }), (0, s.jsx)("button", {
                       type: "button",
                       className: "all" === A ? "is-active" : "",
                       onClick: () => M && M("all"),
-                      children: "View All"
+                      "data-view-mode": "all",
+                      "aria-pressed": "all" === A,
+                      children: "All Fields"
+                    }), (0, s.jsx)("button", {
+                      type: "button",
+                      className: isRawView ? "is-active" : "",
+                      onClick: () => M && M("raw"),
+                      "data-view-mode": "raw",
+                      "aria-pressed": isRawView,
+                      children: "Raw JSON"
                     }) ]
                   }), (0, s.jsx)("p", {
                     className: "dbvc-entity-toolbar__count",
-                    children: !1 === re?.available && snapshotNeedsAction ? "Recapture the current-site snapshot before reviewing fields." : $e ? `${Ae} field(s) awaiting review · ${Ie} total` : "all" === A ? `${Ee} meta field(s) shown.` : `${Ee} field(s) shown.`
+                    "data-slot": "change-summary",
+                    children: !1 === re?.available && snapshotNeedsAction ? "Recapture the current-site snapshot before reviewing fields." : isRawView ? `${Number(rawView?.change_index?.displayed_total || 0).toLocaleString()} changed field(s) indexed.` : $e ? `${canonicalEntityStatusCounts.field_needs_review} field(s) awaiting review · ${Ie} changed` : `${Ee} supported field(s) shown · ${Number(re?.change_counts?.unchanged || 0).toLocaleString()} unchanged`
+                  }), (0, s.jsx)(StatusCountBadges, {
+                    counts: canonicalEntityStatusCounts
+                  }), !isRawView && re?.truncated && (0, s.jsxs)("div", {
+                    className: "dbvc-inline-notice dbvc-inline-notice--warning",
+                    children: [ (0, s.jsxs)("p", {
+                      children: [ "Showing ", re.displayed_total || we.length, " of ", re.total || we.length, " diff rows. Download the raw JSON to inspect omitted values." ]
+                    }), (0, s.jsxs)("p", {
+                      children: [ diffRawDownloads.current && (0, s.jsx)("a", {
+                        href: diffRawDownloads.current,
+                        children: "Current JSON"
+                      }), diffRawDownloads.current && diffRawDownloads.proposed ? " · " : "", diffRawDownloads.proposed && (0, s.jsx)("a", {
+                        href: diffRawDownloads.proposed,
+                        children: "Proposed JSON"
+                      }) ]
+                    }) ]
                   }), snapshotNeedsAction && (0, s.jsxs)("div", {
-                    className: `notice ${"failed" === snapshotState ? "notice-error" : "notice-warning"}`,
+                    className: `dbvc-inline-notice dbvc-inline-notice--${"failed" === snapshotState ? "error" : "warning"}`,
                     children: [ (0, s.jsx)("p", {
                       children: (0, s.jsx)("strong", {
                         children: snapshotStateLabels[snapshotState] || "Snapshot unavailable"
@@ -951,7 +1120,7 @@
                       children: snapshotStatus.message || "The current-site baseline cannot be trusted yet."
                     }) ]
                   }), fe && T && (0, s.jsxs)("div", {
-                    className: "notice notice-warning",
+                    className: "dbvc-inline-notice dbvc-inline-notice--warning",
                     children: [ (0, s.jsx)("p", {
                       children: "This entity is missing its stored import hash. Sync it to prevent repeated reviews."
                     }), (0, s.jsx)("button", {
@@ -1030,10 +1199,10 @@
                         children: e.content
                       }, e.key))
                     }) : null;
-                  })(), entityMaskFields.length > 0 && (0, s.jsxs)("section", {
+                  })(), !isRawView && entityMaskFields.length > 0 && (0, s.jsxs)("section", {
                     className: "dbvc-entity-detail__masking",
                     children: [ (0, s.jsx)("h4", {
-                      children: "Masked fields"
+                      children: statusCountLabels.masking_candidates
                     }), (0, s.jsx)("div", {
                       className: "dbvc-mask-field-list",
                       children: entityMaskFields.map((e, t) => {
@@ -1082,7 +1251,7 @@
                       children: "term" === f(le) ? "New term" : "New post"
                     }), (0, s.jsx)("span", {
                       className: "dbvc-new-entity-card__status",
-                      children: "accept_new" === xe ? "Accepted for import" : "decline_new" === xe ? "Declined — will be skipped" : "Pending reviewer decision"
+                      children: "accept_new" === xe ? "Accepted for import" : "decline_new" === xe ? "Declined — will be skipped" : statusCountLabels.new_entities_pending
                     }) ]
                   }), (0, s.jsxs)("p", {
                     children: [ "This proposal would create a new ", "term" === f(le) ? g(le) : le?.post_type || "post", " on this site. No UID, original ID, or slug match was detected locally, so choose whether to import it." ]
@@ -1108,11 +1277,11 @@
                     }) ]
                   }) ]
                 }), S && (0, s.jsx)("div", {
-                  className: "notice notice-error",
+                  className: "dbvc-inline-notice dbvc-inline-notice--error",
                   children: (0, s.jsx)("p", {
                     children: S
                   })
-                }), Ne.length > 0 && (0, s.jsxs)("div", {
+                }), !isRawView && Ne.length > 0 && (0, s.jsxs)("div", {
                   className: "dbvc-section-nav",
                   children: [ (0, s.jsx)("span", {
                     children: Me ? "Sections:" : "Jump to:"
@@ -1135,17 +1304,22 @@
                     onClick: () => Ue(e => !e),
                     children: Me ? "Focus Section" : "Show All"
                   }) ]
-                }), et.length > 0 ? et.map(e => (0, s.jsx)(I, {
+                }), isRawView ? (0, s.jsx)(RawDiffView, {
+                  rawView: rawView
+                }) : et.length > 0 ? et.map(e => (0, s.jsx)(I, {
                   section: e,
                   decisions: a,
                   onDecisionChange: handleDecisionChange,
                   savingPaths: w
                 }, e.key)) : (0, s.jsx)("p", {
-                  children: $e && Ie > 0 ? "No resolver or media conflicts detected for this entity. Switch to Full Overview to inspect all differences." : "all" === A ? "No meta fields found for this entity." : "No differences detected."
-                }), ke.length > 0 && (0, s.jsxs)("div", {
+                  children: "all" === A ? "No supported fields were found for this entity." : "No differences detected."
+                }), !isRawView && ke.length > 0 && (0, s.jsxs)("div", {
                   className: "dbvc-admin-app__resolver-attachments",
                   children: [ (0, s.jsx)("h4", {
                     children: "Media Resolver"
+                  }), (0, s.jsx)(StatusCountBadges, {
+                    counts: canonicalEntityStatusCounts,
+                    keys: [ "media_needs_review", "resolver_conflicts" ]
                   }), (0, s.jsx)("div", {
                     className: "dbvc-panel-search",
                     children: (0, s.jsxs)("label", {
@@ -1160,7 +1334,7 @@
                     className: "dbvc-resolver-summary",
                     children: [ "Saved decisions — reuse: ", null !== (Q = l.reuse) && void 0 !== Q ? Q : 0, ", map: ", null !== (Y = l.map) && void 0 !== Y ? Y : 0, ", download:", " ", null !== (ee = l.download) && void 0 !== ee ? ee : 0, ", skip: ", null !== (te = l.skip) && void 0 !== te ? te : 0 ]
                   }), k && (0, s.jsx)("div", {
-                    className: "notice notice-error",
+                    className: "dbvc-inline-notice dbvc-inline-notice--error",
                     children: (0, s.jsx)("p", {
                       children: k
                     })
@@ -1277,7 +1451,7 @@
                         }), " ", "Remember as global rule" ]
                       }) ]
                     }), Qe && (0, s.jsx)("div", {
-                      className: "notice notice-error",
+                      className: "dbvc-inline-notice dbvc-inline-notice--error",
                       children: (0, s.jsx)("p", {
                         children: Qe
                       })
@@ -1308,21 +1482,6 @@
                       },
                       disabled: Xe,
                       children: Xe ? "Applying…" : "Apply to Matches"
-                    }) ]
-                  }) ]
-                }), (0, s.jsxs)("div", {
-                  className: "dbvc-admin-app__entity-columns",
-                  children: [ (0, s.jsxs)("div", {
-                    children: [ (0, s.jsx)("h4", {
-                      children: "Raw Current"
-                    }), (0, s.jsx)("pre", {
-                      children: JSON.stringify(ae, null, 2)
-                    }) ]
-                  }), (0, s.jsxs)("div", {
-                    children: [ (0, s.jsx)("h4", {
-                      children: "Raw Proposed (Bundle)"
-                    }), (0, s.jsx)("pre", {
-                      children: JSON.stringify(oe, null, 2)
                     }) ]
                   }) ]
                 }) ]
@@ -1398,7 +1557,7 @@
                         }), (0, s.jsxs)("div", {
                           className: "dbvc-duplicate-group__meta",
                           children: [ (0, s.jsxs)("span", {
-                            children: [ "UID: ", e.vf_object_uid ]
+                          children: [ "UID: ", e.vf_object_uid || e.identity?.value || "—" ]
                           }), (0, s.jsxs)("span", {
                             children: [ "Slug: ", j(e) ]
                           }), (0, s.jsxs)("span", {
@@ -1434,7 +1593,7 @@
                         })
                       }), (0, s.jsx)("tbody", {
                         children: r.map((n, i) => {
-                          const r = `${e.vf_object_uid}::${i}::${n.path || "no-path"}`, d = n.post_modified ? Date.parse(n.post_modified.replace(" ", "T")) : 0, u = c && Number.isFinite(d) && d === c;
+                          const groupKey = e.duplicate_id || `${e.entity_type || "entity"}::${e.vf_object_uid || e.identity?.value || "unknown"}`, entryKey = n.entry_id || `${i}::${n.path || "no-path"}`, r = `${groupKey}::${entryKey}`, d = n.post_modified ? Date.parse(n.post_modified.replace(" ", "T")) : 0, u = c && Number.isFinite(d) && d === c;
                           return (0, s.jsxs)("tr", {
                             className: u ? "is-latest" : "",
                             children: [ (0, s.jsx)("td", {
@@ -1455,7 +1614,7 @@
                             }), (0, s.jsx)("td", {
                               children: (0, s.jsx)(t.Button, {
                                 variant: "secondary",
-                                onClick: () => l && l(e.vf_object_uid, n.path),
+                                onClick: () => l && l(e.duplicate_id || "", e.vf_object_uid || "", n.entry_id || "", n.path || ""),
                                 disabled: o === r,
                                 children: o === r ? "Marking…" : "Keep this file"
                               })
@@ -1464,7 +1623,7 @@
                         })
                       }) ]
                     }) ]
-                  }, e.vf_object_uid);
+                  }, e.duplicate_id || `${e.entity_type || "entity"}::${e.vf_object_uid || e.identity?.value || "unknown"}`);
                 }), (0, s.jsx)("p", {
                   className: "description",
                   children: "Tip: Clean up duplicate JSON files in the sync folder before exporting new proposals to keep reviewers focused on a single entity."
@@ -1483,7 +1642,7 @@
               e.useState)(null), [Oe, Te] = (0, e.useState)(!1), [Pe, Fe] = (0, e.useState)(!1), [Ve, Le] = (0, 
               e.useState)(!1), [ze, He] = (0, e.useState)(""), [Ke, Je] = (0, e.useState)(null), [qe, We] = (0, 
               e.useState)(null), [Ge, Xe] = (0, e.useState)(!1), [Ze, Qe] = (0, e.useState)("full"), [Ye, et] = (0, 
-              e.useState)(!1), [tt, st] = (0, e.useState)("conflicts"), [allEntities, setAllEntities] = (0, e.useState)([]), [allEntitiesLoading, setAllEntitiesLoading] = (0, e.useState)(!1), [nt, it] = (0, e.useState)([]), [lt, at] = (0, 
+              e.useState)(!1), [tt, st] = (0, e.useState)("changed"), [allEntities, setAllEntities] = (0, e.useState)([]), [allEntitiesLoading, setAllEntitiesLoading] = (0, e.useState)(!1), [nt, it] = (0, e.useState)([]), [lt, at] = (0,
               e.useState)([]), [ot, rt] = (0, e.useState)({}), [ct, dt] = (0, e.useState)(null), [ut, pt] = (0, 
               e.useState)(!1), [ht, mt] = (0, e.useState)(!1), [vt, bt] = (0, e.useState)(!1), [ft, gt] = (0, 
               e.useState)(!1), [xt, jt] = (0, e.useState)(() => {
@@ -1540,7 +1699,7 @@
                 Ce(!0), Ae(null);
                 try {
                   var i;
-                  const l = t && ![ "needs_review", "needs_review_media", "resolved", "new_entities" ].includes(t) || !t || "all" === t ? "" : `?status=${encodeURIComponent(t)}`, a = await n(`proposals/${encodeURIComponent(e)}/entities${l}`, {
+                  const l = t && ![ "needs_review", "field_needs_review", "meta_needs_review", "media_needs_review", "resolver_conflicts", "masking_candidates", "new_entities_pending", "snapshot_needs_review", "needs_review_media", "resolved", "new_entities" ].includes(t) || !t || "all" === t ? "" : `?status=${encodeURIComponent(t)}`, a = await n(`proposals/${encodeURIComponent(e)}/entities${l}`, {
                     signal: s
                   }), o = null !== (i = a.items) && void 0 !== i ? i : [], r = sortEntitiesForTable(o);
                   return se(r), X(t => t.map(t => t.id === e ? {
@@ -1830,13 +1989,16 @@
               }, []), qt = (0, e.useMemo)(() => ce?.resolver?.attachments?.length ? ce.resolver.attachments : Y?.attachments || [], [ Y, ce ]), Wt = (0, 
               e.useCallback)(() => {
                 Z && Vt(Z);
-              }, [ Z, Vt ]), Gt = (0, e.useCallback)(async (e, t) => {
-                if (Z && e && t) {
-                  setDuplicateActionKey(`${e}::${t}`), kt(null);
+              }, [ Z, Vt ]), Gt = (0, e.useCallback)(async (e, t, s, n) => {
+                const l = e || t, o = s || n;
+                if (Z && l && o) {
+                  setDuplicateActionKey(`${l}::${o}`), kt(null);
                   try {
                     await i(`proposals/${encodeURIComponent(Z)}/duplicates/cleanup`, {
-                      vf_object_uid: e,
-                      keep_path: t
+                      duplicate_id: e,
+                      vf_object_uid: t,
+                      keep_entry_id: s,
+                      keep_path: n
                     }), await Vt(Z), await Ht(Z, ne);
                   } catch (e) {
                     kt(e?.message || "Failed to mark canonical entry.");
@@ -1874,7 +2036,11 @@
                 Tt(new Set);
               }, []), ts = (0, e.useCallback)(() => {
                 Tt(new Set(te.map(e => e.vf_object_uid)));
-              }, [ te ]), ss = (0, e.useMemo)(() => te.filter(e => b(e)), [ te ]), ns = ss.length > 0, is = (0, 
+              }, [ te ]), ss = (0, e.useMemo)(() => te.filter(e => b(e)), [ te ]), pendingNewEntities = (0,
+              e.useMemo)(() => ss.filter(e => {
+                const t = e.new_entity_state || ("accept_new" === e.new_entity_decision ? "accepted_new" : "decline_new" === e.new_entity_decision ? "declined_new" : "pending_new");
+                return "pending_new" === t;
+              }), [ ss ]), ns = pendingNewEntities.length > 0, is = (0,
               e.useCallback)(async () => {
                 if (Z && ns) {
                   At(!0), kt(null);
@@ -2019,7 +2185,7 @@
                   De(!0), Be(null), ge(null), be({});
                   try {
                     var t;
-                    const s = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(oe)}`, {
+                    const s = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(oe)}?view=${encodeURIComponent(tt)}`, {
                       signal: e.signal
                     });
                     de(s), me(null !== (t = s.decisions) && void 0 !== t ? t : {});
@@ -2029,7 +2195,7 @@
                     De(!1);
                   }
                 })(), () => e.abort();
-              }, [ Z, oe ]), (0, e.useEffect)(() => {
+              }, [ Z, oe, tt ]), (0, e.useEffect)(() => {
                 if (!Z || actionsTrayOpen || maskLoading || we) return;
                 if (Array.isArray(maskFields) && maskFields.length) return;
                 const state = getMaskPrefetchState(Z);
@@ -2139,35 +2305,52 @@
                   return e[s] || (e[s] = []), e[s].push(t), e;
                 }, {});
               }, [ maskFields ]), statusBadges = (0, e.useMemo)(() => {
+                const canonical = normalizeStatusCounts(ps);
                 const e = {
-                  needs_review: 0,
-                  needs_review_media: 0,
-                  new_entities: 0,
                   with_decisions: 0,
                   uid_mismatch: 0
                 };
-                return te.forEach(t => {
-                  "needs_review" === t.overall_status && e.needs_review++, t.media_needs_review && e.needs_review_media++, t.is_new_entity && e.new_entities++;
+                return allEntities.forEach(t => {
                   const s = t.decision_summary || {}, n = null != s.total ? s.total : 0;
                   n > 0 && e.with_decisions++, t.uid_mismatch && e.uid_mismatch++;
                 }), [ {
-                  id: "needs_review",
-                  label: "Needs Review",
-                  count: e.needs_review,
-                  filter: "needs_review"
+                  id: "field_needs_review",
+                  label: statusCountLabels.field_needs_review,
+                  count: canonical.field_needs_review,
+                  filter: "field_needs_review"
                 }, {
-                  id: "needs_review_media",
-                  label: "Unresolved meta",
-                  count: e.needs_review_media,
-                  filter: "needs_review_media"
+                  id: "meta_needs_review",
+                  label: statusCountLabels.meta_needs_review,
+                  count: canonical.meta_needs_review,
+                  filter: "meta_needs_review"
                 }, {
-                  id: "new_entities",
-                  label: "New entities",
-                  count: e.new_entities,
-                  filter: "new_entities"
+                  id: "media_needs_review",
+                  label: statusCountLabels.media_needs_review,
+                  count: canonical.media_needs_review,
+                  filter: "media_needs_review"
+                }, {
+                  id: "resolver_conflicts",
+                  label: statusCountLabels.resolver_conflicts,
+                  count: canonical.resolver_conflicts,
+                  filter: "resolver_conflicts"
+                }, {
+                  id: "masking_candidates",
+                  label: statusCountLabels.masking_candidates,
+                  count: canonical.masking_candidates,
+                  filter: "masking_candidates"
+                }, {
+                  id: "duplicates",
+                  label: statusCountLabels.duplicates,
+                  count: canonical.duplicates,
+                  action: "duplicates"
+                }, {
+                  id: "new_entities_pending",
+                  label: statusCountLabels.new_entities_pending,
+                  count: canonical.new_entities_pending,
+                  filter: "new_entities_pending"
                 }, {
                   id: "with_decisions",
-                  label: "Pending decisions",
+                  label: "With selections",
                   count: e.with_decisions,
                   filter: "with_decisions"
                 }, {
@@ -2176,7 +2359,7 @@
                   count: e.uid_mismatch,
                   filter: "uid_mismatch"
                 } ];
-              }, [ te ]), maskActionOptions = (0, e.useMemo)(() => [ {
+              }, [ ps, allEntities ]), maskActionOptions = (0, e.useMemo)(() => [ {
                 label: "Keep & ignore current meta (uses mask config)",
                 value: "ignore"
               }, {
@@ -2186,8 +2369,8 @@
                 label: "Override masked value",
                 value: "override"
               } ], []), maskTooltips = (0, e.useMemo)(() => ({
-                apply: `Apply the configured masking rules to every entity in this proposal. Learn more: ${maskDocLink("live-proposal-masking")}`,
-                ignore: `Ignore this masked field so it no longer counts toward Needs Review. Learn more: ${maskDocLink("ignore-masked-field")}`,
+                apply: `Review the configured masking candidates for every entity in this proposal. Learn more: ${maskDocLink("live-proposal-masking")}`,
+                ignore: `Ignore this masked field so it no longer counts as a masking candidate. Learn more: ${maskDocLink("ignore-masked-field")}`,
                 auto: `Auto-accept the masked value and suppress it from future diffs. Learn more: ${maskDocLink("auto-accept-and-suppress")}`,
                 override: `Override the masked value with a sanitized replacement. Learn more: ${maskDocLink("override-masked-value")}`,
                 revert: `Clear masking decisions that were applied via this tool using the current masking rules. Learn more: ${maskDocLink("revert-masked-decisions")}`
@@ -2196,7 +2379,7 @@
                 if (!cs.length) return re(null), void pe(!1);
                 oe && !cs.some(e => e.vf_object_uid === oe) && (re(null), pe(!1));
               }, [ cs, oe ]), (0, e.useEffect)(() => {
-                st("conflicts");
+                st("changed");
               }, [ oe ]), (0, e.useEffect)(() => {
                 if (!Z) return setAllEntities([]);
                 const e = new AbortController;
@@ -2244,7 +2427,7 @@
                     var t;
                     await i(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(e)}/hash-sync`, {}), 
                     await Ht(Z, ne);
-                    const s = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(e)}`);
+                    const s = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(e)}?view=${encodeURIComponent(tt)}`);
                     de(s), me(null !== (t = s.decisions) && void 0 !== t ? t : {});
                   } catch (e) {
                     ge(e?.message || "Failed to store import hash.");
@@ -2252,7 +2435,7 @@
                     Le(!1), He("");
                   }
                 }
-              }, [ Z, ne, Ht ]), fs = (0, e.useCallback)(() => {
+              }, [ Z, ne, Ht, tt ]), fs = (0, e.useCallback)(() => {
                 pe(!1);
               }, []), gs = (0, e.useCallback)(() => {
                 Z && (We(null), Je(null), Qe("full"), et(!1), Xe(!0));
@@ -2279,10 +2462,11 @@
                       ...e,
                       status: o.status
                     } : e));
-                    const r = null !== (e = o?.result?.imported) && void 0 !== e ? e : 0, c = null !== (t = o?.result?.skipped) && void 0 !== t ? t : 0, d = Array.isArray(o?.result?.errors) ? o.result.errors : [], u = (new Date).toISOString(), p = Date.now(), h = [];
+                    const r = null !== (e = o?.result?.imported) && void 0 !== e ? e : 0, c = null !== (t = o?.result?.skipped) && void 0 !== t ? t : 0, d = Array.isArray(o?.result?.errors) ? o.result.errors : [], skippedEntities = Array.isArray(o?.result?.skipped_entities) ? o.result.skipped_entities : [], reviewerDeclined = null != o?.result?.reviewer_declined ? o.result.reviewer_declined : skippedEntities.filter(e => "declined_by_reviewer" === e?.reason).length, u = (new Date).toISOString(), p = Date.now(), h = [];
                     var s, n, l, a;
                     d.length > 0 && h.push(d[0]), o.decisions_cleared && o.auto_clear_enabled && h.push("Reviewer decisions cleared."), 
                     o.ignore_missing_hash && h.push("Hash check override enabled."), o.resolver_outcomes?.total && h.push(`Resolver decisions — applied: ${o.resolver_outcomes.applied || 0}, failed: ${o.resolver_outcomes.failed || 0}`),
+                    reviewerDeclined > 0 && h.push(`${reviewerDeclined} reviewer-declined new ${1 === reviewerDeclined ? "entity was" : "entities were"} skipped.`),
                     "closed" === o.status && h.push("Proposal marked closed."), it(e => [ ...e, {
                       id: p,
                       severity: d.length ? "warning" : "success",
@@ -2300,6 +2484,8 @@
                         mode: null !== (t = o.mode) && void 0 !== t ? t : Ze,
                         imported: r,
                         skipped: c,
+                        skippedEntities: skippedEntities,
+                        reviewerDeclined: reviewerDeclined,
                         errors: d,
                         decisionsCleared: Boolean(o.decisions_cleared && o.auto_clear_enabled),
                         ignoreMissingHash: Boolean(o.ignore_missing_hash),
@@ -2472,7 +2658,7 @@
                       current: s,
                       current_source: "snapshot"
                     } : e);
-                    const l = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(oe)}`);
+                    const l = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(oe)}?view=${encodeURIComponent(tt)}`);
                     de(l), me(null !== (t = l.decisions) && void 0 !== t ? t : {}), se(e => e.map(e => {
                       var t;
                       return e.vf_object_uid === oe ? {
@@ -2486,7 +2672,7 @@
                     mt(!1);
                   }
                 }
-              }, [ Z, oe, refreshApplyGates ]), Rs = (0, e.useCallback)(async () => {
+              }, [ Z, oe, refreshApplyGates, tt ]), Rs = (0, e.useCallback)(async () => {
                 if (Z) {
                   bt(!0), ge(null);
                   try {
@@ -2500,7 +2686,7 @@
                       timestamp: p
                     } ]), await Ht(Z, ne), await os(Z), oe) {
                       var s;
-                      const e = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(oe)}`);
+                      const e = await n(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(oe)}?view=${encodeURIComponent(tt)}`);
                       de(e), me(null !== (s = e.decisions) && void 0 !== s ? s : {});
                     }
                   } catch (e) {
@@ -2509,7 +2695,7 @@
                     bt(!1);
                   }
                 }
-              }, [ Z, oe, ne, Ht, os ]), $s = (0, e.useCallback)(async () => {
+              }, [ Z, oe, ne, Ht, os, tt ]), $s = (0, e.useCallback)(async () => {
                 if (window.confirm("This will delete all stored backups, snapshots, and reviewer decisions. Continue?")) {
                   gt(!0), ge(null);
                   try {
@@ -2583,7 +2769,7 @@
                 } finally {
                   Zt(!1), be({});
                 }
-              }, [ Z, oe, refreshApplyGates ]), As = null !== (o = ps?.decisions) && void 0 !== o ? o : null, Es = null !== (r = As?.total) && void 0 !== r ? r : 0, Ms = null !== (c = As?.accepted) && void 0 !== c ? c : 0, Us = null !== (d = As?.kept) && void 0 !== d ? d : 0, Bs = null !== (u = As?.accepted_new) && void 0 !== u ? u : 0, Os = null !== (p = As?.entities_reviewed) && void 0 !== p ? p : 0, Ts = null !== (v = ps?.resolver_decisions) && void 0 !== v ? v : null, Ps = null !== (f = Ts?.reuse) && void 0 !== f ? f : 0, Fs = null !== (R = Ts?.map) && void 0 !== R ? R : 0, Vs = null !== ($ = Ts?.download) && void 0 !== $ ? $ : 0, Ls = null !== (I = Ts?.skip) && void 0 !== I ? I : 0, zs = null !== (A = null !== (E = Y?.metrics?.unresolved) && void 0 !== E ? E : ps?.resolver?.metrics?.unresolved) && void 0 !== A ? A : 0, Hs = Array.isArray(Ke?.result?.errors) ? Ke.result.errors : [], Ks = Hs.length ? "notice notice-warning" : "notice notice-success", Js = null !== (U = Ke?.result?.imported) && void 0 !== U ? U : 0, qs = null !== (B = Ke?.result?.skipped) && void 0 !== B ? B : 0, Ws = null !== (O = Ke?.result?.media_resolver?.metrics) && void 0 !== O ? O : {}, Gs = null !== (T = Ws?.unresolved) && void 0 !== T ? T : 0, Xs = null !== (P = Ke?.result?.media_reconcile) && void 0 !== P ? P : null, bricksReferenceSummary = ps?.bricks_references || {}, bricksReferenceTotal = null !== (P = bricksReferenceSummary?.total) && void 0 !== P ? P : 0, bricksReferenceResolved = null !== (P = bricksReferenceSummary?.resolved) && void 0 !== P ? P : 0, bricksReferenceUnresolved = null !== (P = bricksReferenceSummary?.unresolved) && void 0 !== P ? P : 0, bricksReferenceRows = Array.isArray(bricksReferenceSummary?.items) ? bricksReferenceSummary.items : [], bricksReferenceProblemRows = bricksReferenceRows.filter(e => "resolved" !== e?.status), transferPacketActive = isTransferProposal(ps), transferSourceLabel = transferPacketActive ? getProposalSourceLabel(ps) : "", transferSummaryParts = transferPacketActive ? getTransferSelectionSummaryParts(ps) : [], transferSelectionSummary = ps?.selection?.summary || {}, transferInfoNotes = Array.isArray(ps?.requirements?.notes) ? ps.requirements.notes : [], transferMissingPostTypes = Array.isArray(ps?.preflight?.missing_post_types) ? ps.preflight.missing_post_types : [], transferMissingTaxonomies = Array.isArray(ps?.preflight?.missing_taxonomies) ? ps.preflight.missing_taxonomies : [], transferUnsupportedItems = Array.isArray(ps?.preflight?.unsupported_items) ? ps.preflight.unsupported_items : [], transferReferenceWarnings = Array.isArray(ps?.warnings?.unsupported_post_references) ? ps.warnings.unsupported_post_references : [], transferPreflightWarningCount = [ transferMissingPostTypes, transferMissingTaxonomies, transferUnsupportedItems ].reduce((e, t) => e + (Array.isArray(t) ? t.length : 0), 0), transferWarningCount = getTransferWarningCount(ps), applyGates = ps?.apply_gates || {}, snapshotCounts = applyGates?.counts?.snapshots || {}, snapshotUntrusted = snapshotCounts.untrusted || 0, snapshotRecapturable = snapshotCounts.recapturable || 0, applyBlockers = Array.isArray(applyGates.blocking) ? applyGates.blocking : [], applyWarnings = Array.isArray(applyGates.warnings) ? applyGates.warnings : [], hashOverrideAllowed = Array.isArray(applyGates.override_tokens) && applyGates.override_tokens.some(e => "ignore_missing_hash" === e?.token), effectiveApplyBlockers = applyBlockers.filter(e => !(Ye && hashOverrideAllowed && "hashes" === e?.category)), hardApplyBlockers = applyBlockers.filter(e => !(hashOverrideAllowed && "hashes" === e?.category)), applyBlocked = effectiveApplyBlockers.length > 0, applyBlockerTitle = hardApplyBlockers.map(e => e?.message || e?.category).filter(Boolean).join(" "), Zs = (0,
+              }, [ Z, oe, refreshApplyGates ]), As = null !== (o = ps?.decisions) && void 0 !== o ? o : null, Es = null !== (r = As?.total) && void 0 !== r ? r : 0, Ms = null !== (c = As?.accepted) && void 0 !== c ? c : 0, Us = null !== (d = As?.kept) && void 0 !== d ? d : 0, Bs = null !== (u = As?.accepted_new) && void 0 !== u ? u : 0, declinedNewSelections = As?.declined_new || 0, Os = null !== (p = As?.entities_reviewed) && void 0 !== p ? p : 0, Ts = null !== (v = ps?.resolver_decisions) && void 0 !== v ? v : null, Ps = null !== (f = Ts?.reuse) && void 0 !== f ? f : 0, Fs = null !== (R = Ts?.map) && void 0 !== R ? R : 0, Vs = null !== ($ = Ts?.download) && void 0 !== $ ? $ : 0, Ls = null !== (I = Ts?.skip) && void 0 !== I ? I : 0, zs = null !== (A = null !== (E = Y?.metrics?.unresolved) && void 0 !== E ? E : ps?.resolver?.metrics?.unresolved) && void 0 !== A ? A : 0, Hs = Array.isArray(Ke?.result?.errors) ? Ke.result.errors : [], Ks = Hs.length ? "dbvc-inline-notice dbvc-inline-notice--warning" : "dbvc-inline-notice dbvc-inline-notice--success", Js = null !== (U = Ke?.result?.imported) && void 0 !== U ? U : 0, qs = null !== (B = Ke?.result?.skipped) && void 0 !== B ? B : 0, appliedReviewerDeclines = Ke?.result?.reviewer_declined || 0, Ws = null !== (O = Ke?.result?.media_resolver?.metrics) && void 0 !== O ? O : {}, Gs = null !== (T = Ws?.unresolved) && void 0 !== T ? T : 0, Xs = null !== (P = Ke?.result?.media_reconcile) && void 0 !== P ? P : null, bricksReferenceSummary = ps?.bricks_references || {}, bricksReferenceTotal = null !== (P = bricksReferenceSummary?.total) && void 0 !== P ? P : 0, bricksReferenceResolved = null !== (P = bricksReferenceSummary?.resolved) && void 0 !== P ? P : 0, bricksReferenceUnresolved = null !== (P = bricksReferenceSummary?.unresolved) && void 0 !== P ? P : 0, bricksReferenceRows = Array.isArray(bricksReferenceSummary?.items) ? bricksReferenceSummary.items : [], bricksReferenceProblemRows = bricksReferenceRows.filter(e => "resolved" !== e?.status), transferPacketActive = isTransferProposal(ps), transferSourceLabel = transferPacketActive ? getProposalSourceLabel(ps) : "", transferSummaryParts = transferPacketActive ? getTransferSelectionSummaryParts(ps) : [], transferSelectionSummary = ps?.selection?.summary || {}, transferInfoNotes = Array.isArray(ps?.requirements?.notes) ? ps.requirements.notes : [], transferMissingPostTypes = Array.isArray(ps?.preflight?.missing_post_types) ? ps.preflight.missing_post_types : [], transferMissingTaxonomies = Array.isArray(ps?.preflight?.missing_taxonomies) ? ps.preflight.missing_taxonomies : [], transferUnsupportedItems = Array.isArray(ps?.preflight?.unsupported_items) ? ps.preflight.unsupported_items : [], transferReferenceWarnings = Array.isArray(ps?.warnings?.unsupported_post_references) ? ps.warnings.unsupported_post_references : [], transferPreflightWarningCount = [ transferMissingPostTypes, transferMissingTaxonomies, transferUnsupportedItems ].reduce((e, t) => e + (Array.isArray(t) ? t.length : 0), 0), transferWarningCount = getTransferWarningCount(ps), applyGates = ps?.apply_gates || {}, canonicalStatusCounts = normalizeStatusCounts(ps), applyGatesLoaded = "boolean" == typeof applyGates.ready, snapshotCounts = applyGates?.counts?.snapshots || {}, snapshotUntrusted = snapshotCounts.untrusted || 0, snapshotRecapturable = snapshotCounts.recapturable || 0, applyBlockers = Array.isArray(applyGates.blocking) ? applyGates.blocking : [], applyWarnings = Array.isArray(applyGates.warnings) ? applyGates.warnings : [], hashOverrideAllowed = Array.isArray(applyGates.override_tokens) && applyGates.override_tokens.some(e => "ignore_missing_hash" === e?.token), effectiveApplyBlockers = applyBlockers.filter(e => !(Ye && hashOverrideAllowed && "hashes" === e?.category)), hardApplyBlockers = applyBlockers.filter(e => !(hashOverrideAllowed && "hashes" === e?.category)), applyBlocked = !applyGatesLoaded || effectiveApplyBlockers.length > 0, applyBlockerTitle = applyGatesLoaded ? hardApplyBlockers.map(e => e?.message || e?.category).filter(Boolean).join(" ") : "Readiness checks are still loading.", Zs = (0,
               e.useCallback)((e, uploadResult = {}) => {
                 zt({
                   focusProposalId: e
@@ -2933,7 +3119,7 @@
                     className: "description",
                     children: [ "Showing ", sortedEntityIndex.length, " indexed entities from sync (posts + terms only)." ]
                   }), entityIndexError && (0, s.jsx)("div", {
-                    className: "notice notice-error",
+                    className: "dbvc-inline-notice dbvc-inline-notice--error",
                     children: (0, s.jsx)("p", {
                       children: entityIndexError
                     })
@@ -3105,12 +3291,12 @@
                     }), entityFileLoading && (0, s.jsx)("p", {
                       children: "Loading file…"
                     }), entityFileError && (0, s.jsx)("div", {
-                      className: "notice notice-error",
+                      className: "dbvc-inline-notice dbvc-inline-notice--error",
                       children: (0, s.jsx)("p", {
                         children: entityFileError
                       })
                     }), entityLockConflict && (0, s.jsxs)("div", {
-                      className: "notice notice-warning",
+                      className: "dbvc-inline-notice dbvc-inline-notice--warning",
                       children: [ (0, s.jsxs)("p", {
                         children: [ "Current lock owner: ", entityLockConflict?.user_display || "another user", entityLockConflict?.expires_at ? ` (expires ${a(entityLockConflict.expires_at)})` : "" ]
                       }), (0, s.jsx)("button", {
@@ -3137,7 +3323,7 @@
                           setEntityEditorDraft(e.target.value), setEntitySaveNotice(""), setEntitySaveError("");
                         }
                       }), entitySaveError && (0, s.jsx)("div", {
-                        className: "notice notice-error",
+                        className: "dbvc-inline-notice dbvc-inline-notice--error",
                         children: (0, s.jsxs)(s.Fragment, {
                           children: [ (0, s.jsx)("p", {
                             children: entitySaveError
@@ -3156,7 +3342,7 @@
                           }) ]
                         })
                       }), entitySaveNotice && (0, s.jsx)("div", {
-                        className: "notice notice-success",
+                        className: "dbvc-inline-notice dbvc-inline-notice--success",
                         children: (0, s.jsx)("p", {
                           children: entitySaveNotice
                         })
@@ -3250,7 +3436,7 @@
                       }) ]
                     }) ]
                   }) : (0, s.jsxs)("div", {
-                    className: "notice notice-warning",
+                    className: "dbvc-inline-notice dbvc-inline-notice--warning",
                     children: [ (0, s.jsx)("p", {
                       children: 'Typed confirmation needed: enter "REPLACE" then use Save + Full Replace.'
                     }), (0, s.jsx)("button", {
@@ -3264,7 +3450,7 @@
               });
                             return !_e && Re ? (0, s.jsxs)("p", {
                 className: "dbvc-admin-app-error",
-                children: [ "Error loading proposals: ", o(Re) ]
+                children: [ "Error loading proposals: ", formatDisplayValue(Re) ]
               }) : (0, s.jsxs)("div", {
                 className: `dbvc-admin-app is-route-${route}`,
                 onClick: Kt,
@@ -3328,9 +3514,9 @@
                   onUploaded: Zs,
                   onError: Qs
                 }), Re && (0, s.jsx)("div", {
-                  className: "notice notice-error",
+                  className: "dbvc-inline-notice dbvc-inline-notice--error",
                   children: (0, s.jsxs)("p", {
-                    children: [ "Failed to load proposals: ", o(Re) ]
+                    children: [ "Failed to load proposals: ", formatDisplayValue(Re) ]
                   })
                 }), (0, s.jsx)(w, {
                   proposals: G,
@@ -3376,7 +3562,7 @@
                       children: [ (transferSelectionSummary.live_exports || 0) > 0 && `Live exports: ${transferSelectionSummary.live_exports}`, (transferSelectionSummary.live_exports || 0) > 0 && (transferSelectionSummary.duplicates_skipped || 0) > 0 ? " · " : "", (transferSelectionSummary.duplicates_skipped || 0) > 0 && `Duplicates skipped: ${transferSelectionSummary.duplicates_skipped}` ]
                     }) : null ]
                   }), transferPreflightWarningCount > 0 && (0, s.jsxs)("div", {
-                    className: "notice notice-warning",
+                    className: "dbvc-inline-notice dbvc-inline-notice--warning",
                     children: [ (0, s.jsx)("p", {
                       children: "Destination preflight found issues that should be reviewed before apply:"
                     }), (0, s.jsxs)("ul", {
@@ -3390,7 +3576,7 @@
                       }, `${e}-${t}`)) ]
                     }) ]
                   }), transferReferenceWarnings.length > 0 && (0, s.jsxs)("div", {
-                    className: "notice notice-warning",
+                    className: "dbvc-inline-notice dbvc-inline-notice--warning",
                     children: [ (0, s.jsx)("p", {
                       children: "This packet contains likely post-object or relationship references to posts that are not included:"
                     }), (0, s.jsx)("ul", {
@@ -3400,7 +3586,7 @@
                       }, `${e?.source_path || "warning"}-${t}`))
                     }) ]
                   }), transferInfoNotes.length > 0 && (0, s.jsxs)("div", {
-                    className: "notice notice-info",
+                    className: "dbvc-inline-notice dbvc-inline-notice--info",
                     children: [ (0, s.jsx)("p", {
                       children: "Transfer notes:"
                     }), (0, s.jsx)("ul", {
@@ -3410,7 +3596,7 @@
                       }, `${e}-${t}`))
                     }) ]
                   }), bricksReferenceTotal > 0 && (0, s.jsxs)("div", {
-                    className: bricksReferenceUnresolved > 0 ? "notice notice-warning" : "notice notice-info",
+                    className: bricksReferenceUnresolved > 0 ? "dbvc-inline-notice dbvc-inline-notice--warning" : "dbvc-inline-notice dbvc-inline-notice--info",
                     children: [ (0, s.jsxs)("p", {
                       children: [ "Bricks references: ", bricksReferenceResolved, " resolved", bricksReferenceUnresolved > 0 ? `, ${bricksReferenceUnresolved} unresolved` : "", "." ]
                     }), bricksReferenceProblemRows.length > 0 && (0, s.jsx)("ul", {
@@ -3420,7 +3606,7 @@
                       }, `${e?.entity_path || "bricks"}-${e?.path || "reference"}-${t}`))
                     }) ]
                   }), Ee && (0, s.jsx)("div", {
-                    className: "notice notice-error",
+                    className: "dbvc-inline-notice dbvc-inline-notice--error",
                     children: (0, s.jsxs)("p", {
                       children: [ "Resolver error: ", Ee ]
                     })
@@ -3434,7 +3620,7 @@
                       type: "button",
                       className: "button button-primary",
                       onClick: gs,
-                      disabled: Oe || "closed" === ps.status || hardApplyBlockers.length > 0,
+                      disabled: Oe || "closed" === ps.status || !applyGatesLoaded || hardApplyBlockers.length > 0,
                       title: "closed" === ps.status ? "Reopen this proposal before applying new changes." : applyBlockerTitle || void 0,
                       children: Oe ? "Applying…" : "Close & Apply Proposal"
                     }), "closed" === ps.status ? (0, s.jsxs)("div", {
@@ -3466,9 +3652,11 @@
                         className: "dbvc-badge dbvc-badge--reviewed",
                         children: [ Os, " reviewed" ]
                       }) ]
+                    }), applyGatesLoaded && (0, s.jsx)(StatusCountBadges, {
+                      counts: canonicalStatusCounts
                     }) ]
                   }), applyBlockers.length > 0 && (0, s.jsxs)("div", {
-                    className: "notice notice-warning",
+                    className: "dbvc-inline-notice dbvc-inline-notice--warning",
                     children: [ (0, s.jsx)("p", {
                       children: "Apply is blocked until these reviews are complete:"
                     }), (0, s.jsx)("ul", {
@@ -3477,30 +3665,30 @@
                       }, issue?.category || issue?.message))
                     }) ]
                   }), applyWarnings.length > 0 && (0, s.jsx)("div", {
-                    className: "notice notice-info",
+                    className: "dbvc-inline-notice dbvc-inline-notice--info",
                     children: (0, s.jsx)("ul", {
                       children: applyWarnings.map(issue => (0, s.jsx)("li", {
                         children: issue?.message || issue?.category
                       }, issue?.category || issue?.message))
                     })
                   }), qe && (0, s.jsx)("div", {
-                    className: "notice notice-error",
+                    className: "dbvc-inline-notice dbvc-inline-notice--error",
                     children: (0, s.jsxs)("p", {
-                      children: [ "Apply failed: ", o(qe) ]
+                      children: [ "Apply failed: ", formatDisplayValue(qe) ]
                     })
                   }), Ke && (0, s.jsxs)("div", {
                     className: Ks,
                     children: [ (0, s.jsxs)("p", {
-                      children: [ 'Applied proposal "', ps?.title || Z, '". Mode: ', null !== (L = Ke.mode) && void 0 !== L ? L : "full", " · Imported ", Js, " · Skipped", " ", qs, Ke.decisions_cleared && Ke.auto_clear_enabled ? " · Reviewer decisions were cleared." : "", Gs > 0 && ` · ${Gs} resolver conflict(s) remain.` ]
+                      children: [ 'Applied proposal "', ps?.title || Z, '". Mode: ', null !== (L = Ke.mode) && void 0 !== L ? L : "full", " · Imported ", Js, " · Skipped", " ", qs, appliedReviewerDeclines > 0 ? ` · Reviewer declines ${appliedReviewerDeclines}` : "", Ke.decisions_cleared && Ke.auto_clear_enabled ? " · Reviewer decisions were cleared." : "", Gs > 0 && ` · ${statusCountLabels.media_needs_review}: ${Gs}.` ]
                     }), Xs && (0, s.jsxs)("p", {
                       className: "dbvc-resolver-summary",
-                      children: [ "Media reconciliation — created: ", null !== (z = Xs.created) && void 0 !== z ? z : 0, ", unresolved: ", null !== (H = Xs.unresolved) && void 0 !== H ? H : 0 ]
+                      children: [ "Media reconciliation — created: ", null !== (z = Xs.created) && void 0 !== z ? z : 0, " · ", statusCountLabels.media_needs_review, ": ", null !== (H = Xs.unresolved) && void 0 !== H ? H : 0 ]
                     }), Ke?.resolver_outcomes?.total > 0 && (0, s.jsxs)("p", {
                       className: "dbvc-resolver-summary",
                       children: [ "Resolver decisions applied — reuse: ", Ke.resolver_outcomes.reuse || 0, ", map: ", Ke.resolver_outcomes.map || 0, ", download: ", Ke.resolver_outcomes.download || 0, ", skip: ", Ke.resolver_outcomes.skip || 0, ", failed: ", Ke.resolver_outcomes.failed || 0 ]
                     }), Hs.length > 0 && (0, s.jsx)("ul", {
                       children: Hs.map((e, t) => (0, s.jsx)("li", {
-                        children: o(e)
+                        children: formatDisplayValue(e)
                       }, t))
                     }) ]
                   }), Ts && (0, s.jsx)("div", {
@@ -3518,7 +3706,7 @@
                         return (0, s.jsxs)("li", {
                           children: [ (0, s.jsx)("strong", {
                             children: a(e.timestamp)
-                          }), " — Mode ", e.mode, " · Imported ", e.imported, " · Skipped ", e.skipped, e.errors.length ? ` · ${e.errors.length} error(s)` : "", e.decisionsCleared ? " · Selections cleared" : "", e.ignoreMissingHash ? " · Hash override" : "", e.resolverDecisions ? ` · Resolver decisions (reuse ${null !== (t = e.resolverDecisions.reuse) && void 0 !== t ? t : 0}, map ${null !== (n = e.resolverDecisions.map) && void 0 !== n ? n : 0}, download ${null !== (i = e.resolverDecisions.download) && void 0 !== i ? i : 0}, skip ${null !== (l = e.resolverDecisions.skip) && void 0 !== l ? l : 0})` : "" ]
+                          }), " — Mode ", e.mode, " · Imported ", e.imported, " · Skipped ", e.skipped, e.reviewerDeclined ? ` · Reviewer declines ${e.reviewerDeclined}` : "", e.errors.length ? ` · ${e.errors.length} error(s)` : "", e.decisionsCleared ? " · Selections cleared" : "", e.ignoreMissingHash ? " · Hash override" : "", e.resolverDecisions ? ` · Resolver decisions (reuse ${null !== (t = e.resolverDecisions.reuse) && void 0 !== t ? t : 0}, map ${null !== (n = e.resolverDecisions.map) && void 0 !== n ? n : 0}, download ${null !== (i = e.resolverDecisions.download) && void 0 !== i ? i : 0}, skip ${null !== (l = e.resolverDecisions.skip) && void 0 !== l ? l : 0})` : "" ]
                         }, e.id);
                       })
                     }) ]
@@ -3534,6 +3722,14 @@
                       }), (0, s.jsx)("p", {
                         className: "dbvc-apply-modal__warning",
                         children: "Applying closes this proposal snapshot. To continue reviewing additional entities, export a new proposal after this step or reopen if necessary."
+                      }), (0, s.jsx)("p", {
+                        children: (0, s.jsx)("strong", {
+                          children: "Review status"
+                        })
+                      }), (0, s.jsx)(StatusCountBadges, {
+                        counts: canonicalStatusCounts,
+                        includeZero: !0,
+                        className: "dbvc-apply-modal__status-counts"
                       }), Es > 0 ? (0, s.jsxs)(s.Fragment, {
                         children: [ (0, s.jsx)("p", {
                           children: "Reviewer selections captured:"
@@ -3542,6 +3738,8 @@
                             children: [ Ms, " field(s) marked Accept" ]
                           }), Bs > 0 && (0, s.jsxs)("li", {
                             children: [ Bs, " new entity approval(s)" ]
+                          }), declinedNewSelections > 0 && (0, s.jsxs)("li", {
+                            children: [ declinedNewSelections, " new entity decline(s) to skip" ]
                           }), (0, s.jsxs)("li", {
                             children: [ Us, " field(s) kept as-is" ]
                           }), (0, s.jsxs)("li", {
@@ -3556,7 +3754,7 @@
                         children: "No reviewer selections have been recorded. Applying now only imports entities with Accept/Keep selections or new entities you marked “Accept & import.” All other entities are skipped."
                       }) ]
                     }), applyBlockers.length > 0 && (0, s.jsxs)("div", {
-                      className: "notice notice-warning",
+                      className: "dbvc-inline-notice dbvc-inline-notice--warning",
                       children: [ (0, s.jsx)("p", {
                         children: "Apply readiness checks:"
                       }), (0, s.jsx)("ul", {
@@ -3665,7 +3863,7 @@
                       }) ]
                     }) ]
                   }), Nt && (0, s.jsx)("div", {
-                    className: "notice notice-error",
+                    className: "dbvc-inline-notice dbvc-inline-notice--error",
                     children: (0, s.jsxs)("p", {
                       children: [ "Failed to load duplicate summary: ", Nt ]
                     })
@@ -3684,8 +3882,29 @@
                           value: "needs_review",
                           children: m.needs_review
                         }), (0, s.jsx)("option", {
-                          value: "needs_review_media",
-                          children: m.needs_review_media
+                          value: "field_needs_review",
+                          children: m.field_needs_review
+                        }), (0, s.jsx)("option", {
+                          value: "meta_needs_review",
+                          children: m.meta_needs_review
+                        }), (0, s.jsx)("option", {
+                          value: "media_needs_review",
+                          children: m.media_needs_review
+                        }), (0, s.jsx)("option", {
+                          value: "resolver_conflicts",
+                          children: m.resolver_conflicts
+                        }), (0, s.jsx)("option", {
+                          value: "masking_candidates",
+                          children: m.masking_candidates
+                        }), (0, s.jsx)("option", {
+                          value: "duplicates",
+                          children: m.duplicates
+                        }), (0, s.jsx)("option", {
+                          value: "new_entities_pending",
+                          children: m.new_entities_pending
+                        }), (0, s.jsx)("option", {
+                          value: "snapshot_needs_review",
+                          children: m.snapshot_needs_review
                         }), (0, s.jsx)("option", {
                           value: "resolved",
                           children: m.resolved
@@ -3716,10 +3935,13 @@
                     className: "dbvc-entity-status-badges",
                     children: statusBadges.map(e => (0, s.jsxs)("button", {
                       type: "button",
-                      className: `dbvc-status-badge${ne === e.filter ? " is-active" : ""}`,
+                      className: `dbvc-status-badge${e.filter && ne === e.filter ? " is-active" : ""}`,
                       disabled: 0 === e.count,
-                      "aria-pressed": ne === e.filter,
-                      onClick: () => ie(ne === e.filter ? "all" : e.filter),
+                      "aria-pressed": e.filter ? ne === e.filter : void 0,
+                      onClick: () => {
+                        "duplicates" === e.action ? Dt(!0) : e.filter && ie(ne === e.filter ? "all" : e.filter);
+                      },
+                      "data-status-count": e.id,
                       children: [ (0, s.jsx)("span", {
                         children: e.label
                       }), (0, s.jsx)("strong", {
@@ -3901,6 +4123,17 @@
                       className: "dbvc-actions-tray__panel",
                       children: [ (0, s.jsxs)("div", {
                         className: "dbvc-actions-tray__section",
+                        children: [ (0, s.jsx)("div", {
+                          className: "dbvc-actions-tray__section-heading",
+                          children: (0, s.jsx)("strong", {
+                            children: "Review status"
+                          })
+                        }), (0, s.jsx)(StatusCountBadges, {
+                          counts: canonicalStatusCounts,
+                          includeZero: !0
+                        }) ]
+                      }), (0, s.jsxs)("div", {
+                        className: "dbvc-actions-tray__section",
                         children: [ (0, s.jsxs)("div", {
                           className: "dbvc-actions-tray__section-heading",
                           children: [ (0, s.jsx)("strong", {
@@ -3942,7 +4175,7 @@
                               isBusy: unkeepBusy,
                               children: unkeepBusy ? "Unkeeping…" : "Unkeep selected"
                             }), (0, s.jsx)("p", {
-                              children: "Remove Keep decisions so fields return to Needs Review."
+                              children: "Remove Keep decisions so the fields need review again."
                             }) ]
                           }) ]
                         }) ]
@@ -3965,7 +4198,7 @@
                               onClick: is,
                               disabled: It || !ns,
                               isBusy: It,
-                              children: It ? "Accepting…" : `Accept all new entities (${ss.length})`
+                              children: It ? "Accepting…" : `${statusCountLabels.new_entities_pending} (${pendingNewEntities.length})`
                             }), (0, s.jsx)("p", {
                               children: "Import every pending new post or term with one click."
                             }) ]
@@ -4012,7 +4245,7 @@
                               onClick: Rs,
                               disabled: vt || 0 === snapshotRecapturable && snapshotUntrusted > 0,
                               isBusy: vt,
-                              children: vt ? "Recapturing snapshots…" : snapshotUntrusted > 0 ? `Recapture snapshots (${snapshotUntrusted})` : "Refresh all snapshots"
+                              children: vt ? "Recapturing snapshots…" : snapshotUntrusted > 0 ? `Snapshots need recapture (${snapshotUntrusted})` : "Refresh all snapshots"
                             }), (0, s.jsx)("p", {
                               children: snapshotUntrusted > 0 ? `${snapshotRecapturable} existing ${1 === snapshotRecapturable ? "entity can" : "entities can"} be recaptured now.` : "Refresh current-site baselines for every existing post and term."
                             }) ]
@@ -4034,7 +4267,7 @@
                               className: "dbvc-duplicates-button",
                               onClick: () => Dt(!0),
                               disabled: 0 === _t.count,
-                              children: _t.count > 0 ? `Resolve ${_t.count} duplicate${1 === _t.count ? "" : "s"}` : "No duplicates detected"
+                              children: _t.count > 0 ? `${statusCountLabels.duplicates}: ${_t.count}` : "No duplicate groups"
                             }), (0, s.jsx)("p", {
                               children: _t.count > 0 ? "Launch the duplicate modal to pick a canonical entity before continuing." : "All manifest entries look unique."
                             }) ]
@@ -4047,7 +4280,7 @@
                           children: [ (0, s.jsxs)("div", {
                             className: "dbvc-tools-panel__section-heading",
                             children: [ (0, s.jsx)("strong", {
-                              children: "Meta masking"
+                              children: statusCountLabels.masking_candidates
                             }), (maskLoading || maskApplying) && (0, s.jsxs)("span", {
                               className: "dbvc-mask-progress",
                               children: [ maskLoading ? maskProgress : maskApplyProgress, maskLoading ? "% loaded" : "% applied" ]
@@ -4063,7 +4296,7 @@
                               children: maskApplying ? "Reverting…" : "Undo last masking"
                             }) ]
                           }), maskError && (0, s.jsx)("div", {
-                            className: "notice notice-error",
+                            className: "dbvc-inline-notice dbvc-inline-notice--error",
                             children: (0, s.jsxs)("p", {
                               children: [ "Masking error: ", maskError ]
                             })
@@ -4071,7 +4304,7 @@
                             children: "Loading masking rules…"
                           }) : maskFieldCount > 0 ? (0, s.jsxs)(s.Fragment, {
                             children: [ (0, s.jsxs)("p", {
-                              children: [ "Found ", maskFieldCount, " masked field", 1 === maskFieldCount ? "" : "s", " across ", maskEntityCount, " entit", 1 === maskEntityCount ? "y" : "ies", ". Choose how to handle them." ]
+                              children: [ statusCountLabels.masking_candidates, ": ", canonicalStatusCounts.masking_candidates, " pending of ", maskFieldCount, " configured field", 1 === maskFieldCount ? "" : "s", " across ", maskEntityCount, " entit", 1 === maskEntityCount ? "y" : "ies", "." ]
                             }), t?.SelectControl ? (0, s.jsx)(t.SelectControl, {
                               label: "Bulk action",
                               value: maskBulkAction,
@@ -4152,7 +4385,7 @@
                 }),
 
               Ie && (0, s.jsx)("div", {
-                className: "notice notice-error",
+                className: "dbvc-inline-notice dbvc-inline-notice--error",
                 children: (0, s.jsxs)("p", {
                   children: [ "Failed to load entities: ", Ie ]
                 })
@@ -4178,6 +4411,7 @@
                     entityDetail: ce,
                     resolverInfo: ds?.resolver,
                     resolverDecisionSummary: ps?.resolver_decisions,
+                    statusCounts: ds?.status_counts,
                     decisions: he,
                     onDecisionChange: ys,
                     onBulkDecision: Is,
@@ -4243,7 +4477,7 @@
                   children: [ (0, s.jsx)("h2", {
                     children: "DBVC Proposals encountered an error"
                   }), (0, s.jsxs)("div", {
-                    className: "notice notice-error",
+                    className: "dbvc-inline-notice dbvc-inline-notice--error",
                     children: [ (0, s.jsx)("p", {
                       children: "The interface hit an unexpected error. You can reload this page to try again."
                     }), (0, s.jsx)("p", {
@@ -4256,7 +4490,7 @@
                     }) ]
                   }), this.state.error && (0, s.jsxs)("p", {
                     className: "dbvc-admin-app__error-detail",
-                    children: [ "Error: ", o(this.state.error.message || this.state.error) ]
+                    children: [ "Error: ", formatDisplayValue(this.state.error.message || this.state.error) ]
                   }) ]
                 });
                 return this.props.children;
@@ -4289,6 +4523,10 @@
               return (0, s.jsxs)("div", {
                 className: "dbvc-admin-app__diff-section",
                 id: `dbvc-diff-${t.key}`,
+                "data-component": "field-diff-section",
+                "data-surface": "proposal-diff",
+                "data-slot": "section-row",
+                "data-state": a ? "expanded" : "collapsed",
                 children: [ (0, s.jsxs)("button", {
                   type: "button",
                   className: "dbvc-admin-app__diff-toggle",
@@ -4309,8 +4547,10 @@
                         },
                         children: "Field"
                       }), (0, s.jsx)("th", {
+                        "data-slot": "source-header",
                         children: "Current"
                       }), (0, s.jsx)("th", {
+                        "data-slot": "destination-header",
                         children: "Proposed"
                       }), (0, s.jsx)("th", {
                         style: {
@@ -4322,7 +4562,12 @@
                   }), (0, s.jsx)("tbody", {
                     children: t.items.map(e => {
                       var t;
-                      const a = ((e, t) => {
+                      const sourceValue = Object.prototype.hasOwnProperty.call(e, "source") ? e.source : e.from, destinationValue = Object.prototype.hasOwnProperty.call(e, "destination") ? e.destination : e.to, changeType = e.changeType || (e.is_equal ? "unchanged" : "modified"), dataChangeType = {
+                        added: "addition",
+                        deleted: "deletion",
+                        modified: "modification",
+                        unchanged: "unchanged"
+                      }[changeType] || "modification", rawDownloads = e.render_hint?.raw_downloads || {}, a = ((e, t) => {
                         const s = r(e), n = r(t);
                         if (s === n) return null;
                         if (s.length > 5e3 || n.length > 5e3) return null;
@@ -4343,15 +4588,27 @@
                             after: n.slice(o + 1)
                           }
                         };
-                      })(e.from, e.to), decisionPath = e.apply_path || e.path, canApply = !1 !== e.can_apply && Boolean(decisionPath), d = canApply ? null !== (t = n?.[decisionPath]) && void 0 !== t ? t : "" : "", u = canApply && !!l[decisionPath], m = !!e.is_equal, p = [ "dbvc-diff-row" ];
-                      (isThenable(e.from) || isThenable(e.to)) && logAsyncValue(n?.item?.vf_object_uid || n?.vf_object_uid || "", e.path, isThenable(e.from) ? e.from : e.to);
+                      })(sourceValue, destinationValue), decisionPath = e.apply_path || e.path, canApply = !1 !== e.can_apply && Boolean(decisionPath), d = canApply ? null !== (t = n?.[decisionPath]) && void 0 !== t ? t : "" : "", decisionState = "accept" === d ? "accept-proposed" : "keep" === d ? "keep-current" : "unresolved", u = canApply && !!l[decisionPath], m = "unchanged" === changeType || !!e.is_equal, p = [ "dbvc-diff-row", `is-change-${changeType}` ];
+                      (isThenable(sourceValue) || isThenable(destinationValue)) && logAsyncValue(n?.item?.vf_object_uid || n?.vf_object_uid || "", e.path, isThenable(sourceValue) ? sourceValue : destinationValue);
                       return m ? p.push("is-equal") : canApply ? "accept" === d ? p.push("is-accepted") : "keep" === d ? p.push("is-kept") : p.push("is-unreviewed") : p.push("is-read-only"),
                       (0, s.jsxs)("tr", {
                         className: p.join(" "),
+                        "data-slot": "field-row",
+                        "data-field-key": e.path || "",
+                        "data-change-type": dataChangeType,
+                        "data-decision-state": decisionState,
                         children: [ (0, s.jsx)("td", {
                           children: (0, s.jsxs)("div", {
                             className: "dbvc-field-label",
-                            children: [ o(e.label || e.path), e.path && (0, s.jsx)("div", {
+                            children: [ o(e.label || e.path), (0, s.jsx)("span", {
+                              className: `dbvc-change-type dbvc-change-type--${changeType}`,
+                              children: {
+                                added: "Added",
+                                deleted: "Removed",
+                                modified: "Changed",
+                                unchanged: "Unchanged"
+                              }[changeType] || "Changed"
+                            }), e.path && (0, s.jsx)("div", {
                               className: "dbvc-field-label__key",
                               children: o(e.path)
                             }), (!canApply || decisionPath !== e.path) && (0, s.jsx)("div", {
@@ -4359,10 +4616,24 @@
                               children: canApply ? `Apply unit: ${e.apply_label || decisionPath} (${decisionPath})` : e.apply_label || "Reference only"
                             }) ]
                           })
-                        }), (0, s.jsx)("td", {
-                          children: a && a.old.diff ? c(a.old) : o(e.from)
-                        }), (0, s.jsx)("td", {
-                          children: a && a.new.diff ? c(a.new) : o(e.to)
+                        }), (0, s.jsxs)("td", {
+                          "data-slot": "source-value",
+                          children: [ a && a.old.diff ? c(a.old) : o(sourceValue), e.render_hint?.source_truncated && rawDownloads.current && (0, s.jsx)("div", {
+                            className: "dbvc-diff-raw-link",
+                            children: (0, s.jsx)("a", {
+                              href: rawDownloads.current,
+                              children: "Download full current JSON"
+                            })
+                          }) ]
+                        }), (0, s.jsxs)("td", {
+                          "data-slot": "destination-value",
+                          children: [ a && a.new.diff ? c(a.new) : o(destinationValue), e.render_hint?.destination_truncated && rawDownloads.proposed && (0, s.jsx)("div", {
+                            className: "dbvc-diff-raw-link",
+                            children: (0, s.jsx)("a", {
+                              href: rawDownloads.proposed,
+                              children: "Download full proposed JSON"
+                            })
+                          }) ]
                         }), (0, s.jsxs)("td", {
                           children: [ m ? (0, s.jsx)("em", {
                             children: "No difference"
@@ -4370,6 +4641,8 @@
                             children: e.apply_label || "Reference only"
                           }) : (0, s.jsxs)("div", {
                             className: "dbvc-decision-controls",
+                            "data-slot": "decision-controls",
+                            "data-decision-state": decisionState,
                             children: [ (0, s.jsxs)("div", {
                               className: "dbvc-decision-options",
                               children: [ (0, s.jsxs)("label", {
@@ -4409,7 +4682,7 @@
                             }) ]
                           }) ]
                         }) ]
-                      }, e.path);
+                      }, e.id || e.path);
                     })
                   }) ]
                 }) : (0, s.jsxs)("div", {
@@ -4650,7 +4923,7 @@
                   children: [ r && (0, s.jsx)("p", {
                     children: "Loading resolver rules…"
                   }), d && (0, s.jsx)("div", {
-                    className: "notice notice-error",
+                    className: "dbvc-inline-notice dbvc-inline-notice--error",
                     children: (0, s.jsx)("p", {
                       children: d
                     })
@@ -4938,7 +5211,7 @@
                         rows: 2
                       }) ]
                     }), C && (0, s.jsx)("div", {
-                      className: "notice notice-error",
+                      className: "dbvc-inline-notice dbvc-inline-notice--error",
                       children: (0, s.jsx)("p", {
                         children: C
                       })
@@ -4959,12 +5232,12 @@
                   }), (A.imported > 0 || A.errors.length > 0) && (0, s.jsxs)("div", {
                     className: "dbvc-resolver-import",
                     children: [ A.imported > 0 && (0, s.jsx)("div", {
-                      className: "notice notice-success",
+                      className: "dbvc-inline-notice dbvc-inline-notice--success",
                       children: (0, s.jsxs)("p", {
                         children: [ A.imported, " rule(s) imported successfully." ]
                       })
                     }), A.errors.length > 0 && (0, s.jsxs)("div", {
-                      className: "notice notice-warning",
+                      className: "dbvc-inline-notice dbvc-inline-notice--warning",
                       children: [ (0, s.jsx)("p", {
                         children: "Import completed with warnings:"
                       }), (0, s.jsx)("ul", {

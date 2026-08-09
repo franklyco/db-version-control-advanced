@@ -1,0 +1,31 @@
+# DBVC Content Migration Add-on Facet
+
+Load this facet for Content Migration, Content Collector, Migration Mapper V2, crawl/explorer workflows, migration packages, recovery fixtures, or import-run execution.
+
+## Runtime Boundary
+
+| Record | Boundary |
+|---|---|
+| `addon.content_migration.runtime_guard` | Active loaded add-on workflow; mixed read/write safety |
+| `source.content_collector.explorer` | Retained source reference, not a separately loaded runtime |
+| `source.content_collector.ai` | Retained source reference, not a callable AI provider contract |
+| `source.content_collector.export` | Retained source reference, not a separately loaded export runtime |
+
+The active add-on reuses and extends retained Content Collector concepts. Do not infer that every file under `_source/content-collector/` is independently loaded.
+
+## Safe Progression
+
+1. Confirm the add-on setting, current V2 working state, and target site.
+2. Inspect crawl, mapping, and package artifacts before any import execution.
+3. Review import-run actions and media handling.
+4. Back up the target WordPress data and uploads involved.
+5. Execute only with explicit write authority.
+6. Verify receipts, run-state tables, and rendered content afterward.
+
+## Load Next
+
+- Add-on entry point: [`addons/content-migration/README.md`](../../../addons/content-migration/README.md)
+- Current V2 router: [`MIGRATION_MAPPER_V2_DOC_INDEX.md`](../../../addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md)
+- Working state: [`MIGRATION_MAPPER_V2_WORKING_STATE.md`](../../../addons/content-migration/docs/MIGRATION_MAPPER_V2_WORKING_STATE.md)
+- Runtime bootstrap: [`dbvc-cc-addon-bootstrap.php`](../../../addons/content-migration/bootstrap/dbvc-cc-addon-bootstrap.php)
+- Current record details: [`manifest.json`](../manifest.json)

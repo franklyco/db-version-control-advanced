@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dbvc.local/schemas/agent-capability-manifest.schema.json",
+  "title": "DBVC Agent Capability Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "library_status",
+    "coverage_enforcement",
+    "baseline",
+    "records",
+    "ignored_discovery"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": { "const": "1.0.0" },
+    "library_status": {
+      "enum": ["discovery_pending", "research_in_progress", "review_pending", "current"]
+    },
+    "coverage_enforcement": {
+      "enum": ["advisory", "strict"]
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_scope", "live_runtime_verified"],
+      "properties": {
+        "repository_scope": { "enum": ["current_checkout", "verified_live_checkout"] },
+        "repository_commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "live_runtime_verified": { "type": "boolean" },
+        "live_runtime_notes": { "type": "string" }
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capabilityRecord" }
+    },
+    "ignored_discovery": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["discovery_id", "reason"],
+        "properties": {
+          "discovery_id": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "reviewed_at_commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "sourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "symbol": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "identifier", "discovery_ids"],
+      "properties": {
+        "type": {
+          "enum": ["cli", "rest", "admin", "php", "hook", "ajax", "admin_post", "cron", "filesystem", "database"]
+        },
+        "identifier": { "type": "string", "minLength": 1 },
+        "discovery_ids": { "$ref": "#/$defs/stringArray" },
+        "method": { "type": "string" },
+        "source_ref": { "$ref": "#/$defs/sourceReference" }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "human_reviewed"],
+      "properties": {
+        "classification": {
+          "enum": ["read_only", "filesystem_write", "wordpress_write", "remote_write", "destructive", "mixed", "unknown"]
+        },
+        "human_reviewed": { "type": "boolean" },
+        "dry_run": { "enum": ["yes", "no", "partial", "unknown"] },
+        "idempotency": { "enum": ["yes", "no", "conditional", "unknown"] },
+        "backup_required": { "type": "boolean" },
+        "rollback": { "type": "string" },
+        "warnings": { "$ref": "#/$defs/stringArray" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_commit", "evidence_types", "live_runtime_verified"],
+      "properties": {
+        "repository_commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "verified_date": { "type": "string", "format": "date" },
+        "evidence_types": { "$ref": "#/$defs/stringArray" },
+        "live_runtime_verified": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "capabilityRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "summary",
+        "status",
+        "primary_category",
+        "tags",
+        "aliases",
+        "addon_or_owner",
+        "surfaces",
+        "requirements",
+        "inputs",
+        "outputs",
+        "artifacts",
+        "storage_touched",
+        "settings",
+        "hooks",
+        "safety",
+        "source_refs",
+        "test_refs",
+        "doc_refs",
+        "related",
+        "known_gaps",
+        "verification"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "status": {
+          "enum": ["active", "experimental", "planned", "source_reference", "deprecated", "absent_current_checkout", "unknown_requires_verification"]
+        },
+        "primary_category": {
+          "enum": ["import_export", "cli_automation", "proposal_review", "media_resolver", "identity_entities", "snapshots_backups", "entity_editor", "settings_configuration", "api_extensions", "addon_bricks", "addon_content_migration", "observability", "internal_foundation"]
+        },
+        "tags": { "$ref": "#/$defs/stringArray" },
+        "aliases": { "$ref": "#/$defs/stringArray" },
+        "addon_or_owner": { "type": "string", "minLength": 1 },
+        "runtime_entrypoint": { "type": "string" },
+        "surfaces": { "type": "array", "items": { "$ref": "#/$defs/surface" } },
+        "requirements": { "$ref": "#/$defs/stringArray" },
+        "inputs": { "$ref": "#/$defs/stringArray" },
+        "outputs": { "$ref": "#/$defs/stringArray" },
+        "artifacts": { "$ref": "#/$defs/stringArray" },
+        "storage_touched": { "$ref": "#/$defs/stringArray" },
+        "settings": { "$ref": "#/$defs/stringArray" },
+        "hooks": { "$ref": "#/$defs/stringArray" },
+        "safety": { "$ref": "#/$defs/safety" },
+        "source_refs": { "type": "array", "items": { "$ref": "#/$defs/sourceReference" } },
+        "test_refs": { "$ref": "#/$defs/stringArray" },
+        "doc_refs": { "$ref": "#/$defs/stringArray" },
+        "related": { "$ref": "#/$defs/stringArray" },
+        "known_gaps": { "$ref": "#/$defs/stringArray" },
+        "verification": { "$ref": "#/$defs/verification" }
+      }
+    }
+  }
+}

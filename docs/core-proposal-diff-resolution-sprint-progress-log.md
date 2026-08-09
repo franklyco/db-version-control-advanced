@@ -84,6 +84,271 @@ Next steps:
 
 ## Progress Entries
 
+## 2026-07-27 - Phase 7.1 - Canonical Status Labels and Counters
+
+- Status: Done
+- Phase / sub-phase: Phase 7 - UI Clarity; 7.1 - normalize status labels and counters
+- CPD items: CPD-012
+- Conflict flags observed: CDF-001, CDF-005, CDF-008, CDF-015, CDF-020, CDF-027
+
+Summary:
+1. Proposal Review now uses the same seven plain-language status counts in REST, the proposal list, entity table, drawer, Tools, Apply confirmation, filters, and WP-CLI.
+2. Live QA found and fixed the duplicate filter returning unrelated rows, a blank Duplicate groups option, and a partial build that had removed the Entity Editor and Content Collector bundles.
+3. Legacy count fields still work, all declared admin bundles are restored, and the remaining large-proposal speed and narrow-table limits stay in Phase 7.2.
+
+Dependents affected or updated:
+- Proposal readiness/list/detail REST payloads, status filters, generated Proposal Review assets, masking guidance, README workflow notes, and WP-CLI proposal-list custom fields.
+- Entity Editor and Content Collector V2 compiled assets were restored by full builds; their distinct active-checkout source was preserved.
+- Bricks Portability, Configuration Portability, third-party portability, UID matching, Content Migration, media hydration, masking, and transfer tools were regression-tested without production changes.
+
+Dependents needing more QA:
+- Automated: none open for Phase 7.1; source/live Proposal Diff lanes and both active dependent matrices are green.
+- Manual: repeat the seven-label review on a future proposal containing every status at once, because existing retained proposals covered the labels across several proposal states rather than one combined fixture.
+- Manual: Phase 7.2 must address the measured 14-16 second large-filter requests and horizontal diff/table overflow at 390 px; these were verified but were not caused by the label changes.
+
+Manual QA reference:
+- DBVC area/page: [Main Proposal Review](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export) -> select a proposal -> compare the list, entity badges, drawer, Tools, filter menu, and Apply confirmation.
+- Dependent pages: [Entity Editor](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-entity-editor) and [Bricks Add-on](https://dbvc-codexchanges.local/wp-admin/admin.php?page=addon-dbvc-bricks-addon).
+- CLI parity: `wp dbvc proposals list --fields=id,field_needs_review,meta_needs_review,media_needs_review,resolver_conflicts,masking_candidates,duplicates,new_entities_pending`.
+
+Verification:
+- Source and LocalWP resolved Proposal Diff lanes each passed 103 tests and 963 assertions; both pending lanes reported no tests.
+- The active dependent matrix passed 197 tests and 2,452 assertions across Entity Editor, Bricks, Configuration Portability, third-party portability, UID preservation, and Content Migration.
+- The additional masking, media, transfer, and configuration-export matrix passed 68 tests and 545 assertions.
+- Authenticated REST checks returned HTTP 200 and exact status parity for all seven filters; WP-CLI returned the same seven counts without changing proposal decisions or content.
+- Browser QA passed proposal list, entity table, populated drawer, Tools, Apply confirmation, filter options, Entity Editor, and Bricks Portability with no console errors from these surfaces.
+- Full source and active builds restored every declared entry point. PHP/JavaScript syntax and generated-asset checks passed.
+
+Next steps:
+- Proceed to Phase 7.2 / CPD-013 for proposal/entity pagination, server windowing, filter latency, and narrow table/drawer behavior.
+- Keep CPD-002 in review for its existing resolver-specific connected apply QA.
+- Use full `npm run build` in future rounds so dependent admin entry points are not removed.
+
+## 2026-07-26 - Phase 6.2 - Bounded Proposal Diff Views
+
+- Status: Done
+- Phase / sub-phase: Phase 6 - Diff Review Depth; 6.2 - add first-class raw diff and mode-specific drawer views
+- CPD items: CPD-011
+- Conflict flags observed: CDF-006, CDF-009, CDF-014, CDF-015, CDF-018, CDF-020
+
+Summary:
+1. The entity drawer now switches between Changed, All Fields, and Raw JSON using server-owned view payloads.
+2. All Fields includes supported unchanged fields, while Raw JSON keeps each preview at 20,000 bytes, caps its value-free index at 1,000 rows, and links to the complete downloads.
+3. Canonical decisions and apply units stay unchanged, and live QA found and fixed keyboard focus loss after a mode refresh.
+
+Dependents affected or updated:
+- Proposal entity detail and raw-download REST routes, snapshot context, decision pruning, readiness counts, canonical apply paths, the Proposal Review drawer, and its generated assets.
+- Requests without a `view` parameter keep the legacy full payload shape; Changed, All Fields, and Raw JSON use the new bounded contract.
+- Shared admin styling remains scoped to the raw drawer. Entity Editor, Bricks portability/reference/drift, Configuration Portability, third-party portability, UID matching, and Content Migration were observed through the connected dependent matrix rather than changed.
+
+Dependents needing more QA:
+- Automated: none open for CPD-011; both resolved lanes and the expanded active dependent matrix are green.
+- Manual: use a real deeply nested Bricks proposal and real term/media-backed proposal as future conflict watches for CDF-009 and CDF-020, because the disposable live fixture covered post, meta, and taxonomy data.
+- Manual: the existing sticky proposal-table header can cover rows at 390 px. Keep that verified table issue under Phase 7.2/CDF-015; the Phase 6.2 drawer itself stacked cleanly without horizontal overflow.
+
+Manual QA reference:
+- DBVC area/page: [Main Proposal Review](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export) -> select a proposal with a trusted snapshot -> open an entity -> switch between Changed, All Fields, and Raw JSON.
+
+Verification:
+- Source and LocalWP resolved Proposal Diff lanes each passed 102 tests and 904 assertions; both pending lanes reported no tests.
+- The active dependent matrix passed 191 tests and 2,388 assertions across Entity Editor, Bricks portability/reference/drift/truncation, Configuration Portability, third-party portability, UID preservation, and Content Migration.
+- Authenticated REST QA preserved the legacy payload, returned 4 Changed rows, 27 All Fields rows with 23 unchanged, two 20,000-byte raw previews, a four-row value-free index, and HTTP 200 full downloads.
+- The 1,105-change fixture returned 1,000 displayed rows and 105 omitted rows in both bounded modes while retaining canonical actionable totals and apply paths.
+- Browser QA passed Changed, All Fields, Raw JSON, stable selectors, desktop and 390 px drawer layout, clean console output, initial focus, mode-refresh focus recovery, Escape close, and entity-row focus return.
+- PHP and JavaScript syntax checks and source/active production builds passed. Cleanup removed both posts, the category term, proposal and snapshot directories, and proposal-scoped options with zero residue.
+
+Next steps:
+- Proceed to Phase 7.1 / CPD-012 for canonical status labels and counters.
+- Keep Phase 7.2 `In progress` for proposal/entity pagination, windowing, and the verified narrow sticky-header issue.
+- Keep CPD-002 in its existing review lane for resolver-specific connected apply QA.
+
+## 2026-07-24 - Phase 6.1 - Classified Diff Contract
+
+- Status: Done
+- Phase / sub-phase: Phase 6 - Diff Review Depth; 6.1 - introduce classified diff payloads and stable change IDs
+- CPD items: CPD-010
+- Conflict flags observed: CDF-006, CDF-009, CDF-011, CDF-014, CDF-015, CDF-018, CDF-019, CDF-020, CDF-021
+
+Summary:
+1. Each field difference now arrives with a stable ID and a clear Added, Removed, Changed, or Unchanged label.
+2. Oversized values and long row sets stay bounded, while complete decision paths remain available and reviewers can download the full current or proposed JSON.
+3. The LocalWP API and drawer passed with a disposable trusted snapshot; the full inline raw panels remain the separate Phase 6.2 limit.
+
+Dependents affected or updated:
+- Proposal entity detail/raw REST routes, snapshot comparison, decision pruning, readiness counts, and the generated Proposal Review drawer.
+- Post fields, nested meta, taxonomy sections, masking/ignore behavior, and canonical importer apply paths.
+- Shared admin assets used beside Entity Editor, Bricks portability/drift/reference tools, Configuration Portability, third-party portability, UID matching, and Content Migration.
+
+Dependents needing more QA:
+- Automated: Phase 6.2 must cover explicit `changed`, `all`, and bounded `raw` drawer modes, including a live response over the 1,000-row display limit.
+- Manual: after Phase 6.2, recheck drawer focus/keyboard behavior and raw-mode layout at desktop and narrow widths.
+- Manual conflict watch: use a deeply nested Bricks proposal and a term/taxonomy proposal to inspect labels and sections, even though their focused dependent tests are green.
+
+Manual QA reference:
+- DBVC area/page: [Main Proposal Review](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export) -> select a proposal with a trusted snapshot -> select an entity to open its diff drawer.
+
+Verification:
+- Source and LocalWP resolved Proposal Diff lanes each passed 100 tests and 829 assertions; both pending lanes reported no tests.
+- The expanded active dependent matrix passed 191 tests and 2,388 assertions, including Entity Editor, Bricks portability/reference/drift/truncation, Configuration Portability, third-party portability, UID preservation, and Content Migration.
+- Connected REST returned a trusted six-row diff with one Added, one Removed, four Changed, stable IDs, complete apply paths, and bounded 6.2/6.3 KB values; both raw downloads returned HTTP 200 attachment JSON.
+- Browser QA rendered Added, Removed, and Changed row classes plus both raw links with no warning or error. PHP/JavaScript syntax, source/active production builds, and generated bundle checks passed.
+- The disposable page, proposal, snapshot, option entries, and directories were removed; a direct residue check returned zero posts and no proposal or snapshot directory.
+
+Next steps:
+- Implement Phase 6.2 / CPD-011 as explicit `changed`, `all`, and bounded `raw` drawer modes.
+- Keep Phase 7.2 `In progress` for proposal pagination controls and large-entity server pagination/windowing.
+- Keep CPD-002 in its existing review lane for resolver-specific connected apply QA.
+
+## 2026-07-24 - Phase 5A.1-5A.2 - Verified Runtime Follow-Ups
+
+- Status: Done
+- Phase / sub-phase: Phase 5A - Verified Runtime Follow-Ups; 5A.1 - preserve notice ownership; 5A.2 - bound proposal inventory readiness work
+- CPD items: CPD-013 partial; CDF-027 resolution
+- Conflict flags observed: CDF-001, CDF-004, CDF-005, CDF-008, CDF-009, CDF-015, CDF-018, CDF-027
+
+Summary:
+1. Proposal Review now loads a bounded summary list first instead of calculating every proposal's full readiness before showing any rows.
+2. Selecting one proposal runs its authoritative checks, keeps Apply disabled while they load, and WP-CLI can use `--id` for the same bounded lookup.
+3. DBVC status messages no longer use site-wide WordPress notice classes, so the Admin Notices tool cannot change React-owned nodes.
+
+Dependents affected or updated:
+- Proposal list REST parameters and pagination metadata, selected-proposal readiness, Apply guards, list badges, refresh behavior, and `wp dbvc proposals list`.
+- Duplicate, new-entity, snapshot, field, masking, resolver, transfer, and Bricks summaries that feed readiness.
+- Shared Proposal Review status blocks, including upload, masking, transfer, and Bricks states compiled into the same admin app.
+
+Dependents needing more QA:
+- Automated: add server-side pagination/windowing coverage for the large entity endpoint/table and performance smoke fixtures with more than 20 proposals and more than 1,000 entities.
+- Automated: measure unfiltered multi-page WP-CLI behavior and retain exact gate parity after decision, snapshot, duplicate, masking, and resolver updates.
+- Manual: force a Proposal REST error and retry after future Admin Notices or DBVC status-component changes; the selector collision is removed, but this remains the direct regression scenario.
+- Manual: once pagination controls exist, check selection, refresh, filters, keyboard navigation, Entity Editor styling, and a large Bricks proposal across pages.
+
+Manual QA reference:
+- DBVC area/page: [Main Proposal Review](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export); WP-CLI, `wp dbvc proposals list --id=<proposal-id>`.
+
+Verification:
+- Profiling identified full gates as the dominant list cost, with additional masking, field, snapshot, resolver, new-entity, duplicate, and Bricks work repeated across all 11 proposals.
+- The default authenticated list improved from 193.22 seconds to 11.18 seconds and returned deferred readiness; filtered full readiness took 14.85 seconds, `/readiness` took 13.64 seconds, and their complete gate payloads matched.
+- A live bounded WP-CLI lookup returned the same five blocker categories for the 755-entity proposal. Its entity endpoint remained 1.5 MB and 15.75 seconds, which keeps entity scaling open under Phase 7.2.
+- Browser QA captured `Select to check`, then `Checking...` with Apply disabled, then the loaded blocker state. With the site's notice manager enabled, the DBVC root had zero `.notice` nodes, no injected controls, and no console warning, error, or `removeChild` failure.
+- After disposable QA cleanup, Proposal Review returned to the original 11 rows and the fixture was absent.
+
+Next steps:
+- Continue Phase 7.2 later with visible proposal pagination controls and server-side entity pagination/windowing.
+- Treat the unfiltered all-proposal CLI path as intentionally complete but potentially expensive until the remaining scaling slice lands.
+- Proceed now to Phase 6.1, recorded in the entry above.
+
+## 2026-07-24 - Phase 5.4 - Declined New Entity Resolution
+
+- Status: Done
+- Phase / sub-phase: Phase 5 - Apply Semantics; 5.4 - treat declined new entities as resolved skip states
+- CPD items: CPD-009
+- Conflict flags observed: CDF-004, CDF-010, CDF-012, CDF-013, CDF-016, CDF-027
+
+Summary:
+1. New posts and terms now stay clearly accepted, declined, or pending across review, apply, and refresh.
+2. A decline resolves the proposal, removes that entity from masking work, skips its import with a clear reason, and survives automatic decision cleanup so forced reapply cannot bring it back.
+3. Connected LocalWP checks passed and the disposable data was removed; the slow proposal list and the Admin Notices page conflict remain assigned to later UI work.
+
+Dependents affected or updated:
+- Proposal summaries, entity list/detail responses, readiness counts, masking candidates, pending-only bulk accept, apply results, logs, and the generated admin bundle.
+- The shared post/term importer, `dbvc_force_reapply_new_posts`, auto-clear behavior, and the local archived-decline option `dbvc_proposal_declined_new_entities`.
+- REST and WP-CLI now receive structured reviewer-skip details and decline totals.
+- Official Collections code was not changed; its promotion path still has no direct caller or automated test in this checkout.
+
+Dependents needing more QA:
+- Automated: add a direct Official Collections promotion case and a real WP-CLI apply command case for a disposable declined post and term.
+- Automated conflict watch: the 173-test dependent set still exposes one existing Content Migration order leak; the failing method and its complete 32-test class pass in isolation.
+- Manual: after Phase 7.2 improves list speed, load the declined proposal in Proposal Review and confirm its Ready state, entity badges, and skip history without a fetch timeout.
+- Manual conflict watch: retest Proposal Review error/retry behavior with the site's Admin Notices manager enabled after CDF-027 is resolved.
+
+Manual QA reference:
+- DBVC area/page: [Main Proposal Review](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export); WP-CLI, `wp dbvc proposals list` and `wp dbvc proposals apply <id>`.
+
+Verification:
+- Source and LocalWP resolved Proposal Diff lanes: 97 tests and 697 assertions passed; both pending lanes reported no tests.
+- Active dependent matrix: 173 tests completed with the known Content Migration order-dependent failure; the affected method passed alone with 21 assertions and its class passed 32 tests and 568 assertions.
+- Static/build checks: PHP and JavaScript syntax, both production builds, and `git diff --check` passed. Repository-wide JavaScript lint was stopped after eight minutes without completing because it processes the large generated/transpiled bundles.
+- Connected LocalWP QA: one new post and one new term were declined, readiness showed zero pending and zero masking blockers, apply returned two reviewer skips, archived declines survived auto-clear, forced reapply remained safe, and cleanup reported no residue.
+- Authenticated REST returned HTTP 200 with the same two resolved declines, but the list required 193.22 seconds. Browser QA fixed the formatter crash that hid fetch errors and separately identified the Admin Notices DOM ownership conflict under CDF-027.
+
+Next steps:
+- Implement Phase 6.1 / CPD-010 classified diff payloads and stable change IDs.
+- Keep CPD-002 in review for its remaining resolver-specific connected QA.
+- Retain proposal-list latency under Phase 7.2 and the Admin Notices conflict under CDF-027.
+
+## 2026-07-24 - Phase 5.3 - Canonical Duplicate Detection and Cleanup
+
+- Status: Done
+- Phase / sub-phase: Phase 5 - Apply Semantics; 5.3 - unify duplicate detection across upload, list, UI gate, REST, CLI, and cleanup
+- CPD items: CPD-008
+- Conflict flags observed: CDF-003, CDF-004, CDF-006, CDF-011, CDF-013, CDF-020
+
+Summary:
+1. Proposal upload, list, readiness, duplicate reports, UI cleanup, and WP-CLI now use one typed duplicate inventory.
+2. Stable group and entry IDs keep post and term duplicates separate, and cleanup updates files and the manifest as one recoverable operation.
+3. Connected QA cleared disposable post and term duplicates without residue; real site proposals were listed but not changed.
+
+Dependents affected or updated:
+- Proposal REST/list/readiness responses, ZIP upload rejection, duplicate modal actions, the generated admin bundle, and WP-CLI cleanup now share canonical IDs and counts.
+- Term duplicates without a UID use their term ID, while future typed entities can use UID, generic entity ID, or scoped slug fallback.
+- Cleanup preserves shared payload paths, updates manifest totals, and refreshes CLI readiness before `--fail-on-pending`.
+
+Dependents needing more QA:
+- Automated: inject a manifest-commit failure to exercise file rollback, and add a future Bricks/artifact duplicate fixture.
+- Automated conflict watch: the 173-test dependent set passes in normal order; one Content Migration rollback test failed only in randomized order and passed alone, so its test-state cleanup remains a separate watch point.
+- Manual: review one real duplicate proposal and choose its canonical files before running `wp dbvc proposals list --cleanup-duplicates`; current live proposals include groups with 10-18 duplicates.
+
+Manual QA reference:
+- DBVC area/page: [Main Proposal Review](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export), select a proposal with duplicates and open its duplicate cleanup dialog.
+
+Verification:
+- Source and LocalWP resolved Proposal Diff lanes: 94 tests and 626 assertions passed.
+- Focused duplicate contract: 4 tests and 53 assertions passed in source and LocalWP.
+- Active dependent matrix: 173 tests and 2,301 assertions passed in normal order; the randomized order observation was isolated and reproduced as test-order dependent.
+- Connected LocalWP QA verified three list/report/readiness groups, stable IDs, shared-UID post/term separation, term-ID fallback, legacy ambiguity blocking, specific and CLI-style bulk cleanup, manifest totals, no residue, ZIP rejection, and full fixture removal.
+- Read-only live `wp dbvc proposals list --fields=id,duplicate_count,readiness` completed. Destructive CLI cleanup was not run against existing site proposals.
+
+Next steps:
+- Implement Phase 5.4 / CPD-009 so accepted and declined new posts and terms are both resolved states, with declined entities recorded as reviewer skips.
+- Keep Phase 4 / CPD-002 in review until its resolver-specific connected browser and CLI checks are closed.
+
+## 2026-07-24 - Phase 5.2 - Term Masking Parity
+
+- Status: Done
+- Phase / sub-phase: Phase 5 - Apply Semantics; 5.2 - wire term masking overrides into term and term-meta import
+- CPD items: CPD-007
+- Conflict flags observed: CDF-002, CDF-014, CDF-016, CDF-018, CDF-020, CDF-021
+
+Summary:
+1. Term imports now honor the same masking suppressions and replacement values as post meta.
+2. Nested term values merge safely, and the import result and term log show how many fields were suppressed or replaced.
+3. Ignore and revert already worked at review time and now have explicit term coverage alongside the completed import path.
+
+Dependents affected or updated:
+- The proposal term importer now receives the existing per-entity masking bundle and uses the shared safe meta planner.
+- Proposal import responses add `term_masking` counters, and term-only logging records the exact affected paths when its setting is enabled.
+- Masking option names, stores, REST request/response shapes, manifest schema, and public hook signatures did not change.
+
+Dependents needing more QA:
+- Automated: Official Collections still has no direct term-promotion test in this checkout.
+- Automated conflict watch: Entity Editor, Bricks portability/reference mapping, configuration portability, third-party portability, UID preservation, and migration tests are green.
+- Manual: recheck one term proposal in Proposal Review after changing the configured masking defaults or term-import logging setting.
+- Environment: the saved `CodexDev` account was absent from the current LocalWP database, so connected QA used another current administrator without changing site authentication.
+
+Manual QA reference:
+- DBVC area/page: [Main Proposal Review](https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export), open a term entity, then review its masking fields and Meta section.
+
+Verification:
+- Source and LocalWP resolved Proposal Diff lanes: 91 tests and 578 assertions passed.
+- Source full suite excluding the one remaining pending contract: 226 tests and 1,343 assertions passed.
+- Active randomized dependent matrix with seed `20260724`: 173 tests and 2,301 assertions passed.
+- Pending lane: exactly 1 expected failure and 2 assertions remain for the Phase 5.4 declined-new summary state.
+- Connected LocalWP QA reviewed two nested term fields, restored them to pending with Revert, reapplied them, preserved `local-token`, stored `REDACTED`, verified 1/1/1 entity/override/suppression counters and term logging, and removed the disposable proposal and term.
+
+Next steps:
+- Implement Phase 5.3 / CPD-008 by consolidating post and term duplicate detection across upload, reporting, readiness, REST, CLI, and cleanup.
+- Keep Phase 4 / CPD-002 in review until its resolver-specific connected browser and CLI checks are closed.
+
 ## 2026-07-22 - Phase 5.1 - Canonical Apply Units and Safe Nested Merge
 
 - Status: Done
@@ -425,7 +690,7 @@ Next steps:
 
 ## 2026-07-19 - Phase 3.3 - LocalWP Integration QA
 
-- Status: In review
+- Status: Done
 - Phase / sub-phase: Phase 3 - Snapshot Truth; 3.3 - connected LocalWP integration and dependent QA
 - CPD items: CPD-001, CPD-003, CPD-004, CPD-005, CPD-013
 - Conflict flags observed: CDF-001, CDF-004, CDF-005, CDF-006, CDF-008, CDF-010, CDF-011, CDF-015, CDF-017, CDF-019, CDF-020
@@ -433,7 +698,7 @@ Next steps:
 Summary:
 1. Phases 0 through 3 were merged into the active LocalWP plugin while preserving its newer Entity Editor, Bricks, media hydration, and transfer-packet work.
 2. Live QA fixed WP-CLI command loading, restored the documented `proposals list` name, and made the shared readiness permission check work correctly for trusted local CLI commands.
-3. The copied build and connected dependents are stable against the tracked baselines, but the full proposal list takes about 92 seconds on this site's 11 proposals and authenticated browser QA is still pending.
+3. The copied build and connected dependents remain stable; the pending browser check and proposal-list follow-up were completed on 2026-07-24, while unfinished entity scaling moved to Phase 7.2.
 
 Dependents affected or updated:
 - Core WP-CLI command registration and the target checkout's media hydration command now register only after their classes load.
@@ -445,8 +710,8 @@ Dependents affected or updated:
 Dependents needing more QA:
 - Automated: add bounded performance coverage for proposal list/readiness work, then test `wp dbvc proposals apply` and `--recapture-snapshots` against a disposable proposal.
 - Automated conflict watch: the two existing Bricks language/disabled-mode failures and three existing Content Collector/settings failures remain outside this slice; the four planned Phase 5 Proposal Diff failures remain the active core backlog.
-- Manual: authenticate in the in-app browser and verify readiness badges, snapshot counts, entity drawer states, disabled Apply reasons, and no console errors.
-- Manual: smoke a disposable proposal through snapshot recapture and blocked Apply, then check Entity Editor, Bricks portability, Official Collections, and activity logs for connected regressions.
+- Manual: authenticated readiness badges, snapshot state, disabled Apply reasons, classified drawer states, and console behavior are now verified. Resolver-specific four-action apply QA remains with Phase 4 / CPD-002.
+- Manual: Entity Editor and Bricks portability remain conflict-watch surfaces for later UI/build slices; their expanded automated dependent matrix is green.
 
 Manual QA reference:
 - DBVC area/page: Main Proposal Review and Snapshots & Diff, `https://dbvc-codexchanges.local/wp-admin/admin.php?page=dbvc-export`; Entity Editor, `/wp-admin/admin.php?page=dbvc-entity-editor`; Bricks, `/wp-admin/admin.php?page=addon-dbvc-bricks-addon`.
@@ -457,12 +722,11 @@ Verification:
 - Dependent checks: Entity Editor/third-party portability passed 18 tests and 142 assertions; transfer intake passed 1 test and 8 assertions; Bricks ran 214 tests and 2,046 assertions with its two existing failures.
 - Full LocalWP suite: 563 tests and 5,603 assertions with nine tracked failures: two Bricks, three unrelated Content Collector/settings, and four planned Phase 5 Proposal Diff failures.
 - Live checks: the site returned HTTP 200, unauthenticated Proposal REST returned 401, plugin version 1.8.9 was active, the small proposal readiness contract returned `ready`, and the 11-row CLI inventory returned coherent blocker categories in about 92 seconds.
-- Manual checks run: browser QA could not start because the in-app browser had no attached tab; a user-authenticated browser session is still required and no proposal was applied or recaptured during this read-only round.
+- Manual checks run: closure update on 2026-07-24 verified bounded list loading, deferred/checking/loaded readiness, disabled Apply reasons, trusted snapshot detail, classified diff rows, notice ownership, and a clean browser console.
 
 Next steps:
-- Open and authenticate the LocalWP browser, then complete the Proposal Review visual/console checklist without applying a non-disposable proposal.
-- Continue with Phase 4.1-4.2 resolver-decision consumption and action verification.
-- Carry the measured proposal-list latency into Phase 7.2 alongside entity-table pagination/windowing work.
+- Continue Phase 4.1-4.2 resolver-decision consumption and action verification under CPD-002.
+- Complete the remaining Phase 7.2 admin pagination controls and entity-table server pagination/windowing.
 
 ## 2026-07-19 - Phase 3.1-3.2 - Snapshot Truth
 
@@ -610,5 +874,6 @@ Next steps:
 ## Current Log State
 
 - Created: 2026-07-19
-- Current sprint status: Phase 5.1 and CPD-006 are done; 87 resolved Proposal Diff tests are green while the two planned Phase 5.2/5.4 contracts remain visible in the pending lane. Phase 3.3, Phase 4, and CPD-002 remain in review for their connected resolver-specific QA.
-- Next expected entry: Phase 5.2 / CPD-007 term masking parity, with CPD-002 review closure tracked separately.
+- Current sprint status: Phase 7.1 / CPD-012 is done. Source and LocalWP each pass 103 resolved Proposal Diff tests and 963 assertions, the pending lane is empty, and the active dependent matrices pass 197 tests and 2,452 assertions plus 68 tests and 545 assertions.
+- Open tracked work: Phase 4 / CPD-002 remains in review for resolver-specific connected apply QA; Phase 7.2 / CPD-013 is in progress for admin pagination controls, large-entity server pagination/windowing, measured large-filter latency, and narrow table/drawer behavior.
+- Next expected entry: Phase 7.2 / CPD-013 proposal and entity list scaling.

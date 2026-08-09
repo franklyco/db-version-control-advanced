@@ -13,15 +13,20 @@ final class DBVC_Admin_App
     private const RESOLVER_DECISIONS_OPTION = 'dbvc_resolver_decisions';
     private const DEFAULT_DIFF_IGNORE_PATHS = 'meta.dbvc_post_history.*';
     private const NEW_ENTITY_DECISION_KEY = DBVC_NEW_ENTITY_DECISION_KEY;
-    private const DUPLICATE_BULK_CONFIRM_PHRASE = 'DELETE';
+    public const DUPLICATE_BULK_CONFIRM_PHRASE = 'DELETE';
     private const MASK_SUPPRESS_OPTION = 'dbvc_masked_field_suppressions';
     private const MASK_OVERRIDES_OPTION = 'dbvc_mask_overrides';
     private const SNAPSHOT_STATES_OPTION = 'dbvc_proposal_snapshot_states';
+    private const DECLINED_NEW_ENTITIES_OPTION = 'dbvc_proposal_declined_new_entities';
     private const MASKING_CHUNK_DEFAULT = 10;
     private const PROPOSAL_ZIP_MAX_ENTRIES_DEFAULT = 10000;
     private const PROPOSAL_ZIP_MAX_ENTRY_BYTES_DEFAULT = 268435456;
     private const PROPOSAL_ZIP_MAX_TOTAL_BYTES_DEFAULT = 1073741824;
     private const PROPOSAL_ZIP_MAX_COMPRESSION_RATIO_DEFAULT = 200.0;
+    private const DIFF_INLINE_VALUE_BYTES = 5000;
+    private const DIFF_MAX_RENDERED_ROWS = 1000;
+    private const DIFF_RAW_PREVIEW_BYTES = 20000;
+    private const DIFF_RAW_INDEX_ROWS = 1000;
 
     private static $diff_ignore_patterns = null;
     private static $term_field_roots = [
@@ -129,6 +134,26 @@ final class DBVC_Admin_App
                 'methods'             => \WP_REST_Server::READABLE,
                 'callback'            => [self::class, 'get_proposals'],
                 'permission_callback' => [self::class, 'can_manage'],
+                'args'                => [
+                    'proposal_id'      => [
+                        'required'          => false,
+                        'sanitize_callback' => 'sanitize_text_field',
+                    ],
+                    'page'             => [
+                        'required'          => false,
+                        'default'           => 1,
+                        'sanitize_callback' => 'absint',
+                    ],
+                    'per_page'         => [
+                        'required'          => false,
+                        'default'           => 20,
+                        'sanitize_callback' => 'absint',
+                    ],
+                    'include_readiness'=> [
+                        'required' => false,
+                        'default'  => false,
+                    ],
+                ],
             ]
         );
 
@@ -273,7 +298,26 @@ final class DBVC_Admin_App
                 'args'                => [
                     'proposal_id'   => ['required' => true],
                     'vf_object_uid' => ['required' => true],
+                    'view'          => [
+                        'required'          => false,
+                        'sanitize_callback' => 'sanitize_key',
+                        'validate_callback' => static function ($value): bool {
+                            return $value === null
+                                || $value === ''
+                                || in_array($value, ['changed', 'all', 'raw'], true);
+                        },
+                    ],
                 ],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/raw/(?P<side>current|proposed)',
+            [
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => [self::class, 'download_proposal_entity_raw'],
+                'permission_callback' => [self::class, 'can_manage'],
             ]
         );
 
@@ -722,7 +766,11 @@ final class DBVC_Admin_App
     }
 
     /**
-     * REST: list proposals (placeholder).
+     * REST: list proposal inventory.
+     *
+     * Full apply readiness is intentionally opt-in because it reads every
+     * proposal entity, masking field, and snapshot. The selected proposal
+     * receives authoritative readiness from its detail endpoints.
      *
      * @param \WP_REST_Request $request
      * @return \WP_REST_Response
@@ -730,7 +778,25 @@ final class DBVC_Admin_App
     public static function get_proposals(\WP_REST_Request $request)
     {
         $backups = class_exists('DBVC_Backup_Manager') ? DBVC_Backup_Manager::list_backups() : [];
-        $items   = [];
+        $proposal_filter = self::sanitize_proposal_id($request->get_param('proposal_id'));
+        if ($proposal_filter !== '') {
+            $backups = array_values(array_filter($backups, static function ($backup) use ($proposal_filter) {
+                return isset($backup['name']) && (string) $backup['name'] === $proposal_filter;
+            }));
+        }
+
+        $page = max(1, absint($request->get_param('page') ?: 1));
+        $per_page = absint($request->get_param('per_page') ?: 20);
+        $per_page = min(100, max(1, $per_page));
+        $total_items = count($backups);
+        $total_pages = $total_items > 0 ? (int) ceil($total_items / $per_page) : 0;
+        if ($total_pages > 0 && $page > $total_pages) {
+            $page = $total_pages;
+        }
+        $backups = array_slice($backups, ($page - 1) * $per_page, $per_page);
+
+        $include_readiness = self::sanitize_boolean($request->get_param('include_readiness'));
+        $items = [];
         $decision_store = self::get_decision_store();
 
         foreach ($backups as $backup) {
@@ -765,13 +831,18 @@ final class DBVC_Admin_App
             $decision_summary = self::summarize_proposal_decisions($proposal_decisions);
             $transfer_context = self::build_transfer_packet_context($manifest);
 
-            $duplicate_summary = self::find_duplicate_manifest_entities($manifest);
+            $duplicate_summary = self::build_manifest_duplicate_report($manifest);
 
-            $new_entity_summary = self::summarize_manifest_new_entities($manifest, $proposal_decisions);
+            $new_entity_summary = self::summarize_manifest_new_entities($manifest, $proposal_decisions, $proposal_id);
             $bricks_reference_summary = self::build_manifest_bricks_reference_summary($manifest, $proposal_id, false);
-            $apply_gates = self::build_proposal_apply_gates($proposal_id, $manifest, [
-                'resolver_result' => $resolver_result,
-            ]);
+            $apply_gates = null;
+            if ($include_readiness) {
+                $apply_gates = self::build_proposal_apply_gates($proposal_id, $manifest, [
+                    'resolver_result'  => $resolver_result,
+                    'duplicate_report' => $duplicate_summary,
+                    'new_entities'     => $new_entity_summary,
+                ]);
+            }
 
             $items[] = [
                 'id'             => $proposal_id,
@@ -797,12 +868,24 @@ final class DBVC_Admin_App
                 'warnings'        => $transfer_context['warnings'],
                 'bricks_references' => $bricks_reference_summary,
                 'snapshot_capture'=> $manifest['snapshot_capture'] ?? null,
+                'readiness_state' => $include_readiness ? 'complete' : 'deferred',
                 'apply_gates'     => $apply_gates,
+                'status_counts'   => is_array($apply_gates) ? ($apply_gates['status_counts'] ?? null) : null,
             ];
         }
 
         return new \WP_REST_Response([
-            'items' => $items,
+            'items'      => $items,
+            'pagination' => [
+                'page'        => $page,
+                'per_page'    => $per_page,
+                'total_items' => $total_items,
+                'total_pages' => $total_pages,
+            ],
+            'readiness'  => [
+                'included' => $include_readiness,
+                'mode'     => $include_readiness ? 'full' : 'deferred',
+            ],
         ]);
     }
 
@@ -1034,6 +1117,7 @@ final class DBVC_Admin_App
             unset($decision_store[$proposal_id]);
             update_option(self::DECISIONS_OPTION, $decision_store, false);
         }
+        self::clear_declined_new_proposal($proposal_id);
 
         $resolver_store = get_option(self::RESOLVER_DECISIONS_OPTION, []);
         if (is_array($resolver_store) && isset($resolver_store[$proposal_id])) {
@@ -1205,13 +1289,26 @@ final class DBVC_Admin_App
 
         $manifest = $validation['manifest'];
 
-        $duplicates = self::find_duplicate_manifest_entities($manifest);
+        $duplicates = self::build_manifest_duplicate_report($manifest);
         if (! empty($duplicates)) {
             self::delete_directory_recursive($temp_dir);
             $messages = array_map(static function ($dup) {
-                return sprintf('Post ID %d has multiple payloads (paths: %s)', $dup['post_id'], implode(', ', $dup['paths']));
+                $label = (string) ($dup['vf_object_uid'] ?? $dup['duplicate_id'] ?? __('unknown entity', 'dbvc'));
+                $paths = array_filter(array_column((array) ($dup['entries'] ?? []), 'path'));
+                return sprintf(
+                    __('%1$s entity %2$s has multiple payloads (paths: %3$s)', 'dbvc'),
+                    (string) ($dup['entity_type'] ?? 'manifest'),
+                    $label,
+                    implode(', ', $paths)
+                );
             }, $duplicates);
-            return new \WP_Error('dbvc_manifest_duplicates', implode("\n", $messages), ['status' => 400]);
+            return new \WP_Error('dbvc_manifest_duplicates', implode("\n", $messages), [
+                'status'     => 400,
+                'duplicates' => [
+                    'count' => count($duplicates),
+                    'items' => $duplicates,
+                ],
+            ]);
         }
 
         $bundle_root = dirname($manifest_path);
@@ -1246,6 +1343,7 @@ final class DBVC_Admin_App
 
         wp_mkdir_p($target_path);
         self::clear_snapshot_state_entry($proposal_id);
+        self::clear_declined_new_proposal($proposal_id);
         $bundle_root = dirname($manifest_path);
         if (class_exists('DBVC_Sync_Posts') && method_exists('DBVC_Sync_Posts', 'recursive_copy')) {
             DBVC_Sync_Posts::recursive_copy($bundle_root, $target_path);
@@ -1379,6 +1477,32 @@ final class DBVC_Admin_App
         $bricks_reference_entities = isset($bricks_reference_summary['entities']) && is_array($bricks_reference_summary['entities'])
             ? $bricks_reference_summary['entities']
             : [];
+        $duplicate_groups = self::detect_manifest_duplicate_groups($manifest);
+        $duplicate_group_keys = [];
+        foreach ($duplicate_groups as $duplicate_group) {
+            if (! empty($duplicate_group['_identity_key'])) {
+                $duplicate_group_keys[(string) $duplicate_group['_identity_key']] = 1;
+            }
+        }
+        $new_entity_summary = self::summarize_manifest_new_entities($manifest, $proposal_decisions, $proposal_id);
+        $masking_readiness = self::summarize_masking_apply_readiness(
+            $proposal_id,
+            $manifest,
+            $proposal_decisions
+        );
+        $field_decision_readiness = self::summarize_field_decision_apply_readiness(
+            $proposal_id,
+            $manifest,
+            $proposal_decisions,
+            $masking_readiness['pending_paths']
+        );
+        $apply_gates = self::build_proposal_apply_gates($proposal_id, $manifest, [
+            'resolver_result'  => $resolver_result,
+            'duplicate_report' => $duplicate_groups,
+            'new_entities'     => $new_entity_summary,
+            'masking'          => $masking_readiness,
+            'field_decisions'  => $field_decision_readiness,
+        ]);
 
         $items = [];
 
@@ -1386,7 +1510,15 @@ final class DBVC_Admin_App
             $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
             if ($item_type !== 'post') {
                 if ($item_type === 'term') {
-                    $term_entry = self::format_term_manifest_entity($proposal_id, $item, $status_filter, $proposal_decisions);
+                    $term_entry = self::format_term_manifest_entity(
+                        $proposal_id,
+                        $item,
+                        $status_filter,
+                        $proposal_decisions,
+                        $field_decision_readiness,
+                        $masking_readiness,
+                        $duplicate_group_keys
+                    );
                     if ($term_entry) {
                         $items[] = $term_entry;
                     }
@@ -1446,34 +1578,45 @@ final class DBVC_Admin_App
             $identity    = self::describe_entity_identity($item);
             $is_new_entity = $identity['is_new'];
             $identity_match = $identity['match_source'];
+            $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
+                ? $proposal_decisions[$vf_object_uid]
+                : [];
+            $decision_summary = self::summarize_entity_decisions($entity_decisions);
+            $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $entity_decisions);
+            $new_entity_state = $is_new_entity
+                ? self::normalize_new_entity_state($new_entity_decision)
+                : '';
 
             $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
             $snapshot_status = isset($diff_counts['snapshot_status']) && is_array($diff_counts['snapshot_status'])
                 ? $diff_counts['snapshot_status']
                 : self::get_entity_snapshot_status($proposal_id, $item, $identity);
             $diff_state = self::evaluate_entity_diff_state($item, $vf_object_uid, $diff_counts, $identity);
-            $diff_needs_review = $diff_state['needs_review'];
-            $media_needs_review = ($summary['unresolved'] + $summary['conflicts']) > 0;
-            $needs_review = $media_needs_review || $diff_needs_review;
+            $status_counts = self::build_entity_status_counts(
+                $field_decision_readiness['by_entity'][$vf_object_uid] ?? [],
+                $masking_readiness['by_entity'][$vf_object_uid] ?? [],
+                $attachments,
+                self::count_duplicate_groups_for_item($item, $duplicate_group_keys),
+                $is_new_entity && $new_entity_state === 'pending_new'
+            );
+            $media_needs_review = $status_counts['media_needs_review'] > 0;
+            $needs_review = self::entity_status_requires_review(
+                $status_counts,
+                $snapshot_status,
+                $diff_state
+            );
+            $diff_state['needs_review'] = $needs_review;
 
-            if ($status_filter === 'needs_review' && ! $needs_review) {
-                continue;
-            }
-            if ($status_filter === 'needs_review_media' && ! $media_needs_review) {
-                continue;
-            }
-            if ($status_filter === 'resolved' && $needs_review) {
-                continue;
-            }
-            if ($status_filter === 'new_entities' && ! $is_new_entity) {
+            if (! self::entity_matches_status_filter(
+                $status_filter,
+                $status_counts,
+                $needs_review,
+                $is_new_entity,
+                $snapshot_status
+            )) {
                 continue;
             }
 
-            $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
-                ? $proposal_decisions[$vf_object_uid]
-                : [];
-            $decision_summary = self::summarize_entity_decisions($entity_decisions);
-            $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $entity_decisions);
             $entity_bricks_references = isset($bricks_reference_entities[$vf_object_uid]) && is_array($bricks_reference_entities[$vf_object_uid])
                 ? $bricks_reference_entities[$vf_object_uid]
                 : self::empty_bricks_reference_summary(false);
@@ -1497,6 +1640,7 @@ final class DBVC_Admin_App
                 'meta_diff_count' => $diff_counts['meta'] ?? 0,
                 'tax_diff_count'  => $diff_counts['tax'] ?? 0,
                 'media_needs_review' => $media_needs_review,
+                'status_counts'  => $status_counts,
                 'overall_status' => $needs_review ? 'needs_review' : 'resolved',
                 'resolver'      => [
                     'summary'     => $summary,
@@ -1509,6 +1653,7 @@ final class DBVC_Admin_App
                 'local_uid'          => $identity['local_uid'] ?? '',
                 'uid_mismatch'       => $identity['uid_mismatch'] ?? false,
                 'new_entity_decision'=> $new_entity_decision,
+                'new_entity_state'   => $new_entity_state,
                 'decision_summary' => $decision_summary,
                 'bricks_references' => $entity_bricks_references,
             ];
@@ -1528,9 +1673,8 @@ final class DBVC_Admin_App
             'preflight'          => $transfer_context['preflight'],
             'warnings'           => $transfer_context['warnings'],
             'bricks_references'  => $bricks_reference_summary,
-            'apply_gates'        => self::build_proposal_apply_gates($proposal_id, $manifest, [
-                'resolver_result' => $resolver_result,
-            ]),
+            'status_counts'      => $apply_gates['status_counts'],
+            'apply_gates'        => $apply_gates,
         ]);
     }
 
@@ -1560,8 +1704,15 @@ final class DBVC_Admin_App
     public static function cleanup_proposal_duplicates(\WP_REST_Request $request)
     {
         $proposal_id = sanitize_text_field($request->get_param('proposal_id'));
-        $params = $request->get_json_params();
+        $body_params = $request->get_body_params();
+        $json_params = $request->get_json_params();
+        $params = array_merge(
+            is_array($body_params) ? $body_params : [],
+            is_array($json_params) ? $json_params : []
+        );
+        $duplicate_id = isset($params['duplicate_id']) ? sanitize_text_field($params['duplicate_id']) : '';
         $vf_object_uid = isset($params['vf_object_uid']) ? sanitize_text_field($params['vf_object_uid']) : '';
+        $keep_entry_id = isset($params['keep_entry_id']) ? sanitize_text_field($params['keep_entry_id']) : '';
         $keep_path     = isset($params['keep_path']) ? ltrim((string) $params['keep_path'], '/\\') : '';
         $preferred_format = isset($params['preferred_format']) ? sanitize_key($params['preferred_format']) : '';
         $apply_all = ! empty($params['apply_all']);
@@ -1590,8 +1741,15 @@ final class DBVC_Admin_App
                     ['status' => 400]
                 );
             }
-        } elseif ($vf_object_uid === '' || $keep_path === '') {
-            return new \WP_Error('dbvc_invalid_request', __('Specify the entity UID and canonical file path.', 'dbvc'), ['status' => 400]);
+        } elseif (
+            ($duplicate_id === '' && $vf_object_uid === '')
+            || ($keep_entry_id === '' && $keep_path === '')
+        ) {
+            return new \WP_Error(
+                'dbvc_invalid_request',
+                __('Specify the duplicate group and canonical manifest entry.', 'dbvc'),
+                ['status' => 400]
+            );
         }
 
         $manifest = self::read_manifest_by_id($proposal_id);
@@ -1600,64 +1758,54 @@ final class DBVC_Admin_App
         }
 
         $items  = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
-        $groups = [];
-
-        foreach ($items as $index => $item) {
-            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
-            if (! in_array($item_type, ['post', 'term'], true)) {
-                continue;
-            }
-
-            $entity_uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
-            if ($entity_uid === '') {
-                continue;
-            }
-            if (! $apply_all && $entity_uid !== $vf_object_uid) {
-                continue;
-            }
-
-            $path = isset($item['path']) ? ltrim((string) $item['path'], '/\\') : '';
-            if ($path === '') {
-                continue;
-            }
-
-            if (! isset($groups[$entity_uid])) {
-                $groups[$entity_uid] = [
-                    'vf_object_uid' => $entity_uid,
-                    'entries'       => [],
-                ];
-            }
-
-            $groups[$entity_uid]['entries'][$index] = [
-                'index' => $index,
-                'path'  => $path,
-                'item'  => $item,
-            ];
-        }
+        $groups = self::detect_manifest_duplicate_groups($manifest);
 
         if ($apply_all) {
-            $groups = array_filter($groups, static function ($group) {
-                return isset($group['entries']) && count($group['entries']) > 1;
-            });
             if (empty($groups)) {
                 return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were found for this proposal.', 'dbvc'), ['status' => 400]);
             }
         } else {
-            if (! isset($groups[$vf_object_uid]) || count($groups[$vf_object_uid]['entries']) <= 1) {
-                return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were found for this entity.', 'dbvc'), ['status' => 400]);
-            }
-            $keep_found = false;
-            foreach ($groups[$vf_object_uid]['entries'] as $entry) {
-                if ($entry['path'] === $keep_path) {
-                    $keep_found = true;
-                    break;
+            if ($duplicate_id !== '') {
+                $groups = array_values(array_filter($groups, static function ($group) use ($duplicate_id) {
+                    return ($group['duplicate_id'] ?? '') === $duplicate_id;
+                }));
+            } else {
+                $groups = array_values(array_filter($groups, static function ($group) use ($vf_object_uid) {
+                    return ($group['vf_object_uid'] ?? '') === $vf_object_uid;
+                }));
+                if (count($groups) > 1) {
+                    return new \WP_Error(
+                        'dbvc_duplicate_identity_ambiguous',
+                        __('This identity matches more than one duplicate group. Refresh the report and use its duplicate ID.', 'dbvc'),
+                        [
+                            'status'        => 409,
+                            'duplicate_ids' => array_values(array_filter(array_column($groups, 'duplicate_id'))),
+                        ]
+                    );
                 }
             }
-            if (! $keep_found) {
-                return new \WP_Error('dbvc_keep_missing', __('Canonical file path was not found among duplicates.', 'dbvc'), ['status' => 400]);
+
+            if (count($groups) !== 1) {
+                return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were found for this entity.', 'dbvc'), ['status' => 400]);
             }
+
+            $matching_entries = array_values(array_filter($groups[0]['entries'], static function ($entry) use ($keep_entry_id, $keep_path) {
+                if ($keep_entry_id !== '') {
+                    return ($entry['entry_id'] ?? '') === $keep_entry_id;
+                }
+                return ($entry['path'] ?? '') === $keep_path;
+            }));
+            if (empty($matching_entries)) {
+                return new \WP_Error('dbvc_keep_missing', __('Canonical manifest entry was not found among duplicates.', 'dbvc'), ['status' => 400]);
+            }
+            if (count($matching_entries) > 1) {
+                return new \WP_Error(
+                    'dbvc_keep_ambiguous',
+                    __('More than one duplicate entry uses that path. Refresh the report and use its entry ID.', 'dbvc'),
+                    ['status' => 409]
+                );
+            }
+            $keep_entry_id = (string) $matching_entries[0]['entry_id'];
         }
 
         if (! class_exists('DBVC_Backup_Manager')) {
@@ -1670,44 +1818,95 @@ final class DBVC_Admin_App
             return new \WP_Error('dbvc_missing_proposal_dir', __('Proposal directory not found.', 'dbvc'), ['status' => 500]);
         }
 
-        foreach ($groups as $uid => $group) {
+        $remove_indexes = [];
+        $kept_entries = [];
+        foreach ($groups as $group) {
             $entries = array_values($group['entries']);
-            $canonical_path = $apply_all
-                ? self::determine_duplicate_keep_path($entries, $preferred_format)
-                : $keep_path;
-
-            if (! $canonical_path) {
-                $canonical_path = $entries[0]['path'] ?? null;
+            $canonical_entry = $apply_all
+                ? self::determine_duplicate_keep_entry($entries, $preferred_format)
+                : null;
+            if (! $apply_all) {
+                foreach ($entries as $entry) {
+                    if (($entry['entry_id'] ?? '') === $keep_entry_id) {
+                        $canonical_entry = $entry;
+                        break;
+                    }
+                }
             }
-            if (! $canonical_path) {
+            if (! is_array($canonical_entry)) {
                 continue;
             }
 
             foreach ($entries as $entry) {
-                if ($entry['path'] === $canonical_path) {
+                if (($entry['entry_id'] ?? '') === ($canonical_entry['entry_id'] ?? '')) {
                     continue;
                 }
-                $absolute = self::resolve_manifest_entry_path($base_real, $entry['path']);
-                if ($absolute && file_exists($absolute) && strpos($absolute, $base_real) === 0) {
-                    @unlink($absolute);
+                if (isset($entry['_manifest_index'])) {
+                    $remove_indexes[(int) $entry['_manifest_index']] = true;
                 }
-                unset($items[$entry['index']]);
+            }
+            $kept_entries[] = [
+                'duplicate_id' => $group['duplicate_id'] ?? '',
+                'entry_id'     => $canonical_entry['entry_id'] ?? '',
+                'path'         => $canonical_entry['path'] ?? '',
+            ];
+        }
+
+        if (empty($remove_indexes)) {
+            return new \WP_Error('dbvc_no_duplicates', __('No duplicate entries were selected for removal.', 'dbvc'), ['status' => 400]);
+        }
+
+        $removed_entries = [];
+        $remaining_items = [];
+        foreach ($items as $index => $item) {
+            if (isset($remove_indexes[(int) $index])) {
+                $removed_entries[] = $item;
+            } else {
+                $remaining_items[] = $item;
             }
         }
 
-        $manifest['items'] = array_values($items);
+        $remaining_paths = [];
+        foreach ($remaining_items as $item) {
+            $path = isset($item['path']) ? ltrim((string) $item['path'], '/\\') : '';
+            if ($path !== '') {
+                $remaining_paths[$path] = true;
+            }
+        }
 
-        $manifest_path = trailingslashit($base_real) . DBVC_Backup_Manager::MANIFEST_FILENAME;
-        file_put_contents(
-            $manifest_path,
-            wp_json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        $paths_to_remove = [];
+        foreach ($removed_entries as $item) {
+            $path = isset($item['path']) ? ltrim((string) $item['path'], '/\\') : '';
+            if ($path !== '' && ! isset($remaining_paths[$path])) {
+                $paths_to_remove[$path] = true;
+            }
+        }
+
+        $manifest['items'] = array_values($remaining_items);
+        if (! isset($manifest['totals']) || ! is_array($manifest['totals'])) {
+            $manifest['totals'] = [];
+        }
+        $manifest['totals']['files'] = count($manifest['items']);
+
+        $transaction = self::commit_duplicate_cleanup_transaction(
+            $base_real,
+            $manifest,
+            array_keys($paths_to_remove)
         );
+        if (is_wp_error($transaction)) {
+            return $transaction;
+        }
 
         $updated_report = self::build_manifest_duplicate_report($manifest);
 
         return new \WP_REST_Response([
             'proposal_id' => $proposal_id,
+            'count'       => count($updated_report),
             'items'       => $updated_report,
+            'removed'     => count($removed_entries),
+            'removed_files' => (int) ($transaction['removed_files'] ?? 0),
+            'kept'        => $kept_entries,
+            'warnings'    => $transaction['warnings'] ?? [],
         ]);
     }
 
@@ -1800,7 +1999,6 @@ final class DBVC_Admin_App
         $override_store = self::get_mask_override_store();
         $proposal_suppress = self::normalize_mask_entity_store($suppress_store[$proposal_id] ?? []);
         $proposal_overrides = self::normalize_mask_entity_store($override_store[$proposal_id] ?? []);
-
         $summary = [
             'ignore'     => 0,
             'auto_accept'=> 0,
@@ -2102,6 +2300,11 @@ final class DBVC_Admin_App
     {
         $proposal_id   = sanitize_text_field($request->get_param('proposal_id'));
         $vf_object_uid = sanitize_text_field($request->get_param('vf_object_uid'));
+        $requested_view = sanitize_key((string) $request->get_param('view'));
+        $view_mode = in_array($requested_view, ['changed', 'all', 'raw'], true)
+            ? $requested_view
+            : 'changed';
+        $legacy_payloads = $requested_view === '';
 
         $manifest = self::read_manifest_by_id($proposal_id);
         if (! $manifest) {
@@ -2146,20 +2349,60 @@ final class DBVC_Admin_App
             }
         }
 
-        $diff_summary = ! empty($snapshot_status['trusted']) && ! empty($current)
+        $raw_base = rest_url(
+            'dbvc/v1/proposals/'
+            . rawurlencode($proposal_id)
+            . '/entities/'
+            . rawurlencode($vf_object_uid)
+            . '/raw/'
+        );
+        $raw_downloads = [
+            'current'  => ! empty($snapshot_status['trusted']) ? $raw_base . 'current' : null,
+            'proposed' => $raw_base . 'proposed',
+        ];
+
+        $canonical_diff_summary = ! empty($snapshot_status['trusted']) && ! empty($current)
             ? array_merge(self::compare_snapshots($current, $proposed_data), [
                 'available' => true,
                 'reason'    => null,
             ])
-            : [
-                'changes'   => [],
-                'total'     => 0,
+            : array_merge(self::empty_diff_summary(), [
                 'available' => false,
                 'reason'    => $snapshot_state === 'not_required' ? 'new_entity' : 'snapshot_' . $snapshot_state,
-            ];
-        $diff_paths = [];
-        if (! empty($diff_summary['changes'])) {
-            foreach ($diff_summary['changes'] as $change) {
+            ]);
+        $diff_summary = $canonical_diff_summary;
+        if (
+            $view_mode === 'all'
+            && ! empty($canonical_diff_summary['available'])
+        ) {
+            $diff_summary = array_merge(
+                self::compare_snapshots($current, $proposed_data, ['include_unchanged' => true]),
+                [
+                    'available' => true,
+                    'reason'    => null,
+                ]
+            );
+        } elseif ($view_mode === 'raw') {
+            $raw_apply_paths = isset($diff_summary['apply_paths']) && is_array($diff_summary['apply_paths'])
+                ? $diff_summary['apply_paths']
+                : [];
+            $diff_summary['changes'] = [];
+            $diff_summary['displayed_total'] = 0;
+            $diff_summary['omitted_total'] = (int) ($diff_summary['total'] ?? 0);
+            $diff_summary['truncated'] = $diff_summary['omitted_total'] > 0;
+            $diff_summary['apply_paths_total'] = count($raw_apply_paths);
+            $diff_summary['apply_paths'] = array_slice($raw_apply_paths, 0, self::DIFF_RAW_INDEX_ROWS);
+            $diff_summary['apply_paths_omitted'] = max(
+                0,
+                $diff_summary['apply_paths_total'] - count($diff_summary['apply_paths'])
+            );
+        }
+        $diff_summary['raw_downloads'] = $raw_downloads;
+        $diff_paths = isset($canonical_diff_summary['apply_paths']) && is_array($canonical_diff_summary['apply_paths'])
+            ? $canonical_diff_summary['apply_paths']
+            : [];
+        if (empty($diff_paths) && ! empty($canonical_diff_summary['changes'])) {
+            foreach ($canonical_diff_summary['changes'] as $change) {
                 $apply_path = ! empty($change['can_apply']) && isset($change['apply_path'])
                     ? (string) $change['apply_path']
                     : '';
@@ -2177,35 +2420,83 @@ final class DBVC_Admin_App
         }
         $meta_changes = 0;
         $tax_changes  = 0;
-        foreach ($diff_summary['changes'] as $change) {
-            $section = $change['section'] ?? '';
-            if ($section === 'meta') {
-                $meta_changes++;
-            } elseif ($section === 'tax') {
-                $tax_changes++;
+        if (
+            isset($canonical_diff_summary['section_counts'])
+            && is_array($canonical_diff_summary['section_counts'])
+        ) {
+            $meta_changes = (int) ($canonical_diff_summary['section_counts']['meta'] ?? 0);
+            $tax_changes = (int) ($canonical_diff_summary['section_counts']['tax'] ?? 0);
+        } else {
+            foreach ($canonical_diff_summary['changes'] as $change) {
+                $section = $change['section'] ?? '';
+                if ($section === 'meta') {
+                    $meta_changes++;
+                } elseif ($section === 'tax') {
+                    $tax_changes++;
+                }
             }
         }
         $diff_counts = [
-            'total'           => isset($diff_summary['actionable_total']) ? (int) $diff_summary['actionable_total'] : 0,
-            'display_total'   => isset($diff_summary['total']) ? (int) $diff_summary['total'] : 0,
+            'total'           => isset($canonical_diff_summary['actionable_total'])
+                ? (int) $canonical_diff_summary['actionable_total']
+                : 0,
+            'display_total'   => isset($canonical_diff_summary['total'])
+                ? (int) $canonical_diff_summary['total']
+                : 0,
             'meta'            => $meta_changes,
             'tax'             => $tax_changes,
-            'diff_available'  => ! empty($diff_summary['available']),
+            'diff_available'  => ! empty($canonical_diff_summary['available']),
             'snapshot_state'  => $snapshot_state,
             'snapshot_status' => $snapshot_status,
         ];
         $diff_state   = self::evaluate_entity_diff_state($entity, $vf_object_uid, $diff_counts, $identity);
         $decisions    = self::get_entity_decisions($proposal_id, $vf_object_uid);
+        foreach ($diff_summary['changes'] as &$change) {
+            $decision_path = ! empty($change['can_apply']) && ! empty($change['apply_path'])
+                ? (string) $change['apply_path']
+                : '';
+            $change['decision'] = $decision_path !== '' && isset($decisions[$decision_path])
+                ? $decisions[$decision_path]
+                : null;
+            if (! empty($change['render_hint']['truncated'])) {
+                $change['render_hint']['raw_downloads'] = $raw_downloads;
+            }
+        }
+        unset($change);
+        $raw_view = $view_mode === 'raw'
+            ? self::build_raw_diff_view(
+                $current,
+                $proposed_data,
+                ! empty($snapshot_status['trusted']) && ! empty($current),
+                $canonical_diff_summary,
+                $raw_downloads,
+                $canonical_diff_summary['reason'] ?? null,
+                $decisions
+            )
+            : null;
         $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $decisions);
+        $new_entity_state = ! empty($identity['is_new'])
+            ? self::normalize_new_entity_state($new_entity_decision)
+            : '';
+        if (! empty($identity['is_new'])) {
+            $diff_state['needs_review'] = $new_entity_state === 'pending_new';
+        }
 
         return new \WP_REST_Response([
             'proposal_id'   => $proposal_id,
             'vf_object_uid' => $vf_object_uid,
             'item'          => $entity,
             'diff'          => $diff_summary,
-            'current'       => $current,
+            'view'          => [
+                'mode'                     => $view_mode,
+                'available_modes'          => ['changed', 'all', 'raw'],
+                'legacy_payloads_included' => $legacy_payloads,
+            ],
+            'raw_view'      => $raw_view,
+            'current'       => $legacy_payloads ? $current : self::build_entity_view_context($current),
             'current_source'=> $current_source,
-            'proposed'      => $proposed_data,
+            'proposed'      => $legacy_payloads ? $proposed_data : self::build_entity_view_context($proposed_data),
+            'raw_downloads' => $raw_downloads,
             'snapshot_state'=> $snapshot_state,
             'snapshot_status'=> $snapshot_status,
             'diff_state'    => $diff_state,
@@ -2214,7 +2505,86 @@ final class DBVC_Admin_App
             'is_new_entity'     => $identity['is_new'],
             'identity_match'    => $identity['match_source'],
             'new_entity_decision'=> $new_entity_decision,
+            'new_entity_state'   => $new_entity_state,
         ]);
+    }
+
+    /**
+     * REST: download one unbounded side of an entity comparison as JSON.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function download_proposal_entity_raw(\WP_REST_Request $request)
+    {
+        $proposal_id = self::sanitize_proposal_id($request->get_param('proposal_id'));
+        $vf_object_uid = sanitize_text_field($request->get_param('vf_object_uid'));
+        $side = sanitize_key($request->get_param('side'));
+        if ($proposal_id === '' || $vf_object_uid === '' || ! in_array($side, ['current', 'proposed'], true)) {
+            return new \WP_Error(
+                'dbvc_invalid_raw_diff_request',
+                __('A proposal, entity, and valid diff side are required.', 'dbvc'),
+                ['status' => 400]
+            );
+        }
+
+        $manifest = self::read_manifest_by_id($proposal_id);
+        if (! $manifest || empty($manifest['items']) || ! is_array($manifest['items'])) {
+            return new \WP_Error(
+                'dbvc_manifest_missing',
+                __('Proposal manifest could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $entity = null;
+        foreach ($manifest['items'] as $item) {
+            if (is_array($item) && self::get_manifest_item_uid($item) === $vf_object_uid) {
+                $entity = $item;
+                break;
+            }
+        }
+        if (! $entity) {
+            return new \WP_Error(
+                'dbvc_entity_missing',
+                __('Proposal entity could not be found.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        if ($side === 'proposed') {
+            $path = isset($entity['path']) ? (string) $entity['path'] : '';
+            $payload = $path !== '' ? self::read_entity_payload($proposal_id, $path) : null;
+        } else {
+            $item_type = isset($entity['item_type']) ? (string) $entity['item_type'] : 'post';
+            $identity = $item_type === 'term'
+                ? self::describe_term_identity($entity)
+                : self::describe_entity_identity($entity);
+            $snapshot_status = self::get_entity_snapshot_status($proposal_id, $entity, $identity);
+            if (empty($snapshot_status['trusted']) || ! class_exists('DBVC_Snapshot_Manager')) {
+                return new \WP_Error(
+                    'dbvc_snapshot_untrusted',
+                    __('A trusted current-site snapshot is not available for this entity.', 'dbvc'),
+                    ['status' => 409]
+                );
+            }
+            $payload = DBVC_Snapshot_Manager::read_snapshot($proposal_id, $vf_object_uid);
+        }
+
+        if (! is_array($payload)) {
+            return new \WP_Error(
+                'dbvc_raw_diff_missing',
+                __('The requested raw diff payload could not be read.', 'dbvc'),
+                ['status' => 404]
+            );
+        }
+
+        $filename = sanitize_file_name($proposal_id . '-' . $vf_object_uid . '-' . $side . '.json');
+        $response = new \WP_REST_Response($payload);
+        $response->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+        $response->header('X-Content-Type-Options', 'nosniff');
+
+        return $response;
     }
 
     /**
@@ -4711,7 +5081,9 @@ final class DBVC_Admin_App
         $blocking = [];
         $warnings = [];
 
-        $duplicate_report = self::build_manifest_duplicate_report($manifest);
+        $duplicate_report = isset($options['duplicate_report']) && is_array($options['duplicate_report'])
+            ? $options['duplicate_report']
+            : self::build_manifest_duplicate_report($manifest);
         $duplicate_count = count($duplicate_report);
         if ($duplicate_count > 0) {
             $blocking[] = self::format_apply_gate_issue(
@@ -4729,7 +5101,9 @@ final class DBVC_Admin_App
             );
         }
 
-        $new_entities = self::summarize_manifest_new_entities($manifest, $proposal_decisions);
+        $new_entities = isset($options['new_entities']) && is_array($options['new_entities'])
+            ? $options['new_entities']
+            : self::summarize_manifest_new_entities($manifest, $proposal_decisions, $proposal_id);
         $new_entity_pending = (int) ($new_entities['pending'] ?? 0);
         if ($new_entity_pending > 0) {
             $blocking[] = self::format_apply_gate_issue(
@@ -4764,7 +5138,9 @@ final class DBVC_Admin_App
             );
         }
 
-        $masking = self::summarize_masking_apply_readiness($proposal_id, $manifest, $proposal_decisions);
+        $masking = isset($options['masking']) && is_array($options['masking'])
+            ? $options['masking']
+            : self::summarize_masking_apply_readiness($proposal_id, $manifest, $proposal_decisions);
         if ($masking['pending'] > 0) {
             $blocking[] = self::format_apply_gate_issue(
                 'masking',
@@ -4781,12 +5157,14 @@ final class DBVC_Admin_App
             );
         }
 
-        $field_decisions = self::summarize_field_decision_apply_readiness(
-            $proposal_id,
-            $manifest,
-            $proposal_decisions,
-            $masking['pending_paths']
-        );
+        $field_decisions = isset($options['field_decisions']) && is_array($options['field_decisions'])
+            ? $options['field_decisions']
+            : self::summarize_field_decision_apply_readiness(
+                $proposal_id,
+                $manifest,
+                $proposal_decisions,
+                $masking['pending_paths']
+            );
         if ($field_decisions['pending'] > 0) {
             $blocking[] = self::format_apply_gate_issue(
                 'field_decisions',
@@ -4878,10 +5256,19 @@ final class DBVC_Admin_App
             ];
         }
 
+        $status_counts = self::build_canonical_status_counts(
+            $field_decisions,
+            $resolver,
+            $masking,
+            $duplicate_count,
+            $new_entity_pending
+        );
+
         return [
             'ready'           => empty($blocking),
             'blocking'        => array_values($blocking),
             'warnings'        => array_values($warnings),
+            'status_counts'    => $status_counts,
             'counts'          => [
                 'duplicates'     => [
                     'groups' => $duplicate_count,
@@ -4893,7 +5280,11 @@ final class DBVC_Admin_App
                     'pending'  => $masking['pending'],
                 ],
                 'new_entities'   => $new_entities,
-                'field_decisions'=> $field_decisions,
+                'field_decisions'=> [
+                    'total'    => (int) ($field_decisions['total'] ?? 0),
+                    'reviewed' => (int) ($field_decisions['reviewed'] ?? 0),
+                    'pending'  => (int) ($field_decisions['pending'] ?? 0),
+                ],
                 'snapshots'      => $snapshots,
                 'unsupported_domains' => $unsupported_domains,
                 'hashes'         => [
@@ -4943,6 +5334,7 @@ final class DBVC_Admin_App
             : [];
         $total = max(count($attachments), (int) ($metrics['detected'] ?? 0));
         $pending = 0;
+        $conflicts = 0;
         $resolved_by_decision = 0;
 
         foreach ($attachments as $resolution) {
@@ -4970,11 +5362,17 @@ final class DBVC_Admin_App
                 $resolved_by_decision++;
             } else {
                 $pending++;
+                if (in_array($status, ['conflict', 'decision_failed'], true)) {
+                    $conflicts++;
+                }
             }
         }
 
         if (empty($attachments)) {
             $pending = max(0, (int) ($metrics['unresolved'] ?? 0));
+            $conflicts = is_array($result) && isset($result['conflicts']) && is_array($result['conflicts'])
+                ? count($result['conflicts'])
+                : 0;
         }
 
         $manifest_media_total = isset($manifest['totals']['media_items'])
@@ -4988,6 +5386,7 @@ final class DBVC_Admin_App
         return [
             'total'                => $total,
             'pending'              => $pending,
+            'conflicts'            => min($pending, $conflicts),
             'resolved_by_decision' => $resolved_by_decision,
             'resolver_available'   => ! $resolution_failed,
         ];
@@ -5024,6 +5423,7 @@ final class DBVC_Admin_App
         $pending = 0;
         $reviewed = 0;
         $pending_paths = [];
+        $by_entity = [];
 
         foreach ($fields as $field) {
             if (! is_array($field)) {
@@ -5034,16 +5434,26 @@ final class DBVC_Admin_App
             if ($vf_object_uid === '' || $path === '') {
                 continue;
             }
+            if (! isset($by_entity[$vf_object_uid])) {
+                $by_entity[$vf_object_uid] = [
+                    'total'    => 0,
+                    'reviewed' => 0,
+                    'pending'  => 0,
+                ];
+            }
+            $by_entity[$vf_object_uid]['total']++;
 
             $entity_decisions = isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])
                 ? $proposal_decisions[$vf_object_uid]
                 : [];
             if (self::decision_covers_apply_path($path, $entity_decisions)) {
                 $reviewed++;
+                $by_entity[$vf_object_uid]['reviewed']++;
                 continue;
             }
 
             $pending++;
+            $by_entity[$vf_object_uid]['pending']++;
             if (! isset($pending_paths[$vf_object_uid])) {
                 $pending_paths[$vf_object_uid] = [];
             }
@@ -5055,6 +5465,7 @@ final class DBVC_Admin_App
             'reviewed'      => $reviewed,
             'pending'       => $pending,
             'pending_paths' => $pending_paths,
+            'by_entity'     => $by_entity,
         ];
     }
 
@@ -5068,6 +5479,8 @@ final class DBVC_Admin_App
         $total = 0;
         $reviewed = 0;
         $pending = 0;
+        $pending_by_section = [];
+        $by_entity = [];
 
         foreach ($items as $item) {
             if (! is_array($item)) {
@@ -5092,25 +5505,192 @@ final class DBVC_Admin_App
             $entity_decisions = isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])
                 ? $proposal_decisions[$vf_object_uid]
                 : [];
+            if (! isset($by_entity[$vf_object_uid])) {
+                $by_entity[$vf_object_uid] = [
+                    'total'              => 0,
+                    'reviewed'           => 0,
+                    'pending'            => 0,
+                    'pending_by_section' => [],
+                ];
+            }
 
             foreach (self::resolve_entity_diff_paths($proposal_id, $vf_object_uid, $item) as $path) {
+                $section = self::determine_section($path);
                 $total++;
+                $by_entity[$vf_object_uid]['total']++;
                 if (self::decision_covers_apply_path($path, $entity_decisions)) {
                     $reviewed++;
+                    $by_entity[$vf_object_uid]['reviewed']++;
                     continue;
                 }
                 if (self::path_is_pending_masking_review($path, $masking_pending_paths[$vf_object_uid] ?? [])) {
                     continue;
                 }
                 $pending++;
+                $pending_by_section[$section] = (int) ($pending_by_section[$section] ?? 0) + 1;
+                $by_entity[$vf_object_uid]['pending']++;
+                $by_entity[$vf_object_uid]['pending_by_section'][$section] =
+                    (int) ($by_entity[$vf_object_uid]['pending_by_section'][$section] ?? 0) + 1;
             }
         }
 
         return [
-            'total'    => $total,
-            'reviewed' => $reviewed,
-            'pending'  => $pending,
+            'total'              => $total,
+            'reviewed'           => $reviewed,
+            'pending'            => $pending,
+            'pending_by_section' => $pending_by_section,
+            'by_entity'          => $by_entity,
         ];
+    }
+
+    /**
+     * Canonical Proposal Diff status counters.
+     *
+     * Legacy readiness groups remain available under counts. These scalar
+     * counters give REST and UI consumers one stable vocabulary without
+     * changing resolver, masking, or importer behavior.
+     */
+    private static function build_canonical_status_counts(
+        array $field_decisions,
+        array $resolver,
+        array $masking,
+        int $duplicate_count,
+        int $new_entity_pending
+    ): array {
+        return [
+            'field_needs_review'   => max(0, (int) ($field_decisions['pending'] ?? 0)),
+            'meta_needs_review'    => max(0, (int) ($field_decisions['pending_by_section']['meta'] ?? 0)),
+            'media_needs_review'   => max(0, (int) ($resolver['pending'] ?? 0)),
+            'resolver_conflicts'   => max(0, (int) ($resolver['conflicts'] ?? 0)),
+            'masking_candidates'   => max(0, (int) ($masking['pending'] ?? 0)),
+            'duplicates'           => max(0, $duplicate_count),
+            'new_entities_pending' => max(0, $new_entity_pending),
+        ];
+    }
+
+    /**
+     * Build the same canonical counters for one entity table/drawer row.
+     */
+    private static function build_entity_status_counts(
+        array $field_decisions,
+        array $masking,
+        array $attachments,
+        int $duplicate_count,
+        bool $new_entity_pending
+    ): array {
+        $media_needs_review = 0;
+        $resolver_conflicts = 0;
+        $resolved_statuses = ['reused', 'mapped', 'downloaded', 'skipped', 'resolved'];
+
+        foreach ($attachments as $attachment) {
+            if (! is_array($attachment)) {
+                $media_needs_review++;
+                continue;
+            }
+
+            $status = sanitize_key((string) ($attachment['status'] ?? 'unknown'));
+            if (in_array($status, $resolved_statuses, true)) {
+                continue;
+            }
+            if (self::resolver_decision_is_actionable($attachment['decision'] ?? null)) {
+                continue;
+            }
+
+            $media_needs_review++;
+            if (in_array($status, ['conflict', 'decision_failed'], true)) {
+                $resolver_conflicts++;
+            }
+        }
+
+        return self::build_canonical_status_counts(
+            $field_decisions,
+            [
+                'pending'   => $media_needs_review,
+                'conflicts' => $resolver_conflicts,
+            ],
+            $masking,
+            $duplicate_count,
+            $new_entity_pending ? 1 : 0
+        );
+    }
+
+    private static function count_duplicate_groups_for_item(array $item, array $duplicate_group_keys): int
+    {
+        $identity = self::resolve_manifest_duplicate_identity($item);
+        if ($identity === null || empty($identity['group_key'])) {
+            return 0;
+        }
+
+        return isset($duplicate_group_keys[(string) $identity['group_key']])
+            ? (int) $duplicate_group_keys[(string) $identity['group_key']]
+            : 0;
+    }
+
+    private static function entity_status_requires_review(
+        array $status_counts,
+        array $snapshot_status,
+        array $diff_state
+    ): bool {
+        foreach ([
+            'field_needs_review',
+            'media_needs_review',
+            'masking_candidates',
+            'duplicates',
+            'new_entities_pending',
+        ] as $key) {
+            if ((int) ($status_counts[$key] ?? 0) > 0) {
+                return true;
+            }
+        }
+
+        if (! empty($snapshot_status['required']) && empty($snapshot_status['trusted'])) {
+            return true;
+        }
+
+        return in_array(
+            (string) ($diff_state['reason'] ?? ''),
+            ['missing_local_hash', 'missing_expected_hash'],
+            true
+        );
+    }
+
+    private static function entity_matches_status_filter(
+        string $status_filter,
+        array $status_counts,
+        bool $needs_review,
+        bool $is_new_entity,
+        array $snapshot_status
+    ): bool {
+        switch ($status_filter) {
+            case '':
+            case 'all':
+                return true;
+            case 'needs_review':
+                return $needs_review;
+            case 'resolved':
+                return ! $needs_review;
+            case 'field_needs_review':
+                return (int) ($status_counts['field_needs_review'] ?? 0) > 0;
+            case 'meta_needs_review':
+                return (int) ($status_counts['meta_needs_review'] ?? 0) > 0;
+            case 'needs_review_media':
+            case 'media_needs_review':
+                return (int) ($status_counts['media_needs_review'] ?? 0) > 0;
+            case 'resolver_conflicts':
+                return (int) ($status_counts['resolver_conflicts'] ?? 0) > 0;
+            case 'masking_candidates':
+                return (int) ($status_counts['masking_candidates'] ?? 0) > 0;
+            case 'duplicates':
+                return (int) ($status_counts['duplicates'] ?? 0) > 0;
+            case 'new_entities_pending':
+                return (int) ($status_counts['new_entities_pending'] ?? 0) > 0;
+            case 'new_entities':
+                return $is_new_entity;
+            case 'snapshot_needs_review':
+                return ! empty($snapshot_status['required']) && empty($snapshot_status['trusted']);
+            default:
+                return true;
+        }
     }
 
     private static function summarize_snapshot_apply_readiness(string $proposal_id, array $manifest): array
@@ -5531,67 +6111,46 @@ final class DBVC_Admin_App
         return in_array($value, [true, 1, '1', 'true', 'on'], true);
     }
 
-    private static function find_duplicate_manifest_entities(array $manifest): array
-    {
-        $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
-        $seen  = [];
-        $duplicates = [];
-
-        foreach ($items as $item) {
-            if (($item['item_type'] ?? '') !== 'post') {
-                continue;
-            }
-            $entity_uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
-            $path    = isset($item['path']) ? $item['path'] : '';
-            if ($entity_uid === '' || $path === '') {
-                continue;
-            }
-            if (! isset($seen[$entity_uid])) {
-                $seen[$entity_uid] = [];
-            }
-            $seen[$entity_uid][] = $path;
-        }
-
-        foreach ($seen as $entity_uid => $paths) {
-            if (count($paths) > 1) {
-                $duplicates[] = [
-                    'post_id' => $entity_uid,
-                    'paths'   => $paths,
-                ];
-            }
-        }
-
-        return $duplicates;
-    }
-
-    private static function build_manifest_duplicate_report(array $manifest): array
+    /**
+     * Build one canonical duplicate inventory for every proposal surface.
+     *
+     * Internal item/index fields let cleanup mutate the exact manifest entries;
+     * build_manifest_duplicate_report() removes those fields before REST output.
+     */
+    private static function detect_manifest_duplicate_groups(array $manifest): array
     {
         $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
         $groups = [];
 
-        foreach ($items as $item) {
-            $item_type = isset($item['item_type']) ? (string) $item['item_type'] : 'post';
-            if (! in_array($item_type, ['post', 'term'], true)) {
+        foreach ($items as $index => $item) {
+            if (! is_array($item)) {
                 continue;
             }
-            $entity_uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
-            $path    = isset($item['path']) ? $item['path'] : '';
-            if ($entity_uid === '' || $path === '') {
+
+            $path = isset($item['path']) ? ltrim((string) $item['path'], '/\\') : '';
+            $identity = self::resolve_manifest_duplicate_identity($item);
+            if ($path === '' || $identity === null) {
                 continue;
             }
-            if (! isset($groups[$entity_uid])) {
+
+            $group_key = $identity['group_key'];
+            $item_type = $identity['entity_type'];
+            $entity_uid = $identity['display_value'];
+            if (! isset($groups[$group_key])) {
                 $taxonomy = '';
                 if ($item_type === 'term') {
                     $taxonomy = isset($item['term_taxonomy']) ? (string) $item['term_taxonomy'] : (isset($item['taxonomy']) ? (string) $item['taxonomy'] : '');
                 }
 
-                $groups[$entity_uid] = [
+                $groups[$group_key] = [
+                    'duplicate_id' => 'duplicate-' . substr(hash('sha256', $group_key), 0, 20),
                     'vf_object_uid' => $entity_uid,
                     'entity_type'   => $item_type,
+                    'entity_domain' => $identity['entity_domain'],
+                    'identity'      => [
+                        'kind'  => $identity['kind'],
+                        'value' => $identity['value'],
+                    ],
                     'post_id'       => $item['post_id'] ?? null,
                     'post_title'    => $item_type === 'term'
                         ? ($item['term_name'] ?? $item['post_title'] ?? '')
@@ -5609,9 +6168,24 @@ final class DBVC_Admin_App
                     'term_taxonomy' => $taxonomy,
                     'taxonomy'      => $taxonomy,
                     'entries'       => [],
+                    '_identity_key' => $group_key,
                 ];
             }
-            $groups[$entity_uid]['entries'][] = [
+
+            $path_occurrence = 1;
+            foreach ($groups[$group_key]['entries'] as $existing_entry) {
+                if (($existing_entry['path'] ?? '') === $path) {
+                    $path_occurrence++;
+                }
+            }
+            $entry_id = 'entry-' . substr(
+                hash('sha256', $group_key . '|' . $path . '|' . $path_occurrence),
+                0,
+                20
+            );
+
+            $groups[$group_key]['entries'][] = [
+                'entry_id'      => $entry_id,
                 'path'          => $path,
                 'hash'          => $item['hash'] ?? '',
                 'content_hash'  => $item['content_hash'] ?? '',
@@ -5622,20 +6196,100 @@ final class DBVC_Admin_App
                 'term_taxonomy' => $item_type === 'term'
                     ? ($item['term_taxonomy'] ?? $item['taxonomy'] ?? '')
                     : null,
+                '_manifest_index' => $index,
+                '_item'           => $item,
             ];
         }
 
-        $report = [];
-        foreach ($groups as $group) {
-            if (count($group['entries']) > 1) {
-                $report[] = $group;
+        return array_values(array_filter($groups, static function ($group) {
+            return isset($group['entries']) && count($group['entries']) > 1;
+        }));
+    }
+
+    private static function resolve_manifest_duplicate_identity(array $item): ?array
+    {
+        $item_type = sanitize_key((string) ($item['item_type'] ?? 'post'));
+        if ($item_type === '') {
+            $item_type = 'post';
+        }
+
+        $entity_domain = $item_type;
+        if ($item_type === 'term') {
+            $taxonomy = sanitize_key((string) ($item['term_taxonomy'] ?? $item['taxonomy'] ?? ''));
+            if ($taxonomy !== '') {
+                $entity_domain .= ':' . $taxonomy;
+            }
+        } elseif ($item_type === 'post') {
+            $post_type = sanitize_key((string) ($item['post_type'] ?? ''));
+            if ($post_type !== '') {
+                $entity_domain .= ':' . $post_type;
+            }
+        } else {
+            $subtype = sanitize_key((string) ($item['entity_type'] ?? $item['provider'] ?? $item['subtype'] ?? ''));
+            if ($subtype !== '' && $subtype !== $item_type) {
+                $entity_domain .= ':' . $subtype;
             }
         }
+
+        $kind = '';
+        $value = '';
+        $uid = trim((string) ($item['vf_object_uid'] ?? ''));
+        if ($uid !== '') {
+            $kind = 'uid';
+            $value = $uid;
+        } elseif ($item_type === 'term' && (int) ($item['term_id'] ?? 0) > 0) {
+            $kind = 'term_id';
+            $value = (string) (int) $item['term_id'];
+        } elseif ($item_type === 'post' && (int) ($item['post_id'] ?? 0) > 0) {
+            $kind = 'post_id';
+            $value = (string) (int) $item['post_id'];
+        } elseif ((string) ($item['entity_id'] ?? '') !== '') {
+            $kind = 'entity_id';
+            $value = trim((string) $item['entity_id']);
+        } else {
+            $slug = $item_type === 'term'
+                ? (string) ($item['term_slug'] ?? $item['slug'] ?? '')
+                : (string) ($item['post_name'] ?? $item['slug'] ?? '');
+            $slug = sanitize_title($slug);
+            if ($slug !== '') {
+                $kind = 'slug';
+                $value = $slug;
+            }
+        }
+
+        if ($kind === '' || $value === '') {
+            return null;
+        }
+
+        $identity_scope = $kind === 'slug' ? $entity_domain : $item_type;
+        $group_key = $identity_scope . '|' . $kind . '|' . $value;
+
+        return [
+            'group_key'    => $group_key,
+            'entity_type'  => $item_type,
+            'entity_domain'=> $entity_domain,
+            'kind'         => $kind,
+            'value'        => $value,
+            'display_value'=> $uid !== '' ? $uid : $kind . ':' . $value,
+        ];
+    }
+
+    private static function build_manifest_duplicate_report(array $manifest): array
+    {
+        $report = self::detect_manifest_duplicate_groups($manifest);
+        foreach ($report as &$group) {
+            unset($group['_identity_key']);
+            foreach ($group['entries'] as &$entry) {
+                unset($entry['_manifest_index'], $entry['_item']);
+            }
+            unset($entry);
+        }
+        unset($group);
 
         return $report;
     }
 
-    private static function determine_duplicate_keep_path(array $entries, string $preferred_format): ?string
+    private static function determine_duplicate_keep_entry(array $entries, string $preferred_format): ?array
     {
         if (empty($entries)) {
             return null;
@@ -5646,41 +6300,45 @@ final class DBVC_Admin_App
             ? array_merge([$preferred_format], array_diff($allowed, [$preferred_format]))
             : $allowed;
 
-        $paths_by_mode = [];
+        $entries_by_mode = [];
         foreach ($entries as $entry) {
-            if (! isset($entry['item']) || ! isset($entry['path'])) {
+            if (! is_array($entry)) {
                 continue;
             }
-            $mode = self::detect_manifest_entry_filename_mode($entry['item'], $entry['path']);
-            if ($mode && ! isset($paths_by_mode[$mode])) {
-                $paths_by_mode[$mode] = $entry['path'];
+            $mode = isset($entry['filename_mode']) ? (string) $entry['filename_mode'] : '';
+            if ($mode === '' && isset($entry['_item'], $entry['path']) && is_array($entry['_item'])) {
+                $mode = (string) self::detect_manifest_entry_filename_mode($entry['_item'], (string) $entry['path']);
+            }
+            if ($mode !== '' && ! isset($entries_by_mode[$mode])) {
+                $entries_by_mode[$mode] = $entry;
             }
         }
 
         foreach ($preferred as $mode) {
-            if (isset($paths_by_mode[$mode])) {
-                return $paths_by_mode[$mode];
+            if (isset($entries_by_mode[$mode])) {
+                return $entries_by_mode[$mode];
             }
         }
 
-        $latest_path = null;
+        $latest_entry = null;
         $latest_stamp = 0;
         foreach ($entries as $entry) {
-            if (! isset($entry['item']['post_modified'])) {
+            $modified = (string) ($entry['post_modified'] ?? ($entry['_item']['post_modified'] ?? ''));
+            if ($modified === '') {
                 continue;
             }
-            $timestamp = strtotime((string) $entry['item']['post_modified']);
+            $timestamp = strtotime($modified);
             if ($timestamp && $timestamp > $latest_stamp) {
                 $latest_stamp = $timestamp;
-                $latest_path  = $entry['path'];
+                $latest_entry = $entry;
             }
         }
 
-        if ($latest_path) {
-            return $latest_path;
+        if (is_array($latest_entry)) {
+            return $latest_entry;
         }
 
-        return $entries[0]['path'] ?? null;
+        return is_array($entries[0] ?? null) ? $entries[0] : null;
     }
 
     private static function detect_manifest_entry_filename_mode(array $item, string $path): ?string
@@ -5753,23 +6411,222 @@ final class DBVC_Admin_App
 
     private static function resolve_manifest_entry_path(string $base_dir, string $relative_path): ?string
     {
-        $base_dir = wp_normalize_path(untrailingslashit($base_dir));
-        $relative_path = ltrim($relative_path, '/\\');
-        if ($relative_path === '' || strpos($relative_path, '..') !== false) {
+        $base_real = realpath($base_dir);
+        if ($base_real === false || ! is_dir($base_real)) {
+            return null;
+        }
+        $base_real = wp_normalize_path($base_real);
+
+        $relative_path = str_replace('\\', '/', ltrim($relative_path, '/\\'));
+        $segments = explode('/', $relative_path);
+        if (
+            $relative_path === ''
+            || strpos($relative_path, "\0") !== false
+            || in_array('', $segments, true)
+            || in_array('.', $segments, true)
+            || in_array('..', $segments, true)
+        ) {
             return null;
         }
 
-        $absolute = wp_normalize_path(trailingslashit($base_dir) . $relative_path);
+        $base_prefix = trailingslashit($base_real);
+        $absolute = $base_prefix . $relative_path;
         $real     = realpath($absolute);
-        if ($real === false) {
-            return $absolute;
+        if ($real !== false) {
+            $real = wp_normalize_path($real);
+            return strpos($real, $base_prefix) === 0 ? $real : null;
         }
-        $real = wp_normalize_path($real);
-        $base_prefix = trailingslashit($base_dir);
-        if ($real !== $base_dir && strpos($real, $base_prefix) !== 0) {
+
+        $parent_real = realpath(dirname($absolute));
+        if ($parent_real === false) {
             return null;
         }
-        return $real;
+        $parent_real = wp_normalize_path($parent_real);
+        if (strpos(trailingslashit($parent_real), $base_prefix) !== 0) {
+            return null;
+        }
+
+        return trailingslashit($parent_real) . basename($absolute);
+    }
+
+    /**
+     * Remove duplicate payloads and replace the manifest as one recoverable operation.
+     *
+     * @param string   $base_dir
+     * @param array    $manifest
+     * @param string[] $relative_paths
+     * @return array|\WP_Error
+     */
+    private static function commit_duplicate_cleanup_transaction(
+        string $base_dir,
+        array $manifest,
+        array $relative_paths
+    ) {
+        $base_real = realpath($base_dir);
+        if ($base_real === false || ! is_dir($base_real)) {
+            return new \WP_Error(
+                'dbvc_duplicate_cleanup_path_invalid',
+                __('Proposal directory could not be resolved.', 'dbvc'),
+                ['status' => 500]
+            );
+        }
+
+        $manifest_path = trailingslashit($base_real) . DBVC_Backup_Manager::MANIFEST_FILENAME;
+        if (! is_file($manifest_path)) {
+            return new \WP_Error(
+                'dbvc_duplicate_cleanup_manifest_missing',
+                __('Proposal manifest could not be found for duplicate cleanup.', 'dbvc'),
+                ['status' => 500]
+            );
+        }
+
+        $encoded_manifest = wp_json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (! is_string($encoded_manifest) || $encoded_manifest === '') {
+            return new \WP_Error(
+                'dbvc_duplicate_cleanup_manifest_encode_failed',
+                __('Proposal manifest could not be prepared for duplicate cleanup.', 'dbvc'),
+                ['status' => 500]
+            );
+        }
+
+        $token = function_exists('wp_generate_uuid4')
+            ? str_replace('-', '', wp_generate_uuid4())
+            : str_replace('.', '', uniqid('', true));
+        $quarantine_dir = trailingslashit($base_real) . '.dbvc-duplicate-cleanup-' . $token;
+        $temp_manifest = trailingslashit($base_real) . '.manifest.json.tmp-' . $token;
+        $warnings = [];
+        $validated = [];
+
+        foreach (array_values(array_unique($relative_paths)) as $relative_path) {
+            $relative_path = str_replace('\\', '/', ltrim((string) $relative_path, '/\\'));
+            $absolute = self::resolve_manifest_entry_path($base_real, $relative_path);
+            if ($absolute === null || $absolute === $manifest_path) {
+                return new \WP_Error(
+                    'dbvc_duplicate_cleanup_payload_path_invalid',
+                    __('A duplicate payload path is outside the proposal directory.', 'dbvc'),
+                    [
+                        'status' => 400,
+                        'path'   => $relative_path,
+                    ]
+                );
+            }
+            if (! file_exists($absolute) && ! is_link($absolute)) {
+                $warnings[] = sprintf(
+                    __('Duplicate payload was already missing: %s', 'dbvc'),
+                    $relative_path
+                );
+                continue;
+            }
+            if (! is_file($absolute) && ! is_link($absolute)) {
+                return new \WP_Error(
+                    'dbvc_duplicate_cleanup_payload_type_invalid',
+                    __('Duplicate cleanup only removes payload files.', 'dbvc'),
+                    [
+                        'status' => 400,
+                        'path'   => $relative_path,
+                    ]
+                );
+            }
+            $validated[] = [
+                'relative_path' => $relative_path,
+                'source'        => $absolute,
+                'quarantine'    => trailingslashit($quarantine_dir)
+                    . substr(hash('sha256', $relative_path), 0, 20)
+                    . '-'
+                    . basename($relative_path),
+            ];
+        }
+
+        if (! empty($validated) && ! wp_mkdir_p($quarantine_dir)) {
+            return new \WP_Error(
+                'dbvc_duplicate_cleanup_quarantine_failed',
+                __('Duplicate cleanup could not create its recovery directory.', 'dbvc'),
+                ['status' => 500]
+            );
+        }
+
+        $moved = [];
+        foreach ($validated as $file) {
+            if (! @rename($file['source'], $file['quarantine'])) {
+                $rollback_failures = self::rollback_duplicate_cleanup_files($moved);
+                self::delete_directory_recursive($quarantine_dir);
+                return new \WP_Error(
+                    'dbvc_duplicate_cleanup_payload_move_failed',
+                    __('Duplicate cleanup could not stage every payload file.', 'dbvc'),
+                    [
+                        'status'            => 500,
+                        'path'              => $file['relative_path'],
+                        'rollback_failures' => $rollback_failures,
+                    ]
+                );
+            }
+            $moved[] = $file;
+        }
+
+        $written = @file_put_contents($temp_manifest, $encoded_manifest, LOCK_EX);
+        if ($written === false || $written !== strlen($encoded_manifest)) {
+            @unlink($temp_manifest);
+            $rollback_failures = self::rollback_duplicate_cleanup_files($moved);
+            self::delete_directory_recursive($quarantine_dir);
+            return new \WP_Error(
+                'dbvc_duplicate_cleanup_manifest_write_failed',
+                __('Duplicate cleanup could not write the updated proposal manifest.', 'dbvc'),
+                [
+                    'status'            => 500,
+                    'rollback_failures' => $rollback_failures,
+                ]
+            );
+        }
+
+        $manifest_permissions = @fileperms($manifest_path);
+        if (is_int($manifest_permissions)) {
+            @chmod($temp_manifest, $manifest_permissions & 0777);
+        }
+
+        if (! @rename($temp_manifest, $manifest_path)) {
+            @unlink($temp_manifest);
+            $rollback_failures = self::rollback_duplicate_cleanup_files($moved);
+            self::delete_directory_recursive($quarantine_dir);
+            return new \WP_Error(
+                'dbvc_duplicate_cleanup_manifest_commit_failed',
+                __('Duplicate cleanup could not replace the proposal manifest.', 'dbvc'),
+                [
+                    'status'            => 500,
+                    'rollback_failures' => $rollback_failures,
+                ]
+            );
+        }
+
+        self::delete_directory_recursive($quarantine_dir);
+        if (file_exists($quarantine_dir)) {
+            $warnings[] = __('Duplicate payloads were removed from the proposal but recovery files could not be deleted.', 'dbvc');
+        }
+
+        return [
+            'removed_files' => count($moved),
+            'warnings'      => $warnings,
+        ];
+    }
+
+    /**
+     * Restore files moved to the cleanup quarantine.
+     *
+     * @param array[] $moved
+     * @return string[]
+     */
+    private static function rollback_duplicate_cleanup_files(array $moved): array
+    {
+        $failures = [];
+        foreach (array_reverse($moved) as $file) {
+            if (! isset($file['source'], $file['quarantine'])) {
+                continue;
+            }
+            if (! @rename($file['quarantine'], $file['source'])) {
+                $failures[] = (string) ($file['relative_path'] ?? $file['source']);
+            }
+        }
+
+        return $failures;
     }
 
     /**
@@ -5927,19 +6784,27 @@ final class DBVC_Admin_App
             if (! in_array($item_type, ['post', 'term'], true)) {
                 continue;
             }
-            $vf_object_uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            $vf_object_uid = self::get_manifest_item_uid($item);
             if ($vf_object_uid !== '') {
                 $manifest_map[$vf_object_uid] = $item;
             }
         }
 
+        $decision_store = self::get_decision_store();
+        $proposal_decisions = isset($decision_store[$proposal_id]) && is_array($decision_store[$proposal_id])
+            ? $decision_store[$proposal_id]
+            : [];
         $target_ids = [];
         if ($scope === 'new_only') {
             foreach ($manifest_map as $uid => $item) {
                 $identity = self::describe_entity_identity($item);
-                if ($identity['is_new']) {
+                $entity_decisions = isset($proposal_decisions[$uid]) && is_array($proposal_decisions[$uid])
+                    ? $proposal_decisions[$uid]
+                    : [];
+                $new_entity_state = self::normalize_new_entity_state(
+                    self::get_new_entity_decision($proposal_id, $uid, $entity_decisions)
+                );
+                if ($identity['is_new'] && $new_entity_state === 'pending_new') {
                     $target_ids[] = $uid;
                 }
             }
@@ -6021,9 +6886,7 @@ final class DBVC_Admin_App
             if (! in_array($item_type, ['post', 'term'], true)) {
                 continue;
             }
-            $vf_object_uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            $vf_object_uid = self::get_manifest_item_uid($item);
             if ($vf_object_uid !== '') {
                 $manifest_map[$vf_object_uid] = $item;
             }
@@ -6105,9 +6968,7 @@ final class DBVC_Admin_App
             if (! in_array($item_type, ['post', 'term'], true)) {
                 continue;
             }
-            $vf_object_uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            $vf_object_uid = self::get_manifest_item_uid($item);
             if ($vf_object_uid !== '') {
                 $manifest_map[$vf_object_uid] = $item;
             }
@@ -6791,12 +7652,7 @@ final class DBVC_Admin_App
         }
 
         $decision_store_before = self::get_decision_store();
-        if (
-            isset($decision_store_before[$proposal_id]['__summary'])
-            && is_array($decision_store_before[$proposal_id]['__summary'])
-        ) {
-            $summary_before = $decision_store_before[$proposal_id]['__summary'];
-        } elseif (isset($decision_store_before[$proposal_id]) && is_array($decision_store_before[$proposal_id])) {
+        if (isset($decision_store_before[$proposal_id]) && is_array($decision_store_before[$proposal_id])) {
             $summary_before = self::summarize_proposal_decisions($decision_store_before[$proposal_id]);
         } else {
             $summary_before = self::summarize_proposal_decisions([]);
@@ -6866,12 +7722,7 @@ final class DBVC_Admin_App
         }
 
         $decision_store_after = self::get_decision_store();
-        if (
-            isset($decision_store_after[$proposal_id]['__summary'])
-            && is_array($decision_store_after[$proposal_id]['__summary'])
-        ) {
-            $summary_after = $decision_store_after[$proposal_id]['__summary'];
-        } elseif (isset($decision_store_after[$proposal_id]) && is_array($decision_store_after[$proposal_id])) {
+        if (isset($decision_store_after[$proposal_id]) && is_array($decision_store_after[$proposal_id])) {
             $summary_after = self::summarize_proposal_decisions($decision_store_after[$proposal_id]);
         } else {
             $summary_after = self::summarize_proposal_decisions([]);
@@ -6894,6 +7745,12 @@ final class DBVC_Admin_App
         $errors = array_values(array_filter(array_map(static function ($failure) {
             return is_array($failure) ? (string) ($failure['message'] ?? '') : '';
         }, (array) ($outcome['errors'] ?? []))));
+        $skipped_entities = isset($result['skipped_entities']) && is_array($result['skipped_entities'])
+            ? array_values($result['skipped_entities'])
+            : [];
+        $reviewer_declined = count(array_filter($skipped_entities, static function ($entity): bool {
+            return is_array($entity) && ($entity['reason'] ?? '') === 'declined_by_reviewer';
+        }));
 
         if (empty($outcome['success'])) {
             $error_message = $errors[0] ?? __('Proposal apply did not complete successfully.', 'dbvc');
@@ -6926,6 +7783,8 @@ final class DBVC_Admin_App
             'result'              => [
                 'imported'       => isset($result['imported']) ? (int) $result['imported'] : 0,
                 'skipped'        => isset($result['skipped']) ? (int) $result['skipped'] : 0,
+                'skipped_entities'=> $skipped_entities,
+                'reviewer_declined'=> $reviewer_declined,
                 'errors'         => $errors,
                 'media'          => isset($result['media']) ? $result['media'] : [],
                 'media_resolver' => isset($result['media_resolver']) ? $result['media_resolver'] : [],
@@ -7169,15 +8028,235 @@ final class DBVC_Admin_App
     }
 
     /**
-     * Produce a simple diff summary between current and proposed snapshots.
+     * Keep explicit diff-view responses limited to identity and header context.
+     */
+    private static function build_entity_view_context(array $payload): array
+    {
+        $allowed_keys = [
+            'ID',
+            'term_id',
+            'vf_object_uid',
+            'post_type',
+            'taxonomy',
+            'term_taxonomy',
+            'post_title',
+            'name',
+            'term_name',
+            'post_name',
+            'slug',
+            'term_slug',
+            'parent',
+            'parent_slug',
+            'parent_uid',
+            'term_parent',
+            'term_parent_slug',
+            'term_parent_uid',
+            'post_status',
+            'post_date',
+            'post_modified',
+        ];
+        $context = [];
+
+        foreach ($allowed_keys as $key) {
+            if (! array_key_exists($key, $payload)) {
+                continue;
+            }
+
+            $value = $payload[$key];
+            if (! is_scalar($value) && $value !== null) {
+                continue;
+            }
+
+            if (is_string($value) && strlen($value) > 512) {
+                $value = function_exists('mb_strcut')
+                    ? mb_strcut($value, 0, 512, 'UTF-8')
+                    : wp_check_invalid_utf8(substr($value, 0, 512), true);
+            }
+            $context[$key] = $value;
+        }
+
+        return $context;
+    }
+
+    /**
+     * Build the bounded payload and structural index used by the raw diff view.
+     */
+    private static function build_raw_diff_view(
+        array $current,
+        array $proposed,
+        bool $current_available,
+        array $canonical_diff,
+        array $raw_downloads,
+        ?string $current_reason,
+        array $decisions = []
+    ): array {
+        $rows = [];
+        $changes = isset($canonical_diff['changes']) && is_array($canonical_diff['changes'])
+            ? array_slice($canonical_diff['changes'], 0, self::DIFF_RAW_INDEX_ROWS)
+            : [];
+
+        foreach ($changes as $change) {
+            $apply_path = ! empty($change['can_apply']) && ! empty($change['apply_path'])
+                ? (string) $change['apply_path']
+                : '';
+            $render_hint = isset($change['render_hint']) && is_array($change['render_hint'])
+                ? $change['render_hint']
+                : [];
+            $rows[] = [
+                'id'                 => (string) ($change['id'] ?? ''),
+                'path'               => (string) ($change['path'] ?? ''),
+                'label'              => (string) ($change['label'] ?? ''),
+                'section'            => (string) ($change['section'] ?? 'other'),
+                'changeType'         => (string) ($change['changeType'] ?? 'modified'),
+                'source_exists'      => ! empty($change['source_exists']),
+                'destination_exists' => ! empty($change['destination_exists']),
+                'source_bytes'       => (int) ($render_hint['source_bytes'] ?? 0),
+                'destination_bytes'  => (int) ($render_hint['destination_bytes'] ?? 0),
+                'truncated_inline'   => ! empty($render_hint['truncated']),
+                'can_apply'          => ! empty($change['can_apply']),
+                'apply_path'         => $apply_path !== '' ? $apply_path : null,
+                'decision'           => $apply_path !== '' && isset($decisions[$apply_path])
+                    ? $decisions[$apply_path]
+                    : null,
+            ];
+        }
+
+        $total = (int) ($canonical_diff['total'] ?? 0);
+        $displayed_total = count($rows);
+
+        return [
+            'limits' => [
+                'preview_bytes'  => self::DIFF_RAW_PREVIEW_BYTES,
+                'max_index_rows' => self::DIFF_RAW_INDEX_ROWS,
+            ],
+            'current' => self::build_raw_payload_preview(
+                $current,
+                $current_available,
+                $raw_downloads['current'] ?? null,
+                $current_available ? null : $current_reason
+            ),
+            'proposed' => self::build_raw_payload_preview(
+                $proposed,
+                true,
+                $raw_downloads['proposed'] ?? null
+            ),
+            'change_index' => [
+                'rows'            => $rows,
+                'total'           => $total,
+                'displayed_total' => $displayed_total,
+                'omitted_total'   => max(0, $total - $displayed_total),
+                'truncated'       => $total > $displayed_total,
+                'change_counts'   => $canonical_diff['change_counts'] ?? [],
+                'section_counts'  => $canonical_diff['section_counts'] ?? [],
+            ],
+        ];
+    }
+
+    /**
+     * Return a pretty-printed JSON preview that never exceeds the byte limit.
+     */
+    private static function build_raw_payload_preview(
+        array $payload,
+        bool $available,
+        ?string $download,
+        ?string $reason = null
+    ): array {
+        if (! $available) {
+            return [
+                'available'       => false,
+                'reason'          => $reason ?: 'unavailable',
+                'content'         => '',
+                'bytes'           => 0,
+                'preview_bytes'   => 0,
+                'lines'           => 0,
+                'displayed_lines' => 0,
+                'truncated'       => false,
+                'sha256'          => null,
+                'download'        => null,
+            ];
+        }
+
+        $encoded = wp_json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (! is_string($encoded)) {
+            $encoded = '{}';
+        }
+
+        $bytes = strlen($encoded);
+        $truncated = $bytes > self::DIFF_RAW_PREVIEW_BYTES;
+        $content = $encoded;
+        if ($truncated) {
+            $marker = "\n... [preview truncated; download full JSON]";
+            $content_limit = max(0, self::DIFF_RAW_PREVIEW_BYTES - strlen($marker));
+            $content = function_exists('mb_strcut')
+                ? mb_strcut($encoded, 0, $content_limit, 'UTF-8')
+                : wp_check_invalid_utf8(substr($encoded, 0, $content_limit), true);
+            $content .= $marker;
+        }
+
+        return [
+            'available'       => true,
+            'reason'          => null,
+            'content'         => $content,
+            'bytes'           => $bytes,
+            'preview_bytes'   => strlen($content),
+            'lines'           => substr_count($encoded, "\n") + 1,
+            'displayed_lines' => substr_count($content, "\n") + 1,
+            'truncated'       => $truncated,
+            'sha256'          => hash('sha256', $encoded),
+            'download'        => $download,
+        ];
+    }
+
+    private static function empty_diff_summary(): array
+    {
+        return [
+            'changes'          => [],
+            'total'            => 0,
+            'displayed_total'  => 0,
+            'omitted_total'    => 0,
+            'actionable_total' => 0,
+            'apply_paths'      => [],
+            'change_counts'    => [
+                'added'     => 0,
+                'deleted'   => 0,
+                'modified'  => 0,
+                'unchanged' => 0,
+            ],
+            'section_counts'   => [],
+            'truncated'        => false,
+            'limits'           => [
+                'max_rendered_rows' => self::DIFF_MAX_RENDERED_ROWS,
+                'inline_value_bytes'=> self::DIFF_INLINE_VALUE_BYTES,
+            ],
+        ];
+    }
+
+    /**
+     * Produce a classified, bounded diff between current and proposed snapshots.
+     *
+     * Existing row keys remain available while the FieldDiffItem contract is
+     * introduced. Apply paths are collected across every row even when display
+     * rows are truncated.
      *
      * @param array $current
      * @param array $proposed
+     * @param array $options
      * @return array
      */
-    private static function compare_snapshots(array $current, array $proposed): array
+    private static function compare_snapshots(array $current, array $proposed, array $options = []): array
     {
-        $changes = [];
+        $summary = self::empty_diff_summary();
+        $include_unchanged = ! empty($options['include_unchanged']);
+        $max_rows = isset($options['max_rows'])
+            ? min(self::DIFF_MAX_RENDERED_ROWS, max(1, absint($options['max_rows'])))
+            : self::DIFF_MAX_RENDERED_ROWS;
+        $inline_value_bytes = isset($options['inline_value_bytes'])
+            ? min(self::DIFF_INLINE_VALUE_BYTES, max(256, absint($options['inline_value_bytes'])))
+            : self::DIFF_INLINE_VALUE_BYTES;
+        $summary['limits'] = [
+            'max_rendered_rows' => $max_rows,
+            'inline_value_bytes'=> $inline_value_bytes,
+        ];
 
         $current_flat  = self::flatten_snapshot($current);
         $proposed_flat = self::flatten_snapshot($proposed);
@@ -7202,14 +8281,32 @@ final class DBVC_Admin_App
             }
         }
 
-        $unique_keys = array_unique(array_merge(array_keys($current_flat), array_keys($proposed_flat)));
+        $unique_keys = array_values(array_unique(array_merge(array_keys($current_flat), array_keys($proposed_flat))));
+        sort($unique_keys, SORT_STRING);
+        $apply_paths = [];
 
         foreach ($unique_keys as $key) {
-            $old = $current_flat[$key] ?? null;
-            $new = $proposed_flat[$key] ?? null;
+            $old_exists = array_key_exists($key, $current_flat);
+            $new_exists = array_key_exists($key, $proposed_flat);
+            $old = $old_exists ? $current_flat[$key] : null;
+            $new = $new_exists ? $proposed_flat[$key] : null;
+            $is_equal = $old_exists && $new_exists && $old === $new;
 
-            if ($old === $new) {
+            if ($is_equal && ! $include_unchanged) {
                 continue;
+            }
+            if ($key !== '' && self::should_ignore_diff_path($key)) {
+                continue;
+            }
+
+            if (! $old_exists && $new_exists) {
+                $change_type = 'added';
+            } elseif ($old_exists && ! $new_exists) {
+                $change_type = 'deleted';
+            } elseif ($is_equal) {
+                $change_type = 'unchanged';
+            } else {
+                $change_type = 'modified';
             }
 
             $apply_scope = self::describe_diff_apply_scope($key, $entity_type);
@@ -7226,34 +8323,127 @@ final class DBVC_Admin_App
                 }
             }
 
-            $changes[] = array_merge([
-                'path' => $key,
-                'label' => self::humanize_path($key),
-                'section' => self::determine_section($key),
-                'from' => $old,
-                'to'   => $new,
+            $section = self::determine_section($key);
+            $source = self::format_diff_inline_value($old, $old_exists, $inline_value_bytes);
+            $destination = self::format_diff_inline_value($new, $new_exists, $inline_value_bytes);
+            $render_kind = self::determine_diff_render_kind(
+                $source['value'],
+                $destination['value']
+            );
+            $is_truncated = ! empty($source['truncated']) || ! empty($destination['truncated']);
+
+            $summary['total']++;
+            $summary['change_counts'][$change_type]++;
+            if (! isset($summary['section_counts'][$section])) {
+                $summary['section_counts'][$section] = 0;
+            }
+            $summary['section_counts'][$section]++;
+
+            if (
+                $change_type !== 'unchanged'
+                && ! empty($apply_scope['can_apply'])
+                && ! empty($apply_scope['apply_path'])
+            ) {
+                $apply_paths[] = (string) $apply_scope['apply_path'];
+            }
+
+            if (count($summary['changes']) >= $max_rows) {
+                continue;
+            }
+
+            $summary['changes'][] = array_merge([
+                'id'                 => self::build_field_diff_id($key, $entity_type),
+                'path'               => $key,
+                'label'              => self::humanize_path($key),
+                'section'            => $section,
+                'changeType'         => $change_type,
+                'source'             => $source['value'],
+                'destination'        => $destination['value'],
+                'source_exists'      => $old_exists,
+                'destination_exists' => $new_exists,
+                'decision'           => null,
+                'render_hint'        => [
+                    'display'           => $render_kind,
+                    'truncated'         => $is_truncated,
+                    'source_truncated'  => ! empty($source['truncated']),
+                    'source_bytes'      => (int) $source['bytes'],
+                    'destination_truncated' => ! empty($destination['truncated']),
+                    'destination_bytes'=> (int) $destination['bytes'],
+                    'inline_value_bytes'=> $inline_value_bytes,
+                    'raw_available'     => $is_truncated,
+                ],
+                'from'               => $source['value'],
+                'to'                 => $destination['value'],
+                'is_equal'           => $change_type === 'unchanged',
             ], $apply_scope);
         }
 
-        if (! empty($changes)) {
-            $changes = array_values(array_filter($changes, function ($change) {
-                $path = isset($change['path']) ? (string) $change['path'] : '';
-                return $path === '' ? true : ! self::should_ignore_diff_path($path);
-            }));
+        $summary['displayed_total'] = count($summary['changes']);
+        $summary['omitted_total'] = max(0, $summary['total'] - $summary['displayed_total']);
+        $summary['truncated'] = $summary['omitted_total'] > 0;
+        $summary['apply_paths'] = array_values(array_unique($apply_paths));
+        $summary['actionable_total'] = count($summary['apply_paths']);
+
+        return $summary;
+    }
+
+    /**
+     * Return a bounded scalar value plus rendering metadata.
+     */
+    private static function format_diff_inline_value($value, bool $exists, int $limit): array
+    {
+        if (! $exists) {
+            return [
+                'value'     => null,
+                'bytes'     => 0,
+                'truncated' => false,
+            ];
         }
 
-        $apply_paths = [];
-        foreach ($changes as $change) {
-            if (! empty($change['can_apply']) && ! empty($change['apply_path'])) {
-                $apply_paths[] = (string) $change['apply_path'];
-            }
+        $encoded = is_string($value) ? $value : wp_json_encode($value);
+        $bytes = is_string($encoded) ? strlen($encoded) : 0;
+        if (! is_string($value) || $bytes <= $limit) {
+            return [
+                'value'     => $value,
+                'bytes'     => $bytes,
+                'truncated' => false,
+            ];
+        }
+
+        if (function_exists('mb_strcut')) {
+            $preview = mb_strcut($value, 0, $limit, 'UTF-8');
+        } else {
+            $preview = wp_check_invalid_utf8(substr($value, 0, $limit), true);
         }
 
         return [
-            'changes'          => $changes,
-            'total'            => count($changes),
-            'actionable_total' => count(array_unique($apply_paths)),
+            'value'     => $preview . '... [truncated]',
+            'bytes'     => $bytes,
+            'truncated' => true,
         ];
+    }
+
+    private static function determine_diff_render_kind($source, $destination): string
+    {
+        foreach ([$source, $destination] as $value) {
+            if (! is_string($value)) {
+                continue;
+            }
+            if (strpos($value, "\n") !== false) {
+                return 'multiline';
+            }
+            $trimmed = ltrim($value);
+            if ($trimmed !== '' && in_array($trimmed[0], ['{', '['], true)) {
+                return 'json';
+            }
+        }
+
+        return 'scalar';
+    }
+
+    private static function build_field_diff_id(string $path, string $entity_type): string
+    {
+        return 'field-' . substr(hash('sha256', $entity_type . "\0" . $path), 0, 20);
     }
 
     /**
@@ -7395,17 +8585,11 @@ final class DBVC_Admin_App
         }
 
         $diff_summary = self::compare_snapshots($current, $proposed);
-        $paths = [];
-        foreach ($diff_summary['changes'] as $change) {
-            $apply_path = ! empty($change['can_apply']) && isset($change['apply_path'])
-                ? (string) $change['apply_path']
-                : '';
-            if ($apply_path !== '') {
-                $paths[] = $apply_path;
-            }
+        if (isset($diff_summary['apply_paths']) && is_array($diff_summary['apply_paths'])) {
+            return array_values(array_unique(array_filter($diff_summary['apply_paths'])));
         }
 
-        return array_values(array_unique(array_filter($paths)));
+        return [];
     }
 
     /**
@@ -7626,16 +8810,11 @@ final class DBVC_Admin_App
         }
 
         $diff_summary = self::compare_snapshots($current, $proposed);
-        $meta_changes = 0;
-        $tax_changes  = 0;
-
-        foreach ($diff_summary['changes'] as $change) {
-            if (($change['section'] ?? '') === 'meta') {
-                $meta_changes++;
-            } elseif (($change['section'] ?? '') === 'tax') {
-                $tax_changes++;
-            }
-        }
+        $section_counts = isset($diff_summary['section_counts']) && is_array($diff_summary['section_counts'])
+            ? $diff_summary['section_counts']
+            : [];
+        $meta_changes = (int) ($section_counts['meta'] ?? 0);
+        $tax_changes  = (int) ($section_counts['tax'] ?? 0);
 
         return [
             'total'           => isset($diff_summary['actionable_total']) ? (int) $diff_summary['actionable_total'] : 0,
@@ -7804,6 +8983,10 @@ final class DBVC_Admin_App
         $override_store = self::get_mask_override_store();
         $proposal_suppress = self::normalize_mask_entity_store($suppress_store[$proposal_id] ?? []);
         $proposal_overrides = self::normalize_mask_entity_store($override_store[$proposal_id] ?? []);
+        $decision_store = self::get_decision_store();
+        $proposal_decisions = isset($decision_store[$proposal_id]) && is_array($decision_store[$proposal_id])
+            ? $decision_store[$proposal_id]
+            : [];
 
         $offset = max(0, ($page - 1) * $per_page);
         if ($per_page > 0) {
@@ -7823,6 +9006,15 @@ final class DBVC_Admin_App
             $identity = $item_type === 'term'
                 ? self::describe_term_identity($item)
                 : self::describe_entity_identity($item);
+            $entity_decisions = isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid])
+                ? $proposal_decisions[$vf_object_uid]
+                : [];
+            if (
+                ! empty($identity['is_new'])
+                && self::get_new_entity_decision($proposal_id, $vf_object_uid, $entity_decisions) === 'decline_new'
+            ) {
+                continue;
+            }
             $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
 
             $diff_state = ($item_type === 'term')
@@ -8038,9 +9230,7 @@ final class DBVC_Admin_App
         $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
         $index = [];
         foreach ($items as $item) {
-            $uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            $uid = self::get_manifest_item_uid($item);
             if ($uid === '') {
                 continue;
             }
@@ -8591,7 +9781,7 @@ final class DBVC_Admin_App
      * Summarize proposal-level decisions for quick UI badges.
      *
      * @param array $proposal_decisions
-     * @return array{accepted:int,kept:int,total:int,entities_reviewed:int,entities_with_accept:int}
+     * @return array{accepted:int,kept:int,accepted_new:int,declined_new:int,total:int,entities_reviewed:int,entities_with_accept:int}
      */
     private static function summarize_proposal_decisions(array $proposal_decisions): array
     {
@@ -8599,6 +9789,7 @@ final class DBVC_Admin_App
             'accepted'             => 0,
             'kept'                 => 0,
             'accepted_new'         => 0,
+            'declined_new'         => 0,
             'total'                => 0,
             'entities_reviewed'    => 0,
             'entities_with_accept' => 0,
@@ -8626,6 +9817,8 @@ final class DBVC_Admin_App
                 } elseif ($action === 'accept_new') {
                     $summary['accepted_new']++;
                     $entity_accepts++;
+                } elseif ($action === 'decline_new') {
+                    $summary['declined_new']++;
                 }
             }
 
@@ -8634,17 +9827,34 @@ final class DBVC_Admin_App
             }
         }
 
-        $summary['total'] = $summary['accepted'] + $summary['kept'] + $summary['accepted_new'];
+        $summary['total'] = $summary['accepted']
+            + $summary['kept']
+            + $summary['accepted_new']
+            + $summary['declined_new'];
         return $summary;
     }
 
-    private static function summarize_manifest_new_entities(array $manifest, array $proposal_decisions): array
+    private static function summarize_manifest_new_entities(
+        array $manifest,
+        array $proposal_decisions,
+        string $proposal_id = ''
+    ): array
     {
         $items = isset($manifest['items']) && is_array($manifest['items']) ? $manifest['items'] : [];
+        if ($proposal_id === '' && ! empty($manifest['backup_name'])) {
+            $proposal_id = (string) $manifest['backup_name'];
+        }
         $summary = [
-            'total'   => 0,
-            'accepted'=> 0,
-            'pending' => 0,
+            'total'    => 0,
+            'accepted' => 0,
+            'declined' => 0,
+            'pending'  => 0,
+            'resolved' => 0,
+            'states'   => [
+                'accepted_new' => 0,
+                'declined_new' => 0,
+                'pending_new'  => 0,
+            ],
         ];
 
         if (empty($items)) {
@@ -8667,24 +9877,27 @@ final class DBVC_Admin_App
 
             $summary['total']++;
 
-            $vf_object_uid = isset($item['vf_object_uid'])
-                ? (string) $item['vf_object_uid']
-                : (isset($item['post_id']) ? (string) $item['post_id'] : '');
+            $vf_object_uid = self::get_manifest_item_uid($item);
 
             $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
                 ? $proposal_decisions[$vf_object_uid]
                 : [];
 
-            $new_decision = '';
-            if (
-                isset($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
-                && is_string($entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY])
-            ) {
-                $new_decision = $entity_decisions[DBVC_NEW_ENTITY_DECISION_KEY];
-            }
+            $new_decision = self::get_new_entity_decision(
+                $proposal_id,
+                $vf_object_uid,
+                $entity_decisions
+            );
 
-            if ($new_decision === 'accept_new') {
+            $new_entity_state = self::normalize_new_entity_state($new_decision);
+            $summary['states'][$new_entity_state]++;
+
+            if ($new_entity_state === 'accepted_new') {
                 $summary['accepted']++;
+                $summary['resolved']++;
+            } elseif ($new_entity_state === 'declined_new') {
+                $summary['declined']++;
+                $summary['resolved']++;
             } else {
                 $summary['pending']++;
             }
@@ -8697,13 +9910,14 @@ final class DBVC_Admin_App
      * Summaries for a single entity's decisions.
      *
      * @param array $entity_decisions
-     * @return array{accepted:int,kept:int,total:int,has_accept:bool}
+     * @return array{accepted:int,kept:int,accepted_new:int,declined_new:int,total:int,has_accept:bool}
      */
     private static function summarize_entity_decisions(array $entity_decisions): array
     {
         $accepted = 0;
         $kept     = 0;
         $accepted_new = 0;
+        $declined_new = 0;
 
         foreach ($entity_decisions as $action) {
             if ($action === 'accept') {
@@ -8712,6 +9926,8 @@ final class DBVC_Admin_App
                 $kept++;
             } elseif ($action === 'accept_new') {
                 $accepted_new++;
+            } elseif ($action === 'decline_new') {
+                $declined_new++;
             }
         }
 
@@ -8719,8 +9935,9 @@ final class DBVC_Admin_App
             'accepted'  => $accepted,
             'kept'      => $kept,
             'accepted_new' => $accepted_new,
-            'total'     => $accepted + $kept + $accepted_new,
-            'has_accept'=> $accepted > 0,
+            'declined_new' => $declined_new,
+            'total'     => $accepted + $kept + $accepted_new + $declined_new,
+            'has_accept'=> ($accepted + $accepted_new) > 0,
         ];
     }
 
@@ -8794,6 +10011,14 @@ final class DBVC_Admin_App
         $store = self::cleanup_empty_proposals($store, $proposal_id);
         self::set_decision_store($store);
 
+        if ($path === self::NEW_ENTITY_DECISION_KEY) {
+            self::set_declined_new_state(
+                $proposal_id,
+                $vf_object_uid,
+                $action === 'decline_new'
+            );
+        }
+
         if (
             defined('DBVC_NEW_ENTITY_DECISION_KEY')
             && $path === DBVC_NEW_ENTITY_DECISION_KEY
@@ -8806,6 +10031,10 @@ final class DBVC_Admin_App
 
     private static function clear_entity_decision(string $proposal_id, string $vf_object_uid, string $path): void
     {
+        if ($path === self::NEW_ENTITY_DECISION_KEY) {
+            self::set_declined_new_state($proposal_id, $vf_object_uid, false);
+        }
+
         $store = self::get_decision_store();
         if (! isset($store[$proposal_id])) {
             return;
@@ -8837,6 +10066,8 @@ final class DBVC_Admin_App
 
     private static function clear_all_entity_decisions(string $proposal_id, string $vf_object_uid): void
     {
+        self::set_declined_new_state($proposal_id, $vf_object_uid, false);
+
         $store = self::get_decision_store();
         if (! isset($store[$proposal_id][$vf_object_uid])) {
             return;
@@ -8914,6 +10145,7 @@ final class DBVC_Admin_App
 
         delete_option(self::DECISIONS_OPTION);
         delete_option(self::SNAPSHOT_STATES_OPTION);
+        delete_option(self::DECLINED_NEW_ENTITIES_OPTION);
 
         $resolver_store = get_option(self::RESOLVER_DECISIONS_OPTION, []);
         if (is_array($resolver_store)) {
@@ -9323,9 +10555,16 @@ final class DBVC_Admin_App
         ];
     }
 
-    private static function format_term_manifest_entity(string $proposal_id, array $item, string $status_filter, array $proposal_decisions): ?array
-    {
-        $vf_object_uid = isset($item['vf_object_uid']) ? (string) $item['vf_object_uid'] : '';
+    private static function format_term_manifest_entity(
+        string $proposal_id,
+        array $item,
+        string $status_filter,
+        array $proposal_decisions,
+        array $field_decision_readiness = [],
+        array $masking_readiness = [],
+        array $duplicate_group_keys = []
+    ): ?array {
+        $vf_object_uid = self::get_manifest_item_uid($item);
         $taxonomy      = isset($item['term_taxonomy']) ? sanitize_key($item['term_taxonomy']) : (isset($item['taxonomy']) ? sanitize_key($item['taxonomy']) : '');
         $term_name     = isset($item['term_name']) ? (string) $item['term_name'] : (isset($item['name']) ? (string) $item['name'] : '');
         $term_slug     = isset($item['term_slug']) ? (string) $item['term_slug'] : (isset($item['slug']) ? (string) $item['slug'] : '');
@@ -9333,40 +10572,48 @@ final class DBVC_Admin_App
 
         $identity = self::describe_term_identity($item);
         $is_new_entity = $identity['is_new'];
-
-        $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
-        $snapshot_status = isset($diff_counts['snapshot_status']) && is_array($diff_counts['snapshot_status'])
-            ? $diff_counts['snapshot_status']
-            : self::get_entity_snapshot_status($proposal_id, $item, $identity);
-        $has_changes = ($diff_counts['total'] ?? 0) > 0;
-        $snapshot_needs_review = ! empty($snapshot_status['required']) && empty($snapshot_status['trusted']);
-
-        $needs_review = $is_new_entity || $has_changes || $snapshot_needs_review;
-
-        if ($status_filter === 'needs_review' && ! $needs_review) {
-            return null;
-        }
-        if ($status_filter === 'resolved' && $needs_review) {
-            return null;
-        }
-        if ($status_filter === 'needs_review_media') {
-            return null;
-        }
-        if ($status_filter === 'new_entities' && ! $is_new_entity) {
-            return null;
-        }
-
         $entity_decisions = ($vf_object_uid !== '' && isset($proposal_decisions[$vf_object_uid]) && is_array($proposal_decisions[$vf_object_uid]))
             ? $proposal_decisions[$vf_object_uid]
             : [];
         $decision_summary = self::summarize_entity_decisions($entity_decisions);
         $new_entity_decision = self::get_new_entity_decision($proposal_id, $vf_object_uid, $entity_decisions);
+        $new_entity_state = $is_new_entity
+            ? self::normalize_new_entity_state($new_entity_decision)
+            : '';
+
+        $diff_counts = self::summarize_entity_diff_counts($proposal_id, $item, $vf_object_uid);
+        $snapshot_status = isset($diff_counts['snapshot_status']) && is_array($diff_counts['snapshot_status'])
+            ? $diff_counts['snapshot_status']
+            : self::get_entity_snapshot_status($proposal_id, $item, $identity);
+        $status_counts = self::build_entity_status_counts(
+            $field_decision_readiness['by_entity'][$vf_object_uid] ?? [],
+            $masking_readiness['by_entity'][$vf_object_uid] ?? [],
+            [],
+            self::count_duplicate_groups_for_item($item, $duplicate_group_keys),
+            $is_new_entity && $new_entity_state === 'pending_new'
+        );
+        $needs_review = self::entity_status_requires_review(
+            $status_counts,
+            $snapshot_status,
+            []
+        );
+        $snapshot_needs_review = ! empty($snapshot_status['required']) && empty($snapshot_status['trusted']);
+
+        if (! self::entity_matches_status_filter(
+            $status_filter,
+            $status_counts,
+            $needs_review,
+            $is_new_entity,
+            $snapshot_status
+        )) {
+            return null;
+        }
 
         $diff_reason = $is_new_entity
             ? 'new_term'
             : ($snapshot_needs_review
                 ? 'snapshot_' . sanitize_key((string) ($snapshot_status['state'] ?? 'failed'))
-                : ($has_changes ? 'term_modified' : 'term_clean'));
+                : (($diff_counts['total'] ?? 0) > 0 ? 'term_modified' : 'term_clean'));
 
         return [
             'vf_object_uid' => $vf_object_uid !== '' ? $vf_object_uid : ($term_slug !== '' ? $term_slug : uniqid('term_', true)),
@@ -9396,6 +10643,7 @@ final class DBVC_Admin_App
             'meta_diff_count'   => $diff_counts['meta'] ?? 0,
             'tax_diff_count'    => 0,
             'media_needs_review'=> false,
+            'status_counts'     => $status_counts,
             'overall_status'    => $needs_review ? 'needs_review' : 'resolved',
             'resolver'          => [
                 'summary'     => [
@@ -9415,6 +10663,7 @@ final class DBVC_Admin_App
             'local_uid'          => $identity['local_uid'] ?? '',
             'uid_mismatch'       => $identity['uid_mismatch'] ?? false,
             'new_entity_decision'=> $new_entity_decision,
+            'new_entity_state'   => $new_entity_state,
             'decision_summary'   => $decision_summary,
         ];
     }
@@ -9431,8 +10680,81 @@ final class DBVC_Admin_App
         ) {
             return $decisions[self::NEW_ENTITY_DECISION_KEY];
         }
+        if (self::is_declined_new_entity($proposal_id, $vf_object_uid)) {
+            return 'decline_new';
+        }
 
         return '';
+    }
+
+    private static function normalize_new_entity_state(string $decision): string
+    {
+        if ($decision === 'accept_new') {
+            return 'accepted_new';
+        }
+        if ($decision === 'decline_new') {
+            return 'declined_new';
+        }
+        return 'pending_new';
+    }
+
+    private static function is_declined_new_entity(string $proposal_id, string $vf_object_uid): bool
+    {
+        if ($proposal_id === '' || $vf_object_uid === '') {
+            return false;
+        }
+        $store = get_option(self::DECLINED_NEW_ENTITIES_OPTION, []);
+        return is_array($store)
+            && ! empty($store[$proposal_id])
+            && is_array($store[$proposal_id])
+            && ! empty($store[$proposal_id][$vf_object_uid]);
+    }
+
+    private static function set_declined_new_state(
+        string $proposal_id,
+        string $vf_object_uid,
+        bool $declined
+    ): void {
+        if ($proposal_id === '' || $vf_object_uid === '') {
+            return;
+        }
+        $store = get_option(self::DECLINED_NEW_ENTITIES_OPTION, []);
+        $store = is_array($store) ? $store : [];
+
+        if ($declined) {
+            if (! isset($store[$proposal_id]) || ! is_array($store[$proposal_id])) {
+                $store[$proposal_id] = [];
+            }
+            $store[$proposal_id][$vf_object_uid] = true;
+        } elseif (isset($store[$proposal_id]) && is_array($store[$proposal_id])) {
+            unset($store[$proposal_id][$vf_object_uid]);
+            if (empty($store[$proposal_id])) {
+                unset($store[$proposal_id]);
+            }
+        }
+
+        if (empty($store)) {
+            delete_option(self::DECLINED_NEW_ENTITIES_OPTION);
+            return;
+        }
+        update_option(self::DECLINED_NEW_ENTITIES_OPTION, $store, false);
+    }
+
+    private static function clear_declined_new_proposal(string $proposal_id): void
+    {
+        if ($proposal_id === '') {
+            return;
+        }
+        $store = get_option(self::DECLINED_NEW_ENTITIES_OPTION, []);
+        if (! is_array($store) || ! isset($store[$proposal_id])) {
+            return;
+        }
+        unset($store[$proposal_id]);
+        if (empty($store)) {
+            delete_option(self::DECLINED_NEW_ENTITIES_OPTION);
+            return;
+        }
+        update_option(self::DECLINED_NEW_ENTITIES_OPTION, $store, false);
     }
 
     private static function restore_new_entity_decisions(string $proposal_id): array

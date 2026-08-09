@@ -146,6 +146,7 @@ final class AssetLoader
                     'panelSaveContractDetail' => __('Contract detail', 'dbvc'),
                     'panelSourceLabel' => __('Label', 'dbvc'),
                     'panelSourceExpression' => __('Dynamic tag', 'dbvc'),
+                    'panelRenderedHtmlTag' => __('Rendered HTML tag', 'dbvc'),
                     'panelSourceRepeater' => __('acf repeater', 'dbvc'),
                     'panelSourceFlexible' => __('acf flexible', 'dbvc'),
                     'panelScopeReadonly' => __('inspect only', 'dbvc'),

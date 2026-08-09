@@ -116,7 +116,7 @@
 8. **Meta Field Masking Workflow**
    - ✅ Ship an “Apply masking rules” button above the All Entities table that auto-applies configured post/term meta masking directives (Tools panel, batching, undo).
    - ✅ Allow reviewers to pick ignore, auto-accept & suppress, or override behaviors via a bulk selector, with override inputs and help tooltips pointing into `docs/reference/meta-masking.md`.
-   - ✅ Ensure the action runs against live proposals so posts/terms/media flagged as Needs Review or Unresolved meta are relabeled once matching masked fields are processed, keeping entity badges and counts accurate after auto-masking.
+   - ✅ Ensure the action runs against live proposals so matching post fields, post meta, and term meta appear as Masking candidates and are removed from that count once processed, without changing media resolver counts.
    - ✅ Leave existing export-time masking logic untouched so deployments relying on masked exports keep their current behavior.
    - ✅ Surface the new behaviors through tooltips anchored to the bulk action + help text in docs, plus a progress indicator while masking loads/applies.
    - ✅ Tightened backend pagination (10-field default with a guarded `per_page` param) so each `/masking` fetch stays within memory budgets exposed by telemetry.

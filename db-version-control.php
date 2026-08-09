@@ -3,7 +3,7 @@
 /**
  * Plugin Name: DB Version Control Advanced
  * Description: Sync WordPress to version-controlled JSON files for easy Git workflows. A fork of DB Version Control Main
- * Version:     1.9.0
+ * Version:     1.9.1
  * Author:      Frankly
  * Author URI:  https://frankly.design
  * Text Domain: dbvc
@@ -45,7 +45,7 @@ define('DBVC_PLUGIN_FILE', __FILE__);
 define('DBVC_PLUGIN_BASENAME', plugin_basename(__FILE__));
 define('DBVC_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('DBVC_PLUGIN_PATH', plugin_dir_path(__FILE__));
-define('DBVC_PLUGIN_VERSION', '1.9.0');
+define('DBVC_PLUGIN_VERSION', '1.9.1');
 if (! defined('DBVC_NEW_ENTITY_DECISION_KEY')) {
 	define('DBVC_NEW_ENTITY_DECISION_KEY', '__dbvc_new_entity__');
 }
@@ -133,6 +133,8 @@ require_once DBVC_PLUGIN_PATH . 'includes/class-import-router.php';
 require_once DBVC_PLUGIN_PATH . 'includes/class-entity-editor-indexer.php';
 // require_once DBVC_PLUGIN_PATH . 'includes/class-menu-importer.php'; // Added new menu importer/exporter class - removed later to avoid over-complicating the class-sync-posts.php
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-posts.php';
+require_once DBVC_PLUGIN_PATH . 'includes/Dbvc/Bricks/RegistryOptionsProvider.php';
+DBVC_Bricks_Registry_Options_Provider::register();
 require_once DBVC_PLUGIN_PATH . 'includes/class-sync-taxonomies.php';
 require_once DBVC_PLUGIN_PATH . 'includes/hooks.php';
 require_once DBVC_PLUGIN_PATH . 'commands/class-wp-cli-commands.php';
@@ -284,3 +286,8 @@ function dbvc_enqueue_admin_assets($hook)
 	);
 }
 add_action('admin_enqueue_scripts', 'dbvc_enqueue_admin_assets');
+
+// Load the read-only administrator capability landscape after existing registrations.
+if (is_admin()) {
+	require_once DBVC_PLUGIN_PATH . 'admin/capability-landscape.php';
+}

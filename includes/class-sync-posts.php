@@ -34,6 +34,7 @@ class DBVC_Sync_Posts
     private const IMPORT_RESULT_APPLIED = 'applied';
     private const IMPORT_RESULT_SKIPPED = 'skipped';
     private const PROPOSAL_NEW_ENTITIES_OPTION = 'dbvc_proposal_new_entities';
+    private const DECLINED_NEW_ENTITIES_OPTION = 'dbvc_proposal_declined_new_entities';
     private const MASK_SUPPRESS_OPTION = 'dbvc_masked_field_suppressions';
     private const MASK_OVERRIDES_OPTION = 'dbvc_mask_overrides';
     private static $pending_term_parent_links = [];
@@ -1122,6 +1123,10 @@ HT;
         $proposal_decisions = isset($decision_store[$backup_name]) && is_array($decision_store[$backup_name])
             ? $decision_store[$backup_name]
             : [];
+        $proposal_decisions = self::merge_declined_new_entity_states(
+            $backup_name,
+            $proposal_decisions
+        );
         $auto_clear_decisions = get_option(self::AUTO_CLEAR_DECISIONS_OPTION, '1') === '1';
         $has_entity_decisions = false;
         if (! empty($proposal_decisions)) {
@@ -1157,10 +1162,16 @@ HT;
         $ignore_missing_hash = ! empty($options['ignore_missing_hash']);
         $imported    = 0;
         $skipped     = 0;
+        $skipped_entities = [];
         $errors      = [];
         $items_total = isset($manifest['items']) ? count($manifest['items']) : 0;
         $media_reconcile = [];
         $media_failures = [];
+        $term_masking_counts = [
+            'entities'   => 0,
+            'overridden' => 0,
+            'suppressed' => 0,
+        ];
         $no_changes_message = '';
 
         if ($mode === 'copy') {
@@ -1170,6 +1181,7 @@ HT;
             return [
                 'imported' => 0,
                 'skipped'  => $items_total,
+                'skipped_entities' => [],
                 'mode'     => $mode,
             ];
         }
@@ -1318,12 +1330,33 @@ HT;
             $should_force_new_accept = ($new_entity_decision === 'accept_new') && ($is_new_entity || $force_reapply_new_posts);
             if ($is_new_entity && $new_entity_decision !== 'accept_new') {
                 $skipped++;
+                $skip_reason = $new_entity_decision === 'decline_new'
+                    ? 'declined_by_reviewer'
+                    : 'new_entity_not_approved';
+                $skip_state = $new_entity_decision === 'decline_new'
+                    ? 'declined_new'
+                    : 'pending_new';
+                $skipped_entities[] = [
+                    'entity_type'     => 'post',
+                    'vf_object_uid'   => $vf_object_uid,
+                    'title'           => (string) ($entry['post_title'] ?? $decoded['post_title'] ?? $vf_object_uid),
+                    'path'            => (string) ($entry['path'] ?? ''),
+                    'reason'          => $skip_reason,
+                    'decision_state'  => $skip_state,
+                ];
                 if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-                    DBVC_Sync_Logger::log_import('Post import skipped – new entity not approved', [
+                    DBVC_Sync_Logger::log_import(
+                        $skip_reason === 'declined_by_reviewer'
+                            ? 'Post import skipped - declined by reviewer'
+                            : 'Post import skipped - new entity not approved',
+                        [
                         'file'     => $entry['path'],
                         'post_id'  => $vf_object_uid,
                         'proposal' => $backup_name,
-                    ]);
+                        'reason'   => $skip_reason,
+                        'decision_state' => $skip_state,
+                        ]
+                    );
                 }
                 continue;
             }
@@ -1424,6 +1457,12 @@ HT;
                 if ($vf_object_uid === '' && ! empty($term_payload['vf_object_uid'])) {
                     $vf_object_uid = (string) $term_payload['vf_object_uid'];
                 }
+                if ($vf_object_uid === '' && isset($entry['term_id'])) {
+                    $vf_object_uid = (string) $entry['term_id'];
+                }
+                if ($vf_object_uid === '' && isset($term_payload['term_id'])) {
+                    $vf_object_uid = (string) $term_payload['term_id'];
+                }
 
                 $entity_refs = self::extract_entity_references($entry, $term_payload);
                 $entity_decisions = null;
@@ -1454,12 +1493,33 @@ HT;
 
                 if ($is_new_term && $new_entity_decision !== 'accept_new') {
                     $skipped++;
+                    $skip_reason = $new_entity_decision === 'decline_new'
+                        ? 'declined_by_reviewer'
+                        : 'new_entity_not_approved';
+                    $skip_state = $new_entity_decision === 'decline_new'
+                        ? 'declined_new'
+                        : 'pending_new';
+                    $skipped_entities[] = [
+                        'entity_type'     => 'term',
+                        'vf_object_uid'   => $vf_object_uid,
+                        'title'           => (string) ($entry['term_name'] ?? $term_payload['name'] ?? $vf_object_uid),
+                        'path'            => (string) ($entry['path'] ?? ''),
+                        'reason'          => $skip_reason,
+                        'decision_state'  => $skip_state,
+                    ];
                     if (class_exists('DBVC_Sync_Logger') && DBVC_Sync_Logger::is_import_logging_enabled()) {
-                    DBVC_Sync_Logger::log_term_import('Term import skipped – new entity not approved', [
+                    DBVC_Sync_Logger::log_term_import(
+                        $skip_reason === 'declined_by_reviewer'
+                            ? 'Term import skipped - declined by reviewer'
+                            : 'Term import skipped - new entity not approved',
+                        [
                             'file'     => $entry['path'],
                             'term_uid' => $vf_object_uid,
                             'proposal' => $backup_name,
-                        ]);
+                            'reason'   => $skip_reason,
+                            'decision_state' => $skip_state,
+                        ]
+                    );
                     }
                     continue;
                 }
@@ -1499,13 +1559,23 @@ HT;
                     continue;
                 }
 
+                $entity_mask_directives = [
+                    'overrides'    => isset($proposal_mask_overrides[$vf_object_uid]) && is_array($proposal_mask_overrides[$vf_object_uid])
+                        ? $proposal_mask_overrides[$vf_object_uid]
+                        : [],
+                    'suppressions' => isset($proposal_mask_suppress[$vf_object_uid]) && is_array($proposal_mask_suppress[$vf_object_uid])
+                        ? $proposal_mask_suppress[$vf_object_uid]
+                        : [],
+                ];
+
                 $term_import = self::apply_term_entity(
                     $existing_term_id,
                     $term_payload,
                     $normalized_decisions,
                     $allow_term_creation,
                     $vf_object_uid,
-                    $entity_refs
+                    $entity_refs,
+                    $entity_mask_directives
                 );
 
                 if (is_wp_error($term_import)) {
@@ -1522,6 +1592,20 @@ HT;
 
                 $imported++;
                 $applied_entities++;
+                $term_masking = isset($term_import['masking']) && is_array($term_import['masking'])
+                    ? $term_import['masking']
+                    : [];
+                $term_overridden_paths = isset($term_masking['overridden_paths']) && is_array($term_masking['overridden_paths'])
+                    ? array_values(array_unique($term_masking['overridden_paths']))
+                    : [];
+                $term_suppressed_paths = isset($term_masking['suppressed_paths']) && is_array($term_masking['suppressed_paths'])
+                    ? array_values(array_unique($term_masking['suppressed_paths']))
+                    : [];
+                if (! empty($term_overridden_paths) || ! empty($term_suppressed_paths)) {
+                    $term_masking_counts['entities']++;
+                    $term_masking_counts['overridden'] += count($term_overridden_paths);
+                    $term_masking_counts['suppressed'] += count($term_suppressed_paths);
+                }
                 if ($is_new_term && $should_force_new_accept && $backup_name !== '' && $vf_object_uid !== '') {
                     self::record_proposal_new_entity($backup_name, $vf_object_uid);
                 }
@@ -1537,6 +1621,18 @@ HT;
                                 $selection_keys[] = $path;
                             }
                         }
+                    }
+
+                    if (! empty($term_overridden_paths) || ! empty($term_suppressed_paths)) {
+                        DBVC_Sync_Logger::log_term_import('Term masking directives applied', [
+                            'proposal'         => $backup_name,
+                            'term_uid'         => $vf_object_uid,
+                            'term_id'          => $term_import['term_id'] ?? null,
+                            'overridden'       => count($term_overridden_paths),
+                            'suppressed'       => count($term_suppressed_paths),
+                            'overridden_paths' => $term_overridden_paths,
+                            'suppressed_paths' => $term_suppressed_paths,
+                        ]);
                     }
 
                     DBVC_Sync_Logger::log_term_import('Term entity applied', [
@@ -1702,7 +1798,9 @@ HT;
                 'mode'             => $mode,
                 'entities_applied' => $applied_entities,
                 'entities_skipped' => $skipped,
+                'skipped_entities' => $skipped_entities,
                 'media_downloaded' => $media_stats['downloaded'] ?? 0,
+                'term_masking'     => $term_masking_counts,
             ]);
         }
 
@@ -1732,11 +1830,13 @@ HT;
         $response = [
             'imported' => $imported,
             'skipped'  => $skipped,
+            'skipped_entities' => $skipped_entities,
             'errors'   => $errors,
             'mode'     => $mode,
             'media'    => $media_stats,
             'media_resolver' => $resolver_payload,
             'media_reconcile' => $media_reconcile,
+            'term_masking' => $term_masking_counts,
             'outcome'  => $outcome,
         ];
         if ($no_changes_message !== '') {
@@ -2498,19 +2598,29 @@ HT;
         array $overrides = [],
         array $suppressions = []
     ): array {
+        $result = [
+            'apply'            => false,
+            'values'           => $current_values,
+            'overridden_paths' => [],
+            'suppressed_paths' => [],
+        ];
         $root_action = $decisions === null ? 'accept' : self::resolve_decision_action($decisions, $root_path);
         if ($root_action === 'keep') {
-            return ['apply' => false, 'values' => $current_values];
+            return $result;
         }
 
         $descendants = self::get_descendant_decisions($decisions, $root_path);
         $full_apply = $root_action === 'accept';
         if (! $full_apply && empty($descendants)) {
-            return ['apply' => false, 'values' => $current_values];
+            return $result;
         }
 
-        if (self::get_mask_directive_for_path($suppressions, $root_path)) {
-            return ['apply' => false, 'values' => $current_values];
+        $root_suppression = self::get_mask_directive_for_path($suppressions, $root_path);
+        if ($root_suppression) {
+            $result['suppressed_paths'][] = self::canonicalize_decision_path(
+                (string) ($root_suppression['path'] ?? $root_path)
+            );
+            return $result;
         }
 
         $root_override = self::get_mask_directive_for_path($overrides, $root_path);
@@ -2519,6 +2629,7 @@ HT;
             : '';
         if ($root_override && $root_override_path === $root_path && array_key_exists('value', $root_override)) {
             $incoming_values = [maybe_unserialize($root_override['value'])];
+            $result['overridden_paths'][] = $root_override_path;
         }
 
         $next_values = $full_apply ? $incoming_values : $current_values;
@@ -2530,6 +2641,7 @@ HT;
                 if (strpos($path, $root_path . '.') !== 0) {
                     continue;
                 }
+                $result['suppressed_paths'][] = $path;
                 $segments = explode('.', substr($path, strlen($root_path) + 1));
                 $current_value = self::get_nested_array_value($current_values, $segments, $exists);
                 if ($exists) {
@@ -2544,12 +2656,21 @@ HT;
                 if (strpos($path, $root_path . '.') !== 0 || ! array_key_exists('value', $directive)) {
                     continue;
                 }
+                $result['overridden_paths'][] = $path;
                 $segments = explode('.', substr($path, strlen($root_path) + 1));
                 self::set_nested_array_value($next_values, $segments, maybe_unserialize($directive['value']));
             }
         } else {
             foreach ($descendants as $path => $action) {
-                if ($action !== 'accept' || self::get_mask_directive_for_path($suppressions, $path)) {
+                if ($action !== 'accept') {
+                    continue;
+                }
+
+                $suppression = self::get_mask_directive_for_path($suppressions, $path);
+                if ($suppression) {
+                    $result['suppressed_paths'][] = self::canonicalize_decision_path(
+                        (string) ($suppression['path'] ?? $path)
+                    );
                     continue;
                 }
 
@@ -2561,6 +2682,7 @@ HT;
                 if ($override && $override_path === $path && array_key_exists('value', $override)) {
                     $value = maybe_unserialize($override['value']);
                     $exists = true;
+                    $result['overridden_paths'][] = $override_path;
                 } else {
                     $value = self::get_nested_array_value($incoming_values, $segments, $exists);
                 }
@@ -2574,10 +2696,12 @@ HT;
             }
         }
 
-        return [
-            'apply'  => $did_select_value && $next_values !== $current_values,
-            'values' => $next_values,
-        ];
+        $result['apply'] = $did_select_value && $next_values !== $current_values;
+        $result['values'] = $next_values;
+        $result['overridden_paths'] = array_values(array_unique($result['overridden_paths']));
+        $result['suppressed_paths'] = array_values(array_unique($result['suppressed_paths']));
+
+        return $result;
     }
 
     private static function replace_post_meta_values(int $post_id, string $meta_key, array $values, array $bricks_keys): void
@@ -2892,9 +3016,18 @@ HT;
      * @param array|null $decisions
      * @param bool     $allow_create
      * @param string   $vf_object_uid
+     * @param array    $mask_directives
      * @return array|\WP_Error
      */
-    private static function apply_term_entity(?int $existing_term_id, array $payload, ?array $decisions, bool $allow_create, string $vf_object_uid, ?array $entity_refs = null)
+    private static function apply_term_entity(
+        ?int $existing_term_id,
+        array $payload,
+        ?array $decisions,
+        bool $allow_create,
+        string $vf_object_uid,
+        ?array $entity_refs = null,
+        array $mask_directives = []
+    )
     {
         $taxonomy = isset($payload['taxonomy']) ? sanitize_key($payload['taxonomy']) : '';
         if ($taxonomy === '' || ! taxonomy_exists($taxonomy)) {
@@ -2983,12 +3116,25 @@ HT;
         );
 
         $term_meta = isset($payload['meta']) && is_array($payload['meta']) ? $payload['meta'] : [];
-        self::apply_term_meta($term_id, $term_meta, $decisions);
+        $mask_overrides = isset($mask_directives['overrides']) && is_array($mask_directives['overrides'])
+            ? self::expand_mask_meta_entries($mask_directives['overrides'])
+            : ['meta' => [], 'post' => []];
+        $mask_suppressions = isset($mask_directives['suppressions']) && is_array($mask_directives['suppressions'])
+            ? self::expand_mask_meta_entries($mask_directives['suppressions'])
+            : ['meta' => [], 'post' => []];
+        $masking = self::apply_term_meta(
+            $term_id,
+            $term_meta,
+            $decisions,
+            $mask_overrides['meta'] ?? [],
+            $mask_suppressions['meta'] ?? []
+        );
 
         return [
             'term_id'  => $term_id,
             'taxonomy' => $taxonomy,
             'created'  => $created,
+            'masking'  => $masking,
         ];
     }
 
@@ -2998,12 +3144,25 @@ HT;
      * @param int        $term_id
      * @param array      $meta
      * @param array|null $decisions
-     * @return bool
+     * @param array      $mask_overrides
+     * @param array      $mask_suppressions
+     * @return array
      */
-    private static function apply_term_meta(int $term_id, array $meta, ?array $decisions, array $mask_overrides = []): bool
+    private static function apply_term_meta(
+        int $term_id,
+        array $meta,
+        ?array $decisions,
+        array $mask_overrides = [],
+        array $mask_suppressions = []
+    ): array
     {
         $mask_overrides = is_array($mask_overrides) ? $mask_overrides : [];
-        $did_apply = false;
+        $mask_suppressions = is_array($mask_suppressions) ? $mask_suppressions : [];
+        $summary = [
+            'applied'          => false,
+            'overridden_paths' => [],
+            'suppressed_paths' => [],
+        ];
         $meta_keys = array_fill_keys(array_keys($meta), true);
         if ($decisions !== null) {
             foreach ($decisions as $decision_path => $action) {
@@ -3020,25 +3179,35 @@ HT;
             $meta_key = sanitize_key($key);
             $values = array_key_exists($key, $meta) ? $meta[$key] : [];
             $values = is_array($values) ? $values : [$values];
-            if (isset($mask_overrides[$meta_key]['value'])) {
-                $values = [$mask_overrides[$meta_key]['value']];
-            }
 
             $plan = self::build_meta_apply_plan(
                 get_term_meta($term_id, $meta_key, false),
                 $values,
                 $decisions,
-                $meta_path
+                $meta_path,
+                $mask_overrides[$meta_key] ?? [],
+                $mask_suppressions[$meta_key] ?? []
+            );
+            $summary['overridden_paths'] = array_merge(
+                $summary['overridden_paths'],
+                (array) ($plan['overridden_paths'] ?? [])
+            );
+            $summary['suppressed_paths'] = array_merge(
+                $summary['suppressed_paths'],
+                (array) ($plan['suppressed_paths'] ?? [])
             );
             if (empty($plan['apply'])) {
                 continue;
             }
 
             self::replace_term_meta_values($term_id, $meta_key, $plan['values']);
-            $did_apply = true;
+            $summary['applied'] = true;
         }
 
-        return $did_apply;
+        $summary['overridden_paths'] = array_values(array_unique($summary['overridden_paths']));
+        $summary['suppressed_paths'] = array_values(array_unique($summary['suppressed_paths']));
+
+        return $summary;
     }
 
     /**
@@ -5962,6 +6131,63 @@ $acf_relationship_fields = [
         self::ensure_directory_security($path);
 
         $cleaned[$post_type] = true;
+    }
+
+    private static function merge_declined_new_entity_states(
+        string $proposal_id,
+        array $proposal_decisions
+    ): array {
+        $proposal_id = sanitize_text_field($proposal_id);
+        if ($proposal_id === '') {
+            return $proposal_decisions;
+        }
+
+        $store = get_option(self::DECLINED_NEW_ENTITIES_OPTION, []);
+        $store = is_array($store) ? $store : [];
+        $archived = isset($store[$proposal_id]) && is_array($store[$proposal_id])
+            ? $store[$proposal_id]
+            : [];
+
+        foreach ($proposal_decisions as $entity_uid => $decisions) {
+            if (
+                ! is_array($decisions)
+                || strpos((string) $entity_uid, '__') === 0
+                || ! isset($decisions[DBVC_NEW_ENTITY_DECISION_KEY])
+            ) {
+                continue;
+            }
+            $decision = $decisions[DBVC_NEW_ENTITY_DECISION_KEY];
+            if ($decision === 'decline_new') {
+                $archived[(string) $entity_uid] = true;
+            } elseif ($decision === 'accept_new') {
+                unset($archived[(string) $entity_uid]);
+            }
+        }
+
+        foreach ($archived as $entity_uid => $declined) {
+            if (empty($declined)) {
+                continue;
+            }
+            if (! isset($proposal_decisions[$entity_uid]) || ! is_array($proposal_decisions[$entity_uid])) {
+                $proposal_decisions[$entity_uid] = [];
+            }
+            if (! isset($proposal_decisions[$entity_uid][DBVC_NEW_ENTITY_DECISION_KEY])) {
+                $proposal_decisions[$entity_uid][DBVC_NEW_ENTITY_DECISION_KEY] = 'decline_new';
+            }
+        }
+
+        if (empty($archived)) {
+            unset($store[$proposal_id]);
+        } else {
+            $store[$proposal_id] = $archived;
+        }
+        if (empty($store)) {
+            delete_option(self::DECLINED_NEW_ENTITIES_OPTION);
+        } else {
+            update_option(self::DECLINED_NEW_ENTITIES_OPTION, $store, false);
+        }
+
+        return $proposal_decisions;
     }
 
     private static function record_proposal_new_entity(string $proposal_id, string $entity_uid): void
