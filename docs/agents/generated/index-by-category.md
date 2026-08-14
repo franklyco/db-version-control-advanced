@@ -48,6 +48,7 @@
 | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Adds, deletes, or bulk-imports persistent media resolver rules used by later proposals. |
 | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists DBVC snapshot history with type and pagination filters without changing site state. |
 | [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
+| [`cli.proposals.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Shows one exact staged proposal through conservative structural preflight metadata and lists bounded sanitized entity rows without raw values, detail callbacks, live resolver matching, snapshot recapture, or mutation. |
 
 ## `entity_editor`
 
@@ -90,7 +91,7 @@
 
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
-| [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
+| [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, verification evidence, and automation gaps. |
 | [`observability.core.client_logs`](../manifest.json) | `active` | `filesystem_write` | [Identity and storage](../facets/identity-storage-and-observability.md) | Accepts authenticated client-error reports and writes file or structured activity records used for diagnostics. |
 
 ## `proposal_review`
@@ -100,7 +101,7 @@
 | [`proposal.core.apply`](../manifest.json) | `active` | `wordpress_write` | [Proposals and media](../facets/proposals-and-media.md) | Applies reviewed proposal decisions to WordPress through the authenticated REST workflow. |
 | [`proposal.core.cleanup`](../manifest.json) | `active` | `destructive` | [Proposals and media](../facets/proposals-and-media.md) | Deletes duplicate proposal artifacts or clears the staged proposal area through explicit maintenance routes. |
 | [`proposal.core.decisions`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) | Writes Accept/Keep decisions, proposal status, entity hashes, and review snapshots without performing the final apply. |
-| [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) | Lists proposals, entities, entity detail, duplicates, and resolver/masking state for review without applying data. |
+| [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) | Lists proposals, entities, entity detail, duplicates, and resolver/masking state without applying data or mutating supporting metadata or stored decisions. |
 | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) | Uploads trusted proposal or fixture packages, validates/extracts them, and supports deleting an individual staged proposal. |
 | [`proposal.core.masking`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) | Inspects sensitive fields and applies or reverts masking directives within a staged proposal before deployment. |
 

@@ -565,7 +565,7 @@
             "tags": [
                 "operation:diagnose",
                 "operation:inspect",
-                "risk:read_only",
+                "risk:mixed",
                 "scope:addon:bricks",
                 "surface:admin",
                 "surface:rest"
@@ -1617,11 +1617,12 @@
             ],
             "inputs": [
                 "Curated capability manifest",
-                "User-selected search, category, status, interface, and agent-leverage filters"
+                "User-selected search, category, status, interface, verification, opportunity, and agent-leverage filters"
             ],
             "outputs": [
                 "Grouped read-only capability table",
-                "CLI, REST, safety, status, storage, and parity summaries"
+                "CLI, REST, safety, status, storage, parity, and verification summaries",
+                "Conservative live-verified, scoped-evidence, tested, source-reviewed, or not-recorded badges with dates and expandable evidence, tests, and notes"
             ],
             "artifacts": [],
             "storage_touched": [
@@ -1637,7 +1638,8 @@
                 "backup_required": false,
                 "warnings": [
                     "Repository-active does not prove that the same capability is enabled on another WordPress checkout.",
-                    "Potential CLI parity is a review prompt, not an automatic recommendation to expose every REST operation."
+                    "Potential CLI parity is a review prompt, not an automatic recommendation to expose every REST operation.",
+                    "Scoped evidence and repository tests do not promote a grouped capability to live verified or authorize write operations."
                 ]
             },
             "source_refs": [
@@ -1664,7 +1666,7 @@
                 "addon.bricks.drift"
             ],
             "known_gaps": [
-                "The table describes the repository manifest and does not probe the live runtime.",
+                "The table displays recorded manifest evidence and does not itself probe the live runtime.",
                 "CLI parity candidates require task-specific safety and usefulness review before implementation."
             ],
             "opportunity": {
@@ -1678,17 +1680,19 @@
             },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-06",
+                "verified_date": "2026-08-11",
                 "evidence_types": [
                     "source_review",
-                    "static_render_test"
+                    "static_render_test",
+                    "focused_unit_test",
+                    "same_checkout_admin_render"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Implemented and statically verified in the repository checkout; the separate LocalWP checkout was not modified."
+                "notes": "Phase 19 adds conservative verification states, counts, filtering, dates, and expandable evidence, test references, and notes. Focused rendering and state-precedence tests pass. Same-checkout administrator rendering confirmed 53 classified rows, summary counts, the verification filter contract, expandable details, and the manage_options gate. Signed-in browser interaction was unavailable, so this remains scoped evidence rather than full-record live verification."
             },
             "id": "admin.core.capability_landscape",
             "title": "Administrator capability landscape",
-            "summary": "Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps.",
+            "summary": "Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, verification evidence, and automation gaps.",
             "primary_category": "observability",
             "runtime_entrypoint": "DBVC Export > Docs & Workflows > Capability Landscape"
         },
@@ -2240,6 +2244,157 @@
                 ],
                 "live_runtime_verified": true,
                 "notes": "Focused tests plus same-checkout help, corrected exact-latest-run list output, exact current-run show output, and rejected --readiness execution passed on 2026-08-11. Pre/post hashing confirmed the same 12,133 files and tree hash 2c77f4b522095a010dedc594d8369a0bf591d8bfc23130e9e5a73094a571db2e."
+            }
+        },
+        {
+            "id": "cli.proposals.inspect",
+            "title": "Bounded proposal and entity summary commands",
+            "summary": "Shows one exact staged proposal through conservative structural preflight metadata and lists bounded sanitized entity rows without raw values, detail callbacks, live resolver matching, snapshot recapture, or mutation.",
+            "status": "active",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:proposal",
+                "operation:inspect",
+                "operation:list",
+                "risk:read_only",
+                "scope:core",
+                "surface:cli",
+                "workflow:proposal_review"
+            ],
+            "aliases": [
+                "wp dbvc proposals show",
+                "wp dbvc proposals entities",
+                "proposal structural preflight CLI"
+            ],
+            "addon_or_owner": "DBVC Core",
+            "runtime_entrypoint": "wp dbvc proposals",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc proposals show|entities",
+                    "discovery_ids": [
+                        "cli.command.dbvc.proposals.show",
+                        "cli.command.dbvc.proposals.entities"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-wp-cli-commands.php",
+                        "line": 1144
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "One exact existing proposal directory and readable manifest",
+                "Proposal ID selected from an authenticated administrator workflow or a previously reviewed local source"
+            ],
+            "inputs": [
+                "Exact proposal ID for show and entities",
+                "Optional bounded entity type, object type, snapshot artifact state, limit, and offset filters",
+                "Optional fail-on-blockers process exit behavior for known structural blockers"
+            ],
+            "outputs": [
+                "Manifest size, SHA-256, modification time, schema, status, item types, declared counts, and checksum metadata",
+                "Conservative known-blocker summary for missing hashes and duplicate manifest identities without claiming authoritative apply readiness",
+                "Stored decision counts, stored resolver-decision coverage, and existing snapshot-artifact counts without raw decision paths or values",
+                "Bounded entity identifiers, types, source IDs, stored hashes, media-reference counts, decision counts, snapshot artifact metadata, and duplicate group summaries"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Existing proposal manifest files under uploads/sync/db-version-control-backups (read only)",
+                "Existing proposal decision, resolver-decision, and snapshot-state options (read only)",
+                "Existing snapshot JSON files under uploads/sync/db-version-control-snapshots (metadata and SHA-256 only)"
+            ],
+            "settings": [
+                "dbvc_proposal_decisions",
+                "dbvc_resolver_decisions",
+                "dbvc_proposal_snapshot_states"
+            ],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "The command resolves only already-existing storage with wp_get_upload_dir(), realpath containment, exact manifest filenames, a 20 MB manifest limit, and a 20,000-item limit; it never asks backup or snapshot managers to create or harden directories.",
+                    "Readiness is deliberately conservative: known duplicate/hash blockers are reported, but authoritative apply readiness remains null because field decisions, masking values, live resolver matching, snapshot trust/staleness, new-entity identity, and apply permissions are not evaluated.",
+                    "Stored resolver-decision coverage is not live media resolution. Phase 18 made resolver dry-run and bundle lookup side-effect-free, but this command still avoids live matching so its structural contract remains bounded and independent of local attachment state.",
+                    "Snapshot output reports existing artifact presence and hashes only. Snapshot manager readers are intentionally not called because their path/identity helpers can create security files or assign stable UIDs.",
+                    "Single-entity detail is excluded because the current callback can prune decisions and expose raw current/proposed values.",
+                    "Every unrecognized flag is rejected, including raw, download, detail, decision, mask, cleanup, recapture, upload, delete, apply, and resolver-rule requests."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-proposal-inspection-cli.php"
+                },
+                {
+                    "path": "commands/class-wp-cli-commands.php",
+                    "line": 1144
+                },
+                {
+                    "path": "admin/class-admin-app.php",
+                    "line": 2299
+                },
+                {
+                    "path": "includes/Dbvc/Media/Resolver.php",
+                    "line": 37
+                },
+                {
+                    "path": "includes/class-snapshot-manager.php",
+                    "line": 18
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ProposalInspectionCliTest.php",
+                "tests/phpunit/CapabilityCliTest.php",
+                "tests/phpunit/CapabilityLandscapeTest.php"
+            ],
+            "doc_refs": [
+                "docs/agents/RECIPES.md",
+                "docs/agents/facets/cli-and-automation.md",
+                "docs/agents/facets/proposals-and-media.md",
+                "docs/implementation/completed/dbvc-agent-reference-library.md"
+            ],
+            "related": [
+                "proposal.core.inspect",
+                "cli.core.proposals.list",
+                "proposal.core.decisions",
+                "proposal.core.apply",
+                "media.core.resolver_rules",
+                "storage.core.snapshots"
+            ],
+            "known_gaps": [
+                "The bounded preflight intentionally does not claim authoritative apply readiness while the canonical read stack has write-capable resolver, snapshot-path, identity, and single-entity-detail behavior.",
+                "Duplicate groups use a conservative manifest identity summary rather than returning raw duplicate entries or invoking cleanup-capable callbacks.",
+                "Entity pagination bounds returned rows to 100, while filtering and exact total calculation can scan up to the 20,000-item manifest ceiling.",
+                "The active Local PHP 8.4 and bundled WP-CLI stack can emit upstream deprecation notices before JSON stdout; unattended parsers need compatible clean bootstrap or explicit notice handling."
+            ],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "medium",
+                "recommended_surface": "none",
+                "rationale": "This dedicated CLI record is the implemented safe bounded proposal-summary surface. Broader detail or authoritative readiness requires separate remediation of side-effectful readers rather than parity expansion here.",
+                "reviewed_date": "2026-08-11"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-11",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "pre_post_artifact_hash",
+                    "pre_post_option_hash",
+                    "same_checkout_wp_cli_help",
+                    "same_checkout_wp_cli_execution",
+                    "rejected_argument_execution",
+                    "same_checkout_admin_render"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Focused tests and same-checkout help/execution passed on 2026-08-11 for proposal 04-07-2026-221011. Show reported 755 items and 19 conservative blocker groups; entities returned 3 bounded sanitized rows; --raw was rejected with exit 1. Pre/post fingerprints retained 900 files, tree hash 1c7864d44906d5e7180c67790c360e735c577d8f61d47e58816cb5556fe3c7fc, and option hash 0700544fa6ba99c82ae118ea61474781b51f90fbbe6941901e386b3e2889b5ce. Administrator rendering showed 53 records, 24 CLI commands, zero candidates, and this record."
             }
         },
         {
@@ -3434,7 +3589,7 @@
                         "hook.extension_point.dbvc_allowed_export_filename_formats.62fa7a2b",
                         "hook.extension_point.dbvc_allowed_export_filename_formats.ae2781f5",
                         "hook.extension_point.dbvc_allowed_export_filename_formats.df7951a5",
-                        "hook.extension_point.dbvc_allowed_statuses_for_export.1fa2a774",
+                        "hook.extension_point.dbvc_allowed_statuses_for_export.515064f3",
                         "hook.extension_point.dbvc_allowed_statuses_for_export.7c768d89",
                         "hook.extension_point.dbvc_allowed_statuses_for_export.9239c953",
                         "hook.extension_point.dbvc_allowed_taxonomy_filename_formats.33f2dea5",
@@ -3458,13 +3613,13 @@
                         "hook.extension_point.dbvc_export_options_group_file_path.a3d56039",
                         "hook.extension_point.dbvc_export_options_group_filename.6bd9e1ed",
                         "hook.extension_point.dbvc_export_post_data.41cf0a54",
-                        "hook.extension_point.dbvc_export_post_data.624e43d7",
+                        "hook.extension_point.dbvc_export_post_data.c6102edd",
                         "hook.extension_point.dbvc_export_post_file_path.59b68201",
                         "hook.extension_point.dbvc_export_post_file_path.9110299e",
                         "hook.extension_point.dbvc_export_post_file_path.b6d29f45",
                         "hook.extension_point.dbvc_export_term_data.b1ff3d83",
                         "hook.extension_point.dbvc_export_term_file_path.2b463f6a",
-                        "hook.extension_point.dbvc_import_backup_override.acf1f009",
+                        "hook.extension_point.dbvc_import_backup_override.373a7fb4",
                         "hook.extension_point.dbvc_meta_sanitize_skip_keys.3371871d",
                         "hook.extension_point.dbvc_selected_options_groups.da741e1a",
                         "hook.extension_point.dbvc_should_export_on_option_update.478c4746",
@@ -3693,8 +3848,8 @@
                     "type": "rest",
                     "identifier": "Entity Editor read routes",
                     "discovery_ids": [
-                        "rest.4deeb5c1f2342100",
-                        "rest.e11029662d3d0ceb"
+                        "rest.55d4d1a58be4395a",
+                        "rest.78fe171d817dd03f"
                     ],
                     "source_ref": {
                         "path": "admin/class-admin-app.php",
@@ -3826,10 +3981,22 @@
                     "type": "rest",
                     "identifier": "Entity Editor mutation routes",
                     "discovery_ids": [
-                        "rest.16bfc536995b41d6",
-                        "rest.25929c93488ac6ab",
-                        "rest.6e4f82a73285c95a",
-                        "rest.e3a82bde7fd28a53"
+                        "rest.050e216b94dcad43",
+                        "rest.0697e7edda3879aa",
+                        "rest.1da00dac569c4bb6",
+                        "rest.22b6cbbd01d8ccc7",
+                        "rest.278cddab6ec97d68",
+                        "rest.32c18515d309afbd",
+                        "rest.36cdccfd149fb034",
+                        "rest.3e6cb3e897c82c1f",
+                        "rest.5d5021e139e4d72c",
+                        "rest.634851fb96136c8a",
+                        "rest.7385d502153da645",
+                        "rest.7f10f498cc0b5f8c",
+                        "rest.8dcad977363901ba",
+                        "rest.9edfbda22c0c7cf7",
+                        "rest.c2273670b862022d",
+                        "rest.f04267d09b278df5"
                     ],
                     "source_ref": {
                         "path": "admin/class-admin-app.php",
@@ -3847,24 +4014,6 @@
                         "path": "includes/class-entity-editor-indexer.php",
                         "line": 1532
                     }
-                },
-                {
-                    "type": "rest",
-                    "identifier": "Additional current-checkout rest routes surfaces",
-                    "discovery_ids": [
-                        "rest.0168365fa15608c7",
-                        "rest.06462621af38e249",
-                        "rest.073a767544c2741f",
-                        "rest.1c2a5295f6c2755b",
-                        "rest.3c261991223476eb",
-                        "rest.7f37f9af1310f2e2",
-                        "rest.8054c7dd4ef85920",
-                        "rest.8283d5d99541f45d",
-                        "rest.a29242339c1eaf88",
-                        "rest.a7b870d388d8ce20",
-                        "rest.a806fac86e999453",
-                        "rest.d14b0fe17546bc1c"
-                    ]
                 },
                 {
                     "type": "admin_post",
@@ -4073,7 +4222,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_bricks_reference_unresolved_policy.fe5e1628",
+                        "hook.extension_point.dbvc_bricks_reference_unresolved_policy.cccda06b",
                         "hook.extension_point.dbvc_localize_bricks_entity_references.c2d0e6a9"
                     ]
                 },
@@ -4579,14 +4728,14 @@
                     "type": "rest",
                     "identifier": "Proposal resolver and global resolver-rule routes",
                     "discovery_ids": [
-                        "rest.03260cfd2666a476",
-                        "rest.75e4c1b042c90525",
-                        "rest.8dc65ddd4eada7ea",
-                        "rest.91ccacc8fca92824",
-                        "rest.921aef35c3de3cfb",
-                        "rest.a8c060289fc9f6c6",
-                        "rest.df6c3b7a1651755a",
-                        "rest.f58cd89753f98cfd"
+                        "rest.0e3ffd3a48284fd8",
+                        "rest.1c3e89be4b3bc9f8",
+                        "rest.3bcbf35dab54d301",
+                        "rest.450cfda27a69a430",
+                        "rest.54f9103979e7264c",
+                        "rest.93e537c2ca042726",
+                        "rest.f938d65565c94724",
+                        "rest.fc7e97c01ca4f7e4"
                     ],
                     "source_ref": {
                         "path": "admin/class-admin-app.php",
@@ -4668,7 +4817,8 @@
                 "rollback": "Restore uploads/database and remove incorrect global rules.",
                 "warnings": [
                     "Remote downloads and remaps can create or bind attachments.",
-                    "Global rules affect future proposals; validate environment-specific IDs."
+                    "Global rules affect future proposals; validate environment-specific IDs.",
+                    "Resolver calls with dry_run=true do not backfill attachment identity metadata and existing-bundle lookup does not create or harden storage. Calls without dry_run retain operational identity backfill behavior."
                 ]
             },
             "source_refs": [
@@ -4680,9 +4830,15 @@
                 },
                 {
                     "path": "includes/Dbvc/Media/Resolver.php"
+                },
+                {
+                    "path": "includes/Dbvc/Media/BundleManager.php"
                 }
             ],
-            "test_refs": [],
+            "test_refs": [
+                "tests/phpunit/MediaResolverDryRunTest.php",
+                "tests/phpunit/MediaResolverDecisionTest.php"
+            ],
             "doc_refs": [
                 "docs/architecture/media-sync-design.md"
             ],
@@ -4691,7 +4847,9 @@
                 "cli.core.resolver_rules.mutate",
                 "proposal.core.apply"
             ],
-            "known_gaps": [],
+            "known_gaps": [
+                "The grouped resolver workflow remains write-capable outside dry-run because reconciliation, downloads, decisions, and global rules intentionally mutate WordPress or uploads."
+            ],
             "opportunity": {
                 "disposition": "covered_elsewhere",
                 "priority": "none",
@@ -4703,14 +4861,19 @@
             },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-05",
+                "verified_date": "2026-08-11",
                 "evidence_types": [
                     "bootstrap_review",
                     "source_review",
-                    "static_registration_discovery"
+                    "static_registration_discovery",
+                    "dry_run_mutation_barrier_test",
+                    "operational_regression_test",
+                    "same_checkout_dry_run_execution",
+                    "pre_post_attachment_meta_hash",
+                    "pre_post_bundle_tree_hash"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+                "notes": "Phase 18 makes resolver dry-run identity matching and existing-bundle lookup side-effect-free while preserving non-dry-run identity backfill. Focused tests cover hash/path matches, absent bundle storage, and operational resolver behavior. Same-checkout dry-run resolved 140/140 media entries by asset UID with zero conflicts; pre/post state retained 522 identity-meta rows and hash 6b2597630766e792fbd568d8841d265a4219b66caa3fc7abaf34b063a7e91b8e plus 2,359 bundle files and tree hash 986f7e055f738966c3adc208fa388d5e5f761a97e0d494cb566d8c8ac3d256bc. The grouped write-capable record remains globally runtime unverified."
             },
             "id": "media.core.resolver_rules",
             "title": "Media resolver, decisions, and global rules",
@@ -4736,7 +4899,7 @@
                     "type": "rest",
                     "identifier": "POST /dbvc/v1/logs/client",
                     "discovery_ids": [
-                        "rest.b1130a6dab6600a7"
+                        "rest.8e60c65084a9a511"
                     ],
                     "source_ref": {
                         "path": "admin/class-admin-app.php",
@@ -5035,7 +5198,7 @@
                     "type": "rest",
                     "identifier": "POST /dbvc/v1/proposals/{id}/apply",
                     "discovery_ids": [
-                        "rest.e813cc8f4dc3fdd1"
+                        "rest.25e576bc856fae19"
                     ],
                     "source_ref": {
                         "path": "admin/class-admin-app.php",
@@ -5133,7 +5296,7 @@
                     "type": "rest",
                     "identifier": "Proposal duplicate and maintenance cleanup routes",
                     "discovery_ids": [
-                        "rest.47604d26915705dc",
+                        "rest.a58c37c16fe67187",
                         "rest.b7a2b59ba2820028"
                     ],
                     "source_ref": {
@@ -5204,6 +5367,7 @@
                 "object:proposal",
                 "object:snapshot",
                 "operation:configure",
+                "operation:delete",
                 "operation:generate",
                 "risk:filesystem_write",
                 "risk:wordpress_write",
@@ -5222,34 +5386,46 @@
                     "type": "rest",
                     "identifier": "Proposal decision, hash, status, and snapshot routes",
                     "discovery_ids": [
-                        "rest.083d9bcf64c86bea",
-                        "rest.137e8e92853f3498",
-                        "rest.21a07bc05b64978c",
-                        "rest.54a9af2d26bff928",
-                        "rest.60b2757617d58d15",
-                        "rest.7dbbce1650fddbe4",
-                        "rest.a8017b3db121f5ff",
+                        "rest.051bfcab72803163",
+                        "rest.085e045fe6931dca",
+                        "rest.0de330471aacbeaa",
+                        "rest.6b0acc0ffac4809b",
+                        "rest.70e6647f3d301401",
+                        "rest.b902f3836b1d1eb4",
                         "rest.c593030b413d509d",
-                        "rest.dfe17813254c17de",
-                        "rest.ec538c04a5fb729a"
+                        "rest.cbe52b1b9f106742",
+                        "rest.d084da6d1ba92381",
+                        "rest.e0e0772806c51a66",
+                        "rest.f5db55b88e967498"
                     ],
                     "source_ref": {
                         "path": "admin/class-admin-app.php",
                         "line": 308
                     }
+                },
+                {
+                    "type": "admin",
+                    "identifier": "Proposal Review entity drawer explicit stale-decision prune action",
+                    "discovery_ids": [],
+                    "source_ref": {
+                        "path": "src/admin-app/index.js",
+                        "line": 1170
+                    }
                 }
             ],
             "requirements": [
                 "manage_options capability and REST nonce",
-                "Existing staged proposal"
+                "Existing staged proposal",
+                "A trusted entity snapshot diff and explicit administrator confirmation for stale-decision pruning"
             ],
             "inputs": [
                 "Entity selection decisions",
                 "Proposal/entity IDs",
-                "Status and snapshot requests"
+                "Status and snapshot requests",
+                "Confirmed stale-decision pruning request"
             ],
             "outputs": [
-                "Persisted decisions, hashes, and snapshots"
+                "Persisted decisions, hashes, snapshots, and exact stale-decision pruning counts"
             ],
             "artifacts": [],
             "storage_touched": [
@@ -5266,16 +5442,25 @@
                 "backup_required": false,
                 "warnings": [
                     "Decision state controls later apply behavior.",
-                    "Hash-sync can change whether drift is considered resolved."
+                    "Hash-sync can change whether drift is considered resolved.",
+                    "Snapshot capture explicitly creates and hardens snapshot storage; snapshot lookup no longer does so.",
+                    "The explicit stale-decision pruning route removes only decisions outside a trusted snapshot diff and rejects missing, untrusted, or unavailable baselines.",
+                    "The Proposal Review entity drawer exposes pruning only when the detail response marks it eligible and requires a browser confirmation before posting the writer request."
                 ]
             },
             "source_refs": [
                 {
                     "path": "admin/class-admin-app.php",
                     "line": 171
+                },
+                {
+                    "path": "src/admin-app/index.js",
+                    "line": 2664
                 }
             ],
-            "test_refs": [],
+            "test_refs": [
+                "tests/phpunit/ProposalDiffContractTest.php"
+            ],
             "doc_refs": [],
             "related": [
                 "proposal.core.inspect",
@@ -5285,14 +5470,24 @@
             "known_gaps": [],
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-05",
+                "verified_date": "2026-08-14",
                 "evidence_types": [
                     "bootstrap_review",
                     "source_review",
-                    "static_registration_discovery"
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "admin_ui_source_contract_test",
+                    "rest_authorization_contract_test",
+                    "authenticated_browser_refresh_qa",
+                    "authenticated_browser_confirmation_qa",
+                    "authenticated_browser_fail_closed_qa",
+                    "authenticated_browser_success_status_qa",
+                    "authenticated_browser_keyboard_qa",
+                    "authenticated_browser_focus_restoration_qa",
+                    "authenticated_browser_drawer_close_focus_qa"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+                "notes": "Phase 21 focused coverage confirms snapshot capture remains an explicit filesystem writer that creates and hardens the base and proposal storage while snapshot reads resolve absent paths without creating them. Phase 24 moves trusted stale-decision pruning into an explicit administrator writer that revalidates snapshot trust and reports before/after counts; entity-detail GET now preserves decisions. Phase 25 adds an entity-drawer operator action that is hidden without GET eligibility, requires explicit browser confirmation, posts only to the existing prune route, refreshes decision/readiness state, and records the exact outcome. Phase 26 exercises that registered route: a subscriber receives rest_forbidden with no option mutation, while an administrator receives the exact pruned entity/proposal summaries. Phase 27 adds cache no-store to Proposal Review GET requests after the authenticated browser still showed a completely removed fixture; reloading returned zero fixture rows and zero prune actions, proving the residual display was stale client/browser state rather than persisted DBVC data. Phase 28 replaces the native prompt with an in-app modal; authenticated fixture QA verifies its exact copy, Cancel, no-op, and stale-prune paths. Phase 29 invalidates only an open fixture snapshot before confirmation; the authenticated drawer visibly renders the returned 409 text while both stored decisions remain intact. Phase 30 verifies the persistent accessible success status after an authoritative prune refresh, including exact removed/current counts, an empty selection state, and the absent action. Phase 31 finds the modal focus defect; Phase 32 then focuses Cancel on open and restores the prune opener after Escape, Cancel, and the modal Close control without mutating decisions. Phase 33 verifies closing the entity drawer restores the exact originating entity-row control without opening the prune confirmation or changing decisions. The fixture was removed completely. Decision, hash, status, recapture, and other write routes were not executed live, so the grouped record remains repository-tested rather than runtime verified."
             },
             "id": "proposal.core.decisions",
             "title": "Proposal review decisions and snapshots API",
@@ -5353,18 +5548,24 @@
             ],
             "artifacts": [],
             "storage_touched": [
-                "Proposal files, manifests, options, and snapshot data (read only)"
+                "Proposal files and manifests (read)",
+                "Proposal decisions and related options (read only; trusted stale-decision cleanup uses an explicit writer)",
+                "Snapshot lookup (read only; capture remains an explicit writer)",
+                "Backup and identity storage (reviewed backup, snapshot, and current-state readers are non-creating and do not assign stable UID metadata)"
             ],
             "settings": [],
             "hooks": [],
             "safety": {
                 "classification": "read_only",
                 "human_reviewed": true,
-                "dry_run": "yes",
-                "idempotency": "yes",
+                "dry_run": "conditional",
+                "idempotency": "conditional",
                 "backup_required": false,
                 "warnings": [
-                    "Inspection can expose sensitive proposal values; restrict to authorized administrators."
+                    "Inspection can expose sensitive proposal values; restrict to authorized administrators.",
+                    "Single-entity detail preserves stored decisions and reports when trusted stale-decision cleanup is eligible; the separately authorized writer revalidates snapshot trust before pruning.",
+                    "Phases 18, 20, 21, 22, 23, and 24 removed resolver dry-run attachment-meta/bundle-root writes, unsafe untrusted-baseline decision pruning, snapshot-read path creation, backup-read base creation, inspection-time stable-identity assignment, and GET-path decision pruning.",
+                    "Inspection can return sensitive raw-download links for authorized administrators; it does not apply, recapture, or prune data."
                 ]
             },
             "source_refs": [
@@ -5382,7 +5583,8 @@
                 }
             ],
             "test_refs": [
-                "tests/phpunit/MaskingEndpointsTest.php"
+                "tests/phpunit/MaskingEndpointsTest.php",
+                "tests/phpunit/ProposalDiffContractTest.php"
             ],
             "doc_refs": [],
             "related": [
@@ -5390,21 +5592,17 @@
                 "proposal.core.apply",
                 "media.core.resolver_rules"
             ],
-            "known_gaps": [],
+            "known_gaps": [
+                "The grouped GET surface is read-only after Phase 24; apply, recapture, masking, duplicate cleanup, status, hash-sync, and stale-decision pruning remain separately authorized writers.",
+                "The dedicated cli.proposals.inspect record covers only conservative structural preflight and sanitized bounded entity summaries."
+            ],
             "opportunity": {
-                "disposition": "candidate",
-                "priority": "medium",
+                "disposition": "covered_elsewhere",
+                "priority": "none",
                 "effort": "medium",
-                "recommended_surface": "cli",
-                "rationale": "The existing proposals list command covers top-level readiness, while bounded entity summaries, duplicate counts, and resolver metrics remain useful. The current single-entity detail path is excluded because it can prune stored decisions and can expose raw values.",
-                "candidate_scope": "Show one exact proposal's readiness and return bounded entity summary, duplicate-count, resolver-metric, decision-count, snapshot-state, and hash metadata without raw current/proposed values.",
-                "excluded_operations": [
-                    "Single-entity detail until decision-pruning side effects are removed",
-                    "Raw current/proposed values and raw downloads",
-                    "Decision updates, masking changes, duplicate cleanup, snapshot recapture, upload, delete, apply, and resolver-rule mutation"
-                ],
-                "next_action": "Define wp dbvc proposals show and entities around exact proposal IDs, bounded summary fields, pagination, and no calls to get_proposal_entity() or writer callbacks.",
-                "related_record": "cli.core.proposals.list",
+                "recommended_surface": "none",
+                "rationale": "The dedicated cli.proposals.inspect record now provides exact-proposal conservative preflight and bounded sanitized entity summaries without calling the raw/pruning detail route or side-effectful canonical readiness readers.",
+                "related_record": "cli.proposals.inspect",
                 "reviewed_date": "2026-08-11"
             },
             "verification": {
@@ -5414,14 +5612,20 @@
                     "bootstrap_review",
                     "source_review",
                     "static_registration_discovery",
-                    "opportunity_callback_audit"
+                    "opportunity_callback_audit",
+                    "focused_unit_test",
+                    "same_checkout_decision_option_fingerprint",
+                    "same_checkout_decision_get_fingerprint",
+                    "same_checkout_absent_storage_snapshot_read",
+                    "same_checkout_absent_storage_backup_read",
+                    "same_checkout_identity_metadata_fingerprint"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Phase 14 separated bounded readiness/entity-summary candidates from raw detail and identified decision pruning inside the current single-entity GET path; no proposal callback was executed."
+                "notes": "Phase 17 added a bounded CLI adapter over existing manifest, option, and snapshot artifacts. Phase 18 made resolver dry-run and bundle lookup side-effect-free. Phase 20 requires a trusted authoritative diff before stale decisions are eligible for cleanup and preserves decisions for missing/untrusted baselines; same-checkout decision-option hashing remained unchanged. Phase 21 makes snapshot read and metadata lookup non-creating. Phase 22 makes backup-base lookup non-creating for proposal-list and manifest/payload inspection readers. Phase 23 makes post and term current-state snapshot inspection read existing identity metadata without assigning UIDs or synchronizing identity records. Phase 24 moves trusted stale-decision pruning into a separately authorized writer, leaving entity-detail GET read-only; same-checkout entity GETs retained an exact decision-store fingerprint. The grouped REST record is not globally live verified because it can expose sensitive proposal values."
             },
             "id": "proposal.core.inspect",
             "title": "Proposal and entity inspection API",
-            "summary": "Lists proposals, entities, entity detail, duplicates, and resolver/masking state for review without applying data.",
+            "summary": "Lists proposals, entities, entity detail, duplicates, and resolver/masking state without applying data or mutating supporting metadata or stored decisions.",
             "primary_category": "proposal_review"
         },
         {
@@ -5459,7 +5663,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_proposal_zip_resource_limits.0db8768b"
+                        "hook.extension_point.dbvc_proposal_zip_resource_limits.018daeae"
                     ]
                 }
             ],
@@ -5597,7 +5801,7 @@
                         "hook.extension_point.dbvc_auto_export_mask_modes.d12a4a12",
                         "hook.extension_point.dbvc_auto_export_mask_settings.76741a8b",
                         "hook.extension_point.dbvc_maskable_post_fields.d975fb41",
-                        "hook.extension_point.dbvc_masking_chunk_size.c39533f9"
+                        "hook.extension_point.dbvc_masking_chunk_size.e99a7423"
                     ],
                     "source_ref": {
                         "path": "admin/admin-page.php",
@@ -6184,7 +6388,7 @@
                     "type": "hook",
                     "identifier": "Snapshot capture control filter",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_enable_snapshot_capture.5c7d1ee2"
+                        "hook.extension_point.dbvc_enable_snapshot_capture.bffa11b5"
                     ],
                     "source_ref": {
                         "path": "includes/class-snapshot-manager.php",
@@ -6195,7 +6399,7 @@
                     "type": "hook",
                     "identifier": "Additional current-checkout extension points surfaces",
                     "discovery_ids": [
-                        "hook.extension_point.dbvc_enable_snapshot_capture.e8f00504"
+                        "hook.extension_point.dbvc_enable_snapshot_capture.4e824800"
                     ]
                 }
             ],
@@ -6250,7 +6454,9 @@
                     "path": "includes/class-snapshot-manager.php"
                 }
             ],
-            "test_refs": [],
+            "test_refs": [
+                "tests/phpunit/ProposalDiffContractTest.php"
+            ],
             "doc_refs": [
                 "docs/architecture/media-sync-design.md",
                 "docs/architecture/README.md"
@@ -6260,17 +6466,23 @@
                 "proposal.core.decisions",
                 "transport.core.sync_packages"
             ],
-            "known_gaps": [],
+            "known_gaps": [
+                "Capture, database history, cleanup, retention, and other snapshot lifecycle writers remain broader write-capable behavior; reviewed inspection no longer assigns stable identity."
+            ],
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-05",
+                "verified_date": "2026-08-11",
                 "evidence_types": [
                     "bootstrap_review",
                     "source_review",
-                    "static_registration_discovery"
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_absent_storage_snapshot_read",
+                    "same_checkout_absent_storage_backup_read",
+                    "same_checkout_identity_metadata_fingerprint"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+                "notes": "Phase 21 separates snapshot lookup from capture writes. read_snapshot() and metadata lookup use non-creating upload and base-path resolution; capture writers explicitly create and harden storage. Phase 22 makes backup-base lookup non-creating for list and manifest readers while writer paths continue to create and harden storage. Phase 23 makes post and term snapshot inspection read existing UID metadata without assigning UIDs or synchronizing identity records. Same-checkout inspection retained an identity-metadata fingerprint. This is scoped storage evidence; database history, cleanup, capture, and retention remain broader write-capable behavior."
             },
             "id": "storage.core.snapshots",
             "title": "Snapshots, jobs, activity, and backup manifests",

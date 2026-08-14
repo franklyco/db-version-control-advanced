@@ -1117,6 +1117,74 @@ if ( defined( 'WP_CLI' ) && WP_CLI && ! class_exists( 'DBVC_WP_CLI_Proposals' ) 
 		 *
 		 * @return void
 		 */
+		/**
+		 * Show one exact proposal's bounded read-only structural preflight.
+		 *
+		 * ## OPTIONS
+		 *
+		 * <proposal-id>
+		 * : Exact proposal directory ID.
+		 *
+		 * [--fields=<fields>]
+		 * : Comma-separated table fields.
+		 *
+		 * [--format=<format>]
+		 * : table or json. Default: table.
+		 *
+		 * [--fail-on-blockers]
+		 * : Return exit code 1 when the bounded preflight finds known blockers.
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc proposals show <proposal-id> --format=json
+		 *
+		 * @param array $args Positional arguments.
+		 * @param array $assoc_args Named arguments.
+		 * @return void
+		 */
+		public function show( $args, $assoc_args ) {
+			DBVC_WP_CLI_Proposal_Inspector::show( $args, $assoc_args );
+		}
+
+		/**
+		 * List bounded sanitized entities for one exact proposal.
+		 *
+		 * ## OPTIONS
+		 *
+		 * <proposal-id>
+		 * : Exact proposal directory ID.
+		 *
+		 * [--entity-type=<type>]
+		 * : Restrict to one manifest item type.
+		 *
+		 * [--object-type=<type>]
+		 * : Restrict to one post type, taxonomy, or provider object type.
+		 *
+		 * [--snapshot-state=<state>]
+		 * : Restrict to present, missing, or not_applicable.
+		 *
+		 * [--limit=<number>]
+		 * : Maximum rows. Default: 25; maximum: 100.
+		 *
+		 * [--offset=<number>]
+		 * : Zero-based row offset.
+		 *
+		 * [--fields=<fields>]
+		 * : Comma-separated table fields.
+		 *
+		 * [--format=<format>]
+		 * : table or json. Default: table.
+		 *
+		 * ## EXAMPLES
+		 * wp dbvc proposals entities <proposal-id> --limit=25 --format=json
+		 *
+		 * @param array $args Positional arguments.
+		 * @param array $assoc_args Named arguments.
+		 * @return void
+		 */
+		public function entities( $args, $assoc_args ) {
+			DBVC_WP_CLI_Proposal_Inspector::entities( $args, $assoc_args );
+		}
+
 		private function ensure_admin_app() {
 			if ( ! class_exists( 'DBVC_Admin_App' ) ) {
 				\WP_CLI::error( 'DBVC Admin App is not available. Is the plugin active?' );
@@ -1497,3 +1565,4 @@ require_once __DIR__ . '/class-capabilities-cli.php';
 require_once __DIR__ . '/class-bricks-cli.php';
 require_once __DIR__ . '/class-content-migration-cli.php';
 require_once __DIR__ . '/class-entity-editor-cli.php';
+require_once __DIR__ . '/class-proposal-inspection-cli.php';

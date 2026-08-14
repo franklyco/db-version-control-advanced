@@ -333,6 +333,16 @@ final class DBVC_Admin_App
 
         register_rest_route(
             'dbvc/v1',
+            '/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/selections/prune',
+            [
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => [self::class, 'prune_entity_decisions'],
+                'permission_callback' => [self::class, 'can_manage'],
+            ]
+        );
+
+        register_rest_route(
+            'dbvc/v1',
             '/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/selections/bulk',
             [
                 'methods'             => \WP_REST_Server::CREATABLE,
@@ -810,7 +820,7 @@ final class DBVC_Admin_App
             $resolver_result = null;
             if (class_exists('\Dbvc\Media\Resolver')) {
                 try {
-                    $proposal_path = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
+                    $proposal_path = trailingslashit(DBVC_Backup_Manager::get_base_path(false)) . $proposal_id;
                     $resolver_result  = \Dbvc\Media\Resolver::resolve_manifest($manifest, [
                         'allow_remote' => false,
                         'dry_run'      => true,
@@ -1812,7 +1822,7 @@ final class DBVC_Admin_App
             return new \WP_Error('dbvc_missing_manager', __('Backup manager is unavailable.', 'dbvc'), ['status' => 500]);
         }
 
-        $base_dir = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
+        $base_dir = trailingslashit(DBVC_Backup_Manager::get_base_path(false)) . $proposal_id;
         $base_real = realpath($base_dir);
         if ($base_real === false || ! is_dir($base_real)) {
             return new \WP_Error('dbvc_missing_proposal_dir', __('Proposal directory not found.', 'dbvc'), ['status' => 500]);
@@ -2411,12 +2421,38 @@ final class DBVC_Admin_App
                 }
             }
         }
-        if (! empty($snapshot_status['trusted'])) {
-            $diff_paths = array_merge(
-                $diff_paths,
-                self::resolve_entity_masking_decision_paths($proposal_id, $vf_object_uid, $entity)
-            );
-            self::prune_entity_decisions_for_paths($proposal_id, $vf_object_uid, $diff_paths);
+        $decisions = self::get_entity_decisions($proposal_id, $vf_object_uid);
+        $decision_pruning = [
+            'performed'    => false,
+            'source'       => $current_source,
+            'reason'       => $snapshot_state === 'not_required'
+                ? 'not_applicable_new_entity'
+                : 'untrusted_snapshot',
+            'before_count' => count($decisions),
+            'after_count'  => count($decisions),
+            'pruned_count' => 0,
+        ];
+        $warnings = [];
+        $can_prune_decisions = ! empty($snapshot_status['trusted'])
+            && ! empty($canonical_diff_summary['available']);
+        if ($can_prune_decisions) {
+            $decision_pruning = [
+                'performed'    => false,
+                'source'       => 'snapshot',
+                'reason'       => 'explicit_action_required',
+                'before_count' => $decision_pruning['before_count'],
+                'after_count'  => $decision_pruning['before_count'],
+                'pruned_count' => 0,
+                'eligible'     => true,
+            ];
+        } elseif ($snapshot_state !== 'not_required') {
+            $decision_pruning['reason'] = ! empty($snapshot_status['trusted'])
+                ? 'authoritative_diff_unavailable'
+                : 'untrusted_snapshot';
+            $warnings[] = [
+                'code'    => 'dbvc_decisions_preserved_untrusted_baseline',
+                'message' => __('Stored review decisions were preserved because an authoritative current-state snapshot was unavailable.', 'dbvc'),
+            ];
         }
         $meta_changes = 0;
         $tax_changes  = 0;
@@ -2450,7 +2486,6 @@ final class DBVC_Admin_App
             'snapshot_status' => $snapshot_status,
         ];
         $diff_state   = self::evaluate_entity_diff_state($entity, $vf_object_uid, $diff_counts, $identity);
-        $decisions    = self::get_entity_decisions($proposal_id, $vf_object_uid);
         foreach ($diff_summary['changes'] as &$change) {
             $decision_path = ! empty($change['can_apply']) && ! empty($change['apply_path'])
                 ? (string) $change['apply_path']
@@ -2499,6 +2534,8 @@ final class DBVC_Admin_App
             'raw_downloads' => $raw_downloads,
             'snapshot_state'=> $snapshot_state,
             'snapshot_status'=> $snapshot_status,
+            'decision_pruning'=> $decision_pruning,
+            'warnings'         => $warnings,
             'diff_state'    => $diff_state,
             'decisions'     => $decisions,
             'decision_summary' => self::summarize_entity_decisions($decisions),
@@ -2506,6 +2543,117 @@ final class DBVC_Admin_App
             'identity_match'    => $identity['match_source'],
             'new_entity_decision'=> $new_entity_decision,
             'new_entity_state'   => $new_entity_state,
+        ]);
+    }
+
+    /**
+     * REST: explicitly remove stale review decisions after a trusted snapshot diff.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response|\WP_Error
+     */
+    public static function prune_entity_decisions(\WP_REST_Request $request)
+    {
+        $proposal_id   = sanitize_text_field($request->get_param('proposal_id'));
+        $vf_object_uid = sanitize_text_field($request->get_param('vf_object_uid'));
+        $manifest      = self::read_manifest_by_id($proposal_id);
+        if (! $manifest) {
+            return new \WP_Error('dbvc_manifest_missing', __('Proposal manifest could not be found.', 'dbvc'), ['status' => 404]);
+        }
+
+        $entity = null;
+        foreach ((array) ($manifest['items'] ?? []) as $item) {
+            if (is_array($item) && self::get_manifest_item_uid($item) === $vf_object_uid) {
+                $entity = $item;
+                break;
+            }
+        }
+        if (! is_array($entity)) {
+            return new \WP_Error('dbvc_invalid_entity', __('Entity is not part of this proposal.', 'dbvc'), ['status' => 404]);
+        }
+
+        $identity = ($entity['item_type'] ?? '') === 'term'
+            ? self::describe_term_identity($entity)
+            : self::describe_entity_identity($entity);
+        $snapshot_status = self::get_entity_snapshot_status($proposal_id, $entity, $identity);
+        $before = self::get_entity_decisions($proposal_id, $vf_object_uid);
+        if (empty($snapshot_status['trusted'])) {
+            return new \WP_Error(
+                'dbvc_decision_pruning_unavailable',
+                __('Stale decisions can be pruned only after a trusted current-state snapshot is available.', 'dbvc'),
+                [
+                    'status'           => 409,
+                    'proposal_id'      => $proposal_id,
+                    'vf_object_uid'    => $vf_object_uid,
+                    'decision_pruning' => [
+                        'performed'    => false,
+                        'source'       => (string) ($snapshot_status['state'] ?? 'failed'),
+                        'reason'       => 'untrusted_snapshot',
+                        'before_count' => count($before),
+                        'after_count'  => count($before),
+                        'pruned_count' => 0,
+                    ],
+                ]
+            );
+        }
+
+        $current_path = isset($entity['path']) ? (string) $entity['path'] : '';
+        $proposed = [];
+        if ($current_path !== '') {
+            $payload = self::read_entity_payload($proposal_id, $current_path);
+            if (is_array($payload)) {
+                $proposed = $payload;
+            }
+        }
+        $snapshot = class_exists('DBVC_Snapshot_Manager')
+            ? DBVC_Snapshot_Manager::read_snapshot($proposal_id, $vf_object_uid)
+            : null;
+        if (! is_array($snapshot) || empty($snapshot)) {
+            return new \WP_Error(
+                'dbvc_decision_pruning_unavailable',
+                __('Stale decisions can be pruned only when the trusted snapshot can still produce an authoritative diff.', 'dbvc'),
+                [
+                    'status'           => 409,
+                    'proposal_id'      => $proposal_id,
+                    'vf_object_uid'    => $vf_object_uid,
+                    'decision_pruning' => [
+                        'performed'    => false,
+                        'source'       => 'snapshot',
+                        'reason'       => 'authoritative_diff_unavailable',
+                        'before_count' => count($before),
+                        'after_count'  => count($before),
+                        'pruned_count' => 0,
+                    ],
+                ]
+            );
+        }
+
+        $diff_summary = self::compare_snapshots($snapshot, $proposed);
+        $paths = array_merge(
+            isset($diff_summary['apply_paths']) && is_array($diff_summary['apply_paths'])
+                ? $diff_summary['apply_paths']
+                : [],
+            self::resolve_entity_masking_decision_paths($proposal_id, $vf_object_uid, $entity)
+        );
+        self::prune_entity_decisions_for_paths($proposal_id, $vf_object_uid, $paths);
+        $after = self::get_entity_decisions($proposal_id, $vf_object_uid);
+        $store = self::get_decision_store();
+        $proposal_store = isset($store[$proposal_id]) && is_array($store[$proposal_id]) ? $store[$proposal_id] : [];
+
+        return new \WP_REST_Response([
+            'proposal_id'      => $proposal_id,
+            'vf_object_uid'    => $vf_object_uid,
+            'decisions'        => $after,
+            'summary'          => self::summarize_entity_decisions($after),
+            'proposal_summary' => self::summarize_proposal_decisions($proposal_store),
+            'decision_pruning' => [
+                'performed'    => count($before) !== count($after),
+                'source'       => 'snapshot',
+                'reason'       => 'trusted_snapshot',
+                'before_count' => count($before),
+                'after_count'  => count($after),
+                'pruned_count' => max(0, count($before) - count($after)),
+            ],
         ]);
     }
 
@@ -2671,7 +2819,7 @@ final class DBVC_Admin_App
                 'dry_run'      => true,
                 'proposal_id'  => $proposal_id,
                 'bundle_meta'  => $manifest['media_bundle'] ?? [],
-                'manifest_dir' => trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id,
+                'manifest_dir' => trailingslashit(DBVC_Backup_Manager::get_base_path(false)) . $proposal_id,
             ]);
 
             $attachments = [];
@@ -4148,7 +4296,7 @@ final class DBVC_Admin_App
             return null;
         }
 
-        $base    = DBVC_Backup_Manager::get_base_path();
+        $base    = DBVC_Backup_Manager::get_base_path(false);
         $folder  = trailingslashit($base) . $proposal_id;
 
         if (! is_dir($folder)) {
@@ -4698,7 +4846,7 @@ final class DBVC_Admin_App
             return null;
         }
 
-        $base = DBVC_Backup_Manager::get_base_path();
+        $base = DBVC_Backup_Manager::get_base_path(false);
         $proposal_dir = trailingslashit($base) . $proposal_id;
         if (! is_dir($proposal_dir)) {
             return null;
@@ -5307,7 +5455,7 @@ final class DBVC_Admin_App
         if (! array_key_exists('resolver_result', $options) && class_exists('\Dbvc\Media\Resolver')) {
             try {
                 $proposal_path = class_exists('DBVC_Backup_Manager')
-                    ? trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id
+                    ? trailingslashit(DBVC_Backup_Manager::get_base_path(false)) . $proposal_id
                     : '';
                 $result = \Dbvc\Media\Resolver::resolve_manifest($manifest, [
                     'allow_remote' => false,
@@ -10261,7 +10409,7 @@ final class DBVC_Admin_App
     {
         $manifest_dir = '';
         if ($proposal_id !== '' && class_exists('DBVC_Backup_Manager')) {
-            $manifest_dir = trailingslashit(DBVC_Backup_Manager::get_base_path()) . $proposal_id;
+            $manifest_dir = trailingslashit(DBVC_Backup_Manager::get_base_path(false)) . $proposal_id;
         } elseif (function_exists('dbvc_get_sync_path')) {
             $manifest_dir = trailingslashit(dbvc_get_sync_path());
         }

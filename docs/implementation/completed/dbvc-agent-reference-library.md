@@ -1,8 +1,8 @@
 # DBVC Agent Reference Library Implementation Plan
 
 Date: 2026-08-04  
-Last updated: 2026-08-11  
-Status: Phases 1 through 7, post-merge hardening, and Phases 9 through 16 complete; the next boundary is the remaining bounded exact-proposal summary candidate  
+Last updated: 2026-08-14  
+Status: Core agent library and administrator landscape complete; capability-shaped verification continues under the approved per-capability boundaries below  
 Scope authority: This document defines the implementation sequence for an opt-in agent reference layer under `docs/agents/`. It does not authorize runtime changes, live-site changes, or capability research beyond the explicit phase gates below.
 
 ## LocalWP Merge Addendum — 2026-08-06
@@ -131,6 +131,68 @@ Phase 16 implements `wp dbvc content-migration runs list` and `wp dbvc content-m
 Focused Content Migration and adjacent capability suites pass with 18 tests and 342 assertions. Same-checkout help, bounded list/show execution, and the rejected readiness flag passed against the active LocalWP site. The Butler Automation latest list and exact show both reported 7 discovered and 7 finalized URLs. Pre/post hashing retained the same 12,133 files and tree hash `2c77f4b522095a010dedc594d8369a0bf591d8bfc23130e9e5a73094a571db2e`.
 
 The refreshed authority contains 52 records, 402 mapped surfaces, 22 CLI commands, eight bounded read-only recipes, and zero unmapped surfaces. Content Migration runtime parity is now covered by `cli.content_migration.runs.inspect`. The next implementation boundary is the sole remaining candidate: bounded exact-proposal summary inspection. It must continue to exclude raw current/proposed values, downloads, the single-entity detail callback that can prune decisions, and all decision, masking, cleanup, recapture, apply, and other writer operations.
+
+## Bounded Proposal Structural Inspection CLI Addendum — 2026-08-11
+
+Phase 17 implements `wp dbvc proposals show <proposal-id>` and `wp dbvc proposals entities <proposal-id>` as a deliberately conservative read-only contract over one exact existing manifest, stored review summaries, and existing snapshot artifact metadata.
+
+- `show` returns manifest fingerprints and counts, conservative missing-hash/duplicate blockers, stored decision coverage, and existing snapshot-artifact counts. It explicitly returns `authoritative_apply_ready: null` because field decisions, masking values, live resolver matching, snapshot trust/staleness, new-entity identity, and apply permissions are not evaluated.
+- `entities` returns at most 100 sanitized rows with identifiers, types, stored hashes, media-reference counts, decision counts, duplicate-group summaries, and existing snapshot artifact metadata. Raw current/proposed values, titles, paths, URLs, decision payloads, and media references are excluded.
+- Exact proposal containment, a 20 MB manifest ceiling, a 20,000-item ceiling, bounded pagination, and rejection of every unknown flag keep the interface narrow. Detail, raw, downloads, resolver matching, decision changes, masking, cleanup, recapture, upload, delete, apply, and all other writers are outside the contract.
+- The command intentionally bypasses REST callbacks, backup/snapshot path managers, stable-identity assignment, and media resolver dry-run. Audit showed that these nominal readers can prune stored decisions, create or harden directories, assign stable UIDs, or write attachment UID/hash metadata.
+
+Focused proposal/capability tests pass with 15 tests and 267 assertions, including an out-of-directory snapshot-symlink regression. The adjacent proposal-diff and masking selection passes with 76 tests and 934 assertions. Same-checkout help, bounded show/entities execution, rejected `--raw`, administrator rendering, and identical pre/post artifact/option fingerprints all passed.
+
+The refreshed authority contains 53 records, 404 mapped surfaces, 24 CLI commands, eight bounded read-only recipes, and zero unmapped surfaces. The broader `proposal.core.inspect` record is now classified mixed-risk, while its bounded CLI parity is covered by `cli.proposals.inspect`. No reviewed implementation candidate remains; the next logical proposal boundary is callback-level safety remediation and tests before any broader inspection or authoritative-readiness interface is considered.
+
+## Resolver Dry-run Mutation Barrier Addendum — 2026-08-11
+
+Phase 18 remediates one exact read-side-effect class from the proposal inspection audit: media resolver dry-run and existing media-bundle lookup.
+
+- `Resolver::resolve_descriptor()` now treats `dry_run=true` as a mutation barrier. Hash and relative-path matches still return the same reuse result and target attachment, but do not backfill `vf_asset_uid` or `vf_file_hash`.
+- Non-dry-run resolver behavior is unchanged and continues to backfill identity metadata when an operational resolution uses hash or relative path.
+- `BundleManager::get_proposal_directory()` and `locate_bundle_file()` now resolve existing storage only. They do not create the sync/media-bundles root or write `.htaccess`/`index.php`; bundle build/ingest paths explicitly retain create-and-harden behavior.
+- Focused tests cover dry-run hash matching, dry-run path matching, preserved non-dry-run backfill, and an absent isolated bundle root. The resolver operational and proposal-inspection selection passes with 17 tests and 192 assertions; the final adjacent regression selection passes with 80 tests and 968 assertions.
+
+Same-checkout dry-run over an existing 140-media proposal returned 140 asset-UID reuses and zero conflicts. Pre/post hashing retained the same 522 attachment identity-meta rows and the same 2,359-file media-bundle tree; their hashes were `6b2597630766e792fbd568d8841d265a4219b66caa3fc7abaf34b063a7e91b8e` and `986f7e055f738966c3adc208fa388d5e5f761a97e0d494cb566d8c8ac3d256bc`, respectively.
+
+This phase does not promote the grouped proposal inspection API to read-only. Snapshot/base-path creation, stable-identity assignment during current-state reads, and single-entity decision pruning remain separate mutation classes. The next boundary should select only one of those classes and prove it with callback-level and pre/post storage fingerprints before changing readiness or CLI scope.
+
+## Capability Verification Landscape Addendum — 2026-08-11
+
+Phase 19 makes recorded verification evidence directly reviewable in the existing administrator Capability Landscape rather than creating a separate tracking screen.
+
+- Every record receives one conservative display state: `live_verified`, `scoped_evidence`, `tested`, `source_reviewed`, or `not_recorded`. Full-record `live_runtime_verified=true` takes precedence; same-checkout or pre/post evidence on an otherwise unverified grouped record remains scoped, and repository tests alone remain tested.
+- The table adds live/scoped summary counts, a verification filter, a verification column, checked dates, and expandable evidence types, test references, notes, and reviewed commit. Verification notes and evidence are included in free-text search.
+- Badges describe evidence only. They do not change safety classification, authorize writes, or promote a partially tested grouped capability to live verified.
+
+Maintenance is per capability, not batch-oriented: after each capability is processed, reviewed, checked, tested, or confirmed, its canonical manifest record must immediately receive the current date, exact evidence types, concise result notes, applicable test references, and revised warnings/gaps. Partial, failed, blocked, and operation-level checks must be recorded rather than omitted. `live_runtime_verified` may become true only for complete same-checkout confirmation of the bounded record. Run `composer agent-docs:refresh` after each update so the administrator table remains the current review ledger.
+
+Same-checkout administrator rendering confirmed the table contract. At the Phase 19 close, the 53-row ledger contained 6 live verified, 4 with scoped runtime evidence, 16 tested, and 27 source reviewed. The verification filter contract, row classifications, details, summary counts, JavaScript predicate, and administrator gate rendered successfully. Interactive browser verification remains open because the available browser session was not authenticated to WordPress; the table record therefore retains scoped evidence instead of a full live-verification claim.
+
+## Trusted Decision-Pruning Boundary Addendum — 2026-08-11
+
+Phase 20 closes the single-entity untrusted-baseline pruning class without broadening proposal CLI or apply authority.
+
+- Entity detail now requires both a trusted snapshot and an available authoritative diff before pruning stale review paths. A trusted status with an unavailable snapshot payload is fail-closed.
+- The response reports whether cleanup ran, its source and reason, before/after counts, and the number pruned. Missing or untrusted baselines return `dbvc_decisions_preserved_untrusted_baseline` and leave stored decisions unchanged; new entities report cleanup as not applicable.
+- Trusted-snapshot cleanup remains an intentional mutation and the grouped `proposal.core.inspect` record remains mixed-risk. Snapshot/base-path creation and stable-identity assignment during reads are separate unresolved classes.
+
+Focused missing/trusted snapshot tests pass with 2 tests and 21 assertions; the complete proposal-diff contract passes with 55 tests and 642 assertions. Same-checkout execution against missing-snapshot entity `a7b8eb8e-58e5-420c-b86f-283dd53c2433` returned the preservation warning and retained the complete `dbvc_proposal_decisions` option hash `5af0fb763c5d062978866889b3df3bf99b4dbfce80166aa325daecca38620a8b` before and after.
+
+Recording this operation-level evidence moves `proposal.core.inspect` from tested to scoped evidence without promoting the grouped record to live verified. The current table contains 6 live verified, 5 scoped evidence, 15 tested, and 27 source-reviewed records.
+
+## Non-Creating Snapshot Lookup Addendum — 2026-08-11
+
+Phase 21 closes the snapshot lookup path-creation class while retaining capture as a deliberate filesystem writer.
+
+- `DBVC_Snapshot_Manager::get_base_path(false)` uses non-creating upload resolution and returns the configured path without creating or hardening it.
+- Snapshot reads, metadata lookup, inspection, and missing-entity deletion resolve paths in non-creating mode. Post and term capture explicitly opt into base creation, then create and harden their proposal directory before writing.
+- Focused coverage starts with an absent isolated uploads root, proves reads return null/absent metadata without creating the base or security files, then proves capture still creates the base, `.htaccess`, `index.php`, and a readable snapshot.
+
+The focused snapshot/decision safety selection passes with 3 tests and 30 assertions. Same-checkout lookup under isolated root `/private/tmp/dbvc-snapshot-reader-1c0dfdbc-48b4-4703-93bd-9fef8bbb59b0` left the root, snapshot base, `.htaccess`, and `index.php` absent before and after. `storage.core.snapshots` and `proposal.core.inspect` record this as scoped runtime evidence; `proposal.core.decisions` records the preserved writer contract as repository-tested. The current 53-row ledger contains 6 live verified, 6 scoped evidence, 16 tested, and 25 source reviewed.
+
+This phase does not change backup-base resolution or stable-identity assignment during current-state payload construction. Those remain separate boundaries, and the grouped proposal inspection record remains mixed-risk and globally runtime unverified.
 
 ## 1. Objective
 
@@ -724,3 +786,107 @@ The approved Phase 7 boundary is now complete:
 The initial agent reference library is now implemented through its maintenance boundary. The next optional boundary is Phase 8: add a small number of safety-gated agent recipes that reference manifest record IDs without duplicating command signatures or status authority.
 
 Phase 8 is not required for the inventory, indexes, or drift enforcement to remain useful. No recipe should invoke writes automatically, and no capability should be promoted from repository-active to live-verified until the same checkout is loaded and reconciled.
+
+## Non-Creating Backup Lookup Addendum — 2026-08-12
+
+Phase 22 separates backup-base lookup from backup creation. `DBVC_Backup_Manager::get_base_path(false)` resolves the existing uploads location without creating it; proposal-list, manifest, payload, preview, and readiness readers now use that path. Backup staging, deletion/download handling, and other writer paths retain the default creating and hardening behavior.
+
+The focused backup plus adjacent snapshot/decision selection passed with 3 tests and 28 assertions. The backup fixture proved `list_backups()` and `read_manifest()` return empty/null for absent storage without creating the root, backup base, `.htaccess`, or `index.php`, then proved the explicit writer base path creates and hardens the same location.
+
+Same-checkout execution used an isolated temporary uploads root. Before and after backup list/manifest reads, its root and backup base were absent and neither security file existed; the list was empty and the manifest result was null. This adds `same_checkout_absent_storage_backup_read` scoped evidence to `proposal.core.inspect` and `storage.core.snapshots`; ledger status totals remain 53 records: 6 `live_verified`, 6 `scoped_evidence`, 16 `tested`, and 25 `source_reviewed`.
+
+This boundary does not make grouped proposal inspection read-only or live-verified. Stable-identity assignment during current-state and snapshot inspection remains the next isolated mutation boundary; no broader readiness parity, capture, cleanup, retention, or apply behavior was changed.
+
+## Stable-Identity Assignment During Current-State and Snapshot Inspection — 2026-08-12
+
+Phase 23 separates identity lookup from identity assignment during snapshot inspection. Post and term inspection payload builders now read existing `vf_object_uid` metadata; they no longer call UID-ensuring helpers that can write post/term metadata and synchronize identity records. Capture continues to use the default writer mode, so it still assigns stable identity when needed before storing a snapshot.
+
+Focused coverage creates post and term snapshots, removes their identity metadata without triggering the unrelated auto-export hook, then inspects each current state. Both inspections report valid existing snapshots while leaving `vf_object_uid` absent; the following explicit capture assigns the UID. The focused snapshot selection passed with 3 tests and 31 assertions.
+
+The `proposal.core.inspect` and `storage.core.snapshots` records now carry `same_checkout_identity_metadata_fingerprint` scoped evidence. Their grouped classification remains mixed because trusted single-entity detail may still prune stale decisions. The next isolated boundary is **Decision-Pruning Write-Path Separation**: assess whether that reported cleanup belongs in an explicit writer rather than a GET callback. No readiness parity, capture, cleanup, retention, or apply behavior was changed in Phase 23.
+
+## Decision-Pruning Write-Path Separation — 2026-08-12
+
+Phase 24 moves trusted stale-decision cleanup out of the single-entity inspection GET callback. Detail now preserves decisions and reports `explicit_action_required` when a trusted snapshot diff makes cleanup eligible. A new administrator-only `POST /dbvc/v1/proposals/{proposal_id}/entities/{vf_object_uid}/selections/prune` route revalidates snapshot trust, calculates current diff and masking paths, removes only stale decisions, and returns exact before/after counts. Missing or untrusted baselines return `dbvc_decision_pruning_unavailable` with HTTP 409 and do not mutate decision storage.
+
+Focused coverage confirms a trusted GET leaves both valid and stale decisions untouched, the explicit writer removes only the stale path, and the untrusted writer attempt leaves the serialized store unchanged. The focused decision-pruning selection passed with 2 tests and 33 assertions.
+
+The complete proposal-diff contract passed with 58 tests and 685 assertions. Same-checkout entity-detail GETs retained the exact serialized decision-store fingerprint `35786c7117b4e38d0f169239752ce71158266ae2f6e4aa230fbbb87bd699c0e3`; the explicit pruning writer was not invoked live because it can remove stale decisions.
+
+This makes `proposal.core.inspect` a read-only capability record; `proposal.core.decisions` owns the explicit writer. The next isolated boundary is **Explicit Decision-Pruning Operator Surface**: determine whether an administrator-facing action is required for the already-authorized writer without reintroducing implicit cleanup or expanding readiness parity.
+
+## Explicit Decision-Pruning Operator Surface — 2026-08-12
+
+Phase 25 adds the required administrator-facing control inside the Proposal Review entity drawer. It appears only when the read-only entity-detail payload reports a trusted diff and at least one stored decision eligible for review. The operator must confirm the exact narrow action before the client posts to the existing pruning route. On success, the drawer, entity/proposal decision summaries, readiness state, and visible toast update from the returned exact counts; on failure, the existing decision error surface receives the server message.
+
+The pruning writer now also fails closed when a snapshot that was trusted during status lookup cannot be re-read into an authoritative diff at execution time. Its response includes entity and proposal summaries so the UI does not rely on an implicit follow-up write or a stale count.
+
+Focused server/UI-source coverage passed with 3 tests and 84 assertions; the full proposal-diff contract passed with 58 tests and 702 assertions; and the scoped `admin-app` production build completed successfully. This boundary does not invoke the writer against live proposal data, because it can delete stale decisions; it does not add apply/readiness parity or alter the read-only inspection route.
+
+The next isolated boundary is **Proposal Decision Operator Runtime QA**: obtain an authenticated administrator session with a trusted-snapshot fixture to exercise the visible confirmation, successful count refresh, no-op result, and 409 failure copy without using client data. No broader decision writer changes are included.
+
+## Proposal Decision Operator REST Authorization Contract — 2026-08-12
+
+Phase 26 completes the server-side portion of the operator QA boundary through the registered REST route, not a direct callback. A subscriber receives `403 rest_forbidden` and leaves both valid and stale decision entries unchanged. The same trusted-snapshot fixture then runs as an administrator, receives `200`, removes only the stale entry, and returns the exact entity and proposal summaries that the drawer consumes. Source-contract coverage also verifies the drawer hides the action with no stored choices and handles the returned summaries and failure copy.
+
+The focused authorization/untrusted/UI-source selection passed with 3 tests and 84 assertions. This is fixture-based WordPress REST evidence, not an authenticated browser run. The remaining browser-only portion is **Proposal Decision Operator Browser QA**: exercise visible confirmation, successful/no-op count refresh, and 409 copy in an authenticated administrator session without touching client data.
+
+The same-checkout browser was rechecked and redirects to the administrator login page. That browser QA boundary remains gated on user authentication; no credentials or client-data mutation were attempted.
+
+## Proposal Decision Operator Authenticated Fixture QA — 2026-08-12
+
+An authenticated administrator session displayed the gated `Prune stale decisions` action and exact confirmation wording for a disposable local fixture. The fixture writer removed two stale choices, retained one valid choice in a no-op response, and rejected a removed-snapshot request with `409 dbvc_decision_pruning_unavailable` while preserving the two stored choices. No client proposal or decision data was used.
+
+The in-app browser-control bridge stalled when the native confirmation appeared, so a complete visible success-toast/409-error-refresh assertion is deferred to a conventional interactive browser. A later drawer reload retained stale fixture decision state despite the writer response, so that presentation state is not promoted to live verification. The temporary pages, proposal and snapshot folders, and fixture option state were all removed. No broader writer, readiness, or apply boundary is approved by this QA result.
+
+## Proposal Decision Operator Browser UI Refresh QA — 2026-08-12
+
+Phase 27 adds `cache: "no-store"` to the shared Proposal Review GET helper, so entity and proposal refreshes do not reuse stale browser responses. The authenticated browser had continued to show the previously removed disposable fixture and its prune action although the active database, fixture pages, option state, proposal folder, and snapshot folder were absent. Reloading the same page after the fix showed zero matching fixture rows and zero prune actions.
+
+The capability ledger records this as same-checkout browser refresh evidence, not full runtime promotion. **Next isolated boundary — Proposal Decision Operator Native Confirmation UI QA:** verify the visible success-toast and 409 error surface through a conventional interactive browser that can handle the native confirmation dialog; do not expand writer, readiness, or apply scope.
+
+## Proposal Decision Operator In-App Confirmation UI QA — 2026-08-12
+
+Phase 28 replaces the native stale-decision prompt with an in-app modal, keeping the same confirmation wording and explicit POST boundary. Authenticated fixture QA confirmed the modal appears, Cancel leaves the action available, and Confirm reaches the no-op and stale-prune writer paths. The implementation adds a persistent, accessible drawer success-status surface based on the returned counts; targeted browser verification of that new surface belongs to the next boundary.
+
+**Next isolated boundary — Proposal Decision Operator Fail-Closed Error UI QA:** hold a stale eligible drawer open, invalidate only its disposable snapshot, confirm the modal, and verify the returned 409 text is shown while decisions remain intact. No client data, broader writers, readiness, or apply behavior is in scope.
+
+## Proposal Decision Operator Fail-Closed Error UI QA — 2026-08-12
+
+Phase 29 completed the modal's fail-closed browser slice with a new, isolated fixture. The eligible confirmation stayed open while only that fixture's trusted snapshot was removed; `Confirm prune` then visibly returned `Stale decisions can be pruned only after a trusted current-state snapshot is available.` The drawer continued to show `1 accepted · 1 kept · 0 declined`, and the fixture inspection confirmed the two stored choices remained intact. Cleanup verified no namespaced posts, decisions, proposal/snapshot directories, or backup directories remained.
+
+This is targeted authenticated-browser evidence for the returned 409 surface and preservation semantics, not promotion of the capability to globally live-runtime verified. **Next isolated boundary — Proposal Decision Operator Persistent Success Status UI QA:** use a fresh disposable stale fixture to verify the accessible in-drawer success status displays the authoritative removed/current counts after a successful prune. No client data, broader writers, readiness, or apply behavior is in scope.
+
+## Proposal Decision Operator Persistent Success Status UI QA — 2026-08-12
+
+Phase 30 verified the accessible successful-prune result through the authenticated drawer. A fresh disposable stale fixture was confirmed through the modal; once its authoritative refresh completed, the same drawer displayed `Stale decisions pruned` and `2 stale choices were removed; 0 current choices remain.` The selection summary changed to no selections and the prune action disappeared. Fixture inspection confirmed those two target choices were gone, and cleanup confirmed that no fixture artifacts remained.
+
+This completes the visible returned-error and returned-success result slices but does not promote the grouped record to live-runtime verified. Phase 31 completes the keyboard check below and identifies the focused restoration defect for a separate implementation boundary.
+
+## Proposal Decision Operator Modal Keyboard Accessibility QA — 2026-08-12
+
+Phase 31 verified safe cancellation but found a focus-management defect. Using a fresh disposable stale fixture, Escape closed the confirmation without sending the writer, kept the prune action available, and left both fixture decisions unchanged. Browser focus inspection showed focus remained on the active entity-list control when the modal opened, then returned to the drawer `Close` control after Escape rather than to `Prune stale decisions`.
+
+The fixture and all artifacts were removed. This is a recorded failed accessibility check, not a code change or runtime-verification promotion; Phase 32 resolves it below without changing prune-writer, readiness, or apply behavior.
+
+## Proposal Decision Operator Modal Focus Restoration Fix — 2026-08-13
+
+Phase 32 implements the narrow focus correction: the drawer no longer restores its prior focus on modal state changes, the prune trigger is retained, the rendered modal focuses `Cancel`, and cancellation paths restore that trigger. The focused source-contract suite passed with 58 tests and 715 assertions; the rebuilt `admin-app` completed successfully. Browser QA then verified initial `Cancel` focus plus restoration to `Prune stale decisions` after Escape, Cancel, and the WordPress modal Close control. The writer was deliberately not sent, both decisions remained intact, and fixture cleanup was complete.
+
+This resolves the Phase 31 defect but does not promote the capability to globally live-runtime verified. The remaining operator UI closeout is tracked as the compact matrix below; no prune writer, readiness, or apply behavior is in scope.
+
+## Remaining Proposal Decision Operator QA Matrix — 2026-08-13
+
+| Case | Current state | Rerun rule |
+|---|---|---|
+| Successful stale prune and persistent counts | Verified | Only after relevant pruning/result UI changes |
+| No-op prune | Verified | Only after relevant pruning/result UI changes |
+| Fail-closed 409 and preserved decisions | Verified | Only after snapshot/pruning error-path changes |
+| Modal Escape, Cancel, Close, and opener restoration | Verified | Only after modal/focus changes |
+| Drawer close restores the originating entity control | Remaining | Run once as non-writer closeout QA |
+
+For the remaining case, perform one checkout preflight, create one namespaced disposable fixture, open and close one entity drawer, verify focus restoration and unchanged decisions, then clean the fixture. Record one compact result in `RUNTIME_VERIFICATION.md` and update the owning manifest record once. Source tests/builds are unnecessary unless the QA exposes a defect that requires code changes; `agent-docs:refresh`, `agent-docs:check`, and `git diff --check` are required only when the manifest is updated.
+
+This operator matrix is a capability-specific example, not a universal test template. Future capabilities select only their applicable source, CLI/API, writer, UI, add-on, or generated-document evidence under the capability-shaped policy in `docs/agents/MAINTENANCE.md`; they do not inherit this fixture, browser, or case list unless their own claim requires it.
+
+Do not create a new run-ledger format for this single case. A machine-readable evidence ledger is a future option only if recurring matrices across multiple capabilities make the manifest and compact runtime summaries insufficient.

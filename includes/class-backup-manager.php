@@ -21,20 +21,24 @@ if (! class_exists('DBVC_Backup_Manager')) {
         /**
          * Return the absolute base directory for stored backups.
          *
+         * Readers pass false so lookup does not create or harden storage.
+         * Backup staging and other writers retain explicit create-and-harden behavior.
+         *
          * @return string
          */
-        public static function get_base_path()
+        public static function get_base_path($create = true)
         {
-            $upload_dir = wp_upload_dir();
+            $create = (bool) $create;
+            $upload_dir = $create ? wp_upload_dir() : wp_get_upload_dir();
             $sync_dir   = trailingslashit($upload_dir['basedir']) . 'sync';
             $base       = trailingslashit($sync_dir) . 'db-version-control-backups';
 
-            if (! is_dir($base)) {
+            if ($create && ! is_dir($base)) {
                 wp_mkdir_p($base);
             }
 
-            // Harden directory.
-            if (function_exists('dbvc_get_sync_path') && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
+            // Harden writer-created storage only.
+            if ($create && function_exists('dbvc_get_sync_path') && method_exists('DBVC_Sync_Posts', 'ensure_directory_security')) {
                 DBVC_Sync_Posts::ensure_directory_security($base);
             }
 
@@ -916,7 +920,7 @@ if (! class_exists('DBVC_Backup_Manager')) {
          */
         public static function list_backups()
         {
-            $base = self::get_base_path();
+            $base = self::get_base_path(false);
             if (! is_dir($base)) {
                 return [];
             }

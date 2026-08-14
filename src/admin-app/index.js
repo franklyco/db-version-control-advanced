@@ -18,6 +18,7 @@
               });
             }, n = async (e, {signal: t} = {}) => {
               const s = await window.fetch(`${DBVC_ADMIN_APP.root}${e}`, {
+                cache: "no-store",
                 headers: {
                   "X-WP-Nonce": DBVC_ADMIN_APP.nonce
                 },
@@ -884,28 +885,47 @@
                   }) ]
                 }) ]
               });
-            }, S = ({entityDetail: n, resolverInfo: i, resolverDecisionSummary: l = null, statusCounts: entityStatusCounts = {}, decisions: a = {}, onDecisionChange: handleDecisionChange, onBulkDecision: bulkDecision, onResetDecisions: c, onCaptureSnapshot: m, onResolverDecision: v, onResolverDecisionReset: x, onApplyResolverDecisionToSimilar: y, savingPaths: w = {}, bulkSaving: C = !1, resolverSaving: N = {}, resolverError: k = null, decisionError: S, loading: D, error: R, onClose: $, filterMode: A, onFilterModeChange: M, isOpen: U = !0, resettingDecisions: B = !1, snapshotCapturing: O = !1, onHashSync: T, hashSyncing: P = !1, hashSyncTarget: F = "", maskFieldsByEntity: qt = {}}) => {
+            }, S = ({entityDetail: n, resolverInfo: i, resolverDecisionSummary: l = null, statusCounts: entityStatusCounts = {}, decisions: a = {}, onDecisionChange: handleDecisionChange, onBulkDecision: bulkDecision, onResetDecisions: c, onPruneDecisions: pruneStaleDecisions, pruningDecisions: pruneBusy = !1, pruningNotice = null, onCaptureSnapshot: m, onResolverDecision: v, onResolverDecisionReset: x, onApplyResolverDecisionToSimilar: y, savingPaths: w = {}, bulkSaving: C = !1, resolverSaving: N = {}, resolverError: k = null, decisionError: S, loading: D, error: R, onClose: $, filterMode: A, onFilterModeChange: M, isOpen: U = !0, resettingDecisions: B = !1, snapshotCapturing: O = !1, onHashSync: T, hashSyncing: P = !1, hashSyncTarget: F = "", maskFieldsByEntity: qt = {}}) => {
               var V, L, z, H, K, J, q, W, G, X, Z, Q, Y, ee, te;
-              const se = (0, e.useMemo)(() => n?.item?.vf_object_uid ? `dbvc-entity-detail-${n.item.vf_object_uid}` : n?.vf_object_uid ? `dbvc-entity-detail-${n.vf_object_uid}` : "dbvc-entity-detail", [ n ]), ne = (0, 
-              e.useRef)(null), ie = (0, e.useRef)(null);
+              const [pruneConfirmationOpen, setPruneConfirmationOpen] = (0, e.useState)(!1), se = (0, e.useMemo)(() => n?.item?.vf_object_uid ? `dbvc-entity-detail-${n.item.vf_object_uid}` : n?.vf_object_uid ? `dbvc-entity-detail-${n.vf_object_uid}` : "dbvc-entity-detail", [ n ]), ne = (0,
+              e.useRef)(null), ie = (0, e.useRef)(null), pruneTriggerRef = (0, e.useRef)(null), pruneCancelRef = (0, e.useRef)(null), pruneConfirmationOpenRef = (0, e.useRef)(!1), restorePruneTriggerFocus = () => {
+                const e = pruneTriggerRef.current;
+                e && document.contains(e) && "function" == typeof e.focus && (window.requestAnimationFrame ? window.requestAnimationFrame(() => e.focus()) : e.focus());
+              }, closePruneConfirmation = (e = !0) => {
+                pruneConfirmationOpenRef.current = !1, setPruneConfirmationOpen(!1), e && restorePruneTriggerFocus();
+              };
               (0, e.useEffect)(() => {
                 if (!$ || !U) return;
                 ie.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-                const t = e => {
-                  "Escape" === e.key && (e.preventDefault(), $());
-                };
-                return document.addEventListener("keydown", t), () => {
-                  document.removeEventListener("keydown", t), ie.current && "function" == typeof ie.current.focus && ie.current.focus();
+                return () => {
+                  ie.current && "function" == typeof ie.current.focus && ie.current.focus();
                 };
               }, [ U, $, se ]);
               (0, e.useEffect)(() => {
-                if (!$ || !U || D || R || !n) return;
+                if (!$ || !U) return;
+                const t = e => {
+                  "Escape" === e.key && (e.preventDefault(), pruneConfirmationOpenRef.current ? closePruneConfirmation() : $());
+                };
+                return document.addEventListener("keydown", t), () => {
+                  document.removeEventListener("keydown", t);
+                };
+              }, [ U, $, se, closePruneConfirmation ]);
+              (0, e.useEffect)(() => {
+                if (pruneConfirmationOpenRef.current = pruneConfirmationOpen, !pruneConfirmationOpen) return;
+                const e = window.setTimeout(() => {
+                  const e = pruneCancelRef.current;
+                  e && "function" == typeof e.focus && e.focus();
+                }, 0);
+                return () => window.clearTimeout(e);
+              }, [ pruneConfirmationOpen ]);
+              (0, e.useEffect)(() => {
+                if (!$ || !U || D || R || !n || pruneConfirmationOpen) return;
                 const e = ne.current;
                 if (!e) return;
                 const t = e.closest('[data-component="entity-drawer"]'), s = document.activeElement;
                 (!t || !(s instanceof HTMLElement) || !t.contains(s)) && e.focus();
-              }, [ U, $, D, R, n, se ]);
-              const {item: le, current: ae, proposed: oe = {}, diff: re} = null != n ? n : {}, ce = null !== (V = n?.decision_summary) && void 0 !== V ? V : {}, de = null !== (L = null !== (z = n?.diff_state) && void 0 !== z ? z : le?.diff_state) && void 0 !== L ? L : null, snapshotStatus = n?.snapshot_status || le?.snapshot_status || {}, snapshotState = n?.snapshot_state || le?.snapshot_state || snapshotStatus.state || "", snapshotNeedsAction = [ "missing", "stale", "recapturing", "failed" ].includes(snapshotState), snapshotCanRecapture = ![ "not_required", "recapturing" ].includes(snapshotState) && !1 !== snapshotStatus.can_recapture, ue = ((e, t) => {
+              }, [ U, $, D, R, n, se, pruneConfirmationOpen ]);
+              const {item: le, current: ae, proposed: oe = {}, diff: re} = null != n ? n : {}, ce = null !== (V = n?.decision_summary) && void 0 !== V ? V : {}, de = null !== (L = null !== (z = n?.diff_state) && void 0 !== z ? z : le?.diff_state) && void 0 !== L ? L : null, snapshotStatus = n?.snapshot_status || le?.snapshot_status || {}, snapshotState = n?.snapshot_state || le?.snapshot_state || snapshotStatus.state || "", snapshotNeedsAction = [ "missing", "stale", "recapturing", "failed" ].includes(snapshotState), snapshotCanRecapture = ![ "not_required", "recapturing" ].includes(snapshotState) && !1 !== snapshotStatus.can_recapture, decisionPruning = n?.decision_pruning || {}, decisionPruningEligible = !0 === decisionPruning.eligible && "explicit_action_required" === decisionPruning.reason, ue = ((e, t) => {
                 if (!t) return "";
                 if ("term" === f(e)) {
                   const s = e?.term_taxonomy || e?.taxonomy || "";
@@ -976,7 +996,7 @@
                 const e = nt[Te] || [];
                 e.length ? e.includes(Fe) || Ve(e[0] || "") : Ve("");
               }, [ Te, Fe, nt ]);
-              const termSlugDisplay = "term" === ve && be ? `${be}/${he}` : he, termParentSlug = le?.term_parent_slug || le?.parent_slug || oe?.parent_slug || ae?.term_parent_slug || ae?.parent_slug || "", termParentId = le?.term_parent || le?.parent || oe?.parent || ae?.term_parent || ae?.parent || 0, termParentUid = le?.term_parent_uid || oe?.parent_uid || ae?.term_parent_uid || "", termParentDisplay = (() => {
+              const decisionPruningResult = pruningNotice?.message || "", termSlugDisplay = "term" === ve && be ? `${be}/${he}` : he, termParentSlug = le?.term_parent_slug || le?.parent_slug || oe?.parent_slug || ae?.term_parent_slug || ae?.parent_slug || "", termParentId = le?.term_parent || le?.parent || oe?.parent || ae?.term_parent || ae?.parent || 0, termParentUid = le?.term_parent_uid || oe?.parent_uid || ae?.term_parent_uid || "", termParentDisplay = (() => {
                 if ("term" !== ve) return null;
                 if (termParentSlug) return termParentSlug;
                 if (termParentUid) return termParentUid;
@@ -996,13 +1016,61 @@
                 }
               }), [ ke, Te, Fe, nt ]), lt = it.length, at = "reuse" === Le || "map" === Le;
               return $ && !U ? null : (e => {
-                const t = (0, s.jsx)("div", {
+                const pruneConfirmation = pruneConfirmationOpen ? window.wp?.components?.Modal ? (0, s.jsxs)(window.wp.components.Modal, {
+                  title: "Confirm stale-decision pruning",
+                  onRequestClose: () => closePruneConfirmation(),
+                  children: [ (0, s.jsx)("p", {
+                    children: "Prune only stale Accept/Keep decisions for this entity? Choices that still match the trusted snapshot diff will remain."
+                  }), (0, s.jsxs)("div", {
+                    className: "dbvc-confirmation-actions",
+                    children: [ (0, s.jsx)("button", {
+                      type: "button",
+                      ref: pruneCancelRef,
+                      className: "button",
+                      onClick: () => closePruneConfirmation(),
+                      disabled: pruneBusy,
+                      children: "Cancel"
+                    }), (0, s.jsx)("button", {
+                      type: "button",
+                      className: "button button-primary",
+                      onClick: () => {
+                        closePruneConfirmation(!1), pruneStaleDecisions();
+                      },
+                      disabled: pruneBusy,
+                      children: pruneBusy ? "Pruning stale decisions…" : "Confirm prune"
+                    }) ]
+                  }) ]
+                }) : (0, s.jsxs)("div", {
+                  className: "dbvc-inline-notice dbvc-inline-notice--warning",
+                  role: "alertdialog",
+                  "aria-label": "Confirm stale-decision pruning",
+                  children: [ (0, s.jsx)("p", {
+                    children: "Prune only stale Accept/Keep decisions for this entity? Choices that still match the trusted snapshot diff will remain."
+                  }), (0, s.jsxs)("p", {
+                    children: [ (0, s.jsx)("button", {
+                      type: "button",
+                      ref: pruneCancelRef,
+                      className: "button",
+                      onClick: () => closePruneConfirmation(),
+                      disabled: pruneBusy,
+                      children: "Cancel"
+                    }), " ", (0, s.jsx)("button", {
+                      type: "button",
+                      className: "button button-primary",
+                      onClick: () => {
+                        closePruneConfirmation(!1), pruneStaleDecisions();
+                      },
+                      disabled: pruneBusy,
+                      children: pruneBusy ? "Pruning stale decisions…" : "Confirm prune"
+                    }) ]
+                  }) ]
+                }) : null, t = (0, s.jsxs)("div", {
                   className: "dbvc-admin-app__entity-detail",
                   "data-component": "entity-drawer",
                   "data-surface": "proposal-diff",
                   "data-entity-id": n?.vf_object_uid || le?.vf_object_uid || "",
                   "data-state": D ? "loading" : R ? "error" : n ? "ready" : "empty",
-                  children: e
+                  children: [ e, pruneConfirmation ]
                 });
                 return $ ? (0, s.jsxs)("div", {
                   className: "dbvc-entity-detail-modal",
@@ -1178,6 +1246,23 @@
                           children: `Refreshes the “current” baseline from the live ${"term" === ve ? "term" : "post"} before you compare.`
                         }) ]
                       })
+                    }), decisionPruningEligible && Number(decisionPruning.before_count || 0) > 0 && "function" == typeof pruneStaleDecisions && e.push({
+                      key: "prune_stale_decisions",
+                      content: (0, s.jsxs)(s.Fragment, {
+                        children: [ (0, s.jsx)("button", {
+                          type: "button",
+                          ref: pruneTriggerRef,
+                          className: "button button-secondary dbvc-prune-stale-decisions",
+                          onClick: e => {
+                            pruneTriggerRef.current = e.currentTarget, setPruneConfirmationOpen(!0);
+                          },
+                          disabled: pruneBusy,
+                          children: pruneBusy ? "Pruning stale decisions…" : "Prune stale decisions"
+                        }), (0, s.jsxs)("p", {
+                          className: "description",
+                          children: [ "A trusted snapshot is available. This explicitly removes only choices that no longer map to the current diff; ", decisionPruning.before_count || 0, " stored choice", 1 === decisionPruning.before_count ? " is" : "s are", " checked before pruning." ]
+                        }) ]
+                      })
                     }), "function" == typeof c && _e > 0 && e.push({
                       key: "clear_decisions",
                       content: (0, s.jsxs)(s.Fragment, {
@@ -1275,6 +1360,14 @@
                       disabled: je || !xe,
                       children: "Clear choice"
                     }) ]
+                  }) ]
+                }), decisionPruningResult && (0, s.jsxs)("div", {
+                  className: "dbvc-inline-notice dbvc-inline-notice--success",
+                  role: "status",
+                  children: [ (0, s.jsx)("strong", {
+                    children: "Stale decisions pruned"
+                  }), (0, s.jsx)("p", {
+                    children: decisionPruningResult
                   }) ]
                 }), S && (0, s.jsx)("div", {
                   className: "dbvc-inline-notice dbvc-inline-notice--error",
@@ -1644,7 +1737,7 @@
               e.useState)(null), [Ge, Xe] = (0, e.useState)(!1), [Ze, Qe] = (0, e.useState)("full"), [Ye, et] = (0, 
               e.useState)(!1), [tt, st] = (0, e.useState)("changed"), [allEntities, setAllEntities] = (0, e.useState)([]), [allEntitiesLoading, setAllEntitiesLoading] = (0, e.useState)(!1), [nt, it] = (0, e.useState)([]), [lt, at] = (0,
               e.useState)([]), [ot, rt] = (0, e.useState)({}), [ct, dt] = (0, e.useState)(null), [ut, pt] = (0, 
-              e.useState)(!1), [ht, mt] = (0, e.useState)(!1), [vt, bt] = (0, e.useState)(!1), [ft, gt] = (0, 
+              e.useState)(!1), [decisionPruningBusy, setDecisionPruningBusy] = (0, e.useState)(!1), [decisionPruningNotice, setDecisionPruningNotice] = (0, e.useState)(null), [ht, mt] = (0, e.useState)(!1), [vt, bt] = (0, e.useState)(!1), [ft, gt] = (0,
               e.useState)(!1), [xt, jt] = (0, e.useState)(() => {
                 const e = {};
                 return y.forEach(t => {
@@ -2647,7 +2740,41 @@
                     pt(!1);
                   }
                 }
-              }, [ Z, oe, refreshApplyGates ]), Ds = (0, e.useCallback)(async () => {
+              }, [ Z, oe, refreshApplyGates ]), pruneEntityDecisions = (0, e.useCallback)(async () => {
+                if (!Z || !oe) return;
+                const eligible = ce?.decision_pruning?.eligible && "explicit_action_required" === ce?.decision_pruning?.reason;
+                if (!eligible) return;
+                setDecisionPruningBusy(!0), setDecisionPruningNotice(null), ge(null);
+                try {
+                  var e, t, s;
+                  const response = await i(`proposals/${encodeURIComponent(Z)}/entities/${encodeURIComponent(oe)}/selections/prune`, {}), decisions = null !== (e = response.decisions) && void 0 !== e ? e : {}, pruning = response.decision_pruning || {}, summary = null !== (t = response.summary) && void 0 !== t ? t : null, prunedCount = Number(null !== (s = pruning.pruned_count) && void 0 !== s ? s : 0);
+                  setDecisionPruningNotice(prunedCount > 0 ? {
+                    entityUid: oe,
+                    message: `${prunedCount} stale ${1 === prunedCount ? "choice was" : "choices were"} removed; ${pruning.after_count || 0} current ${1 === pruning.after_count ? "choice remains" : "choices remain"}.`
+                  } : null), me(decisions), de(current => current ? {
+                    ...current,
+                    decisions: decisions,
+                    decision_summary: null != summary ? summary : current.decision_summary,
+                    decision_pruning: pruning
+                  } : current), se(items => items.map(item => item.vf_object_uid === oe ? {
+                    ...item,
+                    decision_summary: null != summary ? summary : item.decision_summary
+                  } : item)), response.proposal_summary && X(items => items.map(item => item.id === Z ? {
+                    ...item,
+                    decisions: response.proposal_summary
+                  } : item)), it(items => [ ...items, {
+                    id: Date.now(),
+                    severity: prunedCount > 0 ? "success" : "info",
+                    title: prunedCount > 0 ? "Stale decisions pruned" : "No stale decisions found",
+                    message: prunedCount > 0 ? `${prunedCount} stale ${1 === prunedCount ? "choice was" : "choices were"} removed; ${pruning.after_count || 0} current ${1 === pruning.after_count ? "choice remains" : "choices remain"}.` : "All stored choices still match the trusted snapshot diff.",
+                    timestamp: (new Date).toISOString()
+                  } ]), await refreshApplyGates(Z);
+                } catch (error) {
+                  ge(error?.message || "Could not prune stale decisions.");
+                } finally {
+                  setDecisionPruningBusy(!1);
+                }
+              }, [ Z, oe, ce, refreshApplyGates ]), Ds = (0, e.useCallback)(async () => {
                 if (Z && oe) {
                   mt(!0), ge(null);
                   try {
@@ -4416,6 +4543,9 @@
                     onDecisionChange: ys,
                     onBulkDecision: Is,
                     onResetDecisions: Ss,
+                    onPruneDecisions: pruneEntityDecisions,
+                    pruningDecisions: decisionPruningBusy,
+                    pruningNotice: decisionPruningNotice,
                     onCaptureSnapshot: Ds,
                     onResolverDecision: Cs,
                     onResolverDecisionReset: Ns,

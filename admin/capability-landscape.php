@@ -132,6 +132,11 @@ function dbvc_capability_landscape_label($value)
 		'cron'                          => __('Scheduled', 'dbvc'),
 		'filesystem'                    => __('Filesystem', 'dbvc'),
 		'database'                      => __('Database', 'dbvc'),
+		'live_verified'                 => __('Live verified', 'dbvc'),
+		'scoped_evidence'               => __('Scoped evidence', 'dbvc'),
+		'tested'                        => __('Tested', 'dbvc'),
+		'source_reviewed'               => __('Source reviewed', 'dbvc'),
+		'not_recorded'                  => __('Not recorded', 'dbvc'),
 	];
 
 	if (isset($labels[$value])) {
@@ -139,6 +144,54 @@ function dbvc_capability_landscape_label($value)
 	}
 
 	return ucwords(str_replace(['_', '-'], ' ', (string) $value));
+}
+
+/**
+ * Normalize verification metadata into one conservative display state.
+ *
+ * Full live verification always wins. Same-checkout or pre/post evidence on a
+ * grouped record remains scoped evidence unless the record explicitly opts in
+ * to live_runtime_verified. Test evidence does not imply live verification.
+ *
+ * @param array $record Manifest record.
+ * @return array
+ */
+function dbvc_capability_landscape_verification(array $record)
+{
+	$verification = is_array($record['verification'] ?? null) ? $record['verification'] : [];
+	$evidence = array_values(array_unique(array_filter(array_map('strval', (array) ($verification['evidence_types'] ?? [])))));
+	$has_scoped_evidence = false;
+	$has_test_evidence = false;
+	foreach ($evidence as $evidence_type) {
+		if (0 === strpos($evidence_type, 'same_checkout_') || 0 === strpos($evidence_type, 'pre_post_')) {
+			$has_scoped_evidence = true;
+		}
+		if (false !== strpos($evidence_type, 'test')) {
+			$has_test_evidence = true;
+		}
+	}
+
+	if (! empty($verification['live_runtime_verified'])) {
+		$state = 'live_verified';
+	} elseif ($has_scoped_evidence) {
+		$state = 'scoped_evidence';
+	} elseif ($has_test_evidence || ! empty($record['test_refs'])) {
+		$state = 'tested';
+	} elseif (! empty($verification['verified_date']) || ! empty($verification['notes']) || ! empty($evidence)) {
+		$state = 'source_reviewed';
+	} else {
+		$state = 'not_recorded';
+	}
+
+	return [
+		'state'                 => $state,
+		'verified_date'         => (string) ($verification['verified_date'] ?? ''),
+		'repository_commit'     => (string) ($verification['repository_commit'] ?? ''),
+		'evidence_types'        => $evidence,
+		'notes'                 => (string) ($verification['notes'] ?? ''),
+		'test_refs'             => array_values(array_unique(array_filter(array_map('strval', (array) ($record['test_refs'] ?? []))))),
+		'live_runtime_verified' => ! empty($verification['live_runtime_verified']),
+	];
 }
 
 /**
@@ -182,6 +235,7 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 		$priority     = sanitize_key((string) ($opportunity['priority'] ?? 'none'));
 		$effort       = sanitize_key((string) ($opportunity['effort'] ?? 'unknown'));
 		$recommended  = sanitize_key((string) ($opportunity['recommended_surface'] ?? 'none'));
+		$verification = dbvc_capability_landscape_verification($record);
 		$is_active    = 'active' === $status;
 		$has_cli      = in_array('cli', $surface_types, true);
 		$has_rest     = in_array('rest', $surface_types, true);
@@ -226,6 +280,10 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 			$opportunity['rationale'] ?? '',
 			$opportunity['candidate_scope'] ?? '',
 			$opportunity['next_action'] ?? '',
+			$verification['state'],
+			$verification['verified_date'],
+			$verification['repository_commit'],
+			$verification['notes'],
 		];
 		$search_parts = array_merge(
 			$search_parts,
@@ -233,7 +291,9 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 			$tags,
 			(array) ($record['known_gaps'] ?? []),
 			(array) ($record['storage_touched'] ?? []),
-			(array) ($opportunity['excluded_operations'] ?? [])
+			(array) ($opportunity['excluded_operations'] ?? []),
+			$verification['evidence_types'],
+			$verification['test_refs']
 		);
 		foreach ($surfaces as $surface) {
 			$search_parts[] = $surface['identifier'];
@@ -261,6 +321,7 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 				'excluded_operations' => array_values(array_filter(array_map('strval', (array) ($opportunity['excluded_operations'] ?? [])))),
 				'next_action'        => (string) ($opportunity['next_action'] ?? ''),
 			],
+			'verification'   => $verification,
 			'search'         => strtolower(implode(' ', array_filter(array_map('strval', $search_parts)))),
 		];
 	}
@@ -303,6 +364,8 @@ function dbvc_capability_landscape_stats(array $records)
 	$non_active         = 0;
 	$cli_candidates     = 0;
 	$opportunity_reviews = 0;
+	$live_verified       = 0;
+	$scoped_evidence     = 0;
 	$cli_commands       = [];
 	$rest_registrations = [];
 
@@ -321,6 +384,11 @@ function dbvc_capability_landscape_stats(array $records)
 		}
 		if (in_array($item['opportunity']['disposition'], ['candidate', 'covered_elsewhere', 'deferred', 'not_recommended', 'needs_review'], true)) {
 			++$opportunity_reviews;
+		}
+		if ('live_verified' === $item['verification']['state']) {
+			++$live_verified;
+		} elseif ('scoped_evidence' === $item['verification']['state']) {
+			++$scoped_evidence;
 		}
 		if (! $is_active) {
 			continue;
@@ -345,6 +413,8 @@ function dbvc_capability_landscape_stats(array $records)
 		'read_only'          => $read_only,
 		'cli_candidates'     => $cli_candidates,
 		'opportunity_reviews' => $opportunity_reviews,
+		'live_verified'       => $live_verified,
+		'scoped_evidence'     => $scoped_evidence,
 		'non_active'         => $non_active,
 	];
 }
@@ -402,7 +472,7 @@ function dbvc_render_capability_landscape_panel()
 		<div class="dbvc-capability-landscape__intro">
 			<h3><?php esc_html_e('Capability Landscape', 'dbvc'); ?></h3>
 			<p><?php esc_html_e('Review the repository-curated DBVC tool, command, API, and add-on landscape. Active records describe this plugin checkout; planned, source-reference, experimental, and absent records remain visible so gaps are not mistaken for callable functionality.', 'dbvc'); ?></p>
-			<p class="description"><?php esc_html_e('This screen is read-only. Reviewed opportunities include explicit priority, effort, and recommended-interface judgments; unreviewed REST-only records remain prompts rather than automatic CLI recommendations.', 'dbvc'); ?></p>
+			<p class="description"><?php esc_html_e('This screen is read-only. Verification badges distinguish full live confirmation from scoped runtime evidence, repository tests, and source review; none of those badges authorizes a write operation.', 'dbvc'); ?></p>
 		</div>
 
 		<div class="dbvc-capability-stats" aria-label="<?php esc_attr_e('Capability summary', 'dbvc'); ?>">
@@ -412,6 +482,8 @@ function dbvc_render_capability_landscape_panel()
 			<div><strong><?php echo esc_html($stats['read_only']); ?></strong><span><?php esc_html_e('Read-only starting points', 'dbvc'); ?></span></div>
 			<div><strong><?php echo esc_html($stats['cli_candidates']); ?></strong><span><?php esc_html_e('Potential CLI parity', 'dbvc'); ?></span></div>
 			<div><strong><?php echo esc_html($stats['opportunity_reviews']); ?></strong><span><?php esc_html_e('Reviewed opportunities', 'dbvc'); ?></span></div>
+			<div><strong><?php echo esc_html($stats['live_verified']); ?></strong><span><?php esc_html_e('Live verified', 'dbvc'); ?></span></div>
+			<div><strong><?php echo esc_html($stats['scoped_evidence']); ?></strong><span><?php esc_html_e('Scoped runtime evidence', 'dbvc'); ?></span></div>
 		</div>
 
 		<div class="dbvc-capability-filters" aria-label="<?php esc_attr_e('Capability filters', 'dbvc'); ?>">
@@ -430,6 +502,17 @@ function dbvc_render_capability_landscape_panel()
 			<label>
 				<span><?php esc_html_e('Interface', 'dbvc'); ?></span>
 				<select id="dbvc-capability-surface"><option value=""><?php esc_html_e('All interfaces', 'dbvc'); ?></option><?php foreach ($surfaces as $value => $label) : ?><option value="<?php echo esc_attr($value); ?>"><?php echo esc_html($label); ?></option><?php endforeach; ?></select>
+			</label>
+			<label>
+				<span><?php esc_html_e('Verification', 'dbvc'); ?></span>
+				<select id="dbvc-capability-verification">
+					<option value=""><?php esc_html_e('All verification states', 'dbvc'); ?></option>
+					<option value="live_verified"><?php esc_html_e('Live verified', 'dbvc'); ?></option>
+					<option value="scoped_evidence"><?php esc_html_e('Scoped evidence', 'dbvc'); ?></option>
+					<option value="tested"><?php esc_html_e('Tested', 'dbvc'); ?></option>
+					<option value="source_reviewed"><?php esc_html_e('Source reviewed', 'dbvc'); ?></option>
+					<option value="not_recorded"><?php esc_html_e('Not recorded', 'dbvc'); ?></option>
+				</select>
 			</label>
 			<label>
 				<span><?php esc_html_e('Opportunity', 'dbvc'); ?></span>
@@ -469,6 +552,7 @@ function dbvc_render_capability_landscape_panel()
 				<thead><tr>
 					<th scope="col"><?php esc_html_e('Capability', 'dbvc'); ?></th>
 					<th scope="col"><?php esc_html_e('Classification', 'dbvc'); ?></th>
+					<th scope="col"><?php esc_html_e('Verification', 'dbvc'); ?></th>
 					<th scope="col"><?php esc_html_e('Interfaces', 'dbvc'); ?></th>
 					<th scope="col"><?php esc_html_e('Operations & workflows', 'dbvc'); ?></th>
 					<th scope="col"><?php esc_html_e('Safety & data', 'dbvc'); ?></th>
@@ -482,13 +566,14 @@ function dbvc_render_capability_landscape_panel()
 					if ($current_category !== $item['category']) :
 						$current_category = $item['category'];
 						?>
-						<tr class="dbvc-capability-group" data-dbvc-capability-group="<?php echo esc_attr($current_category); ?>"><th colspan="6" scope="rowgroup"><?php echo esc_html(dbvc_capability_landscape_label($current_category)); ?></th></tr>
+						<tr class="dbvc-capability-group" data-dbvc-capability-group="<?php echo esc_attr($current_category); ?>"><th colspan="7" scope="rowgroup"><?php echo esc_html(dbvc_capability_landscape_label($current_category)); ?></th></tr>
 					<?php endif; ?>
 					<tr
 						data-dbvc-capability-row
 						data-search="<?php echo esc_attr($item['search']); ?>"
 						data-category="<?php echo esc_attr($item['category']); ?>"
 						data-status="<?php echo esc_attr($item['status']); ?>"
+						data-verification="<?php echo esc_attr($item['verification']['state']); ?>"
 						data-surfaces="<?php echo esc_attr(' ' . implode(' ', $item['surface_types']) . ' '); ?>"
 						data-opportunity="<?php echo esc_attr($item['opportunity']['disposition']); ?>"
 						data-agent-uses="<?php echo esc_attr(' ' . implode(' ', $item['agent_uses']) . ' '); ?>">
@@ -502,6 +587,32 @@ function dbvc_render_capability_landscape_panel()
 							<?php dbvc_capability_landscape_chip($item['status'], 'is-status is-' . sanitize_html_class($item['status'])); ?>
 							<?php dbvc_capability_landscape_chip($item['category'], 'is-category'); ?>
 							<?php foreach ($item['scopes'] as $scope) : dbvc_capability_landscape_chip($scope, 'is-scope'); endforeach; ?>
+						</td>
+						<td class="dbvc-capability-verification">
+							<?php dbvc_capability_landscape_chip($item['verification']['state'], 'is-verification is-' . sanitize_html_class($item['verification']['state'])); ?>
+							<?php if ('' !== $item['verification']['verified_date']) : ?><small><?php echo esc_html(sprintf(__('Checked %s', 'dbvc'), $item['verification']['verified_date'])); ?></small><?php endif; ?>
+							<details>
+								<summary><?php esc_html_e('Verification details', 'dbvc'); ?></summary>
+								<p class="description">
+									<?php
+									if ('live_verified' === $item['verification']['state']) {
+										esc_html_e('The bounded capability contract has same-checkout live confirmation.', 'dbvc');
+									} elseif ('scoped_evidence' === $item['verification']['state']) {
+										esc_html_e('One or more operations have same-checkout or pre/post evidence; the complete grouped capability is not live verified.', 'dbvc');
+									} elseif ('tested' === $item['verification']['state']) {
+										esc_html_e('Repository test evidence exists without same-checkout live confirmation.', 'dbvc');
+									} elseif ('source_reviewed' === $item['verification']['state']) {
+										esc_html_e('The source and registration contract were reviewed; focused or live execution is not recorded.', 'dbvc');
+									} else {
+										esc_html_e('No verification evidence is recorded for this capability.', 'dbvc');
+									}
+									?>
+								</p>
+								<?php if (! empty($item['verification']['evidence_types'])) : ?><strong><?php esc_html_e('Evidence', 'dbvc'); ?></strong><ul><?php foreach ($item['verification']['evidence_types'] as $evidence_type) : ?><li><?php echo esc_html(dbvc_capability_landscape_label($evidence_type)); ?></li><?php endforeach; ?></ul><?php endif; ?>
+								<?php if (! empty($item['verification']['test_refs'])) : ?><strong><?php esc_html_e('Tests', 'dbvc'); ?></strong><ul><?php foreach ($item['verification']['test_refs'] as $test_ref) : ?><li><code><?php echo esc_html($test_ref); ?></code></li><?php endforeach; ?></ul><?php endif; ?>
+								<?php if ('' !== $item['verification']['notes']) : ?><strong><?php esc_html_e('Notes', 'dbvc'); ?></strong><p><?php echo esc_html($item['verification']['notes']); ?></p><?php endif; ?>
+								<?php if ('' !== $item['verification']['repository_commit']) : ?><small><?php echo esc_html(sprintf(__('Reviewed commit: %s', 'dbvc'), substr($item['verification']['repository_commit'], 0, 12))); ?></small><?php endif; ?>
+							</details>
 						</td>
 						<td>
 							<?php if (empty($item['surfaces'])) : ?><span class="description"><?php esc_html_e('No callable interface', 'dbvc'); ?></span><?php endif; ?>
@@ -551,7 +662,7 @@ function dbvc_render_capability_landscape_panel()
 						</td>
 					</tr>
 				<?php endforeach; ?>
-				<tr id="dbvc-capability-empty" hidden><td colspan="6"><?php esc_html_e('No capability records match these filters.', 'dbvc'); ?></td></tr>
+				<tr id="dbvc-capability-empty" hidden><td colspan="7"><?php esc_html_e('No capability records match these filters.', 'dbvc'); ?></td></tr>
 				</tbody>
 			</table>
 		</div>
@@ -565,12 +676,12 @@ function dbvc_render_capability_landscape_panel()
 		.dbvc-capability-stats > div { border:1px solid #dcdcde; border-radius:6px; background:#f6f7f7; padding:.8rem; }
 		.dbvc-capability-stats strong { display:block; color:#1d2327; font-size:1.5rem; line-height:1.1; }
 		.dbvc-capability-stats span { display:block; margin-top:.3rem; color:#50575e; }
-		.dbvc-capability-filters { display:grid; grid-template-columns:minmax(220px,2fr) repeat(4,minmax(145px,1fr)) auto; gap:.75rem; align-items:end; border:1px solid #dcdcde; border-radius:6px; padding:1rem; background:#fff; }
+		.dbvc-capability-filters { display:grid; grid-template-columns:minmax(220px,2fr) repeat(6,minmax(145px,1fr)) auto; gap:.75rem; align-items:end; border:1px solid #dcdcde; border-radius:6px; padding:1rem; background:#fff; }
 		.dbvc-capability-filters label span { display:block; margin-bottom:.3rem; font-weight:600; }
 		.dbvc-capability-filters input,.dbvc-capability-filters select { width:100%; min-height:34px; }
 		.dbvc-capability-results { margin:.9rem 0; font-weight:600; }
 		.dbvc-capability-table-wrap { overflow-x:auto; border:1px solid #dcdcde; }
-		.dbvc-capability-table { min-width:1450px; border:0; }
+		.dbvc-capability-table { min-width:1680px; border:0; }
 		.dbvc-capability-table th,.dbvc-capability-table td { vertical-align:top; }
 		.dbvc-capability-table thead th { position:sticky; top:32px; z-index:2; background:#f0f0f1; }
 		.dbvc-capability-group th { background:#dcdcde; color:#1d2327; font-size:13px; letter-spacing:.02em; text-transform:uppercase; }
@@ -579,10 +690,16 @@ function dbvc_render_capability_landscape_panel()
 		.dbvc-capability-primary code { margin:.3rem 0; word-break:break-word; }
 		.dbvc-capability-primary p { margin:.45rem 0; }
 		.dbvc-capability-interface { margin-bottom:.45rem; }
+		.dbvc-capability-verification { width:230px; }
+		.dbvc-capability-verification small { display:block; margin:.2rem 0; }
 		.dbvc-capability-interface code { display:block; margin-top:.2rem; white-space:normal; word-break:break-word; }
 		.dbvc-capability-chip { display:inline-block; margin:0 .25rem .3rem 0; border:1px solid #c3c4c7; border-radius:999px; padding:.14rem .48rem; background:#f6f7f7; color:#2c3338; font-size:11px; line-height:1.45; }
 		.dbvc-capability-chip.is-status,.dbvc-capability-chip.is-safety,.dbvc-capability-chip.is-agent-use { font-weight:600; }
 		.dbvc-capability-chip.is-active,.dbvc-capability-chip.is-read_only,.dbvc-capability-chip.is-safe-inspection,.dbvc-capability-chip.is-cli-ready { border-color:#68de7c; background:#edfaef; color:#116329; }
+		.dbvc-capability-chip.is-live_verified { border-color:#00a32a; background:#edfaef; color:#005c12; font-weight:700; }
+		.dbvc-capability-chip.is-scoped_evidence { border-color:#2271b1; background:#eaf3fb; color:#0a4b78; font-weight:600; }
+		.dbvc-capability-chip.is-tested { border-color:#dba617; background:#fcf9e8; color:#664d03; font-weight:600; }
+		.dbvc-capability-chip.is-source_reviewed,.dbvc-capability-chip.is-not_recorded { border-color:#8c8f94; background:#f0f0f1; color:#50575e; }
 		.dbvc-capability-chip.is-experimental,.dbvc-capability-chip.is-mixed,.dbvc-capability-chip.is-cli-candidate,.dbvc-capability-chip.is-parity-review,.dbvc-capability-chip.is-needs_review,.dbvc-capability-chip.is-medium { border-color:#dba617; background:#fcf9e8; color:#664d03; }
 		.dbvc-capability-chip.is-wordpress_write,.dbvc-capability-chip.is-filesystem_write,.dbvc-capability-chip.is-remote_write,.dbvc-capability-chip.is-destructive,.dbvc-capability-chip.is-write-gated { border-color:#d63638; background:#fcf0f1; color:#8a2424; }
 		.dbvc-capability-chip.is-candidate,.dbvc-capability-chip.is-high { border-color:#2271b1; background:#eaf3fb; color:#0a4b78; }
@@ -602,6 +719,7 @@ function dbvc_render_capability_landscape_panel()
 		const category = root.querySelector('#dbvc-capability-category');
 		const status = root.querySelector('#dbvc-capability-status');
 		const surface = root.querySelector('#dbvc-capability-surface');
+		const verification = root.querySelector('#dbvc-capability-verification');
 		const opportunity = root.querySelector('#dbvc-capability-opportunity');
 		const agentUse = root.querySelector('#dbvc-capability-agent-use');
 		const reset = root.querySelector('#dbvc-capability-reset');
@@ -617,6 +735,7 @@ function dbvc_render_capability_landscape_panel()
 				const matches = (!needle || row.dataset.search.indexOf(needle) !== -1)
 					&& (!category.value || row.dataset.category === category.value)
 					&& (!status.value || row.dataset.status === status.value)
+					&& (!verification.value || row.dataset.verification === verification.value)
 					&& (!surface.value || row.dataset.surfaces.indexOf(' ' + surface.value + ' ') !== -1)
 					&& (!opportunity.value || row.dataset.opportunity === opportunity.value)
 					&& (!agentUse.value || row.dataset.agentUses.indexOf(' ' + agentUse.value + ' ') !== -1);
@@ -637,7 +756,7 @@ function dbvc_render_capability_landscape_panel()
 				.replace('%2$d', rows.length);
 		}
 
-		[search, category, status, surface, opportunity, agentUse].forEach(function(control) {
+		[search, category, status, surface, verification, opportunity, agentUse].forEach(function(control) {
 			control.addEventListener(control === search ? 'input' : 'change', applyFilters);
 		});
 		reset.addEventListener('click', function() {
@@ -645,6 +764,7 @@ function dbvc_render_capability_landscape_panel()
 			category.value = '';
 			status.value = '';
 			surface.value = '';
+			verification.value = '';
 			opportunity.value = '';
 			agentUse.value = '';
 			applyFilters();

@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 334,
-        "source_fingerprint": "sha256:656c1627b63aaef30ca4069fa75d7a53d59014cc2f5f0e74dc37a4123a224a38",
+        "source_file_count": 335,
+        "source_fingerprint": "sha256:4386dd657e5f781f351c2a447700efca012149fb475e57d30fd751aa3310d53d",
         "live_runtime_verified": false
     },
     "counts": {
@@ -12,17 +12,17 @@
         "admin_menus": 13,
         "bootstrap_includes": 127,
         "bootstrap_initializers": 16,
-        "cli_commands": 22,
+        "cli_commands": 24,
         "cli_namespaces": 8,
         "database_tables": 13,
         "documentation": 344,
         "extension_points": 144,
         "hook_listeners": 161,
-        "rest_routes": 126,
+        "rest_routes": 127,
         "scheduled_hooks": 3,
         "settings": 49,
         "source_reference_documentation": 13,
-        "tests": 80
+        "tests": 82
     },
     "collections": {
         "admin_handlers": [
@@ -2082,6 +2082,28 @@
                 }
             },
             {
+                "discovery_id": "cli.command.dbvc.proposals.entities",
+                "command": "dbvc proposals entities",
+                "namespace": "dbvc proposals",
+                "class": "DBVC_WP_CLI_Proposals",
+                "method": "entities",
+                "summary": "List bounded sanitized entities for one exact proposal",
+                "synopsis_tokens": [
+                    "<proposal-id>",
+                    "[--entity-type=<type>]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--limit=<number>]",
+                    "[--object-type=<type>]",
+                    "[--offset=<number>]",
+                    "[--snapshot-state=<state>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-wp-cli-commands.php",
+                    "line": 1184
+                }
+            },
+            {
                 "discovery_id": "cli.command.dbvc.proposals.list",
                 "command": "dbvc proposals list",
                 "namespace": "dbvc proposals",
@@ -2098,6 +2120,24 @@
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
                     "line": 755
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.proposals.show",
+                "command": "dbvc proposals show",
+                "namespace": "dbvc proposals",
+                "class": "DBVC_WP_CLI_Proposals",
+                "method": "show",
+                "summary": "Show one exact proposal's bounded read-only structural preflight",
+                "synopsis_tokens": [
+                    "<proposal-id>",
+                    "[--fail-on-blockers]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-wp-cli-commands.php",
+                    "line": 1144
                 }
             },
             {
@@ -2132,7 +2172,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1330
+                    "line": 1398
                 }
             },
             {
@@ -2147,7 +2187,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1380
+                    "line": 1448
                 }
             },
             {
@@ -2162,7 +2202,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1416
+                    "line": 1484
                 }
             },
             {
@@ -2177,7 +2217,7 @@
                 ],
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1284
+                    "line": 1352
                 }
             },
             {
@@ -2205,7 +2245,7 @@
                 "class": "DBVC_WP_CLI_Commands",
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1491
+                    "line": 1559
                 }
             },
             {
@@ -2259,7 +2299,7 @@
                 "class": "DBVC_WP_CLI_Proposals",
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1492
+                    "line": 1560
                 }
             },
             {
@@ -2268,7 +2308,7 @@
                 "class": "DBVC_WP_CLI_Resolver_Rules",
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
-                    "line": 1493
+                    "line": 1561
                 }
             }
         ],
@@ -3157,14 +3197,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_allowed_statuses_for_export.1fa2a774",
+                "discovery_id": "hook.extension_point.dbvc_allowed_statuses_for_export.515064f3",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_allowed_statuses_for_export",
                 "source_ref": {
                     "path": "includes/class-snapshot-manager.php",
-                    "line": 360
+                    "line": 370
                 }
             },
             {
@@ -3487,14 +3527,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_bricks_reference_unresolved_policy.fe5e1628",
+                "discovery_id": "hook.extension_point.dbvc_bricks_reference_unresolved_policy.cccda06b",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_bricks_reference_unresolved_policy",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 5023
+                    "line": 5171
                 }
             },
             {
@@ -3630,25 +3670,25 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_enable_snapshot_capture.e8f00504",
+                "discovery_id": "hook.extension_point.dbvc_enable_snapshot_capture.4e824800",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_enable_snapshot_capture",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 7041
+                    "line": 7189
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_enable_snapshot_capture.5c7d1ee2",
+                "discovery_id": "hook.extension_point.dbvc_enable_snapshot_capture.bffa11b5",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_enable_snapshot_capture",
                 "source_ref": {
                     "path": "includes/class-snapshot-manager.php",
-                    "line": 37
+                    "line": 42
                 }
             },
             {
@@ -3872,14 +3912,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_export_post_data.624e43d7",
+                "discovery_id": "hook.extension_point.dbvc_export_post_data.c6102edd",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_export_post_data",
                 "source_ref": {
                     "path": "includes/class-snapshot-manager.php",
-                    "line": 408
+                    "line": 423
                 }
             },
             {
@@ -3949,14 +3989,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_import_backup_override.acf1f009",
+                "discovery_id": "hook.extension_point.dbvc_import_backup_override.373a7fb4",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_import_backup_override",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 7670
+                    "line": 7818
                 }
             },
             {
@@ -3982,14 +4022,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_masking_chunk_size.c39533f9",
+                "discovery_id": "hook.extension_point.dbvc_masking_chunk_size.e99a7423",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_masking_chunk_size",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 1933
+                    "line": 1943
                 }
             },
             {
@@ -4026,14 +4066,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_proposal_zip_resource_limits.0db8768b",
+                "discovery_id": "hook.extension_point.dbvc_proposal_zip_resource_limits.018daeae",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_proposal_zip_resource_limits",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 3615
+                    "line": 3763
                 }
             },
             {
@@ -6254,7 +6294,7 @@
                 }
             },
             {
-                "discovery_id": "rest.4deeb5c1f2342100",
+                "discovery_id": "rest.78fe171d817dd03f",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/file",
@@ -6263,11 +6303,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 554
+                    "line": 564
                 }
             },
             {
-                "discovery_id": "rest.e3a82bde7fd28a53",
+                "discovery_id": "rest.9edfbda22c0c7cf7",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/file/import-partial",
@@ -6276,11 +6316,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 606
+                    "line": 616
                 }
             },
             {
-                "discovery_id": "rest.16bfc536995b41d6",
+                "discovery_id": "rest.7385d502153da645",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/file/import-replace",
@@ -6289,11 +6329,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 630
+                    "line": 640
                 }
             },
             {
-                "discovery_id": "rest.25929c93488ac6ab",
+                "discovery_id": "rest.8dcad977363901ba",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/file/save",
@@ -6302,11 +6342,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 572
+                    "line": 582
                 }
             },
             {
-                "discovery_id": "rest.06462621af38e249",
+                "discovery_id": "rest.634851fb96136c8a",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/files/delete",
@@ -6315,11 +6355,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 596
+                    "line": 606
                 }
             },
             {
-                "discovery_id": "rest.e11029662d3d0ceb",
+                "discovery_id": "rest.55d4d1a58be4395a",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/index",
@@ -6328,11 +6368,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 534
+                    "line": 544
                 }
             },
             {
-                "discovery_id": "rest.6e4f82a73285c95a",
+                "discovery_id": "rest.36cdccfd149fb034",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/index/rebuild",
@@ -6341,11 +6381,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 544
+                    "line": 554
                 }
             },
             {
-                "discovery_id": "rest.d14b0fe17546bc1c",
+                "discovery_id": "rest.1da00dac569c4bb6",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/merge-json/preview",
@@ -6354,11 +6394,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 657
+                    "line": 667
                 }
             },
             {
-                "discovery_id": "rest.a7b870d388d8ce20",
+                "discovery_id": "rest.32c18515d309afbd",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/merge-json/save",
@@ -6367,11 +6407,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 667
+                    "line": 677
                 }
             },
             {
-                "discovery_id": "rest.073a767544c2741f",
+                "discovery_id": "rest.c2273670b862022d",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/merge-json/save-and-partial-import",
@@ -6380,11 +6420,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 677
+                    "line": 687
                 }
             },
             {
-                "discovery_id": "rest.8054c7dd4ef85920",
+                "discovery_id": "rest.0697e7edda3879aa",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/raw-intake/commit",
@@ -6393,11 +6433,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 707
+                    "line": 717
                 }
             },
             {
-                "discovery_id": "rest.1c2a5295f6c2755b",
+                "discovery_id": "rest.22b6cbbd01d8ccc7",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/raw-intake/preview",
@@ -6406,11 +6446,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 697
+                    "line": 707
                 }
             },
             {
-                "discovery_id": "rest.a29242339c1eaf88",
+                "discovery_id": "rest.278cddab6ec97d68",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/sync-file-import/commit",
@@ -6419,11 +6459,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 727
+                    "line": 737
                 }
             },
             {
-                "discovery_id": "rest.3c261991223476eb",
+                "discovery_id": "rest.5d5021e139e4d72c",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/sync-file-import/preview",
@@ -6432,11 +6472,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 717
+                    "line": 727
                 }
             },
             {
-                "discovery_id": "rest.0168365fa15608c7",
+                "discovery_id": "rest.f04267d09b278df5",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/sync-file-import/remediate",
@@ -6445,11 +6485,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 737
+                    "line": 747
                 }
             },
             {
-                "discovery_id": "rest.7f37f9af1310f2e2",
+                "discovery_id": "rest.3e6cb3e897c82c1f",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/third-party/commit",
@@ -6458,11 +6498,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 757
+                    "line": 767
                 }
             },
             {
-                "discovery_id": "rest.8283d5d99541f45d",
+                "discovery_id": "rest.050e216b94dcad43",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/third-party/preview",
@@ -6471,11 +6511,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 747
+                    "line": 757
                 }
             },
             {
-                "discovery_id": "rest.a806fac86e999453",
+                "discovery_id": "rest.7f10f498cc0b5f8c",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/entity-editor/transfer-preview",
@@ -6484,7 +6524,7 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 687
+                    "line": 697
                 }
             },
             {
@@ -6501,7 +6541,7 @@
                 }
             },
             {
-                "discovery_id": "rest.b1130a6dab6600a7",
+                "discovery_id": "rest.8e60c65084a9a511",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/logs/client",
@@ -6510,11 +6550,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 524
+                    "line": 534
                 }
             },
             {
-                "discovery_id": "rest.47604d26915705dc",
+                "discovery_id": "rest.a58c37c16fe67187",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/maintenance/clear-proposals",
@@ -6523,7 +6563,7 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 514
+                    "line": 524
                 }
             },
             {
@@ -6553,7 +6593,7 @@
                 }
             },
             {
-                "discovery_id": "rest.e813cc8f4dc3fdd1",
+                "discovery_id": "rest.25e576bc856fae19",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/apply",
@@ -6562,7 +6602,7 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 412
+                    "line": 422
                 }
             },
             {
@@ -6618,7 +6658,7 @@
                 }
             },
             {
-                "discovery_id": "rest.083d9bcf64c86bea",
+                "discovery_id": "rest.6b0acc0ffac4809b",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/hash-sync",
@@ -6627,7 +6667,7 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 382
+                    "line": 392
                 }
             },
             {
@@ -6657,7 +6697,7 @@
                 }
             },
             {
-                "discovery_id": "rest.ec538c04a5fb729a",
+                "discovery_id": "rest.f5db55b88e967498",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/selections/bulk",
@@ -6666,11 +6706,24 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
+                    "line": 344
+                }
+            },
+            {
+                "discovery_id": "rest.085e045fe6931dca",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/selections/prune",
+                "method_expression": "\\WP_REST_Server::CREATABLE",
+                "callback_expression": "[self::class, 'prune_entity_decisions']",
+                "permission_expression": "[self::class, 'can_manage']",
+                "source_ref": {
+                    "path": "admin/class-admin-app.php",
                     "line": 334
                 }
             },
             {
-                "discovery_id": "rest.54a9af2d26bff928",
+                "discovery_id": "rest.051bfcab72803163",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/entities/(?P<vf_object_uid>[^/]+)/snapshot",
@@ -6679,11 +6732,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 372
+                    "line": 382
                 }
             },
             {
-                "discovery_id": "rest.60b2757617d58d15",
+                "discovery_id": "rest.b902f3836b1d1eb4",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/entities/accept",
@@ -6692,11 +6745,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 344
+                    "line": 354
                 }
             },
             {
-                "discovery_id": "rest.7dbbce1650fddbe4",
+                "discovery_id": "rest.d084da6d1ba92381",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/entities/hash-sync",
@@ -6705,11 +6758,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 392
+                    "line": 402
                 }
             },
             {
-                "discovery_id": "rest.21a07bc05b64978c",
+                "discovery_id": "rest.e0e0772806c51a66",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/entities/unaccept",
@@ -6718,11 +6771,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 353
+                    "line": 363
                 }
             },
             {
-                "discovery_id": "rest.a8017b3db121f5ff",
+                "discovery_id": "rest.0de330471aacbeaa",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/entities/unkeep",
@@ -6731,7 +6784,7 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 362
+                    "line": 372
                 }
             },
             {
@@ -6787,7 +6840,7 @@
                 }
             },
             {
-                "discovery_id": "rest.8dc65ddd4eada7ea",
+                "discovery_id": "rest.1c3e89be4b3bc9f8",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/resolver",
@@ -6796,11 +6849,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 422
+                    "line": 432
                 }
             },
             {
-                "discovery_id": "rest.df6c3b7a1651755a",
+                "discovery_id": "rest.93e537c2ca042726",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/resolver/(?P<original_id>\\d+)",
@@ -6809,11 +6862,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 445
+                    "line": 455
                 }
             },
             {
-                "discovery_id": "rest.91ccacc8fca92824",
+                "discovery_id": "rest.fc7e97c01ca4f7e4",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/resolver/(?P<original_id>\\d+)",
@@ -6822,11 +6875,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 455
+                    "line": 465
                 }
             },
             {
-                "discovery_id": "rest.dfe17813254c17de",
+                "discovery_id": "rest.70e6647f3d301401",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/snapshot",
@@ -6835,11 +6888,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 402
+                    "line": 412
                 }
             },
             {
-                "discovery_id": "rest.137e8e92853f3498",
+                "discovery_id": "rest.cbe52b1b9f106742",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/proposals/(?P<proposal_id>[^/]+)/status",
@@ -6848,7 +6901,7 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 435
+                    "line": 445
                 }
             },
             {
@@ -6865,7 +6918,7 @@
                 }
             },
             {
-                "discovery_id": "rest.f58cd89753f98cfd",
+                "discovery_id": "rest.f938d65565c94724",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/resolver-rules",
@@ -6874,11 +6927,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 494
+                    "line": 504
                 }
             },
             {
-                "discovery_id": "rest.03260cfd2666a476",
+                "discovery_id": "rest.0e3ffd3a48284fd8",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/resolver-rules",
@@ -6887,11 +6940,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 465
+                    "line": 475
                 }
             },
             {
-                "discovery_id": "rest.921aef35c3de3cfb",
+                "discovery_id": "rest.3bcbf35dab54d301",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/resolver-rules/(?P<original_id>\\d+)",
@@ -6900,11 +6953,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 484
+                    "line": 494
                 }
             },
             {
-                "discovery_id": "rest.75e4c1b042c90525",
+                "discovery_id": "rest.450cfda27a69a430",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/resolver-rules/bulk-delete",
@@ -6913,11 +6966,11 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 474
+                    "line": 484
                 }
             },
             {
-                "discovery_id": "rest.a8c060289fc9f6c6",
+                "discovery_id": "rest.54f9103979e7264c",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/resolver-rules/import",
@@ -6926,7 +6979,7 @@
                 "permission_expression": "[self::class, 'can_manage']",
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
-                    "line": 504
+                    "line": 514
                 }
             },
             {
@@ -7995,7 +8048,7 @@
                     },
                     {
                         "path": "includes/class-snapshot-manager.php",
-                        "line": 320
+                        "line": 330
                     },
                     {
                         "path": "includes/class-sync-taxonomies.php",
@@ -8024,7 +8077,7 @@
                     },
                     {
                         "path": "includes/class-snapshot-manager.php",
-                        "line": 306
+                        "line": 311
                     },
                     {
                         "path": "includes/class-sync-taxonomies.php",
@@ -8074,11 +8127,11 @@
                     },
                     {
                         "path": "includes/class-snapshot-manager.php",
-                        "line": 326
+                        "line": 336
                     },
                     {
                         "path": "includes/class-snapshot-manager.php",
-                        "line": 410
+                        "line": 425
                     },
                     {
                         "path": "includes/class-sync-posts.php",
@@ -8226,7 +8279,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 9244
+                        "line": 9392
                     },
                     {
                         "path": "includes/functions.php",
@@ -8263,7 +8316,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 9245
+                        "line": 9393
                     },
                     {
                         "path": "includes/functions.php",
@@ -8292,7 +8345,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 9255
+                        "line": 9403
                     },
                     {
                         "path": "includes/functions.php",
@@ -8394,11 +8447,11 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 7392
+                        "line": 7540
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 7568
+                        "line": 7716
                     },
                     {
                         "path": "includes/class-sync-posts.php",
@@ -8538,7 +8591,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 5018
+                        "line": 5166
                     }
                 ]
             },
@@ -8563,7 +8616,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 8903
+                        "line": 9051
                     }
                 ]
             },
@@ -8712,7 +8765,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 7731
+                        "line": 7879
                     }
                 ]
             },
@@ -9026,7 +9079,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 9244
+                        "line": 9392
                     },
                     {
                         "path": "includes/functions.php",
@@ -9071,7 +9124,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 9245
+                        "line": 9393
                     },
                     {
                         "path": "includes/functions.php",
@@ -9124,7 +9177,7 @@
                     },
                     {
                         "path": "includes/class-snapshot-manager.php",
-                        "line": 375
+                        "line": 385
                     },
                     {
                         "path": "includes/class-sync-posts.php",
@@ -9179,7 +9232,7 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 995
+                        "line": 1005
                     },
                     {
                         "path": "includes/class-sync-posts.php",
@@ -9217,11 +9270,11 @@
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 996
+                        "line": 1006
                     },
                     {
                         "path": "admin/class-admin-app.php",
-                        "line": 1040
+                        "line": 1050
                     },
                     {
                         "path": "admin/class-ai-intake-controller.php",
@@ -9262,7 +9315,7 @@
                 "source_refs": [
                     {
                         "path": "includes/class-backup-manager.php",
-                        "line": 449
+                        "line": 453
                     },
                     {
                         "path": "includes/class-media-sync.php",
@@ -9418,8 +9471,10 @@
             "tests/phpunit/MaskingEndpointsTest.php",
             "tests/phpunit/MediaHydrationInventoryTest.php",
             "tests/phpunit/MediaResolverDecisionTest.php",
+            "tests/phpunit/MediaResolverDryRunTest.php",
             "tests/phpunit/PluginBootstrapSmokeTest.php",
             "tests/phpunit/ProposalDiffContractTest.php",
+            "tests/phpunit/ProposalInspectionCliTest.php",
             "tests/phpunit/ProposalZipIntakeTest.php",
             "tests/phpunit/ThirdPartyPortabilityTest.php",
             "tests/phpunit/TransferPacketWorkflowTest.php",

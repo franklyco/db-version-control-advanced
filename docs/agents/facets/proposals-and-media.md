@@ -7,10 +7,10 @@ Load this facet for proposal intake, inspection, Accept/Keep decisions, masking,
 | Stage | Records | Consequence |
 |---|---|---|
 | Stage | `proposal.core.intake`, `cli.core.proposals.upload` | Writes proposal files; does not apply to WordPress |
-| Inspect | `proposal.core.inspect`, `cli.core.proposals.list` | Read-only unless CLI maintenance flags are used |
-| Resolve media | `media.core.resolver_rules` | Preview is read-only; decisions/rules/downloads write |
+| Inspect | `cli.proposals.inspect`, `proposal.core.inspect`, `cli.core.proposals.list` | Use the bounded CLI for side-effect-free structural preflight; the grouped REST inspection surface is read-only and sensitive-value restricted |
+| Resolve media | `media.core.resolver_rules` | Resolver `dry_run=true` and existing-bundle lookup are mutation-barrier tested; decisions/rules/downloads and non-dry-run identity backfill write |
 | Mask | `proposal.core.masking` | Mutates staged artifacts; revert depends on snapshots |
-| Decide | `proposal.core.decisions` | Persists review state, hashes, and snapshots |
+| Decide | `proposal.core.decisions` | Persists review state, hashes, and snapshots; the entity drawer exposes stale-decision pruning only after trusted-diff eligibility and explicit confirmation |
 | Apply | `proposal.core.apply`, `cli.core.proposals.apply` | Final WordPress/uploads mutation boundary |
 | Clean up | `proposal.core.cleanup` | Deletes staged artifacts; does not undo an apply |
 
@@ -24,6 +24,8 @@ Load this facet for proposal intake, inspection, Accept/Keep decisions, masking,
 6. Use apply only with explicit mutation and rollback authority.
 
 Global resolver rules affect later proposals, not just the current package. A successful stage, snapshot, or media preview is not authorization to apply.
+
+`cli.proposals.inspect` reports conservative structural blockers and sanitized bounded entity summaries only. It does not establish authoritative apply readiness. Phase 18 removed attachment-meta and bundle-root writes from resolver dry-run, but the broader proposal GET stack must still be audited callback by callback because detail, readiness, snapshot, backup-path, and identity helpers can have supporting-storage side effects.
 
 ## Common Gap Checks
 

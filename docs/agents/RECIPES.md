@@ -28,20 +28,21 @@ wp dbvc capabilities show cli.core.import --format=json
 
 Replace the example ID with the record selected from `list`. Read its safety, requirements, storage, warnings, verification, and known gaps before planning an action.
 
-## Proposal Readiness Inspection
+## Bounded Proposal Structural Inspection
 
-<!-- recipe: proposal-readiness-inspection -->
+<!-- recipe: proposal-structural-inspection -->
 <!-- safety: read_only -->
-<!-- capability-records: cli.core.capabilities.inspect, cli.core.proposals.list, proposal.core.inspect -->
+<!-- capability-records: cli.core.capabilities.inspect, cli.proposals.inspect -->
 
-Use to inspect one already identified staged proposal and its readiness blockers without applying, recapturing, or cleaning anything. The proposal ID must come from the task, authenticated administrator UI, or another already-reviewed source.
+Use to inspect one already identified staged proposal through conservative structural metadata and bounded sanitized entity rows. The proposal ID must come from the task, authenticated administrator UI, or another already-reviewed source.
 
 ```bash
-wp dbvc capabilities show cli.core.proposals.list --format=json
-wp dbvc proposals list --id=<proposal-id> --fields=id,status,readiness,files,media,snapshot_untrusted,missing_hashes,decisions --fail-on-pending
+wp dbvc capabilities show cli.proposals.inspect --format=json
+wp dbvc proposals show <proposal-id> --format=json
+wp dbvc proposals entities <proposal-id> --limit=25 --format=json
 ```
 
-Do not run the recipe as an unscoped all-proposal readiness scan: readiness expansion can be expensive on a site with many staged proposals. `--fail-on-pending` changes only the process exit status. Do not add `--recapture-snapshots` or `--cleanup-duplicates`; those flags cross the recipe's read-only boundary. Stop after reporting blockers and request separate authorization for remediation or apply work.
+The output reports known missing-hash and duplicate blockers, stored decision coverage, and existing snapshot artifacts. `authoritative_apply_ready` deliberately remains `null`: field decisions, masking values, live resolver matching, snapshot trust/staleness, new-entity identity, and apply permissions are not evaluated. Do not substitute the broader REST inspection callbacks or `wp dbvc proposals list` readiness expansion; some nominal readers can prune decisions, create/harden storage, or write identity metadata. Stop after structural reporting and request a separate safety-remediation or apply boundary for anything broader.
 
 ## Media Hydration Preflight
 

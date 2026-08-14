@@ -16,12 +16,13 @@ Do not treat this folder as required startup context for unrelated DBVC work. Ex
 
 ## Current Boundary
 
-- The current LocalWP checkout manifest contains 52 grouped capability records covering all 402 enforced discovery surfaces.
-- Source discovery currently identifies 22 WP-CLI leaf commands and 126 REST registrations.
+- The current LocalWP checkout manifest contains 53 grouped capability records covering all 405 enforced discovery surfaces.
+- Source discovery currently identifies 24 WP-CLI leaf commands and 127 REST registrations.
 - Strict coverage is enabled: a new CLI command, REST route, admin surface, setting, extension point, database table, or scheduled hook must be mapped or explicitly ignored.
 - A discovered command, route, hook, setting, or service must not be treated as agent-safe merely because it appears in the discovery snapshot.
 - Records marked `active` are source-loaded and reviewed for this checkout; they are not proof that every surface is activated or safe to invoke in a particular WordPress runtime.
-- The opportunity layer currently contains 1 bounded candidate, 1 deferred workflow, 8 REST-to-CLI false positives or completed gaps marked covered elsewhere, 2 implemented CLI records marked not recommended for further parity, no remaining `needs_review` records, and 40 explicitly unreviewed records. Candidate records declare a machine-readable boundary and excluded operations; they are not implementation or invocation authorization.
+- The opportunity layer currently contains no bounded candidates, 1 deferred workflow, 9 REST-to-CLI false positives or completed gaps marked covered elsewhere, 3 implemented CLI records marked not recommended for further parity, no remaining `needs_review` records, and 40 explicitly unreviewed records. A future candidate must declare a machine-readable boundary and excluded operations before it becomes an implementation queue item.
+- Phase 18 makes media resolver `dry_run=true` and existing-bundle lookup side-effect-free. The broader proposal inspection record remains mixed-risk because snapshot, backup-path, identity, and detail readers still have write-capable behavior.
 - The manifest is aligned with the active LocalWP plugin source. Same-checkout WP-CLI help, REST registration, add-on gates, and administrator renderer evidence are recorded in [`RUNTIME_VERIFICATION.md`](RUNTIME_VERIFICATION.md); write operations and authenticated browser interaction remain separate evidence layers.
 - The original cross-checkout comparison and static QA provenance are retained in [`PHASE6_VERIFICATION.md`](PHASE6_VERIFICATION.md).
 - Path-scoped CI now enforces discovery, manifest ownership, and generated-index drift; maintenance remains opt-in and is defined in [`MAINTENANCE.md`](MAINTENANCE.md).
@@ -74,11 +75,11 @@ Load one facet first, then follow its “Load Next” section only as the task r
 
 ## Bounded Inspection Recipes
 
-Use [`RECIPES.md`](RECIPES.md) only after selecting a matching manifest record. It contains eight read-only workflows for checkout preflight, proposal readiness, media inventory, resolver/snapshot context, Bricks control-plane health, Bricks drift, cached Entity Editor inspection, and bounded Content Migration run inspection. Each recipe has explicit stop rules and record references validated by the existing strict agent-docs check.
+Use [`RECIPES.md`](RECIPES.md) only after selecting a matching manifest record. It contains eight read-only workflows for checkout preflight, bounded proposal structural inspection, media inventory, resolver/snapshot context, Bricks control-plane health, Bricks drift, cached Entity Editor inspection, and bounded Content Migration run inspection. Each recipe has explicit stop rules and record references validated by the existing strict agent-docs check.
 
 ## Administrator View
 
-When this manifest ships with the plugin, administrators can review the same curated landscape at `DBVC Export → Docs & Workflows → Capability Landscape` (direct hash: `admin.php?page=dbvc-export#docs-capabilities`). The table is read-only and provides category, status, interface, safety, storage, workflow, CLI-readiness, and reviewed opportunity filters; it does not probe or modify the live runtime.
+When this manifest ships with the plugin, administrators can review the same curated landscape at `DBVC Export → Docs & Workflows → Capability Landscape` (direct hash: `admin.php?page=dbvc-export#docs-capabilities`). The table is read-only and provides category, status, interface, verification, safety, storage, workflow, CLI-readiness, and reviewed-opportunity filters. Verification details expose the recorded date, evidence types, test references, and notes while distinguishing full live confirmation from scoped runtime evidence, repository tests, and source review; the table does not itself probe or modify the live runtime.
 
 ## Existing Long-Form Sources
 
@@ -100,7 +101,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `addon_bricks` | 8 |
 | `addon_content_migration` | 4 |
 | `api_extensions` | 2 |
-| `cli_automation` | 13 |
+| `cli_automation` | 14 |
 | `entity_editor` | 3 |
 | `identity_entities` | 2 |
 | `import_export` | 4 |
@@ -111,7 +112,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `settings_configuration` | 3 |
 | `snapshots_backups` | 2 |
 
-Total curated records: **52**.
+Total curated records: **53**.
 <!-- END GENERATED AGENT INDEX -->
 
 ## Maintenance Commands
@@ -125,5 +126,7 @@ composer agent-docs:query -- operation:import surface:cli
 ```
 
 Use [`MAINTENANCE.md`](MAINTENANCE.md) for change triggers, the capability-impact contract, CI behavior, release checks, and the non-stable-record review cadence.
+
+For remaining QA, shape the evidence to the capability: source-only, CLI/API, write-capable, administrator UI, conditional add-on, and generated-document checks have different minimum evidence. No universal browser, fixture, database, or writer step applies. Batch related cases only when their applicable checkout, owner, authorization, prerequisites, and safety boundary remain shared; then update the owning manifest record once, add one compact `RUNTIME_VERIFICATION.md` result only when runtime was exercised, and run validation proportional to the files or runtime claims that changed. See [`MAINTENANCE.md`](MAINTENANCE.md) for the evidence-selection matrix. Do not create a separate run ledger or duplicate routine evidence across maintenance and implementation documents unless recurring multi-capability matrices make the existing authority ambiguous.
 
 See `../implementation/completed/dbvc-agent-reference-library.md` for phase authority, evidence requirements, completion gates, and the LocalWP merge addendum.

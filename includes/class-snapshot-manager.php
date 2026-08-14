@@ -14,17 +14,22 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
 
         /**
          * Return the absolute base path for stored snapshots.
+         *
+         * Readers pass false so path lookup does not create or harden storage.
+         * Capture writers retain the historical create-and-harden behavior.
          */
-        public static function get_base_path(): string
+        public static function get_base_path(bool $create = true): string
         {
-            $upload_dir = wp_upload_dir();
+            $upload_dir = $create ? wp_upload_dir() : wp_get_upload_dir();
             $base       = trailingslashit($upload_dir['basedir']) . 'sync/' . self::SNAPSHOT_DIR;
 
-            if (! is_dir($base)) {
+            if ($create && ! is_dir($base)) {
                 wp_mkdir_p($base);
             }
 
-            self::ensure_directory_security($base);
+            if ($create) {
+                self::ensure_directory_security($base);
+            }
 
             return $base;
         }
@@ -159,7 +164,7 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             }
 
             $key = $vf_object_uid !== '' ? $vf_object_uid : (string) $post_id;
-            $file_path = self::get_snapshot_file_path($proposal_id, $key);
+            $file_path = self::get_snapshot_file_path($proposal_id, $key, true);
             if (! $file_path) {
                 return new \WP_Error('dbvc_snapshot_path_failed', __('The snapshot file path could not be created.', 'dbvc'));
             }
@@ -216,7 +221,7 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             }
 
             $key = $vf_object_uid !== '' ? $vf_object_uid : (string) $term->term_id;
-            $file_path = self::get_snapshot_file_path($proposal_id, $key);
+            $file_path = self::get_snapshot_file_path($proposal_id, $key, true);
             if (! $file_path) {
                 return new \WP_Error('dbvc_snapshot_path_failed', __('The snapshot file path could not be created.', 'dbvc'));
             }
@@ -253,7 +258,7 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             $key = $vf_object_uid !== '' ? $vf_object_uid : (string) $post_id;
             $post = get_post($post_id);
             $current = $post instanceof \WP_Post
-                ? self::build_post_payload($post)
+                ? self::build_post_payload($post, false)
                 : new \WP_Error('dbvc_snapshot_post_missing', __('The local post is no longer available.', 'dbvc'));
 
             return self::inspect_snapshot_payload($proposal_id, $key, $current);
@@ -267,7 +272,7 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             $key = $vf_object_uid !== '' ? $vf_object_uid : (string) $term_id;
             $term = get_term($term_id, $taxonomy);
             $current = ($term && ! is_wp_error($term))
-                ? self::build_term_payload($term)
+                ? self::build_term_payload($term, false)
                 : new \WP_Error('dbvc_snapshot_term_missing', __('The local term is no longer available.', 'dbvc'));
 
             return self::inspect_snapshot_payload($proposal_id, $key, $current);
@@ -276,7 +281,7 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
         /**
          * Build export-like payload for a term.
          */
-        private static function build_term_payload(\WP_Term $term): array
+        private static function build_term_payload(\WP_Term $term, bool $ensure_identity = true): array
         {
             $term_id = (int) $term->term_id;
             if (! $term_id) {
@@ -294,7 +299,7 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
                 'description' => wp_kses_post($term->description),
             ];
 
-            if (class_exists('DBVC_Sync_Taxonomies')) {
+            if ($ensure_identity && class_exists('DBVC_Sync_Taxonomies')) {
                 $payload['vf_object_uid'] = DBVC_Sync_Taxonomies::ensure_term_uid($term_id, $taxonomy);
             } else {
                 $uid = get_term_meta($term_id, 'vf_object_uid', true);
@@ -310,8 +315,13 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
                     $parent = get_term($term->parent, $taxonomy);
                     if ($parent && ! is_wp_error($parent)) {
                         $payload['parent_slug'] = sanitize_title($parent->slug);
-                        if (class_exists('DBVC_Sync_Taxonomies')) {
+                        if ($ensure_identity && class_exists('DBVC_Sync_Taxonomies')) {
                             $payload['parent_uid'] = DBVC_Sync_Taxonomies::ensure_term_uid($parent->term_id, $taxonomy);
+                        } else {
+                            $parent_uid = get_term_meta($parent->term_id, 'vf_object_uid', true);
+                            if (is_string($parent_uid) && $parent_uid !== '') {
+                                $payload['parent_uid'] = $parent_uid;
+                            }
                         }
                     }
                 }
@@ -345,7 +355,7 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
         /**
          * Build export-like payload for the current post state.
          */
-        private static function build_post_payload(\WP_Post $post)
+        private static function build_post_payload(\WP_Post $post, bool $ensure_identity = true)
         {
             $post_id = (int) $post->ID;
             if (! $post_id) {
@@ -384,9 +394,14 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
 
             $tax_input = DBVC_Sync_Posts::export_tax_input_portable($post_id, $post->post_type);
 
+            $entity_uid = $ensure_identity
+                ? DBVC_Sync_Posts::ensure_post_uid($post_id, $post)
+                : get_post_meta($post_id, 'vf_object_uid', true);
+            $entity_uid = is_string($entity_uid) ? $entity_uid : '';
+
             $data = [
                 'ID'           => $post_id,
-                'vf_object_uid'=> DBVC_Sync_Posts::ensure_post_uid($post_id, $post),
+                'vf_object_uid'=> $entity_uid,
                 'post_title'   => sanitize_text_field($post->post_title),
                 'post_content' => wp_kses_post($post_content),
                 'post_excerpt' => sanitize_textarea_field($post_excerpt),
@@ -642,9 +657,13 @@ if (! class_exists('DBVC_Snapshot_Manager')) {
             return ['', trim($parts[0])];
         }
 
-        private static function get_snapshot_file_path(string $proposal_id, string $vf_object_uid): string
+        private static function get_snapshot_file_path(
+            string $proposal_id,
+            string $vf_object_uid,
+            bool $create_base = false
+        ): string
         {
-            $dir  = trailingslashit(self::get_base_path()) . sanitize_file_name($proposal_id);
+            $dir  = trailingslashit(self::get_base_path($create_base)) . sanitize_file_name($proposal_id);
             $key  = sanitize_file_name($vf_object_uid !== '' ? $vf_object_uid : uniqid('entity_', true));
             return trailingslashit($dir) . $key . '.json';
         }

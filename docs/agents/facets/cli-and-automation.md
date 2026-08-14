@@ -13,6 +13,7 @@ For the complete source-observed command and argument list, open the generated [
 | Compare a Bricks package or manifest with local artifacts | `cli.bricks.drift.inspect` | Read-only; bounded rows and no raw payload values |
 | List and inspect Content Migration V2 runs | `cli.content_migration.runs.inspect` | Read-only; existing artifacts only, no readiness or writers |
 | List or structurally inspect cached Entity Editor files | `cli.entity_editor.inspect` | Read-only; no rebuild, locks, downloads, or raw values |
+| Inspect one staged proposal structurally | `cli.proposals.inspect` | Read-only; conservative blockers and bounded sanitized rows, not authoritative apply readiness |
 | Generate sync artifacts | `cli.core.export` | Filesystem write; no dry-run |
 | Import staged artifacts | `cli.core.import` | WordPress write; backup required |
 | List snapshot history | `cli.core.snapshots.list` | Read-only |
@@ -41,17 +42,17 @@ wp dbvc bricks doctor --format=json
 wp dbvc bricks drift --package-id=<reviewed-package-id> --limit=25 --format=json
 wp dbvc content-migration runs list --limit=25 --format=json
 wp dbvc entity-editor list --max-age=900 --limit=25 --format=json
+wp dbvc proposals show <reviewed-proposal-id> --format=json
+wp dbvc proposals entities <reviewed-proposal-id> --limit=25 --format=json
 ```
 
 `list` supports exact status, category, safety, surface, opportunity, and priority filters plus free-text search. `show` retrieves one canonical record by stable ID. `doctor` checks the packaged manifest and snapshot, strict discovery ownership, active checkout, DBVC REST registration, and explicit add-on gates without dispatching route callbacks.
 
 ## Reviewed Candidate Queue
 
-Current candidates are ranked and deliberately narrower than their owning mixed records:
+There are currently no reviewed implementation candidates. The former Bricks control-plane, Content Migration run-inspection, and bounded proposal-summary candidates are covered by `cli.bricks.doctor`, `cli.content_migration.runs.inspect`, and `cli.proposals.inspect`. `configuration.core.portability` remains deferred until the implemented provider/admin workflow and its still-proposed guide have one supported-contract authority.
 
-1. `proposal.core.inspect` — medium priority, medium effort: exact-proposal readiness and bounded summaries only; raw/single-entity detail and decision pruning are excluded.
-
-The former Bricks control-plane and Content Migration run-inspection candidates are covered by `cli.bricks.doctor` and `cli.content_migration.runs.inspect`. `configuration.core.portability` is deferred until the implemented provider/admin workflow and its still-proposed guide have one supported-contract authority. Load the remaining candidate record's `candidate_scope` and `excluded_operations` before planning implementation. A candidate is a reviewed backlog item, not permission to invoke its REST surface or build its CLI.
+The next proposal boundary is safety remediation, not broader CLI parity: Phase 20 prevents entity-detail cleanup from pruning decisions without an authoritative trusted-snapshot diff, Phase 21 makes snapshot lookup non-creating while preserving explicit capture writes, Phase 22 makes backup-base lookup non-creating for proposal-list and manifest/payload readers, Phase 23 makes post/term current-state snapshot inspection read identity metadata without assigning it, and Phase 24 moves trusted stale-decision pruning behind an explicit administrator writer. The grouped `proposal.core.inspect` REST surface is now read-only. The next isolated boundary is **Explicit Decision-Pruning Operator Surface**; any future opportunity must be separately audited and recorded before it enters the candidate queue.
 
 Do not treat `wp dbvc proposals list` as unconditionally read-only: `--recapture-snapshots` and `--cleanup-duplicates` cross into write/delete behavior. Do not use force-reapply or hash-bypass options without explicit review and rollback authority.
 
@@ -68,6 +69,7 @@ Do not treat `wp dbvc proposals list` as unconditionally read-only: `--recapture
 - Command implementations: [`commands/class-wp-cli-commands.php`](../../../commands/class-wp-cli-commands.php)
 - Bricks doctor and drift commands: [`commands/class-bricks-cli.php`](../../../commands/class-bricks-cli.php)
 - Content Migration run commands: [`commands/class-content-migration-cli.php`](../../../commands/class-content-migration-cli.php)
+- Proposal structural-inspection commands: [`commands/class-proposal-inspection-cli.php`](../../../commands/class-proposal-inspection-cli.php)
 - Entity Editor inspection command: [`commands/class-entity-editor-cli.php`](../../../commands/class-entity-editor-cli.php)
 - Engine overview: [`docs/DBVC_ENGINE_INVENTORY.md`](../../DBVC_ENGINE_INVENTORY.md)
 - Generated CLI views: [command signatures](../generated/index-by-command.md) and [surface index](../generated/index-by-surface.md)

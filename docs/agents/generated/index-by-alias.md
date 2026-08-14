@@ -102,6 +102,7 @@
 | proposal review API | [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) |
 | proposal status | [`proposal.core.decisions`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) |
 | proposal status CLI | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) |
+| proposal structural preflight CLI | [`cli.proposals.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | proposal transition | [`addon.bricks.proposals`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) |
 | proposal upload REST | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
 | pull ack queue | [`addon.bricks.command_queue`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
@@ -140,7 +141,9 @@
 | wp dbvc import | [`cli.core.import`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc media mirror_export | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) |
 | wp dbvc proposals apply | [`cli.core.proposals.apply`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc proposals entities | [`cli.proposals.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc proposals list | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc proposals show | [`cli.proposals.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc proposals upload | [`cli.core.proposals.upload`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules add | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules delete | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
