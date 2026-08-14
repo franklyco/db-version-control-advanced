@@ -326,8 +326,8 @@ function discoverCli(string $root): array
     $commands = [];
     foreach ($registrations as $registration) {
         foreach ($methodsByClass[$registration['class']] ?? [] as $method) {
-            $leaf = rtrim($method['name'], '_');
-            $command = $registration['namespace'] . ' ' . str_replace('_', '-', $leaf);
+            $leaf = $method['subcommand'] !== '' ? $method['subcommand'] : $method['name'];
+            $command = $registration['namespace'] . ' ' . $leaf;
             $commands[] = [
                 'discovery_id' => 'cli.command.' . str_replace(' ', '.', $command),
                 'command' => $command,
@@ -439,10 +439,19 @@ function parsePublicClassMethods(string $contents): array
             'line' => $line,
             'summary' => docblockSummary($doc),
             'synopsis_tokens' => docblockSynopsisTokens($doc),
+            'subcommand' => docblockSubcommand($doc),
         ];
     }
 
     return $classes;
+}
+
+function docblockSubcommand(string $doc): string
+{
+    if (preg_match('/@subcommand\s+([^\s*]+)/', $doc, $matches)) {
+        return trim($matches[1]);
+    }
+    return '';
 }
 
 function methodVisibility(array $tokens, int $functionIndex): string
@@ -783,6 +792,7 @@ function loadAndValidateManifest(string $root): array
         }
     }
     validateRelatedIds($manifest['records'], $ids);
+    validateRecipeReferences($root, $ids);
 
     return $manifest;
 }
@@ -893,6 +903,9 @@ function validateRecord(string $root, mixed $record, int $index, array &$ids): v
     if (! is_array($record['verification']['evidence_types'] ?? null) || ! is_bool($record['verification']['live_runtime_verified'] ?? null)) {
         throw new RuntimeException('Invalid verification contract for ' . $record['id']);
     }
+    if (isset($record['opportunity'])) {
+        validateOpportunity($record['opportunity'], $record['id']);
+    }
     foreach ($record['source_refs'] as $sourceRef) {
         if (! is_array($sourceRef) || empty($sourceRef['path'])) {
             throw new RuntimeException('Invalid source_ref for ' . $record['id']);
@@ -910,12 +923,107 @@ function validateRecord(string $root, mixed $record, int $index, array &$ids): v
     }
 }
 
+function validateOpportunity(mixed $opportunity, string $recordId): void
+{
+    if (! is_array($opportunity)) {
+        throw new RuntimeException('Opportunity metadata must be an object for ' . $recordId);
+    }
+    $required = ['disposition', 'priority', 'effort', 'recommended_surface', 'rationale', 'reviewed_date'];
+    foreach ($required as $key) {
+        if (! isset($opportunity[$key]) || ! is_string($opportunity[$key]) || $opportunity[$key] === '') {
+            throw new RuntimeException(sprintf('opportunity.%s is required for %s.', $key, $recordId));
+        }
+    }
+    if (! in_array($opportunity['disposition'], ['candidate', 'covered_elsewhere', 'deferred', 'not_recommended', 'needs_review'], true)) {
+        throw new RuntimeException('Invalid opportunity disposition for ' . $recordId);
+    }
+    if (! in_array($opportunity['priority'], ['high', 'medium', 'low', 'none'], true)) {
+        throw new RuntimeException('Invalid opportunity priority for ' . $recordId);
+    }
+    if (! in_array($opportunity['effort'], ['small', 'medium', 'large', 'unknown'], true)) {
+        throw new RuntimeException('Invalid opportunity effort for ' . $recordId);
+    }
+    if (! in_array($opportunity['recommended_surface'], ['cli', 'rest', 'admin', 'php', 'docs', 'none'], true)) {
+        throw new RuntimeException('Invalid opportunity recommended_surface for ' . $recordId);
+    }
+    if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $opportunity['reviewed_date'])) {
+        throw new RuntimeException('Invalid opportunity reviewed_date for ' . $recordId);
+    }
+    if ($opportunity['disposition'] === 'candidate' && $opportunity['priority'] === 'none') {
+        throw new RuntimeException('Candidate opportunity priority cannot be none for ' . $recordId);
+    }
+    if ($opportunity['disposition'] === 'candidate') {
+        if (! isset($opportunity['candidate_scope']) || ! is_string($opportunity['candidate_scope']) || $opportunity['candidate_scope'] === '') {
+            throw new RuntimeException('Candidate opportunity scope is required for ' . $recordId);
+        }
+        if (! isset($opportunity['excluded_operations']) || ! is_array($opportunity['excluded_operations']) || empty($opportunity['excluded_operations'])) {
+            throw new RuntimeException('Candidate excluded_operations are required for ' . $recordId);
+        }
+    }
+    if (isset($opportunity['excluded_operations'])) {
+        if (! is_array($opportunity['excluded_operations']) || ! array_is_list($opportunity['excluded_operations'])) {
+            throw new RuntimeException('Invalid opportunity excluded_operations for ' . $recordId);
+        }
+        foreach ($opportunity['excluded_operations'] as $excludedOperation) {
+            if (! is_string($excludedOperation) || $excludedOperation === '') {
+                throw new RuntimeException('Opportunity excluded_operations must contain non-empty strings for ' . $recordId);
+            }
+        }
+    }
+    if (isset($opportunity['related_record']) && (! is_string($opportunity['related_record']) || $opportunity['related_record'] === $recordId)) {
+        throw new RuntimeException('Invalid opportunity related_record for ' . $recordId);
+    }
+}
+
 function validateRelatedIds(array $records, array $ids): void
 {
     foreach ($records as $record) {
         foreach ($record['related'] as $relatedId) {
             if (! isset($ids[$relatedId])) {
                 throw new RuntimeException(sprintf('Record %s has dangling related ID %s.', $record['id'], $relatedId));
+            }
+        }
+        $opportunityRelated = $record['opportunity']['related_record'] ?? '';
+        if ($opportunityRelated !== '' && ! isset($ids[$opportunityRelated])) {
+            throw new RuntimeException(sprintf('Record %s has dangling opportunity related_record %s.', $record['id'], $opportunityRelated));
+        }
+    }
+}
+
+function validateRecipeReferences(string $root, array $ids): void
+{
+    $path = agentDocsPath($root, 'RECIPES.md');
+    $contents = readRequiredFile($path);
+    $pattern = '/<!-- recipe:\s*([a-z0-9-]+)\s*-->\s*<!-- safety:\s*([a-z_]+)\s*-->\s*<!-- capability-records:\s*([^>]+?)\s*-->/';
+    $matchCount = preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER);
+    if ($matchCount === false || $matchCount < 1) {
+        throw new RuntimeException('RECIPES.md must contain at least one valid recipe metadata block.');
+    }
+    if (substr_count($contents, '<!-- recipe:') !== $matchCount) {
+        throw new RuntimeException('RECIPES.md contains malformed or incomplete recipe metadata.');
+    }
+
+    $recipeIds = [];
+    foreach ($matches as $match) {
+        $recipeId = $match[1];
+        if (isset($recipeIds[$recipeId])) {
+            throw new RuntimeException('Duplicate recipe ID: ' . $recipeId);
+        }
+        $recipeIds[$recipeId] = true;
+        if ($match[2] !== 'read_only') {
+            throw new RuntimeException('Phase 11 recipe must remain read_only: ' . $recipeId);
+        }
+
+        $recordIds = array_values(array_filter(array_map('trim', explode(',', $match[3]))));
+        if (count($recordIds) < 2 || ! in_array('cli.core.capabilities.inspect', $recordIds, true)) {
+            throw new RuntimeException('Recipe must reference the capability preflight record and at least one task record: ' . $recipeId);
+        }
+        if (count($recordIds) !== count(array_unique($recordIds))) {
+            throw new RuntimeException('Recipe capability records must be unique: ' . $recipeId);
+        }
+        foreach ($recordIds as $recordId) {
+            if (! isset($ids[$recordId])) {
+                throw new RuntimeException(sprintf('Recipe %s references unknown capability record %s.', $recipeId, $recordId));
             }
         }
     }
@@ -945,7 +1053,35 @@ function renderIndexes(array $manifest, array $snapshot): array
         })),
         'generated/index-by-alias.md' => renderAliasIndex($records),
         'generated/index-by-command.md' => renderCommandIndex($records, $snapshot),
+        'generated/index-by-opportunity.md' => renderOpportunityIndex($records),
     ];
+}
+
+function renderOpportunityIndex(array $records): string
+{
+    $lines = [
+        '# DBVC Agent Capability Opportunity Index',
+        '',
+        '> Generated by `scripts/agent-docs.php` from reviewed manifest opportunity metadata. Direct edits will be overwritten.',
+        '',
+        '| Record | Disposition | Priority | Effort | Recommended surface | Candidate boundary | Rationale |',
+        '|---|---|---|---|---|---|---|',
+    ];
+    foreach ($records as $record) {
+        $opportunity = $record['opportunity'] ?? null;
+        $lines[] = sprintf(
+            '| [`%s`](../manifest.json) | `%s` | `%s` | `%s` | `%s` | %s | %s |',
+            escapeMarkdownTable($record['id']),
+            escapeMarkdownTable($opportunity['disposition'] ?? 'unreviewed'),
+            escapeMarkdownTable($opportunity['priority'] ?? 'none'),
+            escapeMarkdownTable($opportunity['effort'] ?? 'unknown'),
+            escapeMarkdownTable($opportunity['recommended_surface'] ?? 'none'),
+            escapeMarkdownTable($opportunity['candidate_scope'] ?? 'Not applicable.'),
+            escapeMarkdownTable($opportunity['rationale'] ?? 'Not yet reviewed for a concrete automation or parity opportunity.')
+        );
+    }
+    $lines[] = '';
+    return implode("\n", $lines);
 }
 
 function renderCommandIndex(array $records, array $snapshot): string
@@ -1070,6 +1206,10 @@ function queryManifest(array $manifest, array $terms): void
                 'category:' . $record['primary_category'],
                 'safety:' . $record['safety']['classification'],
                 'id:' . $record['id'],
+                'opportunity:' . ($record['opportunity']['disposition'] ?? 'unreviewed'),
+                'priority:' . ($record['opportunity']['priority'] ?? 'none'),
+                'effort:' . ($record['opportunity']['effort'] ?? 'unknown'),
+                'recommended:' . ($record['opportunity']['recommended_surface'] ?? 'none'),
             ]
         );
         $tokens = array_map('strtolower', $tokens);

@@ -1492,3 +1492,8 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 	WP_CLI::add_command( 'dbvc proposals', 'DBVC_WP_CLI_Proposals' );
 	WP_CLI::add_command( 'dbvc resolver-rules', 'DBVC_WP_CLI_Resolver_Rules' );
 }
+
+require_once __DIR__ . '/class-capabilities-cli.php';
+require_once __DIR__ . '/class-bricks-cli.php';
+require_once __DIR__ . '/class-content-migration-cli.php';
+require_once __DIR__ . '/class-entity-editor-cli.php';

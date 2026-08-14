@@ -5428,7 +5428,12 @@ add_action( 'dbvc_after_export_post', function( $post_id, $post, $file_path ) {
             </div>
 
             <div class="dbvc-docs-panel" data-dbvc-subpanel="docs-capabilities">
-              <?php dbvc_render_capability_landscape_panel(); ?>
+              <?php
+              if (! function_exists('dbvc_render_capability_landscape_panel')) {
+                  require_once __DIR__ . '/capability-landscape.php';
+              }
+              dbvc_render_capability_landscape_panel();
+              ?>
             </div>
           </div>
         </div>

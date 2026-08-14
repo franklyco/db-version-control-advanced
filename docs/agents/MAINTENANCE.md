@@ -14,6 +14,7 @@ Run the maintenance flow when a change adds, removes, renames, or materially cha
 - durable DBVC tables or scheduled hooks;
 - loaded add-ons or source-reference/runtime boundaries;
 - status, safety, storage, authentication, backup, rollback, or live-verification claims in an existing record.
+- reviewed opportunity disposition, priority, effort, recommended interface, rationale, or related-record coverage.
 
 Private implementation refactors that do not change a capability surface still run the check when they touch a discovery-scanned path, but they normally need no manifest edit.
 
@@ -23,13 +24,15 @@ Agent-reference tooling requires PHP 8.1 or newer; this developer-tool requireme
 
 1. Make the scoped implementation or documentation change.
 2. Run `composer agent-docs:discover` and inspect new, removed, or changed discovery IDs.
-3. Update `manifest.json` ownership, status, safety, evidence, relationships, and verification metadata as applicable.
+3. Update `manifest.json` ownership, status, safety, evidence, relationships, verification, and reviewed opportunity metadata as applicable.
 4. Update one relevant facet or long-form authority document only when operational guidance changed.
 5. Run `composer agent-docs:refresh` to rebuild the snapshot and every generated index.
 6. Run `composer agent-docs:check` and review the generated diff before committing.
 7. Complete the pull-request capability-impact section. Name affected record IDs and unresolved live-runtime verification.
 
 Do not edit files under `docs/agents/generated/` manually. `manifest.json` is curated authority; the discovery snapshot and Markdown indexes are replaceable derivatives.
+
+`RECIPES.md` is a compact reviewed layer, not a generated command reference. Every recipe must keep its adjacent `recipe`, `safety`, and `capability-records` metadata comments valid. Phase 11 permits only `read_only` recipes, requires the `cli.core.capabilities.inspect` preflight record, and rejects unknown or duplicate record references during `agent-docs:check`.
 
 ## CI Contract
 
@@ -59,6 +62,8 @@ For every public-surface change, record:
 
 Mechanical discovery may expose an unclassified surface, but it must not automatically assign `active`, safe, supported, or live-verified status.
 
+Likewise, REST-without-CLI is only a review prompt. Record a concrete `opportunity` object before presenting a surface as a candidate, covered elsewhere, deferred, or not recommended.
+
 ## Review Cadence
 
 At each release candidate—or at least once every 90 days when releases are less frequent—review non-stable records and checkout boundaries with:
@@ -85,3 +90,9 @@ git diff --check
 ```
 
 Commit all intentional generated changes together with the curated manifest change. A clean check should never require hand-editing multiple indexes.
+
+If agent-reference files are newly added, also confirm they are tracked and present in the actual release artifact. Absence of `export-ignore` or ignore rules permits packaging but does not make untracked files part of `git archive` or a release ZIP. Record same-checkout runtime and package evidence in [`RUNTIME_VERIFICATION.md`](RUNTIME_VERIFICATION.md) instead of promoting the entire manifest baseline from registration checks alone.
+
+## Current Implementation Boundary
+
+Phase 16 leaves one reviewed implementation candidate: bounded exact-proposal summary inspection. Any future adapter must use side-effect-free summary/readiness readers only and keep raw current/proposed values, downloads, single-entity detail, decision changes, masking, cleanup, recapture, apply, and every other writer outside its accepted arguments and evidence claims. Content Migration readiness is likewise still excluded because its current GET callback can write QA reports; use `cli.content_migration.runs.inspect` only for existing run artifacts.

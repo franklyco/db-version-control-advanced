@@ -14,6 +14,8 @@
 |---|---|---|---|---|
 | [`addon.bricks.apply_restore`](../manifest.json) | `active` | `wordpress_write` | [Bricks add-on](../facets/bricks-addon.md) | Applies approved Bricks changes, creates restore points, and rolls back a selected restore point. |
 | [`addon.bricks.drift`](../manifest.json) | `active` | `read_only` | [Bricks add-on](../facets/bricks-addon.md) | Collects canonicalized Bricks artifacts and compares local/current states to identify drift without applying changes. |
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
 
 ## `object:field`
 
@@ -37,6 +39,12 @@
 | [`engine.core.export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) | Exports posts, terms, options, ACF option groups, menus, and FSE data with filename, masking, and extension contracts. |
 | [`engine.core.import`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) | Routes staged JSON and imports posts, terms, options, menus, FSE data, and referenced media into WordPress. |
 
+## `object:migration_run`
+
+| Record | Status | Safety | Facets | Summary |
+|---|---|---|---|---|
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+
 ## `object:option`
 
 | Record | Status | Safety | Facets | Summary |
@@ -51,12 +59,14 @@
 |---|---|---|---|---|
 | [`addon.bricks.packages`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) | Lists, reads, creates, acknowledges, promotes, revokes, pulls, and remotely publishes Bricks packages. |
 | [`ai.core.package_intake`](../manifest.json) | `active` | `mixed` | [Core import/export](../facets/core-import-export.md) | Administrator-only package intake validates AI submission bundles, discovers ACF context, retains reports, exposes review tools, and handles explicit continuation or cleanup actions. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
 
 ## `object:post`
 
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) | Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, and a change journal. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`engine.core.export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) | Exports posts, terms, options, ACF option groups, menus, and FSE data with filename, masking, and extension contracts. |
 | [`engine.core.import`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) | Routes staged JSON and imports posts, terms, options, menus, FSE data, and referenced media into WordPress. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
@@ -98,11 +108,18 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) | Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, and a change journal. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`engine.core.export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) | Exports posts, terms, options, ACF option groups, menus, and FSE data with filename, masking, and extension contracts. |
 | [`engine.core.import`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) | Routes staged JSON and imports posts, terms, options, menus, FSE data, and referenced media into WordPress. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
 | [`entity_editor.core.write`](../manifest.json) | `active` | `wordpress_write` | [Entity Editor](../facets/entity-editor.md) | Validates and atomically saves JSON, optionally imports present fields or performs confirmed full replacement, and rebuilds the entity index. |
 | [`identity.core.entities`](../manifest.json) | `active` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md) | Maintains portable entity UIDs, local object mappings, new-entity policies, and the entity registry used across imports and proposals. |
+
+## `object:third_party`
+
+| Record | Status | Safety | Facets | Summary |
+|---|---|---|---|---|
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 
 ## `operation:apply`
 
@@ -118,6 +135,7 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.bricks.drift`](../manifest.json) | `active` | `read_only` | [Bricks add-on](../facets/bricks-addon.md) | Collects canonicalized Bricks artifacts and compares local/current states to identify drift without applying changes. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
 
 ## `operation:configure`
 
@@ -148,6 +166,7 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.bricks.control_plane`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) | Exposes add-on status, schema verification, diagnostics, UI contract/telemetry, admin navigation, and enable/visibility settings. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`observability.core.client_logs`](../manifest.json) | `active` | `filesystem_write` | [Identity and storage](../facets/identity-storage-and-observability.md) | Accepts authenticated client-error reports and writes file or structured activity records used for diagnostics. |
 
 ## `operation:download`
@@ -202,6 +221,11 @@
 | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) | Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, and a change journal. |
 | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
 | [`ai.core.package_intake`](../manifest.json) | `active` | `mixed` | [Core import/export](../facets/core-import-export.md) | Administrator-only package intake validates AI submission bundles, discovers ACF context, retains reports, exposes review tools, and handles explicit continuation or cleanup actions. |
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`configuration.core.portability`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) | Administrator workflows register configuration domains, export/import configuration packages, preview changes, apply approved values, and download or restore related artifacts. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
 | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) | WP-CLI and administrator workflows inventory attachments, build portable media mirrors, preview hydration plans, and explicitly apply missing-file hydration with receipts and safety gates. |
@@ -217,9 +241,12 @@
 |---|---|---|---|---|
 | [`addon.bricks.proposals`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) | Lists Bricks-specific proposals and patches their review state through the add-on workflow. |
 | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) | Lists proposals and can optionally recapture snapshots or clean duplicate artifacts, so flags determine whether the invocation is read-only. |
 | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists persistent media resolver rules without modifying them. |
 | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists DBVC snapshot history with type and pagination filters without changing site state. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
 | [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) | Lists proposals, entities, entity detail, duplicates, and resolver/masking state for review without applying data. |
 
@@ -273,6 +300,12 @@
 | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) | Uploads trusted proposal or fixture packages, validates/extracts them, and supports deleting an individual staged proposal. |
 | [`transport.core.sync_packages`](../manifest.json) | `active` | `destructive` | [Identity and storage](../facets/identity-storage-and-observability.md) | Provides authenticated admin handlers for sync archives, backup downloads, cache/purge status, and a scheduled temporary FTP upload window. |
 
+## `operation:validate`
+
+| Record | Status | Safety | Facets | Summary |
+|---|---|---|---|---|
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+
 ## `risk:destructive`
 
 | Record | Status | Safety | Facets | Summary |
@@ -313,9 +346,14 @@
 | [`addon.bricks.control_plane`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) | Exposes add-on status, schema verification, diagnostics, UI contract/telemetry, admin navigation, and enable/visibility settings. |
 | [`addon.bricks.drift`](../manifest.json) | `active` | `read_only` | [Bricks add-on](../facets/bricks-addon.md) | Collects canonicalized Bricks artifacts and compares local/current states to identify drift without applying changes. |
 | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) | Lists proposals and can optionally recapture snapshots or clean duplicate artifacts, so flags determine whether the invocation is read-only. |
 | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists persistent media resolver rules without modifying them. |
 | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists DBVC snapshot history with type and pagination filters without changing site state. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
 | [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) | Lists proposals, entities, entity detail, duplicates, and resolver/masking state for review without applying data. |
 | [`source.content_collector.explorer`](../manifest.json) | `source_reference` | `unknown` | [Content Migration add-on](../facets/content-migration-addon.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) | Retained source for an explorer tree/content/audit workflow and classic admin/AJAX discovery, excluded from the DBVC runtime bootstrap. |
@@ -376,6 +414,8 @@
 | [`addon.bricks.drift`](../manifest.json) | `active` | `read_only` | [Bricks add-on](../facets/bricks-addon.md) | Collects canonicalized Bricks artifacts and compares local/current states to identify drift without applying changes. |
 | [`addon.bricks.packages`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) | Lists, reads, creates, acknowledges, promotes, revokes, pulls, and remotely publishes Bricks packages. |
 | [`addon.bricks.proposals`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) | Lists Bricks-specific proposals and patches their review state through the add-on workflow. |
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
 | [`hooks.bricks.extensions`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) | Exposes reviewed Bricks filters and actions for metadata, UI panels, audit, proposals, schemas, packages, jobs, and telemetry. |
 
 ## `scope:addon:content_migration`
@@ -383,6 +423,7 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.content_migration.runtime_guard`](../manifest.json) | `active` | `mixed` | [Content Migration add-on](../facets/content-migration-addon.md) | Loaded Content Migration workflows covering explorer/admin surfaces, V2 package execution, AJAX and admin-post handlers, import-run persistence, recovery fixtures, and guarded source-drop bootstrapping. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
 
 ## `scope:addon:visual_editor`
 
@@ -396,6 +437,7 @@
 |---|---|---|---|---|
 | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
 | [`ai.core.package_intake`](../manifest.json) | `active` | `mixed` | [Core import/export](../facets/core-import-export.md) | Administrator-only package intake validates AI submission bundles, discovers ACF context, retains reports, exposes review tools, and handles explicit continuation or cleanup actions. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`cli.core.export`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) | Runs full, batched, differential, or chunked DBVC exports and records export jobs or snapshots. |
 | [`cli.core.import`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Imports staged options groups, menus, terms, posts, and related media through the core WP-CLI flow. |
 | [`cli.core.proposals.apply`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Applies a reviewed proposal in full or partial mode, including entity and media writes. |
@@ -404,6 +446,7 @@
 | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists persistent media resolver rules without modifying them. |
 | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Adds, deletes, or bulk-imports persistent media resolver rules used by later proposals. |
 | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists DBVC snapshot history with type and pagination filters without changing site state. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`configuration.core.portability`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) | Administrator workflows register configuration domains, export/import configuration packages, preview changes, apply approved values, and download or restore related artifacts. |
 | [`engine.core.export`](../manifest.json) | `active` | `filesystem_write` | [Core import/export](../facets/core-import-export.md) | Exports posts, terms, options, ACF option groups, menus, and FSE data with filename, masking, and extension contracts. |
 | [`engine.core.import`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) | Routes staged JSON and imports posts, terms, options, menus, FSE data, and referenced media into WordPress. |
@@ -495,6 +538,10 @@
 
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`cli.core.export`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) | Runs full, batched, differential, or chunked DBVC exports and records export jobs or snapshots. |
 | [`cli.core.import`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Imports staged options groups, menus, terms, posts, and related media through the core WP-CLI flow. |
 | [`cli.core.proposals.apply`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Applies a reviewed proposal in full or partial mode, including entity and media writes. |
@@ -503,6 +550,7 @@
 | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists persistent media resolver rules without modifying them. |
 | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Adds, deletes, or bulk-imports persistent media resolver rules used by later proposals. |
 | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists DBVC snapshot history with type and pagination filters without changing site state. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) | WP-CLI and administrator workflows inventory attachments, build portable media mirrors, preview hydration plans, and explicitly apply missing-file hydration with receipts and safety gates. |
 
 ## `surface:cron`
@@ -597,6 +645,14 @@
 |---|---|---|---|---|
 | [`addon.content_migration.runtime_guard`](../manifest.json) | `active` | `mixed` | [Content Migration add-on](../facets/content-migration-addon.md) | Loaded Content Migration workflows covering explorer/admin surfaces, V2 package execution, AJAX and admin-post handlers, import-run persistence, recovery fixtures, and guarded source-drop bootstrapping. |
 
+## `workflow:data_review`
+
+| Record | Status | Safety | Facets | Summary |
+|---|---|---|---|---|
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
+
 ## `workflow:deployment`
 
 | Record | Status | Safety | Facets | Summary |
@@ -604,6 +660,7 @@
 | [`addon.bricks.command_queue`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) | Enqueues, pulls, acknowledges, pings, and inspects signed commands used for connected-site orchestration. |
 | [`addon.bricks.configuration`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) | Reads local rules, retrieves a shared profile, applies it locally, or distributes it across configured sites. |
 | [`addon.bricks.packages`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) | Lists, reads, creates, acknowledges, promotes, revokes, pulls, and remotely publishes Bricks packages. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
 | [`cli.core.proposals.apply`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Applies a reviewed proposal in full or partial mode, including entity and media writes. |
 | [`planned.core.canonical_authority`](../manifest.json) | `planned` | `unknown` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) | Planned signed canonical registry, proposal promotion, protection states, and authority-site REST workflow. |
 | [`proposal.core.apply`](../manifest.json) | `active` | `wordpress_write` | [Proposals and media](../facets/proposals-and-media.md) | Applies reviewed proposal decisions to WordPress through the authenticated REST workflow. |
@@ -613,6 +670,7 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`hooks.bricks.extensions`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) | Exposes reviewed Bricks filters and actions for metadata, UI panels, audit, proposals, schemas, packages, jobs, and telemetry. |
 | [`hooks.core.lifecycle`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) | Emits DBVC actions after posts, terms, media, menus, options, users, themes, plugins, widgets, patterns, and FSE state change. |
 

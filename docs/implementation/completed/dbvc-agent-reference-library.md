@@ -1,8 +1,8 @@
 # DBVC Agent Reference Library Implementation Plan
 
 Date: 2026-08-04  
-Last updated: 2026-08-06  
-Status: Phases 1 through 7 complete; Phase 8 optional agent recipes are the next approval boundary  
+Last updated: 2026-08-11  
+Status: Phases 1 through 7, post-merge hardening, and Phases 9 through 16 complete; the next boundary is the remaining bounded exact-proposal summary candidate  
 Scope authority: This document defines the implementation sequence for an opt-in agent reference layer under `docs/agents/`. It does not authorize runtime changes, live-site changes, or capability research beyond the explicit phase gates below.
 
 ## LocalWP Merge Addendum — 2026-08-06
@@ -11,15 +11,126 @@ The completed library and its administrator Capability Landscape were merged int
 
 The current-checkout reconciliation supersedes the original detached-worktree counts in the historical phase notes below:
 
-- 47 curated records;
-- 393 strictly owned discovery surfaces;
-- 13 WP-CLI leaf commands;
+- 48 curated records;
+- 396 strictly owned discovery surfaces;
+- 16 WP-CLI leaf commands;
 - 126 REST registrations;
 - zero unmapped surfaces.
 
 The merge also expanded CLI discovery across all PHP files under `commands/`, reclassified the source-loaded Visual Editor and Content Migration add-ons, and added reviewed records for media hydration, configuration portability, and AI package intake. The canonical implementation path is this file; the opt-in operational entrypoint remains `docs/agents/README.md`.
 
-Same-checkout authenticated runtime verification remains pending. Static source presence and manifest ownership do not authorize write operations.
+Bounded same-checkout verification is now recorded in `docs/agents/RUNTIME_VERIFICATION.md`: command help, REST registration, add-on gates, loaded classes, and the administrator renderer were verified without dispatching mutating operations. The manifest baseline remains not fully live-verified, and static or registration evidence does not authorize write operations.
+
+The post-merge release check also confirmed that no ignore/export rule excludes the library and that the CI branch target matches the repository's `master` release naming. Because the added library files remain untracked in the active dirty checkout, intentional commit/package inclusion is still the final release-artifact gate.
+
+## Opportunity Layer Addendum — 2026-08-10
+
+Phase 9 adds an explicit reviewed-opportunity contract without turning REST-without-CLI into an automatic implementation queue. Each reviewed record can now state disposition, priority, effort, recommended interface, rationale, next action, related coverage, and review date.
+
+The initial review contains:
+
+- 3 high-priority CLI candidates: Bricks drift inspection, Entity Editor inspection, and read-only capability list/show/doctor tooling;
+- 4 records requiring scope or safety separation before implementation: Bricks control-plane diagnostics, Content Migration readiness, configuration portability, and detailed proposal inspection;
+- 3 records marked covered elsewhere because mapped proposal or resolver WP-CLI commands already exist;
+- 37 records deliberately left unreviewed.
+
+The generated `index-by-opportunity.md`, compound query filters, and administrator Opportunity filter are derivative views of manifest authority. Same-checkout rendering verified the 3/4/3 reviewed breakdown. Optional Phase 8 operational recipes remain deferred until the read-only capability CLI and its doctor output provide a stable discovery interface.
+
+## Read-only Capability CLI Addendum — 2026-08-10
+
+Phase 10 implements `wp dbvc capabilities list`, `show`, and `doctor` as a read-only namespace backed by the packaged manifest and discovery snapshot.
+
+- `list` supports exact status, category, safety, surface, opportunity, and priority filters plus free-text search and WP-CLI output formats.
+- `show` returns one stable manifest record as a compact table or canonical JSON.
+- `doctor` reconciles strict surface ownership and reports checkout, source fingerprint, REST registration counts, baseline verification state, and explicit add-on gates without dispatching capability callbacks.
+
+The implementation is isolated in `commands/class-capabilities-cli.php`; the existing command loader receives only the required include. Same-checkout help, list, show, and doctor execution passed. The current authority is 48 records, 396 strictly mapped surfaces, 16 CLI commands, and zero unmapped surfaces.
+
+The completed capability-CLI opportunity is now marked covered elsewhere, leaving 2 candidates, 4 needs-review records, 4 covered records, and 38 unreviewed records. The next boundary should use these read-only commands for bounded inspection/dry-run recipes and continue reviewing unreviewed opportunities before considering any new writer commands.
+
+## Bounded Inspection Recipe Addendum — 2026-08-10
+
+Phase 11 adds one opt-in `docs/agents/RECIPES.md` file rather than a parallel documentation suite. It contains four read-only workflows:
+
+- capability and checkout preflight;
+- one-proposal readiness inspection;
+- bounded media hydration preflight;
+- resolver-rule and snapshot context.
+
+Each recipe references stable manifest IDs, begins from the capability preflight contract, and includes explicit stop rules before any write, export, upload, apply, delete, restore, cleanup, recapture, or remote operation. The strict agent-docs validator now rejects malformed recipe metadata, non-read-only recipe safety, unknown records, duplicate recipe IDs, and duplicate record references.
+
+Repository validation passed with 48 records, 396 mapped surfaces, and zero unmapped. Focused tests cover recipe metadata against manifest authority. Same-checkout execution passed after two evidence-driven bounds were added: proposal readiness now requires a known ID, and media inventory begins at 10 items rather than 100.
+
+The next logical implementation boundary is Phase 12: select one of the two remaining reviewed high-priority read-only candidates—Bricks drift inspection or Entity Editor inspection—and implement it as a separately tested CLI contract. Bricks drift is the smaller first candidate because it already has canonicalization/comparison services and does not require an Entity Editor artifact-download contract.
+
+## Bricks Drift CLI Addendum — 2026-08-10
+
+Phase 12 implements `wp dbvc bricks drift` as a dedicated read-only inspection command over the existing Bricks package, normalization, local-artifact resolution, and drift services.
+
+- Exactly one local source is required: `--package-id` or `--file`; remote discovery and remote comparison are excluded.
+- Output defaults to 25 rows, caps row and changed-path expansion, supports exact artifact/status filters, and offers a compact JSON envelope.
+- Raw artifact values are excluded. Fingerprint status remains authoritative, while informational path differences are labeled separately because canonicalization can classify an artifact clean while volatile paths differ.
+- Write-like flags are rejected, the Bricks add-on must be enabled, and `--fail-on-drift` changes only the process exit status.
+
+Focused tests passed with 6 tests and 40 assertions. Same-checkout execution verified help, a bounded existing-package scan, status and exact-artifact filters, JSON output, and exit `0`/`1` behavior for clean/diverged targets. The refreshed authority contains 49 records, 397 mapped surfaces, 17 CLI commands, and zero unmapped surfaces.
+
+The Bricks drift candidate is now covered by `cli.bricks.drift.inspect`, leaving one reviewed high-priority read-only candidate: Entity Editor inspection. Phase 13 should define that command around metadata/index inspection and a deliberately separate artifact-download decision; it must not inherit Entity Editor write or import authority.
+
+## Entity Editor Inspection CLI Addendum — 2026-08-10
+
+Phase 13 implements `wp dbvc entity-editor list` and `wp dbvc entity-editor inspect <relative-path>` as a cache-only inspection contract over existing Entity Editor index and lock-free file-read services.
+
+- `list` supports exact kind, subtype, provider, match, and duplicate filters; bounded search/pagination; optional cache freshness; and table or JSON output.
+- `inspect` requires an exact path already present in the supported cached index and returns indexed metadata, a SHA-256 fingerprint, file size/time, and structural counts without raw field values.
+- A missing or over-age cache is a hard stop. The command never calls the index rebuild path because that path writes both transient and disk caches.
+- Rebuild, refresh, download, raw/content output, locks, save, merge, import, delete, apply, and force-takeover flags are rejected.
+
+Focused Entity Editor CLI tests passed with 6 tests and 50 assertions. The adjacent capability CLI, landscape, and Entity Editor endpoint suites brought the serial regression boundary to 33 tests and 295 assertions. Same-checkout execution verified help, bounded disk-cache listing, one-file structural inspection, a deliberate stale-cache stop, and identical pre/post cache hashes with the transient absent.
+
+The refreshed authority contains 50 records, 399 mapped surfaces, 19 CLI commands, six bounded read-only recipes, and zero unmapped surfaces. Both reviewed high-priority inspection candidates are now covered, so Phase 14 should refresh the opportunity layer before selecting another implementation. That review should prioritize a narrowly separable read-only diagnostic—such as Bricks control-plane status/schema inspection—while keeping telemetry writes, settings changes, remote operations, and all other mutations outside the boundary.
+
+## Opportunity Boundary Refresh Addendum — 2026-08-11
+
+Phase 14 re-audits the four remaining `needs_review` records against their current callbacks and storage behavior. The opportunity contract now requires every candidate to declare a machine-readable `candidate_scope` and non-empty `excluded_operations`; generated indexes, capability CLI search/rows, and the administrator landscape expose those boundaries.
+
+The resulting queue is:
+
+1. High/small: Bricks doctor over status, UI contract, schema verification, deprecations, and runtime-health readers. Telemetry, stored diagnostic events, settings, package/fleet/remote, apply, restore, and proposal operations are excluded.
+2. Medium/medium: Content Migration V2 run list/show/overview. Run creation, visibility, reruns, fixtures, package/execution/recovery, and readiness are excluded; the current readiness GET passes `write_reports=true` and is therefore not read-only.
+3. Medium/medium: exact-proposal readiness and bounded entity/duplicate/resolver summaries. Raw values/downloads, the single-entity detail callback that can prune decisions, and every decision/masking/cleanup/recapture/apply operation are excluded.
+4. Deferred/low: configuration portability CLI parity, pending reconciliation between its implemented registry/admin handlers and a long-form guide that still labels the workflow unimplemented.
+
+No `needs_review` records remain in the reviewed set. The current breakdown is 3 candidates, 1 deferred, 6 covered elsewhere, and 40 unreviewed records. This phase changes discovery guidance only; it adds no callable command and authorizes no REST or writer execution.
+
+Phase 15 should implement only the first candidate as `wp dbvc bricks doctor`, reusing existing side-effect-free Bricks readers with bounded table/JSON output and explicit rejection of telemetry, settings, remote, package, fleet, apply, restore, and proposal flags.
+
+## Bricks Doctor CLI Addendum — 2026-08-11
+
+Phase 15 implements `wp dbvc bricks doctor` as a dedicated read-only adapter over the existing Bricks status, UI-contract, schema-verification, deprecation, and runtime-health readers.
+
+- Status output is reduced to enabled/role/read-only/fleet/visibility/UI-version fields; site UID, site name, home URL, and site URL are omitted.
+- Schema output is bounded to shape, counts, coverage, keys, notes, and warning codes. Raw Bricks option values are never returned.
+- Stored UI diagnostic events and package-delivery history are not read. Every unrecognized argument is rejected; the registered synopsis admits only format, table fields, and optional warning-based exit behavior.
+- Telemetry, settings, rules, packages, fleet, onboarding, command queues, remote operations, proposals, apply, restore, and rollback remain outside the command contract.
+
+Focused Bricks CLI tests pass with 10 tests and 109 assertions. The capability CLI and landscape suites add 9 tests and 131 assertions. Same-checkout help and JSON execution passed; the active site reported an enabled client role, healthy theme-style/component schemas, zero health/schema warnings, and one deprecation notice. A hash covering Bricks/DBVC Bricks options was identical before and after the command, and `--apply` failed with exit `1`.
+
+The broader Bricks Phase 1 regression exposed a direct-render edge: callers that load `admin-page.php` outside WordPress's `is_admin()` bootstrap did not have the Capability Landscape helper loaded. The capability panel now lazily requires its helper at the render site; the Phase 1 suite passes with 10 tests and 41 assertions, while normal admin bootstrap behavior remains unchanged.
+
+The refreshed authority contains 51 records, 400 mapped surfaces, 20 CLI commands, seven bounded read-only recipes, and zero unmapped surfaces. The Bricks control-plane opportunity is now covered by `cli.bricks.doctor`; two medium-priority candidates remain: bounded Content Migration V2 run inspection and bounded exact-proposal summary inspection. Selection of either is a separate boundary, and Content Migration readiness plus proposal single-entity detail remain excluded because their current read paths can write reports or prune decisions.
+
+## Content Migration Run Inspection CLI Addendum — 2026-08-11
+
+Phase 16 implements `wp dbvc content-migration runs list` and `wp dbvc content-migration runs show <run-id>` as bounded read-only adapters over existing V2 journey artifacts.
+
+- `list` returns each domain's latest exact run with bounded pagination, optional domain/status/search filters, visibility state, URL outcome counts, and issue counts. It reconstructs that run's counts in memory from its existing journey events rather than exposing cumulative domain counts from an older materialized artifact.
+- `show` resolves one exact current or historical run and returns sanitized profile shape, inventory statistics, stage summaries, action/issue counts, and bounded recent activity. It omits source URLs, event messages, raw values, artifact paths, and per-URL payloads.
+- The reader resolves the existing uploads root without directory creation. It does not call domain-context materialization, readiness generation, REST callbacks, or any create, visibility, rerun, fixture, package, execute, recovery, import, rollback, remote, AI-queue, raw, download, or apply workflow.
+- Domain, event, JSON-size, line-size, result, and activity limits bound filesystem work. Unknown flags are rejected; `--readiness` failed with exit `1` in same-checkout verification.
+
+Focused Content Migration and adjacent capability suites pass with 18 tests and 342 assertions. Same-checkout help, bounded list/show execution, and the rejected readiness flag passed against the active LocalWP site. The Butler Automation latest list and exact show both reported 7 discovered and 7 finalized URLs. Pre/post hashing retained the same 12,133 files and tree hash `2c77f4b522095a010dedc594d8369a0bf591d8bfc23130e9e5a73094a571db2e`.
+
+The refreshed authority contains 52 records, 402 mapped surfaces, 22 CLI commands, eight bounded read-only recipes, and zero unmapped surfaces. Content Migration runtime parity is now covered by `cli.content_migration.runs.inspect`. The next implementation boundary is the sole remaining candidate: bounded exact-proposal summary inspection. It must continue to exclude raw current/proposed values, downloads, the single-entity detail callback that can prune decisions, and all decision, masking, cleanup, recapture, apply, and other writer operations.
 
 ## 1. Objective
 

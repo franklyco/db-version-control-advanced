@@ -4,7 +4,7 @@
 
 The newer LocalWP checkout described below is now the checkout containing the agent library. Its three media commands, expanded REST surface, Visual Editor, Content Migration runtime, configuration portability, and AI package intake have been reconciled into the current manifest.
 
-Current source authority is 47 records and 393 strictly mapped surfaces, including 13 CLI commands and 126 REST registrations. The original comparison remains below to explain how the checkout divergence was discovered. Statements below that Visual Editor was absent or that live-only capabilities were not merged describe the earlier detached-worktree boundary, not current state.
+Current source authority is 48 records and 396 strictly mapped surfaces, including 16 CLI commands and 126 REST registrations. The original comparison remains below to explain how the checkout divergence was discovered. Statements below that Visual Editor was absent or that live-only capabilities were not merged describe the earlier detached-worktree boundary, not current state.
 
 No same-checkout runtime record was promoted to `live_runtime_verified: true`; authenticated WP-CLI, REST, and browser verification remains a separate boundary.
 

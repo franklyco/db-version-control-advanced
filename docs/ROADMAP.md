@@ -45,7 +45,7 @@ This is the single repo-level planning index. Module-local plans remain with the
 
 | Topic | Summary | Related Docs |
 |---|---|---|
-| Agent capability reference library | Self-updating, queryable inventory plus administrator-only Capability Landscape UI. | `docs/agents/README.md`; `docs/implementation/completed/dbvc-agent-reference-library.md` |
+| Agent capability reference library | Self-updating 52-record/402-surface inventory, eight bounded read-only recipes, capability/Bricks/Entity Editor/Content Migration inspection CLIs, machine-readable ranked opportunity boundaries, plus an administrator-only Capability Landscape UI. | `docs/agents/README.md`; `docs/implementation/completed/dbvc-agent-reference-library.md` |
 | Visual Editor Phase B4 closeout | Hydrated Source details now shows verified semantic `field_name = <tag>` metadata without adding public target attributes or changing save authority; focused tests, marker-heavy runtime evidence, and Butler Automation heading/missing-media browser QA cover the first slice. | `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md` |
 | Visual Editor Phase B3 closeout | Unique Bricks wrapper IDs can now anchor proven empty-media descriptors without widening general or repeated class-based marker repair; Butler Automation homepage `19`, focused PHPUnit, and marker-heavy repeated-media runtime checks provide the closeout evidence. | `addons/visual-editor/docs/enhancements/DBVC_VISUAL_EDITOR_ADVANCED_IMPLEMENTATION_GUIDE.md` |
 | Progress summary | Recent shipped DBVC admin and import work. | `docs/implementation/completed/progress-summary.md` |

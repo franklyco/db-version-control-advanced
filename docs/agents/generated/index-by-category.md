@@ -35,6 +35,10 @@
 
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`cli.core.export`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) | Runs full, batched, differential, or chunked DBVC exports and records export jobs or snapshots. |
 | [`cli.core.import`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Imports staged options groups, menus, terms, posts, and related media through the core WP-CLI flow. |
 | [`cli.core.proposals.apply`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Applies a reviewed proposal in full or partial mode, including entity and media writes. |
@@ -43,6 +47,7 @@
 | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists persistent media resolver rules without modifying them. |
 | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) | Adds, deletes, or bulk-imports persistent media resolver rules used by later proposals. |
 | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists DBVC snapshot history with type and pagination filters without changing site state. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 
 ## `entity_editor`
 

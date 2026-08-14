@@ -49,12 +49,16 @@ Tag arrays must be unique and sorted lexically by the generator.
 
 ## Query-Only Filters
 
-`composer agent-docs:query -- ...` accepts manifest tags and four derived filters that are not stored as tags:
+`composer agent-docs:query -- ...` accepts manifest tags and these derived filters that are not stored as tags:
 
 - `status:<manifest-status>`
 - `category:<primary-category>`
 - `safety:<record-safety-classification>`
 - `id:<record-id>`
+- `opportunity:<disposition>`
+- `priority:<high|medium|low|none>`
+- `effort:<small|medium|large|unknown>`
+- `recommended:<cli|rest|admin|php|docs|none>`
 
 Unprefixed terms search record IDs and aliases. Use `safety:read_only` when the entire returned record must be read-only. A `risk:read_only` tag can also belong to a `mixed` record with separate write behavior.
 
@@ -71,6 +75,18 @@ Facet links are derived from primary category and status. Non-active records lin
 - `unknown_requires_verification`
 
 Repository discovery alone may create only `unknown_requires_verification` suggestions. A human review is required before another status is assigned.
+
+## Opportunity Metadata
+
+Opportunity metadata records a reviewed implementation judgment; it is not mechanically inferred from the presence of REST without CLI.
+
+- `candidate`: a bounded enhancement has concrete agent/operator value.
+- `covered_elsewhere`: another mapped record already provides the relevant interface.
+- `deferred`: potentially useful, but a known dependency or sequencing boundary comes first.
+- `not_recommended`: parity would increase risk or complexity without enough value.
+- `needs_review`: the record groups behavior that must be split or examined before prioritization.
+
+Every reviewed opportunity also records priority, estimated effort, recommended interface, rationale, and review date. A `candidate` must additionally declare one bounded `candidate_scope` plus explicit `excluded_operations`; these are safety boundaries, not authorization to implement or invoke the candidate. Optional `next_action` and `related_record` fields keep the queue actionable without turning the manifest into an implementation guide. Records without this object remain `unreviewed` in generated and administrator views.
 
 ## Alias Rules
 

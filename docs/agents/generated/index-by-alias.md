@@ -21,15 +21,20 @@
 | Bricks apply | [`addon.bricks.apply_restore`](../manifest.json) | `active` | `wordpress_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | Bricks configuration distribution | [`addon.bricks.configuration`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | Bricks diagnostics | [`addon.bricks.control_plane`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) |
+| Bricks drift CLI | [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | Bricks drift scan | [`addon.bricks.drift`](../manifest.json) | `active` | `read_only` | [Bricks add-on](../facets/bricks-addon.md) |
 | Bricks extension points | [`hooks.bricks.extensions`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) |
 | Bricks hooks | [`hooks.bricks.extensions`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) |
 | Bricks mothership | [`addon.bricks.packages`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
+| Bricks package comparison | [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | Bricks proposal queue | [`addon.bricks.proposals`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) |
 | Bricks remote commands | [`addon.bricks.command_queue`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | Bricks rollback | [`addon.bricks.apply_restore`](../manifest.json) | `active` | `wordpress_write` | [Bricks add-on](../facets/bricks-addon.md) |
+| Bricks schema health | [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | Bricks status | [`addon.bricks.control_plane`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) |
+| Bricks status CLI | [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | Bricks UI contract | [`addon.bricks.control_plane`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) |
+| capability inventory CLI | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | capability landscape | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | Certified Canonicals | [`planned.core.canonical_authority`](../manifest.json) | `planned` | `unknown` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | change journal | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) |
@@ -59,6 +64,7 @@
 | download sync | [`transport.core.sync_packages`](../manifest.json) | `active` | `destructive` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | duplicate cleanup | [`proposal.core.cleanup`](../manifest.json) | `active` | `destructive` | [Proposals and media](../facets/proposals-and-media.md) |
 | entity diff inspection | [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) |
+| Entity Editor CLI inventory | [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | entity file browser | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) |
 | entity registry | [`identity.core.entities`](../manifest.json) | `active` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | fixture upload | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) |
@@ -83,6 +89,7 @@
 | media mapping rules | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | media mirror export | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) |
 | migration mapper v2 | [`addon.content_migration.runtime_guard`](../manifest.json) | `active` | `mixed` | [Content Migration add-on](../facets/content-migration-addon.md) |
+| Migration Mapper V2 run CLI | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | official packages | [`storage.core.official_collections`](../manifest.json) | `experimental` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
 | onboarding rerun | [`addon.bricks.connected_onboarding`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | options allowlist | [`planned.core.granular_options`](../manifest.json) | `planned` | `unknown` | [Settings and extensions](../facets/settings-hooks-and-extensions.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) |
@@ -120,13 +127,23 @@
 | upload router | [`engine.core.import`](../manifest.json) | `active` | `wordpress_write` | [Core import/export](../facets/core-import-export.md) |
 | vf_object_uid | [`identity.core.entities`](../manifest.json) | `active` | `wordpress_write` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | visual editor | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) |
+| wp dbvc bricks doctor | [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc bricks drift | [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc capabilities doctor | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc capabilities list | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc capabilities show | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc content-migration runs list | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc content-migration runs show | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc entity-editor inspect | [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc entity-editor list | [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc export | [`cli.core.export`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc import | [`cli.core.import`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc media mirror_export | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) |
 | wp dbvc proposals apply | [`cli.core.proposals.apply`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc proposals list | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc proposals upload | [`cli.core.proposals.upload`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules add | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules delete | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc resolver-rules import | [`cli.core.resolver_rules.mutate`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
-| wp dbvc resolver-rules list | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc resolver-rules list_ | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc snapshots | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |

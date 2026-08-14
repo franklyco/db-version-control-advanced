@@ -7,6 +7,7 @@ Load this facet for direct JSON Entity Editor work or the separately gated in-pa
 | Record | Boundary |
 |---|---|
 | `entity_editor.core.inspect` | Index, read, and download supported JSON entities |
+| `cli.entity_editor.inspect` | Cached list and lock-free structural inspection; no raw values or rebuild |
 | `entity_editor.core.write` | Save JSON, partial import, full replace, and index rebuild |
 | `addon.visual_editor.runtime` | In-page session, descriptor, search, save, audit, and change-journal workflow |
 
@@ -28,11 +29,19 @@ The current Entity Editor supports post and term JSON. It excludes media/attachm
 - Is a preflight deletion count needed? The current full-replace UI reports counts after the operation.
 - Does the task require direct sync-file editing or the session-scoped in-page Visual Editor?
 
+## Read-only CLI Progression
+
+1. Use `wp dbvc entity-editor list --max-age=900 --limit=25` to inspect an existing cache.
+2. Select one exact indexed relative path.
+3. Use `wp dbvc entity-editor inspect <relative-path> --max-age=900 --format=json` for hashes and structural counts without raw values or locks.
+4. Stop when the cache is missing/stale or the next step would rebuild, download, save, import, merge, delete, or transfer data.
+
 ## Load Next
 
 - Concise behavior authority: [`docs/reference/entity-editor-usage.md`](../../reference/entity-editor-usage.md)
 - REST/admin host: [`admin/class-entity-editor-app.php`](../../../admin/class-entity-editor-app.php)
 - Index and write engine: [`includes/class-entity-editor-indexer.php`](../../../includes/class-entity-editor-indexer.php)
+- Read-only CLI adapter: [`commands/class-entity-editor-cli.php`](../../../commands/class-entity-editor-cli.php)
 - Endpoint tests: [`tests/phpunit/EntityEditorEndpointsTest.php`](../../../tests/phpunit/EntityEditorEndpointsTest.php)
 - Identity implications: [Identity, Storage, And Observability](identity-storage-and-observability.md)
 - Visual Editor authority: [`addons/visual-editor/docs/README.md`](../../../addons/visual-editor/docs/README.md)

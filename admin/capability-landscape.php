@@ -110,6 +110,18 @@ function dbvc_capability_landscape_label($value)
 		'destructive'                   => __('Destructive', 'dbvc'),
 		'mixed'                         => __('Mixed', 'dbvc'),
 		'unknown'                       => __('Unknown', 'dbvc'),
+		'candidate'                     => __('Reviewed candidate', 'dbvc'),
+		'covered_elsewhere'             => __('Covered elsewhere', 'dbvc'),
+		'deferred'                      => __('Deferred', 'dbvc'),
+		'not_recommended'               => __('Not recommended', 'dbvc'),
+		'needs_review'                  => __('Needs review', 'dbvc'),
+		'unreviewed'                    => __('Unreviewed', 'dbvc'),
+		'high'                          => __('High', 'dbvc'),
+		'medium'                        => __('Medium', 'dbvc'),
+		'low'                           => __('Low', 'dbvc'),
+		'none'                          => __('None', 'dbvc'),
+		'small'                         => __('Small', 'dbvc'),
+		'large'                         => __('Large', 'dbvc'),
 		'cli'                           => __('WP-CLI', 'dbvc'),
 		'rest'                          => __('REST API', 'dbvc'),
 		'admin'                         => __('Admin UI', 'dbvc'),
@@ -165,6 +177,11 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 		$status       = sanitize_key((string) ($record['status'] ?? 'unknown_requires_verification'));
 		$category     = sanitize_key((string) ($record['primary_category'] ?? 'internal_foundation'));
 		$safety       = sanitize_key((string) ($record['safety']['classification'] ?? 'unknown'));
+		$opportunity  = is_array($record['opportunity'] ?? null) ? $record['opportunity'] : [];
+		$disposition  = sanitize_key((string) ($opportunity['disposition'] ?? 'unreviewed'));
+		$priority     = sanitize_key((string) ($opportunity['priority'] ?? 'none'));
+		$effort       = sanitize_key((string) ($opportunity['effort'] ?? 'unknown'));
+		$recommended  = sanitize_key((string) ($opportunity['recommended_surface'] ?? 'none'));
 		$is_active    = 'active' === $status;
 		$has_cli      = in_array('cli', $surface_types, true);
 		$has_rest     = in_array('rest', $surface_types, true);
@@ -178,8 +195,17 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 		if ($is_active && 'read_only' === $safety) {
 			$agent_uses[] = 'safe-inspection';
 		}
-		if ($is_active && $has_rest && ! $has_cli) {
+		if ('candidate' === $disposition && 'cli' === $recommended) {
 			$agent_uses[] = 'cli-candidate';
+		}
+		if ('unreviewed' === $disposition && $is_active && $has_rest && ! $has_cli) {
+			$agent_uses[] = 'parity-review';
+		}
+		if ('covered_elsewhere' === $disposition) {
+			$agent_uses[] = 'parity-covered';
+		}
+		if (in_array($disposition, ['deferred', 'not_recommended'], true)) {
+			$agent_uses[] = 'parity-deferred';
 		}
 		if ('read_only' !== $safety && 'unknown' !== $safety) {
 			$agent_uses[] = 'write-gated';
@@ -193,13 +219,21 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 			$status,
 			$category,
 			$safety,
+			$disposition,
+			$priority,
+			$effort,
+			$recommended,
+			$opportunity['rationale'] ?? '',
+			$opportunity['candidate_scope'] ?? '',
+			$opportunity['next_action'] ?? '',
 		];
 		$search_parts = array_merge(
 			$search_parts,
 			(array) ($record['aliases'] ?? []),
 			$tags,
 			(array) ($record['known_gaps'] ?? []),
-			(array) ($record['storage_touched'] ?? [])
+			(array) ($record['storage_touched'] ?? []),
+			(array) ($opportunity['excluded_operations'] ?? [])
 		);
 		foreach ($surfaces as $surface) {
 			$search_parts[] = $surface['identifier'];
@@ -217,6 +251,16 @@ function dbvc_prepare_capability_landscape_records(array $manifest)
 			'workflows'      => dbvc_capability_landscape_tag_values($tags, 'workflow:'),
 			'scopes'         => dbvc_capability_landscape_tag_values($tags, 'scope:'),
 			'agent_uses'     => array_values(array_unique($agent_uses)),
+			'opportunity'    => [
+				'disposition'        => $disposition,
+				'priority'           => $priority,
+				'effort'             => $effort,
+				'recommended_surface' => $recommended,
+				'rationale'          => (string) ($opportunity['rationale'] ?? ''),
+				'candidate_scope'     => (string) ($opportunity['candidate_scope'] ?? ''),
+				'excluded_operations' => array_values(array_filter(array_map('strval', (array) ($opportunity['excluded_operations'] ?? [])))),
+				'next_action'        => (string) ($opportunity['next_action'] ?? ''),
+			],
 			'search'         => strtolower(implode(' ', array_filter(array_map('strval', $search_parts)))),
 		];
 	}
@@ -258,6 +302,7 @@ function dbvc_capability_landscape_stats(array $records)
 	$read_only          = 0;
 	$non_active         = 0;
 	$cli_candidates     = 0;
+	$opportunity_reviews = 0;
 	$cli_commands       = [];
 	$rest_registrations = [];
 
@@ -273,6 +318,9 @@ function dbvc_capability_landscape_stats(array $records)
 		}
 		if (in_array('cli-candidate', $item['agent_uses'], true)) {
 			++$cli_candidates;
+		}
+		if (in_array($item['opportunity']['disposition'], ['candidate', 'covered_elsewhere', 'deferred', 'not_recommended', 'needs_review'], true)) {
+			++$opportunity_reviews;
 		}
 		if (! $is_active) {
 			continue;
@@ -296,6 +344,7 @@ function dbvc_capability_landscape_stats(array $records)
 		'rest_registrations' => count($rest_registrations),
 		'read_only'          => $read_only,
 		'cli_candidates'     => $cli_candidates,
+		'opportunity_reviews' => $opportunity_reviews,
 		'non_active'         => $non_active,
 	];
 }
@@ -353,7 +402,7 @@ function dbvc_render_capability_landscape_panel()
 		<div class="dbvc-capability-landscape__intro">
 			<h3><?php esc_html_e('Capability Landscape', 'dbvc'); ?></h3>
 			<p><?php esc_html_e('Review the repository-curated DBVC tool, command, API, and add-on landscape. Active records describe this plugin checkout; planned, source-reference, experimental, and absent records remain visible so gaps are not mistaken for callable functionality.', 'dbvc'); ?></p>
-			<p class="description"><?php esc_html_e('This screen is read-only. “Potential CLI parity” is a discovery prompt, not an automatic recommendation to expose every REST operation through WP-CLI.', 'dbvc'); ?></p>
+			<p class="description"><?php esc_html_e('This screen is read-only. Reviewed opportunities include explicit priority, effort, and recommended-interface judgments; unreviewed REST-only records remain prompts rather than automatic CLI recommendations.', 'dbvc'); ?></p>
 		</div>
 
 		<div class="dbvc-capability-stats" aria-label="<?php esc_attr_e('Capability summary', 'dbvc'); ?>">
@@ -362,7 +411,7 @@ function dbvc_render_capability_landscape_panel()
 			<div><strong><?php echo esc_html($stats['rest_registrations']); ?></strong><span><?php esc_html_e('Active REST registrations', 'dbvc'); ?></span></div>
 			<div><strong><?php echo esc_html($stats['read_only']); ?></strong><span><?php esc_html_e('Read-only starting points', 'dbvc'); ?></span></div>
 			<div><strong><?php echo esc_html($stats['cli_candidates']); ?></strong><span><?php esc_html_e('Potential CLI parity', 'dbvc'); ?></span></div>
-			<div><strong><?php echo esc_html($stats['non_active']); ?></strong><span><?php esc_html_e('Non-active or staged', 'dbvc'); ?></span></div>
+			<div><strong><?php echo esc_html($stats['opportunity_reviews']); ?></strong><span><?php esc_html_e('Reviewed opportunities', 'dbvc'); ?></span></div>
 		</div>
 
 		<div class="dbvc-capability-filters" aria-label="<?php esc_attr_e('Capability filters', 'dbvc'); ?>">
@@ -383,12 +432,26 @@ function dbvc_render_capability_landscape_panel()
 				<select id="dbvc-capability-surface"><option value=""><?php esc_html_e('All interfaces', 'dbvc'); ?></option><?php foreach ($surfaces as $value => $label) : ?><option value="<?php echo esc_attr($value); ?>"><?php echo esc_html($label); ?></option><?php endforeach; ?></select>
 			</label>
 			<label>
+				<span><?php esc_html_e('Opportunity', 'dbvc'); ?></span>
+				<select id="dbvc-capability-opportunity">
+					<option value=""><?php esc_html_e('All opportunity states', 'dbvc'); ?></option>
+					<option value="candidate"><?php esc_html_e('Reviewed candidate', 'dbvc'); ?></option>
+					<option value="needs_review"><?php esc_html_e('Needs review', 'dbvc'); ?></option>
+					<option value="covered_elsewhere"><?php esc_html_e('Covered elsewhere', 'dbvc'); ?></option>
+					<option value="deferred"><?php esc_html_e('Deferred', 'dbvc'); ?></option>
+					<option value="not_recommended"><?php esc_html_e('Not recommended', 'dbvc'); ?></option>
+					<option value="unreviewed"><?php esc_html_e('Unreviewed', 'dbvc'); ?></option>
+				</select>
+			</label>
+			<label>
 				<span><?php esc_html_e('Agent leverage', 'dbvc'); ?></span>
 				<select id="dbvc-capability-agent-use">
 					<option value=""><?php esc_html_e('All leverage types', 'dbvc'); ?></option>
 					<option value="cli-ready"><?php esc_html_e('CLI ready', 'dbvc'); ?></option>
 					<option value="safe-inspection"><?php esc_html_e('Read-only starting point', 'dbvc'); ?></option>
 					<option value="cli-candidate"><?php esc_html_e('Potential CLI parity', 'dbvc'); ?></option>
+					<option value="parity-review"><?php esc_html_e('Unreviewed REST parity', 'dbvc'); ?></option>
+					<option value="parity-covered"><?php esc_html_e('Parity covered elsewhere', 'dbvc'); ?></option>
 					<option value="write-gated"><?php esc_html_e('Write-gated', 'dbvc'); ?></option>
 					<option value="non-current"><?php esc_html_e('Non-current or gap', 'dbvc'); ?></option>
 				</select>
@@ -427,6 +490,7 @@ function dbvc_render_capability_landscape_panel()
 						data-category="<?php echo esc_attr($item['category']); ?>"
 						data-status="<?php echo esc_attr($item['status']); ?>"
 						data-surfaces="<?php echo esc_attr(' ' . implode(' ', $item['surface_types']) . ' '); ?>"
+						data-opportunity="<?php echo esc_attr($item['opportunity']['disposition']); ?>"
 						data-agent-uses="<?php echo esc_attr(' ' . implode(' ', $item['agent_uses']) . ' '); ?>">
 						<td class="dbvc-capability-primary">
 							<strong><?php echo esc_html($record['title']); ?></strong>
@@ -462,13 +526,27 @@ function dbvc_render_capability_landscape_panel()
 									'cli-ready'       => __('CLI ready', 'dbvc'),
 									'safe-inspection' => __('Read-only starting point', 'dbvc'),
 									'cli-candidate'    => __('Potential CLI parity', 'dbvc'),
+									'parity-review'    => __('Unreviewed REST parity', 'dbvc'),
+									'parity-covered'   => __('Parity covered elsewhere', 'dbvc'),
+									'parity-deferred'  => __('Parity deferred', 'dbvc'),
 									'write-gated'      => __('Write-gated', 'dbvc'),
 									'non-current'      => __('Not currently callable', 'dbvc'),
 								];
 								?>
 								<span class="dbvc-capability-chip is-agent-use is-<?php echo esc_attr(sanitize_html_class($agent_use)); ?>"><?php echo esc_html($agent_labels[$agent_use] ?? $agent_use); ?></span>
 							<?php endforeach; ?>
-							<?php if (in_array('cli-candidate', $item['agent_uses'], true)) : ?><p class="description"><?php esc_html_e('Active REST behavior without a mapped CLI surface; review for useful automation parity.', 'dbvc'); ?></p><?php endif; ?>
+							<?php if ('unreviewed' !== $item['opportunity']['disposition']) : ?>
+								<div class="dbvc-capability-opportunity">
+									<?php dbvc_capability_landscape_chip($item['opportunity']['disposition'], 'is-opportunity is-' . sanitize_html_class($item['opportunity']['disposition'])); ?>
+									<span class="dbvc-capability-chip is-priority is-<?php echo esc_attr(sanitize_html_class($item['opportunity']['priority'])); ?>"><?php echo esc_html(sprintf(__('Priority: %s', 'dbvc'), dbvc_capability_landscape_label($item['opportunity']['priority']))); ?></span>
+									<span class="dbvc-capability-chip is-effort"><?php echo esc_html(sprintf(__('Effort: %s', 'dbvc'), dbvc_capability_landscape_label($item['opportunity']['effort']))); ?></span>
+									<?php if ('none' !== $item['opportunity']['recommended_surface']) : ?><code><?php echo esc_html(sprintf(__('Recommended: %s', 'dbvc'), dbvc_capability_landscape_label($item['opportunity']['recommended_surface']))); ?></code><?php endif; ?>
+									<p class="description"><?php echo esc_html($item['opportunity']['rationale']); ?></p>
+									<?php if ('' !== $item['opportunity']['candidate_scope']) : ?><p><strong><?php esc_html_e('Candidate boundary:', 'dbvc'); ?></strong> <?php echo esc_html($item['opportunity']['candidate_scope']); ?></p><?php endif; ?>
+									<?php if (! empty($item['opportunity']['excluded_operations'])) : ?><details><summary><?php esc_html_e('Explicitly excluded', 'dbvc'); ?></summary><ul><?php foreach ($item['opportunity']['excluded_operations'] as $excluded_operation) : ?><li><?php echo esc_html($excluded_operation); ?></li><?php endforeach; ?></ul></details><?php endif; ?>
+									<?php if ('' !== $item['opportunity']['next_action']) : ?><p><strong><?php esc_html_e('Next:', 'dbvc'); ?></strong> <?php echo esc_html($item['opportunity']['next_action']); ?></p><?php endif; ?>
+								</div>
+							<?php elseif (in_array('parity-review', $item['agent_uses'], true)) : ?><p class="description"><?php esc_html_e('Active REST behavior without a mapped CLI surface; no task-specific parity judgment has been recorded yet.', 'dbvc'); ?></p><?php endif; ?>
 							<?php if (! empty($record['known_gaps'])) : ?><details><summary><?php esc_html_e('Known gaps', 'dbvc'); ?></summary><ul><?php foreach ((array) $record['known_gaps'] as $gap) : ?><li><?php echo esc_html($gap); ?></li><?php endforeach; ?></ul></details><?php endif; ?>
 						</td>
 					</tr>
@@ -505,8 +583,10 @@ function dbvc_render_capability_landscape_panel()
 		.dbvc-capability-chip { display:inline-block; margin:0 .25rem .3rem 0; border:1px solid #c3c4c7; border-radius:999px; padding:.14rem .48rem; background:#f6f7f7; color:#2c3338; font-size:11px; line-height:1.45; }
 		.dbvc-capability-chip.is-status,.dbvc-capability-chip.is-safety,.dbvc-capability-chip.is-agent-use { font-weight:600; }
 		.dbvc-capability-chip.is-active,.dbvc-capability-chip.is-read_only,.dbvc-capability-chip.is-safe-inspection,.dbvc-capability-chip.is-cli-ready { border-color:#68de7c; background:#edfaef; color:#116329; }
-		.dbvc-capability-chip.is-experimental,.dbvc-capability-chip.is-mixed,.dbvc-capability-chip.is-cli-candidate { border-color:#dba617; background:#fcf9e8; color:#664d03; }
+		.dbvc-capability-chip.is-experimental,.dbvc-capability-chip.is-mixed,.dbvc-capability-chip.is-cli-candidate,.dbvc-capability-chip.is-parity-review,.dbvc-capability-chip.is-needs_review,.dbvc-capability-chip.is-medium { border-color:#dba617; background:#fcf9e8; color:#664d03; }
 		.dbvc-capability-chip.is-wordpress_write,.dbvc-capability-chip.is-filesystem_write,.dbvc-capability-chip.is-remote_write,.dbvc-capability-chip.is-destructive,.dbvc-capability-chip.is-write-gated { border-color:#d63638; background:#fcf0f1; color:#8a2424; }
+		.dbvc-capability-chip.is-candidate,.dbvc-capability-chip.is-high { border-color:#2271b1; background:#eaf3fb; color:#0a4b78; }
+		.dbvc-capability-opportunity { margin-top:.55rem; padding-top:.55rem; border-top:1px solid #dcdcde; }
 		.dbvc-capability-chip.is-planned,.dbvc-capability-chip.is-source_reference,.dbvc-capability-chip.is-absent_current_checkout,.dbvc-capability-chip.is-non-current { border-color:#8c8f94; background:#f0f0f1; color:#50575e; }
 		.dbvc-capability-table details { margin-top:.45rem; }
 		.dbvc-capability-table details ul { margin:.35rem 0 0 1.1rem; }
@@ -522,6 +602,7 @@ function dbvc_render_capability_landscape_panel()
 		const category = root.querySelector('#dbvc-capability-category');
 		const status = root.querySelector('#dbvc-capability-status');
 		const surface = root.querySelector('#dbvc-capability-surface');
+		const opportunity = root.querySelector('#dbvc-capability-opportunity');
 		const agentUse = root.querySelector('#dbvc-capability-agent-use');
 		const reset = root.querySelector('#dbvc-capability-reset');
 		const result = root.querySelector('#dbvc-capability-results');
@@ -537,6 +618,7 @@ function dbvc_render_capability_landscape_panel()
 					&& (!category.value || row.dataset.category === category.value)
 					&& (!status.value || row.dataset.status === status.value)
 					&& (!surface.value || row.dataset.surfaces.indexOf(' ' + surface.value + ' ') !== -1)
+					&& (!opportunity.value || row.dataset.opportunity === opportunity.value)
 					&& (!agentUse.value || row.dataset.agentUses.indexOf(' ' + agentUse.value + ' ') !== -1);
 				row.hidden = !matches;
 				if (matches) visible += 1;
@@ -555,7 +637,7 @@ function dbvc_render_capability_landscape_panel()
 				.replace('%2$d', rows.length);
 		}
 
-		[search, category, status, surface, agentUse].forEach(function(control) {
+		[search, category, status, surface, opportunity, agentUse].forEach(function(control) {
 			control.addEventListener(control === search ? 'input' : 'change', applyFilters);
 		});
 		reset.addEventListener('click', function() {
@@ -563,6 +645,7 @@ function dbvc_render_capability_landscape_panel()
 			category.value = '';
 			status.value = '';
 			surface.value = '';
+			opportunity.value = '';
 			agentUse.value = '';
 			applyFilters();
 			search.focus();

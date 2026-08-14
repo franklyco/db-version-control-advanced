@@ -1,6 +1,6 @@
 # DBVC Agent Reference
 
-Status: Current-checkout source reconciliation complete; same-checkout runtime verification remains pending.
+Status: Current-checkout source reconciliation and bounded same-checkout registration verification complete; operation-level runtime verification remains scoped per capability.
 
 ## Loading Policy
 
@@ -16,12 +16,13 @@ Do not treat this folder as required startup context for unrelated DBVC work. Ex
 
 ## Current Boundary
 
-- The current LocalWP checkout manifest contains 47 grouped capability records covering all 393 enforced discovery surfaces.
-- Source discovery currently identifies 13 WP-CLI leaf commands and 126 REST registrations.
+- The current LocalWP checkout manifest contains 52 grouped capability records covering all 402 enforced discovery surfaces.
+- Source discovery currently identifies 22 WP-CLI leaf commands and 126 REST registrations.
 - Strict coverage is enabled: a new CLI command, REST route, admin surface, setting, extension point, database table, or scheduled hook must be mapped or explicitly ignored.
 - A discovered command, route, hook, setting, or service must not be treated as agent-safe merely because it appears in the discovery snapshot.
 - Records marked `active` are source-loaded and reviewed for this checkout; they are not proof that every surface is activated or safe to invoke in a particular WordPress runtime.
-- The manifest is now aligned with the active LocalWP plugin source. Authenticated WP-CLI, REST, and browser verification remain separate evidence layers.
+- The opportunity layer currently contains 1 bounded candidate, 1 deferred workflow, 8 REST-to-CLI false positives or completed gaps marked covered elsewhere, 2 implemented CLI records marked not recommended for further parity, no remaining `needs_review` records, and 40 explicitly unreviewed records. Candidate records declare a machine-readable boundary and excluded operations; they are not implementation or invocation authorization.
+- The manifest is aligned with the active LocalWP plugin source. Same-checkout WP-CLI help, REST registration, add-on gates, and administrator renderer evidence are recorded in [`RUNTIME_VERIFICATION.md`](RUNTIME_VERIFICATION.md); write operations and authenticated browser interaction remain separate evidence layers.
 - The original cross-checkout comparison and static QA provenance are retained in [`PHASE6_VERIFICATION.md`](PHASE6_VERIFICATION.md).
 - Path-scoped CI now enforces discovery, manifest ownership, and generated-index drift; maintenance remains opt-in and is defined in [`MAINTENANCE.md`](MAINTENANCE.md).
 
@@ -44,7 +45,7 @@ Common compound lookups include:
 - Bricks package operations: `scope:addon:bricks` + `object:package`
 - client onboarding surfaces: `workflow:client_onboarding`
 
-Use the generated [command signature](generated/index-by-command.md), [category](generated/index-by-category.md), [tag](generated/index-by-tag.md), [surface](generated/index-by-surface.md), [operation](generated/index-by-operation.md), [risk](generated/index-by-risk.md), and [alias](generated/index-by-alias.md) views for quick routing. Every generated result links to its recommended facet and the canonical manifest.
+Use the generated [command signature](generated/index-by-command.md), [opportunity](generated/index-by-opportunity.md), [category](generated/index-by-category.md), [tag](generated/index-by-tag.md), [surface](generated/index-by-surface.md), [operation](generated/index-by-operation.md), [risk](generated/index-by-risk.md), and [alias](generated/index-by-alias.md) views for quick routing. Every generated result links to the canonical manifest, with task facets linked where applicable.
 
 For compound lookup from the repository root:
 
@@ -52,9 +53,10 @@ For compound lookup from the repository root:
 composer agent-docs:query -- operation:import surface:cli
 composer agent-docs:query -- operation:inspect safety:read_only status:active
 composer agent-docs:query -- scope:addon:bricks object:package
+composer agent-docs:query -- opportunity:candidate recommended:cli
 ```
 
-Queries accept exact manifest tags plus `status:`, `category:`, `safety:`, and `id:` filters; unprefixed terms search record IDs and aliases. Use `safety:read_only` when every returned record must be classified read-only, while `risk:read_only` may also find mixed records that contain a read-only sub-operation.
+Queries accept exact manifest tags plus `status:`, `category:`, `safety:`, `id:`, `opportunity:`, `priority:`, `effort:`, and `recommended:` filters; unprefixed terms search record IDs and aliases. Use `safety:read_only` when every returned record must be classified read-only, while `risk:read_only` may also find mixed records that contain a read-only sub-operation.
 
 ## Task Facets
 
@@ -70,9 +72,13 @@ Load one facet first, then follow its “Load Next” section only as the task r
 - [Content Migration add-on](facets/content-migration-addon.md)
 - [Staged, planned, and absent](facets/staged-planned-and-absent.md)
 
+## Bounded Inspection Recipes
+
+Use [`RECIPES.md`](RECIPES.md) only after selecting a matching manifest record. It contains eight read-only workflows for checkout preflight, proposal readiness, media inventory, resolver/snapshot context, Bricks control-plane health, Bricks drift, cached Entity Editor inspection, and bounded Content Migration run inspection. Each recipe has explicit stop rules and record references validated by the existing strict agent-docs check.
+
 ## Administrator View
 
-When this manifest ships with the plugin, administrators can review the same curated landscape at `DBVC Export → Docs & Workflows → Capability Landscape` (direct hash: `admin.php?page=dbvc-export#docs-capabilities`). The table is read-only and provides category, status, interface, safety, storage, workflow, CLI-readiness, and potential-parity filters; it does not probe or modify the live runtime.
+When this manifest ships with the plugin, administrators can review the same curated landscape at `DBVC Export → Docs & Workflows → Capability Landscape` (direct hash: `admin.php?page=dbvc-export#docs-capabilities`). The table is read-only and provides category, status, interface, safety, storage, workflow, CLI-readiness, and reviewed opportunity filters; it does not probe or modify the live runtime.
 
 ## Existing Long-Form Sources
 
@@ -94,7 +100,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `addon_bricks` | 8 |
 | `addon_content_migration` | 4 |
 | `api_extensions` | 2 |
-| `cli_automation` | 8 |
+| `cli_automation` | 13 |
 | `entity_editor` | 3 |
 | `identity_entities` | 2 |
 | `import_export` | 4 |
@@ -105,7 +111,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `settings_configuration` | 3 |
 | `snapshots_backups` | 2 |
 
-Total curated records: **47**.
+Total curated records: **52**.
 <!-- END GENERATED AGENT INDEX -->
 
 ## Maintenance Commands

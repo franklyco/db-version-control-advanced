@@ -6,8 +6,9 @@ Load this facet for Bricks artifacts, drift, configuration, proposals, packages,
 
 | Need | Record | Safety |
 |---|---|---|
-| Status/schema/diagnostics/UI | `addon.bricks.control_plane` | Mostly inspection; UI telemetry writes |
-| Artifact comparison | `addon.bricks.drift` | Read-only |
+| Bounded status/schema/UI health | `cli.bricks.doctor` | Read-only; no stored diagnostics or telemetry |
+| Full control plane/diagnostics/UI | `addon.bricks.control_plane` | Mixed; stored diagnostics read and UI telemetry writes |
+| Artifact comparison | `addon.bricks.drift`, `cli.bricks.drift.inspect` | Read-only |
 | Rules/profile distribution | `addon.bricks.configuration` | Local or remote write |
 | Review state | `addon.bricks.proposals` | GET read-only; PATCH writes |
 | Apply/restore/rollback | `addon.bricks.apply_restore` | WordPress write; backup required |
@@ -18,8 +19,8 @@ Load this facet for Bricks artifacts, drift, configuration, proposals, packages,
 
 ## Safe Progression
 
-1. Confirm add-on status, schema compatibility, and UI contract.
-2. Run drift scan/comparison before mutation.
+1. Confirm add-on status, schema compatibility, and UI contract with `wp dbvc bricks doctor --format=json`.
+2. Run a bounded drift scan/comparison before mutation; agents can use `wp dbvc bricks drift` with one reviewed stored package or local manifest.
 3. Validate package provenance, connected-site identity, and target selection.
 4. Create a recoverable restore point/database backup.
 5. Review proposal/configuration changes.
@@ -40,6 +41,7 @@ Signed command transport proves neither that a command is safe nor that an agent
 
 - Runtime host/routes: [`addons/bricks/bricks-addon.php`](../../../addons/bricks/bricks-addon.php)
 - Drift: [`addons/bricks/bricks-drift.php`](../../../addons/bricks/bricks-drift.php)
+- Read-only doctor and drift CLI: [`commands/class-bricks-cli.php`](../../../commands/class-bricks-cli.php)
 - Apply: [`addons/bricks/bricks-apply.php`](../../../addons/bricks/bricks-apply.php)
 - Packages: [`addons/bricks/bricks-packages.php`](../../../addons/bricks/bricks-packages.php)
 - Connected sites/onboarding: [`addons/bricks/bricks-connected-sites.php`](../../../addons/bricks/bricks-connected-sites.php) and [`addons/bricks/bricks-onboarding.php`](../../../addons/bricks/bricks-onboarding.php)

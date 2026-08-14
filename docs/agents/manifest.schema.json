@@ -109,6 +109,25 @@
         "notes": { "type": "string" }
       }
     },
+    "opportunity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "priority", "effort", "recommended_surface", "rationale", "reviewed_date"],
+      "properties": {
+        "disposition": {
+          "enum": ["candidate", "covered_elsewhere", "deferred", "not_recommended", "needs_review"]
+        },
+        "priority": { "enum": ["high", "medium", "low", "none"] },
+        "effort": { "enum": ["small", "medium", "large", "unknown"] },
+        "recommended_surface": { "enum": ["cli", "rest", "admin", "php", "docs", "none"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "candidate_scope": { "type": "string", "minLength": 1 },
+        "excluded_operations": { "$ref": "#/$defs/stringArray" },
+        "next_action": { "type": "string", "minLength": 1 },
+        "related_record": { "type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$" },
+        "reviewed_date": { "type": "string", "format": "date" }
+      }
+    },
     "capabilityRecord": {
       "type": "object",
       "additionalProperties": false,
@@ -165,6 +184,7 @@
         "doc_refs": { "$ref": "#/$defs/stringArray" },
         "related": { "$ref": "#/$defs/stringArray" },
         "known_gaps": { "$ref": "#/$defs/stringArray" },
+        "opportunity": { "$ref": "#/$defs/opportunity" },
         "verification": { "$ref": "#/$defs/verification" }
       }
     }

@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 330,
-        "source_fingerprint": "sha256:ef701b297864bb354f7ad6461e77905b9b42541f8606830371ccccc9c89dd0e8",
+        "source_file_count": 334,
+        "source_fingerprint": "sha256:656c1627b63aaef30ca4069fa75d7a53d59014cc2f5f0e74dc37a4123a224a38",
         "live_runtime_verified": false
     },
     "counts": {
@@ -12,17 +12,17 @@
         "admin_menus": 13,
         "bootstrap_includes": 127,
         "bootstrap_initializers": 16,
-        "cli_commands": 13,
-        "cli_namespaces": 4,
+        "cli_commands": 22,
+        "cli_namespaces": 8,
         "database_tables": 13,
-        "documentation": 342,
+        "documentation": 344,
         "extension_points": 144,
         "hook_listeners": 161,
         "rest_routes": 126,
         "scheduled_hooks": 3,
         "settings": 49,
         "source_reference_documentation": 13,
-        "tests": 76
+        "tests": 80
     },
     "collections": {
         "admin_handlers": [
@@ -1779,6 +1779,188 @@
         },
         "cli_commands": [
             {
+                "discovery_id": "cli.command.dbvc.bricks.doctor",
+                "command": "dbvc bricks doctor",
+                "namespace": "dbvc bricks",
+                "class": "DBVC_WP_CLI_Bricks",
+                "method": "doctor",
+                "summary": "Inspect Bricks add-on status, UI contract, and live schema health",
+                "synopsis_tokens": [
+                    "[--fail-on-warnings]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-bricks-cli.php",
+                    "line": 599
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.bricks.drift",
+                "command": "dbvc bricks drift",
+                "namespace": "dbvc bricks",
+                "class": "DBVC_WP_CLI_Bricks",
+                "method": "drift",
+                "summary": "Compare a stored package or local manifest with current Bricks artifacts",
+                "synopsis_tokens": [
+                    "[--artifact-uid=<uid>]",
+                    "[--fail-on-drift]",
+                    "[--fields=<fields>]",
+                    "[--file=<path>]",
+                    "[--format=<format>]",
+                    "[--limit=<number>]",
+                    "[--max-changes=<number>]",
+                    "[--offset=<number>]",
+                    "[--package-id=<id>]",
+                    "[--status=<status>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-bricks-cli.php",
+                    "line": 675
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.capabilities.doctor",
+                "command": "dbvc capabilities doctor",
+                "namespace": "dbvc capabilities",
+                "class": "DBVC_WP_CLI_Capabilities",
+                "method": "doctor",
+                "summary": "Diagnose capability-library packaging, ownership, and runtime registration",
+                "synopsis_tokens": [
+                    "[--fail-on-warnings]",
+                    "[--format=<format>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 361
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.capabilities.list",
+                "command": "dbvc capabilities list",
+                "namespace": "dbvc capabilities",
+                "class": "DBVC_WP_CLI_Capabilities",
+                "method": "list_",
+                "summary": "List curated DBVC capability records",
+                "synopsis_tokens": [
+                    "[--category=<category>]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--opportunity=<disposition>]",
+                    "[--priority=<priority>]",
+                    "[--safety=<classification>]",
+                    "[--search=<text>]",
+                    "[--status=<status>]",
+                    "[--surface=<surface>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 290
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.capabilities.show",
+                "command": "dbvc capabilities show",
+                "namespace": "dbvc capabilities",
+                "class": "DBVC_WP_CLI_Capabilities",
+                "method": "show",
+                "summary": "Show one canonical capability record",
+                "synopsis_tokens": [
+                    "<id>",
+                    "[--format=<format>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 320
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.content-migration.runs.list",
+                "command": "dbvc content-migration runs list",
+                "namespace": "dbvc content-migration runs",
+                "class": "DBVC_WP_CLI_Content_Migration_Runs",
+                "method": "list_",
+                "summary": "List bounded latest V2 runs",
+                "synopsis_tokens": [
+                    "[--domain=<domain>]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--include-hidden]",
+                    "[--limit=<number>]",
+                    "[--offset=<number>]",
+                    "[--search=<term>]",
+                    "[--status=<status>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-content-migration-cli.php",
+                    "line": 633
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.content-migration.runs.show",
+                "command": "dbvc content-migration runs show",
+                "namespace": "dbvc content-migration runs",
+                "class": "DBVC_WP_CLI_Content_Migration_Runs",
+                "method": "show",
+                "summary": "Show one exact V2 run summary and overview",
+                "synopsis_tokens": [
+                    "<run-id>",
+                    "[--activity-limit=<number>]",
+                    "[--domain=<domain>]",
+                    "[--fail-on-issues]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-content-migration-cli.php",
+                    "line": 688
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.entity-editor.inspect",
+                "command": "dbvc entity-editor inspect",
+                "namespace": "dbvc entity-editor",
+                "class": "DBVC_WP_CLI_Entity_Editor",
+                "method": "inspect",
+                "summary": "Inspect one indexed file without returning raw JSON values",
+                "synopsis_tokens": [
+                    "<relative-path>",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--max-age=<seconds>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-entity-editor-cli.php",
+                    "line": 516
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.entity-editor.list",
+                "command": "dbvc entity-editor list",
+                "namespace": "dbvc entity-editor",
+                "class": "DBVC_WP_CLI_Entity_Editor",
+                "method": "list_",
+                "summary": "List cached Entity Editor metadata",
+                "synopsis_tokens": [
+                    "[--duplicates=<state>]",
+                    "[--fail-if-empty]",
+                    "[--fields=<fields>]",
+                    "[--format=<format>]",
+                    "[--kind=<kind>]",
+                    "[--limit=<number>]",
+                    "[--match=<state>]",
+                    "[--max-age=<seconds>]",
+                    "[--offset=<number>]",
+                    "[--provider=<provider>]",
+                    "[--search=<text>]",
+                    "[--subtype=<subtype>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-entity-editor-cli.php",
+                    "line": 482
+                }
+            },
+            {
                 "discovery_id": "cli.command.dbvc.export",
                 "command": "dbvc export",
                 "namespace": "dbvc",
@@ -1859,8 +2041,8 @@
                 }
             },
             {
-                "discovery_id": "cli.command.dbvc.media.mirror-export",
-                "command": "dbvc media mirror-export",
+                "discovery_id": "cli.command.dbvc.media.mirror_export",
+                "command": "dbvc media mirror_export",
                 "namespace": "dbvc media",
                 "class": "DBVC_WP_CLI_Media",
                 "method": "mirror_export",
@@ -1984,8 +2166,8 @@
                 }
             },
             {
-                "discovery_id": "cli.command.dbvc.resolver-rules.list",
-                "command": "dbvc resolver-rules list",
+                "discovery_id": "cli.command.dbvc.resolver-rules.list_",
+                "command": "dbvc resolver-rules list_",
                 "namespace": "dbvc resolver-rules",
                 "class": "DBVC_WP_CLI_Resolver_Rules",
                 "method": "list_",
@@ -2024,6 +2206,42 @@
                 "source_ref": {
                     "path": "commands/class-wp-cli-commands.php",
                     "line": 1491
+                }
+            },
+            {
+                "discovery_id": "cli.namespace.dbvc.bricks",
+                "namespace": "dbvc bricks",
+                "class": "DBVC_WP_CLI_Bricks",
+                "source_ref": {
+                    "path": "commands/class-bricks-cli.php",
+                    "line": 712
+                }
+            },
+            {
+                "discovery_id": "cli.namespace.dbvc.capabilities",
+                "namespace": "dbvc capabilities",
+                "class": "DBVC_WP_CLI_Capabilities",
+                "source_ref": {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 490
+                }
+            },
+            {
+                "discovery_id": "cli.namespace.dbvc.content-migration.runs",
+                "namespace": "dbvc content-migration runs",
+                "class": "DBVC_WP_CLI_Content_Migration_Runs",
+                "source_ref": {
+                    "path": "commands/class-content-migration-cli.php",
+                    "line": 712
+                }
+            },
+            {
+                "discovery_id": "cli.namespace.dbvc.entity-editor",
+                "namespace": "dbvc entity-editor",
+                "class": "DBVC_WP_CLI_Entity_Editor",
+                "source_ref": {
+                    "path": "commands/class-entity-editor-cli.php",
+                    "line": 575
                 }
             },
             {
@@ -2190,6 +2408,8 @@
             "docs/agents/manifest.schema.json",
             "docs/agents/PHASE6_VERIFICATION.md",
             "docs/agents/README.md",
+            "docs/agents/RECIPES.md",
+            "docs/agents/RUNTIME_VERIFICATION.md",
             "docs/agents/taxonomy.md",
             "docs/architecture/admin-app-ui-architecture.md",
             "docs/architecture/bricks-assets-engine-contract-draft.md",
@@ -9147,9 +9367,11 @@
             "tests/phpunit/BricksAddonPhase19BTest.php",
             "tests/phpunit/BricksAddonPhase19CTest.php",
             "tests/phpunit/BricksAddonPhase19DTest.php",
+            "tests/phpunit/BricksCliTest.php",
             "tests/phpunit/BricksPortabilityManagerTest.php",
             "tests/phpunit/BricksReferenceMappingTest.php",
             "tests/phpunit/BricksRegistryOptionsProviderTest.php",
+            "tests/phpunit/CapabilityCliTest.php",
             "tests/phpunit/CapabilityLandscapeTest.php",
             "tests/phpunit/ConfigurationPortabilityExportPackageTest.php",
             "tests/phpunit/ConfigurationPortabilityRegistryTest.php",
@@ -9175,6 +9397,7 @@
             "tests/phpunit/ContentCollectorV2Phase27Test.php",
             "tests/phpunit/ContentCollectorV2Phase29Test.php",
             "tests/phpunit/ContentCollectorV2Phase32Test.php",
+            "tests/phpunit/ContentMigrationCliTest.php",
             "tests/phpunit/ContentMigrationExplorerContextTest.php",
             "tests/phpunit/ContentMigrationPhase4ImportExecutorTest.php",
             "tests/phpunit/ContentMigrationPhase36DeterminismTest.php",
@@ -9187,6 +9410,7 @@
             "tests/phpunit/ContentMigrationPhase37W0SettingsTest.php",
             "tests/phpunit/CoreImportUidPreservationTest.php",
             "tests/phpunit/CoreUploadZipExtractionTest.php",
+            "tests/phpunit/EntityEditorCliTest.php",
             "tests/phpunit/EntityEditorEndpointsTest.php",
             "tests/phpunit/EntityEditorRawIntakeTest.php",
             "tests/phpunit/ExportMaskingPostFieldsTest.php",

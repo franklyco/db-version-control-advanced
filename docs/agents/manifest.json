@@ -7,7 +7,7 @@
         "repository_scope": "current_checkout",
         "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
         "live_runtime_verified": false,
-        "live_runtime_notes": "Curated from the active dirty LocalWP checkout at HEAD 78a06ad. Static discovery and source review are current for this checkout; same-checkout WP-CLI, REST, and browser runtime verification remain pending."
+        "live_runtime_notes": "Curated from the active dirty LocalWP checkout at HEAD 78a06ad. Static discovery and source review are current. Same-checkout WP-CLI help, REST registration, add-on gates, loaded classes, and administrator rendering were verified on 2026-08-08; operation-level writes and authenticated browser interaction were not executed."
     },
     "records": [
         {
@@ -711,16 +711,27 @@
                 "addon.bricks.packages"
             ],
             "known_gaps": [],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "A dedicated read-only WP-CLI doctor now exposes bounded status, UI-contract, schema, deprecation, and runtime-health evidence without exposing stored diagnostic events or expanding the mixed REST control-plane record.",
+                "related_record": "cli.bricks.doctor",
+                "reviewed_date": "2026-08-11"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-05",
+                "verified_date": "2026-08-11",
                 "evidence_types": [
                     "bootstrap_review",
                     "source_review",
-                    "static_registration_discovery"
+                    "static_registration_discovery",
+                    "opportunity_callback_audit",
+                    "focused_unit_test"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+                "notes": "Phase 15 added a bounded CLI adapter over the previously audited side-effect-free readers. The mixed REST control-plane record remains operation-level runtime unverified."
             },
             "id": "addon.bricks.control_plane",
             "title": "Bricks add-on control plane and diagnostics",
@@ -798,9 +809,19 @@
             "doc_refs": [],
             "related": [
                 "addon.bricks.apply_restore",
-                "addon.bricks.control_plane"
+                "addon.bricks.control_plane",
+                "cli.bricks.drift.inspect"
             ],
             "known_gaps": [],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "A dedicated read-only WP-CLI record now provides bounded stored-package or local-file drift inspection without expanding the REST record into an apply surface.",
+                "related_record": "cli.bricks.drift.inspect",
+                "reviewed_date": "2026-08-10"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "verified_date": "2026-08-05",
@@ -1238,20 +1259,33 @@
             "related": [
                 "source.content_collector.explorer",
                 "source.content_collector.ai",
-                "source.content_collector.export"
+                "source.content_collector.export",
+                "cli.content_migration.runs.inspect"
             ],
             "known_gaps": [
                 "Runtime availability depends on add-on activation and environment-specific migration inputs.",
                 "The manifest groups the large migration subsystem at workflow level; use its module-local docs for phase-level contracts."
             ],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "medium",
+                "recommended_surface": "none",
+                "rationale": "A dedicated read-only WP-CLI record now lists bounded latest V2 runs and materializes one exact current or historical run summary in memory from existing artifacts without using write-capable domain-context or readiness paths.",
+                "related_record": "cli.content_migration.runs.inspect",
+                "reviewed_date": "2026-08-11"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-11",
                 "evidence_types": [
                     "static_discovery",
-                    "source_review"
+                    "source_review",
+                    "opportunity_callback_audit",
+                    "focused_unit_test"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Expanded from the earlier source-drop guard record during the LocalWP merge."
+                "notes": "Phase 16 added a bounded CLI adapter that bypasses the write-capable domain-context and readiness callbacks. The broader mixed runtime record remains operation-level runtime unverified."
             },
             "id": "addon.content_migration.runtime_guard",
             "title": "Content Migration add-on runtime",
@@ -1633,6 +1667,15 @@
                 "The table describes the repository manifest and does not probe the live runtime.",
                 "CLI parity candidates require task-specific safety and usefulness review before implementation."
             ],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "Read-only list, show, and doctor access is now provided by the dedicated CLI capability record.",
+                "related_record": "cli.core.capabilities.inspect",
+                "reviewed_date": "2026-08-10"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "verified_date": "2026-08-06",
@@ -1809,6 +1852,632 @@
                 ],
                 "live_runtime_verified": false,
                 "notes": "Added while reconciling the agent library with the active LocalWP checkout."
+            }
+        },
+        {
+            "id": "cli.bricks.drift.inspect",
+            "title": "Bricks drift inspection command",
+            "summary": "Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes.",
+            "status": "active",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:bricks_template",
+                "object:package",
+                "operation:compare",
+                "operation:inspect",
+                "risk:read_only",
+                "scope:addon:bricks",
+                "surface:cli",
+                "workflow:deployment"
+            ],
+            "aliases": [
+                "wp dbvc bricks drift",
+                "Bricks drift CLI",
+                "Bricks package comparison"
+            ],
+            "addon_or_owner": "DBVC Bricks add-on",
+            "runtime_entrypoint": "wp dbvc bricks drift",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc bricks drift",
+                    "discovery_ids": [
+                        "cli.command.dbvc.bricks.drift"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-bricks-cli.php",
+                        "line": 311
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Enabled DBVC Bricks add-on",
+                "Exactly one locally stored package ID or readable local JSON manifest"
+            ],
+            "inputs": [
+                "--package-id or --file",
+                "Optional exact artifact UID and status filters",
+                "Bounded row and changed-path limits"
+            ],
+            "outputs": [
+                "Compact table rows or a machine-readable JSON envelope",
+                "Clean, diverged, overridden, and pending-review counts",
+                "Path-only differences reported separately from fingerprint-based drift status",
+                "Optional nonzero exit when non-clean artifacts exist"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Stored Bricks package options (read only) or one local manifest file (read only)",
+                "Current WordPress and Bricks artifact data (read only)",
+                "Bricks drift-rule options (read only)"
+            ],
+            "settings": [],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "The command rejects write-like flags and never returns raw artifact payloads.",
+                    "Fingerprint status is authoritative for clean/non-clean classification; canonicalization can leave informational path differences on a clean artifact.",
+                    "Comparison accuracy depends on supported schema, artifact identity, and current canonicalization and masking rules.",
+                    "A clean scan is evidence for the selected manifest and local site state only; it does not authorize apply or distribution."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-bricks-cli.php"
+                },
+                {
+                    "path": "addons/bricks/bricks-addon.php",
+                    "line": 3219
+                },
+                {
+                    "path": "addons/bricks/bricks-drift.php",
+                    "line": 17
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/BricksCliTest.php",
+                "tests/phpunit/BricksAddonPhase4Test.php"
+            ],
+            "doc_refs": [
+                "docs/agents/RECIPES.md",
+                "docs/agents/facets/bricks-addon.md",
+                "docs/agents/facets/cli-and-automation.md"
+            ],
+            "related": [
+                "addon.bricks.drift",
+                "addon.bricks.packages",
+                "addon.bricks.apply_restore"
+            ],
+            "known_gaps": [
+                "The command does not discover remote packages or perform remote comparisons.",
+                "The command intentionally omits raw local and golden payload values.",
+                "The active Local PHP 8.4 and bundled WP-CLI stack emits an upstream deprecation notice before JSON stdout; unattended parsers need a compatible clean bootstrap or explicit notice handling."
+            ],
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-10",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Focused tests plus same-checkout help, bounded JSON, exact-artifact filtering, and clean/diverged --fail-on-drift exit behavior passed on 2026-08-10."
+            }
+        },
+        {
+            "id": "cli.bricks.doctor",
+            "title": "Bricks control-plane doctor command",
+            "summary": "Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history.",
+            "status": "active",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:bricks_template",
+                "operation:inspect",
+                "operation:validate",
+                "risk:read_only",
+                "scope:addon:bricks",
+                "surface:cli",
+                "workflow:data_review"
+            ],
+            "aliases": [
+                "wp dbvc bricks doctor",
+                "Bricks status CLI",
+                "Bricks schema health"
+            ],
+            "addon_or_owner": "DBVC Bricks add-on",
+            "runtime_entrypoint": "wp dbvc bricks doctor",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc bricks doctor",
+                    "discovery_ids": [
+                        "cli.command.dbvc.bricks.doctor"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-bricks-cli.php",
+                        "line": 595
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "DBVC Bricks add-on classes loaded; the add-on may be enabled or disabled"
+            ],
+            "inputs": [
+                "Optional table fields and table or JSON format",
+                "Optional fail-on-warnings exit behavior"
+            ],
+            "outputs": [
+                "Bounded add-on status, role, visibility, and read-only/fleet-mode flags",
+                "UI-contract version and scalar feature flags",
+                "Live theme-style and component schema presence, type, counts, coverage, keys, and warning codes",
+                "Bounded runtime-health warnings and deprecation notices",
+                "Optional nonzero exit when health or schema warnings exist"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "DBVC Bricks settings and Bricks theme-style/component options (read only)",
+                "WordPress runtime drop-in paths (existence and resolved-path inspection only)"
+            ],
+            "settings": [
+                "dbvc_addon_bricks_enabled",
+                "dbvc_bricks_role",
+                "dbvc_bricks_read_only",
+                "dbvc_bricks_fleet_mode_enabled",
+                "dbvc_addon_bricks_visibility"
+            ],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "The command rejects every unrecognized flag, including diagnostics, telemetry, settings, package, fleet, remote, apply, restore, and proposal requests.",
+                    "It does not call the stored-diagnostics reader and omits site UID, site name, home URL, and site URL from status output.",
+                    "Runtime-health warning messages can contain local filesystem paths needed to diagnose cross-site drop-in conflicts.",
+                    "A passing doctor describes current control-plane/schema health only; it does not authorize package, remote, apply, restore, or proposal operations."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-bricks-cli.php"
+                },
+                {
+                    "path": "addons/bricks/bricks-addon.php",
+                    "line": 3392
+                },
+                {
+                    "path": "addons/bricks/bricks-artifacts.php",
+                    "line": 237
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/BricksCliTest.php",
+                "tests/phpunit/BricksAddonPhase1Test.php"
+            ],
+            "doc_refs": [
+                "docs/agents/RECIPES.md",
+                "docs/agents/facets/bricks-addon.md",
+                "docs/agents/facets/cli-and-automation.md"
+            ],
+            "related": [
+                "addon.bricks.control_plane",
+                "cli.bricks.drift.inspect",
+                "addon.bricks.configuration",
+                "addon.bricks.apply_restore"
+            ],
+            "known_gaps": [
+                "The doctor deliberately omits stored UI diagnostic events and package-delivery diagnostics.",
+                "It reports schema shape and warning codes but never returns raw Bricks option values.",
+                "The active Local PHP 8.4 and bundled WP-CLI stack can emit upstream deprecation notices before JSON stdout; unattended parsers need a compatible clean bootstrap or explicit notice handling."
+            ],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "This dedicated CLI record is the implemented inspection surface; no additional parity adapter is needed for the same bounded control-plane evidence.",
+                "reviewed_date": "2026-08-11"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-11",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution",
+                    "pre_post_option_hash"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Focused tests plus same-checkout help, bounded JSON, rejected --apply, and identical pre/post Bricks-option hashes passed on 2026-08-11. The live result contained zero health/schema warnings and one deprecation notice."
+            }
+        },
+        {
+            "id": "cli.content_migration.runs.inspect",
+            "title": "Content Migration V2 run inspection commands",
+            "summary": "Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts.",
+            "status": "active",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:migration_run",
+                "operation:inspect",
+                "operation:list",
+                "risk:read_only",
+                "scope:addon:content_migration",
+                "surface:cli",
+                "workflow:data_review"
+            ],
+            "aliases": [
+                "wp dbvc content-migration runs list",
+                "wp dbvc content-migration runs show",
+                "Migration Mapper V2 run CLI"
+            ],
+            "addon_or_owner": "DBVC Content Migration add-on",
+            "runtime_entrypoint": "wp dbvc content-migration runs",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc content-migration runs list|show",
+                    "discovery_ids": [
+                        "cli.command.dbvc.content-migration.runs.list",
+                        "cli.command.dbvc.content-migration.runs.show"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-content-migration-cli.php",
+                        "line": 712
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Content Migration V2 classes loaded",
+                "Existing Content Migration storage directory and journey artifacts",
+                "Exact run ID for show; optional exact domain narrows large searches"
+            ],
+            "inputs": [
+                "Exact domain, status, and text filters with bounded pagination for list",
+                "Exact run ID, optional exact domain, and bounded activity limit for show",
+                "Optional fail-on-issues process exit behavior"
+            ],
+            "outputs": [
+                "Latest-run rows with bounded status, URL counts, issue counts, visibility, and pagination metadata",
+                "One current or historical run summary materialized in memory from existing journey events",
+                "Profile presence/shape, inventory counts, stage counts/statuses, and bounded recent activity without messages, source URLs, or artifact paths",
+                "Content Migration add-on/runtime selection state"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Existing Content Migration V2 journey JSON and NDJSON artifacts (read only)",
+                "Existing latest run-profile and URL-inventory JSON artifacts (read only)",
+                "Current-user hidden-run metadata (read only)"
+            ],
+            "settings": [
+                "dbvc_cc_settings",
+                "dbvc_cc_addon_enabled",
+                "dbvc_cc_runtime_version"
+            ],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "The inspector resolves the upload/storage root without directory creation and never calls get_domain_context(), materialize(), readiness generation, or REST callbacks.",
+                    "List follows the current REST contract by returning only each domain's latest materialized run; show can locate historical runs in existing journey logs.",
+                    "Historical run profiles are returned only when the stored latest profile still belongs to that exact run; no profile is inferred from a newer run.",
+                    "The command rejects every unrecognized flag, including readiness, create, visibility, rerun, fixture, package, execute, recovery, raw, download, and apply requests.",
+                    "A successful inspection does not authorize run creation, report generation, packaging, execution, import, recovery, rollback, remote work, or AI queue operations."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-content-migration-cli.php"
+                },
+                {
+                    "path": "addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-service.php",
+                    "line": 325
+                },
+                {
+                    "path": "addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-materializer-service.php",
+                    "line": 71
+                },
+                {
+                    "path": "addons/content-migration/v2/journey/dbvc-cc-v2-domain-journey-rest-controller.php",
+                    "line": 311
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ContentMigrationCliTest.php",
+                "tests/phpunit/ContentCollectorV2Phase12Test.php",
+                "tests/phpunit/ContentCollectorV2Phase20Test.php"
+            ],
+            "doc_refs": [
+                "docs/agents/RECIPES.md",
+                "docs/agents/facets/cli-and-automation.md",
+                "docs/agents/facets/content-migration-addon.md",
+                "addons/content-migration/docs/MIGRATION_MAPPER_V2_DOC_INDEX.md"
+            ],
+            "related": [
+                "addon.content_migration.runtime_guard"
+            ],
+            "known_gaps": [
+                "List intentionally exposes only the latest materialized run per domain, matching the current V2 list route.",
+                "Show reports structural and operational metadata but omits event messages, source URLs, raw values, artifact paths, and full per-URL rows.",
+                "Search stops after 200 domains or 100,000 events and requires --domain when a storage set exceeds those bounds.",
+                "The active Local PHP 8.4 and bundled WP-CLI stack can emit upstream deprecation notices before JSON stdout; unattended parsers need compatible clean bootstrap or explicit notice handling."
+            ],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "medium",
+                "recommended_surface": "none",
+                "rationale": "This dedicated CLI record is the implemented bounded run-inspection surface; readiness and all writer workflows remain separate safety contracts rather than further parity for this record.",
+                "reviewed_date": "2026-08-11"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-11",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_help",
+                    "same_checkout_wp_cli_execution",
+                    "pre_post_artifact_hash"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Focused tests plus same-checkout help, corrected exact-latest-run list output, exact current-run show output, and rejected --readiness execution passed on 2026-08-11. Pre/post hashing confirmed the same 12,133 files and tree hash 2c77f4b522095a010dedc594d8369a0bf591d8bfc23130e9e5a73094a571db2e."
+            }
+        },
+        {
+            "id": "cli.entity_editor.inspect",
+            "title": "Entity Editor cached list and structural inspection commands",
+            "summary": "Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values.",
+            "status": "active",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:post",
+                "object:term",
+                "object:third_party",
+                "operation:inspect",
+                "operation:list",
+                "risk:read_only",
+                "scope:core",
+                "surface:cli",
+                "workflow:data_review"
+            ],
+            "aliases": [
+                "wp dbvc entity-editor list",
+                "wp dbvc entity-editor inspect",
+                "Entity Editor CLI inventory"
+            ],
+            "addon_or_owner": "DBVC Core Entity Editor",
+            "runtime_entrypoint": "wp dbvc entity-editor",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc entity-editor list|inspect",
+                    "discovery_ids": [
+                        "cli.command.dbvc.entity-editor.inspect",
+                        "cli.command.dbvc.entity-editor.list"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-entity-editor-cli.php",
+                        "line": 482
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Existing Entity Editor transient or disk index cache",
+                "Exact cached relative path for one-file inspection"
+            ],
+            "inputs": [
+                "Kind, subtype, provider, match, duplicate, and search filters",
+                "Optional cache maximum age and bounded pagination",
+                "One sync-relative indexed JSON path for inspect"
+            ],
+            "outputs": [
+                "Cached index provenance, age, staleness, and aggregate stats",
+                "Bounded entity identity and match metadata",
+                "File size, SHA-256 fingerprint, modification time, and structural counts without raw values"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "dbvc_entity_editor_index_v1 transient (read only)",
+                "Entity Editor .dbvc-entity-index.json disk cache (read only)",
+                "One indexed sync JSON file for structural inspection (read only)"
+            ],
+            "settings": [],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "The command never rebuilds a missing or stale index; rebuilding writes transient and disk caches and remains a separate boundary.",
+                    "Inspect requires a path already present in the supported cached index and uses the lock-free file reader.",
+                    "Raw JSON values, downloads, locks, saves, merges, imports, deletes, and transfer packets are excluded.",
+                    "Titles, paths, UIDs, match IDs, hashes, and metadata counts are administrator diagnostic data."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-entity-editor-cli.php"
+                },
+                {
+                    "path": "includes/class-entity-editor-indexer.php",
+                    "line": 39
+                },
+                {
+                    "path": "includes/class-entity-editor-indexer.php",
+                    "line": 850
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/EntityEditorCliTest.php",
+                "tests/phpunit/EntityEditorEndpointsTest.php"
+            ],
+            "doc_refs": [
+                "docs/agents/RECIPES.md",
+                "docs/agents/facets/entity-editor.md",
+                "docs/agents/facets/cli-and-automation.md",
+                "docs/reference/entity-editor-usage.md"
+            ],
+            "related": [
+                "entity_editor.core.inspect",
+                "entity_editor.core.write",
+                "identity.core.entities"
+            ],
+            "known_gaps": [
+                "A cache miss or max-age failure requires a separately authorized index rebuild before listing can continue.",
+                "The command does not return raw field values or create individual/bulk download artifacts."
+            ],
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-10",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Focused tests plus same-checkout help, bounded disk-cache listing, one-file structural inspection, max-age failure, and unchanged pre/post cache hashes passed on 2026-08-10."
+            }
+        },
+        {
+            "id": "cli.core.capabilities.inspect",
+            "title": "Capability library list, show, and doctor commands",
+            "summary": "Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations.",
+            "status": "active",
+            "primary_category": "cli_automation",
+            "tags": [
+                "operation:diagnose",
+                "operation:inspect",
+                "operation:list",
+                "risk:read_only",
+                "scope:core",
+                "surface:cli",
+                "workflow:development"
+            ],
+            "aliases": [
+                "wp dbvc capabilities doctor",
+                "wp dbvc capabilities list",
+                "wp dbvc capabilities show",
+                "capability inventory CLI"
+            ],
+            "addon_or_owner": "DBVC Core agent reference",
+            "runtime_entrypoint": "wp dbvc capabilities",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc capabilities list|show|doctor",
+                    "discovery_ids": [
+                        "cli.command.dbvc.capabilities.doctor",
+                        "cli.command.dbvc.capabilities.list",
+                        "cli.command.dbvc.capabilities.show"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-capabilities-cli.php",
+                        "line": 242
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Packaged docs/agents manifest and generated discovery snapshot"
+            ],
+            "inputs": [
+                "Optional exact list filters or text search",
+                "Stable capability record ID for show",
+                "Optional doctor warning-exit flag"
+            ],
+            "outputs": [
+                "Filtered capability rows",
+                "One canonical manifest record",
+                "Machine-readable or tabular doctor results"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Packaged manifest and discovery snapshot (read only)",
+                "Explicit add-on option gates (read only)",
+                "WordPress REST registration table (read only)"
+            ],
+            "settings": [],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "Doctor initializes REST route registration but does not dispatch route callbacks.",
+                    "Output includes the active plugin path and enabled/disabled add-on gates; treat it as administrator diagnostic data."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 17
+                },
+                {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 242
+                },
+                {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 286
+                },
+                {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 316
+                },
+                {
+                    "path": "commands/class-capabilities-cli.php",
+                    "line": 357
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/CapabilityCliTest.php"
+            ],
+            "doc_refs": [
+                "docs/agents/README.md",
+                "docs/agents/RECIPES.md",
+                "docs/agents/facets/cli-and-automation.md"
+            ],
+            "related": [
+                "admin.core.capability_landscape"
+            ],
+            "known_gaps": [
+                "Doctor verifies packaged artifacts and registrations, not the success of mutating capability callbacks or final release-archive inclusion."
+            ],
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-10",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "same_checkout_wp_cli_execution"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Same-checkout help, filtered list JSON, canonical show JSON, and doctor JSON executed successfully on 2026-08-10 without dispatching DBVC operations."
             }
         },
         {
@@ -2299,16 +2968,16 @@
                 "surface:cli"
             ],
             "aliases": [
-                "wp dbvc resolver-rules list",
+                "wp dbvc resolver-rules list_",
                 "media mapping rules"
             ],
             "addon_or_owner": "DBVC Core",
             "surfaces": [
                 {
                     "type": "cli",
-                    "identifier": "wp dbvc resolver-rules list",
+                    "identifier": "wp dbvc resolver-rules list_",
                     "discovery_ids": [
-                        "cli.command.dbvc.resolver-rules.list"
+                        "cli.command.dbvc.resolver-rules.list_"
                     ],
                     "source_ref": {
                         "path": "commands/class-wp-cli-commands.php",
@@ -2350,23 +3019,26 @@
             "related": [
                 "media.core.resolver_rules"
             ],
-            "known_gaps": [],
+            "known_gaps": [
+                "The callable WP-CLI leaf is list_; the source examples and intended human-facing spelling use list, which is not currently registered."
+            ],
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-05",
+                "verified_date": "2026-08-08",
                 "evidence_types": [
                     "bootstrap_review",
                     "source_review",
-                    "static_registration_discovery"
+                    "static_registration_discovery",
+                    "same_checkout_wp_cli_help"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+                "notes": "The list_ leaf was confirmed by same-checkout WP-CLI help on 2026-08-08; the record remains false at the broader operation level because the command callback was not invoked."
             },
             "id": "cli.core.resolver_rules.list",
             "title": "Resolver-rule listing command",
             "summary": "Lists persistent media resolver rules without modifying them.",
             "primary_category": "cli_automation",
-            "runtime_entrypoint": "wp dbvc resolver-rules list"
+            "runtime_entrypoint": "wp dbvc resolver-rules list_"
         },
         {
             "status": "active",
@@ -2673,14 +3345,30 @@
                 "The implementation is present while its guide remains under proposed documentation; status reconciliation is still needed.",
                 "No same-checkout browser apply/rollback verification is claimed here."
             ],
+            "opportunity": {
+                "disposition": "deferred",
+                "priority": "low",
+                "effort": "medium",
+                "recommended_surface": "none",
+                "rationale": "Registry status is side-effect-free, but the current long-form guide still says the feature is unimplemented while the active checkout contains export, upload, apply, and rollback handlers. Documentation and supported-contract authority must be reconciled before CLI parity is promoted.",
+                "excluded_operations": [
+                    "Export package creation and download",
+                    "Package upload, diff-session creation, apply, and rollback",
+                    "Reading or returning provider-owned secret or environment-specific values"
+                ],
+                "next_action": "Reconcile the implemented provider registry/admin workflow with its proposed guide, then separately review a metadata-only domains/status command.",
+                "reviewed_date": "2026-08-11"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-11",
                 "evidence_types": [
                     "static_discovery",
-                    "source_review"
+                    "source_review",
+                    "opportunity_callback_audit"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Added while reconciling the agent library with the active LocalWP checkout."
+                "notes": "Phase 14 confirmed registry status is metadata-only but deferred parity until the implemented workflow and proposed guide have one supported-contract authority."
             }
         },
         {
@@ -3081,9 +3769,22 @@
                 "docs/development/entity-editor-manual-qa.md"
             ],
             "related": [
-                "entity_editor.core.write"
+                "entity_editor.core.write",
+                "cli.entity_editor.inspect"
             ],
-            "known_gaps": [],
+            "known_gaps": [
+                "The interactive file-read route acquires a transient editor lock; the dedicated CLI avoids that route and uses lock-free structural inspection.",
+                "Individual and bulk downloads can expose raw metadata and remain outside the CLI inspection contract."
+            ],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "A dedicated CLI record now provides cached metadata listing and lock-free structural file inspection. Raw downloads remain a separate sensitive-data review rather than implicit CLI parity.",
+                "related_record": "cli.entity_editor.inspect",
+                "reviewed_date": "2026-08-10"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "verified_date": "2026-08-05",
@@ -3727,7 +4428,8 @@
             "aliases": [
                 "media hydrate",
                 "media inventory",
-                "media mirror export"
+                "media mirror export",
+                "wp dbvc media mirror_export"
             ],
             "addon_or_owner": "Core media hydration",
             "surfaces": [
@@ -3737,7 +4439,7 @@
                     "discovery_ids": [
                         "cli.command.dbvc.media.hydrate",
                         "cli.command.dbvc.media.inventory",
-                        "cli.command.dbvc.media.mirror-export"
+                        "cli.command.dbvc.media.mirror_export"
                     ]
                 },
                 {
@@ -3838,16 +4540,19 @@
             "related": [],
             "known_gaps": [
                 "The referenced hydration guide remains labeled proposed even though this checkout contains an implementation; documentation status should be reconciled separately.",
-                "Same-checkout command execution has not been rerun during this source merge."
+                "The callable WP-CLI leaf is mirror_export; the source examples and proposed guide use mirror-export, which is not currently registered."
             ],
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-08",
                 "evidence_types": [
                     "static_discovery",
-                    "source_review"
+                    "source_review",
+                    "same_checkout_wp_cli_help",
+                    "same_checkout_rest_registration"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Added while reconciling the agent library with the active LocalWP checkout."
+                "notes": "All three media command leaves and media-hydration REST registration were confirmed in the same checkout; write and export callbacks were not invoked."
             }
         },
         {
@@ -3987,6 +4692,15 @@
                 "proposal.core.apply"
             ],
             "known_gaps": [],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "Resolver-rule list, add, delete, and import behavior already has mapped WP-CLI records; the broader REST record should not be counted as a missing CLI merely because ownership is split by safety.",
+                "related_record": "cli.core.resolver_rules.list",
+                "reviewed_date": "2026-08-10"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "verified_date": "2026-08-05",
@@ -4374,6 +5088,15 @@
                 "media.core.resolver_rules"
             ],
             "known_gaps": [],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "Proposal apply already has a dedicated WP-CLI command with its own write and backup contract, so this REST record is not a parity gap.",
+                "related_record": "cli.core.proposals.apply",
+                "reviewed_date": "2026-08-10"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "verified_date": "2026-08-05",
@@ -4668,16 +5391,33 @@
                 "media.core.resolver_rules"
             ],
             "known_gaps": [],
+            "opportunity": {
+                "disposition": "candidate",
+                "priority": "medium",
+                "effort": "medium",
+                "recommended_surface": "cli",
+                "rationale": "The existing proposals list command covers top-level readiness, while bounded entity summaries, duplicate counts, and resolver metrics remain useful. The current single-entity detail path is excluded because it can prune stored decisions and can expose raw values.",
+                "candidate_scope": "Show one exact proposal's readiness and return bounded entity summary, duplicate-count, resolver-metric, decision-count, snapshot-state, and hash metadata without raw current/proposed values.",
+                "excluded_operations": [
+                    "Single-entity detail until decision-pruning side effects are removed",
+                    "Raw current/proposed values and raw downloads",
+                    "Decision updates, masking changes, duplicate cleanup, snapshot recapture, upload, delete, apply, and resolver-rule mutation"
+                ],
+                "next_action": "Define wp dbvc proposals show and entities around exact proposal IDs, bounded summary fields, pagination, and no calls to get_proposal_entity() or writer callbacks.",
+                "related_record": "cli.core.proposals.list",
+                "reviewed_date": "2026-08-11"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-05",
+                "verified_date": "2026-08-11",
                 "evidence_types": [
                     "bootstrap_review",
                     "source_review",
-                    "static_registration_discovery"
+                    "static_registration_discovery",
+                    "opportunity_callback_audit"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed."
+                "notes": "Phase 14 separated bounded readiness/entity-summary candidates from raw detail and identified decision pruning inside the current single-entity GET path; no proposal callback was executed."
             },
             "id": "proposal.core.inspect",
             "title": "Proposal and entity inspection API",
@@ -4771,6 +5511,15 @@
                 "proposal.core.inspect"
             ],
             "known_gaps": [],
+            "opportunity": {
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "Trusted proposal ZIP upload already has a mapped WP-CLI command; fixture upload and deletion should remain separate safety reviews rather than inflating a generic parity count.",
+                "related_record": "cli.core.proposals.upload",
+                "reviewed_date": "2026-08-10"
+            },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "verified_date": "2026-08-05",

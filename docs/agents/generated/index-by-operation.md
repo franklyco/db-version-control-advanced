@@ -16,6 +16,7 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.bricks.drift`](../manifest.json) | `active` | `read_only` | [Bricks add-on](../facets/bricks-addon.md) | Collects canonicalized Bricks artifacts and compares local/current states to identify drift without applying changes. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
 
 ## `configure`
 
@@ -46,6 +47,7 @@
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
 | [`addon.bricks.control_plane`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) | Exposes add-on status, schema verification, diagnostics, UI contract/telemetry, admin navigation, and enable/visibility settings. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`observability.core.client_logs`](../manifest.json) | `active` | `filesystem_write` | [Identity and storage](../facets/identity-storage-and-observability.md) | Accepts authenticated client-error reports and writes file or structured activity records used for diagnostics. |
 
 ## `download`
@@ -100,6 +102,11 @@
 | [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) | Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, and a change journal. |
 | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
 | [`ai.core.package_intake`](../manifest.json) | `active` | `mixed` | [Core import/export](../facets/core-import-export.md) | Administrator-only package intake validates AI submission bundles, discovers ACF context, retains reports, exposes review tools, and handles explicit continuation or cleanup actions. |
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
+| [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`configuration.core.portability`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) | Administrator workflows register configuration domains, export/import configuration packages, preview changes, apply approved values, and download or restore related artifacts. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
 | [`media.core.hydration`](../manifest.json) | `active` | `mixed` | [Proposals and media](../facets/proposals-and-media.md) | WP-CLI and administrator workflows inventory attachments, build portable media mirrors, preview hydration plans, and explicitly apply missing-file hydration with receipts and safety gates. |
@@ -115,9 +122,12 @@
 |---|---|---|---|---|
 | [`addon.bricks.proposals`](../manifest.json) | `active` | `mixed` | [Bricks add-on](../facets/bricks-addon.md) | Lists Bricks-specific proposals and patches their review state through the add-on workflow. |
 | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) | Renders the curated DBVC capability manifest as an administrator-only, filterable table for reviewing commands, interfaces, safety boundaries, and automation gaps. |
+| [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
+| [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`cli.core.proposals.list`](../manifest.json) | `active` | `mixed` | [CLI and automation](../facets/cli-and-automation.md) | Lists proposals and can optionally recapture snapshots or clean duplicate artifacts, so flags determine whether the invocation is read-only. |
 | [`cli.core.resolver_rules.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists persistent media resolver rules without modifying them. |
 | [`cli.core.snapshots.list`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists DBVC snapshot history with type and pagination filters without changing site state. |
+| [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists metadata from an existing Entity Editor cache and inspects one indexed sync JSON file through hashes and structural counts without rebuilding, locking, downloading, or returning raw values. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
 | [`proposal.core.inspect`](../manifest.json) | `active` | `read_only` | [Proposals and media](../facets/proposals-and-media.md) | Lists proposals, entities, entity detail, duplicates, and resolver/masking state for review without applying data. |
 
@@ -170,3 +180,9 @@
 | [`planned.core.universal_upload_intake`](../manifest.json) | `planned` | `unknown` | [Core import/export](../facets/core-import-export.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) | Planned single intake for JSON batches or ZIPs with automatic routing and a true pre-write dry-run summary. |
 | [`proposal.core.intake`](../manifest.json) | `active` | `filesystem_write` | [Proposals and media](../facets/proposals-and-media.md) | Uploads trusted proposal or fixture packages, validates/extracts them, and supports deleting an individual staged proposal. |
 | [`transport.core.sync_packages`](../manifest.json) | `active` | `destructive` | [Identity and storage](../facets/identity-storage-and-observability.md) | Provides authenticated admin handlers for sync archives, backup downloads, cache/purge status, and a scheduled temporary FTP upload window. |
+
+## `validate`
+
+| Record | Status | Safety | Facets | Summary |
+|---|---|---|---|---|
+| [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
