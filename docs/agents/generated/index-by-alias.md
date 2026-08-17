@@ -44,6 +44,7 @@
 | CLI import | [`cli.core.import`](../manifest.json) | `active` | `wordpress_write` | [CLI and automation](../facets/cli-and-automation.md) |
 | CLI inventory table | [`admin.core.capability_landscape`](../manifest.json) | `active` | `read_only` | [Identity and storage](../facets/identity-storage-and-observability.md) |
 | config portability | [`configuration.core.portability`](../manifest.json) | `active` | `mixed` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) |
+| configuration provider registry CLI | [`cli.configuration.portability.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | Configure tab | [`settings.core.import_export`](../manifest.json) | `active` | `wordpress_write` | [Settings and extensions](../facets/settings-hooks-and-extensions.md) |
 | connected sites | [`addon.bricks.connected_onboarding`](../manifest.json) | `active` | `remote_write` | [Bricks add-on](../facets/bricks-addon.md) |
 | content collector | [`addon.content_migration.runtime_guard`](../manifest.json) | `active` | `mixed` | [Content Migration add-on](../facets/content-migration-addon.md) |
@@ -133,6 +134,8 @@
 | wp dbvc capabilities doctor | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc capabilities list | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc capabilities show | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc config domains | [`cli.configuration.portability.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
+| wp dbvc config status | [`cli.configuration.portability.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc content-migration runs list | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc content-migration runs show | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |
 | wp dbvc entity-editor inspect | [`cli.entity_editor.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) |

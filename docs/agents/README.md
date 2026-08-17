@@ -16,12 +16,11 @@ Do not treat this folder as required startup context for unrelated DBVC work. Ex
 
 ## Current Boundary
 
-- The current LocalWP checkout manifest contains 53 grouped capability records covering all 405 enforced discovery surfaces.
-- Source discovery currently identifies 24 WP-CLI leaf commands and 127 REST registrations.
+- The generated Current inventory summary below is the canonical count of curated records, enforced discovery surfaces, WP-CLI leaves, REST registrations, and reviewed opportunity dispositions for this checkout.
 - Strict coverage is enabled: a new CLI command, REST route, admin surface, setting, extension point, database table, or scheduled hook must be mapped or explicitly ignored.
 - A discovered command, route, hook, setting, or service must not be treated as agent-safe merely because it appears in the discovery snapshot.
 - Records marked `active` are source-loaded and reviewed for this checkout; they are not proof that every surface is activated or safe to invoke in a particular WordPress runtime.
-- The opportunity layer currently contains no bounded candidates, 1 deferred workflow, 9 REST-to-CLI false positives or completed gaps marked covered elsewhere, 3 implemented CLI records marked not recommended for further parity, no remaining `needs_review` records, and 40 explicitly unreviewed records. A future candidate must declare a machine-readable boundary and excluded operations before it becomes an implementation queue item.
+- A future opportunity candidate must declare a machine-readable boundary and excluded operations before it becomes an implementation queue item.
 - Phase 18 makes media resolver `dry_run=true` and existing-bundle lookup side-effect-free. The broader proposal inspection record remains mixed-risk because snapshot, backup-path, identity, and detail readers still have write-capable behavior.
 - The manifest is aligned with the active LocalWP plugin source. Same-checkout WP-CLI help, REST registration, add-on gates, and administrator renderer evidence are recorded in [`RUNTIME_VERIFICATION.md`](RUNTIME_VERIFICATION.md); write operations and authenticated browser interaction remain separate evidence layers.
 - The original cross-checkout comparison and static QA provenance are retained in [`PHASE6_VERIFICATION.md`](PHASE6_VERIFICATION.md).
@@ -96,12 +95,20 @@ When this manifest ships with the plugin, administrators can review the same cur
 ## Generated Capability Summary
 
 <!-- BEGIN GENERATED AGENT INDEX -->
+### Current inventory
+
+- **54** curated records cover **415** enforced discovery surfaces; **0** are unmapped.
+- Source discovery identifies **26** WP-CLI leaf commands and **134** REST registrations.
+- Opportunity dispositions: **0** candidate, **0** needs review, **10** covered elsewhere, **0** deferred, **4** not recommended for further parity, and **40** unreviewed.
+
+### Records by category
+
 | Category | Records |
 |---|---:|
 | `addon_bricks` | 8 |
 | `addon_content_migration` | 4 |
 | `api_extensions` | 2 |
-| `cli_automation` | 14 |
+| `cli_automation` | 15 |
 | `entity_editor` | 3 |
 | `identity_entities` | 2 |
 | `import_export` | 4 |
@@ -112,7 +119,7 @@ When this manifest ships with the plugin, administrators can review the same cur
 | `settings_configuration` | 3 |
 | `snapshots_backups` | 2 |
 
-Total curated records: **53**.
+Total curated records: **54**.
 <!-- END GENERATED AGENT INDEX -->
 
 ## Maintenance Commands

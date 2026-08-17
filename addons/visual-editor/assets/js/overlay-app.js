@@ -2117,6 +2117,23 @@
     return typeof value === 'string' && value ? value : fallback;
   }
 
+  function isMediaManagerEnabled() {
+    const bootstrap = window.DBVCVisualEditorBootstrap || {};
+    const mediaManager = bootstrap.mediaManager;
+
+    return Boolean(mediaManager && typeof mediaManager === 'object' && mediaManager.enabled === true);
+  }
+
+  function dispatchMediaManagerEvent(name, detail) {
+    if (!isMediaManagerEnabled()) {
+      return;
+    }
+
+    document.dispatchEvent(new CustomEvent(`dbvc:visual-editor:media-manager:${name}`, {
+      detail: detail || {}
+    }));
+  }
+
   function renderToolbarIcon(name) {
     const attrs = 'aria-hidden="true" focusable="false" viewBox="0 0 24 24"';
     const common = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
@@ -2125,6 +2142,7 @@
       status: `<svg ${attrs}><path ${filled} d="M8 5a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Zm8 0a2 2 0 0 0-2 2v10a2 2 0 1 0 4 0V7a2 2 0 0 0-2-2Z"/></svg>`,
       layers: `<svg ${attrs}><path ${common} d="m12 3 8 4-8 4-8-4 8-4Z"/><path ${common} d="m4 12 8 4 8-4"/><path ${common} d="m4 17 8 4 8-4"/></svg>`,
       search: `<svg ${attrs}><circle ${common} cx="11" cy="11" r="6"/><path ${common} d="m16 16 4 4"/></svg>`,
+      media: `<svg ${attrs}><rect ${common} x="3" y="4" width="18" height="16" rx="2.5"/><circle ${common} cx="8.75" cy="9.75" r="1.6"/><path ${common} d="m4 16.5 4.5-4a1.8 1.8 0 0 1 2.4 0l3 2.7a1.8 1.8 0 0 0 2.4 0l3.7-2.6"/></svg>`,
       globe: `<svg ${attrs}><circle ${common} cx="12" cy="12" r="9"/><path ${common} d="M3 12h18"/><path ${common} d="M12 3c2.5 2.7 3.5 5.7 3.5 9s-1 6.3-3.5 9c-2.5-2.7-3.5-5.7-3.5-9S9.5 5.7 12 3Z"/></svg>`,
       edit: `<svg ${attrs}><path ${common} d="M4 20h16"/><path ${common} d="m6 16 1-4 9-9 4 4-9 9-4 1Z"/><path ${common} d="m14 5 4 4"/></svg>`,
       more: `<svg ${attrs}><circle ${filled} cx="5" cy="12" r="1.8"/><circle ${filled} cx="12" cy="12" r="1.8"/><circle ${filled} cx="19" cy="12" r="1.8"/></svg>`,
@@ -2134,15 +2152,19 @@
     return icons[name] || icons.more;
   }
 
-  function createToolbarButtonMarkup(action, icon, label, extraClass, disabled) {
+  function createToolbarButtonMarkup(action, icon, label, extraClass, disabled, accessibility) {
     const classes = ['dbvc-ve-toolbar__button'];
+    const attributes = accessibility && typeof accessibility === 'object' ? accessibility : {};
+    const controls = attributes.controls ? ` aria-controls="${escapeHtml(attributes.controls)}"` : '';
+    const expanded = typeof attributes.expanded === 'boolean' ? ` aria-expanded="${attributes.expanded ? 'true' : 'false'}"` : '';
+    const hasPopup = attributes.hasPopup ? ` aria-haspopup="${escapeHtml(attributes.hasPopup)}"` : '';
 
     if (extraClass) {
       classes.push(extraClass);
     }
 
     return [
-      `<button type="button" class="${classes.join(' ')}" data-dbvc-ve-toolbar-action="${escapeHtml(action)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${disabled ? ' disabled aria-disabled="true"' : ''}>`,
+      `<button type="button" class="${classes.join(' ')}" data-dbvc-ve-toolbar-action="${escapeHtml(action)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${controls}${expanded}${hasPopup}${disabled ? ' disabled aria-disabled="true"' : ''}>`,
       renderToolbarIcon(icon),
       '<span class="dbvc-ve-toolbar__count" aria-hidden="true"></span>',
       '</button>'
@@ -2182,6 +2204,7 @@
       const statusLabel = getToolbarString('toolbarStatus', 'Visual Editor status');
       const reviewLabel = getToolbarString('toolbarReviewFields', 'Review fields');
       const goObjectLabel = getToolbarString('toolbarGoToObject', 'Go to object');
+      const mediaManagerLabel = getToolbarString('toolbarMediaManager', 'Media Manager');
       const sharedGlobalsLabel = getToolbarString('toolbarSharedGlobals', 'Shared globals');
       const moreLabel = getToolbarString('toolbarMore', 'More options');
       const editLabel = getToolbarString('toolbarEditObject', 'Edit object');
@@ -2197,8 +2220,17 @@
         '<div class="dbvc-ve-toolbar__dock">',
         createToolbarButtonMarkup('review-fields', 'layers', reviewLabel, 'dbvc-ve-toolbar__button--dock', false),
         createToolbarButtonMarkup('go-object', 'search', goObjectLabel, 'dbvc-ve-toolbar__button--dock', false),
+        isMediaManagerEnabled()
+          ? createToolbarButtonMarkup('media-manager', 'media', mediaManagerLabel, 'dbvc-ve-toolbar__button--dock', false, {
+            controls: 'dbvc-ve-media-manager',
+            expanded: false,
+            hasPopup: 'dialog'
+          })
+          : '',
         createToolbarButtonMarkup('shared-globals', 'globe', sharedGlobalsLabel, 'dbvc-ve-toolbar__button--dock', false),
-        createToolbarButtonMarkup('overflow', 'more', moreLabel, 'dbvc-ve-toolbar__button--dock', true),
+        isMediaManagerEnabled()
+          ? ''
+          : createToolbarButtonMarkup('overflow', 'more', moreLabel, 'dbvc-ve-toolbar__button--dock', true),
         '</div>',
         `<a class="dbvc-ve-toolbar__button dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__edit-link is-disabled" data-dbvc-ve-toolbar-action="edit-object" aria-label="${escapeHtml(editLabel)}" title="${escapeHtml(editLabel)}" target="_blank" rel="noopener noreferrer" aria-disabled="true">${renderToolbarIcon('edit')}</a>`,
         toggleUrl
@@ -2943,6 +2975,16 @@
       event.stopPropagation();
       return;
     }
+
+    if (action === 'media-manager') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeToolbarPopover();
+      dispatchMediaManagerEvent('toggle', { trigger: actionNode });
+      return;
+    }
+
+    dispatchMediaManagerEvent('close', { restoreFocus: false });
 
     if (action === 'edit-object' || action === 'toggle-mode') {
       closeToolbarPopover();

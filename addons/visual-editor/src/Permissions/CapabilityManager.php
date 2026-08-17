@@ -36,6 +36,21 @@ final class CapabilityManager
     }
 
     /**
+     * @param int $term_id
+     * @return bool
+     */
+    public function canEditTermId($term_id)
+    {
+        $term_id = absint($term_id);
+
+        if ($term_id <= 0 || ! $this->canUseVisualEditor()) {
+            return false;
+        }
+
+        return current_user_can('edit_term', $term_id);
+    }
+
+    /**
      * @param EditableDescriptor $descriptor
      * @return bool
      */
@@ -53,9 +68,7 @@ final class CapabilityManager
         }
 
         if ($entity_type === 'term') {
-            $term_id = absint($entity_id);
-
-            return $term_id > 0 && current_user_can('edit_term', $term_id);
+            return $this->canEditTermId($entity_id);
         }
 
         if ($entity_type === 'user') {

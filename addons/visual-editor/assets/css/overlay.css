@@ -14,7 +14,7 @@
   --dbvc-ve-color-text-light: var(--dbvc-ve-color-light);
   --dbvc-ve-color-text-dark: var(--dbvc-ve-color-dark);
   --dbvc-ve-color-text-muted: color-mix(in srgb, var(--dbvc-ve-color-dark) 68%, #ffffff);
-  --dbvc-ve-color-text-subtle: color-mix(in srgb, var(--dbvc-ve-color-dark) 56%, #ffffff);
+  --dbvc-ve-color-text-subtle: color-mix(in srgb, var(--dbvc-ve-color-dark) 60%, #ffffff);
   --dbvc-ve-color-background-light: var(--dbvc-ve-color-light);
   --dbvc-ve-color-background-light--opacity-m: rgba(var(--dbvc-ve-color-light-rgb), 0.86);
   --dbvc-ve-color-background-dark: var(--dbvc-ve-color-dark);

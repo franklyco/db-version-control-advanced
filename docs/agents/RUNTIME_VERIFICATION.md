@@ -320,3 +320,14 @@ Record that check as one compact result here and update `proposal.core.decisions
 ## Proposal Decision Operator Drawer Close Focus Regression QA — 2026-08-14
 
 In the authenticated local administrator browser, the namespaced disposable proposal `dbvc-browser-qa-20260814-041712-U7FGMg` opened its success entity drawer from the originating `tr[role="button"][tabindex="0"]` control. Clicking `Close entity detail` removed the drawer and returned `document.activeElement` to that exact origin. The prune confirmation and writer were not invoked; an independent fixture inspection confirmed all five stored choices remained unchanged. Cleanup then removed the fixture option state, three pages, proposal directory, and snapshot directory, and a final inspection found no namespaced posts, decisions, or fixture directories. This closes only the drawer-focus regression boundary; broader decision writers, readiness, and apply behavior remain out of scope.
+
+## Configuration Portability Metadata CLI Follow-up — 2026-08-14
+
+Phases 34-35 reconciled the implemented configuration portability workflow with active guide/roadmap authority and added two read-only metadata commands:
+
+- `wp dbvc config domains`
+- `wp dbvc config status`
+
+Same-checkout leaf help passed for both commands. Exact-domain JSON returned the `visual_editor` provider's version plus group, field, policy, and sensitive-field counts; aggregate status reported 11 domains, 41 groups, and 235 fields with explicit `current_values_read=no` and `writer_services_invoked=no` markers. `--apply` was rejected as an unknown parameter before command execution.
+
+A hash-only pre/post check covered all 235 unique option keys declared by registered provider field metadata. Both hashes were `cb40d0beb2b8c3905d62cf784010b81f04d0c3a3250aff798dfa2c80a98c2e97`, confirming the live inspection did not change registered configuration values. No export, download, upload, package/session read, diff, environment replacement, apply, backup, rollback, secret output, or other capability boundary was invoked.

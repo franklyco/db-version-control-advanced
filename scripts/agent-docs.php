@@ -40,8 +40,8 @@ try {
     }
 
     if ($command === 'build') {
-        writeGeneratedIndexes($repositoryRoot, $manifest);
-        updateReadmeIndex($repositoryRoot, $manifest);
+        $snapshot = writeGeneratedIndexes($repositoryRoot, $manifest);
+        updateReadmeIndex($repositoryRoot, $manifest, $snapshot);
         printManifestSummary($manifest, 'Built generated agent indexes');
         exit(0);
     }
@@ -59,7 +59,7 @@ try {
 
     $readmePath = agentDocsPath($repositoryRoot, 'README.md');
     $readme = readRequiredFile($readmePath);
-    $expectedReadme = replaceGeneratedReadmeBlock($readme, renderReadmeSummary($manifest));
+    $expectedReadme = replaceGeneratedReadmeBlock($readme, renderReadmeSummary($manifest, $discoveredSnapshot));
     if ($readme !== $expectedReadme) {
         $errors[] = 'Generated README summary is stale. Run composer agent-docs:build.';
     }
@@ -1321,17 +1321,58 @@ function renderAliasIndex(array $records): string
     return implode("\n", $lines);
 }
 
-function renderReadmeSummary(array $manifest): string
+function renderReadmeSummary(array $manifest, array $snapshot): string
 {
     if ($manifest['records'] === []) {
         return '_No curated capability records exist yet. Run the approved manifest research phase before using this index for capability decisions._';
     }
+    $coverage = calculateCoverage($manifest, $snapshot);
+    $opportunityCounts = [
+        'candidate' => 0,
+        'needs_review' => 0,
+        'covered_elsewhere' => 0,
+        'deferred' => 0,
+        'not_recommended' => 0,
+        'unreviewed' => 0,
+    ];
     $counts = [];
     foreach ($manifest['records'] as $record) {
         $counts[$record['primary_category']] = ($counts[$record['primary_category']] ?? 0) + 1;
+        $disposition = (string) ($record['opportunity']['disposition'] ?? 'unreviewed');
+        if (array_key_exists($disposition, $opportunityCounts)) {
+            ++$opportunityCounts[$disposition];
+        }
     }
     ksort($counts);
-    $lines = ['| Category | Records |', '|---|---:|'];
+    $lines = [
+        '### Current inventory',
+        '',
+        sprintf(
+            '- **%d** curated records cover **%d** enforced discovery surfaces; **%d** are unmapped.',
+            count($manifest['records']),
+            $coverage['surface_count'],
+            $coverage['unmapped_count']
+        ),
+        sprintf(
+            '- Source discovery identifies **%d** WP-CLI leaf commands and **%d** REST registrations.',
+            (int) ($snapshot['counts']['cli_commands'] ?? 0),
+            (int) ($snapshot['counts']['rest_routes'] ?? 0)
+        ),
+        sprintf(
+            '- Opportunity dispositions: **%d** candidate, **%d** needs review, **%d** covered elsewhere, **%d** deferred, **%d** not recommended for further parity, and **%d** unreviewed.',
+            $opportunityCounts['candidate'],
+            $opportunityCounts['needs_review'],
+            $opportunityCounts['covered_elsewhere'],
+            $opportunityCounts['deferred'],
+            $opportunityCounts['not_recommended'],
+            $opportunityCounts['unreviewed']
+        ),
+        '',
+        '### Records by category',
+        '',
+        '| Category | Records |',
+        '|---|---:|',
+    ];
     foreach ($counts as $category => $count) {
         $lines[] = sprintf('| `%s` | %d |', $category, $count);
     }
@@ -1340,20 +1381,21 @@ function renderReadmeSummary(array $manifest): string
     return implode("\n", $lines);
 }
 
-function writeGeneratedIndexes(string $root, array $manifest): void
+function writeGeneratedIndexes(string $root, array $manifest): array
 {
     $snapshot = discoverRepository($root);
     validateSnapshotSourceRefs($root, $snapshot);
     foreach (renderIndexes($manifest, $snapshot) as $relativePath => $contents) {
         writeTextFile(agentDocsPath($root, $relativePath), $contents);
     }
+    return $snapshot;
 }
 
-function updateReadmeIndex(string $root, array $manifest): void
+function updateReadmeIndex(string $root, array $manifest, array $snapshot): void
 {
     $path = agentDocsPath($root, 'README.md');
     $readme = readRequiredFile($path);
-    writeTextFile($path, replaceGeneratedReadmeBlock($readme, renderReadmeSummary($manifest)));
+    writeTextFile($path, replaceGeneratedReadmeBlock($readme, renderReadmeSummary($manifest, $snapshot)));
 }
 
 function replaceGeneratedReadmeBlock(string $readme, string $replacement): string

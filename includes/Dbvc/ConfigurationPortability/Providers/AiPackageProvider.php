@@ -118,6 +118,15 @@ final class AiPackageProvider extends AbstractOptionArrayDomainProvider
         ];
     }
 
+    public function get_import_dependencies(array $incoming): array
+    {
+        return array_merge(
+            $this->get_class_dependency($incoming, 'Dbvc\\AiPackage\\Settings', __('AI Package settings', 'dbvc')),
+            $this->get_value_dependencies($incoming, 'ai_rules_post_types', 'post_type', true),
+            $this->get_value_dependencies($incoming, 'ai_rules_taxonomies', 'taxonomy', true)
+        );
+    }
+
     public function apply(array $sanitized, array $context): array
     {
         unset($context);

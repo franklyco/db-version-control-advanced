@@ -6,6 +6,27 @@ DBVC Visual Editor is a layered addon that instruments Bricks-rendered frontend 
 
 The architecture must prevent fragile DOM guessing and avoid exposing raw save targets directly in the browser.
 
+## Frontend Media Manager staging boundary
+
+The Media Manager is being added in independently reviewable slices behind the default-off `dbvc_visual_editor_media_manager_enabled` setting. The setting is effective only while the Visual Editor itself is enabled. R1-A established policy/catalog authority, R1-B added an internal request-batched scanner and separate ephemeral snapshot lifecycle, R1-C added a protected read-only transport and safe result projection, and R1-D now provides the toolbar/shell, frontend API/state controller, server-driven laptop/desktop table, and protected lazy row expansion.
+
+Current R1-A/R1-B/R1-C roles:
+
+- `MediaManager\EligibilityPolicy` discovers the same public/show-UI owner families used by current object navigation, then narrows posts to `publish` and repeats current exclusions plus per-object `edit_post`/`edit_term` checks.
+- `MediaManager\AcfMediaFieldCatalog` evaluates active runtime ACF groups with `acf_get_field_group_visibility()` for the exact post or term screen. It caches group/field definitions for one catalog instance while keeping visibility owner-specific, includes only unconditional top-level and group-only image/gallery definitions, and counts conditional, repeater, flexible-content, clone, and other nested descendants as unsupported.
+- `MediaManager\MediaAssignmentValueClassifier` mirrors current image/gallery resolver input shapes while preserving malformed nonempty raw storage as `invalid_nonempty` instead of reporting it as an empty assignment.
+- `MediaManager\ScanCandidateProvider` traverses dynamically discovered eligible post types and taxonomies through bounded, deterministic ID pages. Both candidate count and source-query count are capped per call.
+- `MediaManager\MediaScanService` rechecks R1-A eligibility/catalog results, reads only native featured-image and supported ACF media values, traverses deterministic group-only values, and produces compact HMAC-derived group/finding references plus empty-value fingerprints. It creates no descriptor.
+- `MediaManager\ScanSnapshotStore` keeps compressed scan groups in a separately namespaced transient, binds every load to the current blog and user, uses an opaque generation plus monotonic revision, applies a one-hour default TTL and safe payload ceiling, and uses a short atomic option lock only while one chunk updates a snapshot.
+- `MediaManager\MediaScanCoordinator` owns start/next/cancel/retry state transitions, latest-generation replacement, configuration invalidation, cursor persistence, summary recomputation, and per-chunk duration/query/memory/storage metrics.
+- `MediaManager\MediaScanReadModel` projects lifecycle and result records without internal owner/field targets, performs bounded search/filter/sort/cursor retrieval, repeats current object-specific permission checks at list time, and rescans one server-owned group on expansion to report `missing`, `changed`, `resolved_or_changed`, or `unavailable` field states. It creates no descriptor or write action.
+- `Rest\Controllers\MediaManagerController` exposes the protected start/latest/list/next/retry/cancel/group routes only when the feature is enabled, the base Visual Editor capability passes, and the signed Visual Editor mode cookie is active. Explicit scan and group reads require matching generation/revision values; only latest-scan resume omits them.
+- `Assets\AssetLoader` enqueues `media-manager.css` and `media-manager-app.js` only when active frontend Visual Editor mode and the Media Manager setting both pass. The existing `FrontendRuntimeGuard` therefore keeps the shell absent in Bricks Builder/main/iframe/preview requests.
+- `api-client.js` owns the nonce-authenticated Media Manager latest/start/list/group/next/retry/cancel requests and requires the current opaque scan/generation/revision identity for every explicit scan or group call.
+- `overlay-app.js` owns only the conditional toolbar trigger and emits narrow open/close events. `media-manager-app.js` owns the non-modal shell, lifecycle/query/result/expansion state, first-open latest-scan rehydration, explicit backend-to-presentation mapping, server-authorized action visibility, independent list and expansion response sequencing, Escape handling, row `aria-expanded`/`aria-controls`, and trigger/row-button focus restoration. It renders only normalized safe R1-C projections, sends search/entity/field/sort to the server, replaces the first page, appends opaque-cursor pages with group-reference de-duplication, preserves the table scroll position and active disclosure focus during rerender, and lazily exposes at most one server-revalidated field list. The dialog/results scroll/expanded entity structures have stable names, loading states expose status/busy semantics, and one persistent polite live region reports field-check start/completion/failure. Its disclosure transition honors reduced-motion preference. It does not reuse descriptor/mutation state.
+
+No scan runs on frontend page load. The first Media Manager open checks the current user/site-bound latest snapshot; start/next/retry/cancel and group revalidation occur only after an explicit user action. R1-D renders bounded result pages and lazily expands one row through the server-owned group route without placing owner/field targets in the DOM. R1-E regression coverage now proves ordinary asset enqueue creates no scan, automated semantic/loading/live-announcement behavior across Chromium/Firefox/WebKit, and compressed 100/500/2,000-group snapshot/read/payload behavior while retaining the 50-row server ceiling. It adds no descriptor-session integration, Media Library action, content mutation, journal entry, or cache invalidation. R1-E authenticated runtime, complete candidate-scan scale, real AT, real Safari, and aggregate lint completion remain; additional responsive/mobile work remains tabled.
+
 ## System shape
 
 ### 1. Activation layer
@@ -160,7 +181,7 @@ Current runtime refinement:
 
 Planned runtime refinement:
 21. Tune dwell timing and viewport-prefetch policy after profiling on representative pages
-22. Refine mobile and tablet touch-selection UX if real-device testing shows ambiguity around first-tap vs second-tap behavior
+22. Tabled by D-036: refine mobile and tablet touch-selection UX only after explicit reauthorization
 
 ## Non-goals for MVP
 
@@ -187,6 +208,7 @@ Planned runtime refinement:
 - `src/Cache/` cache invalidation handoff points
 - `src/Assets/` script and style enqueueing
 - `src/AdminBar/` activation UI entry points
+- `src/MediaManager/` scan-specific eligibility, field applicability, raw-value classification, bounded traversal, scan coordination, and ephemeral snapshot contracts
 
 ## Architectural guardrails
 

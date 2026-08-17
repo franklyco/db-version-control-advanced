@@ -4,6 +4,8 @@ namespace Dbvc\VisualEditor\Rest;
 
 use Dbvc\VisualEditor\Context\EditModeState;
 use Dbvc\VisualEditor\Context\PageContextResolver;
+use Dbvc\VisualEditor\MediaManager\MediaScanCoordinator;
+use Dbvc\VisualEditor\MediaManager\MediaScanReadModel;
 use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
 use Dbvc\VisualEditor\Presentation\DescriptorSummaryBuilder;
@@ -13,6 +15,7 @@ use Dbvc\VisualEditor\Rest\DescriptorPayloadBuilder;
 use Dbvc\VisualEditor\Rest\Controllers\CollectionSeedController;
 use Dbvc\VisualEditor\Rest\Controllers\CompositeSaveController;
 use Dbvc\VisualEditor\Rest\Controllers\DescriptorController;
+use Dbvc\VisualEditor\Rest\Controllers\MediaManagerController;
 use Dbvc\VisualEditor\Rest\Controllers\ObjectSearchController;
 use Dbvc\VisualEditor\Rest\Controllers\ReferenceSearchController;
 use Dbvc\VisualEditor\Rest\Controllers\SaveController;
@@ -63,6 +66,16 @@ final class Routes
      */
     private $profiler;
 
+    /**
+     * @var MediaScanCoordinator
+     */
+    private $media_scans;
+
+    /**
+     * @var MediaScanReadModel
+     */
+    private $media_read_model;
+
     public function __construct(
         EditableRegistry $registry,
         ResolverRegistry $resolvers,
@@ -71,7 +84,9 @@ final class Routes
         PageContextResolver $page_context,
         CapabilityManager $capabilities,
         DescriptorSummaryBuilder $summaries,
-        ?PerformanceProfiler $profiler = null
+        ?PerformanceProfiler $profiler,
+        MediaScanCoordinator $media_scans,
+        MediaScanReadModel $media_read_model
     ) {
         $this->registry = $registry;
         $this->resolvers = $resolvers;
@@ -81,6 +96,8 @@ final class Routes
         $this->capabilities = $capabilities;
         $this->summaries = $summaries;
         $this->profiler = $profiler;
+        $this->media_scans = $media_scans;
+        $this->media_read_model = $media_read_model;
     }
 
     /**
@@ -112,6 +129,7 @@ final class Routes
         (new ReferenceSearchController($this->registry, $this->resolvers, $this->edit_mode, $this->capabilities))->register();
         (new ObjectSearchController($this->edit_mode, $this->capabilities))->register();
         (new SharedGlobalFieldsController($this->registry, $this->edit_mode, $this->capabilities, $payloads))->register();
+        (new MediaManagerController($this->media_scans, $this->media_read_model, $this->edit_mode, $this->capabilities))->register();
         (new CollectionSeedController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
         (new CompositeSaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
         (new SaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();

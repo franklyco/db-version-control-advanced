@@ -873,9 +873,9 @@ The fixture and all artifacts were removed. This is a recorded failed accessibil
 
 Phase 32 implements the narrow focus correction: the drawer no longer restores its prior focus on modal state changes, the prune trigger is retained, the rendered modal focuses `Cancel`, and cancellation paths restore that trigger. The focused source-contract suite passed with 58 tests and 715 assertions; the rebuilt `admin-app` completed successfully. Browser QA then verified initial `Cancel` focus plus restoration to `Prune stale decisions` after Escape, Cancel, and the WordPress modal Close control. The writer was deliberately not sent, both decisions remained intact, and fixture cleanup was complete.
 
-This resolves the Phase 31 defect but does not promote the capability to globally live-runtime verified. The remaining operator UI closeout is tracked as the compact matrix below; no prune writer, readiness, or apply behavior is in scope.
+This resolves the Phase 31 defect but does not promote the capability to globally live-runtime verified. Phase 33 subsequently completed the final drawer-focus row in the closed matrix below; no additional prune writer, readiness, or apply behavior was included.
 
-## Remaining Proposal Decision Operator QA Matrix — 2026-08-13
+## Proposal Decision Operator QA Matrix Closeout — 2026-08-14
 
 | Case | Current state | Rerun rule |
 |---|---|---|
@@ -883,10 +883,203 @@ This resolves the Phase 31 defect but does not promote the capability to globall
 | No-op prune | Verified | Only after relevant pruning/result UI changes |
 | Fail-closed 409 and preserved decisions | Verified | Only after snapshot/pruning error-path changes |
 | Modal Escape, Cancel, Close, and opener restoration | Verified | Only after modal/focus changes |
-| Drawer close restores the originating entity control | Remaining | Run once as non-writer closeout QA |
+| Drawer close restores the originating entity control | Verified | Only after drawer/focus changes |
 
-For the remaining case, perform one checkout preflight, create one namespaced disposable fixture, open and close one entity drawer, verify focus restoration and unchanged decisions, then clean the fixture. Record one compact result in `RUNTIME_VERIFICATION.md` and update the owning manifest record once. Source tests/builds are unnecessary unless the QA exposes a defect that requires code changes; `agent-docs:refresh`, `agent-docs:check`, and `git diff --check` are required only when the manifest is updated.
+Phase 33 completed the final case with one namespaced disposable fixture: closing the entity drawer restored focus to the exact originating entity control, all five stored choices remained unchanged, and cleanup removed the fixture option state, posts, proposal directory, and snapshot directory. The compact runtime result and owning manifest evidence are current; no matrix row remains open.
 
 This operator matrix is a capability-specific example, not a universal test template. Future capabilities select only their applicable source, CLI/API, writer, UI, add-on, or generated-document evidence under the capability-shaped policy in `docs/agents/MAINTENANCE.md`; they do not inherit this fixture, browser, or case list unless their own claim requires it.
 
 Do not create a new run-ledger format for this single case. A machine-readable evidence ledger is a future option only if recurring matrices across multiple capabilities make the manifest and compact runtime summaries insufficient.
+
+## Configuration Portability Authority Reconciliation — Phase 34
+
+Phase 34 reconciles the implemented configuration portability workflow with its planning authority before promoting any agent-facing interface.
+
+- Verify the active-checkout bootstrap, provider registry, administrator handlers, and focused tests without invoking export, upload, apply, rollback, or another writer.
+- Move the implementation guide from proposed to active authority and describe the implemented and remaining P3-P7 work accurately.
+- Update the roadmap and `configuration.core.portability` manifest record once so generated capability views no longer present an implemented workflow as future work.
+- Preserve the existing mixed-risk administrator capability and its explicit lack of same-checkout browser apply/rollback proof.
+
+Exit criteria: the guide, roadmap, source, and manifest agree on the supported administrator workflow; broad CLI parity remains deferred; and the only newly eligible interface is the independently scoped metadata-only Phase 35 boundary.
+
+## Configuration Portability Metadata CLI — Phase 35
+
+Phase 35 adds `wp dbvc config domains` and `wp dbvc config status` as a read-only inspection namespace over registered provider metadata.
+
+- `domains` may return provider key, label, version, and bounded group/field/policy counts, with an optional exact domain filter.
+- `status` may return aggregate feature version, provider/group/field counts, policy counts, and an explicit read-only marker.
+- Both commands must reject unknown or write-like arguments and support only bounded WP-CLI output formats.
+- The implementation must use registry/provider schema methods only. It must never call `get_current_values()`, `export()`, `diff()`, `sanitize_for_apply()`, `apply()`, `capture_backup()`, or `rollback()`.
+- Export/download, package upload or session inspection, environment replacements, current setting values, secrets, backups, readiness, apply, and rollback remain excluded.
+
+Required evidence is capability-shaped: focused source and PHPUnit coverage, agent-docs discovery/ownership checks, and one same-checkout read-only command execution if the LocalWP runtime is available. No administrator browser or writer QA is required for this metadata-only interface. Stop after Phase 35; do not expand into configuration writers or another capability boundary.
+
+Implementation result: Phase 34 moved the configuration portability guide to active authority and reconciled the roadmap and owning mixed-risk manifest record. Phase 35 added the two metadata-only commands, focused fail-closed tests, strict discovery ownership, and same-checkout help/output/rejected-writer evidence. A 235-option hash was unchanged before and after execution. Writer-capable configuration CLI parity and the remaining administrator P3-P7 work stay deferred or active under their existing boundaries.
+
+## Configuration Portability Documentation Authority Cleanup — Phase 36
+
+Status: `COMPLETE`
+
+Phase 36 removes stale planning signals before more configuration portability behavior is added. It is documentation and generated-authority maintenance, not a runtime implementation phase.
+
+### Scope
+
+- Mark the completed Proposal Decision drawer-focus matrix row verified and remove its obsolete rerun instruction.
+- Reconcile the agent README and roadmap summaries with the current manifest/discovery totals and opportunity dispositions.
+- Mark the Configuration Portability guide's original first milestone as achieved or historical.
+- Resolve the obsolete Configure-subtab-versus-submenu question using the implemented dedicated submenu as current authority.
+- Confirm whether generated checks should detect manually maintained summary-count drift; add only the smallest applicable check if the current builder cannot protect those claims.
+
+### Exit criteria
+
+- No completed capability is still labeled remaining, deferred, or future work.
+- Human-readable counts agree with the generated manifest and discovery snapshot.
+- The cleanup does not change plugin behavior, WordPress state, or capability classifications beyond correcting stale documentation.
+
+Implementation result: stale Proposal Decision closeout language was reconciled, current inventory/opportunity totals moved into the generator-protected README block, roadmap totals were refreshed, and the Configuration Portability milestone/submenu authority was corrected. The agent-docs check now fails whenever the generated current-inventory summary drifts from the manifest or live discovery result.
+
+## Configuration Portability Import Dependency Preflight — Phase 37
+
+Status: `COMPLETE`
+
+Phase 37 completes the safest remaining Phase 3 boundary: identify missing destination requirements during package validation and review, before any configuration value is written.
+
+### Scope
+
+- Audit existing provider metadata and compatibility-warning services before introducing any new dependency representation.
+- Detect relevant missing post types, taxonomies, ACF option groups, and required add-on classes only when a selected incoming field actually depends on them.
+- Add clear non-writing warning or blocked statuses to the existing import-session review result.
+- Keep unknown domains and fields rejected or visibly skipped under the existing registry contract.
+- Add focused coverage for checksum failure, missing domain, unsupported field, missing dependency, and unchanged target settings.
+
+### Example
+
+If an incoming selection references a `service` post type and a Site Settings ACF options group that do not exist on the destination, review should identify both requirements and prevent those dependent settings from being silently applied. Upload and preflight must leave target configuration unchanged.
+
+### Non-goals
+
+- Do not create missing post types, taxonomies, field groups, plugins, or add-ons.
+- Do not apply, repair, activate, install, or remotely fetch dependencies.
+- Do not add a universal dependency schema or parallel validation framework unless source review proves the existing provider/session contracts cannot express the required warning.
+
+### Exit criteria
+
+- Dependency findings are deterministic, provider-owned, visible before apply, and covered by non-mutation tests.
+- Phase 37 may close the dependency and validation-test items in Configuration Portability P3; it does not authorize P4-P7 work.
+
+Implementation result: providers now declare only the concrete dependencies needed by selected incoming fields, without changing the package schema. Import-session review visibly reports unsupported fields and missing domains, reports missing post types, taxonomies, ACF options groups, and required add-on classes as blocked dependencies, and rechecks those dependencies before backup or apply. Focused coverage rejects checksum tampering and proves a missing selected dependency leaves target settings unchanged. Phase 38 remains the next non-configuration-writing boundary; no draft-decision, filter, runtime refresh, apply, or rollback scope was added here.
+
+## Configuration Portability Review Drafts And Filters — Phase 38
+
+Status: `COMPLETE`
+
+Phase 38 lets an administrator pause and resume a large review without changing destination configuration.
+
+### Scope
+
+- Persist draft field decisions inside the existing import-session lifecycle; do not add a new database table or global option ledger.
+- Define draft expiry, invalidation after package/session changes, and cleanup with the owning session.
+- Add server-rendered domain, group, field, status, and unresolved-only filters where useful.
+- Preserve existing keep-target and replacement decisions across page reloads.
+- Add client-side behavior only for progressive filtering or environment prompts that cannot be handled clearly by the existing form workflow.
+- Add authorization, nonce, invalid-session, stale-draft, and no-settings-write coverage.
+
+### Example
+
+An administrator can review part of a large package, save several keep-target choices, leave the page, and return to the same import session without losing those choices. Filtering to unresolved items changes the view only; it does not apply settings.
+
+### Exit criteria
+
+- Draft decisions are session-scoped, recoverable, invalidated safely, and never confused with applied configuration.
+- REST or richer JavaScript remains optional and must be justified by the final interaction contract rather than added for parity alone.
+
+Implementation result: administrator review choices now persist only inside the owning import-session file, expire after seven days, fail closed against a fingerprint mismatch, and are removed when apply succeeds or when the session directory is cleaned up. Ordinary replacement values are restored across reloads; credential-like replacement text is never stored or rehydrated and must be entered again before apply. Domain, group, field, status, and unresolved-only filters are server-rendered GET controls, so no REST controller or JavaScript layer was added. Focused coverage verifies administrator and nonce gates, invalid and stale sessions, expiry, filtered views, recovered choices, credential-value omission, and unchanged destination settings.
+
+## Configuration Portability Apply And Runtime Hardening — Phase 39
+
+Status: `PLANNED — EXPLICIT WRITER AUTHORIZATION REQUIRED`
+
+Phase 39 makes already approved configuration changes take effect reliably and makes partial failures visible. It is the next writer boundary and must not begin implicitly after Phase 38.
+
+### Scope
+
+- Complete provider-specific runtime refresh for Visual Editor, Content Collector, and AI model-catalog scheduling; retain the existing Bricks refresh behavior.
+- Define refresh ordering relative to provider apply, backup capture, failure handling, and rollback.
+- Record secret-free activity results using an existing appropriate logging channel.
+- Return exact per-domain applied, skipped, failed, refresh-failed, and rollback availability summaries.
+- Ensure a failed provider or refresh cannot be represented as complete success.
+- Add focused provider/apply/rollback tests before any authenticated browser writer QA.
+
+### Example
+
+If five domains are approved and the AI schedule refresh fails after four domains apply, the result must identify the four successes, the refresh failure, what was not completed, and which backup can restore the prior state. It must not return a generic success notice.
+
+### Authorization and evidence gate
+
+- Require an isolated fixture, explicit confirmation, verified backup, exact pre/post state evidence, and cleanup plan before runtime apply or rollback testing.
+- Do not broaden this phase into package CLI writers, remote operations, fleet operations, or secret transport.
+
+### Exit criteria
+
+- Every applied provider has an explicit runtime-refresh outcome or an explicit not-required result.
+- Partial failure and rollback guidance are visible without exposing secrets.
+
+## Configuration Portability Environment Adaptation — Phase 40
+
+Status: `PLANNED`
+
+Phase 40 makes one reviewed baseline package reusable across local, staging, and production environments without copying unsafe environment-specific values.
+
+### Scope
+
+- Add named, non-secret replacement presets scoped to an import review session or an explicitly saved reviewed policy.
+- Add previewed URL/domain and relative-path replacements with exact affected-field counts.
+- Add provider-owned environment-policy overrides where the current field contract supports them safely.
+- Preserve destination secrets by default and never place plaintext secrets in reusable presets.
+- Warn about Bricks mothership/client role mismatches and Visual Editor or Content Collector activation changes.
+- Show the resolved incoming value and source of each replacement before apply, while continuing to redact sensitive values.
+
+### Example
+
+A baseline created on `client.local` can preview replacement with `client.com`, keep the production API secret, select the production sync path, and warn that the destination Bricks role differs before the operator approves anything.
+
+### Exit criteria
+
+- The same package can be reviewed for multiple environments without silent URL, path, role, activation, or credential propagation.
+- Preset selection and preview remain non-writing; actual setting changes still pass through the Phase 39 apply/backup contract.
+
+## Configuration Portability Acceptance And Documentation — Phase 41
+
+Status: `PLANNED — RUNTIME WRITER QA REQUIRES SEPARATE APPROVAL`
+
+Phase 41 closes P7 through focused automated coverage, operator documentation, and a controlled single-site round-trip exercise.
+
+### Automated and documentation scope
+
+- Complete core-provider export/apply, missing-dependency, and Bricks secret keep-existing tests.
+- Add administrator usage, provider-development, package-schema, QA, and changelog documentation.
+- Reconcile all P3-P7 checkboxes against source and evidence; do not close an item from implementation inference alone.
+- Run agent-docs refresh/check and repository diff validation when capability authority changes.
+
+### Controlled runtime exercise
+
+After separate writer authorization, use one namespaced disposable configuration fixture to:
+
+1. export an Agency Baseline package;
+2. import it as a no-op review and verify unchanged statuses;
+3. verify Bricks and AI secrets are absent;
+4. change one harmless fixture-owned setting;
+5. review and apply that one change after backup;
+6. verify the runtime refresh result;
+7. roll back and verify the original value; and
+8. remove package, session, backup, option, and fixture artifacts.
+
+### Exit criteria
+
+- The documented administrator workflow matches the verified single-site behavior.
+- P3-P7 are closed only where source, tests, and applicable runtime evidence agree.
+- Completion does not authorize any deferred remote, fleet, secret-transport, signing, drift-monitoring, or writer-capable CLI work.
+
+## Configuration Portability Continuation Order
+
+Phases 36-38 are complete. Stop for an explicit writer-boundary review before Phase 39; this implementation sequence does not implicitly authorize configuration apply, rollback, runtime-refresh, or partial-failure runtime work. Phase 40 may develop its preview and policy model without applying values, but its live apply evidence remains dependent on Phase 39. Phase 41 is the acceptance closeout and requires a separate runtime writer-QA authorization for its round-trip exercise.

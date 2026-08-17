@@ -78,6 +78,11 @@ final class BricksAddonProvider extends AbstractOptionDomainProvider
         return $fields;
     }
 
+    public function get_import_dependencies(array $incoming): array
+    {
+        return $this->get_class_dependency($incoming, 'DBVC_Bricks_Addon', __('Bricks Add-on', 'dbvc'));
+    }
+
     public function apply(array $sanitized, array $context): array
     {
         unset($context);

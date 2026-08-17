@@ -13,6 +13,14 @@ use Dbvc\VisualEditor\Context\FrontendRuntimeGuard;
 use Dbvc\VisualEditor\Context\PageContextResolver;
 use Dbvc\VisualEditor\Journal\ChangeJournalRecorder;
 use Dbvc\VisualEditor\Journal\ChangeJournalStore;
+use Dbvc\VisualEditor\MediaManager\AcfMediaFieldCatalog;
+use Dbvc\VisualEditor\MediaManager\EligibilityPolicy;
+use Dbvc\VisualEditor\MediaManager\MediaAssignmentValueClassifier;
+use Dbvc\VisualEditor\MediaManager\MediaScanCoordinator;
+use Dbvc\VisualEditor\MediaManager\MediaScanReadModel;
+use Dbvc\VisualEditor\MediaManager\MediaScanService;
+use Dbvc\VisualEditor\MediaManager\ScanCandidateProvider;
+use Dbvc\VisualEditor\MediaManager\ScanSnapshotStore;
 use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
 use Dbvc\VisualEditor\Presentation\DescriptorSummaryBuilder;
@@ -90,11 +98,32 @@ final class Addon
         $cache = new CacheInvalidator();
         $this->journal = new ChangeJournalRecorder(new ChangeJournalStore());
         $mutations = new MutationService($resolvers, $validator, $sanitizer, $audit, $cache, $summaries, $this->journal);
+        $media_policy = new EligibilityPolicy($capabilities);
+        $media_catalog = new AcfMediaFieldCatalog($media_policy);
+        $media_scanner = new MediaScanService($media_catalog, new MediaAssignmentValueClassifier());
+        $media_coordinator = new MediaScanCoordinator(
+            new ScanCandidateProvider($media_policy),
+            $media_scanner,
+            new ScanSnapshotStore(),
+            $media_catalog
+        );
+        $media_read_model = new MediaScanReadModel($media_coordinator, $media_scanner, $media_policy);
 
         $this->toggle_node = new ToggleNode($this->edit_mode, $capabilities);
         $this->asset_loader = new AssetLoader($this->bootstrap_file, $this->edit_mode, $this->registry, $page_context);
         $this->hook_registrar = new HookRegistrar($this->edit_mode, $this->registry, $page_context, $resolvers, $loops, $active_profiler);
-        $this->routes = new Routes($this->registry, $resolvers, $mutations, $this->edit_mode, $page_context, $capabilities, $summaries, $active_profiler);
+        $this->routes = new Routes(
+            $this->registry,
+            $resolvers,
+            $mutations,
+            $this->edit_mode,
+            $page_context,
+            $capabilities,
+            $summaries,
+            $active_profiler,
+            $media_coordinator,
+            $media_read_model
+        );
     }
 
     /**

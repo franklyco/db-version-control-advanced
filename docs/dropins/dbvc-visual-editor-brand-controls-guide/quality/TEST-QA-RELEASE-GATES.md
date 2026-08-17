@@ -1,0 +1,202 @@
+# Test, QA, and Release Gates
+
+## Universal gate
+
+Every release must pass the repository’s established automated/static checks plus release-specific browser and accessibility QA. Record exact commands and results; do not write “tests pass” without evidence.
+
+**Viewport scope (D-036):** current release gates target ordinary laptop/desktop workflows. Preserve existing responsive protections, but do not block a release on new mobile layouts, responsive cards/slide-overs, touch refinements, handset optimization, or mobile-specific QA unless the user explicitly reauthorizes that work.
+
+## Reconciled inherited baseline
+
+At clean, synchronized commit `5db4b40`:
+
+- the focused Visual Editor instrumentation check passed 7 tests and 15 assertions;
+- the full PHP suite had 6 deterministic failures out of 684 tests;
+- full repository JavaScript lint did not complete.
+
+This baseline is not release approval. A phase must run focused tests and static checks for touched code, identify regressions separately from the six inherited PHP failures, and avoid claiming repository-wide lint success unless the full command completes. When a phase adds or changes public REST, settings, add-on, hook, or safety surfaces, run `composer agent-docs:check` as required by repository maintenance rules.
+
+R1-A comparison on 2026-08-15: focused coverage passed 5 tests/65 assertions (12/80 with existing Visual Editor instrumentation), and the full PHP suite ran 689 tests/7,186 assertions with the same six inherited failure identities. No JavaScript changed, so the incomplete full-lint baseline was not rerun or promoted.
+
+R1-B focused comparison on 2026-08-15: scanner/snapshot coverage passed 5 tests/106 assertions; combined R1-A/R1-B passed 10/171; combined with existing Visual Editor instrumentation passed 17/186. A 20-entity/60-finding isolated test chunk measured 4.661 ms, 24 queries, zero additional allocated/peak memory pages at reported granularity, and a 4,983-byte compressed snapshot. The clean full comparison ran 694 tests/7,302 assertions with exactly the inherited six failures after one transient extra failure passed alone and with its full class. Agent docs passed 54 records/408 surfaces/0 unmapped. R1-B changed no JavaScript; this remains an in-development slice, not the R1 release gate.
+
+R1-C focused comparison on 2026-08-15: protected route/read-model/row coverage passed 6 tests/417 assertions; combined R1-A/R1-B/R1-C with existing Visual Editor instrumentation passed 23/603. Coverage includes feature/base-capability/active-mode gates, cross-user isolation, bounded query validation, opaque cursor/generation/revision tampering, list-time object permission loss, current row missing/changed/resolved/unpublished states, provider failure, safe payload omission, and real add-on route composition. The full PHP comparison ran 700 tests/7,723 assertions with exactly the inherited six failures. R1-C changes no JavaScript; browser/accessibility/Builder/scale gates remain open.
+
+R1-D plus initial R1-E focused comparison on 2026-08-16: the production shell/table/expansion contract passed 4 tests/43 assertions; the controller passed 10 jsdom tests; and isolated Chromium at 1440x900 and 1280x720 passed exact group identity, loading/current/changed/resolved/provider-unavailable presentations, Enter/Space disclosure operation, row-focus continuity, reduced-motion suppression, bounded paging/replacement geometry, trigger focus, and expanded/collapsed axe WCAG A/AA with zero violations. Targeted and aggregate repository lint complete with stale dependency-data warnings only. The full PHP comparison immediately before the frontend-only focus/reduced-motion correction ran 704 tests/7,764 assertions with exactly the inherited six failures. Authenticated WordPress runtime, large-site profiling, assistive technology, and cross-browser evidence remain open.
+
+R1-E scale/no-auto-scan comparison on 2026-08-16: the new contract passed 2 tests/50 assertions and the combined R1-A through R1-E focus passed 22/681. Ordinary frontend asset enqueue created no latest scan. Synthetic 100/500/2,000-group compressed snapshots returned only the bounded 50-row result page; the combined 2,000-group run measured 25.425 ms, zero additional WordPress queries, a 6,291,456-byte allocated-memory delta, 120,475 stored bytes, and a 24,833-byte response. The full PHP comparison ran 706 tests/7,816 assertions with exactly the inherited six failures. This is snapshot/read/payload proof, not complete candidate traversal, raw ACF scanning, authenticated REST/browser transport, or a production SLO.
+
+R1-E automated semantic/fallback comparison on 2026-08-16: 11 jsdom tests prove the named dialog/results/scroll/expanded regions, explicit list/group loading and busy semantics, stable entity-specific expansion headings, and polite field-check start/completion/failure updates. Four R1-D PHP tests/47 assertions retain the default-off asset/entry, Builder, no-write, and semantic source seams. Six Playwright cases pass at 1440x900 and 1280x720 across Chromium, Firefox, and WebKit with the new semantics plus the existing keyboard/focus/reduced-motion/axe checks. Combined R1-A through R1-E passes 22/685; the full PHP comparison runs 706/7,820 with the same six inherited failures. Targeted Media Manager lint passes. The latest aggregate repository lint rerun did not complete and is not a current pass. Automated semantics/axe/browser engines do not replace real assistive-technology, authenticated WordPress, or real Safari evidence.
+
+## Test layers
+
+Use current tooling where available:
+
+- PHP unit/integration tests;
+- WordPress/ACF integration fixtures;
+- JavaScript unit/component tests;
+- API/AJAX/REST handler tests;
+- browser/E2E tests;
+- manual frontend QA;
+- keyboard/accessibility review for the supported laptop/desktop workflow; touch/mobile review only after D-036 is reauthorized;
+- performance/query/payload profiling;
+- Bricks Builder isolation checks.
+
+## R0 gate
+
+- [x] Working tree and active changes documented.
+- [x] Actual scanner/catalog/descriptor extension points mapped.
+- [x] Media entity/field coverage matrix completed.
+- [x] Existing image/gallery/featured-image save trace verified.
+- [x] Representative site counts/performance baseline recorded.
+- [x] Shared Globals/option matrix completed.
+- [x] Corrected R1/R2 plan, risks, decisions, and rollback documented.
+
+## R1 Media Manager scan/report gate
+
+### Automated
+
+- [x] Candidate object policy for pages/posts/public CPTs/terms (R1-A/R1-B server contract).
+- [x] Exclusions for private/internal objects (R1-A policy).
+- [x] Object-specific permission filtering (R1-A scan plus R1-C list/row rechecks).
+- [x] Featured-image eligibility (R1-A policy and R1-B scanner).
+- [x] ACF image/gallery field applicability and empty detection (R1-A catalog/classifier and R1-B scanner).
+- [x] Unconditional top-level and deterministic group-only ACF paths (R1-A/R1-B contract).
+- [x] Repeater/flexible/mixed paths and conditional unknowns are excluded and counted honestly (R1-A catalog tests).
+- [x] Scan start/chunk/progress/complete/expire/retry (R1-B internal contract).
+- [x] Duplicate/stale chunk handling (R1-B internal contract).
+- [x] Snapshot user/site isolation (R1-B store and R1-C controller boundaries).
+- [x] Search/filter/sort/pagination (R1-C server read model).
+- [x] Opaque reference validation/tampering (R1-C route/read-model contract).
+- [x] Row hydration rechecks current state (R1-C safe status hydration; no descriptor).
+- [x] Provider/ACF unavailable states (R1-C safe unavailable response).
+
+### Browser/manual
+
+- [x] Entry point and close/focus behavior in focused mocked-response laptop/desktop coverage; authenticated runtime remains open.
+- [x] No-scan, scanning, partial/complete, empty, no-results, and list/append error states in focused state/DOM coverage.
+- [x] Sticky header/internal scrolling in focused Chromium coverage.
+- [ ] Large list responsiveness.
+- [x] Expanded row loading and changed/resolved states in isolated mocked-response coverage; authenticated runtime remains open.
+- [x] Filter/search/sort query replacement and append-scroll state preservation.
+- [x] Supported 1440x900 and 1280x720 laptop/desktop behavior in isolated Chromium, Firefox, and WebKit engines. Authenticated browser and real Safari coverage remain open; additional tablet/mobile/slide-over refinement and mobile-specific QA are tabled by D-036.
+- [x] Keyboard expansion and visible focus in isolated laptop/desktop Chromium; assistive-technology review remains open.
+- [x] Automated screen-reader status/heading semantics for dialog, results scroll, loading/busy, expanded-row heading, and field-check announcements; real assistive-technology review remains open.
+- [x] No new R1 Media Library/editor enqueue in source/PHP contract coverage; existing active-mode eager loading is measured/documented.
+- [x] Bricks Builder asset isolation in source/PHP contract coverage; authenticated Builder runtime remains open.
+
+### Performance
+
+- [x] Ordinary frontend asset enqueue creates no scan in isolated WordPress coverage; authenticated page-load observation remains part of runtime QA.
+- [x] Bounded per-request scan work verified by the R1-B candidate/chunk contract.
+- [x] Synthetic 100/500/2,000-group snapshot storage, server sort/read projection, and response payload measured.
+- [ ] Complete 100/500/2,000-owner candidate traversal/raw-read and authenticated transport behavior measured where fixtures permit.
+- [x] Result payload and DOM row counts remain bounded in synthetic server and isolated browser coverage; authenticated runtime remains open.
+- [ ] No obvious N+1 field-definition/capability/permalink pattern.
+
+## R2 Media Manager remediation gate
+
+### Automated
+
+- [ ] Fresh descriptor hydration from finding reference.
+- [ ] Field populated after scan blocks write.
+- [ ] Entity deleted/unpublished/permission changed.
+- [ ] Field definition/path changed.
+- [ ] Featured-image assignment validation.
+- [ ] ACF image assignment validation and return-format independence.
+- [ ] Gallery ordered IDs and changed-gallery conflict.
+- [ ] Invalid/deleted/non-image attachment rejection.
+- [ ] Upload capability UI/server behavior.
+- [ ] Journal/audit invocation.
+- [ ] Cache invalidation.
+- [ ] Targeted revalidation and counter updates.
+- [ ] Same-entity `Save Row` endpoint/action absent from initial R2.
+- [ ] Cross-entity bulk endpoint absent.
+
+### Browser/manual
+
+- [ ] Media Library opens in correct single/multiple mode.
+- [ ] Upload tab obeys permissions.
+- [ ] Panel remains behind modal; outside-click/Escape layering is correct.
+- [ ] Focus returns to initiating field.
+- [ ] Draft selection is visibly unsaved.
+- [ ] Field save success/error/stale states.
+- [ ] Gallery management/reorder behavior.
+- [ ] Resolved field/row removal preserves scroll/filter context.
+- [ ] Current-page DOM patch or reload behavior is truthful.
+- [ ] Repeated remediation does not leak frames/listeners or degrade performance.
+
+## R3 Registry gate
+
+- [ ] Provider validation, duplicate handling, absence/failure states.
+- [ ] Existing Shared Globals compatibility.
+- [ ] Fresh descriptor resolution.
+- [ ] No new mutation family.
+- [ ] Permission filtering and unregistered storage exclusion.
+- [ ] Existing center fallback/feature rollback.
+
+## R4 Expanded center gate
+
+- [ ] Categories/search/filters/sorting/value summaries.
+- [ ] Loading/empty/no-results/error/inspect-only/unavailable states.
+- [ ] Static mockup decisions recorded.
+- [ ] Existing main panel reused.
+- [ ] Large registry performance.
+- [ ] Responsive/accessibility/CSS isolation.
+
+## R5 ACF option-family point-release gate
+
+For each point release:
+
+- [ ] Exact registered field keys and canonical option owners.
+- [ ] Options read/write/stale behavior.
+- [ ] Existing family editor reused.
+- [ ] Validation/sanitization/return formats.
+- [ ] Nested option paths only where proven.
+- [ ] Shared acknowledgement, journal, cache, reload.
+- [ ] Regression tests for current post/term/user owners.
+- [ ] Unsupported configurations remain inspect-only.
+- [ ] Independent feature/revert path.
+
+## R6 Site Manager Workspace gate
+
+- [ ] Lazy bounded object navigation.
+- [ ] Capability and route filtering.
+- [ ] Visual Editor mode preservation.
+- [ ] Review Fields, Media Manager, Global & Brand controls integration.
+- [ ] No duplicated Media Manager scan/mutation logic.
+- [ ] Main panel remains the field editor.
+- [ ] Desktop persistent behavior.
+- [ ] **Tabled by D-036:** small-screen slide-over behavior and mobile-specific QA until explicitly reauthorized.
+- [ ] Focus/Escape/layering with main panel and Media Library.
+- [ ] Existing toolbar/Go To Object fallback.
+- [ ] Large-site performance and CSS/builder isolation.
+
+## Static mockup gate
+
+Before production UI coding for R1/R2/R4/R6:
+
+- [ ] Codex has verified the actual view model/actions/states.
+- [ ] Claude receives no secrets or production client data.
+- [ ] Static deliverables cover required states.
+- [ ] Mockup CSS is scoped.
+- [ ] Added interactions are checked against release scope.
+- [ ] Accepted/adapted/rejected decisions are documented.
+- [ ] Production code reuses current components; mockup JS is not copied as architecture.
+
+## Release sign-off record
+
+For each release record:
+
+- branch/commit or change scope;
+- automated commands and results;
+- browser/device matrix;
+- accessibility evidence;
+- performance measurements;
+- security review;
+- known limitations;
+- feature flag;
+- rollback steps;
+- approval/date.
+
+Do not begin the next release until this record is complete or the user explicitly reprioritizes with documented risk.

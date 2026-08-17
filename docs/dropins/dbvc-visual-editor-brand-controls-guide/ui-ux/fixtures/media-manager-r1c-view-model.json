@@ -1,0 +1,400 @@
+{
+  "fixtureOnly": true,
+  "contract": "R1-C read-only view model",
+  "viewModelVersion": 1,
+  "scan": {
+    "scanRef": "vems_demo_r1d",
+    "generation": "demo_generation",
+    "revision": 8,
+    "schemaVersion": 1,
+    "scannerVersion": 1,
+    "viewModelVersion": 1,
+    "state": "complete",
+    "requestStatus": "complete",
+    "progress": {
+      "processed": 84,
+      "totalEstimate": 84,
+      "chunks": 5,
+      "attempts": 5,
+      "retryCount": 0
+    },
+    "summary": {
+      "candidateEntitiesProcessed": 84,
+      "entitiesWithFindings": 6,
+      "totalFindings": 13,
+      "featuredImageFindings": 4,
+      "acfImageFindings": 6,
+      "acfGalleryFindings": 3,
+      "unsupportedFieldObservations": 7,
+      "invalidNonemptyValues": 1
+    },
+    "error": null,
+    "startedAt": 1786803720,
+    "completedAt": 1786803734,
+    "expiresAt": 1786807334,
+    "canRetry": false,
+    "canCancel": false
+  },
+  "query": {
+    "search": "",
+    "entityFamily": "all",
+    "fieldFamily": "all",
+    "sort": "entity_asc",
+    "limit": 20
+  },
+  "items": [
+    {
+      "groupRef": "vemg_ffffffffffffffffffff",
+      "entity": {
+        "label": "10 Modern Garden Ideas",
+        "family": "post",
+        "typeLabel": "Post",
+        "frontendUrl": ""
+      },
+      "status": "scan_observation",
+      "missingCount": 2,
+      "findingCounts": {
+        "featuredImage": 1,
+        "acfImage": 0,
+        "acfGallery": 1
+      },
+      "scannedAt": 1786803726,
+      "modifiedGmt": "2026-08-06 11:25:00",
+      "availableActions": {
+        "expand": true,
+        "openFrontend": false,
+        "assignMedia": false
+      }
+    },
+    {
+      "groupRef": "vemg_bbbbbbbbbbbbbbbbbbbb",
+      "entity": {
+        "label": "About Us",
+        "family": "post",
+        "typeLabel": "Page",
+        "frontendUrl": "https://example.test/about-us/"
+      },
+      "status": "scan_observation",
+      "missingCount": 2,
+      "findingCounts": {
+        "featuredImage": 1,
+        "acfImage": 1,
+        "acfGallery": 0
+      },
+      "scannedAt": 1786803730,
+      "modifiedGmt": "2026-08-12 14:08:00",
+      "availableActions": {
+        "expand": true,
+        "openFrontend": true,
+        "assignMedia": false
+      }
+    },
+    {
+      "groupRef": "vemg_aaaaaaaaaaaaaaaaaaaa",
+      "entity": {
+        "label": "Home Page",
+        "family": "post",
+        "typeLabel": "Page",
+        "frontendUrl": "https://example.test/"
+      },
+      "status": "scan_observation",
+      "missingCount": 3,
+      "findingCounts": {
+        "featuredImage": 1,
+        "acfImage": 1,
+        "acfGallery": 1
+      },
+      "scannedAt": 1786803731,
+      "modifiedGmt": "2026-08-15 14:20:00",
+      "availableActions": {
+        "expand": true,
+        "openFrontend": true,
+        "assignMedia": false
+      }
+    },
+    {
+      "groupRef": "vemg_dddddddddddddddddddd",
+      "entity": {
+        "label": "Lake House Project With an Intentionally Long Entity Name for Responsive Testing",
+        "family": "post",
+        "typeLabel": "Project",
+        "frontendUrl": "https://example.test/projects/lake-house/"
+      },
+      "status": "scan_observation",
+      "missingCount": 3,
+      "findingCounts": {
+        "featuredImage": 1,
+        "acfImage": 1,
+        "acfGallery": 1
+      },
+      "scannedAt": 1786803728,
+      "modifiedGmt": "2026-08-08 17:42:00",
+      "availableActions": {
+        "expand": true,
+        "openFrontend": true,
+        "assignMedia": false
+      }
+    },
+    {
+      "groupRef": "vemg_cccccccccccccccccccc",
+      "entity": {
+        "label": "Landscape Design",
+        "family": "post",
+        "typeLabel": "Service",
+        "frontendUrl": "https://example.test/services/landscape-design/"
+      },
+      "status": "scan_observation",
+      "missingCount": 2,
+      "findingCounts": {
+        "featuredImage": 0,
+        "acfImage": 2,
+        "acfGallery": 0
+      },
+      "scannedAt": 1786803729,
+      "modifiedGmt": "2026-08-10 09:15:00",
+      "availableActions": {
+        "expand": true,
+        "openFrontend": true,
+        "assignMedia": false
+      }
+    },
+    {
+      "groupRef": "vemg_eeeeeeeeeeeeeeeeeeee",
+      "entity": {
+        "label": "Landscaping",
+        "family": "term",
+        "typeLabel": "Project Type",
+        "frontendUrl": "https://example.test/project-type/landscaping/"
+      },
+      "status": "scan_observation",
+      "missingCount": 1,
+      "findingCounts": {
+        "featuredImage": 0,
+        "acfImage": 1,
+        "acfGallery": 0
+      },
+      "scannedAt": 1786803727,
+      "modifiedGmt": "",
+      "availableActions": {
+        "expand": true,
+        "openFrontend": true,
+        "assignMedia": false
+      }
+    }
+  ],
+  "pagination": {
+    "hasMore": false,
+    "nextCursor": ""
+  },
+  "expandedRows": {
+    "current": {
+      "groupRef": "vemg_aaaaaaaaaaaaaaaaaaaa",
+      "status": "current",
+      "entity": {
+        "label": "Home Page",
+        "family": "post",
+        "typeLabel": "Page",
+        "frontendUrl": "https://example.test/"
+      },
+      "counts": {
+        "missing": 3,
+        "changed": 0,
+        "resolvedOrChanged": 0,
+        "unavailable": 0
+      },
+      "newMissingFindingCount": 0,
+      "fields": [
+        {
+          "findingRef": "vemf_11111111111111111111",
+          "label": "Featured image",
+          "family": "featured_image",
+          "contextLabel": "Native WordPress field",
+          "status": "missing",
+          "descriptorStatus": "not_hydrated",
+          "message": "This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        },
+        {
+          "findingRef": "vemf_22222222222222222222",
+          "label": "Hero image",
+          "family": "acf_image",
+          "contextLabel": "Homepage content",
+          "status": "missing",
+          "descriptorStatus": "not_hydrated",
+          "message": "This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        },
+        {
+          "findingRef": "vemf_33333333333333333333",
+          "label": "Project gallery",
+          "family": "acf_gallery",
+          "contextLabel": "Featured projects",
+          "status": "missing",
+          "descriptorStatus": "not_hydrated",
+          "message": "This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        }
+      ],
+      "availableActions": {
+        "refreshScan": true,
+        "assignMedia": false
+      }
+    },
+    "changed": {
+      "groupRef": "vemg_bbbbbbbbbbbbbbbbbbbb",
+      "status": "changed",
+      "entity": {
+        "label": "About Us",
+        "family": "post",
+        "typeLabel": "Page",
+        "frontendUrl": "https://example.test/about-us/"
+      },
+      "counts": {
+        "missing": 1,
+        "changed": 1,
+        "resolvedOrChanged": 0,
+        "unavailable": 0
+      },
+      "newMissingFindingCount": 1,
+      "fields": [
+        {
+          "findingRef": "vemf_44444444444444444444",
+          "label": "Featured image",
+          "family": "featured_image",
+          "contextLabel": "Native WordPress field",
+          "status": "missing",
+          "descriptorStatus": "not_hydrated",
+          "message": "This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        },
+        {
+          "findingRef": "vemf_55555555555555555555",
+          "label": "Team photo",
+          "family": "acf_image",
+          "contextLabel": "About page content",
+          "status": "changed",
+          "descriptorStatus": "blocked_stale",
+          "message": "This field is still empty, but its scan evidence changed. Refresh the scan before taking further action.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        }
+      ],
+      "availableActions": {
+        "refreshScan": true,
+        "assignMedia": false
+      }
+    },
+    "resolved": {
+      "groupRef": "vemg_eeeeeeeeeeeeeeeeeeee",
+      "status": "resolved_or_changed",
+      "entity": {
+        "label": "Landscaping",
+        "family": "term",
+        "typeLabel": "Project Type",
+        "frontendUrl": "https://example.test/project-type/landscaping/"
+      },
+      "counts": {
+        "missing": 0,
+        "changed": 0,
+        "resolvedOrChanged": 1,
+        "unavailable": 0
+      },
+      "newMissingFindingCount": 0,
+      "fields": [
+        {
+          "findingRef": "vemf_66666666666666666666",
+          "label": "Archive image",
+          "family": "acf_image",
+          "contextLabel": "Project type media",
+          "status": "resolved_or_changed",
+          "descriptorStatus": "unavailable",
+          "message": "This field is no longer confirmed missing. Refresh the scan before taking further action.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        }
+      ],
+      "availableActions": {
+        "refreshScan": true,
+        "assignMedia": false
+      }
+    },
+    "unavailable": {
+      "groupRef": "vemg_ffffffffffffffffffff",
+      "status": "unavailable",
+      "entity": {
+        "label": "10 Modern Garden Ideas",
+        "family": "post",
+        "typeLabel": "Post",
+        "frontendUrl": ""
+      },
+      "counts": {
+        "missing": 0,
+        "changed": 0,
+        "resolvedOrChanged": 0,
+        "unavailable": 2
+      },
+      "newMissingFindingCount": 0,
+      "fields": [
+        {
+          "findingRef": "vemf_77777777777777777777",
+          "label": "Featured image",
+          "family": "featured_image",
+          "contextLabel": "Native WordPress field",
+          "status": "unavailable",
+          "descriptorStatus": "unavailable",
+          "message": "This field could not be revalidated safely. Refresh the scan after the provider is available.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        },
+        {
+          "findingRef": "vemf_88888888888888888888",
+          "label": "Post gallery",
+          "family": "acf_gallery",
+          "contextLabel": "Article media",
+          "status": "unavailable",
+          "descriptorStatus": "unavailable",
+          "message": "This field could not be revalidated safely. Refresh the scan after the provider is available.",
+          "availableActions": {
+            "refreshScan": true,
+            "hydrateDescriptor": false,
+            "assignMedia": false
+          }
+        }
+      ],
+      "error": {
+        "code": "media_scan_candidate_failed",
+        "message": "A media scan candidate could not be inspected safely.",
+        "retryable": true
+      },
+      "availableActions": {
+        "refreshScan": true,
+        "assignMedia": false
+      }
+    }
+  }
+}

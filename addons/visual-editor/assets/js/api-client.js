@@ -1,4 +1,119 @@
 (function () {
+  function mediaManagerBaseUrl() {
+    const bootstrap = window.DBVCVisualEditorBootstrap || {};
+    const config = bootstrap.mediaManager;
+    const baseUrl = config && typeof config === 'object' ? config.restBase : '';
+
+    return typeof baseUrl === 'string' ? baseUrl.replace(/\/+$/, '') : '';
+  }
+
+  function mediaManagerError(message, code, status, data) {
+    const error = new Error(message);
+
+    error.code = code || 'media_manager_request_failed';
+    error.status = Number(status || 0);
+    error.retryable = Boolean(data && data.retryable);
+    error.data = data || null;
+
+    return error;
+  }
+
+  function mediaManagerRequest(path, options) {
+    const baseUrl = mediaManagerBaseUrl();
+    const bootstrap = window.DBVCVisualEditorBootstrap || {};
+
+    if (!baseUrl) {
+      return Promise.reject(mediaManagerError(
+        'The Media Manager endpoint is unavailable.',
+        'media_manager_endpoint_unavailable',
+        0,
+        null
+      ));
+    }
+
+    const requestOptions = Object.assign({}, options || {});
+    requestOptions.headers = Object.assign({
+      'X-WP-Nonce': bootstrap.nonce || ''
+    }, requestOptions.headers || {});
+
+    return fetch(`${baseUrl}${path}`, requestOptions).then(async (response) => {
+      const data = await response.json().catch(function () {
+        return null;
+      });
+
+      if (response.ok) {
+        return data;
+      }
+
+      throw mediaManagerError(
+        (data && data.message) || `Media Manager request failed (${response.status}).`,
+        data && data.code,
+        response.status,
+        data
+      );
+    });
+  }
+
+  function mediaManagerQuery(query, includeCursor) {
+    const value = query && typeof query === 'object' ? query : {};
+    const params = new URLSearchParams();
+
+    ['search', 'entityFamily', 'fieldFamily', 'sort'].forEach(function (key) {
+      if (typeof value[key] === 'string' && value[key] !== '') {
+        params.set(key, value[key]);
+      }
+    });
+
+    if (Number.isInteger(value.limit) && value.limit > 0) {
+      params.set('limit', String(value.limit));
+    }
+
+    if (includeCursor && typeof value.cursor === 'string' && value.cursor !== '') {
+      params.set('cursor', value.cursor);
+    }
+
+    return params;
+  }
+
+  function mediaManagerIdentity(scan) {
+    const value = scan && typeof scan === 'object' ? scan : {};
+    const identity = {
+      scanRef: typeof value.scanRef === 'string' ? value.scanRef : '',
+      generation: typeof value.generation === 'string' ? value.generation : '',
+      expectedRevision: Number(value.revision || 0)
+    };
+
+    if (!identity.scanRef || !identity.generation || !Number.isInteger(identity.expectedRevision) || identity.expectedRevision < 1) {
+      throw mediaManagerError(
+        'The Media Manager scan identity is unavailable.',
+        'media_manager_identity_unavailable',
+        0,
+        null
+      );
+    }
+
+    return identity;
+  }
+
+  function mediaManagerAction(action, scan) {
+    let identity;
+
+    try {
+      identity = mediaManagerIdentity(scan);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    return mediaManagerRequest(`/scans/${encodeURIComponent(identity.scanRef)}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        generation: identity.generation,
+        expectedRevision: identity.expectedRevision
+      })
+    });
+  }
+
   window.DBVCVisualEditorApi = {
     getSession(sessionId, options) {
       const shouldHydrate = Boolean(options && options.hydrate);
@@ -215,6 +330,72 @@
 
         throw new Error((data && data.message) || `Visual Editor collection seed request failed (${response.status}).`);
       });
+    },
+
+    mediaManager: {
+      latest(query) {
+        const params = mediaManagerQuery(query, false);
+        const suffix = params.toString() ? `?${params.toString()}` : '';
+
+        return mediaManagerRequest(`/scans/latest${suffix}`);
+      },
+
+      start() {
+        return mediaManagerRequest('/scans', { method: 'POST' });
+      },
+
+      list(scan, query) {
+        let identity;
+
+        try {
+          identity = mediaManagerIdentity(scan);
+        } catch (error) {
+          return Promise.reject(error);
+        }
+
+        const params = mediaManagerQuery(query, true);
+        params.set('generation', identity.generation);
+        params.set('expectedRevision', String(identity.expectedRevision));
+
+        return mediaManagerRequest(`/scans/${encodeURIComponent(identity.scanRef)}?${params.toString()}`);
+      },
+
+      group(scan, groupRef) {
+        let identity;
+
+        try {
+          identity = mediaManagerIdentity(scan);
+        } catch (error) {
+          return Promise.reject(error);
+        }
+
+        if (typeof groupRef !== 'string' || !/^vemg_[a-f0-9]{20}$/.test(groupRef)) {
+          return Promise.reject(mediaManagerError(
+            'The Media Manager finding group is unavailable.',
+            'media_manager_group_unavailable',
+            0,
+            null
+          ));
+        }
+
+        const params = new URLSearchParams();
+        params.set('generation', identity.generation);
+        params.set('expectedRevision', String(identity.expectedRevision));
+
+        return mediaManagerRequest(`/scans/${encodeURIComponent(identity.scanRef)}/groups/${encodeURIComponent(groupRef)}?${params.toString()}`);
+      },
+
+      next(scan) {
+        return mediaManagerAction('next', scan);
+      },
+
+      retry(scan) {
+        return mediaManagerAction('retry', scan);
+      },
+
+      cancel(scan) {
+        return mediaManagerAction('cancel', scan);
+      }
     }
   };
 })();

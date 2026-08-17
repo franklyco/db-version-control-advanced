@@ -1302,6 +1302,7 @@
                 "surface:hook",
                 "surface:database",
                 "operation:inspect",
+                "operation:list",
                 "operation:search",
                 "operation:update",
                 "object:post",
@@ -1329,9 +1330,16 @@
                         "rest.47c721585ff7ce62",
                         "rest.66ba26eaebd96d17",
                         "rest.6c0468163a3b14a9",
+                        "rest.75357bde6c33d50f",
                         "rest.954a9d0af8729b2f",
+                        "rest.a0cd0b19d4fe07ac",
+                        "rest.a9fa85d1da456c52",
+                        "rest.b4875c43db00c86f",
+                        "rest.cb4a7e9f8bb0566c",
+                        "rest.d303a24a21bb5b44",
                         "rest.d06f6d2ec8fd95b3",
-                        "rest.fad13a11b5b191f7"
+                        "rest.fad13a11b5b191f7",
+                        "rest.02d61f757f392449"
                     ]
                 },
                 {
@@ -1348,10 +1356,10 @@
                         "hook.extension_point.dbvc_visual_editor_audit_event.14ad54ad",
                         "hook.extension_point.dbvc_visual_editor_base_capability.229f85de",
                         "hook.extension_point.dbvc_visual_editor_descriptor_batch_limit.bb03e273",
-                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.a9b51f31",
-                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.68357b05",
+                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.79c056fe",
+                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.8b9a05a1",
                         "hook.extension_point.dbvc_visual_editor_invalidate_cache.f9b6eb43",
-                        "hook.extension_point.dbvc_visual_editor_option_capability.3c34a63e",
+                        "hook.extension_point.dbvc_visual_editor_option_capability.199f6f76",
                         "hook.extension_point.dbvc_visual_editor_performance_profile_enabled.a035fee4",
                         "hook.extension_point.dbvc_visual_editor_performance_profile_log.c3255fcc",
                         "hook.extension_point.dbvc_visual_editor_performance_profile_max_events.f0e40755",
@@ -1360,7 +1368,7 @@
                         "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.67cf1221",
                         "hook.extension_point.dbvc_visual_editor_session_refresh_interval.8d796a0d",
                         "hook.extension_point.dbvc_visual_editor_session_ttl.0086f4bd",
-                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.f7b8e93a"
+                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e2a0b29a"
                     ]
                 },
                 {
@@ -1382,29 +1390,36 @@
             "requirements": [
                 "Visual Editor add-on enabled",
                 "Authenticated user with the configured editing capability",
-                "Valid editor session for session-scoped REST operations"
+                "Valid editor session for session-scoped REST operations",
+                "Frontend Media Manager enabled and Visual Editor mode active for scan REST operations"
             ],
             "inputs": [
                 "Rendered editable descriptors",
                 "Session-scoped field and collection changes",
-                "Object and reference search queries"
+                "Object and reference search queries",
+                "Opaque user-bound media scan references plus bounded search, filter, sort, cursor, and row-expansion requests"
             ],
             "outputs": [
                 "Updated WordPress fields and relationships",
                 "Audit events and change-journal rows",
-                "Refreshed session descriptors"
+                "Refreshed session descriptors",
+                "Read-only media scan state, compact result groups, and freshly revalidated row statuses",
+                "Default-off frontend Media Manager toolbar/shell plus safe lifecycle/query/row-expansion state controller"
             ],
             "artifacts": [
                 "Visual Editor session state",
-                "Change journal records"
+                "Change journal records",
+                "Expiring user/blog-bound media scan snapshots"
             ],
             "storage_touched": [
                 "WordPress post, term, option, and metadata stores",
                 "wp_dbvc_ve_change_sets",
-                "wp_dbvc_ve_change_items"
+                "wp_dbvc_ve_change_items",
+                "WordPress transients and short-lived option locks for Media Manager scan state"
             ],
             "settings": [
-                "dbvc_addon_visual_editor_enabled"
+                "dbvc_addon_visual_editor_enabled",
+                "dbvc_visual_editor_media_manager_enabled"
             ],
             "hooks": [
                 "dbvc_visual_editor_audit_event",
@@ -1427,7 +1442,7 @@
             "safety": {
                 "classification": "mixed",
                 "human_reviewed": true,
-                "notes": "Inspection and search are read-only; save and composite-save routes can modify WordPress data. Require preview, scoped permissions, and human review for writes."
+                "notes": "Inspection, search, and Media Manager result/row routes are content-read-only; Media Manager lifecycle POST routes change only expiring scan state. Existing save and composite-save routes can modify WordPress data and still require scoped permissions and human review."
             },
             "source_refs": [
                 {
@@ -1451,6 +1466,18 @@
                     "line": 28
                 },
                 {
+                    "path": "addons/visual-editor/src/Assets/AssetLoader.php",
+                    "line": 58
+                },
+                {
+                    "path": "addons/visual-editor/assets/js/api-client.js",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/assets/js/media-manager-app.js",
+                    "line": 1
+                },
+                {
                     "path": "addons/visual-editor/src/Audit/ChangeLogger.php",
                     "line": 41
                 },
@@ -1469,6 +1496,38 @@
                 {
                     "path": "addons/visual-editor/src/Journal/ChangeJournalStore.php",
                     "line": 260
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/AcfMediaFieldCatalog.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/EligibilityPolicy.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/MediaAssignmentValueClassifier.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/MediaScanCoordinator.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/MediaScanReadModel.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/MediaScanService.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/ScanCandidateProvider.php",
+                    "line": 1
+                },
+                {
+                    "path": "addons/visual-editor/src/MediaManager/ScanSnapshotStore.php",
+                    "line": 1
                 },
                 {
                     "path": "addons/visual-editor/src/Performance/PerformanceProfiler.php",
@@ -1531,6 +1590,10 @@
                     "line": 268
                 },
                 {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 52
+                },
+                {
                     "path": "addons/visual-editor/src/Rest/Controllers/ObjectSearchController.php",
                     "line": 35
                 },
@@ -1556,7 +1619,14 @@
                 }
             ],
             "test_refs": [
-                "tests/phpunit/VisualEditorElementInstrumentationTest.php"
+                "tests/phpunit/VisualEditorElementInstrumentationTest.php",
+                "tests/phpunit/VisualEditorMediaManagerR1ATest.php",
+                "tests/phpunit/VisualEditorMediaManagerR1BTest.php",
+                "tests/phpunit/VisualEditorMediaManagerR1CTest.php",
+                "tests/phpunit/VisualEditorMediaManagerR1DTest.php",
+                "tests/phpunit/VisualEditorMediaManagerR1ETest.php",
+                "tests/visual-editor-media-manager-state.test.cjs",
+                "tests/playwright/visual-editor-media-manager-table.spec.js"
             ],
             "doc_refs": [
                 "addons/visual-editor/docs/README.md"
@@ -1567,20 +1637,24 @@
             ],
             "known_gaps": [
                 "Same-checkout authenticated browser and REST route verification is not recorded in this manifest.",
-                "Dynamic runtime activation still depends on the add-on setting and WordPress environment."
+                "Dynamic runtime activation still depends on the add-on setting and WordPress environment.",
+                "The default-off Media Manager frontend currently stops after safe one-row field-status expansion; descriptor issuance, Media Library assignment, and content mutation remain absent.",
+                "Authenticated WordPress browser performance, complete candidate-scan scale, assistive-technology, cross-browser, and full Bricks Builder runtime evidence remain R1-D/R1-E gates. Synthetic 100/500/2,000-group snapshot/read/payload evidence is recorded; additional responsive/mobile work and real-device optimization are tabled for the current laptop/desktop-priority scope."
             ],
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
                 "evidence_types": [
                     "static_discovery",
-                    "source_review"
+                    "source_review",
+                    "automated_tests"
                 ],
+                "verified_date": "2026-08-16",
                 "live_runtime_verified": false,
-                "notes": "Reclassified during the LocalWP merge because this checkout contains and loads the Visual Editor add-on."
+                "notes": "R1-A through R1-E focused coverage passes 22 tests/681 assertions. R1-D plus initial keyboard hardening passes 4 tests/43 assertions; the R1-E scale/no-auto-scan contract passes 2 tests/50 assertions. The API/state/table/expansion controller passes 10 focused jsdom tests for route identity, state mapping, expiry/conflict handling, list and expansion response ordering, safe normalized row/field projections, server-query replacement, opaque-cursor append, scroll retention, isolated error states, and focus continuity. Isolated Chromium at 1440x900 and 1280x720 passes mocked exact group identity/status/ARIA, native Enter/Space operation, row-focus continuity, reduced-motion suppression, expanded/collapsed axe WCAG A/AA, 15-to-25 paging, nonce/identity/query/cursor, replacement/ARIA sort, bounded geometry, and trigger focus. Synthetic snapshot/read/payload measurements cover 100/500/2,000 groups; the combined 2,000-group run measured 25.425 ms, 0 additional queries, 6,291,456 allocated-memory bytes, 120,475 stored bytes, and a 24,833-byte 50-row response. The full PHP comparison runs 706 tests/7816 assertions with exactly the six inherited failures. Targeted and aggregate lint pass with stale Baseline/Browserslist data warnings only. Authenticated WordPress runtime, complete candidate-scan scale, AT/cross-browser hardening, descriptors, Media Library assignment, and content mutation are not claimed."
             },
             "id": "addon.visual_editor.runtime",
             "title": "Visual Editor add-on",
-            "summary": "Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, and a change journal.",
+            "summary": "Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, a change journal, and a default-off read-only Media Manager scan/list/row-revalidation API plus toolbar shell, lifecycle/query/expansion state controller, and server-driven safe-results table.",
             "primary_category": "entity_editor"
         },
         {
@@ -3397,18 +3471,19 @@
                     "type": "admin",
                     "identifier": "Additional current-checkout admin menus surfaces",
                     "discovery_ids": [
-                        "admin.menu.33748a39530e"
+                        "admin.menu.9855b92e48a8"
                     ]
                 },
                 {
                     "type": "admin_post",
                     "identifier": "Additional current-checkout admin handlers surfaces",
                     "discovery_ids": [
-                        "hook.listener.admin_post_.02b8014d",
-                        "hook.listener.admin_post_.0aff1529",
-                        "hook.listener.admin_post_.95c9840f",
-                        "hook.listener.admin_post_.a727444e",
-                        "hook.listener.admin_post_.c71bf57e"
+                        "hook.listener.admin_post_.7a7977a1",
+                        "hook.listener.admin_post_.e45e08b6",
+                        "hook.listener.admin_post_.af1f4307",
+                        "hook.listener.admin_post_.58efb22c",
+                        "hook.listener.admin_post_.cde17486",
+                        "hook.listener.admin_post_.10a8bc80"
                     ]
                 },
                 {
@@ -3430,6 +3505,7 @@
             ],
             "outputs": [
                 "Configuration packages",
+                "Session-scoped review drafts and filtered previews",
                 "Previews and apply reports",
                 "Updated registered settings"
             ],
@@ -3438,7 +3514,8 @@
             ],
             "storage_touched": [
                 "WordPress options",
-                "Portability package files"
+                "Portability package files",
+                "Import-session review draft files"
             ],
             "settings": [],
             "hooks": [
@@ -3477,7 +3554,23 @@
                 },
                 {
                     "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
+                    "line": 30
+                },
+                {
+                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
+                    "line": 31
+                },
+                {
+                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
                     "line": 37
+                },
+                {
+                    "path": "includes/Dbvc/ConfigurationPortability/ImportSessionService.php",
+                    "line": 155
+                },
+                {
+                    "path": "includes/Dbvc/ConfigurationPortability/ImportSessionService.php",
+                    "line": 219
                 },
                 {
                     "path": "includes/Dbvc/ConfigurationPortability/Registry.php",
@@ -3493,37 +3586,149 @@
                 "tests/phpunit/ConfigurationPortabilityExportPackageTest.php"
             ],
             "doc_refs": [
-                "docs/implementation/proposed/configuration-portability-tool-guide.md"
+                "docs/implementation/active/configuration-portability-tool-guide.md"
             ],
-            "related": [],
+            "related": [
+                "cli.configuration.portability.inspect"
+            ],
             "known_gaps": [
-                "The implementation is present while its guide remains under proposed documentation; status reconciliation is still needed.",
                 "No same-checkout browser apply/rollback verification is claimed here."
             ],
             "opportunity": {
-                "disposition": "deferred",
-                "priority": "low",
-                "effort": "medium",
+                "disposition": "covered_elsewhere",
+                "priority": "none",
+                "effort": "small",
                 "recommended_surface": "none",
-                "rationale": "Registry status is side-effect-free, but the current long-form guide still says the feature is unimplemented while the active checkout contains export, upload, apply, and rollback handlers. Documentation and supported-contract authority must be reconciled before CLI parity is promoted.",
-                "excluded_operations": [
-                    "Export package creation and download",
-                    "Package upload, diff-session creation, apply, and rollback",
-                    "Reading or returning provider-owned secret or environment-specific values"
-                ],
-                "next_action": "Reconcile the implemented provider registry/admin workflow with its proposed guide, then separately review a metadata-only domains/status command.",
-                "reviewed_date": "2026-08-11"
+                "rationale": "The implemented administrator workflow now has active guide authority, while a dedicated read-only CLI record provides bounded domain/status schema metadata without expanding this mixed capability into package or writer parity.",
+                "related_record": "cli.configuration.portability.inspect",
+                "reviewed_date": "2026-08-14"
             },
             "verification": {
                 "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
-                "verified_date": "2026-08-11",
+                "verified_date": "2026-08-14",
                 "evidence_types": [
                     "static_discovery",
                     "source_review",
-                    "opportunity_callback_audit"
+                    "opportunity_callback_audit",
+                    "documentation_authority_reconciliation",
+                    "focused_unit_test"
                 ],
                 "live_runtime_verified": false,
-                "notes": "Phase 14 confirmed registry status is metadata-only but deferred parity until the implemented workflow and proposed guide have one supported-contract authority."
+                "notes": "Phase 38 added seven-day, fingerprint-bound review drafts inside the owning import-session file plus server-rendered domain/group/field/status/unresolved filters. Active drafts restore ordinary choices and replacement values, while credential-like replacement text is never persisted or rehydrated; expired or stale drafts are not restored. Focused coverage passed 13 tests and 192 assertions, including administrator/nonce gates, invalid and stale sessions, expiry, filtered rendering, and unchanged destination settings. This mixed record retains no browser apply/rollback claim; Phase 35 metadata inspection is owned separately."
+            }
+        },
+        {
+            "id": "cli.configuration.portability.inspect",
+            "title": "Configuration portability metadata commands",
+            "summary": "Lists registered configuration portability domains and aggregate provider schema counts without reading current settings or invoking export, import, apply, backup, or rollback services.",
+            "status": "active",
+            "primary_category": "cli_automation",
+            "tags": [
+                "object:setting",
+                "operation:inspect",
+                "operation:list",
+                "risk:read_only",
+                "scope:core",
+                "surface:cli",
+                "workflow:configuration_portability"
+            ],
+            "aliases": [
+                "wp dbvc config domains",
+                "wp dbvc config status",
+                "configuration provider registry CLI"
+            ],
+            "addon_or_owner": "Core configuration portability",
+            "runtime_entrypoint": "wp dbvc config domains|status",
+            "surfaces": [
+                {
+                    "type": "cli",
+                    "identifier": "wp dbvc config domains|status",
+                    "discovery_ids": [
+                        "cli.command.dbvc.config.domains",
+                        "cli.command.dbvc.config.status"
+                    ],
+                    "source_ref": {
+                        "path": "commands/class-configuration-portability-cli.php",
+                        "line": 180
+                    }
+                }
+            ],
+            "requirements": [
+                "WP-CLI with WordPress loaded",
+                "Registered configuration portability providers"
+            ],
+            "inputs": [
+                "Optional exact domain key",
+                "Bounded table, JSON, CSV, YAML, or count format"
+            ],
+            "outputs": [
+                "Provider key, label, version, and group/field/policy counts",
+                "Aggregate feature version, provider/schema counts, and read-only markers"
+            ],
+            "artifacts": [],
+            "storage_touched": [
+                "Registered provider schema metadata in memory (read only)"
+            ],
+            "settings": [],
+            "hooks": [],
+            "safety": {
+                "classification": "read_only",
+                "human_reviewed": true,
+                "dry_run": "yes",
+                "idempotency": "yes",
+                "backup_required": false,
+                "warnings": [
+                    "Every unrecognized argument is rejected before provider metadata is inspected.",
+                    "The commands call provider group and field schema methods only and do not request current values.",
+                    "Schema metadata does not authorize package export/download, upload, session inspection, apply, backup, rollback, or secret/environment-value access."
+                ]
+            },
+            "source_refs": [
+                {
+                    "path": "commands/class-configuration-portability-cli.php"
+                },
+                {
+                    "path": "includes/Dbvc/ConfigurationPortability/Registry.php",
+                    "line": 29
+                },
+                {
+                    "path": "includes/Dbvc/ConfigurationPortability/DomainProviderInterface.php",
+                    "line": 9
+                }
+            ],
+            "test_refs": [
+                "tests/phpunit/ConfigurationPortabilityCliTest.php",
+                "tests/phpunit/ConfigurationPortabilityRegistryTest.php"
+            ],
+            "doc_refs": [
+                "docs/implementation/active/configuration-portability-tool-guide.md",
+                "docs/implementation/completed/dbvc-agent-reference-library.md",
+                "docs/agents/facets/cli-and-automation.md"
+            ],
+            "related": [
+                "configuration.core.portability"
+            ],
+            "known_gaps": [],
+            "opportunity": {
+                "disposition": "not_recommended",
+                "priority": "none",
+                "effort": "small",
+                "recommended_surface": "none",
+                "rationale": "This dedicated CLI record is the implemented metadata-only boundary; package operations, current values, and writers require separately reviewed capabilities rather than broader parity here.",
+                "reviewed_date": "2026-08-14"
+            },
+            "verification": {
+                "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+                "verified_date": "2026-08-14",
+                "evidence_types": [
+                    "source_review",
+                    "static_registration_discovery",
+                    "focused_unit_test",
+                    "same_checkout_wp_cli_execution",
+                    "pre_post_option_hash"
+                ],
+                "live_runtime_verified": true,
+                "notes": "Phase 35 focused tests and same-checkout leaf help, exact-domain JSON, aggregate status JSON, and rejected --apply execution passed. Hash-only pre/post checks covered 235 registered option keys and remained cb40d0beb2b8c3905d62cf784010b81f04d0c3a3250aff798dfa2c80a98c2e97."
             }
         },
         {

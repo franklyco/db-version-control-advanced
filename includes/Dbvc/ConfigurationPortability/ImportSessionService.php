@@ -8,6 +8,9 @@ if (! defined('WPINC')) {
 
 final class ImportSessionService
 {
+    public const REVIEW_DRAFT_VERSION = 1;
+    public const REVIEW_DRAFT_TTL_SECONDS = 604800;
+
     /**
      * @param array<string, mixed> $file
      * @return array<string, mixed>|\WP_Error
@@ -146,6 +149,113 @@ final class ImportSessionService
     }
 
     /**
+     * @param array<string, mixed> $session
+     * @return string
+     */
+    public static function get_review_fingerprint(array $session): string
+    {
+        $payload = [
+            'session_id' => sanitize_key((string) ($session['session_id'] ?? '')),
+            'package_id' => sanitize_key((string) ($session['package_id'] ?? '')),
+            'created_at_gmt' => (string) ($session['created_at_gmt'] ?? ''),
+            'manifest' => isset($session['manifest']) && is_array($session['manifest']) ? $session['manifest'] : [],
+            'diffs' => isset($session['diffs']) && is_array($session['diffs']) ? $session['diffs'] : [],
+        ];
+        $json = wp_json_encode($payload);
+
+        return hash('sha256', is_string($json) ? $json : '');
+    }
+
+    /**
+     * @param array<string, mixed> $session
+     * @return array<string, mixed>
+     */
+    public static function get_review_draft(array $session): array
+    {
+        $draft = isset($session['review_draft']) && is_array($session['review_draft']) ? $session['review_draft'] : [];
+        if (empty($draft)) {
+            return [
+                'status' => 'none',
+                'decisions' => [],
+            ];
+        }
+
+        $fingerprint = self::get_review_fingerprint($session);
+        $draft_fingerprint = (string) ($draft['session_fingerprint'] ?? '');
+        if (
+            (int) ($draft['version'] ?? 0) !== self::REVIEW_DRAFT_VERSION
+            || $draft_fingerprint === ''
+            || ! hash_equals($fingerprint, $draft_fingerprint)
+        ) {
+            return [
+                'status' => 'stale',
+                'decisions' => [],
+            ];
+        }
+
+        $expires_at = strtotime((string) ($draft['expires_at_gmt'] ?? ''));
+        if ($expires_at === false || $expires_at <= time()) {
+            return [
+                'status' => 'expired',
+                'decisions' => [],
+            ];
+        }
+
+        return [
+            'status' => 'active',
+            'saved_at_gmt' => (string) ($draft['saved_at_gmt'] ?? ''),
+            'expires_at_gmt' => (string) ($draft['expires_at_gmt'] ?? ''),
+            'session_fingerprint' => $draft_fingerprint,
+            'decisions' => isset($draft['decisions']) && is_array($draft['decisions']) ? $draft['decisions'] : [],
+        ];
+    }
+
+    /**
+     * @param string                                             $session_id
+     * @param array<string, array<string, array<string, mixed>>> $decisions
+     * @param string                                             $expected_fingerprint
+     * @return array<string, mixed>|\WP_Error
+     */
+    public static function save_review_draft($session_id, array $decisions, $expected_fingerprint)
+    {
+        $session = self::get_session($session_id);
+        if (\is_wp_error($session)) {
+            return $session;
+        }
+
+        if (! empty($session['applied_at_gmt']) || ! empty($session['rolled_back_at_gmt'])) {
+            return new \WP_Error('dbvc_config_portability_review_draft_closed', __('Review drafts cannot be changed after a session is applied or rolled back.', 'dbvc'));
+        }
+
+        $current_fingerprint = self::get_review_fingerprint($session);
+        $expected_fingerprint = strtolower(trim((string) $expected_fingerprint));
+        if ($expected_fingerprint === '' || ! hash_equals($current_fingerprint, $expected_fingerprint)) {
+            return new \WP_Error('dbvc_config_portability_review_draft_stale', __('This review changed after the form was loaded. Reload the session before saving decisions.', 'dbvc'));
+        }
+
+        $validated = self::validate_review_draft_decisions($session, $decisions);
+        if (empty($validated)) {
+            unset($session['review_draft']);
+        } else {
+            $saved_at = time();
+            $session['review_draft'] = [
+                'version' => self::REVIEW_DRAFT_VERSION,
+                'saved_at_gmt' => gmdate('c', $saved_at),
+                'expires_at_gmt' => gmdate('c', $saved_at + self::REVIEW_DRAFT_TTL_SECONDS),
+                'session_fingerprint' => $current_fingerprint,
+                'decisions' => $validated,
+            ];
+        }
+
+        $write = self::write_session($session);
+        if (\is_wp_error($write)) {
+            return $write;
+        }
+
+        return $session;
+    }
+
+    /**
      * @param string                                             $session_id
      * @param array<string, array<string, array<string, mixed>>> $environment_decisions
      * @param array<string, mixed>                               $args
@@ -232,6 +342,7 @@ final class ImportSessionService
         $session['apply_result'] = $apply_results;
         $session['apply_summary'] = self::summarize_apply_results($apply_results);
         $session['environment_decision_summary'] = $prepared['environment_decision_summary'];
+        unset($session['review_draft']);
 
         $write = self::write_session($session);
         if (\is_wp_error($write)) {
@@ -422,11 +533,13 @@ final class ImportSessionService
         $manifest_domains = isset($manifest['domains']) && is_array($manifest['domains']) ? $manifest['domains'] : [];
         $diffs = [];
         $skipped = [];
+        $preflight_warnings = [];
         $summary = [
             'domain_count' => 0,
             'row_count' => 0,
             'statuses' => [],
             'warning_count' => 0,
+            'blocking_dependency_count' => 0,
         ];
 
         foreach ($selected_domains as $domain_key) {
@@ -449,6 +562,11 @@ final class ImportSessionService
                 continue;
             }
 
+            $preflight_warnings = array_merge(
+                $preflight_warnings,
+                self::build_domain_preflight_warnings($domain_key, $provider, $incoming)
+            );
+
             $diff = $provider->diff($incoming, $provider->get_current_values(), [
                 'package_id' => sanitize_key((string) ($manifest['package_id'] ?? '')),
             ]);
@@ -470,8 +588,13 @@ final class ImportSessionService
         }
 
         ksort($summary['statuses'], SORT_STRING);
-        $warnings = self::build_compatibility_warnings($manifest, $selected_domains, $diffs, $skipped);
+        $warnings = self::build_compatibility_warnings($manifest, $selected_domains, $diffs, $skipped, $preflight_warnings);
         $summary['warning_count'] = count($warnings);
+        $summary['blocking_dependency_count'] = count(array_filter($warnings, static function ($warning): bool {
+            return is_array($warning)
+                && ($warning['code'] ?? '') === 'missing_dependency'
+                && ($warning['severity'] ?? '') === 'blocked';
+        }));
 
         return [
             'diffs' => $diffs,
@@ -486,9 +609,10 @@ final class ImportSessionService
      * @param array<int, string>    $selected_domains
      * @param array<string, mixed>  $diffs
      * @param array<string, string> $skipped_domains
+     * @param array<int, array<string, string>> $preflight_warnings
      * @return array<int, array<string, string>>
      */
-    private static function build_compatibility_warnings(array $manifest, array $selected_domains, array $diffs, array $skipped_domains): array
+    private static function build_compatibility_warnings(array $manifest, array $selected_domains, array $diffs, array $skipped_domains, array $preflight_warnings = []): array
     {
         $warnings = [];
         $compatibility = isset($manifest['compatibility']) && is_array($manifest['compatibility']) ? $manifest['compatibility'] : [];
@@ -569,7 +693,151 @@ final class ImportSessionService
             }
         }
 
+        return array_merge($warnings, $preflight_warnings);
+    }
+
+    /**
+     * Surface unsupported incoming fields and provider-owned missing dependencies.
+     *
+     * @param string                  $domain_key
+     * @param DomainProviderInterface $provider
+     * @param array<string, mixed>    $incoming
+     * @return array<int, array<string, string>>
+     */
+    private static function build_domain_preflight_warnings($domain_key, DomainProviderInterface $provider, array $incoming): array
+    {
+        $domain_key = sanitize_key((string) $domain_key);
+        $warnings = [];
+        $incoming_fields = self::flatten_incoming_fields($incoming);
+        $supported_fields = array_fill_keys(array_map('sanitize_key', array_keys($provider->get_fields())), true);
+
+        foreach (array_keys($incoming_fields) as $field_key) {
+            if (isset($supported_fields[$field_key])) {
+                continue;
+            }
+
+            $warnings[] = [
+                'code' => 'unsupported_field',
+                'severity' => 'warning',
+                'domain' => $domain_key,
+                'field' => $field_key,
+                'message' => sprintf(
+                    __('Field `%1$s` in domain `%2$s` is not supported on this site and will be skipped.', 'dbvc'),
+                    $field_key,
+                    $domain_key
+                ),
+            ];
+        }
+
+        if (! method_exists($provider, 'get_import_dependencies')) {
+            return $warnings;
+        }
+
+        $dependencies = $provider->get_import_dependencies($incoming);
+        if (! is_array($dependencies)) {
+            return $warnings;
+        }
+
+        $seen = [];
+        foreach ($dependencies as $dependency) {
+            if (! is_array($dependency)) {
+                continue;
+            }
+
+            $type = sanitize_key((string) ($dependency['type'] ?? ''));
+            $identifier = $type === 'acf_options_group'
+                ? sanitize_text_field((string) ($dependency['identifier'] ?? ''))
+                : ltrim((string) ($dependency['identifier'] ?? ''), '\\');
+            $field_key = sanitize_key((string) ($dependency['field'] ?? ''));
+            if ($type === '' || $identifier === '' || self::dependency_is_available($type, $identifier)) {
+                continue;
+            }
+
+            $dedupe_key = $type . ':' . $identifier . ':' . $field_key;
+            if (isset($seen[$dedupe_key])) {
+                continue;
+            }
+            $seen[$dedupe_key] = true;
+
+            $label = sanitize_text_field((string) ($dependency['label'] ?? ''));
+            $display = $label !== '' ? $label . ' (' . $identifier . ')' : $identifier;
+            $warnings[] = [
+                'code' => 'missing_dependency',
+                'severity' => 'blocked',
+                'domain' => $domain_key,
+                'field' => $field_key,
+                'dependency_type' => $type,
+                'dependency' => $identifier,
+                'message' => sprintf(
+                    __('Domain `%1$s` requires missing %2$s `%3$s` for field `%4$s`; apply is blocked.', 'dbvc'),
+                    $domain_key,
+                    str_replace('_', ' ', $type),
+                    $display,
+                    $field_key
+                ),
+            ];
+        }
+
         return $warnings;
+    }
+
+    /**
+     * @param string $type
+     * @param string $identifier
+     * @return bool
+     */
+    private static function dependency_is_available($type, $identifier): bool
+    {
+        if ($type === 'post_type') {
+            return post_type_exists(sanitize_key((string) $identifier));
+        }
+
+        if ($type === 'taxonomy') {
+            return taxonomy_exists(sanitize_key((string) $identifier));
+        }
+
+        if ($type === 'class') {
+            return class_exists(ltrim((string) $identifier, '\\'));
+        }
+
+        if ($type === 'acf_options_group') {
+            if (! class_exists('DBVC_Options_Groups')) {
+                return false;
+            }
+
+            foreach (\DBVC_Options_Groups::get_available_groups() as $group) {
+                if (is_array($group) && (string) ($group['id'] ?? '') === (string) $identifier) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $incoming
+     * @return array<string, array<string, mixed>>
+     */
+    private static function flatten_incoming_fields(array $incoming): array
+    {
+        $groups = isset($incoming['groups']) && is_array($incoming['groups']) ? $incoming['groups'] : [];
+        $fields = [];
+        foreach ($groups as $group) {
+            if (! is_array($group) || ! isset($group['fields']) || ! is_array($group['fields'])) {
+                continue;
+            }
+            foreach ($group['fields'] as $field_key => $payload) {
+                $field_key = sanitize_key((string) $field_key);
+                if ($field_key !== '' && is_array($payload)) {
+                    $fields[$field_key] = $payload;
+                }
+            }
+        }
+
+        return $fields;
     }
 
     /**
@@ -609,6 +877,22 @@ final class ImportSessionService
             if (\is_wp_error($incoming)) {
                 $errors[$domain_key]['domain'] = $incoming->get_error_message();
                 continue;
+            }
+
+            foreach (self::build_domain_preflight_warnings($domain_key, $provider, $incoming) as $warning) {
+                if (($warning['code'] ?? '') !== 'missing_dependency') {
+                    continue;
+                }
+
+                $field_key = sanitize_key((string) ($warning['field'] ?? ''));
+                if ($field_key === '') {
+                    $field_key = 'dependency';
+                }
+                $errors[$domain_key][$field_key] = sprintf(
+                    'missing_dependency:%s:%s',
+                    sanitize_key((string) ($warning['dependency_type'] ?? 'unknown')),
+                    sanitize_text_field((string) ($warning['dependency'] ?? 'unknown'))
+                );
             }
 
             $domain_decisions = isset($environment_decisions[$domain_key]) && is_array($environment_decisions[$domain_key])
@@ -730,6 +1014,65 @@ final class ImportSessionService
         }
 
         return $resolved;
+    }
+
+    /**
+     * @param array<string, mixed>                               $session
+     * @param array<string, array<string, array<string, mixed>>> $decisions
+     * @return array<string, array<string, array<string, string>>>
+     */
+    private static function validate_review_draft_decisions(array $session, array $decisions): array
+    {
+        $allowed = [];
+        $diffs = isset($session['diffs']) && is_array($session['diffs']) ? $session['diffs'] : [];
+        foreach ($diffs as $domain_key => $diff) {
+            $domain_key = sanitize_key((string) $domain_key);
+            $rows = is_array($diff) && isset($diff['rows']) && is_array($diff['rows']) ? $diff['rows'] : [];
+            foreach ($rows as $row) {
+                if (! is_array($row) || sanitize_key((string) ($row['status'] ?? '')) !== 'needs_environment_value') {
+                    continue;
+                }
+
+                $field_key = sanitize_key((string) ($row['field'] ?? ''));
+                if ($domain_key !== '' && $field_key !== '') {
+                    $allowed[$domain_key][$field_key] = [
+                        'persist_value' => ! in_array((string) ($row['type'] ?? 'text'), ['secret', 'key_id'], true),
+                    ];
+                }
+            }
+        }
+
+        $validated = [];
+        foreach ($decisions as $domain_key => $domain_decisions) {
+            $domain_key = sanitize_key((string) $domain_key);
+            if ($domain_key === '' || ! is_array($domain_decisions)) {
+                continue;
+            }
+
+            foreach ($domain_decisions as $field_key => $decision) {
+                $field_key = sanitize_key((string) $field_key);
+                if ($field_key === '' || empty($allowed[$domain_key][$field_key]) || ! is_array($decision)) {
+                    continue;
+                }
+
+                $action = sanitize_key((string) ($decision['action'] ?? ''));
+                if (! in_array($action, ['keep', 'replace'], true)) {
+                    continue;
+                }
+
+                $validated[$domain_key][$field_key] = [
+                    'action' => $action,
+                    'value' => $action === 'replace'
+                        && ! empty($allowed[$domain_key][$field_key]['persist_value'])
+                        && isset($decision['value'])
+                        && is_scalar($decision['value'])
+                        ? sanitize_text_field((string) $decision['value'])
+                        : '',
+                ];
+            }
+        }
+
+        return $validated;
     }
 
     /**

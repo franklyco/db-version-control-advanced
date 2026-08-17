@@ -7,7 +7,6 @@ Key proposed topics:
 - AI package work.
 - Bricks portability drift manager.
 - Cross-site entity packets.
-- Configuration portability.
 - Media sync hydration.
 - Post-field masking expansion.
 - Third-party portability.

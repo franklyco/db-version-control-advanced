@@ -3,10 +3,11 @@
 ## Active docs
 
 ### Current Planning Entry
-- `enhancements/DBVC_VISUAL_EDITOR_PHASES.md` - canonical P0-P5 production backlog and current development priority order.
+- `enhancements/DBVC_VISUAL_EDITOR_PHASES.md` - canonical P0-P5 existing-path backlog plus the repository-reconciled R0-R6 Media Manager, Brand Controls, and frontend-workspace release program.
 
 ### Handoffs
-- `handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md`
+- `handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md` - current detailed Media Manager/Visual Editor resume authority, dirty-boundary record, validation baseline, and next-slice sequence.
+- `handoffs/DBVC_MEDIA_MANAGER_RESUME_PROMPT.md` - compact copy/paste launcher for a fresh Codex task.
 - `handoffs/DBVC_VISUAL_EDITOR_HANDOFF_2026_05_24.md`
 
 ### Enhancements

@@ -1,0 +1,536 @@
+<!doctype html>
+<!--
+  DBVC Visual Editor - R1 Media Manager static mockup, state gallery (phase R1-D3).
+
+  Static only: no script is loaded on this page. Each case renders the real component
+  markup with the .dbvc-ve-media-manager--inline modifier so the drawer sits in the page
+  flow instead of over a live site.
+
+  Provenance rules for this page:
+    - The complete-scan case and every expansion count come verbatim from
+      media-manager-r1c-view-model.json.
+    - The running, error, and cancelled cases have no fixture counterpart. Their numbers
+      are illustrative placeholders for layout only and are labelled as such.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>R1 Media Manager - state gallery (static mockup)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="dbvc-ve-media-manager-mockup dbvc-ve-media-manager-mockup--gallery">
+
+<header class="dbvc-ve-media-manager-mockup__gallery-header">
+  <h1 class="dbvc-ve-media-manager-mockup__gallery-title">R1 Media Manager - state gallery</h1>
+  <p class="dbvc-ve-media-manager-mockup__gallery-intro">
+    Every scan, result, and expansion state the R1 read-only release can present. The default
+    view lives in <a class="dbvc-ve-media-manager__open-link" href="index.html">index.html</a>.
+  </p>
+  <p class="dbvc-ve-media-manager-mockup__gallery-warning">
+    <strong>Provenance.</strong> Cases 1, 2, 3 and 4 have no counterpart in the R1-C fixture, which
+    contains one completed scan. Their progress numbers, timestamps, and error text are
+    <strong>illustrative placeholders for layout only</strong> and must not be treated as contract
+    values. Cases 5 through 9 are fixture-exact. Case 10 illustrates a request error that returns
+    no row payload, and case 11 illustrates a contract-valid partial page; neither is the default
+    fixture response, which returns every matching row with <code>hasMore: false</code>.
+  </p>
+  <p class="dbvc-ve-media-manager-mockup__gallery-warning">
+    <strong>Backend state vs. presentation.</strong> Backend evidence is
+    <code>scanning</code>, <code>failed</code>, <code>canceled</code>, <code>complete</code>, and
+    <code>invalidated</code>. The friendly labels below come from a documented adapter, not from a
+    server field. Retry and Cancel are driven strictly by <code>canRetry</code> and
+    <code>canCancel</code>, never inferred from a label. The full mapping is in
+    <code>WIRING-SCHEMATIC.md</code> section 2.1.
+  </p>
+</header>
+
+<!-- ===================== SCAN STATES ===================== -->
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">1. No current scan</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    <code>GET /scans/latest</code> returned <code>404 media_scan_expired_or_invalid</code>, or no
+    usable snapshot. <strong>Deliberately not called &ldquo;No scan yet&rdquo;:</strong> the current
+    contract cannot distinguish a scan that was never created from one that expired or was
+    invalidated, so the copy must not assert either. Only Start/Refresh is offered; there is nothing
+    to continue, cancel, or retry. Illustrative placeholder state.
+  </p>
+  <section class="dbvc-ve-media-manager dbvc-ve-media-manager--inline" data-state="idle" aria-label="Media Manager, no current scan">
+    <div class="dbvc-ve-media-manager__scan">
+      <p class="dbvc-ve-media-manager__scan-state is-cancelled">
+        <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+        No current scan
+      </p>
+      <span class="dbvc-ve-media-manager__scan-progress-text">No scan results are available right now. Start a scan to list published entities with empty media fields.</span>
+      <div class="dbvc-ve-media-manager__scan-actions">
+        <button type="button" class="dbvc-ve-media-manager__button dbvc-ve-media-manager__button--primary">Start scan</button>
+      </div>
+    </div>
+    <div class="dbvc-ve-media-manager__results">
+      <div class="dbvc-ve-media-manager__empty">
+        <p class="dbvc-ve-media-manager__empty-title">No results yet</p>
+        <p class="dbvc-ve-media-manager__empty-body">Start a scan to populate this list.</p>
+      </div>
+    </div>
+  </section>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">2. Scan running</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Chunked scan in progress. <strong>Continue</strong> appears only while running
+    (<code>POST /scans/{scanRef}/next</code>) and <strong>Cancel</strong> only while
+    <code>canCancel</code> is true. Refresh is suppressed so a second scan cannot be started over
+    a live one. Illustrative placeholder counts.
+  </p>
+  <section class="dbvc-ve-media-manager dbvc-ve-media-manager--inline" data-state="running" aria-label="Media Manager, scan running">
+    <div class="dbvc-ve-media-manager__scan">
+      <p class="dbvc-ve-media-manager__scan-state is-running">
+        <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+        Scan running
+      </p>
+      <div class="dbvc-ve-media-manager__scan-progress">
+        <label class="dbvc-ve-media-manager__sr-only" for="mm-progress-running">Entities processed</label>
+        <progress class="dbvc-ve-media-manager__progress" id="mm-progress-running" max="84" value="48">48 of 84</progress>
+        <span class="dbvc-ve-media-manager__scan-progress-text">48 of 84 processed &middot; 3 chunks &middot; 3 attempts &middot; 0 retries</span>
+      </div>
+      <div class="dbvc-ve-media-manager__scan-actions">
+        <button type="button" class="dbvc-ve-media-manager__button dbvc-ve-media-manager__button--primary">Continue</button>
+        <button type="button" class="dbvc-ve-media-manager__button">Cancel</button>
+      </div>
+    </div>
+    <div class="dbvc-ve-media-manager__notices">
+      <p class="dbvc-ve-media-manager__notice is-info">
+        <strong>Partial results.</strong>
+        Rows below cover the chunks processed so far and will change as the scan continues.
+      </p>
+    </div>
+  </section>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">3. Scan error</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    <code>scan.error</code> carries a safe operator-facing message only - never a stack trace, SQL,
+    or raw field target. <strong>Retry</strong> appears only while <code>canRetry</code> is true
+    (<code>POST /scans/{scanRef}/retry</code>). Illustrative placeholder message.
+  </p>
+  <section class="dbvc-ve-media-manager dbvc-ve-media-manager--inline" data-state="error" aria-label="Media Manager, scan error">
+    <div class="dbvc-ve-media-manager__scan">
+      <p class="dbvc-ve-media-manager__scan-state is-error">
+        <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+        Scan stopped on an error
+      </p>
+      <div class="dbvc-ve-media-manager__scan-progress">
+        <label class="dbvc-ve-media-manager__sr-only" for="mm-progress-error">Entities processed</label>
+        <progress class="dbvc-ve-media-manager__progress" id="mm-progress-error" max="84" value="31">31 of 84</progress>
+        <span class="dbvc-ve-media-manager__scan-progress-text">31 of 84 processed &middot; 2 chunks &middot; 3 attempts &middot; 1 retry</span>
+      </div>
+      <div class="dbvc-ve-media-manager__scan-actions">
+        <button type="button" class="dbvc-ve-media-manager__button dbvc-ve-media-manager__button--danger">Retry scan</button>
+      </div>
+    </div>
+    <div class="dbvc-ve-media-manager__notices">
+      <p class="dbvc-ve-media-manager__notice is-error">
+        <strong>Scan could not finish.</strong>
+        The scan stopped before all candidates were processed. Partial results below are from the
+        chunks that completed. Retry when ready.
+      </p>
+    </div>
+  </section>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">4. Scan cancelled</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Operator cancelled via <code>POST /scans/{scanRef}/cancel</code>. Partial results stay readable;
+    Refresh returns. Illustrative placeholder counts.
+  </p>
+  <section class="dbvc-ve-media-manager dbvc-ve-media-manager--inline" data-state="cancelled" aria-label="Media Manager, scan cancelled">
+    <div class="dbvc-ve-media-manager__scan">
+      <p class="dbvc-ve-media-manager__scan-state is-cancelled">
+        <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+        Scan cancelled
+      </p>
+      <div class="dbvc-ve-media-manager__scan-progress">
+        <label class="dbvc-ve-media-manager__sr-only" for="mm-progress-cancelled">Entities processed</label>
+        <progress class="dbvc-ve-media-manager__progress" id="mm-progress-cancelled" max="84" value="60">60 of 84</progress>
+        <span class="dbvc-ve-media-manager__scan-progress-text">60 of 84 processed before cancellation</span>
+      </div>
+      <div class="dbvc-ve-media-manager__scan-actions">
+        <button type="button" class="dbvc-ve-media-manager__button dbvc-ve-media-manager__button--primary">Refresh scan</button>
+      </div>
+    </div>
+    <div class="dbvc-ve-media-manager__notices">
+      <p class="dbvc-ve-media-manager__notice is-warning">
+        <strong>Partial snapshot.</strong>
+        These results cover only the entities processed before cancellation and are not a complete
+        picture of the site.
+      </p>
+    </div>
+  </section>
+</section>
+
+<!-- ===================== RESULT STATES ===================== -->
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">5. Filters match nothing</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    The scan is intact; only the query excludes everything. The copy points at the filters rather
+    than implying the site is clean. Reachable live in <code>index.html</code> by filtering to Terms
+    plus ACF gallery.
+  </p>
+  <section class="dbvc-ve-media-manager dbvc-ve-media-manager--inline" data-state="complete" aria-label="Media Manager, no matching results">
+    <div class="dbvc-ve-media-manager__results">
+      <div class="dbvc-ve-media-manager__empty">
+        <p class="dbvc-ve-media-manager__empty-title">No entities match these filters</p>
+        <p class="dbvc-ve-media-manager__empty-body">
+          Clear the search or widen the entity and field filters. The scan itself is unchanged.
+        </p>
+      </div>
+    </div>
+  </section>
+</section>
+
+<!-- ===================== EXPANSION STATES ===================== -->
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">6. Expansion - current</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Fixture <code>expandedRows.current</code>, group <code>vemg_aaaa&hellip;</code>. One of
+    <strong>four</strong> complete expansion payloads in the fixture &mdash; alongside
+    <code>changed</code>, <code>resolved</code> and <code>unavailable</code>, shown in cases 7, 8
+    and 9. All four render their field records in
+    <a class="dbvc-ve-media-manager__open-link" href="index.html">index.html</a>; the two groups
+    the fixture carries no payload for stay honestly pending there.
+  </p>
+  <div class="dbvc-ve-media-manager dbvc-ve-media-manager--inline">
+    <div class="dbvc-ve-media-manager__expansion" data-expansion-status="current">
+      <div class="dbvc-ve-media-manager__expansion-header">
+        <h3 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;Home Page&rdquo;</h3>
+        <p class="dbvc-ve-media-manager__expansion-state is-current">
+          <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+          Current &mdash; revalidated against the scan snapshot
+        </p>
+        <ul class="dbvc-ve-media-manager__expansion-counts">
+          <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 3</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 0</span></li>
+        </ul>
+        <p class="dbvc-ve-media-manager__expansion-note">No new missing findings since the scan.</p>
+      </div>
+      <ul class="dbvc-ve-media-manager__field-list">
+        <li class="dbvc-ve-media-manager__field" data-status="missing">
+          <div class="dbvc-ve-media-manager__field-main">
+            <p class="dbvc-ve-media-manager__field-label">Featured image</p>
+            <p class="dbvc-ve-media-manager__field-context">Native WordPress field</p>
+          </div>
+          <div class="dbvc-ve-media-manager__field-tags">
+            <span class="dbvc-ve-media-manager__family-chip is-featured">Featured image</span>
+            <span class="dbvc-ve-media-manager__status-chip is-missing">Missing</span>
+          </div>
+          <p class="dbvc-ve-media-manager__field-message">
+            This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.
+          </p>
+          <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: not hydrated</p>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">7. Expansion - changed</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Fixture <code>expandedRows.changed</code>, group <code>vemg_bbbb&hellip;</code>:
+    missing 1, changed 1, <code>newMissingFindingCount</code> 1. The two field records are the
+    <strong>original</strong> findings returned by <code>expandGroup()</code>. The new missing
+    finding is a <em>count only</em> - the server builds <code>fields[]</code> from the original
+    snapshot findings, so a newly observed one is never listed here.
+  </p>
+  <div class="dbvc-ve-media-manager dbvc-ve-media-manager--inline">
+    <div class="dbvc-ve-media-manager__expansion" data-expansion-status="changed">
+      <div class="dbvc-ve-media-manager__expansion-header">
+        <h3 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;About Us&rdquo;</h3>
+        <p class="dbvc-ve-media-manager__expansion-state is-changed">
+          <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+          Changed &mdash; content moved since the scan
+        </p>
+        <ul class="dbvc-ve-media-manager__expansion-counts">
+          <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 1</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 1</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 0</span></li>
+        </ul>
+      </div>
+      <p class="dbvc-ve-media-manager__notice is-warning">
+        <strong>1 new missing finding</strong> appeared after this scan snapshot was taken. It is
+        reported as a count only and is not listed below. Refresh the scan for an accurate picture.
+      </p>
+      <ul class="dbvc-ve-media-manager__field-list">
+        <li class="dbvc-ve-media-manager__field" data-status="missing">
+          <div class="dbvc-ve-media-manager__field-main">
+            <p class="dbvc-ve-media-manager__field-label">Featured image</p>
+            <p class="dbvc-ve-media-manager__field-context">Native WordPress field</p>
+          </div>
+          <div class="dbvc-ve-media-manager__field-tags">
+            <span class="dbvc-ve-media-manager__family-chip is-featured">Featured image</span>
+            <span class="dbvc-ve-media-manager__status-chip is-missing">Missing</span>
+          </div>
+          <p class="dbvc-ve-media-manager__field-message">
+            This supported media field is still empty. Descriptor hydration is deferred to the remediation phase.
+          </p>
+          <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: not hydrated</p>
+        </li>
+        <li class="dbvc-ve-media-manager__field" data-status="changed">
+          <div class="dbvc-ve-media-manager__field-main">
+            <p class="dbvc-ve-media-manager__field-label">Team photo</p>
+            <p class="dbvc-ve-media-manager__field-context">About page content</p>
+          </div>
+          <div class="dbvc-ve-media-manager__field-tags">
+            <span class="dbvc-ve-media-manager__family-chip is-image">ACF image</span>
+            <span class="dbvc-ve-media-manager__status-chip is-changed">Changed</span>
+          </div>
+          <p class="dbvc-ve-media-manager__field-message">
+            This field is still empty, but its scan evidence changed. Refresh the scan before taking further action.
+          </p>
+          <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: blocked (stale evidence)</p>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">8. Expansion - resolved or changed</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Fixture <code>expandedRows.resolved</code>, group <code>vemg_eeee&hellip;</code>:
+    resolvedOrChanged 1. Someone filled the field, or the field moved out of scope - R1 reports the
+    ambiguity honestly rather than claiming a fix. The original finding is still returned, carrying
+    the resolved-or-changed status.
+  </p>
+  <div class="dbvc-ve-media-manager dbvc-ve-media-manager--inline">
+    <div class="dbvc-ve-media-manager__expansion" data-expansion-status="resolved_or_changed">
+      <div class="dbvc-ve-media-manager__expansion-header">
+        <h3 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;Landscaping&rdquo;</h3>
+        <p class="dbvc-ve-media-manager__expansion-state is-resolved">
+          <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+          Resolved or changed &mdash; no longer missing
+        </p>
+        <ul class="dbvc-ve-media-manager__expansion-counts">
+          <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 1</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 0</span></li>
+        </ul>
+      </div>
+      <p class="dbvc-ve-media-manager__notice is-info">
+        This finding is no longer missing. It was either filled or the field is no longer in scope.
+        R1 cannot tell the two apart and does not guess.
+      </p>
+      <ul class="dbvc-ve-media-manager__field-list">
+        <li class="dbvc-ve-media-manager__field" data-status="resolved_or_changed">
+          <div class="dbvc-ve-media-manager__field-main">
+            <p class="dbvc-ve-media-manager__field-label">Archive image</p>
+            <p class="dbvc-ve-media-manager__field-context">Project type media</p>
+          </div>
+          <div class="dbvc-ve-media-manager__field-tags">
+            <span class="dbvc-ve-media-manager__family-chip is-image">ACF image</span>
+            <span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed</span>
+          </div>
+          <p class="dbvc-ve-media-manager__field-message">
+            This field is no longer confirmed missing. Refresh the scan before taking further action.
+          </p>
+          <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: unavailable</p>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">9. Expansion - provider unavailable (row data)</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Fixture <code>expandedRows.unavailable</code>, group <code>vemg_ffff&hellip;</code>:
+    unavailable 2. This is <code>unavailableGroupResponse()</code>: the group <strong>was</strong>
+    found and its fields <strong>are</strong> returned, but the rescan provider failed, so every
+    field carries <code>status: unavailable</code> alongside a safe retryable error.
+    This is <strong>not</strong> the unpublished/deleted/out-of-scope case - that produces a
+    request error with no row payload at all, shown in case 10.
+  </p>
+  <div class="dbvc-ve-media-manager dbvc-ve-media-manager--inline">
+    <div class="dbvc-ve-media-manager__expansion" data-expansion-status="unavailable">
+      <div class="dbvc-ve-media-manager__expansion-header">
+        <h3 class="dbvc-ve-media-manager__expansion-title">Missing media fields for &ldquo;10 Modern Garden Ideas&rdquo;</h3>
+        <p class="dbvc-ve-media-manager__expansion-state is-unavailable">
+          <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+          Unavailable &mdash; could not be revalidated
+        </p>
+        <ul class="dbvc-ve-media-manager__expansion-counts">
+          <li><span class="dbvc-ve-media-manager__status-chip is-missing">Missing 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-changed">Changed 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-resolved">Resolved or changed 0</span></li>
+          <li><span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable 2</span></li>
+        </ul>
+      </div>
+      <p class="dbvc-ve-media-manager__notice is-warning">
+        <strong>Revalidation could not complete.</strong> A media scan candidate could not be
+        inspected safely, so these findings show their scan-time state rather than a fresh result.
+        This is retryable - refresh the scan once the provider is available.
+      </p>
+      <ul class="dbvc-ve-media-manager__field-list">
+        <li class="dbvc-ve-media-manager__field" data-status="unavailable">
+          <div class="dbvc-ve-media-manager__field-main">
+            <p class="dbvc-ve-media-manager__field-label">Featured image</p>
+            <p class="dbvc-ve-media-manager__field-context">Native WordPress field</p>
+          </div>
+          <div class="dbvc-ve-media-manager__field-tags">
+            <span class="dbvc-ve-media-manager__family-chip is-featured">Featured image</span>
+            <span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable</span>
+          </div>
+          <p class="dbvc-ve-media-manager__field-message">
+            This field could not be revalidated safely. Refresh the scan after the provider is available.
+          </p>
+          <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: unavailable</p>
+        </li>
+        <li class="dbvc-ve-media-manager__field" data-status="unavailable">
+          <div class="dbvc-ve-media-manager__field-main">
+            <p class="dbvc-ve-media-manager__field-label">Post gallery</p>
+            <p class="dbvc-ve-media-manager__field-context">Article media</p>
+          </div>
+          <div class="dbvc-ve-media-manager__field-tags">
+            <span class="dbvc-ve-media-manager__family-chip is-gallery">ACF gallery</span>
+            <span class="dbvc-ve-media-manager__status-chip is-unavailable">Unavailable</span>
+          </div>
+          <p class="dbvc-ve-media-manager__field-message">
+            This field could not be revalidated safely. Refresh the scan after the provider is available.
+          </p>
+          <p class="dbvc-ve-media-manager__field-descriptor">Descriptor: unavailable</p>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">10. Expansion request unavailable (404, no row payload)</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    <strong>Request state, not a row status.</strong> The expansion call returned
+    <code>404 media_scan_group_unavailable</code>. There is no <code>row</code> object, no
+    <code>counts</code>, and no <code>fields[]</code> - so nothing about the group's fields can be
+    shown. This is the case for a group that was unpublished, deleted, moved out of the published
+    scope, or whose snapshot entry expired. Contrast with case 9, where the group resolved and its
+    fields were returned but the rescan provider failed.
+  </p>
+  <div class="dbvc-ve-media-manager dbvc-ve-media-manager--inline">
+    <div class="dbvc-ve-media-manager__expansion" data-expansion-status="request_error">
+      <div class="dbvc-ve-media-manager__expansion-header">
+        <h3 class="dbvc-ve-media-manager__expansion-title">Details unavailable for this entity</h3>
+        <p class="dbvc-ve-media-manager__expansion-state is-unavailable">
+          <span class="dbvc-ve-media-manager__dot" aria-hidden="true"></span>
+          Request unavailable &mdash; no details returned
+        </p>
+      </div>
+      <p class="dbvc-ve-media-manager__notice is-error">
+        <strong>This entity's details are no longer available.</strong> The media finding group is
+        unavailable. Refresh the list or run a new scan to get current results.
+      </p>
+      <p class="dbvc-ve-media-manager__expansion-footnote">
+        No counts or field records are rendered, because the server returned none. Inventing a
+        count here would misreport the entity's state.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">11. Partial page with Load more (illustrative)</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    <strong>Illustrative, not the default fixture response.</strong> The canonical fixture returns
+    all six matching rows under <code>limit: 20</code>, so it declares
+    <code>hasMore: false</code> with an empty cursor and <code>index.html</code> omits this control
+    entirely. To demonstrate the paging affordance, this case shows a contract-valid
+    <em>partial first page</em> - the same safe fixture entities under a smaller limit, where the
+    server would legitimately report another cursor page.
+  </p>
+  <div class="dbvc-ve-media-manager dbvc-ve-media-manager--inline">
+    <div class="dbvc-ve-media-manager__load-more">
+      <button type="button" class="dbvc-ve-media-manager__button">
+        Load more results
+      </button>
+      <p class="dbvc-ve-media-manager__load-more-note">
+        More results are available. R1 pages by opaque cursor and reports neither a page count nor
+        a total.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ACCESSIBILITY AND MOTION ===================== -->
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">12. Focus, motion, and contrast behaviour</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Tab through the controls below to see the focus treatment. The ring is
+    <code>2px solid var(--dbvc-ve-color-focus)</code> at <code>outline-offset: 2px</code>, matching
+    <code>.dbvc-ve-panel__richtext:focus</code> in <code>overlay.css</code>.
+  </p>
+  <div class="dbvc-ve-media-manager dbvc-ve-media-manager--inline">
+    <div class="dbvc-ve-media-manager__controls">
+      <div class="dbvc-ve-media-manager__controls-row">
+        <div class="dbvc-ve-media-manager__control dbvc-ve-media-manager__control--search">
+          <label class="dbvc-ve-media-manager__control-label" for="mm-focus-search">Search entities</label>
+          <input class="dbvc-ve-media-manager__search" id="mm-focus-search" type="search" maxlength="100" placeholder="Focus me&hellip;">
+        </div>
+        <fieldset class="dbvc-ve-media-manager__control dbvc-ve-media-manager__control--chips">
+          <legend class="dbvc-ve-media-manager__control-label">Chip focus</legend>
+          <div class="dbvc-ve-media-manager__chip-set">
+            <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-focus" id="mm-focus-a" checked>
+            <label class="dbvc-ve-media-manager__chip" for="mm-focus-a">Selected</label>
+            <input class="dbvc-ve-media-manager__chip-input" type="radio" name="mm-focus" id="mm-focus-b">
+            <label class="dbvc-ve-media-manager__chip" for="mm-focus-b">Unselected</label>
+          </div>
+        </fieldset>
+        <div class="dbvc-ve-media-manager__control">
+          <span class="dbvc-ve-media-manager__control-label">Buttons</span>
+          <div class="dbvc-ve-media-manager__scan-actions">
+            <button type="button" class="dbvc-ve-media-manager__button dbvc-ve-media-manager__button--primary">Primary</button>
+            <button type="button" class="dbvc-ve-media-manager__button">Secondary</button>
+            <button type="button" class="dbvc-ve-media-manager__button dbvc-ve-media-manager__button--danger">Retry</button>
+            <button type="button" class="dbvc-ve-media-manager__button" disabled>Disabled</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    <strong>Reduced motion.</strong> The only animation in the component is the row chevron
+    rotation; <code>@media (prefers-reduced-motion: reduce)</code> removes its transition.
+    <strong>Forced colours.</strong> Every chip re-borders to <code>CanvasText</code> under
+    <code>@media (forced-colors: active)</code> so status stays distinguishable.
+    <strong>Colour independence.</strong> Field-family chips carry a leading glyph
+    (<span class="dbvc-ve-media-manager__family-chip is-featured">Featured</span>
+    <span class="dbvc-ve-media-manager__family-chip is-image">ACF image</span>
+    <span class="dbvc-ve-media-manager__family-chip is-gallery">Gallery</span>)
+    and every status chip states its status in words.
+  </p>
+</section>
+
+<section class="dbvc-ve-media-manager-mockup__case">
+  <h2 class="dbvc-ve-media-manager-mockup__case-title">13. Responsive behaviour</h2>
+  <p class="dbvc-ve-media-manager-mockup__case-note">
+    Narrow this window to check both breakpoints on
+    <a class="dbvc-ve-media-manager__open-link" href="index.html">index.html</a>.
+    At <strong>&le;1024px</strong> the table is retained and the chrome tightens: summary notes and
+    the entity-family sub-label are dropped, and the scan band stacks.
+    At <strong>&le;640px</strong> each row becomes a card. Column headers move out of the visual
+    flow but stay in the accessibility tree, and every value prints its column name from
+    <code>data-label</code>, so no information is lost. Explicit ARIA roles in the markup preserve
+    table semantics through the <code>display: block</code> transform.
+  </p>
+</section>
+
+</body>
+</html>

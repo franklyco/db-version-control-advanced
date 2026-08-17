@@ -109,6 +109,11 @@ final class VisualEditorProvider extends AbstractOptionDomainProvider
         ];
     }
 
+    public function get_import_dependencies(array $incoming): array
+    {
+        return $this->get_class_dependency($incoming, 'DBVC_Visual_Editor_Addon', __('Visual Editor add-on', 'dbvc'));
+    }
+
     /**
      * @param array<int|string, mixed> $applied
      * @return void

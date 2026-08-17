@@ -13,6 +13,58 @@ Rules:
 - optional non-sensitive render metadata such as `data-dbvc-ve-context="text"` or `data-dbvc-ve-context="link_href"` is allowed when needed so the overlay can compare and update the correct rendered projection
 - non-sensitive loop ownership details may live in the server-side descriptor payload, but not in public DOM save targets
 
+## Media Manager R1-C read contract
+
+Media Manager scan state remains server-owned in the separate scan snapshot store. The protected REST surface is available only when the default-off Media Manager feature, the base Visual Editor capability, and active Visual Editor mode all pass.
+
+The lifecycle projection contains only the view-model version, opaque scan/generation references, revision, state, progress, safe summary/error/timestamps, and allowed non-mutating lifecycle actions. It excludes stored groups, sources, traversal cursors, configuration fingerprints, storage metrics, owner targets, and field targets.
+
+The list request accepts bounded `search` (100 characters), `entity` (`all`, `post`, `term`), `field` (`all`, `featured_image`, `acf_image`, `acf_gallery`), an allowlisted sort, an opaque group-reference cursor, and a limit from 1 to 50. Explicit scan reads require the matching generation and revision. The latest-scan route is the deliberate resume exception and returns the latest user/site-bound scan without client-supplied generation/revision.
+
+Each list row contains only an opaque group reference, safe current entity label/family/type label, permitted frontend URL or `null`, missing count, family counts, scan timestamp, and `expand` availability. There is no exact filtered total; cursor paging finds at most one additional eligible row to report `hasMore`, keeping per-request capability checks bounded.
+
+Expansion accepts an opaque group reference plus matching generation/revision, resolves the target only from the current user/site-bound snapshot, and rescans that one server-owned entity. Field records contain an opaque finding reference, safe label/context, family, one of `missing`, `changed`, `resolved_or_changed`, or `unavailable`, a descriptor status, and non-mutating action flags. They never expose an owner ID/subtype, ACF object ID, field key/name/selector/path, empty/configuration fingerprint, raw stored value, full descriptor, descriptor token, or mutation action.
+
+## Media Manager R1-D shell contract
+
+The localized `DBVCVisualEditorBootstrap.mediaManager` object contains only:
+
+```json
+{
+  "enabled": true,
+  "restBase": "/wp-json/dbvc/v1/visual-editor/media-manager"
+}
+```
+
+The config is present on active Visual Editor pages so the shared toolbar can decide whether to render the entry. The separate Media Manager CSS/JavaScript assets enqueue only when `enabled` is true. Their first production slice creates a non-modal `role="dialog"` shell with `aria-labelledby`, a toolbar trigger using `aria-controls`/`aria-expanded`/`aria-haspopup="dialog"`, close and Escape behavior, and trigger-focus restoration.
+
+The overlay integration emits only `dbvc:visual-editor:media-manager:toggle` and `dbvc:visual-editor:media-manager:close` document events. The Media Manager module emits `dbvc:visual-editor:media-manager:opened`, `dbvc:visual-editor:media-manager:closed`, and `dbvc:visual-editor:media-manager:state-changed`. Event details contain only a copied safe client state and are not data or mutation authority.
+
+The second and fourth production slices provide `DBVCVisualEditorApi.mediaManager.latest/start/list/group/next/retry/cancel`. The request helper supplies the existing REST nonce; explicit list/group/action calls carry the current opaque `scanRef`, `generation`, and `expectedRevision`. `group` also accepts only the allowlisted opaque `vemg_*` reference. The first panel open calls only `latest`; a scan starts, advances, or revalidates one group only after an explicit user action.
+
+`window.DBVCVisualEditorMediaManager` exposes `open`, `close`, `isOpen`, `getState`, `loadLatest`, `start`, `list`, `loadMore`, `expand`, `collapse`, `next`, `retry`, and `cancel`. `getState()` returns a copy of this safe client shape:
+
+```json
+{
+  "hasLoaded": true,
+  "request": { "status": "success", "action": "" },
+  "presentation": "complete",
+  "scan": {},
+  "query": {},
+  "items": [],
+  "pagination": { "hasMore": false, "nextCursor": "" },
+  "results": { "status": "success", "error": null, "scrollTop": 0 },
+  "expansion": { "groupRef": "", "status": "idle", "row": null, "error": null },
+  "error": null
+}
+```
+
+Presentation maps `scanning`, `failed`, `canceled`, `complete`, and `invalidated` to `scanning`, `error`, `canceled`, `complete`, and `invalidated`. Latest/list `404 media_scan_expired_or_invalid` maps to `no_scan`; generation/revision/busy/superseded conflicts map to the request-level `stale` presentation without replacing the newest accepted scan. A monotonic request sequence and same-generation revision comparison suppress older responses.
+
+The third production slice renders safe list `items` as collapsed semantic rows. Search, entity family, field family, and sort always trigger a bounded first-page server request; the browser does not locally filter or sort authoritative data. `loadMore` sends the opaque next cursor, appends only previously unseen opaque group references, and preserves internal table scroll. A first-page replacement clears the cursor result set, expansion, and scroll. The table exposes safe labels, family/count summaries, timestamps, and an allowlisted HTTP(S) frontend link only. It never writes an owner/field/path/fingerprint into the DOM. The R1-C REST response remains authoritative.
+
+The fourth production slice allows one row expansion at a time. A real button owns `aria-expanded` and `aria-controls`; its labeled region presents independent loading, request-error, provider-unavailable, current, changed, and resolved-or-changed states. The client calls only `group(scan, groupRef)`, validates that the returned scan identity and group match the current list, normalizes allowlisted field/status/descriptor-status properties, strips unknown keys, and suppresses a slower expansion response after collapse or a newer row request. Expansion never changes global list request state and a group failure never removes the loaded rows. `hydrateDescriptor` and `assignMedia` remain forced false; R1 does not call `wp.media`, issue a descriptor, or expose a mutation action.
+
 ## Editable descriptor contract
 
 ```json

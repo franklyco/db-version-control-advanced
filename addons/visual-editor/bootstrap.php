@@ -28,11 +28,12 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
     final class DBVC_Visual_Editor_Addon
     {
         public const OPTION_ENABLED = 'dbvc_addon_visual_editor_enabled';
+        public const OPTION_MEDIA_MANAGER_ENABLED = 'dbvc_visual_editor_media_manager_enabled';
         public const OPTION_SHARED_GLOBAL_FIELD_NAMES = 'dbvc_visual_editor_shared_global_field_names';
         public const OPTION_EXCLUDED_POST_TYPES = 'dbvc_visual_editor_excluded_post_types';
         public const OPTION_EXCLUDED_TAXONOMIES = 'dbvc_visual_editor_excluded_taxonomies';
         public const OPTION_SETTINGS_VERSION = 'dbvc_visual_editor_settings_version';
-        public const SETTINGS_VERSION = 3;
+        public const SETTINGS_VERSION = 4;
         public const DEFAULT_SHARED_GLOBAL_FIELD_NAMES = 'settings_globals_default_posts';
         public const DEFAULT_EXCLUDED_POST_TYPES = 'bricks_template';
         public const DEFAULT_EXCLUDED_TAXONOMIES = "template_tag\ntemplate_bundle";
@@ -63,10 +64,15 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         public static function ensure_defaults()
         {
             add_option(self::OPTION_ENABLED, '0');
+            add_option(self::OPTION_MEDIA_MANAGER_ENABLED, '0');
             add_option(self::OPTION_SHARED_GLOBAL_FIELD_NAMES, self::DEFAULT_SHARED_GLOBAL_FIELD_NAMES);
             add_option(self::OPTION_EXCLUDED_POST_TYPES, self::DEFAULT_EXCLUDED_POST_TYPES);
             add_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES);
             add_option(self::OPTION_SETTINGS_VERSION, (string) self::SETTINGS_VERSION);
+
+            if ((int) get_option(self::OPTION_SETTINGS_VERSION, 0) < self::SETTINGS_VERSION) {
+                update_option(self::OPTION_SETTINGS_VERSION, (string) self::SETTINGS_VERSION);
+            }
         }
 
         /**
@@ -75,6 +81,15 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         public static function is_enabled()
         {
             return get_option(self::OPTION_ENABLED, '0') === '1';
+        }
+
+        /**
+         * @return bool
+         */
+        public static function is_media_manager_enabled()
+        {
+            return self::is_enabled()
+                && get_option(self::OPTION_MEDIA_MANAGER_ENABLED, '0') === '1';
         }
 
         /**
@@ -87,6 +102,12 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'label' => __('Activation', 'dbvc'),
                     'fields' => [
                         self::OPTION_ENABLED,
+                    ],
+                ],
+                'media_manager' => [
+                    'label' => __('Media Manager', 'dbvc'),
+                    'fields' => [
+                        self::OPTION_MEDIA_MANAGER_ENABLED,
                     ],
                 ],
                 'toolbar' => [
@@ -115,6 +136,11 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'label' => __('Enable Visual Editor', 'dbvc'),
                     'input' => 'checkbox',
                     'help' => __('Turn on to register the frontend visual editor runtime, admin-bar toggle, and authenticated REST endpoints for supported Bricks singular pages.', 'dbvc'),
+                ],
+                self::OPTION_MEDIA_MANAGER_ENABLED => [
+                    'label' => __('Enable Frontend Media Manager', 'dbvc'),
+                    'input' => 'checkbox',
+                    'help' => __('Keep the read-only Frontend Media Manager boundary available for its staged rollout. This setting is off by default and has no effect unless the Visual Editor is also enabled.', 'dbvc'),
                 ],
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => [
                     'label' => __('Shared global option field names', 'dbvc'),
@@ -146,6 +172,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
 
             return [
                 self::OPTION_ENABLED => (string) get_option(self::OPTION_ENABLED, '0'),
+                self::OPTION_MEDIA_MANAGER_ENABLED => (string) get_option(self::OPTION_MEDIA_MANAGER_ENABLED, '0'),
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => (string) get_option(self::OPTION_SHARED_GLOBAL_FIELD_NAMES, self::DEFAULT_SHARED_GLOBAL_FIELD_NAMES),
                 self::OPTION_EXCLUDED_POST_TYPES => (string) get_option(self::OPTION_EXCLUDED_POST_TYPES, self::DEFAULT_EXCLUDED_POST_TYPES),
                 self::OPTION_EXCLUDED_TAXONOMIES => (string) get_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES),
@@ -161,6 +188,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             $current = self::get_all_settings();
             $values = [
                 self::OPTION_ENABLED => isset($request_data[self::OPTION_ENABLED]) ? '1' : '0',
+                self::OPTION_MEDIA_MANAGER_ENABLED => isset($request_data[self::OPTION_MEDIA_MANAGER_ENABLED]) ? '1' : '0',
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => self::sanitize_shared_global_field_names(
                     isset($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])
                         ? (string) wp_unslash($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])

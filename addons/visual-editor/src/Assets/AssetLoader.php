@@ -67,6 +67,9 @@ final class AssetLoader
         $style_version = $this->resolveAssetVersion('assets/css/overlay.css');
         $api_version = $this->resolveAssetVersion('assets/js/api-client.js');
         $overlay_version = $this->resolveAssetVersion('assets/js/overlay-app.js');
+        $media_manager_enabled = $this->isMediaManagerEnabled();
+        $media_manager_style_version = $this->resolveAssetVersion('assets/css/media-manager.css');
+        $media_manager_script_version = $this->resolveAssetVersion('assets/js/media-manager-app.js');
         $overlay_dependencies = ['dbvc-visual-editor-api-client'];
 
         if (function_exists('wp_enqueue_editor')) {
@@ -108,6 +111,23 @@ final class AssetLoader
             true
         );
 
+        if ($media_manager_enabled) {
+            wp_enqueue_style(
+                'dbvc-visual-editor-media-manager',
+                $base_url . 'assets/css/media-manager.css',
+                ['dbvc-visual-editor-overlay'],
+                $media_manager_style_version
+            );
+
+            wp_enqueue_script(
+                'dbvc-visual-editor-media-manager',
+                $base_url . 'assets/js/media-manager-app.js',
+                ['dbvc-visual-editor-overlay'],
+                $media_manager_script_version,
+                true
+            );
+        }
+
         wp_localize_script(
             'dbvc-visual-editor-overlay',
             'DBVCVisualEditorBootstrap',
@@ -123,6 +143,10 @@ final class AssetLoader
                 'toggleUrl' => $this->edit_mode->buildToggleUrl(),
                 'supportsWpEditor' => function_exists('wp_enqueue_editor') && (wp_script_is('wp-editor', 'enqueued') || wp_script_is('wp-editor', 'done') || wp_script_is('wp-editor', 'to_do')),
                 'supportsWpMedia' => function_exists('wp_enqueue_media') && wp_script_is('media-editor', 'enqueued'),
+                'mediaManager' => [
+                    'enabled' => $media_manager_enabled,
+                    'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor/media-manager')),
+                ],
                 'strings' => [
                     'modeActive' => __('Visual Editor active', 'dbvc'),
                     'supportedCount' => __('marked fields', 'dbvc'),
@@ -310,6 +334,7 @@ final class AssetLoader
                     'toolbarStatus' => __('Visual Editor status', 'dbvc'),
                     'toolbarReviewFields' => __('Review fields', 'dbvc'),
                     'toolbarGoToObject' => __('Go to object', 'dbvc'),
+                    'toolbarMediaManager' => __('Media Manager', 'dbvc'),
                     'toolbarSharedGlobals' => __('Shared globals', 'dbvc'),
                     'toolbarSharedGlobalsLoading' => __('Loading shared globals...', 'dbvc'),
                     'toolbarSharedGlobalsFailed' => __('Shared globals could not be loaded.', 'dbvc'),
@@ -336,6 +361,98 @@ final class AssetLoader
                     'toolbarSharedGlobalEditable' => __('Writable on page', 'dbvc'),
                     'toolbarSharedGlobalConfigured' => __('Configured global', 'dbvc'),
                     'toolbarSharedGlobalInspectOnly' => __('Inspect only', 'dbvc'),
+                    'mediaManagerTitle' => __('Media Manager', 'dbvc'),
+                    'mediaManagerSubtitle' => __('Read-only scan of published content for empty image fields.', 'dbvc'),
+                    'mediaManagerClose' => __('Close Media Manager', 'dbvc'),
+                    'mediaManagerShellTitle' => __('Ready to check media', 'dbvc'),
+                    'mediaManagerShellDescription' => __('Open the Media Manager to check for a current read-only scan.', 'dbvc'),
+                    'mediaManagerReadOnly' => __('R1 is read-only. No media assignments or content values can be changed from this panel.', 'dbvc'),
+                    'mediaManagerActionRefresh' => __('Check again', 'dbvc'),
+                    'mediaManagerActionStart' => __('Start new scan', 'dbvc'),
+                    'mediaManagerActionNext' => __('Continue scan', 'dbvc'),
+                    'mediaManagerActionRetry' => __('Retry scan', 'dbvc'),
+                    'mediaManagerActionCancel' => __('Cancel scan', 'dbvc'),
+                    'mediaManagerProgressLabel' => __('Processed', 'dbvc'),
+                    'mediaManagerStateLoadingTitle' => __('Checking Media Manager state', 'dbvc'),
+                    'mediaManagerStateLoadingDescription' => __('Waiting for the protected scan service to respond.', 'dbvc'),
+                    'mediaManagerStateNoScanTitle' => __('No current scan', 'dbvc'),
+                    'mediaManagerStateNoScanDescription' => __('Start a read-only scan to check published content for missing media.', 'dbvc'),
+                    'mediaManagerStateScanningTitle' => __('Scan in progress', 'dbvc'),
+                    'mediaManagerStateScanningDescription' => __('Continue the bounded scan when you are ready for the next chunk.', 'dbvc'),
+                    'mediaManagerStateCompleteTitle' => __('Scan complete', 'dbvc'),
+                    'mediaManagerStateCompleteDescription' => __('The current scan is ready. Search or filter the bounded results below.', 'dbvc'),
+                    'mediaManagerStateFailedTitle' => __('Scan could not continue', 'dbvc'),
+                    'mediaManagerStateFailedDescription' => __('The scan stopped safely. Retry is available only when the server permits it.', 'dbvc'),
+                    'mediaManagerStateCanceledTitle' => __('Scan canceled', 'dbvc'),
+                    'mediaManagerStateCanceledDescription' => __('No content was changed. You can start a new read-only scan.', 'dbvc'),
+                    'mediaManagerStateInvalidatedTitle' => __('Scan configuration changed', 'dbvc'),
+                    'mediaManagerStateInvalidatedDescription' => __('Start a fresh scan before relying on these results.', 'dbvc'),
+                    'mediaManagerStateStaleTitle' => __('Scan state changed', 'dbvc'),
+                    'mediaManagerStateStaleDescription' => __('A newer scan revision is authoritative. Check again before continuing.', 'dbvc'),
+                    'mediaManagerStateRequestErrorTitle' => __('Media Manager is unavailable', 'dbvc'),
+                    'mediaManagerStateRequestErrorDescription' => __('The protected scan request could not be completed.', 'dbvc'),
+                    'mediaManagerStateInvalidResponse' => __('The Media Manager returned an invalid scan response.', 'dbvc'),
+                    'mediaManagerStateClientUnavailable' => __('The Media Manager request client is unavailable.', 'dbvc'),
+                    'mediaManagerResultsTitle' => __('Missing media results', 'dbvc'),
+                    'mediaManagerSummaryCopy' => __('{entities} entities with findings · {findings} supported empty fields in the current scan', 'dbvc'),
+                    'mediaManagerSearchLabel' => __('Search entities', 'dbvc'),
+                    'mediaManagerSearchPlaceholder' => __('Search entities…', 'dbvc'),
+                    'mediaManagerEntityFilterLabel' => __('Entity type', 'dbvc'),
+                    'mediaManagerFieldFilterLabel' => __('Field type', 'dbvc'),
+                    'mediaManagerFilterAll' => __('All', 'dbvc'),
+                    'mediaManagerFilterPosts' => __('Posts', 'dbvc'),
+                    'mediaManagerFilterTerms' => __('Terms', 'dbvc'),
+                    'mediaManagerFamilyFeaturedImage' => __('Featured image', 'dbvc'),
+                    'mediaManagerFamilyAcfImage' => __('ACF image', 'dbvc'),
+                    'mediaManagerFamilyAcfGallery' => __('ACF gallery', 'dbvc'),
+                    'mediaManagerSortLabel' => __('Sort', 'dbvc'),
+                    'mediaManagerSortEntityAsc' => __('Entity (A–Z)', 'dbvc'),
+                    'mediaManagerSortEntityDesc' => __('Entity (Z–A)', 'dbvc'),
+                    'mediaManagerSortMissingDesc' => __('Missing fields (most first)', 'dbvc'),
+                    'mediaManagerSortMissingAsc' => __('Missing fields (fewest first)', 'dbvc'),
+                    'mediaManagerSortScannedDesc' => __('Recently scanned', 'dbvc'),
+                    'mediaManagerSortScannedAsc' => __('Oldest scanned', 'dbvc'),
+                    'mediaManagerClearFilters' => __('Clear filters', 'dbvc'),
+                    'mediaManagerRetryResults' => __('Retry results', 'dbvc'),
+                    'mediaManagerResultsLoading' => __('Loading matching entities…', 'dbvc'),
+                    'mediaManagerResultsLoadingMore' => __('Loading more matching entities…', 'dbvc'),
+                    'mediaManagerTableCaption' => __('Published entities with empty supported media fields. Results use bounded cursor pages.', 'dbvc'),
+                    'mediaManagerColumnEntity' => __('Entity', 'dbvc'),
+                    'mediaManagerColumnType' => __('Type', 'dbvc'),
+                    'mediaManagerColumnMissing' => __('Missing', 'dbvc'),
+                    'mediaManagerColumnFamilies' => __('Field types', 'dbvc'),
+                    'mediaManagerColumnScanned' => __('Scanned', 'dbvc'),
+                    'mediaManagerColumnUpdated' => __('Updated', 'dbvc'),
+                    'mediaManagerColumnFrontend' => __('Front end', 'dbvc'),
+                    'mediaManagerOpenFrontend' => __('Open', 'dbvc'),
+                    'mediaManagerNoFrontendRoute' => __('No route', 'dbvc'),
+                    'mediaManagerUntitledEntity' => __('Untitled content', 'dbvc'),
+                    'mediaManagerExpandRow' => __('Show missing media fields for {entity}', 'dbvc'),
+                    'mediaManagerCollapseRow' => __('Hide missing media fields for {entity}', 'dbvc'),
+                    'mediaManagerExpandedRegionLabel' => __('Missing media fields for {entity}', 'dbvc'),
+                    'mediaManagerExpandedTitle' => __('Missing media fields', 'dbvc'),
+                    'mediaManagerExpansionLoading' => __('Checking the current field state…', 'dbvc'),
+                    'mediaManagerExpansionLoadingAnnouncement' => __('Checking missing media fields for {entity}.', 'dbvc'),
+                    'mediaManagerExpansionCompleteAnnouncement' => __('Field check complete for {entity}. {summary}.', 'dbvc'),
+                    'mediaManagerExpansionErrorAnnouncement' => __('Fields could not be checked for {entity}. {message}', 'dbvc'),
+                    'mediaManagerExpansionErrorTitle' => __('Fields could not be checked', 'dbvc'),
+                    'mediaManagerExpansionInvalid' => __('The Media Manager returned an invalid field response.', 'dbvc'),
+                    'mediaManagerExpansionSummary' => __('{missing} still missing · {changed} changed · {resolved} no longer confirmed · {unavailable} unavailable', 'dbvc'),
+                    'mediaManagerUnknownField' => __('Media field', 'dbvc'),
+                    'mediaManagerFieldStatusMissing' => __('Still missing', 'dbvc'),
+                    'mediaManagerFieldStatusChanged' => __('Changed since scan', 'dbvc'),
+                    'mediaManagerFieldStatusResolved' => __('No longer confirmed missing', 'dbvc'),
+                    'mediaManagerFieldStatusUnavailable' => __('Could not revalidate', 'dbvc'),
+                    'mediaManagerValueUnavailable' => __('Not available', 'dbvc'),
+                    'mediaManagerNoResultsYetTitle' => __('No findings loaded yet', 'dbvc'),
+                    'mediaManagerNoResultsYetDescription' => __('Continue the bounded scan to check more published entities.', 'dbvc'),
+                    'mediaManagerNoMatchesTitle' => __('No entities match these filters', 'dbvc'),
+                    'mediaManagerNoMatchesDescription' => __('Clear the search or widen the entity and field filters. The scan itself is unchanged.', 'dbvc'),
+                    'mediaManagerNoFindingsTitle' => __('No missing media assignments found', 'dbvc'),
+                    'mediaManagerNoFindingsDescription' => __('The current completed scan returned no accessible entities with supported empty media fields.', 'dbvc'),
+                    'mediaManagerLoadedCount' => __('{count} entities loaded for this query.', 'dbvc'),
+                    'mediaManagerResultsAnnouncement' => __('{count} entities loaded for the current query.', 'dbvc'),
+                    'mediaManagerLoadMore' => __('Load more', 'dbvc'),
                     'statusbarEditEntity' => __('Edit', 'dbvc'),
                     'statusbarEditCurrentPage' => __('Edit current page', 'dbvc'),
                     'statusbarEditCurrentPost' => __('Edit current post', 'dbvc'),
@@ -431,5 +548,15 @@ final class AssetLoader
         }
 
         return defined('DBVC_PLUGIN_VERSION') ? DBVC_PLUGIN_VERSION : '1.0.0';
+    }
+
+    /**
+     * @return bool
+     */
+    private function isMediaManagerEnabled()
+    {
+        return class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_media_manager_enabled')
+            && \DBVC_Visual_Editor_Addon::is_media_manager_enabled();
     }
 }

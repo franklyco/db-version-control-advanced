@@ -48,4 +48,30 @@ final class ThirdPartyPortabilitySettingsProvider extends AbstractOptionDomainPr
             \DBVC_Third_Party_Portability::OPTION_WSFORM_INCLUDE_TRASH => Field::bool(\DBVC_Third_Party_Portability::OPTION_WSFORM_INCLUDE_TRASH, __('Include trashed WS Form definitions', 'dbvc'), 'ws_form', '0'),
         ];
     }
+
+    public function get_import_dependencies(array $incoming): array
+    {
+        $fields = $this->flatten_incoming_fields($incoming);
+        $requires_ws_form = false;
+        foreach ([
+            \DBVC_Third_Party_Portability::OPTION_WSFORM_FORMS,
+            \DBVC_Third_Party_Portability::OPTION_WSFORM_SETTINGS,
+            \DBVC_Third_Party_Portability::OPTION_WSFORM_INCLUDE_TRASH,
+        ] as $field_key) {
+            $value = strtolower(trim((string) ($fields[$field_key]['value'] ?? '0')));
+            if (in_array($value, ['1', 'true', 'yes', 'on'], true)) {
+                $requires_ws_form = true;
+                break;
+            }
+        }
+
+        if (! $requires_ws_form) {
+            return [];
+        }
+
+        return array_merge(
+            $this->get_class_dependency($incoming, 'WS_Form_Form', __('WS Form', 'dbvc')),
+            $this->get_class_dependency($incoming, 'WS_Form_Common', __('WS Form', 'dbvc'))
+        );
+    }
 }

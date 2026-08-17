@@ -1,0 +1,1689 @@
+/*
+ * DBVC Visual Editor - R1 Media Manager static mockup (phase R1-D2).
+ *
+ * Every selector is scoped to .dbvc-ve-media-manager-mockup, which sits on <body> in this
+ * static page. There is no global reset and no unscoped element selector.
+ *
+ * Base --dbvc-ve-* tokens below are MIRRORED from
+ *   addons/visual-editor/assets/css/overlay.css  (:root, lines 1-91)
+ * so this page renders standalone without touching :root. They are a copy for mockup
+ * purposes only and are not authoritative; overlay.css remains the source of truth.
+ * At production translation these mirrored declarations are dropped and the real
+ * :root tokens are inherited.
+ *
+ * Only the --dbvc-ve-media-manager-* block is new design surface.
+ */
+
+.dbvc-ve-media-manager-mockup {
+  /* --- mirrored from overlay.css :root --- */
+  --dbvc-ve-color-primary: #ff5b21;
+  --dbvc-ve-color-primary-rgb: 255, 91, 33;
+  --dbvc-ve-color-secondary: #001673;
+  --dbvc-ve-color-secondary-rgb: 0, 22, 115;
+  --dbvc-ve-color-accent: #aebcf9;
+  --dbvc-ve-color-light: #f0f3ff;
+  --dbvc-ve-color-light-rgb: 240, 243, 255;
+  --dbvc-ve-color-dark: #000a36;
+  --dbvc-ve-color-dark-rgb: 0, 10, 54;
+  --dbvc-ve-color-text-dark: var(--dbvc-ve-color-dark);
+  --dbvc-ve-color-text-muted: color-mix(in srgb, var(--dbvc-ve-color-dark) 68%, #ffffff);
+  --dbvc-ve-color-text-subtle: color-mix(in srgb, var(--dbvc-ve-color-dark) 60%, #ffffff);
+  --dbvc-ve-color-background-dark--opacity-m: rgba(var(--dbvc-ve-color-dark-rgb), 0.9);
+  --dbvc-ve-color-surface: #ffffff;
+  --dbvc-ve-color-surface-rgb: 255, 255, 255;
+  --dbvc-ve-color-surface-muted: color-mix(in srgb, var(--dbvc-ve-color-light) 66%, #ffffff);
+  --dbvc-ve-color-surface-glass: rgba(var(--dbvc-ve-color-surface-rgb), 0.94);
+  --dbvc-ve-color-focus: rgba(var(--dbvc-ve-color-primary-rgb), 0.28);
+  --dbvc-ve-color-warning: #b45309;
+  --dbvc-ve-color-warning-strong: #92400e;
+  --dbvc-ve-color-warning-bg: #fff7ed;
+  --dbvc-ve-color-warning-border: #fed7aa;
+  --dbvc-ve-color-error: #be123c;
+  --dbvc-ve-color-error-bg: #fff1f2;
+  --dbvc-ve-color-error-border: #fecdd3;
+  --dbvc-ve-color-success: #0f766e;
+  --dbvc-ve-color-success-bg: #f0fdfa;
+  --dbvc-ve-color-success-border: #99f6e4;
+  --dbvc-ve-color-info: #1e3a8a;
+  --dbvc-ve-color-info-bg: #eff6ff;
+  --dbvc-ve-color-info-border: #dbeafe;
+  --dbvc-ve-color-info-border-strong: #bfdbfe;
+  --dbvc-ve-color-border: #cbd5e1;
+  --dbvc-ve-color-border-muted: #e2e8f0;
+  --dbvc-ve-font--s: clamp(16px, 1.8rem, 18px);
+  --dbvc-ve-font--body: 13px;
+  --dbvc-ve-font--caption: 12px;
+  --dbvc-ve-font--meta: 11px;
+  --dbvc-ve-font--overline: 10px;
+  --dbvc-ve-font-weight--normal: 500;
+  --dbvc-ve-font-weight--bold: 600;
+  --dbvc-ve-font-weight--heavy: 800;
+  --dbvc-ve-border-radius--s: 10px;
+  --dbvc-ve-border-radius--m: 20px;
+  --dbvc-ve-border-radius--l: 100px;
+  --dbvc-ve-border--muted-s: 1px solid color-mix(in srgb, var(--dbvc-ve-color-dark) 14%, #ffffff);
+  --dbvc-ve-box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+  --dbvc-ve-box-shadow--soft: 0 16px 36px rgba(0, 10, 54, 0.14);
+  --dbvc-ve-box-shadow--panel: 0 24px 56px rgba(0, 10, 54, 0.2);
+  --dbvc-ve-filter-backdrop--blur: blur(8px);
+  --dbvc-ve-z-panel: 120010;
+  --dbvc-ve-z-toolbar: 120020;
+
+  /* --- new, scoped to this component only --- */
+  --dbvc-ve-media-manager-drawer-width: min(1120px, calc(100vw - 32px));
+  --dbvc-ve-media-manager-drawer-max-height: min(900px, calc(100dvh - 124px));
+  --dbvc-ve-media-manager-drawer-inset-bottom: 96px;
+  --dbvc-ve-media-manager-row-padding-y: 10px;
+  --dbvc-ve-media-manager-cell-padding-x: 12px;
+  --dbvc-ve-media-manager-section-padding-x: 20px;
+  --dbvc-ve-media-manager-chip-radius: var(--dbvc-ve-border-radius--l);
+  --dbvc-ve-media-manager-chip-padding: 3px 9px;
+  --dbvc-ve-media-manager-table-border: 1px solid var(--dbvc-ve-color-border-muted);
+  --dbvc-ve-media-manager-sticky-shadow: 0 6px 12px -10px rgba(0, 10, 54, 0.55);
+  --dbvc-ve-media-manager-focus-ring: 2px solid var(--dbvc-ve-color-focus);
+  --dbvc-ve-media-manager-toggle-size: 26px;
+
+  /* Mockup page shell. The scope class sits on <body> so no unscoped rule is needed. */
+  margin: 0;
+  min-height: 100vh;
+  background: #e6e9f2;
+  color: var(--dbvc-ve-color-text-dark);
+  font: var(--dbvc-ve-font-weight--normal) var(--dbvc-ve-font--body) / 1.5
+        -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dbvc-ve-media-manager-mockup *,
+.dbvc-ve-media-manager-mockup *::before,
+.dbvc-ve-media-manager-mockup *::after {
+  box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared utilities
+   overlay.css ships no visually-hidden helper, so this one is new and scoped.
+   --------------------------------------------------------------------------- */
+
+.dbvc-ve-media-manager__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dbvc-ve-media-manager__muted {
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+/* ---------------------------------------------------------------------------
+   Faux live site + toolbar continuity (mockup-only, dropped at translation)
+   --------------------------------------------------------------------------- */
+
+.dbvc-ve-media-manager-mockup__stage {
+  min-height: 100vh;
+  padding: 0 0 160px;
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 88px, #e9edf6 88px, #dfe4f1 100%);
+}
+
+.dbvc-ve-media-manager-mockup__site-bar {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  height: 88px;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  color: color-mix(in srgb, var(--dbvc-ve-color-dark) 45%, #ffffff);
+}
+
+.dbvc-ve-media-manager-mockup__wordmark {
+  font-size: 17px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  color: color-mix(in srgb, var(--dbvc-ve-color-dark) 70%, #ffffff);
+  letter-spacing: -0.01em;
+}
+
+.dbvc-ve-media-manager-mockup__nav {
+  display: flex;
+  gap: 26px;
+  margin-left: auto;
+  font-size: var(--dbvc-ve-font--body);
+}
+
+.dbvc-ve-media-manager-mockup__site-cta {
+  padding: 10px 20px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: color-mix(in srgb, var(--dbvc-ve-color-dark) 82%, #ffffff);
+  color: #ffffff;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-media-manager-mockup__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 56px 40px;
+  color: color-mix(in srgb, var(--dbvc-ve-color-dark) 38%, #ffffff);
+}
+
+.dbvc-ve-media-manager-mockup__hero-eyebrow {
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.dbvc-ve-media-manager-mockup__hero-title {
+  max-width: 18ch;
+  font-size: 40px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.dbvc-ve-media-manager-mockup__toolbar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: var(--dbvc-ve-z-toolbar);
+  transform: translateX(-50%);
+}
+
+.dbvc-ve-media-manager-mockup__toolbar-dock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 8px 18px;
+  border: 1px solid rgba(var(--dbvc-ve-color-surface-rgb), 0.18);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-background-dark--opacity-m);
+  box-shadow: var(--dbvc-ve-box-shadow);
+  backdrop-filter: var(--dbvc-ve-filter-backdrop--blur);
+  color: var(--dbvc-ve-color-surface);
+  font-size: var(--dbvc-ve-font--body);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-media-manager-mockup__toolbar-button {
+  padding: 8px 14px;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  opacity: 0.78;
+}
+
+.dbvc-ve-media-manager-mockup__toolbar-button.is-active {
+  background: rgba(var(--dbvc-ve-color-surface-rgb), 0.16);
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Drawer shell
+   Geometry follows .dbvc-ve-panel: viewport-clamped, glass surface, panel shadow,
+   overflow hidden with the scroll contained to the results region.
+   --------------------------------------------------------------------------- */
+
+.dbvc-ve-media-manager {
+  position: fixed;
+  left: 50%;
+  bottom: var(--dbvc-ve-media-manager-drawer-inset-bottom);
+  z-index: var(--dbvc-ve-z-panel);
+  display: flex;
+  flex-direction: column;
+  width: var(--dbvc-ve-media-manager-drawer-width);
+  max-height: min(900px, calc(100vh - 124px));
+  max-height: var(--dbvc-ve-media-manager-drawer-max-height);
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--m);
+  background: var(--dbvc-ve-color-surface-glass);
+  box-shadow: var(--dbvc-ve-box-shadow--panel);
+  color: var(--dbvc-ve-color-text-dark);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  transform: translateX(-50%);
+  backdrop-filter: var(--dbvc-ve-filter-backdrop--blur);
+}
+
+.dbvc-ve-media-manager[data-state="error"] {
+  border-color: var(--dbvc-ve-color-error-border);
+}
+
+.dbvc-ve-media-manager[data-state="running"] {
+  border-color: var(--dbvc-ve-color-info-border-strong);
+}
+
+/* --- header --- */
+
+.dbvc-ve-media-manager__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 13px var(--dbvc-ve-media-manager-section-padding-x) 11px;
+  border-bottom: var(--dbvc-ve-media-manager-table-border);
+}
+
+.dbvc-ve-media-manager__header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-light);
+  color: var(--dbvc-ve-color-secondary);
+}
+
+.dbvc-ve-media-manager__header-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dbvc-ve-media-manager__title {
+  margin: 0;
+  font-size: var(--dbvc-ve-font--s);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.dbvc-ve-media-manager__subtitle {
+  margin: 4px 0 0;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__summary {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 26px;
+  margin: 0;
+  padding: 0 8px 0 0;
+}
+
+.dbvc-ve-media-manager__summary-metric {
+  text-align: right;
+}
+
+.dbvc-ve-media-manager__summary-label {
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.dbvc-ve-media-manager__summary-value {
+  margin: 2px 0 0;
+  font-size: 26px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.dbvc-ve-media-manager__summary-note {
+  margin: 2px 0 0;
+  max-width: 16ch;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+  line-height: 1.35;
+}
+
+.dbvc-ve-media-manager__close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dbvc-ve-media-manager__close:hover {
+  background: var(--dbvc-ve-color-light);
+  color: var(--dbvc-ve-color-text-dark);
+}
+
+/* --- scan band --- */
+
+.dbvc-ve-media-manager__scan {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  padding: 9px var(--dbvc-ve-media-manager-section-padding-x);
+  border-bottom: var(--dbvc-ve-media-manager-table-border);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-media-manager__scan-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-media-manager__scan-state.is-complete { color: var(--dbvc-ve-color-success); }
+.dbvc-ve-media-manager__scan-state.is-running  { color: var(--dbvc-ve-color-info); }
+.dbvc-ve-media-manager__scan-state.is-error    { color: var(--dbvc-ve-color-error); }
+.dbvc-ve-media-manager__scan-state.is-cancelled { color: var(--dbvc-ve-color-text-subtle); }
+
+.dbvc-ve-media-manager__scan-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dbvc-ve-media-manager__progress {
+  width: 132px;
+  height: 6px;
+  border: 0;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-border-muted);
+  overflow: hidden;
+}
+
+.dbvc-ve-media-manager__progress::-webkit-progress-bar {
+  background: var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--l);
+}
+
+.dbvc-ve-media-manager__progress::-webkit-progress-value {
+  background: var(--dbvc-ve-color-success);
+  border-radius: var(--dbvc-ve-border-radius--l);
+}
+
+.dbvc-ve-media-manager__progress::-moz-progress-bar {
+  background: var(--dbvc-ve-color-success);
+  border-radius: var(--dbvc-ve-border-radius--l);
+}
+
+.dbvc-ve-media-manager__scan-progress-text,
+.dbvc-ve-media-manager__scan-times {
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+.dbvc-ve-media-manager__scan-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dbvc-ve-media-manager__scan-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* --- buttons --- */
+
+.dbvc-ve-media-manager__button {
+  padding: 7px 15px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-dark);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+
+.dbvc-ve-media-manager__button:hover {
+  border-color: var(--dbvc-ve-color-accent);
+  background: var(--dbvc-ve-color-light);
+}
+
+.dbvc-ve-media-manager__button--primary {
+  border-color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-surface);
+}
+
+.dbvc-ve-media-manager__button--primary:hover {
+  border-color: var(--dbvc-ve-color-secondary);
+  background: color-mix(in srgb, var(--dbvc-ve-color-secondary) 86%, #ffffff);
+}
+
+.dbvc-ve-media-manager__button--danger {
+  border-color: var(--dbvc-ve-color-error-border);
+  background: var(--dbvc-ve-color-error-bg);
+  color: var(--dbvc-ve-color-error);
+}
+
+.dbvc-ve-media-manager__button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- notices --- */
+
+.dbvc-ve-media-manager__notices {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px var(--dbvc-ve-media-manager-section-padding-x);
+}
+
+.dbvc-ve-media-manager__notice {
+  margin: 0;
+  padding: 7px 11px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-left-width: 3px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  font-size: var(--dbvc-ve-font--caption);
+  line-height: 1.4;
+}
+
+.dbvc-ve-media-manager__notice.is-info {
+  border-color: var(--dbvc-ve-color-info-border);
+  border-left-color: var(--dbvc-ve-color-info);
+  background: var(--dbvc-ve-color-info-bg);
+  color: var(--dbvc-ve-color-info);
+}
+
+.dbvc-ve-media-manager__notice.is-warning {
+  border-color: var(--dbvc-ve-color-warning-border);
+  border-left-color: var(--dbvc-ve-color-warning);
+  background: var(--dbvc-ve-color-warning-bg);
+  color: var(--dbvc-ve-color-warning-strong);
+}
+
+.dbvc-ve-media-manager__notice.is-error {
+  border-color: var(--dbvc-ve-color-error-border);
+  border-left-color: var(--dbvc-ve-color-error);
+  background: var(--dbvc-ve-color-error-bg);
+  color: var(--dbvc-ve-color-error);
+}
+
+/* --- controls (pinned above the scroll region) --- */
+
+.dbvc-ve-media-manager__controls {
+  flex: 0 0 auto;
+  padding: 0 var(--dbvc-ve-media-manager-section-padding-x) 12px;
+  border-bottom: var(--dbvc-ve-media-manager-table-border);
+  background: var(--dbvc-ve-color-surface-glass);
+}
+
+.dbvc-ve-media-manager__controls-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+}
+
+.dbvc-ve-media-manager__control {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/*
+ * Defensive: <fieldset> carries UA-specific intrinsic sizing (Chrome uses a shrink-to-fit
+ * box, and min-width:0 is historically ignored), which can let a chip group size itself
+ * from its content instead of its container. Normalising it here keeps the chip groups
+ * behaving like ordinary blocks at every breakpoint.
+ */
+.dbvc-ve-media-manager__control--chips {
+  display: block;
+  width: auto;
+  min-width: 0;
+}
+
+.dbvc-ve-media-manager__control--search {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+
+.dbvc-ve-media-manager__control-label {
+  display: block;
+  margin-bottom: 5px;
+  padding: 0;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.dbvc-ve-media-manager__search,
+.dbvc-ve-media-manager__select {
+  width: 100%;
+  padding: 7px 11px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-dark);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__control--sort {
+  flex: 0 0 190px;
+}
+
+.dbvc-ve-media-manager__chip-set {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Radio-backed filter chips: real form controls, styled as chips. */
+.dbvc-ve-media-manager__chip-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
+.dbvc-ve-media-manager__chip {
+  display: inline-block;
+  padding: 6px 13px;
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-media-manager-chip-radius);
+  background: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  cursor: pointer;
+}
+
+.dbvc-ve-media-manager__chip:hover {
+  border-color: var(--dbvc-ve-color-accent);
+  background: var(--dbvc-ve-color-light);
+}
+
+.dbvc-ve-media-manager__chip-input:checked + .dbvc-ve-media-manager__chip {
+  border-color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-light);
+  color: var(--dbvc-ve-color-secondary);
+}
+
+.dbvc-ve-media-manager__scope-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 2px auto;
+  padding: 6px 13px;
+  border: 1px solid var(--dbvc-ve-color-success-border);
+  border-radius: var(--dbvc-ve-media-manager-chip-radius);
+  background: var(--dbvc-ve-color-success-bg);
+  color: var(--dbvc-ve-color-success);
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+/* --- legend --- */
+
+.dbvc-ve-media-manager__legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--dbvc-ve-color-border-muted);
+}
+
+.dbvc-ve-media-manager__legend-title {
+  margin: 0;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.dbvc-ve-media-manager__legend-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* --- chips --- */
+
+.dbvc-ve-media-manager__family-chip,
+.dbvc-ve-media-manager__status-chip,
+.dbvc-ve-media-manager__missing-chip,
+.dbvc-ve-media-manager__type-chip {
+  display: inline-block;
+  padding: var(--dbvc-ve-media-manager-chip-padding);
+  border: 1px solid transparent;
+  border-radius: var(--dbvc-ve-media-manager-chip-radius);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  white-space: nowrap;
+}
+
+.dbvc-ve-media-manager__type-chip {
+  border-color: var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-light);
+  color: var(--dbvc-ve-color-secondary);
+}
+
+.dbvc-ve-media-manager__type-chip.is-term {
+  background: var(--dbvc-ve-color-info-bg);
+  color: var(--dbvc-ve-color-info);
+}
+
+.dbvc-ve-media-manager__family-note {
+  margin-left: 6px;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+.dbvc-ve-media-manager__missing-chip {
+  border-color: var(--dbvc-ve-color-warning-border);
+  background: var(--dbvc-ve-color-warning-bg);
+  color: var(--dbvc-ve-color-warning-strong);
+}
+
+/* Field families carry a leading glyph so they are distinguishable without color. */
+.dbvc-ve-media-manager__family-chip {
+  border-color: var(--dbvc-ve-color-border-muted);
+  background: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-muted);
+}
+
+.dbvc-ve-media-manager__family-chip.is-featured::before { content: "\25C6\00A0"; }
+.dbvc-ve-media-manager__family-chip.is-image::before    { content: "\25CF\00A0"; }
+.dbvc-ve-media-manager__family-chip.is-gallery::before  { content: "\25A0\00A0"; }
+
+.dbvc-ve-media-manager__family-chip.is-featured { color: var(--dbvc-ve-color-warning); }
+.dbvc-ve-media-manager__family-chip.is-image    { color: var(--dbvc-ve-color-info); }
+.dbvc-ve-media-manager__family-chip.is-gallery  { color: var(--dbvc-ve-color-secondary); }
+
+.dbvc-ve-media-manager__status-chip.is-missing {
+  border-color: var(--dbvc-ve-color-warning-border);
+  background: var(--dbvc-ve-color-warning-bg);
+  color: var(--dbvc-ve-color-warning-strong);
+}
+
+.dbvc-ve-media-manager__status-chip.is-changed {
+  border-color: var(--dbvc-ve-color-info-border-strong);
+  background: var(--dbvc-ve-color-info-bg);
+  color: var(--dbvc-ve-color-info);
+}
+
+.dbvc-ve-media-manager__status-chip.is-resolved {
+  border-color: var(--dbvc-ve-color-success-border);
+  background: var(--dbvc-ve-color-success-bg);
+  color: var(--dbvc-ve-color-success);
+}
+
+.dbvc-ve-media-manager__status-chip.is-unavailable {
+  border-color: var(--dbvc-ve-color-border);
+  background: var(--dbvc-ve-color-surface-muted);
+  color: var(--dbvc-ve-color-text-subtle);
+}
+
+/* ---------------------------------------------------------------------------
+   Results region: the only internally scrollable area
+   --------------------------------------------------------------------------- */
+
+.dbvc-ve-media-manager__results {
+  flex: 1 1 auto;
+  min-height: 200px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dbvc-ve-media-manager__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--dbvc-ve-font--body);
+}
+
+/* Fixed layout keeps the long-label row from widening the Entity column. */
+.dbvc-ve-media-manager__col--toggle   { width: 44px; }
+.dbvc-ve-media-manager__col--entity   { width: 25%; }
+.dbvc-ve-media-manager__col--type     { width: 12%; }
+.dbvc-ve-media-manager__col--missing  { width: 9%; }
+.dbvc-ve-media-manager__col--families { width: 20%; }
+.dbvc-ve-media-manager__col--time     { width: 12%; }
+.dbvc-ve-media-manager__col--link     { width: 10%; }
+
+.dbvc-ve-media-manager__thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--dbvc-ve-color-surface);
+  box-shadow: var(--dbvc-ve-media-manager-sticky-shadow);
+}
+
+.dbvc-ve-media-manager__th {
+  padding: 9px var(--dbvc-ve-media-manager-cell-padding-x);
+  border-bottom: var(--dbvc-ve-media-manager-table-border);
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  letter-spacing: 0.09em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dbvc-ve-media-manager__th--toggle {
+  width: 40px;
+}
+
+.dbvc-ve-media-manager__th[aria-sort]::after {
+  content: "\00A0\2191";
+  color: var(--dbvc-ve-color-secondary);
+}
+
+.dbvc-ve-media-manager__row {
+  border-bottom: var(--dbvc-ve-media-manager-table-border);
+  scroll-margin-block: 48px;
+}
+
+.dbvc-ve-media-manager__row:hover {
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-media-manager__row.is-expanded {
+  background: var(--dbvc-ve-color-light);
+}
+
+.dbvc-ve-media-manager__cell {
+  padding: var(--dbvc-ve-media-manager-row-padding-y) var(--dbvc-ve-media-manager-cell-padding-x);
+  font-weight: var(--dbvc-ve-font-weight--normal);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.dbvc-ve-media-manager__cell--toggle {
+  width: 40px;
+  padding-right: 0;
+}
+
+/* Column width comes from the colgroup; time cells wrap rather than overflow. */
+.dbvc-ve-media-manager__cell--time {
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__entity-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  overflow-wrap: anywhere;
+}
+
+.dbvc-ve-media-manager__row-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--dbvc-ve-media-manager-toggle-size);
+  height: var(--dbvc-ve-media-manager-toggle-size);
+  border: 1px solid var(--dbvc-ve-color-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-muted);
+  cursor: pointer;
+}
+
+.dbvc-ve-media-manager__row-toggle:hover {
+  border-color: var(--dbvc-ve-color-accent);
+  color: var(--dbvc-ve-color-secondary);
+}
+
+/* Chevron drawn in CSS so the mockup needs no icon kit. */
+.dbvc-ve-media-manager__row-toggle-icon {
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 120ms ease-out;
+}
+
+.dbvc-ve-media-manager__row-toggle[aria-expanded="true"] {
+  border-color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-secondary);
+}
+
+.dbvc-ve-media-manager__row-toggle[aria-expanded="true"] .dbvc-ve-media-manager__row-toggle-icon {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.dbvc-ve-media-manager__open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  color: var(--dbvc-ve-color-secondary);
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  text-decoration: none;
+}
+
+.dbvc-ve-media-manager__open-link:hover {
+  text-decoration: underline;
+}
+
+/* --- expansion --- */
+
+.dbvc-ve-media-manager__expansion-row[hidden] {
+  display: none;
+}
+
+.dbvc-ve-media-manager__expansion-cell {
+  padding: 0;
+  border-bottom: var(--dbvc-ve-media-manager-table-border);
+  background: var(--dbvc-ve-color-light);
+}
+
+.dbvc-ve-media-manager__expansion {
+  padding: 14px var(--dbvc-ve-media-manager-section-padding-x) 16px 52px;
+}
+
+.dbvc-ve-media-manager__expansion-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.dbvc-ve-media-manager__expansion-title {
+  margin: 0;
+  font-size: var(--dbvc-ve-font--body);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+
+.dbvc-ve-media-manager__expansion-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-media-manager__expansion-state.is-current { color: var(--dbvc-ve-color-success); }
+.dbvc-ve-media-manager__expansion-state.is-changed { color: var(--dbvc-ve-color-info); }
+.dbvc-ve-media-manager__expansion-state.is-resolved { color: var(--dbvc-ve-color-success); }
+.dbvc-ve-media-manager__expansion-state.is-unavailable { color: var(--dbvc-ve-color-text-subtle); }
+
+.dbvc-ve-media-manager__expansion-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dbvc-ve-media-manager__expansion-note,
+.dbvc-ve-media-manager__expansion-footnote,
+.dbvc-ve-media-manager__expansion-pending {
+  margin: 0;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__expansion-footnote {
+  margin-top: 10px;
+  font-style: italic;
+}
+
+.dbvc-ve-media-manager__expansion.is-pending {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.dbvc-ve-media-manager__field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dbvc-ve-media-manager__field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-left: 3px solid var(--dbvc-ve-color-warning-border);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface);
+}
+
+.dbvc-ve-media-manager__field[data-status="changed"]     { border-left-color: var(--dbvc-ve-color-info-border-strong); }
+.dbvc-ve-media-manager__field[data-status="resolved_or_changed"] { border-left-color: var(--dbvc-ve-color-success-border); }
+.dbvc-ve-media-manager__field[data-status="unavailable"] { border-left-color: var(--dbvc-ve-color-border); }
+
+.dbvc-ve-media-manager__field-main {
+  min-width: 0;
+}
+
+.dbvc-ve-media-manager__field-label {
+  margin: 0;
+  font-weight: var(--dbvc-ve-font-weight--bold);
+}
+
+.dbvc-ve-media-manager__field-context {
+  margin: 2px 0 0;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__field-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dbvc-ve-media-manager__field-message {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__field-descriptor {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+/* --- empty state and pagination --- */
+
+.dbvc-ve-media-manager__empty[hidden] {
+  display: none;
+}
+
+.dbvc-ve-media-manager__empty {
+  padding: 44px var(--dbvc-ve-media-manager-section-padding-x);
+  text-align: center;
+}
+
+.dbvc-ve-media-manager__empty-title {
+  margin: 0;
+  font-size: var(--dbvc-ve-font--body);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+
+.dbvc-ve-media-manager__empty-body {
+  margin: 6px 0 0;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager__load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 16px var(--dbvc-ve-media-manager-section-padding-x) 20px;
+}
+
+.dbvc-ve-media-manager__load-more-note {
+  margin: 0;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+/* --- footer --- */
+
+.dbvc-ve-media-manager__footer {
+  flex: 0 0 auto;
+  padding: 10px var(--dbvc-ve-media-manager-section-padding-x);
+  border-top: var(--dbvc-ve-media-manager-table-border);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-media-manager__footer-note {
+  margin: 0;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+/* ---------------------------------------------------------------------------
+   Focus, motion, and forced colors
+   Ring matches overlay.css (.dbvc-ve-panel__richtext:focus).
+   --------------------------------------------------------------------------- */
+
+.dbvc-ve-media-manager__button:focus-visible,
+.dbvc-ve-media-manager__close:focus-visible,
+.dbvc-ve-media-manager__row-toggle:focus-visible,
+.dbvc-ve-media-manager__open-link:focus-visible,
+.dbvc-ve-media-manager__search:focus-visible,
+.dbvc-ve-media-manager__select:focus-visible,
+.dbvc-ve-media-manager__results:focus-visible {
+  outline: var(--dbvc-ve-media-manager-focus-ring);
+  outline-offset: 2px;
+}
+
+.dbvc-ve-media-manager__chip-input:focus-visible + .dbvc-ve-media-manager__chip {
+  outline: var(--dbvc-ve-media-manager-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dbvc-ve-media-manager__row-toggle-icon {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .dbvc-ve-media-manager__family-chip,
+  .dbvc-ve-media-manager__status-chip,
+  .dbvc-ve-media-manager__missing-chip,
+  .dbvc-ve-media-manager__type-chip,
+  .dbvc-ve-media-manager__chip {
+    border-color: CanvasText;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Mockup-only: reopen affordance and the states.html gallery frame
+   --------------------------------------------------------------------------- */
+
+.dbvc-ve-media-manager[hidden] {
+  display: none;
+}
+
+.dbvc-ve-media-manager-mockup__reopen {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  z-index: var(--dbvc-ve-z-panel);
+  padding: 10px 20px;
+  border: 1px solid var(--dbvc-ve-color-secondary);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-surface);
+  font: inherit;
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  box-shadow: var(--dbvc-ve-box-shadow--soft);
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.dbvc-ve-media-manager-mockup__reopen[hidden] {
+  display: none;
+}
+
+.dbvc-ve-media-manager-mockup__reopen:focus-visible {
+  outline: var(--dbvc-ve-media-manager-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Gallery page shell: drawers render inline instead of fixed over a live page. */
+.dbvc-ve-media-manager-mockup--gallery {
+  padding: 0 0 64px;
+  background: #eef1f8;
+}
+
+.dbvc-ve-media-manager-mockup__gallery-header {
+  padding: 32px 32px 20px;
+  border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
+  background: var(--dbvc-ve-color-surface);
+}
+
+.dbvc-ve-media-manager-mockup__gallery-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  letter-spacing: -0.02em;
+}
+
+.dbvc-ve-media-manager-mockup__gallery-intro {
+  max-width: 78ch;
+  margin: 8px 0 0;
+  color: var(--dbvc-ve-color-text-muted);
+}
+
+.dbvc-ve-media-manager-mockup__gallery-warning {
+  max-width: 78ch;
+  margin: 14px 0 0;
+  padding: 10px 13px;
+  border: 1px solid var(--dbvc-ve-color-warning-border);
+  border-left: 3px solid var(--dbvc-ve-color-warning);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-warning-bg);
+  color: var(--dbvc-ve-color-warning-strong);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager-mockup__case {
+  max-width: 1120px;
+  margin: 28px auto 0;
+  padding: 0 20px;
+}
+
+.dbvc-ve-media-manager-mockup__case-title {
+  margin: 0;
+  font-size: var(--dbvc-ve-font--s);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+
+.dbvc-ve-media-manager-mockup__case-note {
+  margin: 4px 0 12px;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--caption);
+}
+
+.dbvc-ve-media-manager-mockup__case-note code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--dbvc-ve-color-light);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+/* Inline variant used by the gallery: same component, released from fixed positioning. */
+.dbvc-ve-media-manager--inline {
+  position: static;
+  width: 100%;
+  max-height: none;
+  transform: none;
+  backdrop-filter: none;
+  background: var(--dbvc-ve-color-surface);
+}
+
+/* The drawer reserves a minimum results height; gallery cards size to their content. */
+.dbvc-ve-media-manager--inline .dbvc-ve-media-manager__results {
+  min-height: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Tablet: <=1024px
+   Table is retained; chrome tightens and the scan band stacks.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 1024px) {
+  .dbvc-ve-media-manager-mockup {
+    --dbvc-ve-media-manager-section-padding-x: 14px;
+    --dbvc-ve-media-manager-cell-padding-x: 8px;
+    --dbvc-ve-media-manager-drawer-inset-bottom: 88px;
+    /* Tighter chips so the Field types column fits two per line. */
+    --dbvc-ve-media-manager-chip-padding: 2px 7px;
+  }
+
+  .dbvc-ve-media-manager__summary {
+    gap: 16px;
+  }
+
+  .dbvc-ve-media-manager__summary-note {
+    display: none;
+  }
+
+  .dbvc-ve-media-manager__scan-times {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  .dbvc-ve-media-manager__scan-actions {
+    order: 2;
+  }
+
+  .dbvc-ve-media-manager__control--search {
+    max-width: none;
+  }
+
+  .dbvc-ve-media-manager__family-note {
+    display: none;
+  }
+
+  .dbvc-ve-media-manager__expansion {
+    padding-left: 24px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Mobile: <=640px  (matches the only breakpoint overlay.css already ships)
+
+   The table becomes a card list. Explicit ARIA roles in the markup preserve table
+   semantics through the display:block transform, and each cell prints its column
+   name from data-label, so no information is lost.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .dbvc-ve-media-manager-mockup {
+    --dbvc-ve-media-manager-section-padding-x: 12px;
+  }
+
+  /* Faux-site chrome only; deleted at production translation.
+     The site bar is a non-wrapping flex row sized for desktop. Below 640px its
+     nav plus CTA exceed the viewport, and because the bar does not wrap, the CTA
+     is pushed past the right edge - measured at left=525, right=601 in a 500px
+     viewport. Under mobile emulation that overflow expands the visual viewport,
+     which is what prevented a true phone-width screenshot. The Media Manager
+     drawer itself never overflowed. Let the bar wrap and drop the CTA, which is
+     decorative and duplicated by nothing. */
+  .dbvc-ve-media-manager-mockup__site-bar {
+    flex-wrap: wrap;
+    gap: 16px;
+    height: auto;
+    padding: 12px 16px;
+  }
+
+  .dbvc-ve-media-manager-mockup__site-cta {
+    display: none;
+  }
+
+  /*
+   * Faux-site nav, same category. Its five items form a non-wrapping 322px flex row,
+   * which was the second element (after the toolbar dock) holding the emulated mobile
+   * viewport open at 338 instead of the requested 320.
+   */
+  .dbvc-ve-media-manager-mockup__nav {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-left: 0;
+  }
+
+  .dbvc-ve-media-manager {
+    width: calc(100vw - 12px);
+    bottom: 84px;
+    max-height: calc(100vh - 104px);
+    max-height: calc(100dvh - 104px);
+    border-radius: var(--dbvc-ve-border-radius--s);
+  }
+
+  .dbvc-ve-media-manager__header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .dbvc-ve-media-manager__header-text {
+    flex: 1 1 60%;
+  }
+
+  .dbvc-ve-media-manager__summary {
+    order: 3;
+    flex-basis: 100%;
+    gap: 22px;
+  }
+
+  .dbvc-ve-media-manager__summary-metric {
+    text-align: left;
+  }
+
+  .dbvc-ve-media-manager__summary-value {
+    font-size: 20px;
+  }
+
+  .dbvc-ve-media-manager__scan,
+  .dbvc-ve-media-manager__controls-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /*
+   * In a column flex container a flex-basis sizes the BLOCK axis, so the desktop
+   * `flex: 1 1 220px` / `flex: 0 0 190px` would become 220px and 190px of dead height.
+   * Reset both controls to auto sizing here.
+   */
+  .dbvc-ve-media-manager__control--search,
+  .dbvc-ve-media-manager__control--sort,
+  .dbvc-ve-media-manager__control--chips {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  /*
+   * Let every column child shrink below its min-content width. Guards against a single
+   * wide child (a chip row, a long timestamp line) sizing the whole drawer, which the
+   * panel's overflow:hidden would then clip rather than wrap.
+   */
+  .dbvc-ve-media-manager > *,
+  .dbvc-ve-media-manager__controls-row > *,
+  .dbvc-ve-media-manager__scan > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dbvc-ve-media-manager__chip-set {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dbvc-ve-media-manager__scan-progress {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .dbvc-ve-media-manager__progress {
+    flex: 0 0 auto;
+  }
+
+  .dbvc-ve-media-manager__subtitle,
+  .dbvc-ve-media-manager__scan-progress-text,
+  .dbvc-ve-media-manager__scan-times {
+    overflow-wrap: anywhere;
+  }
+
+  .dbvc-ve-media-manager__scan-actions {
+    margin-left: 0;
+  }
+
+  .dbvc-ve-media-manager__scope-badge {
+    margin-left: 0;
+    justify-content: center;
+  }
+
+  /*
+   * Filter chips wrap rather than forming a nowrap horizontal scroll rail. A rail hides
+   * options off-screen behind a swipe and needs its own scroll affordance; wrapping keeps
+   * every filter visible and costs only vertical space, which this drawer has.
+   */
+  .dbvc-ve-media-manager__chip-set {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .dbvc-ve-media-manager__legend {
+    gap: 6px 10px;
+  }
+
+  .dbvc-ve-media-manager__table,
+  .dbvc-ve-media-manager__tbody,
+  .dbvc-ve-media-manager__row,
+  .dbvc-ve-media-manager__cell,
+  .dbvc-ve-media-manager__expansion-row,
+  .dbvc-ve-media-manager__expansion-cell {
+    display: block;
+  }
+
+  /* Column headers stay in the accessibility tree, out of the visual flow. */
+  .dbvc-ve-media-manager__thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    box-shadow: none;
+  }
+
+  .dbvc-ve-media-manager__row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    margin: 10px var(--dbvc-ve-media-manager-section-padding-x);
+    padding: 12px 40px 12px 12px;
+    border: 1px solid var(--dbvc-ve-color-border-muted);
+    border-radius: var(--dbvc-ve-border-radius--s);
+    background: var(--dbvc-ve-color-surface);
+  }
+
+  .dbvc-ve-media-manager__row.is-expanded {
+    border-color: var(--dbvc-ve-color-accent);
+    background: var(--dbvc-ve-color-light);
+  }
+
+  .dbvc-ve-media-manager__row[hidden] {
+    display: none;
+  }
+
+  .dbvc-ve-media-manager__cell {
+    padding: 0;
+  }
+
+  /* Each value carries its column name, so the card loses no information. */
+  .dbvc-ve-media-manager__cell[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    color: var(--dbvc-ve-color-text-subtle);
+    font-size: var(--dbvc-ve-font--overline);
+    font-weight: var(--dbvc-ve-font-weight--bold);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .dbvc-ve-media-manager__cell--entity,
+  .dbvc-ve-media-manager__cell[data-label="Field types"] {
+    grid-column: 1 / -1;
+  }
+
+  .dbvc-ve-media-manager__cell--entity::before {
+    display: none;
+  }
+
+  .dbvc-ve-media-manager__entity-label {
+    -webkit-line-clamp: 3;
+    font-size: 14px;
+  }
+
+  .dbvc-ve-media-manager__cell--toggle {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: auto;
+    padding: 0;
+  }
+
+  .dbvc-ve-media-manager__expansion-cell {
+    padding: 0;
+    background: transparent;
+  }
+
+  .dbvc-ve-media-manager__expansion {
+    margin: 0 var(--dbvc-ve-media-manager-section-padding-x) 10px;
+    padding: 12px;
+    border: 1px solid var(--dbvc-ve-color-accent);
+    border-radius: var(--dbvc-ve-border-radius--s);
+    background: var(--dbvc-ve-color-light);
+  }
+
+  .dbvc-ve-media-manager__field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dbvc-ve-media-manager__field-tags {
+    grid-column: 1;
+    grid-row: auto;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+
+  .dbvc-ve-media-manager__load-more {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .dbvc-ve-media-manager-mockup__toolbar-button {
+    padding: 8px 10px;
+    font-size: var(--dbvc-ve-font--meta);
+  }
+
+  .dbvc-ve-media-manager-mockup__hero-title {
+    font-size: 28px;
+  }
+}
+
+/* ===========================================================================
+   R1-D4A-2 - short-height and mobile reachability
+   ---------------------------------------------------------------------------
+   The desktop model gives the drawer a fixed max-height, pins every band, and
+   makes only __results scroll. That only works while the non-result stack fits.
+   Measured at 390x844 before this block: drawer client height 738 against a
+   scroll height of 1264, with overflow hidden - sort, legend, results and footer
+   were unreachable at any scroll position, because the one scroller (__results)
+   was not the element overflowing.
+
+   Fix: below 640px wide OR 760px tall the DRAWER becomes the single vertical
+   scroll body. Every band returns to normal flow, __results stops scrolling
+   independently, and only the header stays pinned. One scroll region, one
+   scrollbar, nothing clipped.
+
+   The width arm covers handsets; the height arm covers short desktop windows
+   and landscape phones, where the same clipping appears at wide widths.
+   =========================================================================== */
+
+@media (max-width: 640px), (max-height: 760px) {
+  .dbvc-ve-media-manager {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Nothing flexes to fill: each band takes its natural height and the drawer scrolls. */
+  .dbvc-ve-media-manager > * {
+    flex: 0 0 auto;
+  }
+
+  .dbvc-ve-media-manager__results {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  /*
+   * The only pinned chrome. It carries the accessible name and the close control,
+   * so it stays reachable from any scroll position. An opaque background is
+   * required: the drawer's own surface is translucent glass.
+   */
+  .dbvc-ve-media-manager__header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--dbvc-ve-color-surface);
+  }
+
+  /* Practical touch targets. ~44px without changing the desktop presentation. */
+  .dbvc-ve-media-manager {
+    --dbvc-ve-media-manager-toggle-size: 44px;
+  }
+
+  .dbvc-ve-media-manager__close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .dbvc-ve-media-manager__button,
+  .dbvc-ve-media-manager__search,
+  .dbvc-ve-media-manager__select {
+    min-height: 44px;
+  }
+
+  .dbvc-ve-media-manager__chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 6px 14px;
+  }
+
+  .dbvc-ve-media-manager__open-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+/*
+ * Card mode pins the row toggle to the card's top-right corner, so the card needs
+ * room for a 44px target rather than the desktop 26px one.
+ */
+@media (max-width: 640px) {
+  .dbvc-ve-media-manager__row {
+    padding-right: 60px;
+  }
+
+  .dbvc-ve-media-manager__cell--toggle {
+    top: 8px;
+    right: 8px;
+  }
+}
+
+/*
+ * Short but wide: the table header is still visible (the card transform is a
+ * width rule, not a height rule). Since __results no longer scrolls, a sticky
+ * thead would pin against the drawer and collide with the sticky header, so it
+ * returns to normal flow and scrolls with its rows.
+ */
+@media (min-width: 641px) and (max-height: 760px) {
+  .dbvc-ve-media-manager__thead {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+/*
+ * Faux-toolbar chrome only; deleted at production translation, where the real
+ * .dbvc-ve-toolbar owns this behaviour.
+ *
+ * Measured at a requested 320x568: the dock laid out 344px wide as a non-wrapping
+ * fixed row of five buttons. Because it exceeds the viewport, Chrome's mobile
+ * emulation widened the layout viewport to 338x600 - so a "320px" test was never
+ * actually running at 320. Nothing else in the document exceeded 320.
+ *
+ * Letting the dock wrap keeps the toolbar inside the viewport at 320. The drawer's
+ * bottom inset then has to clear a possibly two-row dock, so it is raised in step.
+ */
+@media (max-width: 640px) {
+  .dbvc-ve-media-manager-mockup__toolbar {
+    left: 0;
+    width: 100%;
+    padding: 0 8px;
+    transform: none;
+  }
+
+  .dbvc-ve-media-manager-mockup__toolbar-dock {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 400px) {
+  .dbvc-ve-media-manager-mockup__toolbar-button {
+    padding: 7px 8px;
+  }
+
+  /* Two-row dock at this width; clear it so the drawer footer stays visible. */
+  .dbvc-ve-media-manager {
+    bottom: 116px;
+    max-height: calc(100dvh - 136px);
+  }
+}

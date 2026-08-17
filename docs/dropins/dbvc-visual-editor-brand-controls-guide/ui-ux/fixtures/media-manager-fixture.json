@@ -1,0 +1,108 @@
+{
+  "fixture_only": true,
+  "release_scope": "R1 scan report with R2 field-state examples",
+  "scan": {
+    "state": "complete",
+    "processed_entities": 84,
+    "entities_with_findings": 6,
+    "missing_fields": 13,
+    "counts": {
+      "featured_image": 4,
+      "acf_image": 6,
+      "acf_gallery": 3
+    },
+    "completed_label": "Completed moments ago"
+  },
+  "filters": {
+    "search": "",
+    "entity_family": "all",
+    "field_family": "all",
+    "scope_label": "Published only"
+  },
+  "entities": [
+    {
+      "group_ref": "demo_group_home",
+      "label": "Home Page",
+      "entity_type": "Page",
+      "location_label": "/",
+      "missing_count": 3,
+      "status": "current",
+      "updated_label": "Recently updated",
+      "expanded": true,
+      "fields": [
+        {
+          "finding_ref": "demo_finding_featured",
+          "label": "Featured image",
+          "family": "featured_image",
+          "context_label": "Native WordPress field",
+          "status": "empty",
+          "writable": true,
+          "r2_actions": ["choose_media", "upload_via_media_library", "save_field"]
+        },
+        {
+          "finding_ref": "demo_finding_hero",
+          "label": "Hero image",
+          "family": "acf_image",
+          "context_label": "Homepage content",
+          "status": "empty",
+          "writable": true,
+          "r2_actions": ["choose_media", "upload_via_media_library", "save_field"]
+        },
+        {
+          "finding_ref": "demo_finding_gallery",
+          "label": "Project gallery",
+          "family": "acf_gallery",
+          "context_label": "Featured projects",
+          "status": "empty",
+          "writable": true,
+          "r2_actions": ["manage_gallery", "upload_via_media_library", "save_field"]
+        }
+      ]
+    },
+    {
+      "group_ref": "demo_group_about",
+      "label": "About Us",
+      "entity_type": "Page",
+      "location_label": "/about-us",
+      "missing_count": 2,
+      "status": "current",
+      "expanded": false
+    },
+    {
+      "group_ref": "demo_group_service",
+      "label": "Landscape Design",
+      "entity_type": "Service",
+      "location_label": "/services/landscape-design",
+      "missing_count": 2,
+      "status": "current",
+      "expanded": false
+    },
+    {
+      "group_ref": "demo_group_listing",
+      "label": "Lake House Project",
+      "entity_type": "Listing",
+      "location_label": "/projects/lake-house",
+      "missing_count": 3,
+      "status": "current",
+      "expanded": false
+    },
+    {
+      "group_ref": "demo_group_term",
+      "label": "Landscaping",
+      "entity_type": "Term",
+      "location_label": "/project-type/landscaping",
+      "missing_count": 1,
+      "status": "changed_since_scan",
+      "expanded": false
+    },
+    {
+      "group_ref": "demo_group_post",
+      "label": "10 Modern Garden Ideas",
+      "entity_type": "Post",
+      "location_label": "/blog/modern-garden-ideas",
+      "missing_count": 2,
+      "status": "current",
+      "expanded": false
+    }
+  ]
+}

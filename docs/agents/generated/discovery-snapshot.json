@@ -3,26 +3,26 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 335,
-        "source_fingerprint": "sha256:4386dd657e5f781f351c2a447700efca012149fb475e57d30fd751aa3310d53d",
+        "source_file_count": 345,
+        "source_fingerprint": "sha256:69dbf7a344bb29f8fccf979231104f2aa257f05b05f32369016a8acc760bb25a",
         "live_runtime_verified": false
     },
     "counts": {
-        "admin_handlers": 32,
+        "admin_handlers": 33,
         "admin_menus": 13,
         "bootstrap_includes": 127,
         "bootstrap_initializers": 16,
-        "cli_commands": 24,
-        "cli_namespaces": 8,
+        "cli_commands": 26,
+        "cli_namespaces": 9,
         "database_tables": 13,
-        "documentation": 344,
+        "documentation": 393,
         "extension_points": 144,
-        "hook_listeners": 161,
-        "rest_routes": 127,
+        "hook_listeners": 162,
+        "rest_routes": 134,
         "scheduled_hooks": 3,
         "settings": 49,
         "source_reference_documentation": 13,
-        "tests": 82
+        "tests": 88
     },
     "collections": {
         "admin_handlers": [
@@ -104,18 +104,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.02b8014d",
-                "kind": "listener",
-                "scope": "core",
-                "function": "add_action",
-                "hook": "admin_post_",
-                "source_ref": {
-                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
-                    "line": 25
-                }
-            },
-            {
-                "discovery_id": "hook.listener.admin_post_.95c9840f",
+                "discovery_id": "hook.listener.admin_post_.7a7977a1",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -126,7 +115,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.0aff1529",
+                "discovery_id": "hook.listener.admin_post_.e45e08b6",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -137,7 +126,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.a727444e",
+                "discovery_id": "hook.listener.admin_post_.af1f4307",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -148,7 +137,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.c71bf57e",
+                "discovery_id": "hook.listener.admin_post_.58efb22c",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -156,6 +145,28 @@
                 "source_ref": {
                     "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
                     "line": 29
+                }
+            },
+            {
+                "discovery_id": "hook.listener.admin_post_.cde17486",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "admin_post_",
+                "source_ref": {
+                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
+                    "line": 30
+                }
+            },
+            {
+                "discovery_id": "hook.listener.admin_post_.10a8bc80",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "admin_post_",
+                "source_ref": {
+                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
+                    "line": 31
                 }
             },
             {
@@ -588,7 +599,7 @@
                 }
             },
             {
-                "discovery_id": "admin.menu.33748a39530e",
+                "discovery_id": "admin.menu.9855b92e48a8",
                 "scope": "core",
                 "function": "add_submenu_page",
                 "observed_string_literals": [
@@ -603,7 +614,7 @@
                 ],
                 "source_ref": {
                     "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
-                    "line": 37
+                    "line": 39
                 }
             },
             {
@@ -1875,6 +1886,37 @@
                 }
             },
             {
+                "discovery_id": "cli.command.dbvc.config.domains",
+                "command": "dbvc config domains",
+                "namespace": "dbvc config",
+                "class": "DBVC_WP_CLI_Configuration_Portability",
+                "method": "domains",
+                "summary": "List registered configuration portability domains and schema counts",
+                "synopsis_tokens": [
+                    "[--domain=<key>]",
+                    "[--format=<format>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-configuration-portability-cli.php",
+                    "line": 180
+                }
+            },
+            {
+                "discovery_id": "cli.command.dbvc.config.status",
+                "command": "dbvc config status",
+                "namespace": "dbvc config",
+                "class": "DBVC_WP_CLI_Configuration_Portability",
+                "method": "status",
+                "summary": "Summarize registered configuration portability schema metadata",
+                "synopsis_tokens": [
+                    "[--format=<format>]"
+                ],
+                "source_ref": {
+                    "path": "commands/class-configuration-portability-cli.php",
+                    "line": 210
+                }
+            },
+            {
                 "discovery_id": "cli.command.dbvc.content-migration.runs.list",
                 "command": "dbvc content-migration runs list",
                 "namespace": "dbvc content-migration runs",
@@ -2267,6 +2309,15 @@
                 }
             },
             {
+                "discovery_id": "cli.namespace.dbvc.config",
+                "namespace": "dbvc config",
+                "class": "DBVC_WP_CLI_Configuration_Portability",
+                "source_ref": {
+                    "path": "commands/class-configuration-portability-cli.php",
+                    "line": 221
+                }
+            },
+            {
                 "discovery_id": "cli.namespace.dbvc.content-migration.runs",
                 "namespace": "dbvc content-migration runs",
                 "class": "DBVC_WP_CLI_Content_Migration_Runs",
@@ -2506,7 +2557,51 @@
             "docs/development/README.md",
             "docs/development/repomix-maintenance.md",
             "docs/development/repomix-preflight.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/00-GOVERNING-DIRECTIVES.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/01-DISCOVERY-AND-CURRENT-STATE-REVIEW.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/02-TARGET-ARCHITECTURE-AND-BOUNDARIES.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/FIELD-ELIGIBILITY-AND-SCOPE.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/MEDIA-MANAGER-PRODUCT-SPEC.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/MUTATION-STALE-DATA-AND-REVALIDATION.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/SCAN-AND-FINDING-CONTRACT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/TABLE-AND-ROW-INTERACTION-SPEC.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/PACKAGE-MANIFEST.json",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/PACKAGE-UPDATE-NOTES.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/00-CODEX-KICKOFF.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/PACKAGE-UPDATE-RECONCILIATION.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R1-CODEX-PROMPT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R2-CODEX-PROMPT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R3-CODEX-PROMPT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R4-CODEX-PROMPT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R5-CODEX-PROMPT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R6-CODEX-PROMPT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/quality/MEDIA-MANAGER-TEST-MATRIX.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/quality/OBSERVABILITY-ROLLBACK-AND-COMPATIBILITY.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/quality/SECURITY-AND-DATA-SAFETY.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/quality/TEST-QA-RELEASE-GATES.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/README.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R0-DISCOVERY-BASELINE.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R1-MEDIA-MANAGER-SCAN-AND-REPORT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R2-MEDIA-MANAGER-DIRECT-REMEDIATION.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R3-REGISTRY-BACKED-BRAND-CONTROL-CENTER.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R4-EXPANDED-GLOBAL-BRAND-CONTROL-CENTER.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R5-ACF-OPTION-FIELD-FAMILY-SUPPORT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R6-FRONTEND-SITE-MANAGER-WORKSPACE.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/DECISION-LOG.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/EVIDENCE-LOG.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/IMPLEMENTATION-TRACKER.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/MEDIA-SCAN-COVERAGE-MATRIX.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/RISK-REGISTER.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/CLAUDE-CODE-MEDIA-MANAGER-PROMPT-TEMPLATE.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/CLAUDE-CODE-MOCKUP-HANDOFF.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/fixtures/media-manager-fixture.json",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/fixtures/media-manager-r1c-view-model.json",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/MEDIA-MANAGER-CLAUDE-MOCKUP-HANDOFF.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/MOCKUP-DELIVERABLE-CONTRACT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/MOCKUP-TO-PRODUCTION-INTEGRATION.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/REFERENCE-IMAGES.md",
             "docs/implementation/active/admin-app-refactor.md",
+            "docs/implementation/active/configuration-portability-tool-guide.md",
             "docs/implementation/active/README.md",
             "docs/implementation/active/term-entity-polish.md",
             "docs/implementation/completed/dbvc-agent-reference-library.md",
@@ -2542,7 +2637,6 @@
             "docs/implementation/proposed/bricks-portability-drift-manager/examples/package-manifest.example.json",
             "docs/implementation/proposed/bricks-portability-drift-manager/README.md",
             "docs/implementation/proposed/bricks-reference-mapping-plan.md",
-            "docs/implementation/proposed/configuration-portability-tool-guide.md",
             "docs/implementation/proposed/cross-site-entity-packet-guide.md",
             "docs/implementation/proposed/media-sync-hydration-guide.md",
             "docs/implementation/proposed/post-field-masking-expansion-plan.md",
@@ -2574,6 +2668,12 @@
             "docs/roadmap.md",
             "docs/troubleshooting/localwp-performance-audit-runbook.md",
             "docs/troubleshooting/README.md",
+            "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/CODEX-STATUS-UPDATE-HANDOFF.md",
+            "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/COMPONENT-NOTES.md",
+            "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/D4-HANDOFF.md",
+            "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/DESIGN-DECISIONS.md",
+            "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/README.md",
+            "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/WIRING-SCHEMATIC.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/agent-entrypoints.md/original.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/reference/README.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/requests.md",
@@ -4220,25 +4320,25 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_post_types.a9b51f31",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_post_types.79c056fe",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_excluded_post_types",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 232
+                    "line": 260
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.68357b05",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.8b9a05a1",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_excluded_taxonomies",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 254
+                    "line": 282
                 }
             },
             {
@@ -4253,14 +4353,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_option_capability.3c34a63e",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_option_capability.199f6f76",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_option_capability",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Permissions/CapabilityManager.php",
-                    "line": 68
+                    "line": 81
                 }
             },
             {
@@ -4352,14 +4452,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_shared_global_field_names.f7b8e93a",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e2a0b29a",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_shared_global_field_names",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 210
+                    "line": 238
                 }
             }
         ],
@@ -4662,14 +4762,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_menu.5df6ad49",
+                "discovery_id": "hook.listener.admin_menu.ba3e0fdd",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "admin_menu",
                 "source_ref": {
                     "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
-                    "line": 24
+                    "line": 25
                 }
             },
             {
@@ -4761,18 +4861,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.02b8014d",
-                "kind": "listener",
-                "scope": "core",
-                "function": "add_action",
-                "hook": "admin_post_",
-                "source_ref": {
-                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
-                    "line": 25
-                }
-            },
-            {
-                "discovery_id": "hook.listener.admin_post_.95c9840f",
+                "discovery_id": "hook.listener.admin_post_.7a7977a1",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -4783,7 +4872,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.0aff1529",
+                "discovery_id": "hook.listener.admin_post_.e45e08b6",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -4794,7 +4883,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.a727444e",
+                "discovery_id": "hook.listener.admin_post_.af1f4307",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -4805,7 +4894,7 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.admin_post_.c71bf57e",
+                "discovery_id": "hook.listener.admin_post_.58efb22c",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
@@ -4813,6 +4902,28 @@
                 "source_ref": {
                     "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
                     "line": 29
+                }
+            },
+            {
+                "discovery_id": "hook.listener.admin_post_.cde17486",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "admin_post_",
+                "source_ref": {
+                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
+                    "line": 30
+                }
+            },
+            {
+                "discovery_id": "hook.listener.admin_post_.10a8bc80",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "admin_post_",
+                "source_ref": {
+                    "path": "includes/Dbvc/ConfigurationPortability/AdminPage.php",
+                    "line": 31
                 }
             },
             {
@@ -5641,14 +5752,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.rest_api_init.ffa82103",
+                "discovery_id": "hook.listener.rest_api_init.d839b531",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Routes.php",
-                    "line": 91
+                    "line": 108
                 }
             },
             {
@@ -5718,14 +5829,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.rest_post_dispatch.4075eb55",
+                "discovery_id": "hook.listener.rest_post_dispatch.b01d623c",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_filter",
                 "hook": "rest_post_dispatch",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 472
+                    "line": 500
                 }
             },
             {
@@ -5817,25 +5928,25 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.shutdown.6c60588d",
+                "discovery_id": "hook.listener.shutdown.40903cff",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 112
+                    "line": 141
                 }
             },
             {
-                "discovery_id": "hook.listener.shutdown.1850e9b2",
+                "discovery_id": "hook.listener.shutdown.fd1ee01b",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 113
+                    "line": 142
                 }
             },
             {
@@ -6092,14 +6203,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.wp_footer.bbc24efa",
+                "discovery_id": "hook.listener.wp_footer.94121b25",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "wp_footer",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 111
+                    "line": 140
                 }
             },
             {
@@ -6980,6 +7091,97 @@
                 "source_ref": {
                     "path": "admin/class-admin-app.php",
                     "line": 514
+                }
+            },
+            {
+                "discovery_id": "rest.d303a24a21bb5b44",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans",
+                "method_expression": "'POST'",
+                "callback_expression": "[$this, 'handleStart']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 52
+                }
+            },
+            {
+                "discovery_id": "rest.75357bde6c33d50f",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)",
+                "method_expression": "'GET'",
+                "callback_expression": "[$this, 'handleList']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 62
+                }
+            },
+            {
+                "discovery_id": "rest.02d61f757f392449",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/cancel",
+                "method_expression": "'POST'",
+                "callback_expression": "[$this, 'handleCancel']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 77
+                }
+            },
+            {
+                "discovery_id": "rest.a9fa85d1da456c52",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/groups/(?P<group_ref>vemg_[a-f0-9]{20})",
+                "method_expression": "'GET'",
+                "callback_expression": "[$this, 'handleGroup']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 82
+                }
+            },
+            {
+                "discovery_id": "rest.b4875c43db00c86f",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/next",
+                "method_expression": "'POST'",
+                "callback_expression": "[$this, 'handleNext']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 67
+                }
+            },
+            {
+                "discovery_id": "rest.cb4a7e9f8bb0566c",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/retry",
+                "method_expression": "'POST'",
+                "callback_expression": "[$this, 'handleRetry']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 72
+                }
+            },
+            {
+                "discovery_id": "rest.a0cd0b19d4fe07ac",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/latest",
+                "method_expression": "'GET'",
+                "callback_expression": "[$this, 'handleLatest']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 57
                 }
             },
             {
@@ -8951,7 +9153,7 @@
                     },
                     {
                         "path": "includes/Dbvc/ConfigurationPortability/Providers/CoreImportExportProvider.php",
-                        "line": 135
+                        "line": 145
                     },
                     {
                         "path": "includes/functions.php",
@@ -8976,7 +9178,7 @@
                     },
                     {
                         "path": "includes/Dbvc/ConfigurationPortability/Providers/CoreImportExportProvider.php",
-                        "line": 136
+                        "line": 146
                     },
                     {
                         "path": "includes/functions.php",
@@ -9426,6 +9628,7 @@
             "tests/phpunit/BricksRegistryOptionsProviderTest.php",
             "tests/phpunit/CapabilityCliTest.php",
             "tests/phpunit/CapabilityLandscapeTest.php",
+            "tests/phpunit/ConfigurationPortabilityCliTest.php",
             "tests/phpunit/ConfigurationPortabilityExportPackageTest.php",
             "tests/phpunit/ConfigurationPortabilityRegistryTest.php",
             "tests/phpunit/ContentCollectorV2Phase1Test.php",
@@ -9478,7 +9681,12 @@
             "tests/phpunit/ProposalZipIntakeTest.php",
             "tests/phpunit/ThirdPartyPortabilityTest.php",
             "tests/phpunit/TransferPacketWorkflowTest.php",
-            "tests/phpunit/VisualEditorElementInstrumentationTest.php"
+            "tests/phpunit/VisualEditorElementInstrumentationTest.php",
+            "tests/phpunit/VisualEditorMediaManagerR1ATest.php",
+            "tests/phpunit/VisualEditorMediaManagerR1BTest.php",
+            "tests/phpunit/VisualEditorMediaManagerR1CTest.php",
+            "tests/phpunit/VisualEditorMediaManagerR1DTest.php",
+            "tests/phpunit/VisualEditorMediaManagerR1ETest.php"
         ]
     },
     "limitations": [

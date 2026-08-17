@@ -37,6 +37,7 @@
 |---|---|---|---|---|
 | [`cli.bricks.doctor`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Reports bounded Bricks add-on status, operating mode, UI-contract features, live schema shape/counts, deprecations, and runtime-health warnings without returning site identity, stored diagnostic events, or package-delivery history. |
 | [`cli.bricks.drift.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Compares one stored Bricks package or local JSON manifest with current local artifacts and returns bounded path-only drift evidence without applying changes. |
+| [`cli.configuration.portability.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists registered configuration portability domains and aggregate provider schema counts without reading current settings or invoking export, import, apply, backup, or rollback services. |
 | [`cli.content_migration.runs.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Lists bounded latest V2 runs and shows one exact current or historical run through counts, profile shape, inventory statistics, stage summaries, issue counts, and recent activity without creating or modifying artifacts. |
 | [`cli.core.capabilities.inspect`](../manifest.json) | `active` | `read_only` | [CLI and automation](../facets/cli-and-automation.md) | Queries the packaged capability manifest and diagnoses discovery ownership, runtime registration, add-on gates, and checkout provenance without invoking DBVC operations. |
 | [`cli.core.export`](../manifest.json) | `active` | `filesystem_write` | [CLI and automation](../facets/cli-and-automation.md) | Runs full, batched, differential, or chunked DBVC exports and records export jobs or snapshots. |
@@ -54,7 +55,7 @@
 
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
-| [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) | Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, and a change journal. |
+| [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) | Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, a change journal, and a default-off read-only Media Manager scan/list/row-revalidation API plus toolbar shell, lifecycle/query/expansion state controller, and server-driven safe-results table. |
 | [`entity_editor.core.inspect`](../manifest.json) | `active` | `read_only` | [Entity Editor](../facets/entity-editor.md) | Indexes supported post/term JSON files, reads one file, and downloads individual or bulk entity artifacts. |
 | [`entity_editor.core.write`](../manifest.json) | `active` | `wordpress_write` | [Entity Editor](../facets/entity-editor.md) | Validates and atomically saves JSON, optionally imports present fields or performs confirmed full replacement, and rebuilds the entity index. |
 
