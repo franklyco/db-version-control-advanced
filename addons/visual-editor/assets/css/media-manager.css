@@ -767,6 +767,103 @@
   }
 }
 
+/* R2-B: staged media-assignment affordance (unsaved until a later release). */
+.dbvc-ve-media-manager__field-assign {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: var(--dbvc-ve-border--muted-s);
+}
+
+.dbvc-ve-media-manager__assign-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dbvc-ve-media-manager__button.is-assign {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--dbvc-ve-color-accent) 44%, var(--dbvc-ve-color-surface));
+  color: var(--dbvc-ve-color-secondary);
+}
+
+.dbvc-ve-media-manager__button.is-save {
+  border-color: transparent;
+  background: var(--dbvc-ve-color-accent);
+  color: var(--dbvc-ve-color-secondary);
+}
+
+.dbvc-ve-media-manager__button.is-clear {
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+}
+
+.dbvc-ve-media-manager__button[disabled] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.dbvc-ve-media-manager__table-row.is-resolved {
+  opacity: 0.62;
+}
+
+.dbvc-ve-media-manager__assign-badge {
+  align-self: flex-start;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  padding: 4px 8px;
+  background: var(--dbvc-ve-color-warning-bg-soft);
+  color: var(--dbvc-ve-color-warning-dark);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1.2;
+}
+
+.dbvc-ve-media-manager__assign-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dbvc-ve-media-manager__assign-thumb {
+  width: 64px;
+  height: 64px;
+  margin: 0;
+  overflow: hidden;
+  border: var(--dbvc-ve-border--muted-s);
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-media-manager__assign-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dbvc-ve-media-manager__assign-thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+.dbvc-ve-media-manager__assign-note {
+  margin: 0;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
+.dbvc-ve-media-manager__assign-notice {
+  margin: 0;
+  color: var(--dbvc-ve-color-warning-dark);
+  font-size: var(--dbvc-ve-font--meta);
+}
+
 @media (max-width: 640px), (max-height: 760px) {
   .dbvc-ve-media-manager {
     overflow-x: hidden;

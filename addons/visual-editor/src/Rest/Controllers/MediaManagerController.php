@@ -3,6 +3,8 @@
 namespace Dbvc\VisualEditor\Rest\Controllers;
 
 use Dbvc\VisualEditor\Context\EditModeState;
+use Dbvc\VisualEditor\MediaManager\MediaAssignmentService;
+use Dbvc\VisualEditor\MediaManager\MediaFindingDescriptorBridge;
 use Dbvc\VisualEditor\MediaManager\MediaScanCoordinator;
 use Dbvc\VisualEditor\MediaManager\MediaScanReadModel;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
@@ -32,16 +34,30 @@ final class MediaManagerController
      */
     private $capabilities;
 
+    /**
+     * @var MediaFindingDescriptorBridge
+     */
+    private $descriptor_bridge;
+
+    /**
+     * @var MediaAssignmentService
+     */
+    private $assignment_service;
+
     public function __construct(
         MediaScanCoordinator $coordinator,
         MediaScanReadModel $read_model,
         EditModeState $edit_mode,
-        CapabilityManager $capabilities
+        CapabilityManager $capabilities,
+        MediaFindingDescriptorBridge $descriptor_bridge,
+        MediaAssignmentService $assignment_service
     ) {
         $this->coordinator = $coordinator;
         $this->read_model = $read_model;
         $this->edit_mode = $edit_mode;
         $this->capabilities = $capabilities;
+        $this->descriptor_bridge = $descriptor_bridge;
+        $this->assignment_service = $assignment_service;
     }
 
     /**
@@ -83,6 +99,16 @@ final class MediaManagerController
             'methods' => 'GET',
             'permission_callback' => [$this, 'canAccess'],
             'callback' => [$this, 'handleGroup'],
+        ]);
+        register_rest_route('dbvc/v1', '/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/groups/(?P<group_ref>vemg_[a-f0-9]{20})/findings/(?P<finding_ref>vemf_[a-f0-9]{20})/descriptor', [
+            'methods' => 'POST',
+            'permission_callback' => [$this, 'canAccess'],
+            'callback' => [$this, 'handleFindingDescriptor'],
+        ]);
+        register_rest_route('dbvc/v1', '/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/groups/(?P<group_ref>vemg_[a-f0-9]{20})/findings/(?P<finding_ref>vemf_[a-f0-9]{20})/assignment', [
+            'methods' => 'POST',
+            'permission_callback' => [$this, 'canAccess'],
+            'callback' => [$this, 'handleAssignFinding'],
         ]);
     }
 
@@ -199,6 +225,84 @@ final class MediaManagerController
                 $identity
             )
         );
+    }
+
+    /**
+     * R2-A: exchange one opaque finding for one fresh server-authoritative descriptor.
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function handleFindingDescriptor($request)
+    {
+        $authorized = $this->authorizeRequest($request);
+        if ($authorized instanceof WP_REST_Response) {
+            return $authorized;
+        }
+
+        $identity = $this->requestIdentity($request);
+        if (is_wp_error($identity)) {
+            return $this->errorResponse($identity);
+        }
+
+        return $this->resultResponse(
+            $this->descriptor_bridge->bridgeFinding(
+                sanitize_key((string) $request['scan_ref']),
+                sanitize_key((string) $request['group_ref']),
+                sanitize_key((string) $request['finding_ref']),
+                $identity
+            )
+        );
+    }
+
+    /**
+     * R2-C: assign the staged Media Library selection to the field and save it.
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function handleAssignFinding($request)
+    {
+        $authorized = $this->authorizeRequest($request);
+        if ($authorized instanceof WP_REST_Response) {
+            return $authorized;
+        }
+
+        $identity = $this->requestIdentity($request);
+        if (is_wp_error($identity)) {
+            return $this->errorResponse($identity);
+        }
+
+        return $this->resultResponse(
+            $this->assignment_service->assign(
+                sanitize_key((string) $request['scan_ref']),
+                sanitize_key((string) $request['group_ref']),
+                sanitize_key((string) $request['finding_ref']),
+                $identity,
+                $this->assignmentValueFromRequest($request)
+            )
+        );
+    }
+
+    /**
+     * @param WP_REST_Request $request
+     * @return array<string, mixed>
+     */
+    private function assignmentValueFromRequest(WP_REST_Request $request)
+    {
+        $value = [];
+
+        $attachment_id = $request->get_param('attachmentId');
+        if ($attachment_id !== null) {
+            $value['attachmentId'] = absint($attachment_id);
+        }
+
+        $attachment_ids = $request->get_param('attachmentIds');
+        if (is_array($attachment_ids)) {
+            $value['attachmentIds'] = array_values(array_map('absint', $attachment_ids));
+        }
+
+        return $value;
     }
 
     /**

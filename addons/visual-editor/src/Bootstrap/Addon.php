@@ -15,6 +15,8 @@ use Dbvc\VisualEditor\Journal\ChangeJournalRecorder;
 use Dbvc\VisualEditor\Journal\ChangeJournalStore;
 use Dbvc\VisualEditor\MediaManager\AcfMediaFieldCatalog;
 use Dbvc\VisualEditor\MediaManager\EligibilityPolicy;
+use Dbvc\VisualEditor\MediaManager\MediaAssignmentService;
+use Dbvc\VisualEditor\MediaManager\MediaFindingDescriptorBridge;
 use Dbvc\VisualEditor\MediaManager\MediaAssignmentValueClassifier;
 use Dbvc\VisualEditor\MediaManager\MediaScanCoordinator;
 use Dbvc\VisualEditor\MediaManager\MediaScanReadModel;
@@ -108,6 +110,18 @@ final class Addon
             $media_catalog
         );
         $media_read_model = new MediaScanReadModel($media_coordinator, $media_scanner, $media_policy);
+        $media_descriptor_bridge = new MediaFindingDescriptorBridge(
+            $media_coordinator,
+            $media_scanner,
+            $media_policy,
+            $capabilities,
+            $this->registry
+        );
+        $media_assignment_service = new MediaAssignmentService(
+            $media_descriptor_bridge,
+            $mutations,
+            $media_read_model
+        );
 
         $this->toggle_node = new ToggleNode($this->edit_mode, $capabilities);
         $this->asset_loader = new AssetLoader($this->bootstrap_file, $this->edit_mode, $this->registry, $page_context);
@@ -122,7 +136,9 @@ final class Addon
             $summaries,
             $active_profiler,
             $media_coordinator,
-            $media_read_model
+            $media_read_model,
+            $media_descriptor_bridge,
+            $media_assignment_service
         );
     }
 

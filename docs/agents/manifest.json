@@ -1327,19 +1327,21 @@
                         "rest.10a68abc63126bd5",
                         "rest.164c8acc40770023",
                         "rest.2c0b6e7098b6d326",
+                        "rest.3a99c7ffca15a1c2",
+                        "rest.3b1b46940cb41b28",
                         "rest.47c721585ff7ce62",
                         "rest.66ba26eaebd96d17",
                         "rest.6c0468163a3b14a9",
-                        "rest.75357bde6c33d50f",
+                        "rest.7ae3fe0ef390c0bf",
+                        "rest.8042873b4b1dde68",
+                        "rest.822d3ec61af5c477",
                         "rest.954a9d0af8729b2f",
-                        "rest.a0cd0b19d4fe07ac",
-                        "rest.a9fa85d1da456c52",
-                        "rest.b4875c43db00c86f",
-                        "rest.cb4a7e9f8bb0566c",
-                        "rest.d303a24a21bb5b44",
+                        "rest.962ec3486bcf625f",
+                        "rest.962f44fa8ec77c12",
+                        "rest.c37fc7ce7476e84f",
                         "rest.d06f6d2ec8fd95b3",
                         "rest.fad13a11b5b191f7",
-                        "rest.02d61f757f392449"
+                        "rest.fd99daa69fa20dad"
                     ]
                 },
                 {
@@ -1365,7 +1367,7 @@
                         "hook.extension_point.dbvc_visual_editor_performance_profile_max_events.f0e40755",
                         "hook.extension_point.dbvc_visual_editor_performance_profile_summary.f0f496a7",
                         "hook.extension_point.dbvc_visual_editor_restricted_option_group_roots.a6ea5380",
-                        "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.67cf1221",
+                        "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.5c57f8ec",
                         "hook.extension_point.dbvc_visual_editor_session_refresh_interval.8d796a0d",
                         "hook.extension_point.dbvc_visual_editor_session_ttl.0086f4bd",
                         "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e2a0b29a"

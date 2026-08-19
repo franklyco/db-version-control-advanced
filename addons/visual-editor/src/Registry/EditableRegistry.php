@@ -453,6 +453,43 @@ final class EditableRegistry
     }
 
     /**
+     * Persist a single off-render descriptor into a fresh user-bound session.
+     *
+     * Unlike persistRequestSession(), this does not require a supported render
+     * page context. It is used by non-rendered producers (e.g. the Media Manager
+     * finding->descriptor bridge) that resolve a server-authoritative target and
+     * need a retrievable session token without instrumenting a page render.
+     *
+     * @param EditableDescriptor $descriptor
+     * @return string The session id the descriptor was stored under, or '' on failure.
+     */
+    public function persistDetachedDescriptor(EditableDescriptor $descriptor)
+    {
+        if ($descriptor->token === '' || $this->isDescriptorExcluded($descriptor)) {
+            return '';
+        }
+
+        $session_id = $this->getSessionId();
+        $descriptors = [$descriptor->token => $descriptor->toArray()];
+
+        $payload = [
+            'session_id' => $session_id,
+            'user_id' => get_current_user_id(),
+            'page_context' => [],
+            'public_map' => $this->exportPublicMap([$descriptor->token => $descriptor]),
+            'created_at' => time(),
+        ];
+        $this->storeSessionDescriptors($payload, $descriptors);
+
+        set_transient($this->getTransientKey($session_id), $payload, $this->getSessionTtl());
+        $this->descriptors[$descriptor->token] = $descriptor;
+        $this->session_persisted = true;
+        $this->session_dirty = false;
+
+        return $session_id;
+    }
+
+    /**
      * @param array<string, array<string, mixed>> $descriptors
      * @return array<string, mixed>
      */

@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 345,
-        "source_fingerprint": "sha256:69dbf7a344bb29f8fccf979231104f2aa257f05b05f32369016a8acc760bb25a",
+        "source_file_count": 347,
+        "source_fingerprint": "sha256:66e2f251131d46eee7a9b20ff70c6b1f6215b064547f9db040dce827b413ea70",
         "live_runtime_verified": false
     },
     "counts": {
@@ -18,11 +18,11 @@
         "documentation": 393,
         "extension_points": 144,
         "hook_listeners": 162,
-        "rest_routes": 134,
+        "rest_routes": 136,
         "scheduled_hooks": 3,
         "settings": 49,
         "source_reference_documentation": 13,
-        "tests": 88
+        "tests": 90
     },
     "collections": {
         "admin_handlers": [
@@ -4419,14 +4419,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.67cf1221",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.5c57f8ec",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_session_descriptor_compression_level",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Registry/EditableRegistry.php",
-                    "line": 487
+                    "line": 524
                 }
             },
             {
@@ -5752,14 +5752,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.rest_api_init.d839b531",
+                "discovery_id": "hook.listener.rest_api_init.1444a3bb",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "rest_api_init",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Routes.php",
-                    "line": 108
+                    "line": 124
                 }
             },
             {
@@ -5928,25 +5928,25 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.shutdown.40903cff",
+                "discovery_id": "hook.listener.shutdown.77184dcc",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 141
+                    "line": 157
                 }
             },
             {
-                "discovery_id": "hook.listener.shutdown.fd1ee01b",
+                "discovery_id": "hook.listener.shutdown.fb9e4543",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 142
+                    "line": 158
                 }
             },
             {
@@ -6203,14 +6203,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.wp_footer.94121b25",
+                "discovery_id": "hook.listener.wp_footer.b088e8d6",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "wp_footer",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 140
+                    "line": 156
                 }
             },
             {
@@ -7094,7 +7094,7 @@
                 }
             },
             {
-                "discovery_id": "rest.d303a24a21bb5b44",
+                "discovery_id": "rest.c37fc7ce7476e84f",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/visual-editor/media-manager/scans",
@@ -7103,11 +7103,11 @@
                 "permission_expression": "[$this, 'canAccess']",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
-                    "line": 52
+                    "line": 68
                 }
             },
             {
-                "discovery_id": "rest.75357bde6c33d50f",
+                "discovery_id": "rest.8042873b4b1dde68",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)",
@@ -7116,11 +7116,11 @@
                 "permission_expression": "[$this, 'canAccess']",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
-                    "line": 62
+                    "line": 78
                 }
             },
             {
-                "discovery_id": "rest.02d61f757f392449",
+                "discovery_id": "rest.962ec3486bcf625f",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/cancel",
@@ -7129,11 +7129,11 @@
                 "permission_expression": "[$this, 'canAccess']",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
-                    "line": 77
+                    "line": 93
                 }
             },
             {
-                "discovery_id": "rest.a9fa85d1da456c52",
+                "discovery_id": "rest.822d3ec61af5c477",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/groups/(?P<group_ref>vemg_[a-f0-9]{20})",
@@ -7142,11 +7142,37 @@
                 "permission_expression": "[$this, 'canAccess']",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
-                    "line": 82
+                    "line": 98
                 }
             },
             {
-                "discovery_id": "rest.b4875c43db00c86f",
+                "discovery_id": "rest.3a99c7ffca15a1c2",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/groups/(?P<group_ref>vemg_[a-f0-9]{20})/findings/(?P<finding_ref>vemf_[a-f0-9]{20})/assignment",
+                "method_expression": "'POST'",
+                "callback_expression": "[$this, 'handleAssignFinding']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 108
+                }
+            },
+            {
+                "discovery_id": "rest.7ae3fe0ef390c0bf",
+                "scope": "core",
+                "namespace": "dbvc/v1",
+                "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/groups/(?P<group_ref>vemg_[a-f0-9]{20})/findings/(?P<finding_ref>vemf_[a-f0-9]{20})/descriptor",
+                "method_expression": "'POST'",
+                "callback_expression": "[$this, 'handleFindingDescriptor']",
+                "permission_expression": "[$this, 'canAccess']",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
+                    "line": 103
+                }
+            },
+            {
+                "discovery_id": "rest.fd99daa69fa20dad",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/next",
@@ -7155,11 +7181,11 @@
                 "permission_expression": "[$this, 'canAccess']",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
-                    "line": 67
+                    "line": 83
                 }
             },
             {
-                "discovery_id": "rest.cb4a7e9f8bb0566c",
+                "discovery_id": "rest.3b1b46940cb41b28",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/retry",
@@ -7168,11 +7194,11 @@
                 "permission_expression": "[$this, 'canAccess']",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
-                    "line": 72
+                    "line": 88
                 }
             },
             {
-                "discovery_id": "rest.a0cd0b19d4fe07ac",
+                "discovery_id": "rest.962f44fa8ec77c12",
                 "scope": "core",
                 "namespace": "dbvc/v1",
                 "route": "/visual-editor/media-manager/scans/latest",
@@ -7181,7 +7207,7 @@
                 "permission_expression": "[$this, 'canAccess']",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Rest/Controllers/MediaManagerController.php",
-                    "line": 57
+                    "line": 73
                 }
             },
             {
@@ -9686,7 +9712,9 @@
             "tests/phpunit/VisualEditorMediaManagerR1BTest.php",
             "tests/phpunit/VisualEditorMediaManagerR1CTest.php",
             "tests/phpunit/VisualEditorMediaManagerR1DTest.php",
-            "tests/phpunit/VisualEditorMediaManagerR1ETest.php"
+            "tests/phpunit/VisualEditorMediaManagerR1ETest.php",
+            "tests/phpunit/VisualEditorMediaManagerR2ATest.php",
+            "tests/phpunit/VisualEditorMediaManagerR2CTest.php"
         ]
     },
     "limitations": [

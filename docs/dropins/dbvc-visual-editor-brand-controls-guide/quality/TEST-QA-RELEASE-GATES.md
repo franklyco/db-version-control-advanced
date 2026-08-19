@@ -28,6 +28,8 @@ R1-E scale/no-auto-scan comparison on 2026-08-16: the new contract passed 2 test
 
 R1-E automated semantic/fallback comparison on 2026-08-16: 11 jsdom tests prove the named dialog/results/scroll/expanded regions, explicit list/group loading and busy semantics, stable entity-specific expansion headings, and polite field-check start/completion/failure updates. Four R1-D PHP tests/47 assertions retain the default-off asset/entry, Builder, no-write, and semantic source seams. Six Playwright cases pass at 1440x900 and 1280x720 across Chromium, Firefox, and WebKit with the new semantics plus the existing keyboard/focus/reduced-motion/axe checks. Combined R1-A through R1-E passes 22/685; the full PHP comparison runs 706/7,820 with the same six inherited failures. Targeted Media Manager lint passes. The latest aggregate repository lint rerun did not complete and is not a current pass. Automated semantics/axe/browser engines do not replace real assistive-technology, authenticated WordPress, or real Safari evidence.
 
+R1-E closeout comparison on 2026-08-16: focused evidence was re-verified before trusting older counts — 11/11 jsdom, targeted Media Manager lint, and 6/6 Chromium/Firefox/WebKit Playwright cases. Runtime provenance was refreshed read-only and the live REST permission gate was proven unauthenticated: all seven Media Manager routes are registered and `scans/latest`, tampered scan/group refs, and POST `scans` each return HTTP 401 `rest_forbidden` before resource resolution, creating no snapshot (E-050). A new deterministic non-mutating traversal test drives the real provider/scanner/store pipeline to completion across 100 and 300 live owners, proving complete enumeration, constant 2 raw ACF reads per owner, one applicability evaluation per candidate, <=50 candidates and <=1 source query per chunk, and per-candidate DB cost falling ~1.25 -> ~0.83 as owners triple — no field-definition/capability/permalink N+1 (E-051). Focused R1-A-R1-E passes 23 tests/1,127 assertions and the full PHP comparison runs 707 tests/8,262 assertions with exactly the same six inherited failures (E-052). One bounded aggregate `npm run lint` attempt ran ~11 minutes without completing and was stopped. Authenticated active-site REST/table **data** behavior, real assistive technology, real Safari (the WebKit engine is not Safari), large-list responsiveness, and a completing aggregate lint run remain open.
+
 ## Test layers
 
 Use current tooling where available:
@@ -70,6 +72,7 @@ Use current tooling where available:
 - [x] Opaque reference validation/tampering (R1-C route/read-model contract).
 - [x] Row hydration rechecks current state (R1-C safe status hydration; no descriptor).
 - [x] Provider/ACF unavailable states (R1-C safe unavailable response).
+- [x] Live active-site unauthenticated REST auth enforcement: all seven routes registered; `scans/latest`, tampered scan/group refs, and POST `scans` return HTTP 401 `rest_forbidden` before resolution and create no snapshot (E-050); authenticated data behavior open.
 
 ### Browser/manual
 
@@ -90,18 +93,30 @@ Use current tooling where available:
 - [x] Ordinary frontend asset enqueue creates no scan in isolated WordPress coverage; authenticated page-load observation remains part of runtime QA.
 - [x] Bounded per-request scan work verified by the R1-B candidate/chunk contract.
 - [x] Synthetic 100/500/2,000-group snapshot storage, server sort/read projection, and response payload measured.
-- [ ] Complete 100/500/2,000-owner candidate traversal/raw-read and authenticated transport behavior measured where fixtures permit.
+- [x] Complete candidate traversal/raw-read measured against live fixtures at representative tiers (100/300 owners, E-051); authenticated transport behavior remains open.
 - [x] Result payload and DOM row counts remain bounded in synthetic server and isolated browser coverage; authenticated runtime remains open.
-- [ ] No obvious N+1 field-definition/capability/permalink pattern.
+- [x] No obvious N+1 field-definition/capability/permalink pattern: per-candidate DB cost falls ~1.25 -> ~0.83 as owners triple, raw reads constant at 2/owner, applicability evaluated once per candidate (E-051).
 
 ## R2 Media Manager remediation gate
 
+R2-A comparison on 2026-08-16: the `MediaFindingDescriptorBridge` and its protected finding-descriptor route exchange one opaque finding for one fresh standard descriptor after full snapshot/owner/capability/applicability/family/empty revalidation, expose only opaque token/session ids and safe status, and stop before Media Library selection and mutation. Focused coverage passes 11 tests/200 assertions across the three writable families, single-resolver routing, no-raw-target projection, user-bound isolation, and the tamper/expiry/stale/format/populated/changed/unpublished/deleted fail-closed cases. The full comparison ran 718 tests/8,462 assertions with the same six inherited failures; agent docs pass 54 records/416 surfaces/0 unmapped. Media Library, upload, staged selection, and save remain R2-B/R2-C.
+
+R2-B comparison on 2026-08-16: the detail panel now opens the native `wp.media` frame from the R2-A descriptor — single-select for featured/ACF image, multi-select for ACF gallery — and stages an unsaved selection with an `Unsaved selection` badge, preview, and `Replace`/`Clear`. It reuses `overlay-app.js`'s standard frame config, gates on `supportsWpMedia`, surfaces a notice (no frame) for non-writable descriptors, and performs no save/mutation/journal/cache. jsdom passes 16 tests (5 new R2-B); the R1-D read-only invariant was updated to allow staged, unsaved `wp.media`; full suite 718/8,467 with the same six inherited failures; agent docs 54/416/0. Field save remains R2-C.
+
 ### Automated
 
-- [ ] Fresh descriptor hydration from finding reference.
-- [ ] Field populated after scan blocks write.
-- [ ] Entity deleted/unpublished/permission changed.
-- [ ] Field definition/path changed.
+- [x] Fresh descriptor issuance from finding reference (R2-A mints the descriptor; R2-B hydrates the media frame from it).
+- [x] Featured/ACF image findings open single-image selection; ACF gallery opens ordered multi-image selection (R2-B).
+- [x] Upload tab availability follows the WordPress `upload_files` capability via native `wp.media` (R2-B; no custom uploader).
+- [x] Selected media is visibly unsaved until save; Media Manager stays open behind the core modal and Escape/layering is preserved (R2-B).
+- [x] Field populated after scan blocks the write with `409 media_assignment_stale` and does not overwrite it (R2-C, proven by `VisualEditorMediaManagerR2CTest`).
+- [x] Every save uses a freshly server-resolved descriptor and the existing family contract; attachment MIME/type and cardinality validated; non-image/empty rejected without a write (R2-C).
+- [x] Every successful assignment is journaled/audited and relevant caches invalidated via `MutationService` (R2-C).
+- [x] A successful save is followed by a canonical reread; resolved field/row counts update and a fully resolved row is marked in place without a table reload (R2-C).
+- [x] Entity deleted/unpublished/permission changed returns `unavailable` without a descriptor (R2-A).
+- [x] Field definition/path changed reported as `changed`/`resolved` without a descriptor (R2-A).
+
+R2-C comparison on 2026-08-16: field-level save is implemented through the dedicated `.../assignment` endpoint and `MediaAssignmentService`, enforcing the expected-empty precondition immediately before the write, reusing the audited `MutationService` mutation pipeline, and reconciling the finding/row/summary from a targeted reread without a table reload. Focused coverage passes 7 PHP tests/81 assertions and 3 jsdom cases; the full suite is 725/8,550 with the same six inherited failures; agent docs 54/417/0. Real-browser save/upload QA remains the residual gate under the accepted authenticated-runtime limit.
 - [ ] Featured-image assignment validation.
 - [ ] ACF image assignment validation and return-format independence.
 - [ ] Gallery ordered IDs and changed-gallery conflict.

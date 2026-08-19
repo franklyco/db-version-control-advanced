@@ -41,7 +41,11 @@
 			status: 'idle',
 			row: null,
 			error: null,
+			selections: {},
+			notices: {},
+			saving: {},
 		},
+		assignSequence: 0,
 		searchTimer: 0,
 		error: null,
 	};
@@ -743,6 +747,109 @@
 			: null;
 	}
 
+	function supportsWpMedia() {
+		return Boolean(
+			bootstrap().supportsWpMedia &&
+				window.wp &&
+				typeof window.wp.media === 'function'
+		);
+	}
+
+	// R2-B stages selections client-side only; the public summary never carries
+	// the descriptor token, session id, or any server-resolved target.
+	function publicSelections() {
+		const selections = state.expansion.selections || {};
+		const summary = {};
+
+		Object.keys( selections ).forEach( function ( findingRef ) {
+			const selection = selections[ findingRef ];
+			if ( ! selection || ! Array.isArray( selection.items ) ) {
+				return;
+			}
+			summary[ findingRef ] = {
+				family: selection.family,
+				input: selection.input,
+				count: selection.items.length,
+				saved: false,
+			};
+		} );
+
+		return summary;
+	}
+
+	function findExpandedField( findingRef ) {
+		const row = state.expansion.row;
+		const fields = row && Array.isArray( row.fields ) ? row.fields : [];
+
+		return (
+			fields.find( function ( field ) {
+				return field && field.findingRef === findingRef;
+			} ) || null
+		);
+	}
+
+	function safeMediaUrl( value ) {
+		return typeof value === 'string' && /^https?:\/\//i.test( value )
+			? value
+			: '';
+	}
+
+	function normalizeAttachmentSelection( attachment ) {
+		const data =
+			attachment && typeof attachment.toJSON === 'function'
+				? attachment.toJSON()
+				: null;
+		if ( ! data ) {
+			return null;
+		}
+
+		const id = Number( data.id || 0 ) || 0;
+		if ( id <= 0 ) {
+			return null;
+		}
+
+		const sizes =
+			data.sizes && typeof data.sizes === 'object' ? data.sizes : {};
+		const thumbnail =
+			( sizes.thumbnail && sizes.thumbnail.url ) ||
+			( sizes.medium && sizes.medium.url ) ||
+			data.url ||
+			'';
+
+		return {
+			id,
+			url: safeMediaUrl( data.url ),
+			thumbnail: safeMediaUrl( thumbnail ),
+			title: typeof data.title === 'string' ? data.title : '',
+			alt: typeof data.alt === 'string' ? data.alt : '',
+		};
+	}
+
+	function normalizeDescriptorHandle( descriptor, family ) {
+		const value =
+			descriptor && typeof descriptor === 'object' ? descriptor : {};
+		const token =
+			typeof value.token === 'string' &&
+			/^ve_[a-f0-9]{12}$/.test( value.token )
+				? value.token
+				: '';
+		const sessionId =
+			typeof value.sessionId === 'string' &&
+			/^ves_[a-z0-9]+$/.test( value.sessionId )
+				? value.sessionId
+				: '';
+		if ( ! token || ! sessionId ) {
+			return null;
+		}
+
+		return {
+			token,
+			sessionId,
+			input: value.input === 'gallery' ? 'gallery' : 'image',
+			family,
+		};
+	}
+
 	function normalizeQuery( value ) {
 		const query = value && typeof value === 'object' ? value : {};
 		const entityFamilies = [ 'all', 'post', 'term' ];
@@ -817,6 +924,8 @@
 				error: state.expansion.error
 					? Object.assign( {}, state.expansion.error )
 					: null,
+				selections: publicSelections(),
+				saving: Object.assign( {}, state.expansion.saving ),
 			},
 			error: state.error ? Object.assign( {}, state.error ) : null,
 		};
@@ -1163,6 +1272,220 @@
 		return labels[ status ] || labels.unavailable;
 	}
 
+	function createAssignButton(
+		action,
+		label,
+		findingRef,
+		groupRef,
+		family,
+		extraClass
+	) {
+		const button = createElement(
+			'button',
+			`dbvc-ve-media-manager__button${
+				extraClass ? ` ${ extraClass }` : ''
+			}`,
+			label
+		);
+
+		button.type = 'button';
+		button.setAttribute( 'data-dbvc-ve-media-manager-action', action );
+		button.setAttribute( 'data-finding-ref', findingRef );
+		if ( groupRef ) {
+			button.setAttribute( 'data-group-ref', groupRef );
+		}
+		if ( family ) {
+			button.setAttribute( 'data-family', family );
+		}
+
+		return button;
+	}
+
+	function makeAssignNotice( message ) {
+		const notice = createElement(
+			'p',
+			'dbvc-ve-media-manager__assign-notice',
+			message
+		);
+		notice.setAttribute( 'role', 'status' );
+		notice.setAttribute( 'aria-live', 'polite' );
+		notice.setAttribute( 'aria-atomic', 'true' );
+
+		return notice;
+	}
+
+	function createStagedPreview( selection ) {
+		const isGallery = selection.input === 'gallery';
+		const preview = createElement(
+			'div',
+			`dbvc-ve-media-manager__assign-preview ${
+				isGallery ? 'is-gallery' : 'is-image'
+			}`
+		);
+
+		selection.items.forEach( function ( picked ) {
+			const figure = createElement(
+				'figure',
+				'dbvc-ve-media-manager__assign-thumb'
+			);
+			if ( picked.thumbnail ) {
+				const image = document.createElement( 'img' );
+				image.src = picked.thumbnail;
+				image.alt = picked.alt || picked.title || '';
+				image.loading = 'lazy';
+				image.decoding = 'async';
+				figure.appendChild( image );
+			} else {
+				figure.appendChild(
+					createElement(
+						'span',
+						'dbvc-ve-media-manager__assign-thumb-fallback',
+						String( picked.id )
+					)
+				);
+			}
+			preview.appendChild( figure );
+		} );
+
+		return preview;
+	}
+
+	// R2-B assignment affordance. Only supported empty fields expose it, and only
+	// when wp.media is available. It stages a client-side selection and never saves.
+	function createFieldAssignControls( field ) {
+		if ( field.status !== 'missing' ) {
+			return null;
+		}
+
+		const notice = state.expansion.notices[ field.findingRef ];
+
+		if ( ! supportsWpMedia() ) {
+			if ( notice ) {
+				const wrap = createElement(
+					'div',
+					'dbvc-ve-media-manager__field-assign'
+				);
+				wrap.appendChild( makeAssignNotice( notice ) );
+				return wrap;
+			}
+			return null;
+		}
+
+		const wrap = createElement(
+			'div',
+			'dbvc-ve-media-manager__field-assign'
+		);
+		const groupRef = state.expansion.groupRef;
+		const isGallery = field.family === 'acf_gallery';
+		const selection = state.expansion.selections[ field.findingRef ];
+		const actions = createElement(
+			'div',
+			'dbvc-ve-media-manager__assign-actions'
+		);
+
+		if (
+			selection &&
+			Array.isArray( selection.items ) &&
+			selection.items.length
+		) {
+			const badge = createElement(
+				'span',
+				'dbvc-ve-media-manager__assign-badge',
+				text( 'mediaManagerAssignUnsavedBadge', 'Unsaved selection' )
+			);
+			badge.setAttribute( 'data-dbvc-ve-media-manager-unsaved', 'true' );
+			wrap.appendChild( badge );
+			wrap.appendChild( createStagedPreview( selection ) );
+			wrap.appendChild(
+				createElement(
+					'p',
+					'dbvc-ve-media-manager__assign-note',
+					selection.items.length === 1
+						? text(
+								'mediaManagerAssignStagedSingle',
+								'1 image selected. Saving arrives in a later release.'
+						  )
+						: templateText(
+								'mediaManagerAssignStagedPlural',
+								'{count} images selected. Saving arrives in a later release.',
+								{ count: selection.items.length }
+						  )
+				)
+			);
+			const isSaving = Boolean(
+				state.expansion.saving[ field.findingRef ]
+			);
+			const saveButton = createAssignButton(
+				'save-assignment',
+				isSaving
+					? text( 'mediaManagerAssignSaving', 'Saving…' )
+					: text( 'mediaManagerAssignSave', 'Save assignment' ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-save'
+			);
+			if ( isSaving ) {
+				saveButton.disabled = true;
+				saveButton.setAttribute( 'aria-busy', 'true' );
+			}
+			const replaceButton = createAssignButton(
+				'assign-media',
+				isGallery
+					? text(
+							'mediaManagerAssignReplaceGallery',
+							'Replace selection'
+					  )
+					: text( 'mediaManagerAssignReplaceImage', 'Replace image' ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-assign'
+			);
+			const clearButton = createAssignButton(
+				'clear-selection',
+				text( 'mediaManagerAssignClear', 'Clear selection' ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-clear'
+			);
+			if ( isSaving ) {
+				replaceButton.disabled = true;
+				clearButton.disabled = true;
+			}
+			actions.appendChild( saveButton );
+			actions.appendChild( replaceButton );
+			actions.appendChild( clearButton );
+		} else {
+			actions.appendChild(
+				createAssignButton(
+					'assign-media',
+					isGallery
+						? text(
+								'mediaManagerAssignChooseGallery',
+								'Choose gallery images'
+						  )
+						: text(
+								'mediaManagerAssignChooseImage',
+								'Choose image'
+						  ),
+					field.findingRef,
+					groupRef,
+					field.family,
+					'is-assign'
+				)
+			);
+		}
+
+		wrap.appendChild( actions );
+		if ( notice ) {
+			wrap.appendChild( makeAssignNotice( notice ) );
+		}
+
+		return wrap;
+	}
+
 	function createFieldProjection( field ) {
 		const item = createElement( 'li', 'dbvc-ve-media-manager__field-item' );
 		const heading = createElement(
@@ -1218,6 +1541,11 @@
 					field.message
 				)
 			);
+		}
+
+		const assignControls = createFieldAssignControls( field );
+		if ( assignControls ) {
+			item.appendChild( assignControls );
 		}
 
 		return item;
@@ -1368,6 +1696,10 @@
 				? value.groupRef
 				: '';
 		const row = createElement( 'tr', 'dbvc-ve-media-manager__table-row' );
+		if ( value.resolved ) {
+			row.classList.add( 'is-resolved' );
+			row.setAttribute( 'data-dbvc-ve-media-manager-resolved', 'true' );
+		}
 		const entityCell = createElement(
 			'th',
 			'dbvc-ve-media-manager__table-cell is-entity'
@@ -2241,11 +2573,15 @@
 
 	function resetExpansion() {
 		state.expansionSequence++;
+		state.assignSequence++;
 		state.expansion = {
 			groupRef: '',
 			status: 'idle',
 			row: null,
 			error: null,
+			selections: {},
+			notices: {},
+			saving: {},
 		};
 	}
 
@@ -2312,6 +2648,452 @@
 		return publicState();
 	}
 
+	// Targeted re-render of just the expanded detail row so staging a selection
+	// never rebuilds the whole results table and can restore field-level focus.
+	function refreshExpansionPanel( focusFindingRef ) {
+		const root = state.root;
+		const groupRef = state.expansion.groupRef;
+		if ( ! root || ! groupRef ) {
+			renderState( false );
+			return;
+		}
+
+		const existing = root.querySelector(
+			`[data-dbvc-ve-media-manager-expanded-group="${ groupRef }"]`
+		);
+		const item = state.items.find( function ( candidate ) {
+			return candidate.groupRef === groupRef;
+		} );
+		if ( ! existing || ! item ) {
+			renderState( false );
+			return;
+		}
+
+		const replacement = createExpandedRow( item );
+		existing.replaceWith( replacement );
+
+		if ( focusFindingRef ) {
+			const control = replacement.querySelector(
+				`[data-dbvc-ve-media-manager-action="assign-media"][data-finding-ref="${ focusFindingRef }"]`
+			);
+			if ( control && typeof control.focus === 'function' ) {
+				control.focus( { preventScroll: true } );
+			}
+		}
+	}
+
+	function setAssignNotice( findingRef, message ) {
+		if ( ! findingRef ) {
+			return;
+		}
+		state.expansion.notices[ findingRef ] = message;
+		refreshExpansionPanel( findingRef );
+	}
+
+	// R2-B: exchange the opaque finding for a fresh server-authoritative
+	// descriptor, then open the native Media Library. No write occurs here.
+	function beginAssignMedia( groupRef, findingRef, family ) {
+		if (
+			! supportsWpMedia() ||
+			state.expansion.groupRef !== groupRef ||
+			! state.scan
+		) {
+			if ( ! supportsWpMedia() ) {
+				announceStatus(
+					text(
+						'mediaManagerAssignUnsupported',
+						'Media selection is unavailable in this browser session.'
+					)
+				);
+			}
+			return;
+		}
+
+		const field = findExpandedField( findingRef );
+		if ( ! field || field.status !== 'missing' ) {
+			return;
+		}
+
+		delete state.expansion.notices[ findingRef ];
+		const requestId = ++state.assignSequence;
+		const scan = Object.assign( {}, state.scan );
+		const client = api();
+		announceStatus(
+			text(
+				'mediaManagerAssignPreparing',
+				'Preparing a fresh descriptor for this field…'
+			)
+		);
+
+		let promise;
+		try {
+			promise =
+				client && typeof client.descriptor === 'function'
+					? client.descriptor( scan, groupRef, findingRef )
+					: missingApiPromise();
+		} catch ( error ) {
+			promise = Promise.reject( error );
+		}
+
+		Promise.resolve( promise )
+			.then( function ( payload ) {
+				if (
+					requestId !== state.assignSequence ||
+					state.expansion.groupRef !== groupRef
+				) {
+					return;
+				}
+				handleDescriptorPayload(
+					payload,
+					groupRef,
+					findingRef,
+					family
+				);
+			} )
+			.catch( function ( error ) {
+				if (
+					requestId !== state.assignSequence ||
+					state.expansion.groupRef !== groupRef
+				) {
+					return;
+				}
+				const message =
+					error && error.message
+						? error.message
+						: text(
+								'mediaManagerAssignError',
+								'The media descriptor could not be prepared.'
+						  );
+				setAssignNotice( findingRef, message );
+				announceStatus( message );
+			} );
+	}
+
+	function handleDescriptorPayload( payload, groupRef, findingRef, family ) {
+		const finding =
+			payload && typeof payload.finding === 'object'
+				? payload.finding
+				: {};
+		const status = typeof finding.status === 'string' ? finding.status : '';
+		const handle = normalizeDescriptorHandle(
+			payload && payload.descriptor,
+			family
+		);
+
+		if ( status === 'writable' && handle ) {
+			const field = findExpandedField( findingRef );
+			if ( ! field ) {
+				return;
+			}
+			openAssignFrame( handle, field, groupRef );
+			return;
+		}
+
+		const messages = {
+			changed: text(
+				'mediaManagerAssignStatusChanged',
+				'This field changed since the scan. Refresh the scan before assigning media.'
+			),
+			resolved: text(
+				'mediaManagerAssignStatusResolved',
+				'This field is no longer confirmed missing. Refresh the scan.'
+			),
+			unavailable: text(
+				'mediaManagerAssignStatusUnavailable',
+				'This field can no longer be edited. Refresh the scan.'
+			),
+		};
+		const message =
+			( typeof finding.message === 'string' && finding.message ) ||
+			messages[ status ] ||
+			messages.unavailable;
+		setAssignNotice( findingRef, message );
+		announceStatus( message );
+	}
+
+	function openAssignFrame( handle, field, groupRef ) {
+		if ( ! supportsWpMedia() ) {
+			return;
+		}
+
+		const isGallery = handle.input === 'gallery';
+		const frame = window.wp.media( {
+			title: isGallery
+				? text(
+						'mediaManagerAssignFrameGalleryTitle',
+						'Select gallery images'
+				  )
+				: text( 'mediaManagerAssignFrameImageTitle', 'Select image' ),
+			button: {
+				text: isGallery
+					? text(
+							'mediaManagerAssignFrameGalleryButton',
+							'Use selected images'
+					  )
+					: text(
+							'mediaManagerAssignFrameImageButton',
+							'Use this image'
+					  ),
+			},
+			library: {
+				type: 'image',
+			},
+			multiple: isGallery,
+		} );
+
+		frame.on( 'select', function () {
+			const selection = frame.state().get( 'selection' );
+			const items = [];
+
+			if ( isGallery ) {
+				if ( selection && typeof selection.each === 'function' ) {
+					selection.each( function ( attachment ) {
+						const normalized =
+							normalizeAttachmentSelection( attachment );
+						if ( normalized ) {
+							items.push( normalized );
+						}
+					} );
+				}
+			} else {
+				const attachment =
+					selection && typeof selection.first === 'function'
+						? selection.first()
+						: null;
+				const normalized = normalizeAttachmentSelection( attachment );
+				if ( normalized ) {
+					items.push( normalized );
+				}
+			}
+
+			stageSelection( handle, field.findingRef, groupRef, items );
+		} );
+
+		frame.open();
+	}
+
+	function stageSelection( handle, findingRef, groupRef, items ) {
+		if (
+			state.expansion.groupRef !== groupRef ||
+			! Array.isArray( items ) ||
+			items.length === 0
+		) {
+			return;
+		}
+
+		const field = findExpandedField( findingRef );
+		if ( ! field || field.status !== 'missing' ) {
+			return;
+		}
+
+		delete state.expansion.notices[ findingRef ];
+		state.expansion.selections[ findingRef ] = {
+			descriptorToken: handle.token,
+			sessionId: handle.sessionId,
+			family: field.family,
+			input: handle.input,
+			items,
+			saved: false,
+		};
+		refreshExpansionPanel( findingRef );
+		announceStatus(
+			templateText(
+				'mediaManagerAssignStagedAnnouncement',
+				'{count} image(s) selected for {label} but not saved yet.',
+				{ count: items.length, label: field.label || '' }
+			)
+		);
+		emitStateChanged();
+	}
+
+	function clearStagedSelection( findingRef ) {
+		if (
+			! state.expansion.selections[ findingRef ] ||
+			state.expansion.saving[ findingRef ]
+		) {
+			return;
+		}
+		delete state.expansion.selections[ findingRef ];
+		refreshExpansionPanel( findingRef );
+		announceStatus(
+			text(
+				'mediaManagerAssignClearedAnnouncement',
+				'Selection cleared. Nothing was saved.'
+			)
+		);
+		emitStateChanged();
+	}
+
+	// R2-C: save the staged selection through the dedicated, revalidated assignment
+	// endpoint. The server enforces the expected-empty precondition; the client
+	// never writes and reconciles from the returned reread without a table reload.
+	function saveAssignment( groupRef, findingRef ) {
+		if ( state.expansion.groupRef !== groupRef || ! state.scan ) {
+			return;
+		}
+
+		const selection = state.expansion.selections[ findingRef ];
+		const field = findExpandedField( findingRef );
+		if (
+			! selection ||
+			! field ||
+			field.status !== 'missing' ||
+			state.expansion.saving[ findingRef ]
+		) {
+			return;
+		}
+
+		const value =
+			selection.input === 'gallery'
+				? {
+						attachmentIds: selection.items.map( function ( item ) {
+							return Number( item.id ) || 0;
+						} ),
+				  }
+				: {
+						attachmentId:
+							Number(
+								selection.items[ 0 ] && selection.items[ 0 ].id
+							) || 0,
+				  };
+
+		state.expansion.saving[ findingRef ] = true;
+		delete state.expansion.notices[ findingRef ];
+		refreshExpansionPanel( findingRef );
+		announceStatus(
+			text(
+				'mediaManagerAssignSavingAnnouncement',
+				'Saving media assignment…'
+			)
+		);
+
+		const scan = Object.assign( {}, state.scan );
+		const client = api();
+
+		let promise;
+		try {
+			promise =
+				client && typeof client.assign === 'function'
+					? client.assign( scan, groupRef, findingRef, value )
+					: missingApiPromise();
+		} catch ( error ) {
+			promise = Promise.reject( error );
+		}
+
+		Promise.resolve( promise )
+			.then( function ( payload ) {
+				if (
+					state.expansion.groupRef !== groupRef ||
+					! state.expansion.saving[ findingRef ]
+				) {
+					return;
+				}
+				reconcileAfterSave( payload, groupRef, findingRef );
+			} )
+			.catch( function ( error ) {
+				if (
+					state.expansion.groupRef !== groupRef ||
+					! state.expansion.saving[ findingRef ]
+				) {
+					return;
+				}
+				delete state.expansion.saving[ findingRef ];
+				const message =
+					error && error.message
+						? error.message
+						: text(
+								'mediaManagerAssignSaveError',
+								'The media assignment could not be saved.'
+						  );
+				setAssignNotice( findingRef, message );
+				announceStatus( message );
+			} );
+	}
+
+	function reconcileAfterSave( payload, groupRef, findingRef ) {
+		if (
+			state.expansion.groupRef !== groupRef ||
+			! state.expansion.saving[ findingRef ]
+		) {
+			return;
+		}
+
+		delete state.expansion.saving[ findingRef ];
+		delete state.expansion.selections[ findingRef ];
+		delete state.expansion.notices[ findingRef ];
+
+		const savedField = findExpandedField( findingRef );
+		const savedLabel = savedField ? savedField.label || '' : '';
+		const oldMissing =
+			state.expansion.row && state.expansion.row.counts
+				? Number( state.expansion.row.counts.missing ) || 0
+				: 0;
+		const row = normalizeExpandedRow(
+			payload && typeof payload === 'object' ? payload : {},
+			groupRef
+		);
+
+		if ( row ) {
+			state.expansion.row = row;
+			const newMissing = Number( row.counts.missing ) || 0;
+			reconcileGroupItem( groupRef, row, oldMissing, newMissing );
+		}
+
+		// Re-render from updated local state only. No list/scan request is issued.
+		renderState( false );
+		announceStatus(
+			templateText(
+				'mediaManagerAssignSavedAnnouncement',
+				'Media assigned for {label}. This field is no longer empty.',
+				{ label: savedLabel }
+			)
+		);
+		emitStateChanged();
+	}
+
+	function reconcileGroupItem( groupRef, row, oldMissing, newMissing ) {
+		const item = state.items.find( function ( candidate ) {
+			return candidate.groupRef === groupRef;
+		} );
+		if ( item ) {
+			item.missingCount = newMissing;
+			item.findingCounts = countMissingFieldFamilies( row.fields );
+			item.resolved = newMissing === 0;
+		}
+
+		const resolvedDelta = Math.max( 0, oldMissing - newMissing );
+		if ( state.scan && state.scan.summary && resolvedDelta > 0 ) {
+			state.scan.summary.totalFindings = Math.max(
+				0,
+				Number( state.scan.summary.totalFindings || 0 ) - resolvedDelta
+			);
+			if ( newMissing === 0 && oldMissing > 0 ) {
+				state.scan.summary.entitiesWithFindings = Math.max(
+					0,
+					Number( state.scan.summary.entitiesWithFindings || 0 ) - 1
+				);
+			}
+		}
+	}
+
+	function countMissingFieldFamilies( fields ) {
+		const counts = { featuredImage: 0, acfImage: 0, acfGallery: 0 };
+		( Array.isArray( fields ) ? fields : [] ).forEach( function ( field ) {
+			if ( ! field || field.status !== 'missing' ) {
+				return;
+			}
+			if ( field.family === 'featured_image' ) {
+				counts.featuredImage++;
+			} else if ( field.family === 'acf_image' ) {
+				counts.acfImage++;
+			} else if ( field.family === 'acf_gallery' ) {
+				counts.acfGallery++;
+			}
+		} );
+
+		return counts;
+	}
+
 	function expandGroup( groupRef ) {
 		const normalizedGroupRef =
 			typeof groupRef === 'string' &&
@@ -2342,11 +3124,15 @@
 				: text( 'mediaManagerUntitledEntity', 'Untitled content' );
 		const requestId = state.expansionSequence + 1;
 		state.expansionSequence = requestId;
+		state.assignSequence++;
 		state.expansion = {
 			groupRef: normalizedGroupRef,
 			status: 'loading',
 			row: null,
 			error: null,
+			selections: {},
+			notices: {},
+			saving: {},
 		};
 		renderState( false );
 		announceStatus(
@@ -2719,6 +3505,21 @@
 			);
 		} else if ( actionName === 'toggle-row' ) {
 			expandGroup( action.getAttribute( 'data-group-ref' ) || '' );
+		} else if ( actionName === 'assign-media' ) {
+			beginAssignMedia(
+				action.getAttribute( 'data-group-ref' ) || '',
+				action.getAttribute( 'data-finding-ref' ) || '',
+				action.getAttribute( 'data-family' ) || ''
+			);
+		} else if ( actionName === 'clear-selection' ) {
+			clearStagedSelection(
+				action.getAttribute( 'data-finding-ref' ) || ''
+			);
+		} else if ( actionName === 'save-assignment' ) {
+			saveAssignment(
+				action.getAttribute( 'data-group-ref' ) || '',
+				action.getAttribute( 'data-finding-ref' ) || ''
+			);
 		}
 	}
 

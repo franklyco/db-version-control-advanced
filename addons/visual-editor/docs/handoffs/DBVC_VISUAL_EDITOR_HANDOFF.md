@@ -8,7 +8,7 @@
 
 **Base HEAD:** `5db4b4094c0d834b3cf482adb095273387b59dc8`
 
-**Current boundary:** R1-A through R1-D implemented; R1-E automated hardening implemented with runtime/manual release evidence still open; R2 not started
+**Current boundary:** R1 signed off (read-only scan/report) with residual gates accepted; R2-A descriptor bridge, R2-B native Media Library selection, and R2-C field-level save implemented. R2-C is the first content-mutating slice: it enforces the expected-empty precondition immediately before writing (a field populated after scan is blocked and never overwritten), writes through the shared audited `MutationService`, and reconciles the finding/row/summary from a targeted reread with no table reload. R2-D verified UX states and R2-E production hardening remain and are not started
 
 ## Purpose
 
@@ -135,6 +135,29 @@ The current working tree includes:
 - synthetic 100/500/2,000-group snapshot/read/payload measurements;
 - isolated Chromium, Firefox, and WebKit-engine automation at supported laptop/desktop viewports.
 
+### R2-A: implemented descriptor bridge
+
+- `src/MediaManager/MediaFindingDescriptorBridge.php` exchanges one opaque finding for one fresh standard `EditableDescriptor`. It loads the user/site-bound snapshot, validates generation/revision, resolves the owner/field only from the snapshot group/finding, rechecks owner eligibility/status/capability, rescans the single owner to reconfirm applicability and the current empty value by fingerprint, and mints a descriptor for `post_featured_image`, `acf_image`, or `acf_gallery` routing to exactly one existing resolver.
+- `src/Registry/EditableRegistry.php` gains a narrow `persistDetachedDescriptor()` that stores one off-render descriptor in a fresh user-bound session without a supported render page context.
+- `src/Rest/Controllers/MediaManagerController.php` adds a protected `POST .../scans/{scan_ref}/groups/{group_ref}/findings/{finding_ref}/descriptor` route; `Routes.php` and `Bootstrap/Addon.php` wire the bridge.
+- The response returns only opaque token/session ids plus safe labels and writable/changed/resolved/unavailable status. R2-A opens no Media Library frame, hydrates no value, writes nothing, and journals nothing.
+
+### R2-B: implemented native Media Library selection
+
+- `assets/js/media-manager-app.js` adds a capability-gated `assign-media` control per still-`missing` field, `beginAssignMedia`/`handleDescriptorPayload`/`openAssignFrame`/`stageSelection`/`clearStagedSelection`, staged-selection state on `state.expansion.selections`, and a targeted `refreshExpansionPanel` that re-renders only the detail row and restores field focus.
+- `assets/js/api-client.js` adds `mediaManager.descriptor(scan, groupRef, findingRef)` (POST to the R2-A route).
+- `assets/css/media-manager.css` adds the assign controls, unsaved badge, and thumbnail preview (no new breakpoints; responsive floor preserved). `AssetLoader.php` localizes the R2-B strings.
+- The `wp.media` frame reuses the same standard config as `overlay-app.js`'s image/gallery builders (single vs multiple, `library:{type:'image'}`); the overlay is untouched (D-046). The upload tab follows WordPress's `upload_files` capability. Escape/layering reuse the existing `mediaModalIsOpen` guard.
+- R2-B stages the selection unsaved and writes nothing: no save, mutation, expected-empty check, journal, cache, or reconciliation, and the descriptor token/session and raw targets never enter the DOM.
+
+### R2-C: implemented field-level save
+
+- `MediaFindingDescriptorBridge::resolveFinding()` was extracted so the R2-A bridge and the R2-C save share one revalidation authority; `bridgeFinding()` now delegates to it.
+- `src/MediaManager/MediaAssignmentService.php` (`assign()`) re-runs `resolveFinding` as the expected-empty precondition, fails closed with `409 media_assignment_stale` when the field changed/was populated, validates the selection cardinality, mutates through the shared `MutationService`, and rereads via `expandGroup` to reconcile.
+- `src/Rest/Controllers/MediaManagerController.php` adds `POST .../findings/{finding_ref}/assignment`; `Routes.php` and `Bootstrap/Addon.php` wire the service.
+- `assets/js/media-manager-app.js` adds a Save control per staged field, `saveAssignment`/`reconcileAfterSave`/`reconcileGroupItem`, a per-finding `saving` state, and a resolved-row marker. It reconciles the field, row counts, and scan summary from the returned reread and issues no list/scan request. `api-client.js` adds `mediaManager.assign`.
+- The write target is always the freshly server-resolved descriptor; the client token/selection is never the write authority. `overlay-app.js` remains untouched.
+
 ## Existing mutation systems reserved for R2 reuse
 
 R2 must extend these authoritative systems rather than creating a Media Manager-specific arbitrary writer:
@@ -160,10 +183,15 @@ The latest completed evidence is:
 - `npm run test:visual-editor-media-manager-state`: 11/11 passing;
 - `npm run lint:visual-editor-media-manager`: passing, with stale dependency-data warnings only;
 - focused R1-D PHPUnit: 4 tests/47 assertions passing;
-- combined R1-A through R1-E PHPUnit: 22 tests/685 assertions passing;
+- focused R2-A PHPUnit: 11 tests/200 assertions passing (descriptor bridge revalidation, resolver routing, no-raw-target projection, user isolation, and fail-closed cases);
+- `VisualEditorMediaManagerR2CTest`: 7 tests/81 assertions passing (three-family save + reconcile, expected-empty block, non-image/empty rejection, stale-generation block);
+- Media Manager jsdom state suite: 19 tests passing (5 R2-B staging + 3 R2-C save/reconcile/conflict/saving-state); targeted `lint:visual-editor-media-manager` clean;
+- combined Media Manager PHPUnit (R1-A through R1-E plus R2-A and R2-C): 41 tests/1,413 assertions passing;
 - Playwright Media Manager table suite: 6/6 across Chromium, Firefox, and WebKit engines at 1440x900 and 1280x720;
-- full PHP comparison: 706 tests, 7,820 assertions, and the same six inherited failures;
-- agent documentation: 54 curated records, 415 discovered surfaces, zero unmapped;
+- live active-site REST auth enforcement (unauthenticated): all Media Manager routes registered; `scans/latest`, tampered scan/group refs, and POST `scans` each return HTTP 401 `rest_forbidden` before resolution and create no snapshot;
+- complete candidate traversal/raw reads across 100/300 live owners: constant 2 raw ACF reads per owner, one applicability evaluation per candidate, <=50 candidates and <=1 source query per chunk, per-candidate DB cost falling ~1.25 -> ~0.83 as owners triple (no field-definition/capability/permalink N+1);
+- full PHP comparison: 725 tests, 8,550 assertions, and the same six inherited failures;
+- agent documentation: 54 curated records, 417 discovered surfaces, zero unmapped (the descriptor and assignment routes are registered and remapped);
 - package checksum: 46/46 passing;
 - `git diff --check`: passing.
 
@@ -178,64 +206,66 @@ The six inherited PHP failures are:
 
 Do not claim the repository suite is green. Distinguish these identities from any new regression.
 
-The latest aggregate `npm run lint` rerun did not complete and was stopped. Targeted Media Manager lint is current; aggregate lint is not a current pass.
+On 2026-08-16 the aggregate `npm run lint` was given one bounded attempt that ran ~11 minutes without completing and was stopped. Targeted Media Manager lint is current; aggregate lint is not a current pass.
 
 ## Remaining R1-E release evidence
 
-The following are not yet proven:
+Proven during the 2026-08-16 closeout:
 
-- authenticated active-site REST and table behavior against real WordPress responses;
-- representative complete candidate traversal and raw ACF read scale, beyond synthetic snapshot/list/payload scale;
+- live active-site REST route registration and unauthenticated auth enforcement (401 before resolution; no snapshot created);
+- representative complete candidate traversal and raw ACF read scale at 100/300 live owners with no field-definition/capability/permalink N+1.
+
+The following are the accepted residual gates, not yet proven:
+
+- authenticated active-site REST and table **data** behavior against real WordPress responses (blocked: no already-authorized session is available);
 - VoiceOver or equivalent real assistive-technology operation;
-- real Safari behavior; WebKit automation is not Safari proof;
+- real Safari behavior; the WebKit engine automation is not Safari proof;
+- large-list browser responsiveness at authenticated runtime;
 - a completing aggregate repository JavaScript lint run or an explicit risk acceptance.
 
-Runtime provenance was previously identified as `dbvc-codexchanges.local` using this plugin checkout and the `vertical` child theme over Bricks. The Visual Editor persistent option was off, the Media Manager option was on, and the available browser session was logged out. This state may have changed and must be rechecked read-only.
+Runtime provenance was rechecked read-only on 2026-08-16: active site `dbvc-codexchanges.local` using this plugin checkout and the `vertical` child theme over Bricks, DBVC plugin active, `siteurl=https://dbvc-codexchanges.local`, MySQL running. The Media Manager option remains on; the persistent Visual Editor option is now **on** (a drift from the previously recorded off state — recorded, not reverted). No in-app browser session exists (logged out). No option, login, content, or LocalWP state was changed.
 
 Do not toggle persistent options, log in, inspect credentials, modify content, or change LocalWP state merely to satisfy a test. Use an already-authorized authenticated session if one exists; otherwise record the exact blocked gate.
 
 ## Immediate next slice
 
-The next bounded task is R1-E closeout:
+R1 was signed off on 2026-08-16, and R2-A (descriptor bridge), R2-B (native Media Library selection), and R2-C (field-level save) are implemented and reviewed. R2-C is the first content-mutating slice; the expected-empty gate is enforced and proven. Focused: jsdom 19 tests (3 R2-C), `VisualEditorMediaManagerR2CTest` 7/81, combined Media Manager PHP 41/1,413; the full suite runs 725/8,550 with the same six inherited failures; agent docs pass 54/417/0. Residual gate: real-browser save/upload/reconciliation QA (authenticated runtime unavailable).
 
-1. refresh Git and active-runtime provenance without changing state;
-2. rerun focused current checks before interpreting older evidence;
-3. obtain authenticated real-response proof only if an authorized session is already available;
-4. measure representative bounded candidate traversal/raw reads with deterministic, non-mutating fixtures where possible;
-5. perform or coordinate real VoiceOver and real Safari checks without presenting engine automation as equivalent;
-6. give aggregate lint one bounded current attempt and record completion or the residual caveat;
-7. reconcile R1 release gates, evidence, risks, tracker, module docs, and roadmap;
-8. stop for review before R2-A unless the user has explicitly authorized that crossing line.
+The next bounded task is **R2-D — verified UX states** (do not begin without explicit authorization):
 
-Do not add more responsive/mobile work during this slice.
+- take the R1 mockup as a base and add verified states for: media modal open; image selected but unsaved; gallery selected but unsaved; upload unavailable; save in progress; saved/verified; changed since scan; validation error; entity resolved and removed;
+- these are presentation/state refinements over the implemented R2-A/R2-B/R2-C behavior — no new REST surface, no new mutation authority;
+- keep the responsive floor and add no mobile-specific work (tabled by D-036).
+
+R2-E (production hardening: security/stale/attachment/permission tests, journal/cache verification, laptop/desktop browser+keyboard QA, repeated-expansion performance, current-page DOM/reload QA, feature isolation, release notes, rollback) follows R2-D.
 
 ## Following implementation sequence
 
 After R1 sign-off or explicit acceptance of its remaining evidence risks:
 
-### R2-A: descriptor bridge
+### R2-A: descriptor bridge — **implemented 2026-08-16**
 
-- exchange one opaque current finding for one fresh standard descriptor;
-- recheck snapshot identity, owner status/capability, field applicability, field family, and empty state;
-- report writable, inspect-only, changed, or unavailable without exposing raw targets;
-- test tampered, expired, stale, changed-definition, changed-value, and permission-loss cases;
-- stop before `wp.media` or content mutation.
+- exchange one opaque current finding for one fresh standard descriptor; **done**
+- recheck snapshot identity, owner status/capability, field applicability, field family, and empty state; **done**
+- report writable, inspect-only, changed, or unavailable without exposing raw targets; **done** (writable/changed/resolved/unavailable);
+- test tampered, expired, stale, changed-definition, changed-value, and permission-loss cases; **done** (11 tests/200 assertions);
+- stop before `wp.media` or content mutation. **held**
 
-### R2-B: native Media Library selection
+### R2-B: native Media Library selection — **implemented 2026-08-16**
 
-- reuse the existing image/gallery `wp.media` lifecycle;
-- use single selection for featured/ACF image and ordered multiple selection for gallery;
-- retain WordPress upload capability behavior and use no custom uploader;
-- stage a visible unsaved selection inside the loaded Media Manager table;
-- preserve shell/modal focus, Escape, and layering;
-- stop before persistence.
+- reuse the existing image/gallery `wp.media` lifecycle; **done** (same standard config as `overlay-app.js`, overlay untouched, D-046)
+- use single selection for featured/ACF image and ordered multiple selection for gallery; **done**
+- retain WordPress upload capability behavior and use no custom uploader; **done** (native `wp.media`, `upload_files`-gated)
+- stage a visible unsaved selection inside the loaded Media Manager table; **done** (badge + preview + Replace/Clear)
+- preserve shell/modal focus, Escape, and layering; **done** (existing `mediaModalIsOpen` guard)
+- stop before persistence. **held**
 
-This is the first slice where users can choose an existing image or upload a new one without following the entity `Open` link.
+This is the first slice where users can choose an existing image or upload a new one without following the entity `Open` link. Residual gate: real-browser `wp.media` open/upload/focus-layering QA (authenticated runtime unavailable).
 
-### R2-C: field-level save and no-reload reconciliation
+### R2-C: field-level save and no-reload reconciliation — **implemented 2026-08-16**
 
-- save through existing resolver/mutation/journal/audit/cache systems;
-- enforce the expected-old-empty precondition immediately before mutation;
+- save through existing resolver/mutation/journal/audit/cache systems; **done** (`MediaAssignmentService` -> `MutationService`)
+- enforce the expected-old-empty precondition immediately before mutation; **done** (re-runs `resolveFinding`; blocks with `409 media_assignment_stale`)
 - validate local image attachment IDs, MIME, and gallery cardinality/order;
 - reread the canonical field after save;
 - update the expanded field, row counts, scan summary, and fully resolved row in place;

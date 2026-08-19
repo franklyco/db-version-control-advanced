@@ -15,6 +15,8 @@ use Dbvc\VisualEditor\Rest\DescriptorPayloadBuilder;
 use Dbvc\VisualEditor\Rest\Controllers\CollectionSeedController;
 use Dbvc\VisualEditor\Rest\Controllers\CompositeSaveController;
 use Dbvc\VisualEditor\Rest\Controllers\DescriptorController;
+use Dbvc\VisualEditor\MediaManager\MediaAssignmentService;
+use Dbvc\VisualEditor\MediaManager\MediaFindingDescriptorBridge;
 use Dbvc\VisualEditor\Rest\Controllers\MediaManagerController;
 use Dbvc\VisualEditor\Rest\Controllers\ObjectSearchController;
 use Dbvc\VisualEditor\Rest\Controllers\ReferenceSearchController;
@@ -76,6 +78,16 @@ final class Routes
      */
     private $media_read_model;
 
+    /**
+     * @var MediaFindingDescriptorBridge
+     */
+    private $media_descriptor_bridge;
+
+    /**
+     * @var MediaAssignmentService
+     */
+    private $media_assignment_service;
+
     public function __construct(
         EditableRegistry $registry,
         ResolverRegistry $resolvers,
@@ -86,7 +98,9 @@ final class Routes
         DescriptorSummaryBuilder $summaries,
         ?PerformanceProfiler $profiler,
         MediaScanCoordinator $media_scans,
-        MediaScanReadModel $media_read_model
+        MediaScanReadModel $media_read_model,
+        MediaFindingDescriptorBridge $media_descriptor_bridge,
+        MediaAssignmentService $media_assignment_service
     ) {
         $this->registry = $registry;
         $this->resolvers = $resolvers;
@@ -98,6 +112,8 @@ final class Routes
         $this->profiler = $profiler;
         $this->media_scans = $media_scans;
         $this->media_read_model = $media_read_model;
+        $this->media_descriptor_bridge = $media_descriptor_bridge;
+        $this->media_assignment_service = $media_assignment_service;
     }
 
     /**
@@ -129,7 +145,7 @@ final class Routes
         (new ReferenceSearchController($this->registry, $this->resolvers, $this->edit_mode, $this->capabilities))->register();
         (new ObjectSearchController($this->edit_mode, $this->capabilities))->register();
         (new SharedGlobalFieldsController($this->registry, $this->edit_mode, $this->capabilities, $payloads))->register();
-        (new MediaManagerController($this->media_scans, $this->media_read_model, $this->edit_mode, $this->capabilities))->register();
+        (new MediaManagerController($this->media_scans, $this->media_read_model, $this->edit_mode, $this->capabilities, $this->media_descriptor_bridge, $this->media_assignment_service))->register();
         (new CollectionSeedController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
         (new CompositeSaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
         (new SaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();

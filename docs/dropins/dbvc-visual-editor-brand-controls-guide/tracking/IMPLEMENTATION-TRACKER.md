@@ -21,8 +21,8 @@ Update this file with evidence-backed status. Do not mark a release complete fro
 | Release | Outcome | Status | Owner/session | Evidence link | Release gate |
 |---|---|---|---|---|---|
 | R0 | Discovery and corrected baseline | Complete | Codex R0 / 2026-08-14 | `../01-DISCOVERY-AND-CURRENT-STATE-REVIEW.md`; `EVIDENCE-LOG.md` | Complete at repository-reconciled planning checkpoint `5db4b40` |
-| R1 | Media Manager scan/report | In development | Codex R1-A/R1-B/R1-C/R1-D/R1-E / 2026-08-16 | `MediaManager/`; `MediaManagerController`; Media Manager R1 tests; corrected R1-D fixture/mockup; E-030/E-032/E-035/E-038-E-049 | R1-A through R1-D complete for review; R1-E keyboard/reduced-motion, synthetic scale/no-auto-scan, automated semantic/fallback, and Chromium/Firefox/WebKit engine hardening complete; authenticated runtime, complete candidate-scan scale, real AT, real Safari, and a completing aggregate lint run remain |
-| R2 | Media Manager direct remediation | Planned | Unassigned | Decisions D-010, D-020; coverage matrix | R1 read model stable; fresh descriptor/expected-empty contract approved |
+| R1 | Media Manager scan/report | Complete (signed off) | Codex R1-A/R1-B/R1-C/R1-D/R1-E / 2026-08-16 | `MediaManager/`; `MediaManagerController`; Media Manager R1 tests; corrected R1-D fixture/mockup; E-030/E-032/E-035/E-038-E-052 | R1-A through R1-E complete; live-REST auth-enforcement proof (401 before resolution) and complete multi-owner candidate-traversal/raw-read scaling (no field-definition/capability/permalink N+1) complete. **R1 signed off by the user on 2026-08-16** with the residual gates (authenticated table-data runtime, real AT/VoiceOver, real Safari, large-list responsiveness, aggregate lint completion) explicitly accepted as documented risk (D-044) |
+| R2 | Media Manager direct remediation | In development (R2-C) | Codex R2-A/R2-B/R2-C / 2026-08-16 | Decisions D-044, D-045, D-046, D-047; `MediaManagerController`; `MediaFindingDescriptorBridge`; `MediaAssignmentService`; `media-manager-app.js`; R2-A/R2-B/R2-C tests | R2-A (bridge), R2-B (native `wp.media` staging), and R2-C (field-level save with expected-empty gate + no-reload reconciliation) complete after R1 sign-off. R2-C is the first content-mutating slice; R2-D UX states and R2-E production hardening remain |
 | R3 | Registry-backed Brand Control Center | Not started |  |  |  |
 | R4 | Expanded Global & Brand Control Center | Not started |  |  |  |
 | R5.1 | Scalar ACF option fields | Not started |  |  |  |
@@ -210,10 +210,52 @@ Update this file with evidence-backed status. Do not mark a release complete fro
 - Evidence boundary: **automated DOM/ARIA/axe/browser-engine evidence is not real assistive-technology or real Safari proof. Authenticated WordPress runtime, VoiceOver or equivalent, real Safari, complete candidate traversal/raw reads, and aggregate lint completion remain open**
 - Next implementation line: **finish or explicitly accept the remaining R1-E runtime/AT/browser/performance/lint gates before crossing into R2-A descriptor issuance**
 
+### R1-E closeout checkpoint (2026-08-16)
+
+- Re-verified focused evidence before trusting older counts: 11/11 Media Manager jsdom tests, targeted Media Manager lint (stale Baseline/Browserslist warnings only), and 6/6 Playwright cases across Chromium/Firefox/WebKit at 1440x900/1280x720.
+- Runtime provenance refreshed read-only (E-050): active site `dbvc-codexchanges.local`, `bricks`+`vertical` theme, DBVC plugin active, Media Manager option ON. The persistent Visual Editor option is now ON (drift from the previously recorded OFF; recorded, not reverted per D-043). No option/login/content/LocalWP state changed.
+- Live REST auth-enforcement proven unauthenticated (E-050): all seven Media Manager routes registered; `scans/latest`, tampered scan/group refs, and POST `scans` each return HTTP 401 `rest_forbidden` with no data and no snapshot created — auth enforced before resource resolution.
+- Complete candidate-traversal/raw-read scale added (E-051): new `test_complete_candidate_traversal_and_raw_reads_scale_without_field_definition_n_plus_one` drives the real provider/scanner/store pipeline to completion across 100 and 300 live owners, proving per-owner raw reads constant at 2, applicability evaluated once per candidate, max 50 candidates and <=1 source query per chunk, and per-candidate DB cost falling ~1.25 -> ~0.83 as owners triple (no N+1). Focused R1-A-R1-E now passes 23 tests/1,127 assertions.
+- Full PHP comparison (E-052): 707 tests/8,262 assertions with exactly the six inherited failures (+1 test/+442 assertions over 706/7,820 is the new traversal test; no new regression).
+- Aggregate lint: one bounded attempt on 2026-08-16 ran ~11 minutes without completing and was stopped; not promoted to a pass (RK-032).
+- Accepted residual R1-E gates: authenticated active-site REST/table **data** behavior (no authorized session available), real VoiceOver/assistive technology, real Safari (WebKit engine is not Safari), large-list browser responsiveness, and a completing aggregate JavaScript lint run.
+- Fallback/rollback unchanged: default-off asset/entry gates, no-auto-scan, and no content/data migration remain the R1 rollback contract.
+- Next crossing line: **R1 sign-off (or explicit acceptance of the residual gates above) before R2-A descriptor-bridge issuance. No descriptor/Media Library/mutation work performed in this closeout.**
+
 ## R2 Media Manager remediation
 
-- [ ] Finding-to-descriptor bridge
-- [ ] Existing image/media-frame integration reused
+### R2-A descriptor bridge review stop line
+
+- Production scope: **`MediaFindingDescriptorBridge` plus a protected `POST .../scans/{scan_ref}/groups/{group_ref}/findings/{finding_ref}/descriptor` route that exchanges one opaque finding for one fresh standard `EditableDescriptor`. It resolves the owner/field only from the user/site-bound snapshot, revalidates snapshot identity/owner status/capability/field applicability/field family/empty value, routes to exactly one existing resolver family (featured/ACF image/ACF gallery), and persists the descriptor via the narrow `EditableRegistry::persistDetachedDescriptor()`. The response returns only opaque token/session ids plus safe labels/status.**
+- Explicitly absent: **Media Library selection/upload, staged selection, `wp.media`, value hydration, content mutation, journal writes, cache invalidation, and any exposure of owner ids/field keys/selectors/ACF object ids/paths/fingerprints.**
+- Focused validation: **11 R2-A tests/200 assertions (three writable families and correct single-resolver routing, server-resolved selector/group-path carriage, no-raw-target projection, user-bound session isolation, tampered/malformed refs, stale generation/revision, expired snapshot, populated-after-scan `resolved`, changed-evidence `changed`, unpublished/deleted owner `unavailable`); combined R1-A-R1-E plus R2-A 34/1,327; touched PHP syntax clean.**
+- Full comparison: **718 PHP tests/8,462 assertions with exactly the same six inherited failures (+11 tests/+200 assertions is R2-A; no new regression).**
+- Agent documentation: **54 curated records; 416 discovered surfaces (+1 for the new route); 0 unmapped; the shifted session-compression hook and the eight Media Manager routes were remapped in `manifest.json`.**
+- Recorded crossing line: **R2-B native Media Library choose/upload in the loaded table context is the next slice and is not authorized by this slice.**
+
+### R2-B media-library selection review stop line
+
+- Production scope: **the `dbvc-ve-media-manager__detail-panel` gains a capability-gated `assign-media` control per still-`missing` field. Activating it calls the R2-A bridge and, on a `writable` descriptor, opens the native `wp.media` frame — single image for featured/ACF image, multiple ordered for ACF gallery — reusing the same standard frame config as `overlay-app.js`. The selection is staged client-side (unsaved) with an `Unsaved selection` badge, thumbnail preview, `Replace`/`Clear`, and a live announcement.**
+- Explicitly absent: **any field save, mutation, expected-empty precondition, journal write, cache invalidation, no-reload reconciliation, or exposure of the descriptor token/session or raw targets in the DOM. `overlay-app.js` is untouched.**
+- Focused validation: **jsdom 16 tests (11 prior + 5 R2-B: single-select staging, gallery multi-select staging, non-writable notice with no frame, clear-selection, and no control when `wp.media` is unavailable); targeted `lint:visual-editor-media-manager` clean; R1-D read-only invariant updated (staged `wp.media`, still no save) + R2-A focused = 15/252.**
+- Full comparison: **718 PHP tests/8,467 assertions with exactly the same six inherited failures (+5 assertions is the updated R1-D invariant; no new regression). Agent docs 54/416/0 (no new surface).**
+- Recorded crossing line: **R2-C field-level save (expected-empty precondition, attachment/MIME/cardinality validation, journal/cache, targeted reread, no-reload row/count reconciliation) is the next slice and is not authorized by this slice.**
+
+### R2-C field-level save review stop line
+
+- Production scope: **`MediaAssignmentService` + `POST .../findings/{finding_ref}/assignment` save the staged selection. It re-runs the R2-A revalidation as the expected-empty precondition, mutates through the shared `MutationService` (resolver save, journal/audit, cache invalidation), and rereads via `expandGroup`. The client reconciles the expanded field, the row's missing count, and the scan summary from the reread and marks a fully resolved row in place — with no list/scan reload.**
+- Gate satisfied: **a field populated after scan is blocked with `409 media_assignment_stale` and never overwritten; the write target is always the freshly server-resolved descriptor.**
+- Focused validation: **`VisualEditorMediaManagerR2CTest` 7 tests/81 assertions (three-family save + reconcile, expected-empty block, non-image rejection, empty-value rejection, stale-generation block); 3 new jsdom cases (19 total): no-reload reconciliation, save conflict retains selection, saving state; R1-D read-only invariant updated; combined Media Manager PHP 41/1,413.**
+- Full comparison: **725 PHP tests/8,550 assertions with exactly the same six inherited failures (+7 tests/+83 assertions is R2-C; no new regression). Agent docs 54/417/0 (the new assignment route registered and remapped).**
+- Recorded crossing line: **R2-D verified UX states (media modal open, unsaved, save in progress, saved, changed-since-scan, validation error, resolved) is the next slice; R2-E is production hardening. Neither is authorized by this slice.**
+
+### R2 checklist
+
+- [x] Finding-to-descriptor bridge (R2-A: server-authoritative, revalidated, no client target authority)
+- [x] Existing image/media-frame integration reused (R2-B: native `wp.media`, staged unsaved, no write)
+- [x] Field-level save through the existing family contract (R2-C, expected-empty enforced)
+- [x] Journal/audit and cache invalidation on save (R2-C, via `MutationService`)
+- [x] Targeted finding revalidation and no-reload row/count reconciliation (R2-C)
 - [ ] Existing gallery media-frame integration reused
 - [ ] Upload capability behavior
 - [ ] Draft/unsaved selection state
