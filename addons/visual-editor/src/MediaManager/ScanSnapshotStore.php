@@ -74,6 +74,37 @@ final class ScanSnapshotStore
     }
 
     /**
+     * Create a snapshot WITHOUT updating the user's "latest scan" pointer. Used for
+     * ad-hoc single-entity snapshots (R2-H index expand) so they never clobber the
+     * user's real latest full scan. The snapshot is still user/blog-bound and loadable
+     * by its scan_ref.
+     *
+     * @param array<string, mixed> $snapshot
+     * @return array<string, mixed>|WP_Error
+     */
+    public function createDetached(array $snapshot)
+    {
+        $user_id = get_current_user_id();
+        $blog_id = get_current_blog_id();
+        if ($user_id <= 0 || $blog_id <= 0) {
+            return new WP_Error('media_scan_not_authenticated', __('An authenticated site user is required to create a media scan.', 'dbvc'));
+        }
+
+        $now = time();
+        $snapshot['scan_ref'] = $this->createReference('vems_', 20);
+        $snapshot['generation'] = $this->createReference('vmsg_', 16);
+        $snapshot['user_id'] = $user_id;
+        $snapshot['blog_id'] = $blog_id;
+        $snapshot['revision'] = 1;
+        $snapshot['created_at'] = $now;
+        $snapshot['updated_at'] = $now;
+        $snapshot['expires_at'] = $now + $this->ttl;
+        $snapshot['groups'] = isset($snapshot['groups']) && is_array($snapshot['groups']) ? $snapshot['groups'] : [];
+
+        return $this->persistNewSnapshot($snapshot);
+    }
+
+    /**
      * @param string $scan_ref
      * @return array<string, mixed>|WP_Error
      */

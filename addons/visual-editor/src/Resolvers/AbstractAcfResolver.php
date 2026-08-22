@@ -28,6 +28,13 @@ abstract class AbstractAcfResolver implements ResolverInterface
             return $this->getRawFlexibleSubfieldValue($descriptor);
         }
 
+        // A field nested inside one or more ACF Group fields is read through the root
+        // group (ACF returns the group as a key-indexed array) and traversed to the
+        // leaf, mirroring how the value is written back.
+        if ($this->isGroupedFieldSource($descriptor) && ! empty($this->getGroupWritePath($descriptor))) {
+            return $this->readGroupedFieldValue($descriptor);
+        }
+
         $object_id = $this->getAcfObjectId($descriptor);
         $field_identifier = $this->getFieldIdentifier($descriptor);
 
@@ -66,6 +73,14 @@ abstract class AbstractAcfResolver implements ResolverInterface
 
         if ($this->isFlexibleSubfieldSource($descriptor)) {
             return $this->writeFlexibleSubfieldValue($descriptor, $value);
+        }
+
+        // A field nested inside one or more ACF Group fields must be written THROUGH
+        // the root group: ACF stores group subfields under a prefixed meta key and only
+        // writes them correctly via the group's own update_value. A direct
+        // update_field() on the leaf key writes to the wrong, unprefixed meta.
+        if ($this->isGroupedFieldSource($descriptor) && ! empty($this->getGroupWritePath($descriptor))) {
+            return $this->writeGroupedFieldValue($descriptor, $value);
         }
 
         $object_id = $this->getAcfObjectId($descriptor);
@@ -298,6 +313,119 @@ abstract class AbstractAcfResolver implements ResolverInterface
                 )
             )
         );
+    }
+
+    /**
+     * The chain of {key, name} segments beneath the root group down to the leaf field.
+     * Used to write a grouped subfield through the root group and to read it back.
+     *
+     * @param EditableDescriptor $descriptor
+     * @return array<int, array{key: string, name: string}>
+     */
+    protected function getGroupWritePath(EditableDescriptor $descriptor)
+    {
+        if (empty($descriptor->source['group_write_path']) || ! is_array($descriptor->source['group_write_path'])) {
+            return [];
+        }
+
+        $path = [];
+        foreach ($descriptor->source['group_write_path'] as $segment) {
+            if (! is_array($segment)) {
+                continue;
+            }
+            $key = sanitize_key((string) ($segment['key'] ?? ''));
+            $name = sanitize_key((string) ($segment['name'] ?? ''));
+            if ($key !== '' || $name !== '') {
+                $path[] = ['key' => $key, 'name' => $name];
+            }
+        }
+
+        return $path;
+    }
+
+    /**
+     * Read a grouped subfield by loading the root group value (key-indexed) and
+     * traversing to the leaf, preferring the field key with a name fallback.
+     *
+     * @param EditableDescriptor $descriptor
+     * @return mixed
+     */
+    protected function readGroupedFieldValue(EditableDescriptor $descriptor)
+    {
+        $object_id = $this->getAcfObjectId($descriptor);
+        $root = $this->getFieldIdentifier($descriptor);
+        $path = $this->getGroupWritePath($descriptor);
+
+        if ($object_id === '' || $root === '' || empty($path) || ! function_exists('get_field')) {
+            return '';
+        }
+
+        $value = get_field($root, $object_id, false);
+        foreach ($path as $segment) {
+            if (! is_array($value)) {
+                return null;
+            }
+            if ($segment['key'] !== '' && array_key_exists($segment['key'], $value)) {
+                $value = $value[$segment['key']];
+            } elseif ($segment['name'] !== '' && array_key_exists($segment['name'], $value)) {
+                $value = $value[$segment['name']];
+            } else {
+                return null;
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * Write a grouped subfield THROUGH the root group. ACF's group update_value only
+     * updates the subfields present in the passed array (others are preserved), so a
+     * nested array keyed down to the leaf overwrites only the target field.
+     *
+     * @param EditableDescriptor $descriptor
+     * @param mixed              $value
+     * @return array<string, mixed>
+     */
+    protected function writeGroupedFieldValue(EditableDescriptor $descriptor, $value)
+    {
+        $object_id = $this->getAcfObjectId($descriptor);
+        $root = $this->getFieldIdentifier($descriptor);
+        $path = $this->getGroupWritePath($descriptor);
+
+        if ($object_id === '' || $root === '' || empty($path)) {
+            return [
+                'ok' => false,
+                'message' => __('ACF group field context is missing.', 'dbvc'),
+            ];
+        }
+
+        if (! function_exists('update_field')) {
+            return [
+                'ok' => false,
+                'message' => __('ACF update_field() is required for grouped field editing.', 'dbvc'),
+            ];
+        }
+
+        $nested = $value;
+        foreach (array_reverse($path) as $segment) {
+            $segment_key = $segment['key'] !== '' ? $segment['key'] : $segment['name'];
+            $nested = [$segment_key => $nested];
+        }
+
+        update_field($root, $nested, $object_id);
+
+        $next_value = $this->readGroupedFieldValue($descriptor);
+        if (! $this->valuesEqual($next_value, $value)) {
+            return [
+                'ok' => false,
+                'message' => __('ACF grouped field update did not succeed.', 'dbvc'),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'value' => $next_value,
+        ];
     }
 
     /**

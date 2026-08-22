@@ -306,3 +306,21 @@ both are deleted at translation.
 12. **Still unproven.** Assistive-technology output (VoiceOver, NVDA), Safari and Firefox,
     real-device touch, and Lighthouse, which is not installed. Production integration is untested
     by definition: the mockup calls no route.
+
+## 11. R2-D assignment & save states (implemented and verified)
+
+R2-B/R2-C added live media selection and save. R2-D specifies and verifies the UX states over that behavior. These are implemented in `addons/visual-editor/assets/js/media-manager-app.js` and `assets/css/media-manager.css`, and each is covered by the `tests/visual-editor-media-manager-state.test.cjs` jsdom suite. The mockup is a static reference; the live app is the verified source for these states.
+
+| State | Live presentation | ARIA / role | Verified by |
+|---|---|---|---|
+| Media modal open (opening) | Choose control shows `Opening Media Library…`, disabled, while the descriptor request is in flight; staged controls disable | `aria-busy="true"` | jsdom "opening state" |
+| Image selected but unsaved | `Unsaved selection` badge + single thumbnail preview + `Save assignment`/`Replace image`/`Clear selection` | `data-dbvc-ve-media-manager-unsaved="true"` | jsdom R2-B single-select |
+| Gallery selected but unsaved | Same, with an ordered multi-thumbnail preview grid | as above | jsdom R2-B gallery |
+| Upload unavailable | Italic hint `Uploading new files is not available…`; choosing existing media still offered | informational text | jsdom "upload-unavailable hint" |
+| Save in progress | `Saving…` on the Save button; Save/Replace/Clear disabled | `aria-busy="true"` | jsdom R2-C saving state |
+| Saved / verified | Field status chip flips to a success `Saved` (`.is-saved`); the resolved row shows a `Resolved` badge | polite announcement | jsdom "saved verified" |
+| Changed since scan | Polite refresh notice; the finding is not overwritten | `role="status"` (polite) | R2-C conflict test |
+| Validation error | Assertive error notice (`.is-error`); the staged selection is retained | `role="alert"` (assertive) | jsdom "validation error" |
+| Entity resolved and marked | Collapsed row marked in place (`.is-resolved`, `Resolved` badge); counts and summary reconciled without a table reload | — | jsdom R2-C no-reload |
+
+Note: "entity resolved" is marked in place rather than removed, to avoid focus/scroll disruption (release doc permits "remove or mark").

@@ -13,9 +13,29 @@ final class EligibilityPolicy
      */
     private $capabilities;
 
-    public function __construct(CapabilityManager $capabilities)
+    /**
+     * When true, the per-object capability check is skipped so eligibility is the
+     * purely structural set (status/public/show-UI/exclusions). Used ONLY by the
+     * cross-user index build (R2-H Slice 4b), which has no user context and whose
+     * per-user capability is re-checked at read time. All request-time callers use
+     * the default (structural + capability) policy.
+     *
+     * @var bool
+     */
+    private $structural;
+
+    public function __construct(CapabilityManager $capabilities, $structural = false)
     {
         $this->capabilities = $capabilities;
+        $this->structural = (bool) $structural;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isStructural()
+    {
+        return $this->structural;
     }
 
     /**
@@ -45,7 +65,7 @@ final class EligibilityPolicy
             return $this->postResult(false, 'post_not_published', $post);
         }
 
-        if (! $this->capabilities->canEditPostId($post->ID)) {
+        if (! $this->structural && ! $this->capabilities->canEditPostId($post->ID)) {
             return $this->postResult(false, 'post_not_editable', $post);
         }
 
@@ -75,7 +95,7 @@ final class EligibilityPolicy
             return $this->termResult(false, 'taxonomy_excluded', $term);
         }
 
-        if (! $this->capabilities->canEditTermId($term->term_id)) {
+        if (! $this->structural && ! $this->capabilities->canEditTermId($term->term_id)) {
             return $this->termResult(false, 'term_not_editable', $term);
         }
 

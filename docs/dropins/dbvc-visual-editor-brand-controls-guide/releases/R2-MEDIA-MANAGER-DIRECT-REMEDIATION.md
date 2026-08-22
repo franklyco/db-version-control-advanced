@@ -37,7 +37,7 @@ R1 must be production-ready with proven scan accuracy, permissions, performance,
 - Static Bricks images/backgrounds
 - Generalized transaction/undo system
 - Repeater/flexible structural changes
-- Editing non-empty fields from this missing-assignment workflow unless current UX explicitly routes to the normal editor
+- Editing non-empty fields from this missing-assignment workflow unless current UX explicitly routes to the normal editor — **superseded 2026-08-16 (D-050): non-empty-field editing/replace is now delivered by phase R2-F (`releases/R2F-MEDIA-MANAGER-ENTITY-MEDIA-INVENTORY-AND-REPLACE.md`) under a controlled expected-current-value precondition**
 
 ## Interaction decision
 
@@ -108,14 +108,17 @@ Use the R1 mockup as a base and add verified states for:
 - validation error;
 - entity resolved and removed.
 
+**R2-D checkpoint (2026-08-16):** implemented the nine verified UX states over R2-A/B/C in `media-manager-app.js` and `media-manager.css`, with a `canUpload` bootstrap flag and localized strings, and no new REST or mutation surface. States: media-modal-open shows an `Opening Media Library…` affordance (`aria-busy`) while the descriptor request is in flight; image/gallery selections remain the unsaved staged states; an upload-unavailable italic hint appears when `upload_files` is absent while choosing existing media stays available; save-in-progress shows `Saving…` with disabled controls; a saved field flips to a verified `Saved` success chip (`.is-saved`) and its row is marked in place with a `Resolved` badge; changed-since-scan is a polite `role="status"` refresh notice; a validation error is an assertive `role="alert"` notice (`.is-error`) that retains the staged selection; and the resolved entity is marked in place (not removed) to avoid focus/scroll disruption. jsdom passes 23 tests (4 new R2-D); the R1-D read-only invariant is intact; the full suite is 726/8,564 with the same six inherited failures; agent docs are 54/417/0. The mockup `COMPONENT-NOTES.md` §11 catalogs each state against its verified live selector, ARIA role, and copy. Real-browser/assistive-technology verification of these states remains the residual gate under the accepted authenticated-runtime limit.
+
 ### R2-E — Production hardening
 
-- Security, stale, attachment, and permission tests
-- Journal/cache verification
-- Media Library browser/keyboard QA at supported laptop/desktop viewports; touch/mobile-specific QA is tabled by D-036
-- Performance with repeated row expansion
-- Current-page DOM/reload QA
-- Feature isolation, release notes, and rollback
+R2-E is sequenced into sub-slices (authorized 2026-08-16):
+
+- **R2-E1 — Journal/cache verification (in progress).** Prove that a successful media assignment records a journal/audit entry and invalidates the entity cache through the existing services, and that a failed/blocked save records a failure rather than a phantom success. Test-focused; no new mutation authority.
+- **R2-E2 — Security, stale, attachment, and permission tests.**
+- **R2-E3 — Performance with repeated row expansion; current-page DOM/reload QA.**
+- **R2-E4 — Feature isolation, release notes, and rollback.**
+- **Deferred — Media Library browser/keyboard QA at supported laptop/desktop viewports** (deferred by the maintainer on 2026-08-16 to a later session; touch/mobile-specific QA remains tabled by D-036).
 
 ## Security requirements
 

@@ -249,6 +249,15 @@ final class MediaScanCoordinator
                 $snapshot['state'] === 'complete' ? 'complete' : 'advanced'
             );
             if (! is_wp_error($saved) || $saved->get_error_code() !== 'media_scan_snapshot_too_large') {
+                if (! is_wp_error($saved) && (string) ($saved['state'] ?? '') === 'complete') {
+                    /**
+                     * Fires once when a media scan reaches the `complete` state.
+                     *
+                     * @param array<string, mixed> $saved The completed snapshot.
+                     */
+                    do_action('dbvc_visual_editor_media_scan_completed', $saved);
+                }
+
                 return $saved;
             }
 
@@ -395,6 +404,89 @@ final class MediaScanCoordinator
     public function loadLatest()
     {
         return $this->snapshots->loadLatest();
+    }
+
+    /**
+     * R2-H Slice 2b: build a complete, detached single-entity snapshot on demand (does
+     * not touch the user's "latest scan" pointer). Used to drive the detail panel and
+     * the existing assign/replace flow from a persistent Media Index row without a full
+     * scan. Eligibility must be re-checked by the caller before invoking this.
+     *
+     * @param string $family  post|term
+     * @param string $subtype
+     * @param int    $id
+     * @return array<string, mixed>|WP_Error The stored complete snapshot.
+     */
+    public function snapshotEntity($family, $subtype, $id)
+    {
+        $enabled = $this->requireEnabled();
+        if (is_wp_error($enabled)) {
+            return $enabled;
+        }
+
+        $family = sanitize_key((string) $family);
+        $subtype = sanitize_key((string) $subtype);
+        $id = absint($id);
+        if (! in_array($family, ['post', 'term'], true) || $id <= 0) {
+            return new WP_Error('media_index_entity_invalid', __('The media index entity is invalid.', 'dbvc'), ['status' => 400]);
+        }
+
+        $now = time();
+        $shell = [
+            'schema_version' => self::SNAPSHOT_SCHEMA_VERSION,
+            'scanner_version' => self::SCANNER_VERSION,
+            'config_fingerprint' => '',
+            'state' => 'scanning',
+            'origin' => 'index_entity',
+            'sources' => [],
+            'cursor' => [],
+            'progress' => ['processed' => 0, 'total_estimate' => 1, 'chunks' => 0, 'attempts' => 0, 'retry_count' => 0],
+            'summary' => $this->emptySummary(),
+            'diagnostics' => [
+                'candidates_ineligible' => 0,
+                'supported_fields_scanned' => 0,
+                'unsupported_field_observations' => 0,
+                'invalid_nonempty_values' => 0,
+            ],
+            'performance' => [
+                'total_duration_ms' => 0.0,
+                'max_duration_ms' => 0.0,
+                'total_query_count' => 0,
+                'max_memory_delta_bytes' => 0,
+                'max_peak_memory_delta_bytes' => 0,
+                'last_chunk' => [],
+            ],
+            'groups' => [],
+            'last_error' => [],
+            'started_at' => $now,
+            'completed_at' => 0,
+        ];
+
+        $created = $this->snapshots->createDetached($shell);
+        if (is_wp_error($created)) {
+            return $created;
+        }
+
+        $scanned = $this->scanner->scan([
+            ['family' => $family, 'subtype' => $subtype, 'id' => $id],
+        ], (string) $created['generation'], true);
+        if (is_wp_error($scanned)) {
+            $this->snapshots->delete((string) $created['scan_ref']);
+
+            return $scanned;
+        }
+
+        $created['groups'] = isset($scanned['groups']) && is_array($scanned['groups']) ? $scanned['groups'] : [];
+        $this->mergeDiagnosticCounts($created, $scanned['counts'] ?? []);
+        $created['progress']['processed'] = 1;
+        $created['progress']['chunks'] = 1;
+        $created['state'] = 'complete';
+        $created['completed_at'] = time();
+        $created['summary'] = $this->summarize($created);
+
+        $saved = $this->snapshots->save($created, absint($created['revision']));
+
+        return $saved;
     }
 
     /**

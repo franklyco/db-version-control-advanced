@@ -116,15 +116,36 @@ R2-B comparison on 2026-08-16: the detail panel now opens the native `wp.media` 
 - [x] Entity deleted/unpublished/permission changed returns `unavailable` without a descriptor (R2-A).
 - [x] Field definition/path changed reported as `changed`/`resolved` without a descriptor (R2-A).
 
+R2-E1 comparison on 2026-08-16: journal/cache verification (the first R2-E sub-slice; laptop/desktop browser+keyboard QA is deferred per D-049). `VisualEditorMediaManagerR2ETest` proves a successful assignment records a `completed` change-journal item (correct resolver + new value), fires the audit event once with the empty old value and the new attachment, and invalidates the correct post cache once; a failed save records a `failed` journal item and fires neither the audit nor the cache hook. 3 tests/39 assertions; combined Media Manager PHP 45/1,468.
+
+R2-F comparison on 2026-08-17: all three R2-F slices (entity media inventory, thumbnail presentation, gated replace) are implemented. Slice 1 lists populated fields as `assigned` with a sanitized preview and no raw-target leak; Slice 2 renders a left-aligned lazy square thumbnail per field (accent placeholder for empty, `+{count}` gallery badge); Slice 3 replaces a populated image/gallery through a dedicated `.../replacement` endpoint that enforces an expected-current-value fingerprint precondition (`hash_equals`), fails closed with `409 media_replace_stale`/`media_replace_not_populated` (or `400 media_replace_value_ref_invalid`), reuses the audited `MutationService` pipeline, never deletes attachments, and reconciles in place with no table reload. Coverage: `VisualEditorMediaManagerR2FTest` 3 PHP tests/29 assertions + `VisualEditorMediaManagerR2FReplaceTest` 6 PHP tests/62 assertions + 5 R2-F jsdom cases (28 total). The R1-D read-only invariant is extended to assert the distinct gated replace endpoint and still forbids `fetch(`/`.save(`/composite-save. Full suite 738/8,705 with the same six inherited failures; media-manager lint clean; agent docs 54/418/0 (the new `/replacement` route is registered and mapped). Real-browser assign/replace/upload QA is the residual R2-F gate (D-049).
+
+R2-F automated gates:
+
+- [x] Populated fields listed with a sanitized preview only; top-level list/counts unchanged; no raw-target leak (Slice 1, `VisualEditorMediaManagerR2FTest`).
+- [x] Left-aligned lazy thumbnail per field with an accent placeholder for empty fields and a gallery count badge (Slice 2, jsdom).
+- [x] Populated image/gallery fields offer a replace control gated on the server `valueRef` (Slice 3, jsdom).
+- [x] The expected-current-value precondition runs immediately before the write; a field changed or emptied since it was read is not overwritten (`media_replace_stale`/`media_replace_not_populated`, `VisualEditorMediaManagerR2FReplaceTest`).
+- [x] Attachment MIME/type/cardinality validated; malformed value ref rejected; replacing never deletes attachments (Slice 3).
+- [x] Every replace is journaled/audited and caches invalidated via `MutationService`; the field/preview reconcile in place without a table reload (Slice 3).
+
+R2-D comparison on 2026-08-16: the nine verified UX states (media-modal-open/opening, image/gallery unsaved, upload-unavailable, save-in-progress, saved/verified, changed-since-scan, validation error, entity resolved marked in place) are implemented as presentation-only refinements — no new REST or mutation surface — with correct ARIA (polite `status` vs assertive `alert`), a `canUpload` bootstrap flag, and the resolved row marked in place. jsdom passes 23 tests (4 new R2-D); the R1-D read-only invariant is intact; the full suite is 726/8,564 with the same six inherited failures; agent docs 54/417/0. Real-browser/assistive-technology verification of the states is the residual gate.
+
+R2-E4 comparison on 2026-08-18: feature isolation + ship-readiness. `VisualEditorMediaManagerR2E4Test` (4 tests/10 assertions) proves the kill switch gates the whole remediation surface: `is_media_manager_enabled()` requires BOTH the Visual Editor master flag and the feature flag, and the REST permission gate `canAccess` (the permission_callback for every route) is closed when the MM flag is off, the master flag is off, the user lacks the base capability, or the request is logged out — open only when all hold. A consolidated release-notes/rollback runbook (`releases/MEDIA-MANAGER-RELEASE-NOTES-AND-ROLLBACK.md`) documents the feature summary, gates, side-effect boundaries, and the non-destructive rollback path. Full suite 755/8,832 with the same six inherited failures; agent docs 54/418/0. R2-E (E1–E4) is complete; real-browser/AT QA remains the standing residual gate (D-049).
+
+R2-E3 comparison on 2026-08-18: repeated-remediation frame lifecycle + surgical DOM patch. `openAssignFrame` previously created a new `wp.media` frame on every open and never disposed it; it now keeps a single active frame torn down on re-open/collapse/group-switch/list-reload/close (`disposeActiveFrame`, RK-011). 4 jsdom cases (34 total) prove at most one live frame across repeated opens (3 opens → 2 disposed), disposal on collapse and close, and that a save patches only the affected row (untouched sibling is the SAME DOM node) with no list/scan reload. R1-D read-only invariant intact; media-manager lint clean; full PHP suite unchanged at 751/8,815 with the same six inherited failures; agent docs 54/418/0. Real-browser memory/listener profiling remains the residual gate (D-049).
+
+R2-E2 comparison on 2026-08-18: security/stale/permission hardening of the end-to-end mutation paths. `VisualEditorMediaManagerR2E2Test` proves `assign()` and `replace()` fail closed AND leave content untouched for a foreign user's user/blog-bound snapshot (`media_scan_expired_or_invalid`), a changed scan revision (`media_scan_revision_changed`), an owner unpublished after the scan/read (`media_assignment_stale` / `media_replace_unavailable` — eligibility is re-checked before every write), and an edit capability revoked mid-flow (surfaces as an eligibility failure before the write). A non-existent attachment id is rejected without writing (`media_assignment_save_failed`). 9 tests/67 assertions; combined Media Manager PHP 67/1,680; full suite 751/8,815 with the same six inherited failures; agent docs 54/418/0.
+
 R2-C comparison on 2026-08-16: field-level save is implemented through the dedicated `.../assignment` endpoint and `MediaAssignmentService`, enforcing the expected-empty precondition immediately before the write, reusing the audited `MutationService` mutation pipeline, and reconciling the finding/row/summary from a targeted reread without a table reload. Focused coverage passes 7 PHP tests/81 assertions and 3 jsdom cases; the full suite is 725/8,550 with the same six inherited failures; agent docs 54/417/0. Real-browser save/upload QA remains the residual gate under the accepted authenticated-runtime limit.
-- [ ] Featured-image assignment validation.
-- [ ] ACF image assignment validation and return-format independence.
-- [ ] Gallery ordered IDs and changed-gallery conflict.
-- [ ] Invalid/deleted/non-image attachment rejection.
-- [ ] Upload capability UI/server behavior.
-- [ ] Journal/audit invocation.
-- [ ] Cache invalidation.
-- [ ] Targeted revalidation and counter updates.
+- [x] Featured-image assignment validation. *(R2-C)*
+- [ ] ACF image assignment validation and return-format independence. *(R2-C covers ACF image assignment; return-format independence is not yet isolated in the ACF-less env.)*
+- [x] Gallery ordered IDs and changed-gallery conflict. *(R2-C ordered IDs; R2-F replace changed-value conflict.)*
+- [x] Invalid/deleted/non-image attachment rejection. *(R2-C non-image; R2-E2 non-existent id.)*
+- [ ] Upload capability UI/server behavior. *(server `canUpload` flag in R2-D; UI is browser QA.)*
+- [x] Journal/audit invocation. *(R2-E1)*
+- [x] Cache invalidation. *(R2-E1)*
+- [x] Targeted revalidation and counter updates. *(R2-C; owner re-eligibility in R2-E2.)*
 - [ ] Same-entity `Save Row` endpoint/action absent from initial R2.
 - [ ] Cross-entity bulk endpoint absent.
 
@@ -138,8 +159,8 @@ R2-C comparison on 2026-08-16: field-level save is implemented through the dedic
 - [ ] Field save success/error/stale states.
 - [ ] Gallery management/reorder behavior.
 - [ ] Resolved field/row removal preserves scroll/filter context.
-- [ ] Current-page DOM patch or reload behavior is truthful.
-- [ ] Repeated remediation does not leak frames/listeners or degrade performance.
+- [x] Current-page DOM patch or reload behavior is truthful. *(R2-E3 jsdom: a save patches only the affected row — sibling node preserved — with no list/scan reload; real-browser confirmation deferred.)*
+- [x] Repeated remediation does not leak frames/listeners or degrade performance. *(R2-E3 jsdom: single active wp.media frame, prior frames disposed on re-open/collapse/close; real-browser memory profiling deferred, D-049.)*
 
 ## R3 Registry gate
 

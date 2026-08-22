@@ -36,11 +36,18 @@
 .dbvc-ve-media-manager__header {
   flex: 0 0 auto;
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 14px 20px 12px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 20px;
   border-bottom: var(--dbvc-ve-border--surface-s);
   background: var(--dbvc-ve-color-surface-glass);
+}
+
+/* R2-G Slice 2: the identity row (icon | heading | close) above the status panel. */
+.dbvc-ve-media-manager__header-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
 }
 
 .dbvc-ve-media-manager__header-icon {
@@ -114,79 +121,65 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 28px 20px;
+  padding: 16px 20px 24px;
   overflow-y: auto;
 }
 
+/* R2-G Slice 2: the status panel is a compact header strip — content on the left,
+   action buttons on the right — so the results body is not crowded by it. */
 .dbvc-ve-media-manager__status-panel {
-  max-width: 560px;
-  margin: 0 auto;
-  padding: 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 14px;
+  width: 100%;
+  padding: 8px 12px;
   border: var(--dbvc-ve-border--muted-s);
   border-radius: var(--dbvc-ve-border-radius--s);
   background: var(--dbvc-ve-color-surface-muted);
-  text-align: center;
+  text-align: left;
 }
 
 .dbvc-ve-media-manager__empty-title {
   color: var(--dbvc-ve-color-secondary);
-  font-size: var(--dbvc-ve-font--body);
+  font-size: var(--dbvc-ve-font--meta);
   font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1.25;
 }
 
 .dbvc-ve-media-manager__empty-description {
-  margin-top: 6px;
+  margin-top: 2px;
   color: var(--dbvc-ve-color-text-muted);
   font-size: var(--dbvc-ve-font--caption);
+  line-height: 1.3;
 }
 
 .dbvc-ve-media-manager__progress {
-  margin: 14px 0 0;
+  margin: 2px 0 0;
   color: var(--dbvc-ve-color-text-dark);
-  font-size: var(--dbvc-ve-font--meta);
+  font-size: var(--dbvc-ve-font--caption);
   font-weight: var(--dbvc-ve-font-weight--heavy);
 }
 
 .dbvc-ve-media-manager__actions {
+  grid-column: 2;
+  grid-row: 1 / span 3;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 18px;
+  justify-content: flex-end;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
-.dbvc-ve-media-manager[data-has-results="true"] .dbvc-ve-media-manager__status-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 18px;
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 14px 16px;
-  text-align: left;
-}
-
-.dbvc-ve-media-manager[data-has-results="true"] .dbvc-ve-media-manager__actions {
-  grid-column: 2;
-  grid-row: 1 / span 3;
-  align-self: center;
-  margin-top: 0;
-}
-
-.dbvc-ve-media-manager[data-has-results="true"] .dbvc-ve-media-manager__progress {
-  margin-top: 4px;
-}
-
 .dbvc-ve-media-manager__button {
-  min-height: 36px;
+  min-height: 30px;
   border: var(--dbvc-ve-border--muted-s);
   border-radius: var(--dbvc-ve-border-radius--s);
-  padding: 7px 13px;
+  padding: 5px 10px;
   background: var(--dbvc-ve-color-background-light);
   color: var(--dbvc-ve-color-text-dark);
   font: inherit;
-  font-size: var(--dbvc-ve-font--meta);
+  font-size: var(--dbvc-ve-font--caption);
   font-weight: var(--dbvc-ve-font-weight--heavy);
   line-height: 1.2;
   cursor: pointer;
@@ -593,10 +586,54 @@
 }
 
 .dbvc-ve-media-manager__field-item {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
   border: var(--dbvc-ve-border--muted-s);
   border-radius: var(--dbvc-ve-border-radius--s);
   padding: 10px 12px;
   background: var(--dbvc-ve-color-background-light);
+}
+
+/* R2-F Slice 2: left-aligned, square, rounded, full-height field thumbnail. */
+.dbvc-ve-media-manager__field-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dbvc-ve-media-manager__field-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: stretch;
+  aspect-ratio: 1 / 1;
+  min-height: 56px;
+  overflow: hidden;
+  border-radius: var(--dbvc-ve-border-radius--m);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+
+.dbvc-ve-media-manager__field-thumb.is-placeholder {
+  background: color-mix(in srgb, var(--dbvc-ve-color-accent) 40%, var(--dbvc-ve-color-surface));
+}
+
+.dbvc-ve-media-manager__field-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dbvc-ve-media-manager__field-thumb-count {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 1px 5px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: color-mix(in srgb, var(--dbvc-ve-color-dark) 72%, transparent);
+  color: var(--dbvc-ve-color-surface);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  line-height: 1.2;
 }
 
 .dbvc-ve-media-manager__field-label {
@@ -626,9 +663,27 @@
   color: var(--dbvc-ve-color-success-dark);
 }
 
+/* R2-D: a field this session's save just resolved reads as a verified success. */
+.dbvc-ve-media-manager__field-status.is-saved {
+  background: var(--dbvc-ve-color-success-bg);
+  color: var(--dbvc-ve-color-success-dark);
+}
+
+.dbvc-ve-media-manager__missing-count.is-resolved {
+  color: var(--dbvc-ve-color-success-dark);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+
 .dbvc-ve-media-manager__field-status.is-unavailable {
   background: var(--dbvc-ve-color-surface-muted);
   color: var(--dbvc-ve-color-text-muted);
+}
+
+/* R2-F: a populated field reported in the entity media inventory. */
+.dbvc-ve-media-manager__field-status.is-assigned {
+  background: var(--dbvc-ve-color-background-light);
+  color: var(--dbvc-ve-color-text-subtle);
 }
 
 .dbvc-ve-media-manager__field-meta {
@@ -765,6 +820,19 @@
     padding-right: 12px;
     padding-left: 12px;
   }
+
+  /* R2-G Slice 2: stack the compact status panel on narrow widths so the actions
+     wrap below the state text rather than squeezing the grid (responsive floor). */
+  .dbvc-ve-media-manager__status-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .dbvc-ve-media-manager__actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+    margin-top: 6px;
+  }
 }
 
 /* R2-B: staged media-assignment affordance (unsaved until a later release). */
@@ -862,6 +930,19 @@
   margin: 0;
   color: var(--dbvc-ve-color-warning-dark);
   font-size: var(--dbvc-ve-font--meta);
+}
+
+/* R2-D: a validation error is distinct from a refresh prompt. */
+.dbvc-ve-media-manager__assign-notice.is-error {
+  color: var(--dbvc-ve-color-error-dark);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+}
+
+.dbvc-ve-media-manager__assign-hint {
+  margin: 0;
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--meta);
+  font-style: italic;
 }
 
 @media (max-width: 640px), (max-height: 760px) {

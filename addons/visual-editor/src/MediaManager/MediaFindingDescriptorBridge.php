@@ -94,11 +94,10 @@ final class MediaFindingDescriptorBridge
         }
 
         $descriptor = $resolution['descriptor'];
-        $session_id = $this->registry->persistDetachedDescriptor($descriptor);
-        if ($session_id === '') {
-            return $this->error('media_finding_descriptor_failed', __('A media finding descriptor could not be prepared.', 'dbvc'), 500);
-        }
 
+        // The write target is re-resolved server-side by the R2-C save, so the
+        // descriptor is not persisted here and no opaque token/session is returned;
+        // the client only needs the input kind and family to open the media frame.
         return [
             'viewModelVersion' => self::VIEW_MODEL_VERSION,
             'scan' => $this->projectScanIdentity($snapshot),
@@ -109,11 +108,9 @@ final class MediaFindingDescriptorBridge
                 'label' => $resolution['label'],
                 'status' => 'writable',
                 'descriptorStatus' => 'hydrated',
-                'message' => __('This supported media field is still empty and ready for a fresh descriptor.', 'dbvc'),
+                'message' => __('This supported media field is still empty and ready for assignment.', 'dbvc'),
             ],
             'descriptor' => [
-                'token' => $descriptor->token,
-                'sessionId' => $session_id,
                 'input' => isset($descriptor->ui['input']) ? sanitize_key((string) $descriptor->ui['input']) : 'image',
                 'family' => $resolution['family'],
                 'expectedState' => 'empty',
@@ -246,6 +243,127 @@ final class MediaFindingDescriptorBridge
     }
 
     /**
+     * Server-authoritative revalidation for the R2-F Slice 3 replace path. Resolves the
+     * owner only from the snapshot, rechecks eligibility, rescans the single owner with
+     * the assigned inventory, confirms the target field is still populated, and enforces
+     * the expected-current-value precondition by comparing the opaque value fingerprint
+     * the client read at expand time against the freshly computed one. Only on an exact
+     * fingerprint match does it mint a fresh descriptor and confirm object capability.
+     *
+     * Unlike {@see resolveFinding}, every non-writable outcome is a hard WP_Error: a
+     * replace must fail closed rather than silently degrade to a soft status.
+     *
+     * @param string               $scan_ref
+     * @param string               $group_ref
+     * @param string               $finding_ref
+     * @param string               $expected_value_ref
+     * @param array<string, mixed> $request  Expected keys: generation, expectedRevision.
+     * @return array<string, mixed>|WP_Error
+     */
+    public function resolveReplaceable($scan_ref, $group_ref, $finding_ref, $expected_value_ref, array $request = [])
+    {
+        $snapshot = $this->coordinator->load((string) $scan_ref);
+        if (is_wp_error($snapshot)) {
+            return $snapshot;
+        }
+
+        $identity = $this->validateSnapshotRequest($snapshot, $request);
+        if (is_wp_error($identity)) {
+            return $identity;
+        }
+
+        $group_ref = strtolower(trim((string) $group_ref));
+        if (! preg_match('/^vemg_[a-f0-9]{20}$/', $group_ref)) {
+            return $this->error('media_finding_group_invalid', __('The media finding group is invalid.', 'dbvc'), 400);
+        }
+
+        $finding_ref = strtolower(trim((string) $finding_ref));
+        if (! preg_match('/^vemf_[a-f0-9]{20}$/', $finding_ref)) {
+            return $this->error('media_finding_invalid', __('The media finding reference is invalid.', 'dbvc'), 400);
+        }
+
+        $expected_value_ref = sanitize_key((string) $expected_value_ref);
+        if (! preg_match('/^vemv_[a-f0-9]{24}$/', $expected_value_ref)) {
+            return $this->error('media_replace_value_ref_invalid', __('The expected media value reference is invalid.', 'dbvc'), 400);
+        }
+
+        $groups = isset($snapshot['groups']) && is_array($snapshot['groups']) ? $snapshot['groups'] : [];
+        $original_group = isset($groups[$group_ref]) && is_array($groups[$group_ref]) ? $groups[$group_ref] : null;
+        if ($original_group === null) {
+            return $this->error('media_finding_group_unavailable', __('The media finding group is unavailable.', 'dbvc'), 404);
+        }
+
+        // Recheck owner status, public/show-UI visibility, exclusions, and object capability.
+        $owner = $this->resolveEligibleOwner($original_group);
+        if (empty($owner)) {
+            return $this->error('media_replace_unavailable', __('This entity is no longer eligible for editing. Refresh the scan before taking further action.', 'dbvc'), 409);
+        }
+
+        // Rescan the single owner with the assigned inventory to confirm the field is still populated.
+        $rescanned = $this->scanner->scan([
+            [
+                'family' => $owner['family'],
+                'subtype' => $owner['subtype'],
+                'id' => $owner['id'],
+            ],
+        ], (string) ($snapshot['generation'] ?? ''), true);
+        if (is_wp_error($rescanned)) {
+            return $this->error('media_replace_unavailable', __('This field could not be revalidated safely. Refresh the scan after the provider is available.', 'dbvc'), 409);
+        }
+
+        $current_group = isset($rescanned['groups'][$group_ref]) && is_array($rescanned['groups'][$group_ref])
+            ? $rescanned['groups'][$group_ref]
+            : [];
+        $current_assigned = isset($current_group['assigned']) && is_array($current_group['assigned'])
+            ? $current_group['assigned']
+            : [];
+
+        $current_finding = null;
+        foreach ($current_assigned as $assigned_ref => $assigned_item) {
+            if (is_array($assigned_item) && sanitize_key((string) $assigned_ref) === $finding_ref) {
+                $current_finding = $assigned_item;
+                break;
+            }
+        }
+
+        if ($current_finding === null) {
+            // The field is no longer populated (emptied, definition changed, or removed since expand).
+            return $this->error('media_replace_not_populated', __('This field is no longer populated. Refresh the scan before replacing it.', 'dbvc'), 409);
+        }
+
+        // Expected-current-value precondition: the value the client saw must still be the value on disk.
+        $current_value_ref = sanitize_key((string) ($current_finding['value_fingerprint'] ?? ''));
+        if ($current_value_ref === '' || ! hash_equals($current_value_ref, $expected_value_ref)) {
+            return $this->error('media_replace_stale', __('This field changed since you opened it. Refresh the scan before replacing it.', 'dbvc'), 409);
+        }
+
+        $family = sanitize_key((string) ($current_finding['family'] ?? ''));
+        if (! in_array($family, ['featured_image', 'acf_image', 'acf_gallery'], true)) {
+            return $this->error('media_replace_unsupported', __('This field family is not supported for replacement.', 'dbvc'), 409);
+        }
+
+        $descriptor = $this->buildDescriptor($owner, $finding_ref, $current_finding, $family, 'replace');
+
+        // Descriptor-level object capability recheck (fails closed on permission loss).
+        if (! $this->capabilities->canEditDescriptor($descriptor)) {
+            return $this->error('media_finding_forbidden', __('You cannot edit this entity.', 'dbvc'), 403);
+        }
+
+        return [
+            'snapshot' => $snapshot,
+            'group_ref' => $group_ref,
+            'finding_ref' => $finding_ref,
+            'status' => 'writable',
+            'descriptor_status' => 'hydrated',
+            'family' => $family,
+            'label' => $this->findingLabel($current_finding, $family),
+            'message' => __('This populated media field is ready to be replaced.', 'dbvc'),
+            'finding' => $current_finding,
+            'descriptor' => $descriptor,
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $snapshot
      * @param string               $group_ref
      * @param string               $finding_ref
@@ -276,17 +394,19 @@ final class MediaFindingDescriptorBridge
      * @param string               $finding_ref
      * @param array<string, mixed> $finding
      * @param string               $family
+     * @param string               $mode     'assign' (empty target) or 'replace' (populated target).
      * @return EditableDescriptor
      */
-    private function buildDescriptor(array $owner, $finding_ref, array $finding, $family)
+    private function buildDescriptor(array $owner, $finding_ref, array $finding, $family, $mode = 'assign')
     {
+        $is_replace = ($mode === 'replace');
         $field = isset($finding['field']) && is_array($finding['field']) ? $finding['field'] : [];
         $entity_family = sanitize_key((string) ($owner['family'] ?? ''));
         $entity_id = absint($owner['id'] ?? 0);
         $subtype = sanitize_key((string) ($owner['subtype'] ?? ''));
         $acf_object_id = sanitize_text_field((string) ($owner['acf_object_id'] ?? ''));
         $scope = $entity_family === 'term' ? 'shared_entity' : 'current_entity';
-        $fingerprint = sanitize_text_field((string) ($finding['empty_fingerprint'] ?? ''));
+        $fingerprint = sanitize_text_field((string) ($finding[$is_replace ? 'value_fingerprint' : 'empty_fingerprint'] ?? ''));
         $label = $this->findingLabel($finding, $family);
         $token = $this->registry->createToken('media_finding|' . sanitize_key((string) $finding_ref));
 
@@ -317,6 +437,30 @@ final class MediaFindingDescriptorBridge
             $group_path = isset($field['group_path']) && is_array($field['group_path'])
                 ? array_values(array_filter(array_map('strval', $field['group_path'])))
                 : [];
+            $is_grouped = ! empty($group_path);
+            // For a group-nested field the scan catalog's `selector` is the ROOT group
+            // key. ACF stores group subfields under a prefixed meta key and only writes
+            // them correctly THROUGH the group's own update_value, so the resolver writes
+            // to the root selector with a nested value keyed down to the leaf (and reads
+            // back the same way). `group_write_path` is that {key, name} chain beneath the
+            // root down to the leaf. Top-level fields keep selector === leaf key.
+            $group_write_path = [];
+            if ($is_grouped) {
+                $segments = isset($field['path']) && is_array($field['path'])
+                    ? array_values($field['path'])
+                    : [];
+                foreach (array_slice($segments, 1) as $segment) {
+                    if (is_array($segment)) {
+                        $group_write_path[] = [
+                            'key' => (string) ($segment['key'] ?? ''),
+                            'name' => (string) ($segment['name'] ?? ''),
+                        ];
+                    }
+                }
+                if (empty($group_write_path) && ($field_key !== '' || $field_name !== '')) {
+                    $group_write_path[] = ['key' => $field_key, 'name' => $field_name];
+                }
+            }
             $source = [
                 'type' => 'acf_field',
                 'source_context' => 'media_manager_finding',
@@ -328,7 +472,8 @@ final class MediaFindingDescriptorBridge
                 'leaf_field_key' => $field_key,
                 'field_type' => $field_type,
                 'group_path' => $group_path,
-                'is_grouped_field' => ! empty($group_path),
+                'group_write_path' => $group_write_path,
+                'is_grouped_field' => $is_grouped,
             ];
             $resolver_name = $field_type === 'gallery' ? 'acf_gallery' : 'acf_image';
             $contract = $field_type === 'gallery' ? 'acf_gallery' : 'acf_image';
@@ -346,7 +491,7 @@ final class MediaFindingDescriptorBridge
             $source,
             [
                 'label' => $label,
-                'badgeLabel' => __('Missing media', 'dbvc'),
+                'badgeLabel' => $is_replace ? __('Replace media', 'dbvc') : __('Missing media', 'dbvc'),
                 'input' => $input,
             ],
             [
@@ -375,8 +520,9 @@ final class MediaFindingDescriptorBridge
                 'renderContext' => 'media_manager',
                 'reloadAfterSave' => true,
                 'origin' => 'media_manager_finding',
-                'expectedState' => 'empty',
-                'expectedEmptyFingerprint' => $fingerprint,
+                'expectedState' => $is_replace ? 'populated' : 'empty',
+                'expectedEmptyFingerprint' => $is_replace ? '' : $fingerprint,
+                'expectedValueFingerprint' => $is_replace ? $fingerprint : '',
             ]
         );
     }

@@ -480,6 +480,48 @@
 				return mediaManagerRequest( '/scans', { method: 'POST' } );
 			},
 
+			// R2-H Slice 2c: the durable, cross-user Media Index list (instant open,
+			// read-time per-user eligibility filtered). Same search/entity/field/sort
+			// surface as the scan list, plus offset paging.
+			index( query ) {
+				const params = mediaManagerQuery( query, false );
+				const value = query && typeof query === 'object' ? query : {};
+				if ( Number.isInteger( value.offset ) && value.offset > 0 ) {
+					params.set( 'offset', String( value.offset ) );
+				}
+				const suffix = params.toString()
+					? `?${ params.toString() }`
+					: '';
+
+				return mediaManagerRequest( `/index${ suffix }` );
+			},
+
+			// R2-H Slice 2c: expand one index entry. The opaque entity ref resolves to a
+			// detached, per-entity snapshot server-side; the response carries that
+			// snapshot's scan/group identity so the existing assign/replace routes drive
+			// mutation unchanged.
+			indexExpand( entityRef ) {
+				if (
+					typeof entityRef !== 'string' ||
+					! /^vemx_[a-f0-9]{24}$/.test( entityRef )
+				) {
+					return Promise.reject(
+						mediaManagerError(
+							'The media index entry is unavailable.',
+							'media_index_ref_invalid',
+							0,
+							null
+						)
+					);
+				}
+
+				return mediaManagerRequest( '/index/expand', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify( { entityRef } ),
+				} );
+			},
+
 			list( scan, query ) {
 				let identity;
 
@@ -665,6 +707,96 @@
 					) }/findings/${ encodeURIComponent(
 						findingRef
 					) }/assignment`,
+					{
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify( body ),
+					}
+				);
+			},
+
+			replace( scan, groupRef, findingRef, expectedValueRef, value ) {
+				let identity;
+
+				try {
+					identity = mediaManagerIdentity( scan );
+				} catch ( error ) {
+					return Promise.reject( error );
+				}
+
+				if (
+					typeof groupRef !== 'string' ||
+					! /^vemg_[a-f0-9]{20}$/.test( groupRef )
+				) {
+					return Promise.reject(
+						mediaManagerError(
+							'The Media Manager finding group is unavailable.',
+							'media_manager_group_unavailable',
+							0,
+							null
+						)
+					);
+				}
+
+				if (
+					typeof findingRef !== 'string' ||
+					! /^vemf_[a-f0-9]{20}$/.test( findingRef )
+				) {
+					return Promise.reject(
+						mediaManagerError(
+							'The Media Manager finding is unavailable.',
+							'media_manager_finding_unavailable',
+							0,
+							null
+						)
+					);
+				}
+
+				if (
+					typeof expectedValueRef !== 'string' ||
+					! /^vemv_[a-f0-9]{24}$/.test( expectedValueRef )
+				) {
+					return Promise.reject(
+						mediaManagerError(
+							'The current media value could not be confirmed. Refresh the scan before replacing it.',
+							'media_manager_value_ref_invalid',
+							0,
+							null
+						)
+					);
+				}
+
+				const body = {
+					generation: identity.generation,
+					expectedRevision: identity.expectedRevision,
+					expectedValueRef,
+				};
+				const selection =
+					value && typeof value === 'object' ? value : {};
+				if (
+					Number.isInteger( selection.attachmentId ) &&
+					selection.attachmentId > 0
+				) {
+					body.attachmentId = selection.attachmentId;
+				}
+				if ( Array.isArray( selection.attachmentIds ) ) {
+					body.attachmentIds = selection.attachmentIds
+						.map( function ( id ) {
+							return Number( id ) || 0;
+						} )
+						.filter( function ( id ) {
+							return Number.isInteger( id ) && id > 0;
+						} );
+				}
+
+				return mediaManagerRequest(
+					`/scans/${ encodeURIComponent(
+						identity.scanRef
+					) }/groups/${ encodeURIComponent(
+						groupRef
+					) }/findings/${ encodeURIComponent(
+						findingRef
+					) }/replacement`,
 					{
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },

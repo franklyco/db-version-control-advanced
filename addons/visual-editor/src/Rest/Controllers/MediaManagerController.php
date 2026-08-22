@@ -110,6 +110,11 @@ final class MediaManagerController
             'permission_callback' => [$this, 'canAccess'],
             'callback' => [$this, 'handleAssignFinding'],
         ]);
+        register_rest_route('dbvc/v1', '/visual-editor/media-manager/scans/(?P<scan_ref>vems_[a-z0-9_]+)/groups/(?P<group_ref>vemg_[a-f0-9]{20})/findings/(?P<finding_ref>vemf_[a-f0-9]{20})/replacement', [
+            'methods' => 'POST',
+            'permission_callback' => [$this, 'canAccess'],
+            'callback' => [$this, 'handleReplaceFinding'],
+        ]);
     }
 
     /**
@@ -278,6 +283,37 @@ final class MediaManagerController
                 sanitize_key((string) $request['scan_ref']),
                 sanitize_key((string) $request['group_ref']),
                 sanitize_key((string) $request['finding_ref']),
+                $identity,
+                $this->assignmentValueFromRequest($request)
+            )
+        );
+    }
+
+    /**
+     * R2-F Slice 3: replace the media on a populated field with the staged selection,
+     * gated by the expected-current-value fingerprint the client read at expand time.
+     *
+     * @param WP_REST_Request $request
+     * @return WP_REST_Response
+     */
+    public function handleReplaceFinding($request)
+    {
+        $authorized = $this->authorizeRequest($request);
+        if ($authorized instanceof WP_REST_Response) {
+            return $authorized;
+        }
+
+        $identity = $this->requestIdentity($request);
+        if (is_wp_error($identity)) {
+            return $this->errorResponse($identity);
+        }
+
+        return $this->resultResponse(
+            $this->assignment_service->replace(
+                sanitize_key((string) $request['scan_ref']),
+                sanitize_key((string) $request['group_ref']),
+                sanitize_key((string) $request['finding_ref']),
+                sanitize_key((string) $request->get_param('expectedValueRef')),
                 $identity,
                 $this->assignmentValueFromRequest($request)
             )

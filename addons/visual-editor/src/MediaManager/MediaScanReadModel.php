@@ -100,7 +100,9 @@ final class MediaScanReadModel
             'subtype' => $owner['subtype'],
             'id' => $owner['id'],
         ];
-        $rescanned = $this->scanner->scan([$candidate], (string) ($snapshot['generation'] ?? ''));
+        // R2-F: include the populated-field inventory so the detail panel can list
+        // both empty findings and already-assigned fields with sanitized previews.
+        $rescanned = $this->scanner->scan([$candidate], (string) ($snapshot['generation'] ?? ''), true);
         if (is_wp_error($rescanned)) {
             return $this->unavailableGroupResponse($snapshot, $original, $owner, $rescanned);
         }
@@ -115,12 +117,26 @@ final class MediaScanReadModel
         $original_findings = isset($original['findings']) && is_array($original['findings'])
             ? $original['findings']
             : [];
+        $current_assigned = isset($current['assigned']) && is_array($current['assigned'])
+            ? $current['assigned']
+            : [];
+        $assigned_by_ref = [];
+        foreach ($current_assigned as $assigned_ref => $assigned_item) {
+            if (is_array($assigned_item)) {
+                $assigned_by_ref[sanitize_key((string) $assigned_ref)] = $assigned_item;
+            }
+        }
+        $original_ref_set = [];
+        foreach (array_keys($original_findings) as $original_ref) {
+            $original_ref_set[sanitize_key((string) $original_ref)] = true;
+        }
         $fields = [];
         $counts = [
             'missing' => 0,
             'changed' => 0,
             'resolvedOrChanged' => 0,
             'unavailable' => 0,
+            'populated' => 0,
         ];
 
         foreach ($original_findings as $finding_ref => $finding) {
@@ -132,6 +148,22 @@ final class MediaScanReadModel
             $current_finding = isset($current_findings[$finding_ref]) && is_array($current_findings[$finding_ref])
                 ? $current_findings[$finding_ref]
                 : null;
+
+            // D-052: a field that was missing at scan and is now populated (present in
+            // the live assigned inventory) is projected as an ASSIGNED, replaceable field
+            // — with a valueRef and a replace control — not the terminal
+            // resolved_or_changed "refresh the scan" state. This makes a just-assigned
+            // field immediately replaceable without a full rescan. The genuinely
+            // gone/ineligible case (absent from the assigned inventory) still falls
+            // through to resolved_or_changed below.
+            if ($current_finding === null
+                && isset($assigned_by_ref[$finding_ref])
+                && is_array($assigned_by_ref[$finding_ref])) {
+                $counts['populated']++;
+                $fields[] = $this->projectAssignedField($finding_ref, $assigned_by_ref[$finding_ref]);
+                continue;
+            }
+
             $status = 'resolved_or_changed';
             $descriptor_status = 'unavailable';
             $message = __('This field is no longer confirmed missing. Refresh the scan before taking further action.', 'dbvc');
@@ -154,7 +186,19 @@ final class MediaScanReadModel
 
             $count_key = $status === 'resolved_or_changed' ? 'resolvedOrChanged' : $status;
             $counts[$count_key]++;
-            $fields[] = $this->projectFinding($finding_ref, $finding, $status, $descriptor_status, $message);
+            // Remaining resolved_or_changed fields are genuinely gone/ineligible (not in
+            // the assigned inventory) and carry no preview; still-empty fields have none.
+            $fields[] = $this->projectFinding($finding_ref, $finding, $status, $descriptor_status, $message, []);
+        }
+
+        // R2-F: project the populated-field inventory, skipping fields already
+        // represented above (empty at scan, now populated) to avoid duplicates.
+        foreach ($assigned_by_ref as $assigned_ref => $assigned) {
+            if (isset($original_ref_set[$assigned_ref])) {
+                continue;
+            }
+            $counts['populated']++;
+            $fields[] = $this->projectAssignedField($assigned_ref, $assigned);
         }
 
         usort($fields, static function (array $left, array $right) {
@@ -610,6 +654,48 @@ final class MediaScanReadModel
     }
 
     /**
+     * R2-F: project a populated (assigned) field for the detail-panel inventory.
+     * Exposes only a sanitized preview, never a raw target.
+     *
+     * @param string               $finding_ref
+     * @param array<string, mixed> $finding
+     * @return array<string, mixed>
+     */
+    private function projectAssignedField($finding_ref, array $finding)
+    {
+        $family = sanitize_key((string) ($finding['family'] ?? ''));
+        $field = isset($finding['field']) && is_array($finding['field']) ? $finding['field'] : [];
+        $label = sanitize_text_field((string) ($field['field_label'] ?? ''));
+        if ($label === '') {
+            $label = $family === 'featured_image' ? __('Featured image', 'dbvc') : __('Media field', 'dbvc');
+        }
+        $preview = isset($finding['preview']) && is_array($finding['preview']) ? $finding['preview'] : [];
+        $value_ref = sanitize_key((string) ($finding['value_fingerprint'] ?? ''));
+        $replaceable = $value_ref !== '' && in_array($family, ['featured_image', 'acf_image', 'acf_gallery'], true);
+
+        return [
+            'findingRef' => sanitize_key((string) $finding_ref),
+            'label' => $label,
+            'family' => $family,
+            'contextLabel' => sanitize_text_field((string) ($finding['context_label'] ?? '')),
+            'status' => 'assigned',
+            'descriptorStatus' => 'assigned',
+            'message' => '',
+            'valueRef' => $replaceable ? $value_ref : '',
+            'preview' => [
+                'url' => esc_url_raw((string) ($preview['url'] ?? '')),
+                'alt' => sanitize_text_field((string) ($preview['alt'] ?? '')),
+                'count' => absint($preview['count'] ?? 0),
+            ],
+            'availableActions' => [
+                'refreshScan' => true,
+                'assignMedia' => false,
+                'replace' => $replaceable,
+            ],
+        ];
+    }
+
+    /**
      * @param string               $finding_ref
      * @param array<string, mixed> $finding
      * @param string               $status
@@ -617,7 +703,7 @@ final class MediaScanReadModel
      * @param string               $message
      * @return array<string, mixed>
      */
-    private function projectFinding($finding_ref, array $finding, $status, $descriptor_status, $message)
+    private function projectFinding($finding_ref, array $finding, $status, $descriptor_status, $message, array $preview = [])
     {
         $family = sanitize_key((string) ($finding['family'] ?? ''));
         $field = isset($finding['field']) && is_array($finding['field']) ? $finding['field'] : [];
@@ -634,6 +720,11 @@ final class MediaScanReadModel
             'status' => sanitize_key((string) $status),
             'descriptorStatus' => sanitize_key((string) $descriptor_status),
             'message' => sanitize_text_field((string) $message),
+            'preview' => empty($preview) ? [] : [
+                'url' => esc_url_raw((string) ($preview['url'] ?? '')),
+                'alt' => sanitize_text_field((string) ($preview['alt'] ?? '')),
+                'count' => absint($preview['count'] ?? 0),
+            ],
             'availableActions' => [
                 'refreshScan' => true,
                 'hydrateDescriptor' => false,

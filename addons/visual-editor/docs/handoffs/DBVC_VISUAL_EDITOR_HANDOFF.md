@@ -8,7 +8,7 @@
 
 **Base HEAD:** `5db4b4094c0d834b3cf482adb095273387b59dc8`
 
-**Current boundary:** R1 signed off (read-only scan/report) with residual gates accepted; R2-A descriptor bridge, R2-B native Media Library selection, and R2-C field-level save implemented. R2-C is the first content-mutating slice: it enforces the expected-empty precondition immediately before writing (a field populated after scan is blocked and never overwritten), writes through the shared audited `MutationService`, and reconciles the finding/row/summary from a targeted reread with no table reload. R2-D verified UX states and R2-E production hardening remain and are not started
+**Current boundary:** R1 signed off. **R2 Media Manager core complete and live-confirmed:** R2-A..R2-D; **R2-E (E1 journal/cache, E2 security/permission hardening, E3 frame lifecycle + surgical DOM patch, E4 feature isolation + release-notes/rollback)**; **R2-F (Entity Media Inventory & Replace, Slices 1–4)** — populated-field inventory + lazy thumbnails, gated replace via the `/replacement` endpoint (expected-current-value fingerprint; never deletes attachments), and a just-assigned field immediately replaceable (D-052, Slice 4); the group-nested ACF write bug is corrected (RK-013: write/read THROUGH the root group) and **live-confirmed by the user**; **R2-G** UX polish (live saved thumbnail + compact header status panel). **In progress: R2-H Persistent Media Index (Phase 1), Slices 1–4 + 2b + 2c + 4b-1 done** (D-053/D-054/D-055: `dbvc_ve_media_field_index` table + `MediaIndexStore`; `MediaIndexReadModel` lists with read-time per-user eligibility filtering + full search/entity/field/sort parity; `MediaIndexInvalidator`/`MediaIndexReconciler`/`MediaIndexScheduler` keep it fresh; **Slice 2b** adds opaque `vemx_` refs + a detached per-entity snapshot + `GET .../index` + `POST .../index/expand`; **Slice 2c** flips the frontend — flag-gated (`mediaManager.indexList`) open-from-index with `vemx_`-keyed rows and detached-snapshot expansion, with automatic fallback to the ephemeral scan; **Slice 4b-1** makes the index cross-user-complete — `EligibilityPolicy` `$structural` mode + `MediaIndexBuilder` chunked structural first-run build drained by the scheduler, and the completion hook rewired to `onScanRefreshed`/`refreshFromSnapshot` (refresh-in-place, no rotate/clobber)). The Manager opens instantly from the durable, per-user-filtered index, which now self-builds on first run for all users. Deferred: real-browser/AT QA (D-049), and R2-H Slice 4b-2 (topology/exclusion/registration rebuild triggers + atomic generation swap) + Slice 5 (JSON export/import). Plans: `releases/R2H-PERSISTENT-MEDIA-INDEX-PHASE-1.md`
 
 ## Purpose
 
@@ -138,9 +138,9 @@ The current working tree includes:
 ### R2-A: implemented descriptor bridge
 
 - `src/MediaManager/MediaFindingDescriptorBridge.php` exchanges one opaque finding for one fresh standard `EditableDescriptor`. It loads the user/site-bound snapshot, validates generation/revision, resolves the owner/field only from the snapshot group/finding, rechecks owner eligibility/status/capability, rescans the single owner to reconfirm applicability and the current empty value by fingerprint, and mints a descriptor for `post_featured_image`, `acf_image`, or `acf_gallery` routing to exactly one existing resolver.
-- `src/Registry/EditableRegistry.php` gains a narrow `persistDetachedDescriptor()` that stores one off-render descriptor in a fresh user-bound session without a supported render page context.
+- The descriptor is re-resolved server-side by the R2-C save, so it is not persisted and no opaque token/session is returned (CR-1, 2026-08-16).
 - `src/Rest/Controllers/MediaManagerController.php` adds a protected `POST .../scans/{scan_ref}/groups/{group_ref}/findings/{finding_ref}/descriptor` route; `Routes.php` and `Bootstrap/Addon.php` wire the bridge.
-- The response returns only opaque token/session ids plus safe labels and writable/changed/resolved/unavailable status. R2-A opens no Media Library frame, hydrates no value, writes nothing, and journals nothing.
+- The response returns only `{input, family, expectedState}` plus safe labels and writable/changed/resolved/unavailable status. R2-A opens no Media Library frame, hydrates no value, writes nothing, and journals nothing.
 
 ### R2-B: implemented native Media Library selection
 
@@ -148,7 +148,7 @@ The current working tree includes:
 - `assets/js/api-client.js` adds `mediaManager.descriptor(scan, groupRef, findingRef)` (POST to the R2-A route).
 - `assets/css/media-manager.css` adds the assign controls, unsaved badge, and thumbnail preview (no new breakpoints; responsive floor preserved). `AssetLoader.php` localizes the R2-B strings.
 - The `wp.media` frame reuses the same standard config as `overlay-app.js`'s image/gallery builders (single vs multiple, `library:{type:'image'}`); the overlay is untouched (D-046). The upload tab follows WordPress's `upload_files` capability. Escape/layering reuse the existing `mediaModalIsOpen` guard.
-- R2-B stages the selection unsaved and writes nothing: no save, mutation, expected-empty check, journal, cache, or reconciliation, and the descriptor token/session and raw targets never enter the DOM.
+- R2-B stages the selection unsaved and writes nothing: no save, mutation, expected-empty check, journal, cache, or reconciliation, and the staged selection carries no descriptor token/session (CR-1) and no raw targets ever enter the DOM.
 
 ### R2-C: implemented field-level save
 
@@ -157,6 +157,12 @@ The current working tree includes:
 - `src/Rest/Controllers/MediaManagerController.php` adds `POST .../findings/{finding_ref}/assignment`; `Routes.php` and `Bootstrap/Addon.php` wire the service.
 - `assets/js/media-manager-app.js` adds a Save control per staged field, `saveAssignment`/`reconcileAfterSave`/`reconcileGroupItem`, a per-finding `saving` state, and a resolved-row marker. It reconciles the field, row counts, and scan summary from the returned reread and issues no list/scan request. `api-client.js` adds `mediaManager.assign`.
 - The write target is always the freshly server-resolved descriptor; the client token/selection is never the write authority. `overlay-app.js` remains untouched.
+
+### R2-F: implemented entity media inventory, thumbnails, and replace
+
+- **Slice 1 (inventory):** `MediaScanService::scan()` gains an `$include_assigned` mode (`buildPreview` → sanitized thumbnail URL/alt/count); `MediaScanReadModel::expandGroup` rescans in inventory mode and projects populated fields as `status: assigned` via `projectAssignedField`, merges the preview onto an empty-at-scan/now-populated resolved finding, dedups, and adds a `populated` count. Top-level list/counts stay empty-focused.
+- **Slice 2 (thumbnails):** `media-manager-app.js` `createFieldProjection`/`createFieldThumbnail` render `[thumbnail | content]` (staged → `preview.url` → accent placeholder), lazy attributes, gallery `+{count}` badge; `media-manager.css` adds the flex layout and square/rounded/full-height thumb with a `color-mix` placeholder.
+- **Slice 3 (replace):** `MediaScanService` emits an opaque `value_fingerprint` (`vemv_…`); `projectAssignedField` exposes it as `valueRef` and flips `availableActions.replace`. `MediaFindingDescriptorBridge::resolveReplaceable` re-resolves the owner from the snapshot, rescans, confirms still-populated, and `hash_equals`-enforces the expected-current-value precondition — non-writable outcomes are hard `WP_Error`s (`media_replace_stale`/`media_replace_not_populated`/`media_replace_value_ref_invalid`). `MediaAssignmentService::replace` shares one `applyMutation` pipeline with `assign` and returns `status: replaced`; the resolver overwrites the reference only and never deletes attachments. `MediaManagerController` adds `POST .../findings/{finding_ref}/replacement` (`handleReplaceFinding`), `Routes.php`/`Bootstrap/Addon.php` need no new dependency. `media-manager-app.js` adds `createFieldReplaceControls`/`beginReplaceMedia`/`saveReplacement` (no descriptor pre-call; the endpoint revalidates at save), `api-client.js` adds `mediaManager.replace`. `overlay-app.js` remains untouched.
 
 ## Existing mutation systems reserved for R2 reuse
 
@@ -185,13 +191,19 @@ The latest completed evidence is:
 - focused R1-D PHPUnit: 4 tests/47 assertions passing;
 - focused R2-A PHPUnit: 11 tests/200 assertions passing (descriptor bridge revalidation, resolver routing, no-raw-target projection, user isolation, and fail-closed cases);
 - `VisualEditorMediaManagerR2CTest`: 7 tests/81 assertions passing (three-family save + reconcile, expected-empty block, non-image/empty rejection, stale-generation block);
-- Media Manager jsdom state suite: 19 tests passing (5 R2-B staging + 3 R2-C save/reconcile/conflict/saving-state); targeted `lint:visual-editor-media-manager` clean;
-- combined Media Manager PHPUnit (R1-A through R1-E plus R2-A and R2-C): 41 tests/1,413 assertions passing;
+- Media Manager jsdom state suite: 34 tests passing (5 R2-B + 3 R2-C + 4 R2-D + 1 R2-F inventory + 1 R2-F Slice 2 + 3 R2-F Slice 3 + 2 R2-G polish + 4 R2-E3 frame-lifecycle/DOM-patch); targeted `lint:visual-editor-media-manager` clean;
+- `VisualEditorMediaManagerR2ETest` (journal/cache verification): 3 tests/39 assertions passing;
+- `VisualEditorMediaManagerR2FTest` (media inventory + preview): 3 tests/29 assertions passing (populated fields listed with sanitized preview; top-level list unchanged; no raw-target leak);
+- `VisualEditorMediaManagerR2FReplaceTest` (replace mutation): 6 tests/62 assertions passing (success + fresh fingerprint + prior attachment retained + cache event; stale-ref block; emptied-after-read block; malformed-ref reject; non-image reject; gallery overwrite);
+- `VisualEditorMediaManagerGroupedFieldTest` (group-nested field write): 4 tests passing — grouped gallery/image descriptors target the ROOT group selector and carry `group_write_path` (write/read THROUGH the group), and a grouped write never lands in a bare leaf meta; live nested-ACF save confirmed by the user (RK-013);
+- `VisualEditorMediaManagerR2E2Test` (security/permission hardening): 9 tests/67 assertions passing — assign + replace fail closed with no write for a foreign user's snapshot, revision mismatch, owner unpublished after scan/read, revoked edit capability, and a non-existent attachment;
+- `VisualEditorMediaManagerR2E4Test` (feature isolation): 4 tests/10 assertions passing — the kill switch closes `canAccess` for every route when the MM flag, VE master flag, base capability, or auth is absent;
+- combined Media Manager PHPUnit (R1-A..R1-E plus R2-A, R2-C, R2-E, R2-E2, R2-E4, R2-F, R2-F replace, grouped): 71 tests passing;
 - Playwright Media Manager table suite: 6/6 across Chromium, Firefox, and WebKit engines at 1440x900 and 1280x720;
 - live active-site REST auth enforcement (unauthenticated): all Media Manager routes registered; `scans/latest`, tampered scan/group refs, and POST `scans` each return HTTP 401 `rest_forbidden` before resolution and create no snapshot;
 - complete candidate traversal/raw reads across 100/300 live owners: constant 2 raw ACF reads per owner, one applicability evaluation per candidate, <=50 candidates and <=1 source query per chunk, per-candidate DB cost falling ~1.25 -> ~0.83 as owners triple (no field-definition/capability/permalink N+1);
-- full PHP comparison: 725 tests, 8,550 assertions, and the same six inherited failures;
-- agent documentation: 54 curated records, 417 discovered surfaces, zero unmapped (the descriptor and assignment routes are registered and remapped);
+- full PHP comparison: 755 tests, 8,832 assertions, and the same six inherited failures;
+- agent documentation: 54 curated records, 418 discovered surfaces, zero unmapped (the descriptor, assignment, and replacement routes are registered and remapped);
 - package checksum: 46/46 passing;
 - `git diff --check`: passing.
 
@@ -229,15 +241,22 @@ Do not toggle persistent options, log in, inspect credentials, modify content, o
 
 ## Immediate next slice
 
-R1 was signed off on 2026-08-16, and R2-A (descriptor bridge), R2-B (native Media Library selection), and R2-C (field-level save) are implemented and reviewed. R2-C is the first content-mutating slice; the expected-empty gate is enforced and proven. Focused: jsdom 19 tests (3 R2-C), `VisualEditorMediaManagerR2CTest` 7/81, combined Media Manager PHP 41/1,413; the full suite runs 725/8,550 with the same six inherited failures; agent docs pass 54/417/0. Residual gate: real-browser save/upload/reconciliation QA (authenticated runtime unavailable).
+R1 was signed off on 2026-08-16; R2-A..R2-D and R2-E1 are complete; and **R2-F Slices 1–3 are complete** (2026-08-17): inventory + preview (`VisualEditorMediaManagerR2FTest` 3 tests/29 assertions), thumbnail presentation, and gated replace (`VisualEditorMediaManagerR2FReplaceTest` 6 tests/62 assertions; jsdom 28 total). The full suite runs 738/8,705 (six inherited failures); agent docs pass 54/418/0.
 
-The next bounded task is **R2-D — verified UX states** (do not begin without explicit authorization):
+**R2-E is complete (E1–E4).** E2: assign + replace fail closed with no write for foreign-user snapshots, revision mismatch, owner unpublished after scan/read, revoked edit capability, and a non-existent attachment. E3: a single active `wp.media` frame torn down on re-open/collapse/group-switch/list-reload/close (RK-011), and a save patches only the affected row (siblings preserved, no list/scan reload). E4: the kill switch closes `canAccess` for every route when the MM flag, VE master flag, base capability, or auth is absent, plus a consolidated release-notes/rollback runbook (`releases/MEDIA-MANAGER-RELEASE-NOTES-AND-ROLLBACK.md`).
 
-- take the R1 mockup as a base and add verified states for: media modal open; image selected but unsaved; gallery selected but unsaved; upload unavailable; save in progress; saved/verified; changed since scan; validation error; entity resolved and removed;
-- these are presentation/state refinements over the implemented R2-A/R2-B/R2-C behavior — no new REST surface, no new mutation authority;
-- keep the responsive floor and add no mobile-specific work (tabled by D-036).
+**Persistent Media Index — Phase 1 (R2-H), Slices 1–4 + 2b + 2c complete** (D-053/D-054: custom table + JSON export; cross-user with read-time per-user eligibility filtering; Action Scheduler + WP-Cron fallback). **Slice 1**: `{prefix}dbvc_ve_media_field_index` table + `MediaIndexStore`. **Slice 2**: completion-action population + `MediaIndexReadModel::getList` with read-time per-user eligibility filtering. **Slice 3**: `MediaIndexInvalidator` re-indexes/removes a single entity on save/delete/term hooks. **Slice 4**: `MediaIndexReconciler` (scheduled) re-indexes dirty entities in chunks, `onAttachmentDeleted` flags the generation dirty, and `MediaIndexScheduler` runs the reconcile via Action Scheduler with a WP-Cron fallback. **Slice 2b (server plumbing)**: stable opaque `entity_ref` (`vemx_…`, store-only-resolvable) + `getByEntityRef`; `MediaScanCoordinator::snapshotEntity` builds a detached per-entity snapshot (`ScanSnapshotStore::createDetached`) that never clobbers the latest full scan; `MediaIndexController` exposes `GET .../media-manager/index` + `POST .../media-manager/index/expand`. **Slice 2c (frontend flip)**: `MediaIndexReadModel`/`MediaIndexStore` gain full search/entity/field/sort query parity, and the Manager — gated behind the filterable `mediaManager.indexList` flag — opens from `GET .../index` with `vemx_`-keyed rows and expands via `POST .../index/expand`, adopting the detached snapshot as the per-expansion working identity (`expansion.scan` + working `vemg_` group) so descriptor/assign/replace are unchanged, with **automatic fallback to the ephemeral scan** on index error or empty index. **Slice 4b-1 (structural first-run build)**: `EligibilityPolicy` gains a `$structural` mode (skips only the per-object capability check); `MediaIndexBuilder` enumerates the structural eligible set in bounded chunks (cursor persisted across runs) and is drained by `MediaIndexScheduler` (`BUILD_HOOK`, AS async chain / WP-Cron single-event chaining) until complete; and the manual-scan completion hook is rewired to `onScanRefreshed`/`refreshFromSnapshot` (upsert scanned entities into the current generation, no rotate/prune) so the index is cross-user-complete and a scan never clobbers it. The index builds itself on first run for all users, self-maintains on edits, self-heals in the background, and is the live read source with a safe scan fallback. Plan: `releases/R2H-PERSISTENT-MEDIA-INDEX-PHASE-1.md`.
 
-R2-E (production hardening: security/stale/attachment/permission tests, journal/cache verification, laptop/desktop browser+keyboard QA, repeated-expansion performance, current-page DOM/reload QA, feature isolation, release notes, rollback) follows R2-D.
+The next bounded tasks (do not begin without explicit authorization):
+
+- **R2-H Slice 4b-2** — topology/exclusion rebuild triggers: ACF field-group save/delete, post-type/taxonomy (de)registration, and Media-Manager exclusion-option changes rotate the generation and rebuild, with an atomic build-into-fresh-generation-then-swap so reads never see a half-built index mid-rebuild.
+- **R2-H Slice 5** — JSON export/import for backup portability.
+- **Real-browser / AT QA** — authenticated Media Library open/upload/focus, keyboard flows, repeated-open memory/listener profiling, current-page DOM/reload confirmation, real Safari (deferred, D-049).
+- **R2-F browser QA** — laptop/desktop Media Library + keyboard verification of the assign/replace flows (deferred, D-049).
+- **Shared `wp.media` factory consolidation** — collapse the overlay and Media Manager call sites onto one factory (RK-011).
+- **Overlay descriptor-session toast** — investigate the "descriptor session was unavailable" message on page load (separate overlay subsystem, not Media Manager).
+
+**Deferred** (D-049, resume later): laptop/desktop Media Library browser + keyboard QA; touch/mobile-specific QA remains tabled by D-036. Keep the responsive floor and add no mobile-specific work.
 
 ## Following implementation sequence
 

@@ -24,12 +24,15 @@
 		requestStatus: 'idle',
 		pendingRequest: '',
 		presentation: 'idle',
+		// R2-H Slice 2c: 'scan' = ephemeral scan snapshot; 'index' = durable Media Index.
+		source: 'scan',
 		scan: null,
 		query: Object.assign( {}, DEFAULT_QUERY ),
 		items: [],
 		pagination: {
 			hasMore: false,
 			nextCursor: '',
+			nextOffset: 0,
 		},
 		results: {
 			status: 'idle',
@@ -37,13 +40,22 @@
 			scrollTop: 0,
 		},
 		expansion: {
+			// itemKey = the list-row ref (vemg_ in scan mode, vemx_ in index mode) used
+			// for row matching/toggle. groupRef = the working vemg_ group and scan =
+			// the working scan identity used for descriptor/assign/replace. In scan mode
+			// itemKey === groupRef and scan is null (falls back to state.scan).
+			itemKey: '',
 			groupRef: '',
+			scan: null,
 			status: 'idle',
 			row: null,
 			error: null,
 			selections: {},
 			notices: {},
 			saving: {},
+			saved: {},
+			opening: {},
+			activeFrame: null,
 		},
 		assignSequence: 0,
 		searchTimer: 0,
@@ -119,6 +131,9 @@
 			'header',
 			'dbvc-ve-media-manager__header'
 		);
+		// R2-G Slice 2: the identity row (icon/heading/close) plus the compact status
+		// panel, so the scrolling results body carries only the results table.
+		const top = createElement( 'div', 'dbvc-ve-media-manager__header-top' );
 		const icon = createElement(
 			'span',
 			'dbvc-ve-media-manager__header-icon'
@@ -162,15 +177,16 @@
 
 		heading.appendChild( title );
 		heading.appendChild( subtitle );
-		header.appendChild( icon );
-		header.appendChild( heading );
-		header.appendChild( closeButton );
+		top.appendChild( icon );
+		top.appendChild( heading );
+		top.appendChild( closeButton );
+		header.appendChild( top );
+		header.appendChild( createStatusPanel() );
 
 		return header;
 	}
 
-	function createBody() {
-		const body = createElement( 'div', 'dbvc-ve-media-manager__body' );
+	function createStatusPanel() {
 		const statusPanel = createElement(
 			'section',
 			'dbvc-ve-media-manager__status-panel'
@@ -247,7 +263,12 @@
 		statusPanel.appendChild( description );
 		statusPanel.appendChild( progress );
 		statusPanel.appendChild( actions );
-		body.appendChild( statusPanel );
+
+		return statusPanel;
+	}
+
+	function createBody() {
+		const body = createElement( 'div', 'dbvc-ve-media-manager__body' );
 		body.appendChild( createResults() );
 
 		return body;
@@ -747,12 +768,48 @@
 			: null;
 	}
 
+	// R2-H Slice 2c: open the Manager from the durable Media Index when the host
+	// enables it (production sets this true; the automatic fallback still drops to
+	// the ephemeral scan if the index route errors or returns nothing).
+	function indexListEnabled() {
+		return config().indexList === true;
+	}
+
+	function indexMode() {
+		return state.source === 'index';
+	}
+
+	// The scan identity mutation/descriptor calls should use: the per-expansion
+	// detached snapshot in index mode, else the shared scan snapshot.
+	function activeScan() {
+		return state.expansion.scan || state.scan;
+	}
+
+	// A list-row ref is a scan group (vemg_) or an index entity (vemx_).
+	function isValidRowRef( ref ) {
+		return (
+			typeof ref === 'string' &&
+			( /^vemg_[a-f0-9]{20}$/.test( ref ) ||
+				/^vemx_[a-f0-9]{24}$/.test( ref ) )
+		);
+	}
+
+	function isIndexEntityRef( ref ) {
+		return typeof ref === 'string' && /^vemx_[a-f0-9]{24}$/.test( ref );
+	}
+
 	function supportsWpMedia() {
 		return Boolean(
 			bootstrap().supportsWpMedia &&
 				window.wp &&
 				typeof window.wp.media === 'function'
 		);
+	}
+
+	// Uploading new files is governed by the WordPress upload_files capability,
+	// surfaced on the bootstrap. Choosing existing media does not require it.
+	function supportsUpload() {
+		return supportsWpMedia() && Boolean( bootstrap().canUpload );
 	}
 
 	// R2-B stages selections client-side only; the public summary never carries
@@ -786,6 +843,19 @@
 				return field && field.findingRef === findingRef;
 			} ) || null
 		);
+	}
+
+	// A field can stage a Media Library selection when it is an empty finding
+	// awaiting assignment or a populated field marked replaceable by the server.
+	function isStageableField( field ) {
+		if ( ! field ) {
+			return false;
+		}
+		if ( field.status === 'missing' ) {
+			return true;
+		}
+
+		return field.status === 'assigned' && Boolean( field.valueRef );
 	}
 
 	function safeMediaUrl( value ) {
@@ -825,26 +895,16 @@
 		};
 	}
 
+	// The R2-C save re-resolves the target server-side, so the client keeps no
+	// descriptor token or session; it only needs the input kind to open the frame.
 	function normalizeDescriptorHandle( descriptor, family ) {
 		const value =
-			descriptor && typeof descriptor === 'object' ? descriptor : {};
-		const token =
-			typeof value.token === 'string' &&
-			/^ve_[a-f0-9]{12}$/.test( value.token )
-				? value.token
-				: '';
-		const sessionId =
-			typeof value.sessionId === 'string' &&
-			/^ves_[a-z0-9]+$/.test( value.sessionId )
-				? value.sessionId
-				: '';
-		if ( ! token || ! sessionId ) {
+			descriptor && typeof descriptor === 'object' ? descriptor : null;
+		if ( ! value ) {
 			return null;
 		}
 
 		return {
-			token,
-			sessionId,
 			input: value.input === 'gallery' ? 'gallery' : 'image',
 			family,
 		};
@@ -915,7 +975,9 @@
 					: null,
 				scrollTop: state.results.scrollTop,
 			},
+			source: state.source,
 			expansion: {
+				itemKey: state.expansion.itemKey,
 				groupRef: state.expansion.groupRef,
 				status: state.expansion.status,
 				row: state.expansion.row
@@ -926,6 +988,8 @@
 					: null,
 				selections: publicSelections(),
 				saving: Object.assign( {}, state.expansion.saving ),
+				saved: Object.assign( {}, state.expansion.saved ),
+				opening: Object.assign( {}, state.expansion.opening ),
 			},
 			error: state.error ? Object.assign( {}, state.error ) : null,
 		};
@@ -957,6 +1021,10 @@
 			state.presentation = state.requestStatus;
 			return;
 		}
+		if ( indexMode() ) {
+			state.presentation = state.hasLoaded ? 'index' : 'idle';
+			return;
+		}
 		if ( ! state.scan ) {
 			state.presentation = state.hasLoaded ? 'no_scan' : 'idle';
 			return;
@@ -975,6 +1043,18 @@
 				description: text(
 					'mediaManagerStateLoadingDescription',
 					'Waiting for the protected scan service to respond.'
+				),
+			};
+		}
+		if ( state.presentation === 'index' ) {
+			return {
+				title: text(
+					'mediaManagerStateIndexTitle',
+					'Site media index'
+				),
+				description: text(
+					'mediaManagerStateIndexDescription',
+					'Showing entities with missing media from the durable site index. Start a new scan for a fresh full check.'
 				),
 			};
 		}
@@ -1267,6 +1347,7 @@
 				'mediaManagerFieldStatusUnavailable',
 				'Could not revalidate'
 			),
+			assigned: text( 'mediaManagerFieldStatusAssigned', 'Has media' ),
 		};
 
 		return labels[ status ] || labels.unavailable;
@@ -1301,17 +1382,24 @@
 		return button;
 	}
 
-	function makeAssignNotice( message ) {
-		const notice = createElement(
+	function makeAssignNotice( notice ) {
+		const value =
+			notice && typeof notice === 'object'
+				? notice
+				: { message: String( notice || '' ), kind: 'refresh' };
+		const isError = value.kind === 'error';
+		const element = createElement(
 			'p',
-			'dbvc-ve-media-manager__assign-notice',
-			message
+			`dbvc-ve-media-manager__assign-notice${
+				isError ? ' is-error' : ''
+			}`,
+			value.message
 		);
-		notice.setAttribute( 'role', 'status' );
-		notice.setAttribute( 'aria-live', 'polite' );
-		notice.setAttribute( 'aria-atomic', 'true' );
+		element.setAttribute( 'role', isError ? 'alert' : 'status' );
+		element.setAttribute( 'aria-live', isError ? 'assertive' : 'polite' );
+		element.setAttribute( 'aria-atomic', 'true' );
 
-		return notice;
+		return element;
 	}
 
 	function createStagedPreview( selection ) {
@@ -1378,6 +1466,9 @@
 		const groupRef = state.expansion.groupRef;
 		const isGallery = field.family === 'acf_gallery';
 		const selection = state.expansion.selections[ field.findingRef ];
+		const isOpening = Boolean(
+			state.expansion.opening[ field.findingRef ]
+		);
 		const actions = createElement(
 			'div',
 			'dbvc-ve-media-manager__assign-actions'
@@ -1403,11 +1494,11 @@
 					selection.items.length === 1
 						? text(
 								'mediaManagerAssignStagedSingle',
-								'1 image selected. Saving arrives in a later release.'
+								'1 image selected but not saved.'
 						  )
 						: templateText(
 								'mediaManagerAssignStagedPlural',
-								'{count} images selected. Saving arrives in a later release.',
+								'{count} images selected but not saved.',
 								{ count: selection.items.length }
 						  )
 				)
@@ -1425,7 +1516,7 @@
 				field.family,
 				'is-save'
 			);
-			if ( isSaving ) {
+			if ( isSaving || isOpening ) {
 				saveButton.disabled = true;
 				saveButton.setAttribute( 'aria-busy', 'true' );
 			}
@@ -1450,13 +1541,25 @@
 				field.family,
 				'is-clear'
 			);
-			if ( isSaving ) {
+			if ( isSaving || isOpening ) {
 				replaceButton.disabled = true;
 				clearButton.disabled = true;
 			}
 			actions.appendChild( saveButton );
 			actions.appendChild( replaceButton );
 			actions.appendChild( clearButton );
+		} else if ( isOpening ) {
+			const opening = createAssignButton(
+				'assign-media',
+				text( 'mediaManagerAssignOpening', 'Opening Media Library…' ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-assign'
+			);
+			opening.disabled = true;
+			opening.setAttribute( 'aria-busy', 'true' );
+			actions.appendChild( opening );
 		} else {
 			actions.appendChild(
 				createAssignButton(
@@ -1479,6 +1582,182 @@
 		}
 
 		wrap.appendChild( actions );
+		if ( supportsWpMedia() && ! supportsUpload() ) {
+			wrap.appendChild(
+				createElement(
+					'p',
+					'dbvc-ve-media-manager__assign-hint',
+					text(
+						'mediaManagerAssignUploadUnavailable',
+						'Uploading new files is not available for your account. Choose from existing Media Library images.'
+					)
+				)
+			);
+		}
+		if ( notice ) {
+			wrap.appendChild( makeAssignNotice( notice ) );
+		}
+
+		return wrap;
+	}
+
+	// R2-F Slice 3: controls to replace the media on a populated field. The staged
+	// selection, preview, and Save/Clear affordances mirror the assign flow, but the
+	// Save button routes through the expected-current-value replacement endpoint.
+	function createFieldReplaceControls( field ) {
+		if ( field.status !== 'assigned' || ! field.valueRef ) {
+			return null;
+		}
+
+		const notice = state.expansion.notices[ field.findingRef ];
+
+		if ( ! supportsWpMedia() ) {
+			if ( notice ) {
+				const wrap = createElement(
+					'div',
+					'dbvc-ve-media-manager__field-assign'
+				);
+				wrap.appendChild( makeAssignNotice( notice ) );
+				return wrap;
+			}
+			return null;
+		}
+
+		const wrap = createElement(
+			'div',
+			'dbvc-ve-media-manager__field-assign'
+		);
+		const groupRef = state.expansion.groupRef;
+		const isGallery = field.family === 'acf_gallery';
+		const selection = state.expansion.selections[ field.findingRef ];
+		const isOpening = Boolean(
+			state.expansion.opening[ field.findingRef ]
+		);
+		const actions = createElement(
+			'div',
+			'dbvc-ve-media-manager__assign-actions'
+		);
+
+		if (
+			selection &&
+			Array.isArray( selection.items ) &&
+			selection.items.length
+		) {
+			const badge = createElement(
+				'span',
+				'dbvc-ve-media-manager__assign-badge',
+				text( 'mediaManagerReplaceUnsavedBadge', 'Unsaved replacement' )
+			);
+			badge.setAttribute( 'data-dbvc-ve-media-manager-unsaved', 'true' );
+			wrap.appendChild( badge );
+			wrap.appendChild( createStagedPreview( selection ) );
+			wrap.appendChild(
+				createElement(
+					'p',
+					'dbvc-ve-media-manager__assign-note',
+					selection.items.length === 1
+						? text(
+								'mediaManagerReplaceStagedSingle',
+								'1 image selected to replace the current media.'
+						  )
+						: templateText(
+								'mediaManagerReplaceStagedPlural',
+								'{count} images selected to replace the current media.',
+								{ count: selection.items.length }
+						  )
+				)
+			);
+			const isSaving = Boolean(
+				state.expansion.saving[ field.findingRef ]
+			);
+			const saveButton = createAssignButton(
+				'save-replacement',
+				isSaving
+					? text( 'mediaManagerReplaceSaving', 'Replacing…' )
+					: text( 'mediaManagerReplaceSave', 'Save replacement' ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-save'
+			);
+			if ( isSaving || isOpening ) {
+				saveButton.disabled = true;
+				saveButton.setAttribute( 'aria-busy', 'true' );
+			}
+			const chooseButton = createAssignButton(
+				'replace-media',
+				isGallery
+					? text(
+							'mediaManagerReplaceChooseGallery',
+							'Choose different images'
+					  )
+					: text(
+							'mediaManagerReplaceChooseImage',
+							'Choose different image'
+					  ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-assign'
+			);
+			const clearButton = createAssignButton(
+				'clear-selection',
+				text( 'mediaManagerAssignClear', 'Clear selection' ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-clear'
+			);
+			if ( isSaving || isOpening ) {
+				chooseButton.disabled = true;
+				clearButton.disabled = true;
+			}
+			actions.appendChild( saveButton );
+			actions.appendChild( chooseButton );
+			actions.appendChild( clearButton );
+		} else if ( isOpening ) {
+			const opening = createAssignButton(
+				'replace-media',
+				text( 'mediaManagerAssignOpening', 'Opening Media Library…' ),
+				field.findingRef,
+				groupRef,
+				field.family,
+				'is-assign'
+			);
+			opening.disabled = true;
+			opening.setAttribute( 'aria-busy', 'true' );
+			actions.appendChild( opening );
+		} else {
+			actions.appendChild(
+				createAssignButton(
+					'replace-media',
+					isGallery
+						? text(
+								'mediaManagerReplaceGallery',
+								'Replace selection'
+						  )
+						: text( 'mediaManagerReplaceImage', 'Replace image' ),
+					field.findingRef,
+					groupRef,
+					field.family,
+					'is-assign'
+				)
+			);
+		}
+
+		wrap.appendChild( actions );
+		if ( supportsWpMedia() && ! supportsUpload() ) {
+			wrap.appendChild(
+				createElement(
+					'p',
+					'dbvc-ve-media-manager__assign-hint',
+					text(
+						'mediaManagerAssignUploadUnavailable',
+						'Uploading new files is not available for your account. Choose from existing Media Library images.'
+					)
+				)
+			);
+		}
 		if ( notice ) {
 			wrap.appendChild( makeAssignNotice( notice ) );
 		}
@@ -1497,10 +1776,15 @@
 			'dbvc-ve-media-manager__field-label',
 			field.label || text( 'mediaManagerUnknownField', 'Media field' )
 		);
+		const isSaved = Boolean( state.expansion.saved[ field.findingRef ] );
 		const status = createElement(
 			'span',
-			`dbvc-ve-media-manager__field-status is-${ field.status }`,
-			fieldStatusLabel( field.status )
+			`dbvc-ve-media-manager__field-status is-${
+				isSaved ? 'saved' : field.status
+			}`,
+			isSaved
+				? text( 'mediaManagerFieldStatusSaved', 'Saved' )
+				: fieldStatusLabel( field.status )
 		);
 		const meta = createElement(
 			'div',
@@ -1531,10 +1815,14 @@
 				)
 			);
 		}
-		item.appendChild( heading );
-		item.appendChild( meta );
+		const content = createElement(
+			'div',
+			'dbvc-ve-media-manager__field-content'
+		);
+		content.appendChild( heading );
+		content.appendChild( meta );
 		if ( field.message ) {
-			item.appendChild(
+			content.appendChild(
 				createElement(
 					'p',
 					'dbvc-ve-media-manager__field-message',
@@ -1545,10 +1833,76 @@
 
 		const assignControls = createFieldAssignControls( field );
 		if ( assignControls ) {
-			item.appendChild( assignControls );
+			content.appendChild( assignControls );
 		}
 
+		const replaceControls = createFieldReplaceControls( field );
+		if ( replaceControls ) {
+			content.appendChild( replaceControls );
+		}
+
+		item.appendChild( createFieldThumbnail( field ) );
+		item.appendChild( content );
+
 		return item;
+	}
+
+	// R2-F Slice 2: left-aligned square thumbnail. Prefers the staged selection,
+	// then the populated preview, then an accent placeholder for empty fields.
+	function createFieldThumbnail( field ) {
+		const thumb = createElement(
+			'div',
+			'dbvc-ve-media-manager__field-thumb'
+		);
+		const selection = state.expansion.selections[ field.findingRef ];
+		const staged =
+			selection &&
+			Array.isArray( selection.items ) &&
+			selection.items.length
+				? selection.items[ 0 ]
+				: null;
+		const preview =
+			field.preview && typeof field.preview === 'object'
+				? field.preview
+				: null;
+		let url = '';
+		let alt = '';
+		let count = 0;
+		if ( staged ) {
+			url = staged.thumbnail || staged.url || '';
+			alt = staged.alt || staged.title || '';
+			count = selection.items.length;
+		} else if ( preview ) {
+			url = preview.url || '';
+			alt = preview.alt || '';
+			count = Number( preview.count ) || 0;
+		}
+
+		if ( url ) {
+			const image = document.createElement( 'img' );
+			image.src = url;
+			image.alt = alt;
+			image.setAttribute( 'loading', 'lazy' );
+			image.setAttribute( 'decoding', 'async' );
+			thumb.appendChild( image );
+			thumb.classList.add( 'has-media' );
+			if ( field.family === 'acf_gallery' && count > 1 ) {
+				thumb.appendChild(
+					createElement(
+						'span',
+						'dbvc-ve-media-manager__field-thumb-count',
+						templateText( 'mediaManagerThumbCount', '+{count}', {
+							count: count - 1,
+						} )
+					)
+				);
+			}
+		} else {
+			thumb.classList.add( 'is-placeholder' );
+			thumb.setAttribute( 'aria-hidden', 'true' );
+		}
+
+		return thumb;
 	}
 
 	function expansionSummary( detail ) {
@@ -1690,11 +2044,7 @@
 			value.entity && typeof value.entity === 'object'
 				? value.entity
 				: {};
-		const groupRef =
-			typeof value.groupRef === 'string' &&
-			/^vemg_[a-f0-9]{20}$/.test( value.groupRef )
-				? value.groupRef
-				: '';
+		const groupRef = isValidRowRef( value.groupRef ) ? value.groupRef : '';
 		const row = createElement( 'tr', 'dbvc-ve-media-manager__table-row' );
 		if ( value.resolved ) {
 			row.classList.add( 'is-resolved' );
@@ -1720,8 +2070,12 @@
 		);
 		const missing = createElement(
 			'strong',
-			'dbvc-ve-media-manager__missing-count',
-			String( nonNegativeInteger( value.missingCount ) )
+			`dbvc-ve-media-manager__missing-count${
+				value.resolved ? ' is-resolved' : ''
+			}`,
+			value.resolved
+				? text( 'mediaManagerRowResolved', 'Resolved' )
+				: String( nonNegativeInteger( value.missingCount ) )
 		);
 		const openUrl =
 			value.availableActions && value.availableActions.openFrontend
@@ -1731,7 +2085,7 @@
 			groupRef && value.availableActions && value.availableActions.expand
 		);
 		const expanded = Boolean(
-			canExpand && state.expansion.groupRef === groupRef
+			canExpand && state.expansion.itemKey === groupRef
 		);
 
 		if ( groupRef ) {
@@ -1886,6 +2240,19 @@
 			};
 		}
 
+		if ( indexMode() ) {
+			return {
+				title: text(
+					'mediaManagerIndexEmptyTitle',
+					'No missing media in the site index'
+				),
+				description: text(
+					'mediaManagerIndexEmptyDescription',
+					'The durable media index found no accessible entities with supported empty media fields.'
+				),
+			};
+		}
+
 		return {
 			title: text(
 				'mediaManagerNoFindingsTitle',
@@ -1914,10 +2281,16 @@
 			state.scan && typeof state.scan.state === 'string'
 				? state.scan.state
 				: '';
-		const visible = Boolean(
-			state.scan &&
-				[ 'scanning', 'complete', 'failed' ].includes( scanState )
-		);
+		// In index mode the results table is shown once the first index page has
+		// loaded (there is no scan lifecycle to gate on).
+		const visible = indexMode()
+			? state.hasLoaded
+			: Boolean(
+					state.scan &&
+						[ 'scanning', 'complete', 'failed' ].includes(
+							scanState
+						)
+			  );
 
 		section.hidden = ! visible;
 		state.root.dataset.hasResults = visible ? 'true' : 'false';
@@ -1986,14 +2359,22 @@
 				? state.scan.summary
 				: {};
 		if ( summary ) {
-			summary.textContent = templateText(
-				'mediaManagerSummaryCopy',
-				'{entities} entities with findings · {findings} supported empty fields in the current scan',
-				{
-					entities: Number( scanSummary.entitiesWithFindings || 0 ),
-					findings: Number( scanSummary.totalFindings || 0 ),
-				}
-			);
+			summary.textContent = indexMode()
+				? templateText(
+						'mediaManagerIndexSummaryCopy',
+						'{entities} entities with missing media from the site index',
+						{ entities: state.items.length }
+				  )
+				: templateText(
+						'mediaManagerSummaryCopy',
+						'{entities} entities with findings · {findings} supported empty fields in the current scan',
+						{
+							entities: Number(
+								scanSummary.entitiesWithFindings || 0
+							),
+							findings: Number( scanSummary.totalFindings || 0 ),
+						}
+				  );
 		}
 
 		if ( resultError ) {
@@ -2032,7 +2413,7 @@
 			body.replaceChildren();
 			state.items.forEach( function ( item ) {
 				body.appendChild( createResultRow( item ) );
-				if ( state.expansion.groupRef === item.groupRef ) {
+				if ( state.expansion.itemKey === item.groupRef ) {
 					body.appendChild( createExpandedRow( item ) );
 				}
 			} );
@@ -2257,11 +2638,7 @@
 			value.availableActions && typeof value.availableActions === 'object'
 				? value.availableActions
 				: {};
-		const groupRef =
-			typeof value.groupRef === 'string' &&
-			/^vemg_[a-f0-9]{20}$/.test( value.groupRef )
-				? value.groupRef
-				: '';
+		const groupRef = isValidRowRef( value.groupRef ) ? value.groupRef : '';
 
 		if ( ! groupRef ) {
 			return null;
@@ -2308,11 +2685,13 @@
 			'changed',
 			'resolved_or_changed',
 			'unavailable',
+			'assigned',
 		];
 		const descriptorStatuses = [
 			'not_hydrated',
 			'blocked_stale',
 			'unavailable',
+			'assigned',
 		];
 		const findingRef =
 			typeof value.findingRef === 'string' &&
@@ -2330,6 +2709,16 @@
 			return null;
 		}
 
+		// R2-F Slice 3: the opaque expected-current-value fingerprint for a populated
+		// field. Only accepted for 'assigned' fields the server marked replaceable.
+		const valueRef =
+			value.status === 'assigned' &&
+			typeof value.valueRef === 'string' &&
+			/^vemv_[a-f0-9]{24}$/.test( value.valueRef ) &&
+			Boolean( value.availableActions && value.availableActions.replace )
+				? value.valueRef
+				: '';
+
 		return {
 			findingRef,
 			label: typeof value.label === 'string' ? value.label : '',
@@ -2345,17 +2734,44 @@
 				? value.descriptorStatus
 				: 'unavailable',
 			message: typeof value.message === 'string' ? value.message : '',
+			preview: normalizeFieldPreview( value.preview ),
+			valueRef,
 			availableActions: {
 				refreshScan: Boolean(
 					value.availableActions && value.availableActions.refreshScan
 				),
 				hydrateDescriptor: false,
 				assignMedia: false,
+				replace: valueRef !== '',
 			},
 		};
 	}
 
-	function normalizeExpandedRow( payload, expectedGroupRef ) {
+	// R2-F: a sanitized preview for a populated field — http(s) thumbnail URL,
+	// alt text, and (for galleries) a count. Empty/absent previews normalize null.
+	function normalizeFieldPreview( preview ) {
+		const value = preview && typeof preview === 'object' ? preview : {};
+		const url =
+			typeof value.url === 'string' && /^https?:\/\//i.test( value.url )
+				? value.url
+				: '';
+		const count =
+			Number.isInteger( Number( value.count ) ) &&
+			Number( value.count ) > 0
+				? Number( value.count )
+				: 0;
+		if ( ! url && count === 0 ) {
+			return null;
+		}
+
+		return {
+			url,
+			alt: typeof value.alt === 'string' ? value.alt : '',
+			count,
+		};
+	}
+
+	function normalizeExpandedRow( payload, expectedGroupRef, workingScan ) {
 		const value = payload && typeof payload === 'object' ? payload : {};
 		const scan =
 			value.scan && typeof value.scan === 'object' ? value.scan : {};
@@ -2370,7 +2786,10 @@
 			'resolved_or_changed',
 			'unavailable',
 		];
-		const currentScan = state.scan || {};
+		// The scan identity the row must belong to: the per-expansion detached snapshot
+		// in index mode, else the shared scan snapshot.
+		const currentScan =
+			workingScan || state.expansion.scan || state.scan || {};
 
 		if (
 			row.groupRef !== expectedGroupRef ||
@@ -2452,9 +2871,77 @@
 		return merged;
 	}
 
+	function commitIndexPayload( requestId, payload, options ) {
+		if ( requestId !== state.requestSequence ) {
+			return null;
+		}
+
+		if (
+			! payload ||
+			payload.source !== 'index' ||
+			! Array.isArray( payload.items )
+		) {
+			return commitError(
+				requestId,
+				{
+					code: 'media_index_response_invalid',
+					message: text(
+						'mediaManagerStateInvalidResponse',
+						'The Media Manager returned an invalid scan response.'
+					),
+					status: 0,
+					retryable: false,
+				},
+				options
+			);
+		}
+
+		state.hasLoaded = true;
+		state.requestStatus = 'success';
+		state.pendingRequest = '';
+		state.error = null;
+		state.source = 'index';
+		state.scan = null;
+
+		if ( payload.query && typeof payload.query === 'object' ) {
+			state.query = normalizeQuery(
+				Object.assign( {}, payload.query, { cursor: '' } )
+			);
+		}
+
+		const pagination =
+			payload.pagination && typeof payload.pagination === 'object'
+				? payload.pagination
+				: {};
+		const offset = Number( pagination.offset || 0 );
+		const limit = Number( pagination.limit || 0 );
+		const hasMore = Boolean( pagination.hasMore );
+
+		state.items =
+			options && options.appendResults
+				? mergeResultItems( state.items, payload.items )
+				: payload.items.map( normalizeListItem ).filter( Boolean );
+		state.pagination = {
+			hasMore,
+			nextCursor: '',
+			nextOffset: hasMore ? offset + limit : 0,
+		};
+		state.results.status = 'success';
+		state.results.error = null;
+
+		renderState( true );
+		emitStateChanged();
+
+		return publicState();
+	}
+
 	function commitPayload( requestId, payload, options ) {
 		if ( requestId !== state.requestSequence ) {
 			return null;
+		}
+
+		if ( options && options.indexRequest ) {
+			return commitIndexPayload( requestId, payload, options );
 		}
 
 		const scan =
@@ -2489,6 +2976,9 @@
 		state.requestStatus = 'success';
 		state.pendingRequest = '';
 		state.error = null;
+		// A scan response returns the Manager to scan mode (e.g. after "Start new scan"
+		// from the index view).
+		state.source = 'scan';
 		state.scan = JSON.parse( JSON.stringify( scan ) );
 
 		if ( payload.query && typeof payload.query === 'object' ) {
@@ -2574,14 +3064,20 @@
 	function resetExpansion() {
 		state.expansionSequence++;
 		state.assignSequence++;
+		disposeActiveFrame();
 		state.expansion = {
+			itemKey: '',
 			groupRef: '',
+			scan: null,
 			status: 'idle',
 			row: null,
 			error: null,
 			selections: {},
 			notices: {},
 			saving: {},
+			saved: {},
+			opening: {},
+			activeFrame: null,
 		};
 	}
 
@@ -2652,17 +3148,19 @@
 	// never rebuilds the whole results table and can restore field-level focus.
 	function refreshExpansionPanel( focusFindingRef ) {
 		const root = state.root;
-		const groupRef = state.expansion.groupRef;
-		if ( ! root || ! groupRef ) {
+		// The expanded panel DOM is keyed by the list-row ref (itemKey), which differs
+		// from the working vemg_ group in index mode.
+		const itemKey = state.expansion.itemKey;
+		if ( ! root || ! itemKey ) {
 			renderState( false );
 			return;
 		}
 
 		const existing = root.querySelector(
-			`[data-dbvc-ve-media-manager-expanded-group="${ groupRef }"]`
+			`[data-dbvc-ve-media-manager-expanded-group="${ itemKey }"]`
 		);
 		const item = state.items.find( function ( candidate ) {
-			return candidate.groupRef === groupRef;
+			return candidate.groupRef === itemKey;
 		} );
 		if ( ! existing || ! item ) {
 			renderState( false );
@@ -2682,11 +3180,63 @@
 		}
 	}
 
-	function setAssignNotice( findingRef, message ) {
+	// Replace only the collapsed row for one group (used by save reconciliation so
+	// a single-field save does not rebuild the entire results table).
+	function patchGroupRow( groupRef ) {
+		const root = state.root;
+		if ( ! root ) {
+			return;
+		}
+		const item = state.items.find( function ( candidate ) {
+			return candidate.groupRef === groupRef;
+		} );
+		const existing = root.querySelector(
+			`[data-dbvc-ve-media-manager-group="${ groupRef }"]`
+		);
+		if ( item && existing ) {
+			existing.replaceWith( createResultRow( item ) );
+		}
+	}
+
+	function patchScanSummary() {
+		const root = state.root;
+		if ( ! root ) {
+			return;
+		}
+		const summary = root.querySelector(
+			'[data-dbvc-ve-media-manager-summary]'
+		);
+		if ( ! summary ) {
+			return;
+		}
+		if ( indexMode() ) {
+			summary.textContent = templateText(
+				'mediaManagerIndexSummaryCopy',
+				'{entities} entities with missing media from the site index',
+				{ entities: state.items.length }
+			);
+			return;
+		}
+		const scanSummary =
+			state.scan && state.scan.summary ? state.scan.summary : {};
+		summary.textContent = templateText(
+			'mediaManagerSummaryCopy',
+			'{entities} entities with findings · {findings} supported empty fields in the current scan',
+			{
+				entities: Number( scanSummary.entitiesWithFindings || 0 ),
+				findings: Number( scanSummary.totalFindings || 0 ),
+			}
+		);
+	}
+
+	function setAssignNotice( findingRef, message, kind ) {
 		if ( ! findingRef ) {
 			return;
 		}
-		state.expansion.notices[ findingRef ] = message;
+		state.expansion.notices[ findingRef ] = {
+			message: String( message || '' ),
+			kind: kind === 'error' ? 'error' : 'refresh',
+		};
 		refreshExpansionPanel( findingRef );
 	}
 
@@ -2696,7 +3246,7 @@
 		if (
 			! supportsWpMedia() ||
 			state.expansion.groupRef !== groupRef ||
-			! state.scan
+			! activeScan()
 		) {
 			if ( ! supportsWpMedia() ) {
 				announceStatus(
@@ -2715,13 +3265,15 @@
 		}
 
 		delete state.expansion.notices[ findingRef ];
+		state.expansion.opening[ findingRef ] = true;
+		refreshExpansionPanel( findingRef );
 		const requestId = ++state.assignSequence;
-		const scan = Object.assign( {}, state.scan );
+		const scan = Object.assign( {}, activeScan() );
 		const client = api();
 		announceStatus(
 			text(
 				'mediaManagerAssignPreparing',
-				'Preparing a fresh descriptor for this field…'
+				'Opening the Media Library for this field…'
 			)
 		);
 
@@ -2757,6 +3309,7 @@
 				) {
 					return;
 				}
+				delete state.expansion.opening[ findingRef ];
 				const message =
 					error && error.message
 						? error.message
@@ -2764,12 +3317,13 @@
 								'mediaManagerAssignError',
 								'The media descriptor could not be prepared.'
 						  );
-				setAssignNotice( findingRef, message );
+				setAssignNotice( findingRef, message, 'error' );
 				announceStatus( message );
 			} );
 	}
 
 	function handleDescriptorPayload( payload, groupRef, findingRef, family ) {
+		delete state.expansion.opening[ findingRef ];
 		const finding =
 			payload && typeof payload.finding === 'object'
 				? payload.finding
@@ -2811,10 +3365,76 @@
 		announceStatus( message );
 	}
 
+	// R2-F Slice 3: open the Media Library to stage a replacement for a populated
+	// field. Unlike the assign flow there is no descriptor pre-call; the dedicated
+	// replacement endpoint revalidates the owner and the expected-current-value
+	// fingerprint at save time, so the client only needs the field family here.
+	function beginReplaceMedia( groupRef, findingRef ) {
+		if (
+			! supportsWpMedia() ||
+			state.expansion.groupRef !== groupRef ||
+			! activeScan()
+		) {
+			if ( ! supportsWpMedia() ) {
+				announceStatus(
+					text(
+						'mediaManagerAssignUnsupported',
+						'Media selection is unavailable in this browser session.'
+					)
+				);
+			}
+			return;
+		}
+
+		const field = findExpandedField( findingRef );
+		if ( ! field || field.status !== 'assigned' || ! field.valueRef ) {
+			return;
+		}
+
+		delete state.expansion.notices[ findingRef ];
+		const handle = {
+			input: field.family === 'acf_gallery' ? 'gallery' : 'image',
+			family: field.family,
+		};
+		announceStatus(
+			text(
+				'mediaManagerReplacePreparing',
+				'Opening the Media Library to replace this field…'
+			)
+		);
+		openAssignFrame( handle, field, groupRef );
+	}
+
+	// R2-E3: tear down any wp.media frame from a prior open before creating a new one
+	// (guarded for the mock/Backbone variants), so repeated remediation keeps at most
+	// one live frame and its listeners instead of accumulating them.
+	function disposeActiveFrame() {
+		const frame = state.expansion.activeFrame;
+		if ( ! frame ) {
+			return;
+		}
+		state.expansion.activeFrame = null;
+		try {
+			if ( typeof frame.detach === 'function' ) {
+				frame.detach();
+			}
+			if ( typeof frame.remove === 'function' ) {
+				frame.remove();
+			} else if ( typeof frame.dispose === 'function' ) {
+				frame.dispose();
+			}
+		} catch ( error ) {
+			// A frame that fails to tear down must not break the panel lifecycle.
+		}
+	}
+
 	function openAssignFrame( handle, field, groupRef ) {
 		if ( ! supportsWpMedia() ) {
 			return;
 		}
+
+		// Never leak the previous frame when opening another.
+		disposeActiveFrame();
 
 		const isGallery = handle.input === 'gallery';
 		const frame = window.wp.media( {
@@ -2869,6 +3489,7 @@
 			stageSelection( handle, field.findingRef, groupRef, items );
 		} );
 
+		state.expansion.activeFrame = frame;
 		frame.open();
 	}
 
@@ -2882,14 +3503,12 @@
 		}
 
 		const field = findExpandedField( findingRef );
-		if ( ! field || field.status !== 'missing' ) {
+		if ( ! isStageableField( field ) ) {
 			return;
 		}
 
 		delete state.expansion.notices[ findingRef ];
 		state.expansion.selections[ findingRef ] = {
-			descriptorToken: handle.token,
-			sessionId: handle.sessionId,
 			family: field.family,
 			input: handle.input,
 			items,
@@ -2928,7 +3547,7 @@
 	// endpoint. The server enforces the expected-empty precondition; the client
 	// never writes and reconciles from the returned reread without a table reload.
 	function saveAssignment( groupRef, findingRef ) {
-		if ( state.expansion.groupRef !== groupRef || ! state.scan ) {
+		if ( state.expansion.groupRef !== groupRef || ! activeScan() ) {
 			return;
 		}
 
@@ -2967,7 +3586,7 @@
 			)
 		);
 
-		const scan = Object.assign( {}, state.scan );
+		const scan = Object.assign( {}, activeScan() );
 		const client = api();
 
 		let promise;
@@ -3005,12 +3624,169 @@
 								'mediaManagerAssignSaveError',
 								'The media assignment could not be saved.'
 						  );
-				setAssignNotice( findingRef, message );
+				// A rejected attachment/cardinality is a validation error (alert);
+				// a stale/changed field is a refresh prompt (polite status).
+				const kind =
+					error && error.code === 'media_assignment_value_invalid'
+						? 'error'
+						: 'refresh';
+				setAssignNotice( findingRef, message, kind );
 				announceStatus( message );
 			} );
 	}
 
-	function reconcileAfterSave( payload, groupRef, findingRef ) {
+	// R2-F Slice 3: save the staged replacement through the dedicated, revalidated
+	// endpoint. The server enforces the expected-current-value precondition using the
+	// opaque value fingerprint; the client never writes and reconciles from the reread.
+	function saveReplacement( groupRef, findingRef ) {
+		if ( state.expansion.groupRef !== groupRef || ! activeScan() ) {
+			return;
+		}
+
+		const selection = state.expansion.selections[ findingRef ];
+		const field = findExpandedField( findingRef );
+		if (
+			! selection ||
+			! field ||
+			field.status !== 'assigned' ||
+			! field.valueRef ||
+			state.expansion.saving[ findingRef ]
+		) {
+			return;
+		}
+
+		const value =
+			selection.input === 'gallery'
+				? {
+						attachmentIds: selection.items.map( function ( item ) {
+							return Number( item.id ) || 0;
+						} ),
+				  }
+				: {
+						attachmentId:
+							Number(
+								selection.items[ 0 ] && selection.items[ 0 ].id
+							) || 0,
+				  };
+
+		state.expansion.saving[ findingRef ] = true;
+		delete state.expansion.notices[ findingRef ];
+		refreshExpansionPanel( findingRef );
+		announceStatus(
+			text(
+				'mediaManagerReplaceSavingAnnouncement',
+				'Saving media replacement…'
+			)
+		);
+
+		const scan = Object.assign( {}, activeScan() );
+		const client = api();
+		const expectedValueRef = field.valueRef;
+
+		let promise;
+		try {
+			promise =
+				client && typeof client.replace === 'function'
+					? client.replace(
+							scan,
+							groupRef,
+							findingRef,
+							expectedValueRef,
+							value
+					  )
+					: missingApiPromise();
+		} catch ( error ) {
+			promise = Promise.reject( error );
+		}
+
+		Promise.resolve( promise )
+			.then( function ( payload ) {
+				if (
+					state.expansion.groupRef !== groupRef ||
+					! state.expansion.saving[ findingRef ]
+				) {
+					return;
+				}
+				reconcileAfterSave( payload, groupRef, findingRef, 'replace' );
+			} )
+			.catch( function ( error ) {
+				if (
+					state.expansion.groupRef !== groupRef ||
+					! state.expansion.saving[ findingRef ]
+				) {
+					return;
+				}
+				delete state.expansion.saving[ findingRef ];
+				const message =
+					error && error.message
+						? error.message
+						: text(
+								'mediaManagerReplaceSaveError',
+								'The media replacement could not be saved.'
+						  );
+				// A rejected attachment/cardinality is a validation error (alert);
+				// a stale/changed field is a refresh prompt (polite status).
+				const kind =
+					error && error.code === 'media_assignment_value_invalid'
+						? 'error'
+						: 'refresh';
+				setAssignNotice( findingRef, message, kind );
+				announceStatus( message );
+			} );
+	}
+
+	// R2-G Slice 1: derive a client-side preview from the staged selection the user
+	// just saved (thumbnail/alt/count), so the field thumbnail can show the picked
+	// media immediately. Returns null when there is no usable selection.
+	function savedSelectionPreview( selection ) {
+		if (
+			! selection ||
+			! Array.isArray( selection.items ) ||
+			! selection.items.length
+		) {
+			return null;
+		}
+		const first = selection.items[ 0 ] || {};
+		const url = safeMediaUrl( first.thumbnail || first.url || '' );
+		if ( ! url ) {
+			return null;
+		}
+
+		return {
+			url,
+			alt: first.alt || first.title || '',
+			count: selection.items.length,
+		};
+	}
+
+	// R2-G Slice 1: keep the server reread preview as the source of truth, but fill an
+	// otherwise-empty saved field with the picked media so the thumbnail never reverts
+	// to the placeholder after a successful save (no reload, no list/scan request).
+	function applySavedPreviewFallback( row, findingRef, savedPreview ) {
+		if ( ! savedPreview || ! row || ! Array.isArray( row.fields ) ) {
+			return;
+		}
+		const field = row.fields.find( function ( entry ) {
+			return entry && entry.findingRef === findingRef;
+		} );
+		if ( ! field ) {
+			return;
+		}
+		const hasServerPreview =
+			field.preview &&
+			typeof field.preview === 'object' &&
+			typeof field.preview.url === 'string' &&
+			field.preview.url !== '';
+		if ( ! hasServerPreview ) {
+			field.preview = {
+				url: savedPreview.url,
+				alt: savedPreview.alt,
+				count: savedPreview.count,
+			};
+		}
+	}
+
+	function reconcileAfterSave( payload, groupRef, findingRef, mode ) {
 		if (
 			state.expansion.groupRef !== groupRef ||
 			! state.expansion.saving[ findingRef ]
@@ -3018,9 +3794,18 @@
 			return;
 		}
 
+		// R2-G Slice 1: capture the just-picked media before clearing the staged
+		// selection so the thumbnail can reflect the save immediately, even if the
+		// server reread preview comes back without a usable URL.
+		const savedPreview = savedSelectionPreview(
+			state.expansion.selections[ findingRef ]
+		);
+
 		delete state.expansion.saving[ findingRef ];
 		delete state.expansion.selections[ findingRef ];
 		delete state.expansion.notices[ findingRef ];
+		delete state.expansion.opening[ findingRef ];
+		state.expansion.saved[ findingRef ] = true;
 
 		const savedField = findExpandedField( findingRef );
 		const savedLabel = savedField ? savedField.label || '' : '';
@@ -3033,20 +3818,33 @@
 			groupRef
 		);
 
+		// The list row is keyed by the item ref (vemx_ in index mode, vemg_ in scan
+		// mode) — not by the working vemg_ group the mutation used.
+		const itemKey = state.expansion.itemKey;
 		if ( row ) {
 			state.expansion.row = row;
+			applySavedPreviewFallback( row, findingRef, savedPreview );
 			const newMissing = Number( row.counts.missing ) || 0;
-			reconcileGroupItem( groupRef, row, oldMissing, newMissing );
+			reconcileGroupItem( itemKey, row, oldMissing, newMissing );
 		}
 
-		// Re-render from updated local state only. No list/scan request is issued.
-		renderState( false );
+		// Patch only the affected row, its expanded panel, and the summary from
+		// updated local state. No full-table rebuild and no list/scan request.
+		patchGroupRow( itemKey );
+		refreshExpansionPanel( null );
+		patchScanSummary();
 		announceStatus(
-			templateText(
-				'mediaManagerAssignSavedAnnouncement',
-				'Media assigned for {label}. This field is no longer empty.',
-				{ label: savedLabel }
-			)
+			mode === 'replace'
+				? templateText(
+						'mediaManagerReplaceSavedAnnouncement',
+						'Media replaced for {label}. This field now points to the new selection.',
+						{ label: savedLabel }
+				  )
+				: templateText(
+						'mediaManagerAssignSavedAnnouncement',
+						'Media assigned for {label}. This field is no longer empty.',
+						{ label: savedLabel }
+				  )
 		);
 		emitStateChanged();
 	}
@@ -3094,30 +3892,39 @@
 		return counts;
 	}
 
+	function isUsableScanIdentity( scan ) {
+		return Boolean(
+			scan &&
+				typeof scan === 'object' &&
+				typeof scan.scanRef === 'string' &&
+				scan.scanRef &&
+				typeof scan.generation === 'string' &&
+				scan.generation &&
+				Number( scan.revision || 0 ) >= 1
+		);
+	}
+
 	function expandGroup( groupRef ) {
-		const normalizedGroupRef =
-			typeof groupRef === 'string' &&
-			/^vemg_[a-f0-9]{20}$/.test( groupRef )
-				? groupRef
-				: '';
+		const normalizedRef = isValidRowRef( groupRef ) ? groupRef : '';
 		const item = state.items.find( function ( candidate ) {
-			return candidate.groupRef === normalizedGroupRef;
+			return candidate.groupRef === normalizedRef;
 		} );
+		const useIndex = indexMode() && isIndexEntityRef( normalizedRef );
 
 		if (
-			! normalizedGroupRef ||
+			! normalizedRef ||
 			! item ||
 			! item.availableActions.expand ||
-			! state.scan
+			( ! useIndex && ! state.scan )
 		) {
 			return Promise.resolve( publicState() );
 		}
-		if ( state.expansion.groupRef === normalizedGroupRef ) {
+		if ( state.expansion.itemKey === normalizedRef ) {
 			return Promise.resolve( collapseGroup() );
 		}
 
 		const client = api();
-		const scan = Object.assign( {}, state.scan );
+		const scan = state.scan ? Object.assign( {}, state.scan ) : null;
 		const label =
 			item.entity && item.entity.label
 				? item.entity.label
@@ -3125,14 +3932,23 @@
 		const requestId = state.expansionSequence + 1;
 		state.expansionSequence = requestId;
 		state.assignSequence++;
+		// Switching to another group tears down the prior group's media frame.
+		disposeActiveFrame();
 		state.expansion = {
-			groupRef: normalizedGroupRef,
+			itemKey: normalizedRef,
+			// In scan mode the working group is the list ref itself; in index mode the
+			// working vemg_ group + scan identity arrive with the expand response.
+			groupRef: useIndex ? '' : normalizedRef,
+			scan: null,
 			status: 'loading',
 			row: null,
 			error: null,
 			selections: {},
 			notices: {},
 			saving: {},
+			saved: {},
+			opening: {},
+			activeFrame: null,
 		};
 		renderState( false );
 		announceStatus(
@@ -3146,10 +3962,17 @@
 
 		let promise;
 		try {
-			promise =
-				client && typeof client.group === 'function'
-					? client.group( scan, normalizedGroupRef )
-					: missingApiPromise();
+			if ( useIndex ) {
+				promise =
+					client && typeof client.indexExpand === 'function'
+						? client.indexExpand( normalizedRef )
+						: missingApiPromise();
+			} else {
+				promise =
+					client && typeof client.group === 'function'
+						? client.group( scan, normalizedRef )
+						: missingApiPromise();
+			}
 		} catch ( error ) {
 			promise = Promise.reject( error );
 		}
@@ -3158,12 +3981,47 @@
 			.then( function ( payload ) {
 				if (
 					requestId !== state.expansionSequence ||
-					state.expansion.groupRef !== normalizedGroupRef
+					state.expansion.itemKey !== normalizedRef
 				) {
 					return null;
 				}
 
-				const row = normalizeExpandedRow( payload, normalizedGroupRef );
+				let expectedGroupRef = normalizedRef;
+				let workingScan = state.scan;
+				if ( useIndex ) {
+					const indexScan =
+						payload && payload.scan ? payload.scan : null;
+					const rowGroupRef =
+						payload && payload.row && payload.row.groupRef;
+					if (
+						! isUsableScanIdentity( indexScan ) ||
+						typeof rowGroupRef !== 'string' ||
+						! /^vemg_[a-f0-9]{20}$/.test( rowGroupRef )
+					) {
+						const invalid = new Error(
+							text(
+								'mediaManagerExpansionInvalid',
+								'The Media Manager returned an invalid field response.'
+							)
+						);
+						invalid.code = 'media_index_expand_invalid';
+						invalid.status = 0;
+						invalid.retryable = false;
+						throw invalid;
+					}
+					// Adopt the detached snapshot as the working identity so the existing
+					// descriptor/assign/replace flow drives mutation unchanged.
+					workingScan = JSON.parse( JSON.stringify( indexScan ) );
+					expectedGroupRef = rowGroupRef;
+					state.expansion.scan = workingScan;
+					state.expansion.groupRef = expectedGroupRef;
+				}
+
+				const row = normalizeExpandedRow(
+					payload,
+					expectedGroupRef,
+					workingScan
+				);
 				if ( ! row ) {
 					const error = new Error(
 						text(
@@ -3198,7 +4056,7 @@
 			.catch( function ( error ) {
 				if (
 					requestId !== state.expansionSequence ||
-					state.expansion.groupRef !== normalizedGroupRef
+					state.expansion.itemKey !== normalizedRef
 				) {
 					return null;
 				}
@@ -3284,6 +4142,37 @@
 		);
 	}
 
+	// R2-H Slice 2c: load a page of the durable Media Index. Same filter/sort surface
+	// as the scan list; paging is offset-based.
+	function loadIndex( query, options ) {
+		const client = api();
+		const appendResults = Boolean( options && options.append );
+		const offset =
+			options && Number.isInteger( options.offset ) && options.offset > 0
+				? options.offset
+				: 0;
+		const requestedQuery = normalizeQuery(
+			Object.assign( {}, state.query, query || {}, { cursor: '' } )
+		);
+		state.query = Object.assign( {}, requestedQuery );
+
+		return runRequest(
+			'index',
+			function () {
+				return client && typeof client.index === 'function'
+					? client.index(
+							Object.assign( {}, requestedQuery, { offset } )
+					  )
+					: missingApiPromise();
+			},
+			{
+				appendResults,
+				resultRequest: true,
+				indexRequest: true,
+			}
+		);
+	}
+
 	function runScanAction( action ) {
 		const client = api();
 		const scan = state.scan ? Object.assign( {}, state.scan ) : null;
@@ -3318,11 +4207,22 @@
 	}
 
 	function loadMore() {
-		if (
-			state.requestStatus === 'loading' ||
-			! state.pagination.hasMore ||
-			! state.pagination.nextCursor
-		) {
+		if ( state.requestStatus === 'loading' || ! state.pagination.hasMore ) {
+			return Promise.resolve( publicState() );
+		}
+
+		if ( indexMode() ) {
+			if ( ! state.pagination.nextOffset ) {
+				return Promise.resolve( publicState() );
+			}
+
+			return loadIndex( state.query, {
+				append: true,
+				offset: state.pagination.nextOffset,
+			} );
+		}
+
+		if ( ! state.pagination.nextCursor ) {
 			return Promise.resolve( publicState() );
 		}
 
@@ -3366,7 +4266,9 @@
 		window.clearTimeout( state.searchTimer );
 		state.searchTimer = 0;
 
-		return loadList( queryFromControls() );
+		return indexMode()
+			? loadIndex( queryFromControls() )
+			: loadList( queryFromControls() );
 	}
 
 	function scheduleSearch() {
@@ -3407,8 +4309,28 @@
 			new CustomEvent( 'dbvc:visual-editor:media-manager:opened' )
 		);
 		if ( ! state.hasLoaded && state.requestStatus !== 'loading' ) {
-			loadLatest();
+			openInitialSource();
 		}
+	}
+
+	// R2-H Slice 2c: open from the durable index when the host enables it, falling
+	// back to the ephemeral scan if the index request fails or has nothing to show
+	// (e.g. an index not yet built on this site). When disabled, the scan is the source.
+	function openInitialSource() {
+		if ( ! indexListEnabled() ) {
+			return loadLatest();
+		}
+
+		return loadIndex().then( function ( result ) {
+			const failed = state.requestStatus !== 'success';
+			const emptyIndex =
+				! failed && indexMode() && state.items.length === 0;
+			if ( failed || emptyIndex ) {
+				return loadLatest();
+			}
+
+			return result;
+		} );
 	}
 
 	function close( options ) {
@@ -3424,6 +4346,7 @@
 		root.hidden = true;
 		root.setAttribute( 'aria-hidden', 'true' );
 		setTriggerExpanded( false );
+		disposeActiveFrame();
 		window.clearTimeout( state.searchTimer );
 		state.searchTimer = 0;
 
@@ -3484,7 +4407,11 @@
 		if ( actionName === 'close' ) {
 			close( { restoreFocus: true } );
 		} else if ( actionName === 'refresh' ) {
-			loadLatest();
+			if ( indexMode() ) {
+				loadIndex();
+			} else {
+				loadLatest();
+			}
 		} else if ( actionName === 'start' ) {
 			startScan();
 		} else if ( actionName === 'next' ) {
@@ -3496,13 +4423,20 @@
 		} else if ( actionName === 'retry-results' ) {
 			if ( state.results.status === 'append_error' ) {
 				loadMore();
+			} else if ( indexMode() ) {
+				loadIndex( state.query );
 			} else {
 				loadList( state.query );
 			}
 		} else if ( actionName === 'clear-filters' ) {
-			loadList(
-				Object.assign( {}, DEFAULT_QUERY, { limit: state.query.limit } )
-			);
+			const cleared = Object.assign( {}, DEFAULT_QUERY, {
+				limit: state.query.limit,
+			} );
+			if ( indexMode() ) {
+				loadIndex( cleared );
+			} else {
+				loadList( cleared );
+			}
 		} else if ( actionName === 'toggle-row' ) {
 			expandGroup( action.getAttribute( 'data-group-ref' ) || '' );
 		} else if ( actionName === 'assign-media' ) {
@@ -3511,12 +4445,22 @@
 				action.getAttribute( 'data-finding-ref' ) || '',
 				action.getAttribute( 'data-family' ) || ''
 			);
+		} else if ( actionName === 'replace-media' ) {
+			beginReplaceMedia(
+				action.getAttribute( 'data-group-ref' ) || '',
+				action.getAttribute( 'data-finding-ref' ) || ''
+			);
 		} else if ( actionName === 'clear-selection' ) {
 			clearStagedSelection(
 				action.getAttribute( 'data-finding-ref' ) || ''
 			);
 		} else if ( actionName === 'save-assignment' ) {
 			saveAssignment(
+				action.getAttribute( 'data-group-ref' ) || '',
+				action.getAttribute( 'data-finding-ref' ) || ''
+			);
+		} else if ( actionName === 'save-replacement' ) {
+			saveReplacement(
 				action.getAttribute( 'data-group-ref' ) || '',
 				action.getAttribute( 'data-finding-ref' ) || ''
 			);
@@ -3609,6 +4553,7 @@
 			isOpen() {
 				return Boolean( state.root && ! state.root.hidden );
 			},
+			index: loadIndex,
 			list: loadList,
 			loadMore,
 			loadLatest,

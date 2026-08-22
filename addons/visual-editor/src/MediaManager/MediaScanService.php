@@ -35,7 +35,13 @@ final class MediaScanService
      * @param string                           $generation
      * @return array<string, mixed>|WP_Error
      */
-    public function scan(array $candidates, $generation)
+    /**
+     * @param array<int, array<string, mixed>> $candidates
+     * @param string                           $generation
+     * @param bool                             $include_assigned When true, also resolve populated (assigned) fields with previews (R2-F detail-panel inventory).
+     * @return array<string, mixed>|WP_Error
+     */
+    public function scan(array $candidates, $generation, $include_assigned = false)
     {
         $generation = $this->normalizeGeneration($generation);
         if ($generation === '') {
@@ -56,7 +62,7 @@ final class MediaScanService
 
         foreach ($candidates as $candidate) {
             try {
-                $scanned = $this->scanCandidate(is_array($candidate) ? $candidate : [], $generation);
+                $scanned = $this->scanCandidate(is_array($candidate) ? $candidate : [], $generation, (bool) $include_assigned);
             } catch (\Throwable $throwable) {
                 unset($throwable);
 
@@ -94,9 +100,10 @@ final class MediaScanService
     /**
      * @param array<string, mixed> $candidate
      * @param string               $generation
+     * @param bool                 $include_assigned
      * @return array<string, mixed>|WP_Error
      */
-    private function scanCandidate(array $candidate, $generation)
+    private function scanCandidate(array $candidate, $generation, $include_assigned = false)
     {
         $family = sanitize_key((string) ($candidate['family'] ?? ''));
         $subtype = sanitize_key((string) ($candidate['subtype'] ?? ''));
@@ -136,6 +143,7 @@ final class MediaScanService
         $counts = $this->emptyCandidateResult(false)['counts'];
         $counts['unsupported_field_observations'] = $this->unsupportedCount($catalog['counts'] ?? []);
         $findings = [];
+        $assigned = [];
 
         if ($entity instanceof WP_Post && ! empty($catalog['owner']['id'])) {
             $assessment_featured = ! empty($catalog['owner']['id'])
@@ -149,6 +157,9 @@ final class MediaScanService
                     $findings[$finding['finding_ref']] = $finding;
                 } elseif ($classification === MediaAssignmentValueClassifier::INVALID_NONEMPTY_VALUE) {
                     $counts['invalid_nonempty_values']++;
+                } elseif ($include_assigned && $classification === MediaAssignmentValueClassifier::ASSIGNED_VALUE) {
+                    $item = $this->featuredImageAssigned($entity, $generation, $raw_featured);
+                    $assigned[$item['finding_ref']] = $item;
                 }
             }
         }
@@ -172,11 +183,14 @@ final class MediaScanService
                 $findings[$finding['finding_ref']] = $finding;
             } elseif ($classification === MediaAssignmentValueClassifier::INVALID_NONEMPTY_VALUE) {
                 $counts['invalid_nonempty_values']++;
+            } elseif ($include_assigned && $classification === MediaAssignmentValueClassifier::ASSIGNED_VALUE) {
+                $item = $this->acfAssigned($family, $subtype, $entity_id, $field, $generation, $raw_value);
+                $assigned[$item['finding_ref']] = $item;
             }
         }
 
         $counts['findings'] = count($findings);
-        if (empty($findings)) {
+        if (empty($findings) && empty($assigned)) {
             return [
                 'group' => [],
                 'counts' => $counts,
@@ -200,6 +214,7 @@ final class MediaScanService
                 'status' => 'scan_current',
                 'scanned_at' => time(),
                 'findings' => $findings,
+                'assigned' => $assigned,
             ],
             'counts' => $counts,
         ];
@@ -307,6 +322,160 @@ final class MediaScanService
             'empty_fingerprint' => $this->valueFingerprint($raw_value, $generation),
             'status' => 'missing',
         ];
+    }
+
+    /**
+     * R2-F: a populated featured image, reported in the detail-panel inventory
+     * with a sanitized thumbnail preview (never a raw target).
+     *
+     * @param WP_Post $post
+     * @param string  $generation
+     * @param mixed   $raw_value
+     * @return array<string, mixed>
+     */
+    private function featuredImageAssigned(WP_Post $post, $generation, $raw_value)
+    {
+        return [
+            'finding_ref' => $this->findingReference('post', (string) $post->post_type, $post->ID, 'featured_image', $generation),
+            'family' => 'featured_image',
+            'field' => [
+                'field_key' => '',
+                'field_name' => '_thumbnail_id',
+                'field_label' => __('Featured image', 'dbvc'),
+                'field_type' => 'featured_image',
+                'selector' => '',
+                'path_kind' => 'native',
+                'path' => [],
+                'group_path' => [],
+            ],
+            'context_label' => __('Native WordPress field', 'dbvc'),
+            'status' => 'assigned',
+            'preview' => $this->buildPreview('featured_image', $raw_value),
+            'value_fingerprint' => $this->valueFingerprint($raw_value, $generation),
+        ];
+    }
+
+    /**
+     * R2-F: a populated ACF image/gallery field, reported in the detail-panel
+     * inventory with a sanitized thumbnail preview (never a raw target).
+     *
+     * @param string               $family
+     * @param string               $subtype
+     * @param int                  $entity_id
+     * @param array<string, mixed> $field
+     * @param string               $generation
+     * @param mixed                $raw_value
+     * @return array<string, mixed>
+     */
+    private function acfAssigned($family, $subtype, $entity_id, array $field, $generation, $raw_value)
+    {
+        $field_type = sanitize_key((string) ($field['field_type'] ?? ''));
+        $path_parts = [];
+        foreach (($field['path'] ?? []) as $segment) {
+            if (is_array($segment)) {
+                $path_parts[] = (string) (($segment['key'] ?? '') !== '' ? $segment['key'] : ($segment['name'] ?? ''));
+            }
+        }
+        $identity = implode('/', array_filter($path_parts));
+        $context_parts = [];
+        if (! empty($field['group_label'])) {
+            $context_parts[] = sanitize_text_field((string) $field['group_label']);
+        }
+        foreach (array_slice(is_array($field['path'] ?? null) ? $field['path'] : [], 0, -1) as $segment) {
+            if (is_array($segment) && ! empty($segment['label'])) {
+                $context_parts[] = sanitize_text_field((string) $segment['label']);
+            }
+        }
+
+        return [
+            'finding_ref' => $this->findingReference($family, $subtype, $entity_id, $field_type . '|' . $identity, $generation),
+            'family' => $field_type === 'gallery' ? 'acf_gallery' : 'acf_image',
+            'field' => [
+                'field_key' => (string) ($field['field_key'] ?? ''),
+                'field_name' => (string) ($field['field_name'] ?? ''),
+                'field_label' => sanitize_text_field((string) ($field['field_label'] ?? '')),
+                'field_type' => $field_type,
+                'selector' => (string) ($field['selector'] ?? ''),
+                'path_kind' => sanitize_key((string) ($field['path_kind'] ?? '')),
+                'path' => isset($field['path']) && is_array($field['path']) ? $field['path'] : [],
+                'group_path' => isset($field['group_path']) && is_array($field['group_path']) ? $field['group_path'] : [],
+            ],
+            'context_label' => implode(' / ', array_values(array_unique(array_filter($context_parts)))),
+            'status' => 'assigned',
+            'preview' => $this->buildPreview($field_type, $raw_value),
+            'value_fingerprint' => $this->valueFingerprint($raw_value, $generation),
+        ];
+    }
+
+    /**
+     * @param string $field_type
+     * @param mixed  $raw_value
+     * @return array<string, mixed>
+     */
+    private function buildPreview($field_type, $raw_value)
+    {
+        $ids = $this->previewAttachmentIds($field_type, $raw_value);
+        if (empty($ids)) {
+            return [];
+        }
+
+        $first = absint($ids[0]);
+        $url = wp_get_attachment_image_url($first, 'thumbnail');
+
+        return [
+            'url' => is_string($url) ? esc_url_raw($url) : '',
+            'alt' => sanitize_text_field((string) get_post_meta($first, '_wp_attachment_image_alt', true)),
+            'count' => count($ids),
+        ];
+    }
+
+    /**
+     * @param string $field_type
+     * @param mixed  $value
+     * @return array<int, int>
+     */
+    private function previewAttachmentIds($field_type, $value)
+    {
+        if (sanitize_key((string) $field_type) === 'gallery') {
+            $items = is_array($value) ? $value : [$value];
+            $ids = [];
+            foreach ($items as $item) {
+                $id = $this->extractPreviewId($item);
+                if ($id > 0 && ! in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+
+            return $ids;
+        }
+
+        $id = $this->extractPreviewId($value);
+
+        return $id > 0 ? [$id] : [];
+    }
+
+    /**
+     * @param mixed $value
+     * @return int
+     */
+    private function extractPreviewId($value)
+    {
+        if (is_numeric($value)) {
+            return absint($value);
+        }
+        if (is_array($value)) {
+            if (isset($value['ID'])) {
+                return absint($value['ID']);
+            }
+            if (isset($value['id'])) {
+                return absint($value['id']);
+            }
+        }
+        if (is_object($value) && isset($value->ID)) {
+            return absint($value->ID);
+        }
+
+        return 0;
     }
 
     /**

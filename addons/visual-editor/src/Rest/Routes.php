@@ -17,6 +17,10 @@ use Dbvc\VisualEditor\Rest\Controllers\CompositeSaveController;
 use Dbvc\VisualEditor\Rest\Controllers\DescriptorController;
 use Dbvc\VisualEditor\MediaManager\MediaAssignmentService;
 use Dbvc\VisualEditor\MediaManager\MediaFindingDescriptorBridge;
+use Dbvc\VisualEditor\MediaManager\MediaIndexReadModel;
+use Dbvc\VisualEditor\MediaManager\MediaIndexStore;
+use Dbvc\VisualEditor\MediaManager\EligibilityPolicy;
+use Dbvc\VisualEditor\Rest\Controllers\MediaIndexController;
 use Dbvc\VisualEditor\Rest\Controllers\MediaManagerController;
 use Dbvc\VisualEditor\Rest\Controllers\ObjectSearchController;
 use Dbvc\VisualEditor\Rest\Controllers\ReferenceSearchController;
@@ -88,6 +92,21 @@ final class Routes
      */
     private $media_assignment_service;
 
+    /**
+     * @var MediaIndexReadModel
+     */
+    private $media_index_read_model;
+
+    /**
+     * @var MediaIndexStore
+     */
+    private $media_index_store;
+
+    /**
+     * @var EligibilityPolicy
+     */
+    private $media_policy;
+
     public function __construct(
         EditableRegistry $registry,
         ResolverRegistry $resolvers,
@@ -100,7 +119,10 @@ final class Routes
         MediaScanCoordinator $media_scans,
         MediaScanReadModel $media_read_model,
         MediaFindingDescriptorBridge $media_descriptor_bridge,
-        MediaAssignmentService $media_assignment_service
+        MediaAssignmentService $media_assignment_service,
+        MediaIndexReadModel $media_index_read_model,
+        MediaIndexStore $media_index_store,
+        EligibilityPolicy $media_policy
     ) {
         $this->registry = $registry;
         $this->resolvers = $resolvers;
@@ -114,6 +136,9 @@ final class Routes
         $this->media_read_model = $media_read_model;
         $this->media_descriptor_bridge = $media_descriptor_bridge;
         $this->media_assignment_service = $media_assignment_service;
+        $this->media_index_read_model = $media_index_read_model;
+        $this->media_index_store = $media_index_store;
+        $this->media_policy = $media_policy;
     }
 
     /**
@@ -146,6 +171,7 @@ final class Routes
         (new ObjectSearchController($this->edit_mode, $this->capabilities))->register();
         (new SharedGlobalFieldsController($this->registry, $this->edit_mode, $this->capabilities, $payloads))->register();
         (new MediaManagerController($this->media_scans, $this->media_read_model, $this->edit_mode, $this->capabilities, $this->media_descriptor_bridge, $this->media_assignment_service))->register();
+        (new MediaIndexController($this->capabilities, $this->media_index_read_model, $this->media_index_store, $this->media_scans, $this->media_read_model, $this->media_policy))->register();
         (new CollectionSeedController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
         (new CompositeSaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();
         (new SaveController($this->registry, $this->mutations, $this->edit_mode, $this->capabilities, $contracts))->register();

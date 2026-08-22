@@ -18,6 +18,13 @@ use Dbvc\VisualEditor\MediaManager\EligibilityPolicy;
 use Dbvc\VisualEditor\MediaManager\MediaAssignmentService;
 use Dbvc\VisualEditor\MediaManager\MediaFindingDescriptorBridge;
 use Dbvc\VisualEditor\MediaManager\MediaAssignmentValueClassifier;
+use Dbvc\VisualEditor\MediaManager\MediaIndexBuilder;
+use Dbvc\VisualEditor\MediaManager\MediaIndexInvalidator;
+use Dbvc\VisualEditor\MediaManager\MediaIndexProjector;
+use Dbvc\VisualEditor\MediaManager\MediaIndexReadModel;
+use Dbvc\VisualEditor\MediaManager\MediaIndexReconciler;
+use Dbvc\VisualEditor\MediaManager\MediaIndexScheduler;
+use Dbvc\VisualEditor\MediaManager\MediaIndexStore;
 use Dbvc\VisualEditor\MediaManager\MediaScanCoordinator;
 use Dbvc\VisualEditor\MediaManager\MediaScanReadModel;
 use Dbvc\VisualEditor\MediaManager\MediaScanService;
@@ -80,6 +87,21 @@ final class Addon
      */
     private $profiler;
 
+    /**
+     * @var MediaIndexProjector
+     */
+    private $media_index_projector;
+
+    /**
+     * @var MediaIndexInvalidator
+     */
+    private $media_index_invalidator;
+
+    /**
+     * @var MediaIndexScheduler
+     */
+    private $media_index_scheduler;
+
     public function __construct($bootstrap_file)
     {
         $this->bootstrap_file = (string) $bootstrap_file;
@@ -122,6 +144,32 @@ final class Addon
             $mutations,
             $media_read_model
         );
+        // R2-H Phase 1: the durable Media Index is populated from a completed scan and
+        // kept fresh incrementally on entity changes. Read wiring (the live source flip)
+        // is a later slice; this only builds/maintains the store.
+        $media_index_store = new MediaIndexStore();
+        $this->media_index_projector = new MediaIndexProjector($media_index_store);
+        $this->media_index_invalidator = new MediaIndexInvalidator(
+            $media_index_store,
+            $media_scanner,
+            $media_policy,
+            $this->media_index_projector
+        );
+        // R2-H Slice 4b: the cross-user first-run build enumerates the STRUCTURAL
+        // eligible set (no per-object capability — the index is site-wide and
+        // capability is re-checked at read time) via its own structural pipeline.
+        $structural_policy = new EligibilityPolicy($capabilities, true);
+        $media_index_builder = new MediaIndexBuilder(
+            $media_index_store,
+            new ScanCandidateProvider($structural_policy),
+            new MediaScanService(new AcfMediaFieldCatalog($structural_policy), new MediaAssignmentValueClassifier()),
+            $this->media_index_projector
+        );
+        $this->media_index_scheduler = new MediaIndexScheduler(
+            new MediaIndexReconciler($media_index_store, $this->media_index_invalidator),
+            $media_index_builder
+        );
+        $media_index_read_model = new MediaIndexReadModel($media_index_store, $media_policy);
 
         $this->toggle_node = new ToggleNode($this->edit_mode, $capabilities);
         $this->asset_loader = new AssetLoader($this->bootstrap_file, $this->edit_mode, $this->registry, $page_context);
@@ -138,7 +186,10 @@ final class Addon
             $media_coordinator,
             $media_read_model,
             $media_descriptor_bridge,
-            $media_assignment_service
+            $media_assignment_service,
+            $media_index_read_model,
+            $media_index_store,
+            $media_policy
         );
     }
 
@@ -153,6 +204,18 @@ final class Addon
         $this->hook_registrar->register();
         $this->routes->register();
         $this->journal->register();
+        // R2-H Phase 1: keep the durable Media Index built from completed scans when the
+        // Media Manager is enabled. The store's table is created lazily on first write.
+        if (class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_media_manager_enabled')
+            && \DBVC_Visual_Editor_Addon::is_media_manager_enabled()) {
+            // Slice 4b: the structural builder is the authoritative population, so a
+            // manual scan refreshes the entities it touched into the current generation
+            // (onScanRefreshed) instead of rotating a fresh, capability-limited index.
+            add_action('dbvc_visual_editor_media_scan_completed', [$this->media_index_projector, 'onScanRefreshed']);
+            $this->media_index_invalidator->register();
+            $this->media_index_scheduler->register();
+        }
         add_action('wp_footer', [$this->registry, 'persistRequestSession'], 19);
         add_action('shutdown', [$this->registry, 'persistRequestSession'], 20);
         add_action('shutdown', [$this->profiler, 'flush'], 999);

@@ -19,6 +19,7 @@ use WP_Error;
 final class MediaAssignmentService
 {
     public const VIEW_MODEL_VERSION = 1;
+    private const MAX_GALLERY_ATTACHMENTS = 200;
 
     /**
      * @var MediaFindingDescriptorBridge
@@ -57,18 +58,80 @@ final class MediaAssignmentService
     {
         // Expected-empty precondition: revalidate immediately before the write.
         $resolution = $this->bridge->resolveFinding($scan_ref, $group_ref, $finding_ref, $request);
+
+        return $this->applyMutation(
+            $resolution,
+            $scan_ref,
+            $group_ref,
+            $finding_ref,
+            $request,
+            $value,
+            'saved',
+            __('Media assigned. This field is no longer empty.', 'dbvc')
+        );
+    }
+
+    /**
+     * R2-F Slice 3 controlled overwrite of a populated media field.
+     *
+     * Reuses the R2-F replace revalidation (owner eligibility, still-populated,
+     * and the expected-current-value fingerprint) as the precondition immediately
+     * before writing, then reuses the same mutation and reconciliation pipeline as
+     * {@see assign()}. The resolver overwrites the field reference only; attachments
+     * are never deleted.
+     *
+     * @param string               $scan_ref
+     * @param string               $group_ref
+     * @param string               $finding_ref
+     * @param string               $expected_value_ref
+     * @param array<string, mixed> $request  Expected keys: generation, expectedRevision.
+     * @param mixed                $value    Expected keys: attachmentId (image) or attachmentIds (gallery).
+     * @return array<string, mixed>|WP_Error
+     */
+    public function replace($scan_ref, $group_ref, $finding_ref, $expected_value_ref, array $request, $value)
+    {
+        // Expected-current-value precondition: revalidate immediately before the write.
+        $resolution = $this->bridge->resolveReplaceable($scan_ref, $group_ref, $finding_ref, $expected_value_ref, $request);
+
+        return $this->applyMutation(
+            $resolution,
+            $scan_ref,
+            $group_ref,
+            $finding_ref,
+            $request,
+            $value,
+            'replaced',
+            __('Media replaced. This field now points to the new selection.', 'dbvc')
+        );
+    }
+
+    /**
+     * Shared mutate-and-reconcile pipeline for assignment and replacement.
+     *
+     * @param array<string, mixed>|WP_Error $resolution
+     * @param string                        $scan_ref
+     * @param string                        $group_ref
+     * @param string                        $finding_ref
+     * @param array<string, mixed>          $request
+     * @param mixed                         $value
+     * @param string                        $status_label
+     * @param string                        $success_message
+     * @return array<string, mixed>|WP_Error
+     */
+    private function applyMutation($resolution, $scan_ref, $group_ref, $finding_ref, array $request, $value, $status_label, $success_message)
+    {
         if (is_wp_error($resolution)) {
             return $resolution;
         }
 
-        if ($resolution['status'] !== 'writable' || ! ($resolution['descriptor'] instanceof EditableDescriptor)) {
-            // The field changed, was populated, or lost eligibility after the scan. Fail closed.
+        if (($resolution['status'] ?? '') !== 'writable' || ! ($resolution['descriptor'] instanceof EditableDescriptor)) {
+            // The field changed, was populated/emptied, or lost eligibility after the scan. Fail closed.
             return new WP_Error(
                 'media_assignment_stale',
-                sanitize_text_field((string) ($resolution['message'] ?? __('This field can no longer be assigned. Refresh the scan.', 'dbvc'))),
+                sanitize_text_field((string) ($resolution['message'] ?? __('This field can no longer be edited. Refresh the scan.', 'dbvc'))),
                 [
                     'status' => 409,
-                    'findingStatus' => sanitize_key((string) $resolution['status']),
+                    'findingStatus' => sanitize_key((string) ($resolution['status'] ?? '')),
                 ]
             );
         }
@@ -86,7 +149,7 @@ final class MediaAssignmentService
         if (empty($result['ok'])) {
             return new WP_Error(
                 'media_assignment_save_failed',
-                sanitize_text_field((string) ($result['message'] ?? __('The media assignment could not be saved.', 'dbvc'))),
+                sanitize_text_field((string) ($result['message'] ?? __('The media change could not be saved.', 'dbvc'))),
                 ['status' => 400]
             );
         }
@@ -107,10 +170,10 @@ final class MediaAssignmentService
                 'findingRef' => sanitize_key((string) $finding_ref),
                 'groupRef' => sanitize_key((string) $group_ref),
                 'family' => $family,
-                'status' => 'saved',
+                'status' => sanitize_key((string) $status_label),
                 'attachmentCount' => $this->attachmentCount($normalized),
                 'changeSetId' => isset($result['changeSetId']) ? absint($result['changeSetId']) : 0,
-                'message' => __('Media assigned. This field is no longer empty.', 'dbvc'),
+                'message' => sanitize_text_field((string) $success_message),
             ],
             'row' => $row,
             'reconciled' => $row !== null,
@@ -139,6 +202,18 @@ final class MediaAssignmentService
                 return new WP_Error(
                     'media_assignment_value_invalid',
                     __('Select at least one Media Library image for this gallery.', 'dbvc'),
+                    ['status' => 400]
+                );
+            }
+
+            if (count($ids) > self::MAX_GALLERY_ATTACHMENTS) {
+                return new WP_Error(
+                    'media_assignment_value_invalid',
+                    sprintf(
+                        /* translators: %d: maximum number of gallery images */
+                        __('A gallery assignment cannot exceed %d images.', 'dbvc'),
+                        self::MAX_GALLERY_ATTACHMENTS
+                    ),
                     ['status' => 400]
                 );
             }
