@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 355,
-        "source_fingerprint": "sha256:27ec91cf2767980c5d29828b1b947dccdc79b1f23773c3bf44cecd16140af589",
+        "source_file_count": 357,
+        "source_fingerprint": "sha256:2861720c6bf289e2ebda204351b8fc7a1499f43ccc32107c9428e49f9c764df8",
         "live_runtime_verified": false
     },
     "counts": {
@@ -16,13 +16,13 @@
         "cli_namespaces": 9,
         "database_tables": 14,
         "documentation": 398,
-        "extension_points": 146,
-        "hook_listeners": 170,
+        "extension_points": 152,
+        "hook_listeners": 180,
         "rest_routes": 139,
         "scheduled_hooks": 3,
-        "settings": 49,
+        "settings": 51,
         "source_reference_documentation": 13,
-        "tests": 103
+        "tests": 105
     },
     "collections": {
         "admin_handlers": [
@@ -2415,7 +2415,7 @@
                 "name": "dbvc_ve_media_field_index",
                 "source_ref": {
                     "path": "addons/visual-editor/src/MediaManager/MediaIndexStore.php",
-                    "line": 535
+                    "line": 720
                 }
             },
             {
@@ -4367,6 +4367,39 @@
                 }
             },
             {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_build_completed.144d938f",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_visual_editor_media_index_build_completed",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexBuilder.php",
+                    "line": 148
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_exported.90047f02",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_visual_editor_media_index_exported",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
+                    "line": 117
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_imported.fbb45cc9",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_visual_editor_media_index_imported",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
+                    "line": 204
+                }
+            },
+            {
                 "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.7d7f5281",
                 "kind": "extension_point",
                 "scope": "core",
@@ -4375,6 +4408,39 @@
                 "source_ref": {
                     "path": "addons/visual-editor/src/Assets/AssetLoader.php",
                     "line": 154
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_rebuild_skipped.a757fac4",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_visual_editor_media_index_rebuild_skipped",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 191
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_rebuild_started.33810e3e",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_visual_editor_media_index_rebuild_started",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 206
+                }
+            },
+            {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_reconciled.9dba836a",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_visual_editor_media_index_reconciled",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexReconciler.php",
+                    "line": 82
                 }
             },
             {
@@ -4501,6 +4567,50 @@
         ],
         "hook_listeners": [
             {
+                "discovery_id": "hook.listener.acf-delete_field_group.faaf2000",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "acf/delete_field_group",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 65
+                }
+            },
+            {
+                "discovery_id": "hook.listener.acf-trash_field_group.27388bd9",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "acf/trash_field_group",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 66
+                }
+            },
+            {
+                "discovery_id": "hook.listener.acf-untrash_field_group.c6569d07",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "acf/untrash_field_group",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 67
+                }
+            },
+            {
+                "discovery_id": "hook.listener.acf-update_field_group.8dd34ac1",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "acf/update_field_group",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 64
+                }
+            },
+            {
                 "discovery_id": "hook.listener.activated_plugin.c4862bb2",
                 "kind": "listener",
                 "scope": "core",
@@ -4520,6 +4630,17 @@
                 "source_ref": {
                     "path": "includes/hooks.php",
                     "line": 593
+                }
+            },
+            {
+                "discovery_id": "hook.listener.add_option_.99a3e224",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "add_option_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 71
                 }
             },
             {
@@ -5337,14 +5458,36 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.dbvc_visual_editor_media_scan_completed.114d4e72",
+                "discovery_id": "hook.listener.dbvc_visual_editor_media_index_build_completed.83a8d8fa",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "dbvc_visual_editor_media_index_build_completed",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Bootstrap/Addon.php",
+                    "line": 254
+                }
+            },
+            {
+                "discovery_id": "hook.listener.dbvc_visual_editor_media_index_reconciled.f0ccf6d0",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "dbvc_visual_editor_media_index_reconciled",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Bootstrap/Addon.php",
+                    "line": 255
+                }
+            },
+            {
+                "discovery_id": "hook.listener.dbvc_visual_editor_media_scan_completed.ea15f1c5",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "dbvc_visual_editor_media_scan_completed",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 215
+                    "line": 245
                 }
             },
             {
@@ -5400,6 +5543,17 @@
                 "source_ref": {
                     "path": "includes/hooks.php",
                     "line": 590
+                }
+            },
+            {
+                "discovery_id": "hook.listener.delete_option_.1ab9a0ea",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "delete_option_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 72
                 }
             },
             {
@@ -5557,14 +5711,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.plugins_loaded.a7bd7ce5",
+                "discovery_id": "hook.listener.plugins_loaded.e1f7b3db",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "plugins_loaded",
                 "source_ref": {
                     "path": "addons/visual-editor/src/MediaManager/MediaIndexStore.php",
-                    "line": 27
+                    "line": 46
                 }
             },
             {
@@ -6041,25 +6195,25 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.shutdown.b2144f5d",
+                "discovery_id": "hook.listener.shutdown.c5721ce9",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 220
+                    "line": 258
                 }
             },
             {
-                "discovery_id": "hook.listener.shutdown.27a37a7d",
+                "discovery_id": "hook.listener.shutdown.34d6743b",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "shutdown",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 221
+                    "line": 259
                 }
             },
             {
@@ -6170,6 +6324,17 @@
                 "source_ref": {
                     "path": "includes/hooks.php",
                     "line": 592
+                }
+            },
+            {
+                "discovery_id": "hook.listener.update_option_.4e4befd7",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "update_option_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 70
                 }
             },
             {
@@ -6327,14 +6492,25 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.wp_footer.e12c3aa8",
+                "discovery_id": "hook.listener.wp_footer.5f357f24",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_action",
                 "hook": "wp_footer",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Bootstrap/Addon.php",
-                    "line": 219
+                    "line": 257
+                }
+            },
+            {
+                "discovery_id": "hook.listener.wp_loaded.72bfe0b6",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "wp_loaded",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/MediaManager/MediaIndexRebuildController.php",
+                    "line": 78
                 }
             },
             {
@@ -8324,6 +8500,38 @@
                 ]
             },
             {
+                "discovery_id": "setting.dbvc_visual_editor_media_index_generation",
+                "key": "dbvc_visual_editor_media_index_generation",
+                "operations": [
+                    "update_option"
+                ],
+                "scopes": [
+                    "core"
+                ],
+                "source_refs": [
+                    {
+                        "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
+                        "line": 167
+                    }
+                ]
+            },
+            {
+                "discovery_id": "setting.dbvc_visual_editor_media_index_build",
+                "key": "dbvc_visual_editor_media_index_build",
+                "operations": [
+                    "update_option"
+                ],
+                "scopes": [
+                    "core"
+                ],
+                "source_refs": [
+                    {
+                        "path": "addons/visual-editor/src/MediaManager/MediaIndexJsonExporter.php",
+                        "line": 186
+                    }
+                ]
+            },
+            {
                 "discovery_id": "setting.dbvc_sync_path",
                 "key": "dbvc_sync_path",
                 "operations": [
@@ -9874,8 +10082,10 @@
             "tests/phpunit/VisualEditorMediaIndexBuilderTest.php",
             "tests/phpunit/VisualEditorMediaIndexControllerTest.php",
             "tests/phpunit/VisualEditorMediaIndexInvalidatorTest.php",
+            "tests/phpunit/VisualEditorMediaIndexJsonExportTest.php",
             "tests/phpunit/VisualEditorMediaIndexPhase2Test.php",
             "tests/phpunit/VisualEditorMediaIndexQueryTest.php",
+            "tests/phpunit/VisualEditorMediaIndexRebuildTest.php",
             "tests/phpunit/VisualEditorMediaIndexReconcileTest.php",
             "tests/phpunit/VisualEditorMediaIndexStoreTest.php",
             "tests/phpunit/VisualEditorMediaManagerGroupedFieldTest.php",

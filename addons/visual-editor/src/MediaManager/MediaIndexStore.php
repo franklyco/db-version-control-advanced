@@ -3,21 +3,40 @@
 namespace Dbvc\VisualEditor\MediaManager;
 
 /**
- * R2-H Phase 1 (Slice 1) — durable Media Index storage.
+ * R2-H Phase 1 — durable Media Index storage.
  *
  * A per-entity summary of media-field completeness, backing the persistent,
- * cross-user Media Manager index. This is the working store only: it holds and
- * returns rows and never decides authority — eligibility/capability is re-checked
- * at read time for the requesting user by the read model (D-053). Per-field detail
- * remains computed live on expand, so this table stays a compact per-entity
- * summary. No hooks and no read/write wiring into the Media Manager are added by
- * this slice; those arrive in Slice 2+.
+ * cross-user Media Manager index. The store holds rows and never decides authority —
+ * eligibility/capability is re-checked at read time for the requesting user by the
+ * read model (D-053). Per-field detail is computed live on expand.
+ *
+ * Slice 4b-2 splits the notion of "current generation" in two so a topology/exclusion
+ * rebuild can be atomic:
+ *
+ * - {@see currentGeneration()} is the SERVING generation — what
+ *   {@see MediaIndexReadModel} reads. It only changes on a rotate/rebuild swap.
+ * - {@see buildingGeneration()} is the BUILDING generation while a rebuild is in
+ *   progress ({@see hasActiveRebuild()}), empty otherwise. The builder writes into it.
+ * - {@see activeBuildGeneration()} returns whichever of the two writers should target.
+ *
+ * Because a rebuild produces a full second copy of the index in the building
+ * generation before {@see completeRebuild()} atomically swaps the serving pointer,
+ * the unique key spans `(entity_type, entity_id, entity_subtype, index_generation)`
+ * so a per-entity building row can coexist with its serving counterpart mid-rebuild.
  */
 final class MediaIndexStore
 {
-    private const SCHEMA_VERSION = 1;
+    private const SCHEMA_VERSION = 2;
     private const OPTION_SCHEMA_VERSION = 'dbvc_visual_editor_media_index_schema_version';
     private const OPTION_GENERATION = 'dbvc_visual_editor_media_index_generation';
+
+    /**
+     * Slice 4b-2: while a rebuild is in progress this option holds the "building"
+     * generation the builder writes into. Reads continue to serve
+     * {@see currentGeneration()} (the serving pointer) until {@see completeRebuild()}
+     * atomically swaps them. Empty (or absent) when no rebuild is in progress.
+     */
+    private const OPTION_BUILDING_GENERATION = 'dbvc_visual_editor_media_index_building_generation';
 
     /**
      * @return void
@@ -79,6 +98,109 @@ final class MediaIndexStore
     }
 
     /**
+     * True while a topology/exclusion rebuild is in progress. Reads continue to serve
+     * the serving generation ({@see currentGeneration()}); the builder writes into the
+     * building generation ({@see buildingGeneration()}) and {@see completeRebuild()}
+     * atomically swaps them.
+     *
+     * @return bool
+     */
+    public function hasActiveRebuild()
+    {
+        return $this->buildingGeneration() !== '';
+    }
+
+    /**
+     * The building generation if a rebuild is in progress, otherwise an empty string.
+     *
+     * @return string
+     */
+    public function buildingGeneration()
+    {
+        $generation = sanitize_key((string) get_option(self::OPTION_BUILDING_GENERATION, ''));
+
+        return preg_match('/^vmig_[a-f0-9]{20}$/', $generation) === 1 ? $generation : '';
+    }
+
+    /**
+     * The generation writers target: the building generation while a rebuild is in
+     * progress, otherwise the serving generation. The read model always uses
+     * {@see currentGeneration()} (serving) regardless.
+     *
+     * @return string
+     */
+    public function activeBuildGeneration()
+    {
+        $building = $this->buildingGeneration();
+
+        return $building !== '' ? $building : $this->currentGeneration();
+    }
+
+    /**
+     * Begin a rebuild: mint a fresh building generation the builder will write into.
+     * Any orphaned rows from a prior in-progress rebuild are cleared first so partial
+     * generations do not accumulate. Returns the fresh building generation.
+     *
+     * @return string
+     */
+    public function beginRebuild()
+    {
+        $this->maybeUpgrade();
+
+        $previous_building = $this->buildingGeneration();
+        if ($previous_building !== '') {
+            $this->deleteGeneration($previous_building);
+        }
+
+        $generation = 'vmig_' . substr(hash('sha256', uniqid('dbvc_media_rebuild', true) . wp_rand()), 0, 20);
+        update_option(self::OPTION_BUILDING_GENERATION, $generation, false);
+
+        return $generation;
+    }
+
+    /**
+     * Complete a rebuild: atomically swap the serving pointer to the building
+     * generation and prune every other generation. A no-op if no rebuild is in
+     * progress. Returns the new serving generation on success, or an empty string
+     * when there was nothing to complete.
+     *
+     * @return string
+     */
+    public function completeRebuild()
+    {
+        $this->maybeUpgrade();
+
+        $building = $this->buildingGeneration();
+        if ($building === '') {
+            return '';
+        }
+
+        update_option(self::OPTION_GENERATION, $building);
+        delete_option(self::OPTION_BUILDING_GENERATION);
+        $this->pruneOtherGenerations($building);
+
+        return $building;
+    }
+
+    /**
+     * Abandon an in-progress rebuild without swapping: drop the building generation
+     * pointer and delete any rows written into it. Reserved for hard resets — the
+     * normal path is {@see completeRebuild()} at the end of a successful drain.
+     *
+     * @return void
+     */
+    public function abortRebuild()
+    {
+        $building = $this->buildingGeneration();
+        if ($building === '') {
+            return;
+        }
+
+        $this->deleteGeneration($building);
+        delete_option(self::OPTION_BUILDING_GENERATION);
+    }
+
+    /**
      * Insert or update the per-entity index row (keyed by entity identity).
      *
      * @param array<string, mixed> $row
@@ -118,7 +240,11 @@ final class MediaIndexStore
             'is_dirty' => ! empty($row['is_dirty']) ? 1 : 0,
         ];
 
-        $existing_id = $this->entityRowId($entity_type, $entity_id, $entity_subtype);
+        // Slice 4b-2: an entity can carry both a serving-gen row and a building-gen
+        // row during a rebuild, so the "existing row" lookup MUST be generation-scoped.
+        // Otherwise a building-gen upsert would clobber the serving-gen row and reads
+        // would see a half-built index mid-rebuild.
+        $existing_id = $this->entityRowId($entity_type, $entity_id, $entity_subtype, $index_generation);
         if ($existing_id > 0) {
             $updated = $wpdb->update($this->tableName(), $data, ['id' => $existing_id]);
 
@@ -142,12 +268,38 @@ final class MediaIndexStore
 
         $this->maybeUpgrade();
 
+        // Prefer the serving generation. During a rebuild the same entity can carry a
+        // building-gen row too; readers of the "authoritative view" always see the
+        // serving row so a mid-rebuild lookup never returns a partial-build snapshot.
+        $serving = $this->currentGeneration();
+        $sanitized_type = sanitize_key((string) $entity_type);
+        $sanitized_id = absint($entity_id);
+        $sanitized_subtype = sanitize_key((string) $entity_subtype);
+
+        $found = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$this->tableName()} WHERE entity_type = %s AND entity_id = %d AND entity_subtype = %s AND index_generation = %s LIMIT 1",
+                $sanitized_type,
+                $sanitized_id,
+                $sanitized_subtype,
+                $serving
+            ),
+            ARRAY_A
+        );
+
+        if (is_array($found)) {
+            return $this->hydrate($found);
+        }
+
+        // Fallback: no serving row yet (first build in progress, or a legacy generation
+        // still present). Return whatever row does exist for this identity so callers
+        // that need to know "is this entity currently indexed at all?" still work.
         $found = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT * FROM {$this->tableName()} WHERE entity_type = %s AND entity_id = %d AND entity_subtype = %s LIMIT 1",
-                sanitize_key((string) $entity_type),
-                absint($entity_id),
-                sanitize_key((string) $entity_subtype)
+                $sanitized_type,
+                $sanitized_id,
+                $sanitized_subtype
             ),
             ARRAY_A
         );
@@ -173,10 +325,16 @@ final class MediaIndexStore
             return null;
         }
 
+        // Refs are derived per-generation, so a serving-gen ref only matches a
+        // serving-gen row and a building-gen ref only matches a building-gen row —
+        // there is no accidental cross-generation resolution. We still scope this
+        // lookup to the serving generation so a building-gen ref (which no client
+        // should hold anyway) cannot resolve mid-rebuild.
         $found = $wpdb->get_row(
             $wpdb->prepare(
-                "SELECT * FROM {$this->tableName()} WHERE entity_ref = %s LIMIT 1",
-                $entity_ref
+                "SELECT * FROM {$this->tableName()} WHERE entity_ref = %s AND index_generation = %s LIMIT 1",
+                $entity_ref,
+                $this->currentGeneration()
             ),
             ARRAY_A
         );
@@ -469,20 +627,43 @@ final class MediaIndexStore
      * @param string $entity_type
      * @param int    $entity_id
      * @param string $entity_subtype
+     * @param string $index_generation Slice 4b-2: scope by generation so serving-gen
+     *                                  rows and building-gen rows are distinct.
      * @return int
      */
-    private function entityRowId($entity_type, $entity_id, $entity_subtype)
+    private function entityRowId($entity_type, $entity_id, $entity_subtype, $index_generation)
     {
         global $wpdb;
 
         return (int) $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT id FROM {$this->tableName()} WHERE entity_type = %s AND entity_id = %d AND entity_subtype = %s LIMIT 1",
+                "SELECT id FROM {$this->tableName()} WHERE entity_type = %s AND entity_id = %d AND entity_subtype = %s AND index_generation = %s LIMIT 1",
                 sanitize_key((string) $entity_type),
                 absint($entity_id),
-                sanitize_key((string) $entity_subtype)
+                sanitize_key((string) $entity_subtype),
+                sanitize_key((string) $index_generation)
             )
         );
+    }
+
+    /**
+     * Delete every row in a specific generation.
+     *
+     * @param string $generation
+     * @return int Affected rows.
+     */
+    private function deleteGeneration($generation)
+    {
+        global $wpdb;
+
+        $generation = sanitize_key((string) $generation);
+        if ($generation === '') {
+            return 0;
+        }
+
+        $deleted = $wpdb->delete($this->tableName(), ['index_generation' => $generation]);
+
+        return $deleted === false ? 0 : (int) $deleted;
     }
 
     /**
@@ -497,6 +678,10 @@ final class MediaIndexStore
         $charset_collate = $wpdb->get_charset_collate();
         $table = $this->tableName();
 
+        // Slice 4b-2 (schema v2): the unique key includes index_generation so a
+        // building-gen row can coexist with the serving-gen row for the same entity
+        // during an atomic rebuild. Prior schema had a per-entity unique key which
+        // would have caused a partial build to clobber the serving row.
         dbDelta("CREATE TABLE {$table} (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             entity_type varchar(32) NOT NULL DEFAULT '',
@@ -513,7 +698,7 @@ final class MediaIndexStore
             indexed_at datetime NOT NULL,
             is_dirty tinyint(1) NOT NULL DEFAULT 0,
             PRIMARY KEY  (id),
-            UNIQUE KEY entity_identity (entity_type, entity_id, entity_subtype),
+            UNIQUE KEY entity_identity (entity_type, entity_id, entity_subtype, index_generation),
             KEY dirty (is_dirty),
             KEY generation (index_generation),
             KEY missing (missing_count)

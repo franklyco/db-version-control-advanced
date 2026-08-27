@@ -58,14 +58,19 @@ final class MediaIndexBuilder
     }
 
     /**
-     * True when the index has not been fully built for the current generation.
+     * True when the index has not been fully built for the current target generation.
+     *
+     * The target is {@see MediaIndexStore::activeBuildGeneration()} — the building
+     * generation during a rebuild (Slice 4b-2), or the serving generation for the
+     * first-run build. A rebuild's rotation therefore causes needsBuild() to flip
+     * back to true even if the prior serving generation was fully built.
      *
      * @return bool
      */
     public function needsBuild()
     {
         $state = $this->loadState();
-        $generation = $this->store->currentGeneration();
+        $generation = $this->store->activeBuildGeneration();
 
         return ! (($state['status'] ?? '') === 'complete' && ($state['generation'] ?? '') === $generation);
     }
@@ -74,6 +79,12 @@ final class MediaIndexBuilder
      * Advance the build by one bounded chunk. Safe to call repeatedly and idempotent
      * once complete.
      *
+     * During a rebuild (Slice 4b-2) the target is the building generation, so writes
+     * do not clobber the still-serving rows. When the final chunk completes AND a
+     * rebuild is in progress, the store atomically swaps the serving pointer to the
+     * newly-built generation and prunes the old one — reads never observe a
+     * half-built index.
+     *
      * @param int $limit
      * @return array{processed: int, indexed: int, complete: bool, generation: string}
      */
@@ -81,7 +92,8 @@ final class MediaIndexBuilder
     {
         $this->store->maybeUpgrade();
         $limit = max(1, min(50, absint($limit)));
-        $generation = $this->store->currentGeneration();
+        $generation = $this->store->activeBuildGeneration();
+        $rebuild_active = $this->store->hasActiveRebuild();
         $state = $this->loadState();
 
         // Start (or restart for a new generation) a fresh build.
@@ -114,6 +126,27 @@ final class MediaIndexBuilder
         $state['indexed'] = absint($state['indexed'] ?? 0) + $indexed;
         $state['status'] = $complete ? 'complete' : 'building';
         $this->saveState($state);
+
+        // Slice 4b-2 atomic swap: only when a rebuild was active for this build do we
+        // promote the building generation to serving and prune the old one. The
+        // first-run build already writes into the serving generation, so no swap.
+        if ($complete && $rebuild_active) {
+            $this->store->completeRebuild();
+        }
+
+        if ($complete) {
+            /**
+             * Fires once when a build (initial or rebuild) reaches completion. The
+             * derived JSON exporter (Slice 5) subscribes so the sync-folder mirror is
+             * refreshed at each completion boundary rather than per-invalidator.
+             *
+             * @param string $generation     The generation the build wrote into (post-swap
+             *                                this is the serving generation).
+             * @param bool   $rebuild_active True when this completion was the swap end of a
+             *                                topology/exclusion rebuild.
+             */
+            do_action('dbvc_visual_editor_media_index_build_completed', $generation, $rebuild_active);
+        }
 
         return [
             'processed' => count($candidates),

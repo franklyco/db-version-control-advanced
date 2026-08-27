@@ -1364,7 +1364,13 @@
                         "hook.extension_point.dbvc_visual_editor_excluded_post_types.79c056fe",
                         "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.8b9a05a1",
                         "hook.extension_point.dbvc_visual_editor_invalidate_cache.f9b6eb43",
+                        "hook.extension_point.dbvc_visual_editor_media_index_build_completed.144d938f",
+                        "hook.extension_point.dbvc_visual_editor_media_index_exported.90047f02",
+                        "hook.extension_point.dbvc_visual_editor_media_index_imported.fbb45cc9",
                         "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.7d7f5281",
+                        "hook.extension_point.dbvc_visual_editor_media_index_rebuild_skipped.a757fac4",
+                        "hook.extension_point.dbvc_visual_editor_media_index_rebuild_started.33810e3e",
+                        "hook.extension_point.dbvc_visual_editor_media_index_reconciled.9dba836a",
                         "hook.extension_point.dbvc_visual_editor_media_scan_completed.c0bdae8f",
                         "hook.extension_point.dbvc_visual_editor_option_capability.199f6f76",
                         "hook.extension_point.dbvc_visual_editor_performance_profile_enabled.a035fee4",
@@ -1382,7 +1388,9 @@
                     "type": "php",
                     "identifier": "Additional current-checkout settings surfaces",
                     "discovery_ids": [
-                        "setting.dbvc_addon_visual_editor_enabled"
+                        "setting.dbvc_addon_visual_editor_enabled",
+                        "setting.dbvc_visual_editor_media_index_build",
+                        "setting.dbvc_visual_editor_media_index_generation"
                     ]
                 },
                 {

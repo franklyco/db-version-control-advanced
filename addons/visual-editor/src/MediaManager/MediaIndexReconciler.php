@@ -71,6 +71,17 @@ final class MediaIndexReconciler
             $processed++;
         }
 
+        if ($processed > 0) {
+            /**
+             * Fires when the background reconcile actually processed dirty rows.
+             * The Slice 5 JSON exporter subscribes so the sync-folder mirror is
+             * refreshed after a sweep that changed the serving generation.
+             *
+             * @param int $processed Number of rows the reconcile touched.
+             */
+            do_action('dbvc_visual_editor_media_index_reconciled', $processed);
+        }
+
         return $processed;
     }
 }

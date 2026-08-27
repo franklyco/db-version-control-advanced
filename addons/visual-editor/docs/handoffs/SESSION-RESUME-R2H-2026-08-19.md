@@ -4,16 +4,30 @@ _Last updated: 2026-08-19. Read this first, then skim the linked docs below befo
 
 ## Exact point we're at
 
-R2-H Persistent Media Index, **Phase 1**. Done and validated: **Slices 1, 2, 3, 4, 2b, 2c, 4b-1**.
-The Media Manager now opens instantly from a durable, cross-user, per-user-eligibility-filtered
-index that self-builds on first run and self-maintains. **Next up: Slice 4b-2**, then **Slice 5**.
+R2-H Persistent Media Index, **Phase 1 COMPLETE**. Done and validated: **Slices 1, 2, 3, 4, 2b,
+2c, 4b-1, 4b-2, 5**. The Media Manager now opens instantly from a durable, cross-user,
+per-user-eligibility-filtered index that self-builds on first run, self-maintains, atomically
+self-rebuilds on any topology/exclusion change, and is **backup-portable** via a derived JSON
+mirror in the DBVC sync folder that auto-hydrates a restored empty table.
 
-- **Slice 4b-2 (next)** — topology/exclusion **rebuild triggers**: ACF field-group save/delete,
-  post-type/taxonomy (de)registration, and Media-Manager exclusion-option changes rotate the
-  index generation and rebuild — with an **atomic build-into-a-fresh-generation-then-swap** so
-  reads never see a half-built index mid-rebuild.
-- **Slice 5** — derived **JSON export/import** of the index into the DBVC `wp-content/` sync folder
-  for backup portability (table is source of truth; JSON is a derived, importable mirror).
+- **Slice 5 (done)** — derived JSON mirror. `MediaIndexJsonExporter::exportAll()` writes an
+  envelope `{schema:1, exported_at, source, generation, count, entities}` to
+  `{sync}/visual-editor/media-index.json` at every completion boundary (build completion,
+  rebuild swap, reconcile sweeps that touched rows), honoring `dbvc_is_safe_file_path` and
+  `wp_mkdir_p`; only the SERVING generation is exported. `importIfEmpty()` on bootstrap
+  hydrates an empty table from the mirror — adopts the mirror's generation (so `entity_ref`
+  HMACs round-trip) and marks the builder state complete for that generation so the drain does
+  not re-fire post-restore. Never overwrites a populated table. New observable actions:
+  `dbvc_visual_editor_media_index_exported($file_path, $count)` and `_imported($file_path, $imported)`.
+  Verified by `VisualEditorMediaIndexJsonExportTest` (5 tests/41 assertions).
+- **Slice 4b-2 (done)** — atomic topology/exclusion rebuilds. `MediaIndexStore` schema v2 splits
+  serving/building generations (unique key extended by `index_generation`) so a rebuild writes
+  into a fresh building generation while reads keep serving the OLD generation; on the builder's
+  final chunk `completeRebuild()` atomically swaps the serving pointer and prunes every other
+  generation; `MediaIndexInvalidator` dual-writes into both generations so mid-rebuild saves
+  survive the swap; `MediaIndexRebuildController` wires ACF field-group + exclusion-option +
+  `wp_loaded` topology-fingerprint triggers. Non-clobbering. Verified by
+  `VisualEditorMediaIndexRebuildTest` (4 tests/40 assertions).
 
 ## HARD process constraints (do not violate)
 
@@ -31,19 +45,19 @@ index that self-builds on first run and self-maintains. **Next up: Slice 4b-2**,
 Run from the plugin root
 (`/Users/rhettbutler/Documents/LocalWP/dbvc-codexchanges/app/public/wp-content/plugins/db-version-control-main`):
 
-- Full PHP suite: `vendor/bin/phpunit` → **790 tests, 6 inherited failures**. A **7th** sometimes appears
-  (`ContentMigrationPhase4ImportExecutorTest`) — it is **order-dependent flaky**, passes in isolation,
-  NOT a regression. The 6 inherited are all outside the Media Manager/Index namespace: BricksAddonPhase11,
-  BricksAddonPhase7, CapabilityLandscape, ContentCollectorV2Phase29, ContentCollectorV2Phase32,
-  ContentMigrationPhase37W0Settings (CapabilityCli also flaps in/out). Confirm a failure isn't yours by
-  running it with `--filter` in isolation.
-- Media Manager/Index subset: `vendor/bin/phpunit --filter "VisualEditorMedia"` → **106 tests OK**.
+- Full PHP suite: `vendor/bin/phpunit` → **799 tests, 6 inherited failures**. A **7th** sometimes appears
+  (`ContentMigrationPhase4ImportExecutorTest` or `ContentCollectorV2Phase8Test::test_phase_eight_preflight_and_execute_routes_bridge_package_import`) —
+  both are **order-dependent flaky**, pass in isolation, and are NOT regressions. The 6 inherited are all outside the Media Manager/Index namespace:
+  BricksAddonPhase11, BricksAddonPhase7, CapabilityLandscape, ContentCollectorV2Phase29,
+  ContentCollectorV2Phase32, ContentMigrationPhase37W0Settings (CapabilityCli also flaps in/out).
+  Confirm a failure isn't yours by running it with `--filter` in isolation.
+- Media Manager/Index subset: `vendor/bin/phpunit --filter "VisualEditorMedia"` → **115 tests OK**.
 - jsdom: `node --test tests/visual-editor-media-manager-state.test.cjs` → **38 pass**.
 - JS lint: `npm run lint:visual-editor-media-manager` (clean; ignore stale-browserslist warnings).
   NOTE: `api-client.js` is NOT in the lint set and has pre-existing `no-undef` on `DBVCVisualEditorBootstrap`
   — leave those alone.
 - Agent docs (required when REST/hook/table/settings surfaces change):
-  `composer agent-docs:refresh` then `composer agent-docs:check` → **54 curated / 423 discovered / 0 unmapped**.
+  `composer agent-docs:refresh` then `composer agent-docs:check` → **54 curated / 431 discovered / 0 unmapped**.
   If it says the README summary is stale: `composer agent-docs:build`, then re-check. New `do_action`/
   `apply_filters` extension points, REST routes, and custom tables must be mapped in
   `docs/agents/manifest.json` (kept alphabetically sorted within each list).
@@ -91,29 +105,44 @@ identity: `state.expansion.scan` + working `vemg_` group; list row stays keyed b
 `state.expansion.itemKey`). Automatic fallback to the ephemeral scan (`/scans/latest`) on index error
 or empty index. `state.source` is `'scan'|'index'`.
 
-## Slice 4b-2 design notes (the key hazard)
+## Slice 4b-2 design notes (implemented — kept for reference)
 
-The first build (Slice 4b-1) fills the CURRENT (empty) generation directly — fine because nothing is
-served yet. A **rebuild** cannot do that: if you `rotateGeneration()` and start refilling, reads
-immediately switch to the new, half-built generation and users see a shrinking list. So 4b-2 needs a
-**serving generation vs building generation** split: build fully into a fresh generation, then atomically
-swap the "current/serving" pointer and prune the old one. Decide where that serving-pointer lives
-(likely a new option distinct from `OPTION_GENERATION`, or invert so `currentGeneration()` returns the
-serving one and the builder tracks a separate `build_generation`). The triggers to hook (see the
-"Invalidation-event catalog (Slice 3)" section of the plan doc): `acf/update_field_group` +
-`acf/delete_field_group` (or the ACF save/trash hooks), post-type/taxonomy registration changes, and
-changes to the Media-Manager exclusion options (`OPTION_EXCLUDED_POST_TYPES`/`OPTION_EXCLUDED_TAXONOMIES`).
-Reuse `MediaIndexBuilder` for the refill; add a `reset()`-to-a-new-generation entry point and the swap.
-Keep it flag-safe and non-clobbering; add a `VisualEditorMediaIndex*Test` proving a rebuild keeps serving
-the old generation until the new one completes, then swaps + prunes.
+Slice 4b-2 shipped the serving-vs-building generation split as designed:
+
+- `MediaIndexStore` schema v2 extends the per-entity unique key to
+  `(entity_type, entity_id, entity_subtype, index_generation)` so a per-entity building row can
+  coexist with its serving counterpart mid-rebuild.
+- `currentGeneration()` is the SERVING generation (unchanged for reads); the new
+  `OPTION_BUILDING_GENERATION` holds the BUILDING generation while a rebuild is in flight, and
+  `activeBuildGeneration()` is the writer-facing helper (building during a rebuild, serving
+  otherwise).
+- `beginRebuild()` mints a fresh building generation (dropping any orphaned rows from a prior
+  in-flight rebuild first); `completeRebuild()` atomically swaps the serving pointer and prunes
+  every other generation.
+- `MediaIndexBuilder` targets `activeBuildGeneration()`; on its final chunk, if a rebuild was in
+  flight, it calls `completeRebuild()` — the swap and prune happen in one step.
+- `MediaIndexInvalidator::reindexEntity` dual-writes into serving AND building during a rebuild
+  so a mid-rebuild save survives the swap; `onAttachmentDeleted` marks both generations dirty.
+- `MediaIndexRebuildController` hooks `acf/update_field_group`, `acf/delete_field_group`,
+  `acf/trash_field_group`, `acf/untrash_field_group`; the two exclusion options
+  (`update_option`/`add_option`/`delete_option` variants); and `wp_loaded` (priority 20) for the
+  topology fingerprint check. Triggers are non-clobbering (no-op while a rebuild is running);
+  `dbvc_visual_editor_media_index_rebuild_started` and `_skipped` `do_action`s fire for
+  observability.
+
+Coverage: `VisualEditorMediaIndexRebuildTest` (4 tests/40 assertions) — mid-drain reads still
+serve the OLD generation; each trigger surface begins a rebuild while a concurrent trigger is a
+no-op; the topology fingerprint primes silently, is stable, drifts on post-type registration →
+rebuild, and returns to idle after the drain; and the invalidator dual-writes into both
+generations so a mid-rebuild save survives the swap.
 
 ## Doc reconciliation checklist (do this after the slice, every time)
 
 Under `docs/dropins/dbvc-visual-editor-brand-controls-guide/`:
 - `releases/R2H-PERSISTENT-MEDIA-INDEX-PHASE-1.md` — the plan; add a dated "Slice … checkpoint".
 - `tracking/IMPLEMENTATION-TRACKER.md` — the single R2-H row.
-- `tracking/EVIDENCE-LOG.md` — next id is **E-081** (E-080 = Slice 4b-1).
-- `tracking/DECISION-LOG.md` — next id is **D-056** (D-055 = Slice 4b-1) if a decision is worth recording.
+- `tracking/EVIDENCE-LOG.md` — next id is **E-083** (E-082 = Slice 5, E-081 = Slice 4b-2, E-080 = Slice 4b-1).
+- `tracking/DECISION-LOG.md` — next id is **D-058** (D-057 = Slice 5, D-056 = Slice 4b-2, D-055 = Slice 4b-1) if a decision is worth recording.
 Plus: `addons/visual-editor/docs/handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md` (canonical; boundary + next-tasks),
 `addons/visual-editor/CHANGELOG.md` (Unreleased, plain-language user-facing entry),
 `addons/visual-editor/docs/knowledge/DATA_CONTRACTS.md` (only if a client/REST contract changes), and

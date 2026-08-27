@@ -20,9 +20,11 @@ use Dbvc\VisualEditor\MediaManager\MediaFindingDescriptorBridge;
 use Dbvc\VisualEditor\MediaManager\MediaAssignmentValueClassifier;
 use Dbvc\VisualEditor\MediaManager\MediaIndexBuilder;
 use Dbvc\VisualEditor\MediaManager\MediaIndexInvalidator;
+use Dbvc\VisualEditor\MediaManager\MediaIndexJsonExporter;
 use Dbvc\VisualEditor\MediaManager\MediaIndexProjector;
 use Dbvc\VisualEditor\MediaManager\MediaIndexReadModel;
 use Dbvc\VisualEditor\MediaManager\MediaIndexReconciler;
+use Dbvc\VisualEditor\MediaManager\MediaIndexRebuildController;
 use Dbvc\VisualEditor\MediaManager\MediaIndexScheduler;
 use Dbvc\VisualEditor\MediaManager\MediaIndexStore;
 use Dbvc\VisualEditor\MediaManager\MediaScanCoordinator;
@@ -102,6 +104,16 @@ final class Addon
      */
     private $media_index_scheduler;
 
+    /**
+     * @var MediaIndexRebuildController
+     */
+    private $media_index_rebuild_controller;
+
+    /**
+     * @var MediaIndexJsonExporter
+     */
+    private $media_index_json_exporter;
+
     public function __construct($bootstrap_file)
     {
         $this->bootstrap_file = (string) $bootstrap_file;
@@ -169,6 +181,24 @@ final class Addon
             new MediaIndexReconciler($media_index_store, $this->media_index_invalidator),
             $media_index_builder
         );
+        // R2-H Slice 4b-2: topology/exclusion rebuild triggers (ACF field-group
+        // save/delete, post-type/taxonomy (de)registration via a wp_loaded
+        // fingerprint check, and Media-Manager exclusion-option changes) rotate a
+        // fresh building generation and drive the builder; the completion step
+        // atomically swaps the serving pointer and prunes the old generation.
+        $this->media_index_rebuild_controller = new MediaIndexRebuildController(
+            $media_index_store,
+            $media_index_builder,
+            $this->media_index_scheduler
+        );
+        // R2-H Slice 5: derived JSON mirror in the DBVC sync folder makes the index
+        // backup-portable. Written at completion boundaries (rebuild swap, first-run
+        // build completion, reconcile sweeps); guarded import on bootstrap hydrates
+        // a fresh restore where the table is empty but the mirror exists.
+        $this->media_index_json_exporter = new MediaIndexJsonExporter(
+            $media_index_store,
+            $media_index_builder
+        );
         $media_index_read_model = new MediaIndexReadModel($media_index_store, $media_policy);
 
         $this->toggle_node = new ToggleNode($this->edit_mode, $capabilities);
@@ -215,6 +245,14 @@ final class Addon
             add_action('dbvc_visual_editor_media_scan_completed', [$this->media_index_projector, 'onScanRefreshed']);
             $this->media_index_invalidator->register();
             $this->media_index_scheduler->register();
+            // Slice 4b-2: topology/exclusion rebuild triggers.
+            $this->media_index_rebuild_controller->register();
+            // Slice 5: guarded restore + refresh the JSON mirror at completion
+            // boundaries so the sync folder always reflects the current serving
+            // generation without per-invalidator churn.
+            $this->media_index_json_exporter->importIfEmpty();
+            add_action('dbvc_visual_editor_media_index_build_completed', [$this->media_index_json_exporter, 'exportAll']);
+            add_action('dbvc_visual_editor_media_index_reconciled', [$this->media_index_json_exporter, 'exportAll']);
         }
         add_action('wp_footer', [$this->registry, 'persistRequestSession'], 19);
         add_action('shutdown', [$this->registry, 'persistRequestSession'], 20);

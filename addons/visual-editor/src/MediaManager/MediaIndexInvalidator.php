@@ -92,6 +92,14 @@ final class MediaIndexInvalidator
     {
         unset($attachment_id);
         $this->store->markGenerationDirty($this->store->currentGeneration());
+        // During a Slice 4b-2 rebuild we must ALSO flag the building generation dirty
+        // so the reconcile that runs post-swap re-checks entities against the current
+        // attachment state — otherwise a deletion that happened before the builder
+        // reached an entity in this rebuild would survive as a stale row post-swap.
+        $building = $this->store->buildingGeneration();
+        if ($building !== '') {
+            $this->store->markGenerationDirty($building);
+        }
     }
 
     /**
@@ -182,9 +190,22 @@ final class MediaIndexInvalidator
             return;
         }
 
-        $index_generation = $this->store->currentGeneration();
+        // Always write to the serving generation. During a Slice 4b-2 rebuild also
+        // dual-write into the building generation so a mid-rebuild edit survives the
+        // atomic serving-pointer swap — otherwise a save between "builder scanned this
+        // entity" and "rebuild completes" would be lost when the new generation takes
+        // over.
+        $target_generations = [$this->store->currentGeneration()];
+        $building = $this->store->buildingGeneration();
+        if ($building !== '' && ! in_array($building, $target_generations, true)) {
+            $target_generations[] = $building;
+        }
+
         foreach ($scanned['groups'] as $group_ref => $group) {
-            if (is_array($group)) {
+            if (! is_array($group)) {
+                continue;
+            }
+            foreach ($target_generations as $index_generation) {
                 $this->projector->indexGroup((string) $group_ref, $group, $index_generation);
             }
         }
