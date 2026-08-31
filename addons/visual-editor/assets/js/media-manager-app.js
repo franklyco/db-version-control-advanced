@@ -3437,29 +3437,40 @@
 		disposeActiveFrame();
 
 		const isGallery = handle.input === 'gallery';
-		const frame = window.wp.media( {
-			title: isGallery
-				? text(
-						'mediaManagerAssignFrameGalleryTitle',
-						'Select gallery images'
-				  )
-				: text( 'mediaManagerAssignFrameImageTitle', 'Select image' ),
-			button: {
-				text: isGallery
-					? text(
-							'mediaManagerAssignFrameGalleryButton',
-							'Use selected images'
-					  )
-					: text(
-							'mediaManagerAssignFrameImageButton',
-							'Use this image'
-					  ),
-			},
-			library: {
-				type: 'image',
-			},
-			multiple: isGallery,
-		} );
+		// RK-011 Slice 1: shared factory synthesizes the config. The
+		// single-active-frame lifecycle (disposeActiveFrame on open/collapse/
+		// close/reload) stays owned here because it hooks Media Manager-specific
+		// state transitions the factory has no knowledge of.
+		const mediaFrameFactory = window.DBVCVisualEditorMediaFrame;
+		const created =
+			mediaFrameFactory &&
+			typeof mediaFrameFactory.createMediaFrame === 'function'
+				? mediaFrameFactory.createMediaFrame( {
+						mode: isGallery ? 'multiple' : 'single',
+						title: isGallery
+							? text(
+									'mediaManagerAssignFrameGalleryTitle',
+									'Select gallery images'
+							  )
+							: text(
+									'mediaManagerAssignFrameImageTitle',
+									'Select image'
+							  ),
+						buttonText: isGallery
+							? text(
+									'mediaManagerAssignFrameGalleryButton',
+									'Use selected images'
+							  )
+							: text(
+									'mediaManagerAssignFrameImageButton',
+									'Use this image'
+							  ),
+				  } )
+				: null;
+		const frame = created && created.frame ? created.frame : null;
+		if ( ! frame ) {
+			return;
+		}
 
 		frame.on( 'select', function () {
 			const selection = frame.state().get( 'selection' );

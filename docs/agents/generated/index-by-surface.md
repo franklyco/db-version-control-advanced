@@ -36,6 +36,7 @@
 
 | Record | Status | Safety | Facets | Summary |
 |---|---|---|---|---|
+| [`addon.visual_editor.runtime`](../manifest.json) | `active` | `mixed` | [Entity Editor](../facets/entity-editor.md) | Administrator-gated in-page editing workflow with session descriptors, object/reference search, composite saves, audit events, cache invalidation, a change journal, and a default-off read-only Media Manager scan/list/row-revalidation API plus toolbar shell, lifecycle/query/expansion state controller, and server-driven safe-results table. |
 | [`source.content_collector.explorer`](../manifest.json) | `source_reference` | `unknown` | [Content Migration add-on](../facets/content-migration-addon.md)<br>[Staged/planned/absent](../facets/staged-planned-and-absent.md) | Retained source for an explorer tree/content/audit workflow and classic admin/AJAX discovery, excluded from the DBVC runtime bootstrap. |
 
 ## `cli`

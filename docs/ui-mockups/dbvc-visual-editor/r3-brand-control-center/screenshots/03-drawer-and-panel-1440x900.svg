@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" width="1440" height="900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <title>R3 Drawer + main editor panel coexisting</title>
+  <desc>Wireframe of the state 08 case: user clicked Open on a row; the main editor panel appears over/beside the drawer. Drawer stays open. Row keeps its "opened from here" highlight.</desc>
+
+  <rect x="0" y="0" width="1440" height="900" fill="#e6e9f2"/>
+  <rect x="0" y="0" width="1440" height="32" fill="#1d2327"/>
+  <text x="16" y="21" fill="#dcdcde" font-size="12">WordPress · Greenfield Landscapes</text>
+
+  <rect x="0" y="32" width="1440" height="88" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="40" y="82" fill="#28324a" font-size="17" font-weight="800">Greenfield Landscapes</text>
+
+  <!-- Drawer (unchanged; kept open) -->
+  <g>
+    <rect x="0" y="32" width="480" height="792" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="0" y="32" width="480" height="60" fill="#f6f7fd"/>
+    <text x="66" y="65" fill="#001673" font-size="15" font-weight="800">Brand Controls</text>
+    <text x="66" y="82" fill="#5a627a" font-size="11">33 registered · 19 ready to open</text>
+
+    <!-- Active tab: Brand -->
+    <rect x="98" y="102" width="88" height="26" rx="13" fill="#001673"/>
+    <text x="110" y="119" fill="#ffffff" font-size="12" font-weight="600">Brand 6</text>
+
+    <rect x="0" y="230" width="480" height="30" fill="#f4f6fd"/>
+    <text x="18" y="249" font-size="10" fill="#5a627a" font-weight="800" letter-spacing="0.8">CONTROL</text>
+
+    <!-- Highlighted "opened from here" row -->
+    <rect x="0" y="260" width="480" height="65" fill="#fff2ec"/>
+    <line x1="0" y1="260" x2="480" y2="260" stroke="#ff5b21" stroke-width="2"/>
+    <circle cx="24" cy="278" r="4" fill="#0f766e"/>
+    <text x="36" y="282" font-size="13" font-weight="600" fill="#001673">Primary Logo</text>
+    <text x="36" y="298" font-size="11" fill="#5a627a">Brand · Identity · SHARED GLOBAL</text>
+    <text x="36" y="313" font-size="11" fill="#8a94b3">option/acf_options · image</text>
+    <rect x="404" y="273" width="58" height="22" rx="10" fill="#ff5b21"/>
+    <text x="422" y="288" font-size="12" font-weight="600" fill="#ffffff">Open</text>
+
+    <line x1="0" y1="325" x2="480" y2="325" stroke="#e2e8f0"/>
+    <circle cx="24" cy="343" r="4" fill="#0f766e"/>
+    <text x="36" y="347" font-size="13" font-weight="600" fill="#001673">Secondary / Wordmark Logo</text>
+    <text x="36" y="363" font-size="11" fill="#5a627a">Brand · Identity · SHARED GLOBAL</text>
+    <rect x="404" y="338" width="58" height="22" rx="10" fill="#ff5b21"/>
+    <text x="422" y="353" font-size="12" font-weight="600" fill="#ffffff">Open</text>
+
+    <line x1="0" y1="390" x2="480" y2="390" stroke="#e2e8f0"/>
+
+    <rect x="480" y="32" width="20" height="792" fill="url(#dshadow)"/>
+    <defs>
+      <linearGradient id="dshadow" x1="0" x2="1">
+        <stop offset="0" stop-color="#000a36" stop-opacity="0.14"/>
+        <stop offset="1" stop-color="#000a36" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+  </g>
+
+  <!-- Main editor panel (existing) -->
+  <g>
+    <rect x="540" y="130" width="400" height="380" rx="12" fill="#ffffff" stroke="#cbd5e1"/>
+    <rect x="540" y="130" width="400" height="52" rx="12 12 0 0" fill="#f6f7fd"/>
+    <text x="560" y="162" font-size="14" font-weight="800" fill="#001673">Primary Logo</text>
+    <rect x="700" y="146" width="90" height="18" rx="9" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="708" y="159" font-size="9" font-weight="800" fill="#92400e" letter-spacing="0.6">SHARED GLOBAL</text>
+    <text x="920" y="160" font-size="18" fill="#5a627a" text-anchor="end">×</text>
+    <line x1="540" y1="182" x2="940" y2="182" stroke="#e2e8f0"/>
+
+    <text x="560" y="210" font-size="12" fill="#8a94b3" letter-spacing="0.5" font-weight="600">TOOLBAR SHARED GLOBAL OPTION</text>
+
+    <rect x="560" y="230" width="360" height="180" rx="10" fill="#f0f3ff"/>
+    <text x="740" y="325" font-size="12" fill="#5a627a" text-anchor="middle" font-style="italic">Existing media reference controller</text>
+    <text x="740" y="345" font-size="11" fill="#8a94b3" text-anchor="middle">(reused from overlay-app.js — R3 introduces no new controller)</text>
+
+    <rect x="740" y="450" width="80" height="30" rx="6" fill="#ff5b21"/>
+    <text x="780" y="470" fill="#ffffff" font-size="12" font-weight="600" text-anchor="middle">Save</text>
+    <rect x="830" y="450" width="90" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="875" y="470" fill="#001673" font-size="12" font-weight="600" text-anchor="middle">Cancel</text>
+    <rect x="560" y="450" width="140" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="630" y="470" fill="#001673" font-size="12" font-weight="600" text-anchor="middle">Choose image</text>
+  </g>
+
+  <!-- Annotation arrow -->
+  <path d="M485,290 L536,290" stroke="#ff5b21" stroke-width="1.5" fill="none"/>
+  <polygon points="536,290 528,286 528,294" fill="#ff5b21"/>
+  <text x="510" y="278" font-size="10" font-weight="800" fill="#ff5b21" text-anchor="middle" letter-spacing="0.4">OPENED FROM ROW</text>
+
+  <!-- Site content on the right -->
+  <text x="1000" y="240" fill="#8a94b3" font-size="10" font-weight="800" letter-spacing="1.5">SITE STAYS VISIBLE</text>
+  <text x="1000" y="290" fill="#3b476b" font-size="26" font-weight="800">Garden design</text>
+  <text x="1000" y="325" fill="#3b476b" font-size="26" font-weight="800">that grows.</text>
+
+  <!-- Legend -->
+  <text x="720" y="600" font-size="11" fill="#5a627a" text-anchor="middle">Drawer stays open (workspace pattern) · outside-click on the panel does not close the drawer</text>
+
+  <!-- Toolbar -->
+  <g>
+    <rect x="500" y="850" width="440" height="40" rx="20" fill="#08122e"/>
+    <circle cx="660" cy="870" r="14" fill="#ff5b21"/>
+    <text x="660" y="874" fill="#ffffff" font-size="10" font-weight="800" text-anchor="middle">☰</text>
+  </g>
+</svg>

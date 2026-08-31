@@ -1,5 +1,9 @@
 # DBVC Visual Editor Phases
 
+## Scope: desktop only (D-058, 2026-08-23)
+
+The Visual Editor and DBVC plugin are **desktop-only software**. Mobile/tablet/touch layouts, real-handset optimization, mobile-specific mockup or QA, and real assistive-technology (VoiceOver/JAWS/NVDA) sit-with-a-screen-reader QA are **permanent non-goals** — everywhere below where an older paragraph mentions "D-036 tables mobile work until reauthorized", "real AT residual", "real assistive-technology gate", or "responsive/mobile deferred", read those as **removed, not deferred**. D-036 is closed and superseded by D-058. See `docs/dropins/dbvc-visual-editor-brand-controls-guide/00-GOVERNING-DIRECTIVES.md` §0.
+
 ## Production Backlog And Release Program - 2026-08-14
 
 This document is the canonical ranking for remaining Visual Editor work. It now carries two related queues:

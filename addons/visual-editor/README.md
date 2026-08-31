@@ -4,6 +4,10 @@ DBVC Visual Editor is a DBVC addon that enables authorized editors to activate a
 
 The addon is designed around a server-side descriptor registry and Bricks render-time instrumentation. The frontend should only interact with lightweight markers and authenticated endpoints, never raw guessed meta targets.
 
+## Scope: desktop only
+
+The Visual Editor and the DBVC plugin as a whole are **desktop-only software** (permanent non-goal for mobile/tablet/touch; real assistive-technology QA is not a required gate). See `docs/dropins/dbvc-visual-editor-brand-controls-guide/00-GOVERNING-DIRECTIVES.md` §0 and `docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/DECISION-LOG.md` D-058 for the authoritative statement.
+
 ## Status
 
 Initial repo-adapted MVP slice implemented.

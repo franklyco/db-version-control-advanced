@@ -32,8 +32,9 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         public const OPTION_SHARED_GLOBAL_FIELD_NAMES = 'dbvc_visual_editor_shared_global_field_names';
         public const OPTION_EXCLUDED_POST_TYPES = 'dbvc_visual_editor_excluded_post_types';
         public const OPTION_EXCLUDED_TAXONOMIES = 'dbvc_visual_editor_excluded_taxonomies';
+        public const OPTION_CURATION_TOOL_ENABLED = 'dbvc_visual_editor_curation_tool_enabled';
         public const OPTION_SETTINGS_VERSION = 'dbvc_visual_editor_settings_version';
-        public const SETTINGS_VERSION = 4;
+        public const SETTINGS_VERSION = 5;
         public const DEFAULT_SHARED_GLOBAL_FIELD_NAMES = 'settings_globals_default_posts';
         public const DEFAULT_EXCLUDED_POST_TYPES = 'bricks_template';
         public const DEFAULT_EXCLUDED_TAXONOMIES = "template_tag\ntemplate_bundle";
@@ -49,12 +50,18 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         private static $settings_page = null;
 
         /**
+         * @var \Dbvc\VisualEditor\Admin\CurationPage|null
+         */
+        private static $curation_page = null;
+
+        /**
          * @return void
          */
         public static function bootstrap()
         {
             self::ensure_defaults();
             self::register_admin_settings_page();
+            self::register_admin_curation_page();
             self::refresh_runtime_registration();
         }
 
@@ -68,6 +75,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             add_option(self::OPTION_SHARED_GLOBAL_FIELD_NAMES, self::DEFAULT_SHARED_GLOBAL_FIELD_NAMES);
             add_option(self::OPTION_EXCLUDED_POST_TYPES, self::DEFAULT_EXCLUDED_POST_TYPES);
             add_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES);
+            add_option(self::OPTION_CURATION_TOOL_ENABLED, '0');
             add_option(self::OPTION_SETTINGS_VERSION, (string) self::SETTINGS_VERSION);
 
             if ((int) get_option(self::OPTION_SETTINGS_VERSION, 0) < self::SETTINGS_VERSION) {
@@ -90,6 +98,21 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         {
             return self::is_enabled()
                 && get_option(self::OPTION_MEDIA_MANAGER_ENABLED, '0') === '1';
+        }
+
+        /**
+         * R3-BX kill switch. When true, the temporary Brand Control Center
+         * curation admin page renders under Settings → Visual Editor. The
+         * curation surface is admin-only, does not touch runtime Visual Editor
+         * behavior, and never mutates content — it only reads ACF field
+         * metadata and records approval decisions into a dedicated option
+         * for later export as the Vertical control provider seed.
+         *
+         * @return bool
+         */
+        public static function is_curation_tool_enabled()
+        {
+            return get_option(self::OPTION_CURATION_TOOL_ENABLED, '0') === '1';
         }
 
         /**
@@ -121,6 +144,12 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'fields' => [
                         self::OPTION_EXCLUDED_POST_TYPES,
                         self::OPTION_EXCLUDED_TAXONOMIES,
+                    ],
+                ],
+                'control_center_curation' => [
+                    'label' => __('Brand Control Center — Curation Tool (temporary)', 'dbvc'),
+                    'fields' => [
+                        self::OPTION_CURATION_TOOL_ENABLED,
                     ],
                 ],
             ];
@@ -160,6 +189,11 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'rows' => '4',
                     'help' => __('Enter taxonomy slugs, one per line or comma-separated. Excluded taxonomies are omitted from Visual Editor frontend object navigation, descriptor surfaces, and linked-term panel searches. Defaults exclude Bricks Template Tag and Template Bundle taxonomies.', 'dbvc'),
                 ],
+                self::OPTION_CURATION_TOOL_ENABLED => [
+                    'label' => __('Enable Brand Control Center curation tool', 'dbvc'),
+                    'input' => 'checkbox',
+                    'help' => __('Temporary. Adds a Brand Control Center → Curation admin page for manually approving which options-page ACF fields become registered Visual Editor controls. Turn off when the curation artifact is committed. The page is admin-only, never mutates content, and reads options-page field metadata only.', 'dbvc'),
+                ],
             ];
         }
 
@@ -176,6 +210,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => (string) get_option(self::OPTION_SHARED_GLOBAL_FIELD_NAMES, self::DEFAULT_SHARED_GLOBAL_FIELD_NAMES),
                 self::OPTION_EXCLUDED_POST_TYPES => (string) get_option(self::OPTION_EXCLUDED_POST_TYPES, self::DEFAULT_EXCLUDED_POST_TYPES),
                 self::OPTION_EXCLUDED_TAXONOMIES => (string) get_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES),
+                self::OPTION_CURATION_TOOL_ENABLED => (string) get_option(self::OPTION_CURATION_TOOL_ENABLED, '0'),
             ];
         }
 
@@ -189,6 +224,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             $values = [
                 self::OPTION_ENABLED => isset($request_data[self::OPTION_ENABLED]) ? '1' : '0',
                 self::OPTION_MEDIA_MANAGER_ENABLED => isset($request_data[self::OPTION_MEDIA_MANAGER_ENABLED]) ? '1' : '0',
+                self::OPTION_CURATION_TOOL_ENABLED => isset($request_data[self::OPTION_CURATION_TOOL_ENABLED]) ? '1' : '0',
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => self::sanitize_shared_global_field_names(
                     isset($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])
                         ? (string) wp_unslash($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])
@@ -477,6 +513,25 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
 
             self::$settings_page = new \Dbvc\VisualEditor\Admin\SettingsPage();
             self::$settings_page->register();
+        }
+
+        /**
+         * R3-BX curation page bootstrap. Always registered so the AJAX
+         * handlers exist while the kill switch is on; the admin menu item
+         * itself is gated by is_curation_tool_enabled() inside the page's
+         * registerMenu() so flipping the option off hides the entry point
+         * on the very next request without requiring a plugin reload.
+         *
+         * @return void
+         */
+        private static function register_admin_curation_page()
+        {
+            if (! is_admin() || self::$curation_page instanceof \Dbvc\VisualEditor\Admin\CurationPage) {
+                return;
+            }
+
+            self::$curation_page = new \Dbvc\VisualEditor\Admin\CurationPage();
+            self::$curation_page->register();
         }
 
         /**

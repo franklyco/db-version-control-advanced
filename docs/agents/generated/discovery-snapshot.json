@@ -3,26 +3,26 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 357,
-        "source_fingerprint": "sha256:2861720c6bf289e2ebda204351b8fc7a1499f43ccc32107c9428e49f9c764df8",
+        "source_file_count": 365,
+        "source_fingerprint": "sha256:70aa963bf96cd4a1fcf312bf26a3df6a1986aeffc58d66e17d27a7b38b96ef08",
         "live_runtime_verified": false
     },
     "counts": {
-        "admin_handlers": 33,
-        "admin_menus": 13,
+        "admin_handlers": 36,
+        "admin_menus": 14,
         "bootstrap_includes": 127,
         "bootstrap_initializers": 16,
         "cli_commands": 26,
         "cli_namespaces": 9,
         "database_tables": 14,
-        "documentation": 398,
-        "extension_points": 152,
-        "hook_listeners": 180,
+        "documentation": 406,
+        "extension_points": 153,
+        "hook_listeners": 185,
         "rest_routes": 139,
         "scheduled_hooks": 3,
         "settings": 51,
         "source_reference_documentation": 13,
-        "tests": 105
+        "tests": 110
     },
     "collections": {
         "admin_handlers": [
@@ -357,6 +357,39 @@
                 }
             },
             {
+                "discovery_id": "hook.listener.wp_ajax_.360ff9f6",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "wp_ajax_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 45
+                }
+            },
+            {
+                "discovery_id": "hook.listener.wp_ajax_.03deb29a",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "wp_ajax_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 46
+                }
+            },
+            {
+                "discovery_id": "hook.listener.wp_ajax_.16e487eb",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "wp_ajax_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 47
+                }
+            },
+            {
                 "discovery_id": "hook.listener.wp_ajax_cc_get_urls_from_sitemap.16d2660a",
                 "kind": "listener",
                 "scope": "source_reference",
@@ -539,6 +572,25 @@
                 "source_ref": {
                     "path": "addons/content-migration/v2/admin/dbvc-cc-v2-admin-menu-service.php",
                     "line": 45
+                }
+            },
+            {
+                "discovery_id": "admin.menu.2ef573d2f42e",
+                "scope": "core",
+                "function": "add_submenu_page",
+                "observed_string_literals": [
+                    "dbvc-export",
+                    "Brand Control Center — Curation",
+                    "dbvc",
+                    "BCC Curation",
+                    "dbvc",
+                    "manage_options",
+                    "render",
+                    "manage_options"
+                ],
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 59
                 }
             },
             {
@@ -2563,6 +2615,7 @@
             "docs/core-proposal-diff-resolution-sprint.md",
             "docs/dbvc-css-variable-token-inventory.md",
             "docs/development/entity-editor-manual-qa.md",
+            "docs/development/local-agent-auth.md",
             "docs/development/README.md",
             "docs/development/repomix-maintenance.md",
             "docs/development/repomix-preflight.md",
@@ -2574,6 +2627,7 @@
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/MUTATION-STALE-DATA-AND-REVALIDATION.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/SCAN-AND-FINDING-CONTRACT.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/TABLE-AND-ROW-INTERACTION-SPEC.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/media-manager/WP-MEDIA-FACTORY-CONSOLIDATION-RK-011.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/PACKAGE-MANIFEST.json",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/PACKAGE-UPDATE-NOTES.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/00-CODEX-KICKOFF.md",
@@ -2608,11 +2662,13 @@
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/RISK-REGISTER.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/CLAUDE-CODE-MEDIA-MANAGER-PROMPT-TEMPLATE.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/CLAUDE-CODE-MOCKUP-HANDOFF.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/CURRENT-VISUAL-EDITOR-COMPONENT-MAP.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/fixtures/media-manager-fixture.json",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/fixtures/media-manager-r1c-view-model.json",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/MEDIA-MANAGER-CLAUDE-MOCKUP-HANDOFF.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/MOCKUP-DELIVERABLE-CONTRACT.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/MOCKUP-TO-PRODUCTION-INTEGRATION.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/R3-BRAND-CONTROL-CENTER-WIRING-SCHEMATIC.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/ui-ux/REFERENCE-IMAGES.md",
             "docs/implementation/active/admin-app-refactor.md",
             "docs/implementation/active/configuration-portability-tool-guide.md",
@@ -2688,6 +2744,10 @@
             "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/DESIGN-DECISIONS.md",
             "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/README.md",
             "docs/ui-mockups/dbvc-visual-editor/r1-media-manager/WIRING-SCHEMATIC.md",
+            "docs/ui-mockups/dbvc-visual-editor/r3-brand-control-center/COMPONENT-NOTES.md",
+            "docs/ui-mockups/dbvc-visual-editor/r3-brand-control-center/DESIGN-DECISIONS.md",
+            "docs/ui-mockups/dbvc-visual-editor/r3-brand-control-center/README.md",
+            "docs/ui-mockups/dbvc-visual-editor/r3-brand-control-center/screenshots/README.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/agent-entrypoints.md/original.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/reference/README.md",
             "docs/_backups/docs-library-migration/import-authoring-20260622/docs/requests.md",
@@ -4323,6 +4383,17 @@
                 }
             },
             {
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_control_registry_invalid.2129b02e",
+                "kind": "extension_point",
+                "scope": "core",
+                "function": "do_action",
+                "hook": "dbvc_visual_editor_control_registry_invalid",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Registry/ControlRegistry.php",
+                    "line": 245
+                }
+            },
+            {
                 "discovery_id": "hook.extension_point.dbvc_visual_editor_descriptor_batch_limit.bb03e273",
                 "kind": "extension_point",
                 "scope": "core",
@@ -4334,25 +4405,25 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_post_types.79c056fe",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_post_types.cbf73c02",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_excluded_post_types",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 260
+                    "line": 296
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.8b9a05a1",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.4344824c",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_excluded_taxonomies",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 282
+                    "line": 318
                 }
             },
             {
@@ -4400,14 +4471,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.7d7f5281",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.784de0da",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_media_index_list_enabled",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Assets/AssetLoader.php",
-                    "line": 154
+                    "line": 166
                 }
             },
             {
@@ -4554,14 +4625,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e2a0b29a",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e8f6d82e",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_shared_global_field_names",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 238
+                    "line": 274
                 }
             }
         ],
@@ -4696,6 +4767,17 @@
                 "source_ref": {
                     "path": "addons/content-migration/v2/admin/dbvc-cc-v2-app-loader.php",
                     "line": 30
+                }
+            },
+            {
+                "discovery_id": "hook.listener.admin_enqueue_scripts.517ad7fc",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "admin_enqueue_scripts",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 44
                 }
             },
             {
@@ -4894,6 +4976,17 @@
                 "source_ref": {
                     "path": "addons/content-migration/v2/admin/dbvc-cc-v2-admin-menu-service.php",
                     "line": 19
+                }
+            },
+            {
+                "discovery_id": "hook.listener.admin_menu.6edad21d",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "admin_menu",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 43
                 }
             },
             {
@@ -6085,14 +6178,14 @@
                 }
             },
             {
-                "discovery_id": "hook.listener.rest_post_dispatch.b01d623c",
+                "discovery_id": "hook.listener.rest_post_dispatch.ac011923",
                 "kind": "listener",
                 "scope": "core",
                 "function": "add_filter",
                 "hook": "rest_post_dispatch",
                 "source_ref": {
                     "path": "addons/visual-editor/bootstrap.php",
-                    "line": 500
+                    "line": 555
                 }
             },
             {
@@ -6445,6 +6538,39 @@
                 "source_ref": {
                     "path": "addons/content-migration/collector/dbvc-cc-ajax-controller.php",
                     "line": 26
+                }
+            },
+            {
+                "discovery_id": "hook.listener.wp_ajax_.360ff9f6",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "wp_ajax_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 45
+                }
+            },
+            {
+                "discovery_id": "hook.listener.wp_ajax_.03deb29a",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "wp_ajax_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 46
+                }
+            },
+            {
+                "discovery_id": "hook.listener.wp_ajax_.16e487eb",
+                "kind": "listener",
+                "scope": "core",
+                "function": "add_action",
+                "hook": "wp_ajax_",
+                "source_ref": {
+                    "path": "addons/visual-editor/src/Admin/CurationPage.php",
+                    "line": 47
                 }
             },
             {
@@ -10078,6 +10204,11 @@
             "tests/phpunit/ProposalZipIntakeTest.php",
             "tests/phpunit/ThirdPartyPortabilityTest.php",
             "tests/phpunit/TransferPacketWorkflowTest.php",
+            "tests/phpunit/VisualEditorControlRegistryTest.php",
+            "tests/phpunit/VisualEditorCurationCandidateProviderTest.php",
+            "tests/phpunit/VisualEditorCurationExporterTest.php",
+            "tests/phpunit/VisualEditorCurationRecommenderTest.php",
+            "tests/phpunit/VisualEditorCurationStoreTest.php",
             "tests/phpunit/VisualEditorElementInstrumentationTest.php",
             "tests/phpunit/VisualEditorMediaIndexBuilderTest.php",
             "tests/phpunit/VisualEditorMediaIndexControllerTest.php",

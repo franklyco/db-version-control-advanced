@@ -1361,13 +1361,14 @@
                         "hook.extension_point.dbvc_visual_editor_audit_event.14ad54ad",
                         "hook.extension_point.dbvc_visual_editor_base_capability.229f85de",
                         "hook.extension_point.dbvc_visual_editor_descriptor_batch_limit.bb03e273",
-                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.79c056fe",
-                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.8b9a05a1",
+                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.cbf73c02",
+                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.4344824c",
                         "hook.extension_point.dbvc_visual_editor_invalidate_cache.f9b6eb43",
+                        "hook.extension_point.dbvc_visual_editor_control_registry_invalid.2129b02e",
                         "hook.extension_point.dbvc_visual_editor_media_index_build_completed.144d938f",
                         "hook.extension_point.dbvc_visual_editor_media_index_exported.90047f02",
                         "hook.extension_point.dbvc_visual_editor_media_index_imported.fbb45cc9",
-                        "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.7d7f5281",
+                        "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.784de0da",
                         "hook.extension_point.dbvc_visual_editor_media_index_rebuild_skipped.a757fac4",
                         "hook.extension_point.dbvc_visual_editor_media_index_rebuild_started.33810e3e",
                         "hook.extension_point.dbvc_visual_editor_media_index_reconciled.9dba836a",
@@ -1381,7 +1382,7 @@
                         "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.67cf1221",
                         "hook.extension_point.dbvc_visual_editor_session_refresh_interval.8d796a0d",
                         "hook.extension_point.dbvc_visual_editor_session_ttl.0086f4bd",
-                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e2a0b29a"
+                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e8f6d82e"
                     ]
                 },
                 {
@@ -1391,6 +1392,22 @@
                         "setting.dbvc_addon_visual_editor_enabled",
                         "setting.dbvc_visual_editor_media_index_build",
                         "setting.dbvc_visual_editor_media_index_generation"
+                    ]
+                },
+                {
+                    "type": "admin",
+                    "identifier": "R3-BX Brand Control Center curation admin submenu",
+                    "discovery_ids": [
+                        "admin.menu.2ef573d2f42e"
+                    ]
+                },
+                {
+                    "type": "ajax",
+                    "identifier": "R3-BX curation admin-ajax handlers (kill-switch gated, manage_options + nonce)",
+                    "discovery_ids": [
+                        "hook.listener.wp_ajax_.03deb29a",
+                        "hook.listener.wp_ajax_.16e487eb",
+                        "hook.listener.wp_ajax_.360ff9f6"
                     ]
                 },
                 {

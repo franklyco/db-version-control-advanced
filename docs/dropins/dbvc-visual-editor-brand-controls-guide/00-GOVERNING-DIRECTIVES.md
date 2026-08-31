@@ -2,6 +2,22 @@
 
 These rules apply to every discovery, design, implementation, review, and release task in this package.
 
+## 0. Scope: desktop only (permanent, D-058)
+
+The Visual Editor add-on and the DBVC plugin as a whole are **desktop-only software**. Desktop-sized viewports are the sole supported operating range for both the frontend Visual Editor / Media Manager and every DBVC admin surface.
+
+**Permanent non-goals** (do not propose, plan, mock, or QA):
+
+- mobile or tablet layouts
+- responsive cards, slide-overs, or mobile-shaped alternate presentations
+- touch refinements or real-handset optimization
+- mobile-specific mockups or QA
+- real assistive-technology (VoiceOver, JAWS, NVDA) sit-with-a-screen-reader QA as a required gate
+
+Existing narrow-width protections stay only as a regression floor so unusual desktop DPI/zoom doesn't break the desktop workflow — not as a foundation to build mobile behavior on top of. Automated axe / keyboard / reduced-motion checks stay in the coverage matrix (they surface real desktop-keyboard defects). Real-AT verification is not required.
+
+Any release plan, next-tasks list, evidence log entry, or QA matrix that carries mobile or real-AT gates as "deferred" or "later" is out of date — read as removed. See DECISION-LOG D-058 for the authoritative statement and D-036 (closed) for the history.
+
 ## 1. Adapt to the current codebase
 
 - Treat all names and structures in this handoff as conceptual until verified.

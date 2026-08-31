@@ -6,6 +6,10 @@ DBVC Visual Editor is a layered addon that instruments Bricks-rendered frontend 
 
 The architecture must prevent fragile DOM guessing and avoid exposing raw save targets directly in the browser.
 
+## Scope: desktop only (D-058)
+
+Every layer described below targets desktop-sized viewports only. Mobile/tablet/touch layouts and real assistive-technology (VoiceOver/JAWS/NVDA) QA are **permanent non-goals** — architectural decisions do not need to accommodate them. Existing narrow-width protections stay as a regression floor for unusual desktop DPI/zoom; automated axe/keyboard/reduced-motion checks stay in the coverage matrix. See `docs/dropins/dbvc-visual-editor-brand-controls-guide/00-GOVERNING-DIRECTIVES.md` §0.
+
 ## Frontend Media Manager staging boundary
 
 The Media Manager is being added in independently reviewable slices behind the default-off `dbvc_visual_editor_media_manager_enabled` setting. The setting is effective only while the Visual Editor itself is enabled. R1-A established policy/catalog authority, R1-B added an internal request-batched scanner and separate ephemeral snapshot lifecycle, R1-C added a protected read-only transport and safe result projection, and R1-D now provides the toolbar/shell, frontend API/state controller, server-driven laptop/desktop table, and protected lazy row expansion.

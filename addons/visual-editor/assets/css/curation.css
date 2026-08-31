@@ -1,0 +1,271 @@
+/*
+ * R3-BX — Brand Control Center curation admin page.
+ * Scoped under .dbvc-ve-curation; loaded only on the curation admin page.
+ */
+
+.dbvc-ve-curation__summary {
+    margin: 1em 0;
+    padding: 0.75em 1em;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.dbvc-ve-curation__summary strong {
+    font-size: 15px;
+}
+
+.dbvc-ve-curation__export-status {
+    margin-left: 1em;
+    color: #50575e;
+    font-style: italic;
+}
+
+.dbvc-ve-curation__filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75em 1em;
+    margin: 1em 0;
+    padding: 0.75em 1em;
+    background: #f6f7f7;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.dbvc-ve-curation__filters label {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    color: #50575e;
+}
+
+.dbvc-ve-curation__filters select,
+.dbvc-ve-curation__filters input[type="search"] {
+    min-width: 160px;
+    margin-top: 3px;
+}
+
+.dbvc-ve-curation__bulk {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin: 1em 0;
+    padding: 0.5em 1em;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+}
+
+.dbvc-ve-curation__bulk-status {
+    color: #50575e;
+    font-style: italic;
+}
+
+.dbvc-ve-curation__filters-status {
+    margin: 0 0 0.5em;
+    padding: 6px 10px;
+    background: #f0f6fc;
+    border-left: 3px solid #2271b1;
+    color: #1d2327;
+    font-size: 12px;
+}
+
+.dbvc-ve-curation__no-match-row td {
+    padding: 20px;
+    text-align: center;
+    color: #50575e;
+    font-style: italic;
+}
+
+/* Fixed layout — column widths come from <colgroup> so filter changes cannot
+ * shift them, and the table never spills off the admin content area. */
+.dbvc-ve-curation__table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 1200px; /* keep the last column reachable on narrow admin windows */
+}
+
+.dbvc-ve-curation__table-wrap {
+    overflow-x: auto;
+    margin: 1em 0;
+}
+
+.dbvc-ve-curation__table th,
+.dbvc-ve-curation__table td {
+    vertical-align: top;
+    overflow: hidden; /* required for text-overflow: ellipsis under fixed layout */
+    text-overflow: ellipsis;
+    word-break: normal;
+}
+
+.dbvc-ve-curation__table .check-column {
+    padding-top: 12px;
+    text-align: center;
+    overflow: visible;
+}
+
+.dbvc-ve-curation__table code {
+    display: block;
+    font-size: 11px;
+    background: #f6f7f7;
+    padding: 1px 4px;
+    border-radius: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dbvc-ve-curation__value,
+.dbvc-ve-curation__context {
+    font-size: 12px;
+    color: #3c434a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dbvc-ve-curation__context {
+    color: #50575e;
+    font-style: italic;
+}
+
+/* Row min-height keeps rows from jittering as decision radios switch. */
+.dbvc-ve-curation__row > td,
+.dbvc-ve-curation__row > th {
+    min-height: 68px;
+}
+
+.dbvc-ve-curation__chip {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    background: #dcdcde;
+    color: #1d2327;
+}
+
+.dbvc-ve-curation__chip.is-include {
+    background: #d1e7dd;
+    color: #0a3622;
+}
+
+.dbvc-ve-curation__chip.is-ignore {
+    background: #f8d7da;
+    color: #58151c;
+}
+
+.dbvc-ve-curation__chip.is-defer {
+    background: #fff3cd;
+    color: #664d03;
+}
+
+.dbvc-ve-curation__chip.is-review {
+    background: #cfe2ff;
+    color: #052c65;
+}
+
+.dbvc-ve-curation__row.is-include > td {
+    background-color: rgba(209, 231, 221, 0.35);
+}
+.dbvc-ve-curation__row.is-ignore > td {
+    background-color: rgba(248, 215, 218, 0.30);
+}
+.dbvc-ve-curation__row.is-defer > td {
+    background-color: rgba(255, 243, 205, 0.40);
+}
+
+.dbvc-ve-curation__row select,
+.dbvc-ve-curation__row textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.dbvc-ve-curation__row textarea {
+    font-size: 12px;
+    resize: vertical;
+    min-height: 42px;
+}
+
+/* Stacked radio groups (Decision + Priority) — one-click selection to
+ * minimise curation friction while keeping row height compact. */
+.dbvc-ve-curation__row .dbvc-ve-curation__radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+}
+.dbvc-ve-curation__row .dbvc-ve-curation__radio-group label {
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+.dbvc-ve-curation__row .dbvc-ve-curation__radio-group input[type="radio"] {
+    margin: 0;
+}
+
+/* The row-status text used to render inline under the notes textarea and
+ * grew the row height as messages appeared, shifting adjacent rows and
+ * causing misclicks during rapid processing. It is now visually hidden
+ * (kept accessible for screen readers via aria-live) and every save
+ * state is expressed as a row-level background pulse below — pure paint,
+ * zero layout impact. */
+.dbvc-ve-curation__row-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Row save-state background pulse — layout-safe, applied on the <tr>.
+ * Uses !important to briefly override the persistent decision-state tint
+ * (is-include / is-ignore / is-defer / is-undecided) then fades back. */
+.dbvc-ve-curation__row.is-saving > td,
+.dbvc-ve-curation__row.is-saving > th {
+    background-color: rgba(255, 236, 179, 0.55) !important;
+    transition: background-color 180ms ease-in;
+}
+.dbvc-ve-curation__row.is-saved > td,
+.dbvc-ve-curation__row.is-saved > th {
+    animation: dbvc-ve-curation-saved-pulse 900ms ease-out;
+}
+.dbvc-ve-curation__row.is-save-error > td,
+.dbvc-ve-curation__row.is-save-error > th {
+    background-color: rgba(248, 215, 218, 0.65) !important;
+    transition: background-color 180ms ease-in;
+}
+
+@keyframes dbvc-ve-curation-saved-pulse {
+    0%   { background-color: rgba(209, 231, 221, 0.90); }
+    60%  { background-color: rgba(209, 231, 221, 0.50); }
+    100% { background-color: transparent; }
+}
+
+/* Respect reduced-motion — replace animation with a brief static tint that
+ * still communicates the save state without motion. */
+@media (prefers-reduced-motion: reduce) {
+    .dbvc-ve-curation__row.is-saving > td,
+    .dbvc-ve-curation__row.is-saving > th,
+    .dbvc-ve-curation__row.is-save-error > td,
+    .dbvc-ve-curation__row.is-save-error > th {
+        transition: none;
+    }
+    .dbvc-ve-curation__row.is-saved > td,
+    .dbvc-ve-curation__row.is-saved > th {
+        animation: none;
+        background-color: rgba(209, 231, 221, 0.50) !important;
+    }
+}

@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <title>R3 Brand Control Center - happy path at 1280x720</title>
+  <desc>Wireframe placeholder at the secondary supported viewport (1280x720). Drawer width stays 480px; site backdrop shrinks to fit. Not a pixel-accurate PNG capture.</desc>
+
+  <rect x="0" y="0" width="1280" height="720" fill="#e6e9f2"/>
+  <rect x="0" y="0" width="1280" height="32" fill="#1d2327"/>
+  <text x="16" y="21" fill="#dcdcde" font-size="12" font-weight="500">WordPress · Greenfield Landscapes · Howdy, Rhett</text>
+
+  <rect x="0" y="32" width="1280" height="88" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="40" y="82" fill="#28324a" font-size="17" font-weight="800">Greenfield Landscapes</text>
+  <text x="880" y="82" fill="#5a627a" font-size="13">Services   Projects   About   Contact</text>
+  <rect x="1140" y="60" width="110" height="40" rx="10" fill="#28324a"/>
+  <text x="1163" y="86" fill="#ffffff" font-size="12" font-weight="600">Get a Quote</text>
+
+  <text x="560" y="230" fill="#8a94b3" font-size="10" font-weight="800" letter-spacing="1.5">LIVE SITE · VISIBLE BESIDE THE DRAWER</text>
+  <text x="560" y="295" fill="#3b476b" font-size="34" font-weight="800" letter-spacing="-0.6">Garden design that</text>
+  <text x="560" y="335" fill="#3b476b" font-size="34" font-weight="800" letter-spacing="-0.6">grows with you.</text>
+  <text x="560" y="370" fill="#6b7796" font-size="13">The drawer keeps its 480px width; site content shifts right.</text>
+
+  <!-- Drawer: same 480 width, height = 720 - 32 admin - 76 toolbar = 612 -->
+  <g>
+    <rect x="0" y="32" width="480" height="612" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="0" y="32" width="480" height="60" fill="#f6f7fd"/>
+    <rect x="18" y="46" width="36" height="36" rx="10" fill="#f0f3ff"/>
+    <text x="66" y="65" fill="#001673" font-size="15" font-weight="800">Brand Controls</text>
+    <text x="66" y="82" fill="#5a627a" font-size="11">33 registered · 19 ready to open</text>
+    <text x="454" y="70" font-size="20" fill="#5a627a" text-anchor="end">×</text>
+    <line x1="0" y1="92" x2="480" y2="92" stroke="#e2e8f0"/>
+
+    <g font-size="12" font-weight="600">
+      <rect x="18" y="102" width="70" height="26" rx="13" fill="#001673"/>
+      <text x="30" y="119" fill="#ffffff">All 33</text>
+      <text x="98" y="119" fill="#5a627a">Brand 6</text>
+      <text x="158" y="119" fill="#5a627a">Contact 5</text>
+      <text x="226" y="119" fill="#5a627a">Content 4</text>
+      <text x="290" y="119" fill="#5a627a">Design 6</text>
+      <text x="352" y="119" fill="#5a627a">Layout 5</text>
+      <text x="410" y="119" fill="#5a627a">Legal 3</text>
+    </g>
+    <line x1="0" y1="140" x2="480" y2="140" stroke="#e2e8f0"/>
+
+    <rect x="0" y="140" width="480" height="90" fill="#f4f6fd"/>
+    <rect x="18" y="152" width="444" height="30" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="30" y="171" fill="#8a94b3" font-size="12">Search controls…</text>
+    <g font-size="10" font-weight="800" letter-spacing="0.6">
+      <text x="18" y="200" fill="#5a627a">STATUS</text>
+      <rect x="65" y="188" width="66" height="18" rx="9" fill="#ffffff" stroke="#cbd5e1"/>
+      <text x="72" y="200" fill="#5a627a">AVAILABLE</text>
+    </g>
+    <line x1="0" y1="230" x2="480" y2="230" stroke="#e2e8f0"/>
+
+    <rect x="0" y="230" width="480" height="30" fill="#f4f6fd"/>
+    <text x="18" y="249" font-size="10" fill="#5a627a" font-weight="800" letter-spacing="0.8">CONTROL</text>
+
+    <g>
+      <line x1="0" y1="260" x2="480" y2="260" stroke="#e2e8f0"/>
+      <circle cx="24" cy="278" r="4" fill="#0f766e"/>
+      <text x="36" y="282" font-size="13" font-weight="600" fill="#001673">Primary Logo</text>
+      <text x="36" y="298" font-size="11" fill="#5a627a">Brand · Identity · SHARED GLOBAL</text>
+      <rect x="404" y="273" width="58" height="22" rx="10" fill="#ff5b21"/>
+      <text x="422" y="288" font-size="12" font-weight="600" fill="#ffffff">Open</text>
+
+      <line x1="0" y1="325" x2="480" y2="325" stroke="#e2e8f0"/>
+      <circle cx="24" cy="343" r="4" fill="#0f766e"/>
+      <text x="36" y="347" font-size="13" font-weight="600" fill="#001673">Secondary / Wordmark Logo</text>
+      <text x="36" y="363" font-size="11" fill="#5a627a">Brand · Identity · SHARED GLOBAL</text>
+      <rect x="404" y="338" width="58" height="22" rx="10" fill="#ff5b21"/>
+      <text x="422" y="353" font-size="12" font-weight="600" fill="#ffffff">Open</text>
+
+      <line x1="0" y1="390" x2="480" y2="390" stroke="#e2e8f0"/>
+      <circle cx="24" cy="408" r="4" fill="#1e3a8a"/>
+      <text x="36" y="412" font-size="13" font-weight="600" fill="#001673">Short "About" Blurb</text>
+      <text x="36" y="428" font-size="11" fill="#5a627a">Brand · Voice · SHARED GLOBAL</text>
+      <rect x="404" y="403" width="58" height="22" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+      <text x="422" y="418" font-size="12" font-weight="600" fill="#001673">View</text>
+
+      <line x1="0" y1="455" x2="480" y2="455" stroke="#e2e8f0"/>
+      <circle cx="24" cy="473" r="4" fill="#92400e"/>
+      <text x="36" y="477" font-size="13" font-weight="600" fill="#001673" opacity="0.7">Accent Color</text>
+      <text x="36" y="493" font-size="11" fill="#5a627a" opacity="0.7">Brand · Palette · SHARED GLOBAL</text>
+      <text x="462" y="479" font-size="10" font-weight="800" fill="#8a94b3" text-anchor="end" letter-spacing="0.5">UNSUPPORTED</text>
+
+      <line x1="0" y1="520" x2="480" y2="520" stroke="#e2e8f0"/>
+      <circle cx="24" cy="538" r="4" fill="#0f766e"/>
+      <text x="36" y="542" font-size="13" font-weight="600" fill="#001673">Primary Phone Number</text>
+      <text x="36" y="558" font-size="11" fill="#5a627a">Contact · Reach · SHARED GLOBAL</text>
+      <rect x="404" y="533" width="58" height="22" rx="10" fill="#ff5b21"/>
+      <text x="422" y="548" font-size="12" font-weight="600" fill="#ffffff">Open</text>
+
+      <line x1="0" y1="585" x2="480" y2="585" stroke="#e2e8f0"/>
+      <text x="240" y="605" font-size="11" fill="#8a94b3" text-anchor="middle" font-style="italic">…scroll for 28 more rows…</text>
+    </g>
+
+    <line x1="0" y1="614" x2="480" y2="614" stroke="#e2e8f0"/>
+    <rect x="0" y="614" width="480" height="30" fill="#f4f6fd"/>
+    <text x="18" y="633" font-size="11" fill="#5a627a"><tspan font-weight="600" fill="#001673">33</tspan> of 33 controls</text>
+
+    <rect x="480" y="32" width="20" height="612" fill="url(#drawerShadow2)"/>
+    <defs>
+      <linearGradient id="drawerShadow2" x1="0" x2="1">
+        <stop offset="0" stop-color="#000a36" stop-opacity="0.14"/>
+        <stop offset="1" stop-color="#000a36" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+  </g>
+
+  <g>
+    <rect x="440" y="670" width="400" height="40" rx="20" fill="#08122e"/>
+    <circle cx="470" cy="690" r="12" fill="#08122e"/>
+    <circle cx="502" cy="690" r="12" fill="#08122e"/>
+    <circle cx="534" cy="690" r="12" fill="#08122e"/>
+    <circle cx="566" cy="690" r="12" fill="#08122e"/>
+    <rect x="580" y="682" width="1" height="16" fill="#3c4870"/>
+    <circle cx="600" cy="690" r="14" fill="#ff5b21"/>
+    <text x="600" y="694" fill="#ffffff" font-size="10" font-weight="800" text-anchor="middle">☰</text>
+    <rect x="620" y="682" width="1" height="16" fill="#3c4870"/>
+    <circle cx="645" cy="690" r="12" fill="#08122e"/>
+    <circle cx="677" cy="690" r="12" fill="#08122e"/>
+    <circle cx="709" cy="690" r="12" fill="#08122e"/>
+  </g>
+
+  <text x="1260" y="710" fill="#5a627a" font-size="10" text-anchor="end">1280 × 720 · wireframe placeholder</text>
+</svg>

@@ -67,10 +67,14 @@ final class AssetLoader
         $style_version = $this->resolveAssetVersion('assets/css/overlay.css');
         $api_version = $this->resolveAssetVersion('assets/js/api-client.js');
         $overlay_version = $this->resolveAssetVersion('assets/js/overlay-app.js');
+        // RK-011 Slice 1: shared wp.media frame factory. Same wiring pattern as
+        // api-client.js — a small standalone module both overlay and media-manager
+        // depend on, so the frame construction stays deduplicated.
+        $media_frame_factory_version = $this->resolveAssetVersion('assets/js/media-frame-factory.js');
         $media_manager_enabled = $this->isMediaManagerEnabled();
         $media_manager_style_version = $this->resolveAssetVersion('assets/css/media-manager.css');
         $media_manager_script_version = $this->resolveAssetVersion('assets/js/media-manager-app.js');
-        $overlay_dependencies = ['dbvc-visual-editor-api-client'];
+        $overlay_dependencies = ['dbvc-visual-editor-api-client', 'dbvc-visual-editor-media-frame-factory'];
 
         if (function_exists('wp_enqueue_editor')) {
             wp_enqueue_editor();
@@ -100,6 +104,14 @@ final class AssetLoader
             $base_url . 'assets/js/api-client.js',
             [],
             $api_version,
+            true
+        );
+
+        wp_enqueue_script(
+            'dbvc-visual-editor-media-frame-factory',
+            $base_url . 'assets/js/media-frame-factory.js',
+            [],
+            $media_frame_factory_version,
             true
         );
 

@@ -1,51 +1,66 @@
-import { createRoot, useCallback, useEffect, useMemo, useRef, useState } from '@wordpress/element';
+import {
+	createRoot,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from '@wordpress/element';
 import { Button, Modal, Spinner } from '@wordpress/components';
 
-const apiGet = async (path, { signal } = {}) => {
-	const response = await window.fetch(`${DBVC_ENTITY_EDITOR_APP.root}${path}`, {
-		headers: {
-			'X-WP-Nonce': DBVC_ENTITY_EDITOR_APP.nonce,
-		},
-		signal,
-	});
-	if (!response.ok) {
+const apiGet = async ( path, { signal } = {} ) => {
+	const response = await window.fetch(
+		`${ DBVC_ENTITY_EDITOR_APP.root }${ path }`,
+		{
+			headers: {
+				'X-WP-Nonce': DBVC_ENTITY_EDITOR_APP.nonce,
+			},
+			signal,
+		}
+	);
+	if ( ! response.ok ) {
 		const text = await response.text();
-		throw new Error(text || `Request failed (${response.status})`);
+		throw new Error( text || `Request failed (${ response.status })` );
 	}
 	return response.json();
 };
 
-const apiPost = async (path, body) => {
-	const response = await window.fetch(`${DBVC_ENTITY_EDITOR_APP.root}${path}`, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			'X-WP-Nonce': DBVC_ENTITY_EDITOR_APP.nonce,
-		},
-		body: JSON.stringify(body),
-	});
+const apiPost = async ( path, body ) => {
+	const response = await window.fetch(
+		`${ DBVC_ENTITY_EDITOR_APP.root }${ path }`,
+		{
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-WP-Nonce': DBVC_ENTITY_EDITOR_APP.nonce,
+			},
+			body: JSON.stringify( body ),
+		}
+	);
 	const text = await response.text();
 	let parsed = null;
-	if (text) {
+	if ( text ) {
 		try {
-			parsed = JSON.parse(text);
-		} catch (e) {
+			parsed = JSON.parse( text );
+		} catch ( e ) {
 			const message = response.ok
 				? 'The server returned a non-JSON response. Check the site PHP error log for a fatal error.'
-				: `Request failed (${response.status}) and returned a non-JSON response. Check the site PHP error log.`;
-			const error = new Error(message);
+				: `Request failed (${ response.status }) and returned a non-JSON response. Check the site PHP error log.`;
+			const error = new Error( message );
 			error.body = {
 				message,
 				data: {
-					raw: text.slice(0, 1000),
+					raw: text.slice( 0, 1000 ),
 				},
 			};
 			error.status = response.status;
 			throw error;
 		}
 	}
-	if (!response.ok) {
-		const error = new Error(parsed?.message || text || `Request failed (${response.status})`);
+	if ( ! response.ok ) {
+		const error = new Error(
+			parsed?.message || text || `Request failed (${ response.status })`
+		);
 		error.body = parsed;
 		error.status = response.status;
 		throw error;
@@ -53,142 +68,223 @@ const apiPost = async (path, body) => {
 	return parsed || {};
 };
 
-const formatDate = (value) => {
-	if (!value) return '—';
-	const date = new Date(value);
-	return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+const formatDate = ( value ) => {
+	if ( ! value ) {
+		return '—';
+	}
+	const date = new Date( value );
+	return Number.isNaN( date.getTime() ) ? value : date.toLocaleString();
 };
 
-const getEntityDownloadUrl = (relativePath) => {
-	if (!relativePath || !DBVC_ENTITY_EDITOR_APP?.download_url) return '';
-	const params = new URLSearchParams({
+const getEntityDownloadUrl = ( relativePath ) => {
+	if ( ! relativePath || ! DBVC_ENTITY_EDITOR_APP?.download_url ) {
+		return '';
+	}
+	const params = new URLSearchParams( {
 		action: 'dbvc_entity_editor_download',
 		path: relativePath,
 		_wpnonce: DBVC_ENTITY_EDITOR_APP.download_nonce || '',
-	});
-	return `${DBVC_ENTITY_EDITOR_APP.download_url}?${params.toString()}`;
+	} );
+	return `${ DBVC_ENTITY_EDITOR_APP.download_url }?${ params.toString() }`;
 };
 
-const collectSearchMatches = (sourceValue, queryValue) => {
-	const source = (sourceValue || '').toLowerCase();
-	const query = (queryValue || '').trim().toLowerCase();
-	if (!query) return [];
+const collectSearchMatches = ( sourceValue, queryValue ) => {
+	const source = ( sourceValue || '' ).toLowerCase();
+	const query = ( queryValue || '' ).trim().toLowerCase();
+	if ( ! query ) {
+		return [];
+	}
 	const matches = [];
 	let offset = 0;
-	while (offset < source.length) {
-		const index = source.indexOf(query, offset);
-		if (index === -1) break;
-		matches.push(index);
-		offset = index + Math.max(1, query.length);
+	while ( offset < source.length ) {
+		const index = source.indexOf( query, offset );
+		if ( index === -1 ) {
+			break;
+		}
+		matches.push( index );
+		offset = index + Math.max( 1, query.length );
 	}
 	return matches;
 };
 
-const formatTransferReferenceWarning = (warning) => {
-	const source = warning?.source_post_title || warning?.source_path || 'Selected entity';
+const formatTransferReferenceWarning = ( warning ) => {
+	const source =
+		warning?.source_post_title || warning?.source_path || 'Selected entity';
 	const field = warning?.field_label || warning?.meta_key || 'Unknown field';
-	const target = warning?.referenced_post_title || warning?.referenced_post_name || `Post #${warning?.referenced_post_id || '?'}`;
-	return `${source}: ${field} references ${target}, but that post is not included in this packet.`;
+	const target =
+		warning?.referenced_post_title ||
+		warning?.referenced_post_name ||
+		`Post #${ warning?.referenced_post_id || '?' }`;
+	return `${ source }: ${ field } references ${ target }, but that post is not included in this packet.`;
 };
 
-const getDuplicateMatchBasisLabel = (basis) => {
-	if (basis === 'payload_entity_id') return 'Matched by local DB ID';
-	if (basis === 'matched_wp_id') return 'Matched by current WP ID';
-	if (basis === 'matched_provider_entity_id') return 'Matched by provider DB ID';
-	if (basis === 'dbvc_portability_uid') return 'Matched by provider UID';
-	if (basis === 'vf_object_uid') return 'Matched by vf_object_uid';
+const getDuplicateMatchBasisLabel = ( basis ) => {
+	if ( basis === 'payload_entity_id' ) {
+		return 'Matched by local DB ID';
+	}
+	if ( basis === 'matched_wp_id' ) {
+		return 'Matched by current WP ID';
+	}
+	if ( basis === 'matched_provider_entity_id' ) {
+		return 'Matched by provider DB ID';
+	}
+	if ( basis === 'dbvc_portability_uid' ) {
+		return 'Matched by provider UID';
+	}
+	if ( basis === 'vf_object_uid' ) {
+		return 'Matched by vf_object_uid';
+	}
 	return 'Duplicate file group';
 };
 
-const getRawIntakeActionLabel = (action) => {
-	if (action === 'update_matched') return 'update matched entity';
-	if (action === 'create_form') return 'create WS Form';
-	if (action === 'update_matched_form') return 'update matched WS Form';
-	if (action === 'merge_settings') return 'merge settings';
-	if (action === 'stage') return 'stage JSON only';
-	if (action === 'blocked') return 'blocked';
+const getRawIntakeActionLabel = ( action ) => {
+	if ( action === 'update_matched' ) {
+		return 'update matched entity';
+	}
+	if ( action === 'create_form' ) {
+		return 'create WS Form';
+	}
+	if ( action === 'update_matched_form' ) {
+		return 'update matched WS Form';
+	}
+	if ( action === 'merge_settings' ) {
+		return 'merge settings';
+	}
+	if ( action === 'stage' ) {
+		return 'stage JSON only';
+	}
+	if ( action === 'blocked' ) {
+		return 'blocked';
+	}
 	return 'create new entity';
 };
 
-const getRawIntakeDraftValidationError = (content) => {
-	const raw = (content || '').trim();
-	if (!raw) {
+const getRawIntakeDraftValidationError = ( content ) => {
+	const raw = ( content || '' ).trim();
+	if ( ! raw ) {
 		return 'Paste a DBVC entity JSON payload before previewing or importing.';
 	}
 
 	try {
-		const parsed = JSON.parse(raw);
-		if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+		const parsed = JSON.parse( raw );
+		if (
+			! parsed ||
+			Array.isArray( parsed ) ||
+			typeof parsed !== 'object'
+		) {
 			return 'Raw intake JSON must be one JSON object.';
 		}
-	} catch (error) {
-		return `Raw intake JSON is invalid: ${error?.message || 'Unable to parse JSON.'}`;
+	} catch ( error ) {
+		return `Raw intake JSON is invalid: ${
+			error?.message || 'Unable to parse JSON.'
+		}`;
 	}
 
 	return '';
 };
 
-const getSyncImportActionLabel = (action) => {
-	if (action === 'create') return 'create new entity';
-	if (action === 'create_form') return 'create WS Form';
-	if (action === 'created') return 'created entity';
-	if (action === 'update_matched') return 'update matched entity';
-	if (action === 'update_matched_form') return 'update matched WS Form';
-	if (action === 'merge_settings') return 'merge settings';
-	if (action === 'updated') return 'updated entity';
-	if (action === 'blocked') return 'blocked';
+const getSyncImportActionLabel = ( action ) => {
+	if ( action === 'create' ) {
+		return 'create new entity';
+	}
+	if ( action === 'create_form' ) {
+		return 'create WS Form';
+	}
+	if ( action === 'created' ) {
+		return 'created entity';
+	}
+	if ( action === 'update_matched' ) {
+		return 'update matched entity';
+	}
+	if ( action === 'update_matched_form' ) {
+		return 'update matched WS Form';
+	}
+	if ( action === 'merge_settings' ) {
+		return 'merge settings';
+	}
+	if ( action === 'updated' ) {
+		return 'updated entity';
+	}
+	if ( action === 'blocked' ) {
+		return 'blocked';
+	}
 	return 'preview';
 };
 
-const getBricksAdvisoryNoticeClass = (advisory) => (
-	advisory?.severity === 'warning' ? 'notice-warning' : 'notice-info'
-);
+const getBricksAdvisoryNoticeClass = ( advisory ) =>
+	advisory?.severity === 'warning' ? 'notice-warning' : 'notice-info';
 
-const formatSyncImportDetailValue = (value) => {
-	if (Array.isArray(value)) return value.length ? value.join(', ') : 'empty';
-	if (value === true) return 'true';
-	if (value === false) return 'false';
-	if (value === null || value === undefined || value === '') return 'empty';
-	return String(value);
+const formatSyncImportDetailValue = ( value ) => {
+	if ( Array.isArray( value ) ) {
+		return value.length ? value.join( ', ' ) : 'empty';
+	}
+	if ( value === true ) {
+		return 'true';
+	}
+	if ( value === false ) {
+		return 'false';
+	}
+	if ( value === null || value === undefined || value === '' ) {
+		return 'empty';
+	}
+	return String( value );
 };
 
-const ImportWarningNotes = ({ warnings = [] }) => {
-	if (!Array.isArray(warnings) || warnings.length === 0) return null;
+const ImportWarningNotes = ( { warnings = [] } ) => {
+	if ( ! Array.isArray( warnings ) || warnings.length === 0 ) {
+		return null;
+	}
 	return (
-		<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
-			<p><strong>Notes</strong></p>
-			<ul style={{ marginLeft: '18px' }}>
-				{warnings.map((warning, index) => (
-					<li key={`${warning?.code || 'warning'}-${index}`}>{warning?.message || 'Warning'}</li>
-				))}
+		<div className="notice notice-warning" style={ { margin: '8px 0 0' } }>
+			<p>
+				<strong>Notes</strong>
+			</p>
+			<ul style={ { marginLeft: '18px' } }>
+				{ warnings.map( ( warning, index ) => (
+					<li key={ `${ warning?.code || 'warning' }-${ index }` }>
+						{ warning?.message || 'Warning' }
+					</li>
+				) ) }
 			</ul>
 		</div>
 	);
 };
 
-const WsFormMatchedProviderNotice = ({ entity, source = 'sync file' }) => {
-	if (!entity?.id) return null;
+const WsFormMatchedProviderNotice = ( { entity, source = 'sync file' } ) => {
+	if ( ! entity?.id ) {
+		return null;
+	}
 	return (
-		<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+		<div className="notice notice-warning" style={ { margin: '8px 0 0' } }>
 			<p>
-				<strong>This WS Form JSON already matches a local WS Form.</strong>
-				{' '}Create is unavailable for this payload.
+				<strong>
+					This WS Form JSON already matches a local WS Form.
+				</strong>{ ' ' }
+				Create is unavailable for this payload.
 			</p>
 			<p>
-				Matched form:{' '}
-				{entity?.edit_url ? (
-					<a href={entity.edit_url}>{entity?.label || 'WS Form'} #{entity.id}</a>
+				Matched form:{ ' ' }
+				{ entity?.edit_url ? (
+					<a href={ entity.edit_url }>
+						{ entity?.label || 'WS Form' } #{ entity.id }
+					</a>
 				) : (
-					<span>{entity?.label || 'WS Form'} #{entity.id}</span>
-				)}
-				{entity?.match_source ? ` · match source: ${entity.match_source}` : ''}
-				. Use Update Matched if you intend to replace this form from the {source}, or use a new portability UID if this should become a separate form.
+					<span>
+						{ entity?.label || 'WS Form' } #{ entity.id }
+					</span>
+				) }
+				{ entity?.match_source
+					? ` · match source: ${ entity.match_source }`
+					: '' }
+				. Use Update Matched if you intend to replace this form from the{ ' ' }
+				{ source }, or use a new portability UID if this should become a
+				separate form.
 			</p>
 		</div>
 	);
 };
 
-const ImportBlockerPanel = ({
+const ImportBlockerPanel = ( {
 	blocking = [],
 	blockerDetails = [],
 	settingsLinks = [],
@@ -200,138 +296,224 @@ const ImportBlockerPanel = ({
 	buildBusyKey,
 	busyKey = '',
 	disabled = false,
-}) => {
-	if (!Array.isArray(blocking) || blocking.length === 0) return null;
+} ) => {
+	if ( ! Array.isArray( blocking ) || blocking.length === 0 ) {
+		return null;
+	}
 
-	const details = Array.isArray(blockerDetails) ? blockerDetails : [];
-	const links = Array.isArray(settingsLinks) ? settingsLinks : [];
-	const remediations = Array.isArray(settingRemediations) ? settingRemediations : [];
-	const overrides = Array.isArray(advancedOverrides) ? advancedOverrides : [];
-	const hasActions = links.length > 0 || remediations.length > 0 || overrides.length > 0 || !!canonicalRelativePath;
+	const details = Array.isArray( blockerDetails ) ? blockerDetails : [];
+	const links = Array.isArray( settingsLinks ) ? settingsLinks : [];
+	const remediations = Array.isArray( settingRemediations )
+		? settingRemediations
+		: [];
+	const overrides = Array.isArray( advancedOverrides )
+		? advancedOverrides
+		: [];
+	const hasActions =
+		links.length > 0 ||
+		remediations.length > 0 ||
+		overrides.length > 0 ||
+		!! canonicalRelativePath;
 
 	return (
-		<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
-			<p><strong>Blockers and guidance</strong></p>
-			{details.length > 0 ? (
-				<ul style={{ marginLeft: '18px' }}>
-					{details.map((detail, index) => (
-						<li key={`${detail?.code || 'blocker-detail'}-${index}`}>
-							{detail?.category ? `${detail.category}: ` : ''}
-							{detail?.message || detail?.code || 'Import blocked'}
-							{detail?.option ? ` · Setting: ${detail.option}` : ''}
-							{Object.prototype.hasOwnProperty.call(detail || {}, 'current_value') ? ` · Current: ${formatSyncImportDetailValue(detail.current_value)}` : ''}
-							{detail?.post_type ? ` · Post type: ${detail.post_type}` : ''}
-							{detail?.taxonomy ? ` · Taxonomy: ${detail.taxonomy}` : ''}
-							{detail?.canonical_relative_path ? ` · Canonical: ${detail.canonical_relative_path}` : ''}
-							{detail?.relative_path ? ` · Sync file: ${detail.relative_path}` : ''}
-							{detail?.match?.id ? ` · Matched entity: ${detail.match.kind || 'entity'} #${detail.match.id}` : ''}
+		<div className="notice notice-warning" style={ { margin: '8px 0 0' } }>
+			<p>
+				<strong>Blockers and guidance</strong>
+			</p>
+			{ details.length > 0 ? (
+				<ul style={ { marginLeft: '18px' } }>
+					{ details.map( ( detail, index ) => (
+						<li
+							key={ `${
+								detail?.code || 'blocker-detail'
+							}-${ index }` }
+						>
+							{ detail?.category ? `${ detail.category }: ` : '' }
+							{ detail?.message ||
+								detail?.code ||
+								'Import blocked' }
+							{ detail?.option
+								? ` · Setting: ${ detail.option }`
+								: '' }
+							{ Object.prototype.hasOwnProperty.call(
+								detail || {},
+								'current_value'
+							)
+								? ` · Current: ${ formatSyncImportDetailValue(
+										detail.current_value
+								  ) }`
+								: '' }
+							{ detail?.post_type
+								? ` · Post type: ${ detail.post_type }`
+								: '' }
+							{ detail?.taxonomy
+								? ` · Taxonomy: ${ detail.taxonomy }`
+								: '' }
+							{ detail?.canonical_relative_path
+								? ` · Canonical: ${ detail.canonical_relative_path }`
+								: '' }
+							{ detail?.relative_path
+								? ` · Sync file: ${ detail.relative_path }`
+								: '' }
+							{ detail?.match?.id
+								? ` · Matched entity: ${
+										detail.match.kind || 'entity'
+								  } #${ detail.match.id }`
+								: '' }
 						</li>
-					))}
+					) ) }
 				</ul>
 			) : (
-				<ul style={{ marginLeft: '18px' }}>
-					{blocking.map((blocker, index) => (
-						<li key={`${blocker?.code || 'blocked'}-${index}`}>{blocker?.message || 'Blocked'}</li>
-					))}
+				<ul style={ { marginLeft: '18px' } }>
+					{ blocking.map( ( blocker, index ) => (
+						<li
+							key={ `${ blocker?.code || 'blocked' }-${ index }` }
+						>
+							{ blocker?.message || 'Blocked' }
+						</li>
+					) ) }
 				</ul>
-			)}
-			{hasActions && (
-				<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-					{links.map((link) => (
-						<a key={link?.id || link?.url} href={link?.url || '#'} className="button button-secondary">
-							{link?.label || 'Open settings'}
+			) }
+			{ hasActions && (
+				<div
+					style={ {
+						display: 'flex',
+						flexWrap: 'wrap',
+						gap: '8px',
+						marginTop: '8px',
+					} }
+				>
+					{ links.map( ( link ) => (
+						<a
+							key={ link?.id || link?.url }
+							href={ link?.url || '#' }
+							className="button button-secondary"
+						>
+							{ link?.label || 'Open settings' }
 						</a>
-					))}
-					{canonicalRelativePath && (
+					) ) }
+					{ canonicalRelativePath && (
 						<Button
 							variant="secondary"
-							onClick={() => onOpenCanonical?.(canonicalRelativePath)}
-							disabled={disabled || !onOpenCanonical}
+							onClick={ () =>
+								onOpenCanonical?.( canonicalRelativePath )
+							}
+							disabled={ disabled || ! onOpenCanonical }
 						>
 							Open canonical JSON
 						</Button>
-					)}
-					{remediations.map((remediation) => {
-						const actionBusyKey = buildBusyKey ? buildBusyKey(remediation) : remediation?.id || '';
+					) }
+					{ remediations.map( ( remediation ) => {
+						const actionBusyKey = buildBusyKey
+							? buildBusyKey( remediation )
+							: remediation?.id || '';
 						return (
 							<Button
-								key={remediation?.id || remediation?.label}
+								key={ remediation?.id || remediation?.label }
 								variant="secondary"
-								onClick={() => onApplyAction?.(remediation)}
-								disabled={disabled || !onApplyAction}
-								isBusy={busyKey === actionBusyKey}
+								onClick={ () => onApplyAction?.( remediation ) }
+								disabled={ disabled || ! onApplyAction }
+								isBusy={ busyKey === actionBusyKey }
 							>
-								{remediation?.label || 'Apply setting fix'}
+								{ remediation?.label || 'Apply setting fix' }
 							</Button>
 						);
-					})}
-					{overrides.map((override) => {
-						const actionBusyKey = buildBusyKey ? buildBusyKey(override) : override?.id || '';
+					} ) }
+					{ overrides.map( ( override ) => {
+						const actionBusyKey = buildBusyKey
+							? buildBusyKey( override )
+							: override?.id || '';
 						return (
 							<Button
-								key={override?.id || override?.label}
-								variant={override?.id === 'archive_stale_duplicate' ? 'secondary' : 'primary'}
-								onClick={() => onApplyAction?.(override)}
-								disabled={disabled || !onApplyAction}
-								isBusy={busyKey === actionBusyKey}
+								key={ override?.id || override?.label }
+								variant={
+									override?.id === 'archive_stale_duplicate'
+										? 'secondary'
+										: 'primary'
+								}
+								onClick={ () => onApplyAction?.( override ) }
+								disabled={ disabled || ! onApplyAction }
+								isBusy={ busyKey === actionBusyKey }
 							>
-								{override?.label || 'Apply'}
+								{ override?.label || 'Apply' }
 							</Button>
 						);
-					})}
+					} ) }
 				</div>
-			)}
+			) }
 		</div>
 	);
 };
 
-const collectImportBlockerMessages = (items = [], limit = 4) => {
+const collectImportBlockerMessages = ( items = [], limit = 4 ) => {
 	const messages = [];
-	(Array.isArray(items) ? items : []).forEach((item) => {
-		const blocking = Array.isArray(item?.blocking) ? item.blocking : [];
-		blocking.forEach((blocker) => {
+	( Array.isArray( items ) ? items : [] ).forEach( ( item ) => {
+		const blocking = Array.isArray( item?.blocking ) ? item.blocking : [];
+		blocking.forEach( ( blocker ) => {
 			const message = blocker?.message || blocker?.code || '';
-			if (message && !messages.includes(message)) {
-				messages.push(message);
+			if ( message && ! messages.includes( message ) ) {
+				messages.push( message );
 			}
-		});
-	});
-	return messages.slice(0, limit);
+		} );
+	} );
+	return messages.slice( 0, limit );
 };
 
-const getSyncImportItemPath = (item) => item?.relative_path || item?.source_relative_path || '';
+const getSyncImportItemPath = ( item ) =>
+	item?.relative_path || item?.source_relative_path || '';
 
-const isSyncImportMatchedUpdateEligible = (item) => (
-	!item?.updated
-	&& !!item?.matched_update?.eligible
-	&& (!!item?.available_actions?.update_matched || !!item?.available_actions?.update_matched_form)
-);
+const isSyncImportMatchedUpdateEligible = ( item ) =>
+	! item?.updated &&
+	!! item?.matched_update?.eligible &&
+	( !! item?.available_actions?.update_matched ||
+		!! item?.available_actions?.update_matched_form );
 
-const isRawIntakeMatchedUpdateEligible = (preview, mode) => (
-	mode === 'create_or_update_matched'
-	&& ['update_matched', 'update_matched_form'].includes(preview?.detected_action)
-	&& !!preview?.matched_update?.eligible
-	&& (!!preview?.available_actions?.create_or_update_matched || !!preview?.available_actions?.update_matched_form)
-);
+const isRawIntakeMatchedUpdateEligible = ( preview, mode ) =>
+	mode === 'create_or_update_matched' &&
+	[ 'update_matched', 'update_matched_form' ].includes(
+		preview?.detected_action
+	) &&
+	!! preview?.matched_update?.eligible &&
+	( !! preview?.available_actions?.create_or_update_matched ||
+		!! preview?.available_actions?.update_matched_form );
 
-const getEntityImportStatusRank = (item) => (item?.matched_wp?.id || item?.matched_provider_entity?.id ? 1 : 0);
+const getEntityImportStatusRank = ( item ) =>
+	item?.matched_wp?.id || item?.matched_provider_entity?.id ? 1 : 0;
 
-const isWsFormFormItem = (item) => item?.provider === 'ws_form' && item?.object_type === 'form';
-const isWsFormSettingsItem = (item) => item?.provider === 'ws_form' && item?.object_type === 'settings';
+const isWsFormFormItem = ( item ) =>
+	item?.provider === 'ws_form' && item?.object_type === 'form';
+const isWsFormSettingsItem = ( item ) =>
+	item?.provider === 'ws_form' && item?.object_type === 'settings';
 
-const matchesEntityKindFilter = (item, filter) => {
-	if (filter === 'all') return true;
-	if (filter === 'ws_form_form') return isWsFormFormItem(item);
-	if (filter === 'ws_form_settings') return isWsFormSettingsItem(item);
+const matchesEntityKindFilter = ( item, filter ) => {
+	if ( filter === 'all' ) {
+		return true;
+	}
+	if ( filter === 'ws_form_form' ) {
+		return isWsFormFormItem( item );
+	}
+	if ( filter === 'ws_form_settings' ) {
+		return isWsFormSettingsItem( item );
+	}
 	return item?.entity_kind === filter;
 };
 
-const formatEntityKindLabel = (item) => {
-	if (isWsFormFormItem(item)) return 'Forms';
-	if (isWsFormSettingsItem(item)) return 'WS Form Settings';
-	if (item?.entity_kind === 'post') return 'Posts';
-	if (item?.entity_kind === 'term') return 'Terms';
-	if (item?.entity_kind === 'third_party') return 'Third-party';
+const formatEntityKindLabel = ( item ) => {
+	if ( isWsFormFormItem( item ) ) {
+		return 'Forms';
+	}
+	if ( isWsFormSettingsItem( item ) ) {
+		return 'WS Form Settings';
+	}
+	if ( item?.entity_kind === 'post' ) {
+		return 'Posts';
+	}
+	if ( item?.entity_kind === 'term' ) {
+		return 'Terms';
+	}
+	if ( item?.entity_kind === 'third_party' ) {
+		return 'Third-party';
+	}
 	return item?.entity_kind || '—';
 };
 
@@ -353,1071 +535,1582 @@ const MATCHING_POLICY_OPTIONS = [
 	{
 		value: 'allow_slug_fallback',
 		label: 'Allow slug fallback once',
-		description: 'If UID is unmatched, match one local entity by slug and subtype for this operation.',
+		description:
+			'If UID is unmatched, match one local entity by slug and subtype for this operation.',
 	},
 	{
 		value: 'selected_entity',
 		label: 'Selected entity / ID',
-		description: 'Use the selected JSON entity as the target: ID first, then UID or slug.',
+		description:
+			'Use the selected JSON entity as the target: ID first, then UID or slug.',
 	},
 ];
 
-const getMatchingPayload = (policy) => ({
-	policy: MATCHING_POLICY_OPTIONS.some((option) => option.value === policy)
+const getMatchingPayload = ( policy ) => ( {
+	policy: MATCHING_POLICY_OPTIONS.some(
+		( option ) => option.value === policy
+	)
 		? policy
 		: 'strict_uid',
-});
+} );
 
-const MatchingPolicyControl = ({
+const MatchingPolicyControl = ( {
 	idPrefix,
 	value,
 	onChange,
 	disabled = false,
 	globalUidFallbackEnabled = false,
-}) => (
+} ) => (
 	<fieldset className="dbvc-entity-editor__matching">
 		<legend>Advanced Matching</legend>
 		<p className="description">
-			Site default UID fallback: {globalUidFallbackEnabled ? 'enabled' : 'disabled'}
+			Site default UID fallback:{ ' ' }
+			{ globalUidFallbackEnabled ? 'enabled' : 'disabled' }
 		</p>
 		<div className="dbvc-entity-editor__matching-options">
-			{MATCHING_POLICY_OPTIONS.map((option) => {
-				const id = `${idPrefix}-${option.value}`;
+			{ MATCHING_POLICY_OPTIONS.map( ( option ) => {
+				const id = `${ idPrefix }-${ option.value }`;
 				return (
-					<label key={option.value} className="dbvc-entity-editor__matching-option" htmlFor={id}>
+					<label
+						key={ option.value }
+						className="dbvc-entity-editor__matching-option"
+						htmlFor={ id }
+					>
 						<input
-							id={id}
+							id={ id }
 							type="radio"
-							name={idPrefix}
-							value={option.value}
-							checked={value === option.value}
-							onChange={(event) => onChange(event.target.value)}
-							disabled={disabled}
+							name={ idPrefix }
+							value={ option.value }
+							checked={ value === option.value }
+							onChange={ ( event ) =>
+								onChange( event.target.value )
+							}
+							disabled={ disabled }
 						/>
 						<span>
-							<strong>{option.label}</strong>
-							<span className="description">{option.description}</span>
+							<strong>{ option.label }</strong>
+							<span className="description">
+								{ option.description }
+							</span>
 						</span>
 					</label>
 				);
-			})}
+			} ) }
 		</div>
 	</fieldset>
 );
 
-const MergeJsonNotes = ({ notes = [] }) => {
-	if (!Array.isArray(notes) || notes.length === 0) return null;
+const MergeJsonNotes = ( { notes = [] } ) => {
+	if ( ! Array.isArray( notes ) || notes.length === 0 ) {
+		return null;
+	}
 	return (
-		<div className="notice notice-info" style={{ margin: '8px 0 0' }}>
-			<p><strong>Merge notes</strong></p>
-			<ul style={{ marginLeft: '18px' }}>
-				{notes.map((note, index) => (
-					<li key={`${note?.code || 'merge-note'}-${index}`}>{note?.message || 'Review this merge note.'}</li>
-				))}
+		<div className="notice notice-info" style={ { margin: '8px 0 0' } }>
+			<p>
+				<strong>Merge notes</strong>
+			</p>
+			<ul style={ { marginLeft: '18px' } }>
+				{ notes.map( ( note, index ) => (
+					<li key={ `${ note?.code || 'merge-note' }-${ index }` }>
+						{ note?.message || 'Review this merge note.' }
+					</li>
+				) ) }
 			</ul>
 		</div>
 	);
 };
 
 const EntityEditorApp = () => {
-	const [entityIndex, setEntityIndex] = useState([]);
-	const [entityIndexStats, setEntityIndexStats] = useState(null);
-	const [entityIndexLoading, setEntityIndexLoading] = useState(false);
-	const [entityIndexLoaded, setEntityIndexLoaded] = useState(false);
-	const [entityIndexError, setEntityIndexError] = useState('');
-	const [entityIndexErrorItems, setEntityIndexErrorItems] = useState([]);
-	const [entityIndexNotice, setEntityIndexNotice] = useState('');
+	const [ entityIndex, setEntityIndex ] = useState( [] );
+	const [ entityIndexStats, setEntityIndexStats ] = useState( null );
+	const [ entityIndexLoading, setEntityIndexLoading ] = useState( false );
+	const [ entityIndexLoaded, setEntityIndexLoaded ] = useState( false );
+	const [ entityIndexError, setEntityIndexError ] = useState( '' );
+	const [ entityIndexErrorItems, setEntityIndexErrorItems ] = useState( [] );
+	const [ entityIndexNotice, setEntityIndexNotice ] = useState( '' );
 
-	const [entityKindFilter, setEntityKindFilter] = useState('all');
-	const [entitySubtypeFilter, setEntitySubtypeFilter] = useState('all');
-	const [entitySearch, setEntitySearch] = useState('');
-	const [entityBulkAction, setEntityBulkAction] = useState('');
-	const [entitySort, setEntitySort] = useState({ key: 'mtime', direction: 'desc' });
-	const [entityPage, setEntityPage] = useState(1);
-	const [selectedEntityPaths, setSelectedEntityPaths] = useState([]);
+	const [ entityKindFilter, setEntityKindFilter ] = useState( 'all' );
+	const [ entitySubtypeFilter, setEntitySubtypeFilter ] = useState( 'all' );
+	const [ entitySearch, setEntitySearch ] = useState( '' );
+	const [ entityBulkAction, setEntityBulkAction ] = useState( '' );
+	const [ entitySort, setEntitySort ] = useState( {
+		key: 'mtime',
+		direction: 'desc',
+	} );
+	const [ entityPage, setEntityPage ] = useState( 1 );
+	const [ selectedEntityPaths, setSelectedEntityPaths ] = useState( [] );
 
-	const [selectedEntityFile, setSelectedEntityFile] = useState('');
-	const [entityFileData, setEntityFileData] = useState(null);
-	const [entityFileLoading, setEntityFileLoading] = useState(false);
-	const [entityFileError, setEntityFileError] = useState('');
-	const [entityEditorDraft, setEntityEditorDraft] = useState('');
-	const [entityPartialMatchingPolicy, setEntityPartialMatchingPolicy] = useState(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
+	const [ selectedEntityFile, setSelectedEntityFile ] = useState( '' );
+	const [ entityFileData, setEntityFileData ] = useState( null );
+	const [ entityFileLoading, setEntityFileLoading ] = useState( false );
+	const [ entityFileError, setEntityFileError ] = useState( '' );
+	const [ entityEditorDraft, setEntityEditorDraft ] = useState( '' );
+	const [ entityPartialMatchingPolicy, setEntityPartialMatchingPolicy ] =
+		useState( DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY );
 
-	const [entityLockToken, setEntityLockToken] = useState('');
-	const [entityLockInfo, setEntityLockInfo] = useState(null);
-	const [entityLockConflict, setEntityLockConflict] = useState(null);
+	const [ entityLockToken, setEntityLockToken ] = useState( '' );
+	const [ entityLockInfo, setEntityLockInfo ] = useState( null );
+	const [ entityLockConflict, setEntityLockConflict ] = useState( null );
 
-	const [entitySaveBusy, setEntitySaveBusy] = useState(false);
-	const [entityImportBusy, setEntityImportBusy] = useState(false);
-	const [entityReplaceBusy, setEntityReplaceBusy] = useState(false);
-	const [entityDeleteBusy, setEntityDeleteBusy] = useState(false);
-	const [entitySaveNotice, setEntitySaveNotice] = useState('');
-	const [entitySaveError, setEntitySaveError] = useState('');
-	const [entityEditorSearch, setEntityEditorSearch] = useState('');
-	const [entityEditorSearchIndex, setEntityEditorSearchIndex] = useState(-1);
+	const [ entitySaveBusy, setEntitySaveBusy ] = useState( false );
+	const [ entityImportBusy, setEntityImportBusy ] = useState( false );
+	const [ entityReplaceBusy, setEntityReplaceBusy ] = useState( false );
+	const [ entityDeleteBusy, setEntityDeleteBusy ] = useState( false );
+	const [ entitySaveNotice, setEntitySaveNotice ] = useState( '' );
+	const [ entitySaveError, setEntitySaveError ] = useState( '' );
+	const [ entityEditorSearch, setEntityEditorSearch ] = useState( '' );
+	const [ entityEditorSearchIndex, setEntityEditorSearchIndex ] =
+		useState( -1 );
 
-	const [fullReplaceModalOpen, setFullReplaceModalOpen] = useState(false);
-	const [fullReplaceConfirmPhrase, setFullReplaceConfirmPhrase] = useState('');
-	const [fullReplaceModalError, setFullReplaceModalError] = useState('');
-	const [fullReplaceNeedsTakeover, setFullReplaceNeedsTakeover] = useState(false);
-	const [transferPreviewOpen, setTransferPreviewOpen] = useState(false);
-	const [transferPreviewLoading, setTransferPreviewLoading] = useState(false);
-	const [transferPreviewError, setTransferPreviewError] = useState('');
-	const [transferPreviewData, setTransferPreviewData] = useState(null);
-	const [rawIntakeOpen, setRawIntakeOpen] = useState(false);
-	const [rawIntakeDraft, setRawIntakeDraft] = useState('');
-	const [rawIntakeMode, setRawIntakeMode] = useState('create_only');
-	const [rawIntakeOpenAfterSuccess, setRawIntakeOpenAfterSuccess] = useState(true);
-	const [rawIntakePreviewBusy, setRawIntakePreviewBusy] = useState(false);
-	const [rawIntakeCommitBusy, setRawIntakeCommitBusy] = useState(false);
-	const [rawIntakeError, setRawIntakeError] = useState('');
-	const [rawIntakePreview, setRawIntakePreview] = useState(null);
-	const [rawIntakeUpdateConfirmation, setRawIntakeUpdateConfirmation] = useState(null);
-	const [syncImportOpen, setSyncImportOpen] = useState(false);
-	const [syncImportPath, setSyncImportPath] = useState('');
-	const [syncImportPaths, setSyncImportPaths] = useState([]);
-	const [syncImportRoute, setSyncImportRoute] = useState('core');
-	const [syncImportPreviewBusy, setSyncImportPreviewBusy] = useState(false);
-	const [syncImportCommitBusy, setSyncImportCommitBusy] = useState(false);
-	const [syncImportRemediationBusy, setSyncImportRemediationBusy] = useState('');
-	const [syncImportError, setSyncImportError] = useState('');
-	const [syncImportNotice, setSyncImportNotice] = useState('');
-	const [syncImportPreview, setSyncImportPreview] = useState(null);
-	const [syncImportUpdateConfirmations, setSyncImportUpdateConfirmations] = useState({});
-	const [mergeJsonOpen, setMergeJsonOpen] = useState(false);
-	const [mergeJsonDraft, setMergeJsonDraft] = useState('');
-	const [mergeJsonIdentity, setMergeJsonIdentity] = useState(DEFAULT_MERGE_IDENTITY);
-	const [mergeJsonMatchingPolicy, setMergeJsonMatchingPolicy] = useState(DEFAULT_MERGE_MATCHING_POLICY);
-	const [mergeJsonPreviewBusy, setMergeJsonPreviewBusy] = useState(false);
-	const [mergeJsonSaveBusy, setMergeJsonSaveBusy] = useState(false);
-	const [mergeJsonPartialBusy, setMergeJsonPartialBusy] = useState(false);
-	const [mergeJsonError, setMergeJsonError] = useState('');
-	const [mergeJsonPreview, setMergeJsonPreview] = useState(null);
-	const [mergeJsonConfirmed, setMergeJsonConfirmed] = useState(false);
-	const entityEditorTextareaRef = useRef(null);
+	const [ fullReplaceModalOpen, setFullReplaceModalOpen ] = useState( false );
+	const [ fullReplaceConfirmPhrase, setFullReplaceConfirmPhrase ] =
+		useState( '' );
+	const [ fullReplaceModalError, setFullReplaceModalError ] = useState( '' );
+	const [ fullReplaceNeedsTakeover, setFullReplaceNeedsTakeover ] =
+		useState( false );
+	const [ transferPreviewOpen, setTransferPreviewOpen ] = useState( false );
+	const [ transferPreviewLoading, setTransferPreviewLoading ] =
+		useState( false );
+	const [ transferPreviewError, setTransferPreviewError ] = useState( '' );
+	const [ transferPreviewData, setTransferPreviewData ] = useState( null );
+	const [ rawIntakeOpen, setRawIntakeOpen ] = useState( false );
+	const [ rawIntakeDraft, setRawIntakeDraft ] = useState( '' );
+	const [ rawIntakeMode, setRawIntakeMode ] = useState( 'create_only' );
+	const [ rawIntakeOpenAfterSuccess, setRawIntakeOpenAfterSuccess ] =
+		useState( true );
+	const [ rawIntakePreviewBusy, setRawIntakePreviewBusy ] = useState( false );
+	const [ rawIntakeCommitBusy, setRawIntakeCommitBusy ] = useState( false );
+	const [ rawIntakeError, setRawIntakeError ] = useState( '' );
+	const [ rawIntakePreview, setRawIntakePreview ] = useState( null );
+	const [ rawIntakeUpdateConfirmation, setRawIntakeUpdateConfirmation ] =
+		useState( null );
+	const [ syncImportOpen, setSyncImportOpen ] = useState( false );
+	const [ syncImportPath, setSyncImportPath ] = useState( '' );
+	const [ syncImportPaths, setSyncImportPaths ] = useState( [] );
+	const [ syncImportRoute, setSyncImportRoute ] = useState( 'core' );
+	const [ syncImportPreviewBusy, setSyncImportPreviewBusy ] =
+		useState( false );
+	const [ syncImportCommitBusy, setSyncImportCommitBusy ] = useState( false );
+	const [ syncImportRemediationBusy, setSyncImportRemediationBusy ] =
+		useState( '' );
+	const [ syncImportError, setSyncImportError ] = useState( '' );
+	const [ syncImportNotice, setSyncImportNotice ] = useState( '' );
+	const [ syncImportPreview, setSyncImportPreview ] = useState( null );
+	const [ syncImportUpdateConfirmations, setSyncImportUpdateConfirmations ] =
+		useState( {} );
+	const [ mergeJsonOpen, setMergeJsonOpen ] = useState( false );
+	const [ mergeJsonDraft, setMergeJsonDraft ] = useState( '' );
+	const [ mergeJsonIdentity, setMergeJsonIdentity ] = useState(
+		DEFAULT_MERGE_IDENTITY
+	);
+	const [ mergeJsonMatchingPolicy, setMergeJsonMatchingPolicy ] = useState(
+		DEFAULT_MERGE_MATCHING_POLICY
+	);
+	const [ mergeJsonPreviewBusy, setMergeJsonPreviewBusy ] = useState( false );
+	const [ mergeJsonSaveBusy, setMergeJsonSaveBusy ] = useState( false );
+	const [ mergeJsonPartialBusy, setMergeJsonPartialBusy ] = useState( false );
+	const [ mergeJsonError, setMergeJsonError ] = useState( '' );
+	const [ mergeJsonPreview, setMergeJsonPreview ] = useState( null );
+	const [ mergeJsonConfirmed, setMergeJsonConfirmed ] = useState( false );
+	const entityEditorTextareaRef = useRef( null );
 
 	const entityPerPage = 20;
 
-	const loadEntityIndex = useCallback(async (force = false) => {
-		setEntityIndexLoading(true);
-		setEntityIndexLoaded(false);
-		setEntityIndexError('');
-		setEntityIndexErrorItems([]);
+	const loadEntityIndex = useCallback( async ( force = false ) => {
+		setEntityIndexLoading( true );
+		setEntityIndexLoaded( false );
+		setEntityIndexError( '' );
+		setEntityIndexErrorItems( [] );
 		try {
 			const data = force
-				? await apiPost('entity-editor/index/rebuild', {})
-				: await apiGet('entity-editor/index');
-			setEntityIndex(Array.isArray(data?.items) ? data.items : []);
-			setEntityIndexStats(data?.stats || null);
-		} catch (error) {
-			setEntityIndexError(error?.message || 'Failed to load entity index');
-			setEntityIndexErrorItems([]);
-		} finally {
-			setEntityIndexLoaded(true);
-			setEntityIndexLoading(false);
-		}
-	}, []);
-
-	const loadEntityEditorFile = useCallback(async (path, forceTakeover = false) => {
-		if (!path) return;
-		setEntityFileLoading(true);
-		setEntityFileError('');
-		setEntityLockConflict(null);
-		try {
-			const data = await apiGet(
-				`entity-editor/file?path=${encodeURIComponent(path)}${forceTakeover ? '&force_takeover=1' : ''}`
+				? await apiPost( 'entity-editor/index/rebuild', {} )
+				: await apiGet( 'entity-editor/index' );
+			setEntityIndex( Array.isArray( data?.items ) ? data.items : [] );
+			setEntityIndexStats( data?.stats || null );
+		} catch ( error ) {
+			setEntityIndexError(
+				error?.message || 'Failed to load entity index'
 			);
-			setEntityFileData(data);
-			setEntityEditorDraft(data?.content || '');
-			setEntitySaveError('');
-			setEntitySaveNotice('');
-			setEntityLockToken(data?.lock?.token || '');
-			setEntityLockInfo(data?.lock || null);
-		} catch (error) {
-			setEntityFileData(null);
-			setEntityFileError(error?.message || 'Failed to load entity file');
-			setEntityLockToken('');
-			setEntityLockInfo(null);
-			setEntityLockConflict(error?.body?.data?.lock || null);
+			setEntityIndexErrorItems( [] );
 		} finally {
-			setEntityFileLoading(false);
+			setEntityIndexLoaded( true );
+			setEntityIndexLoading( false );
 		}
-	}, []);
+	}, [] );
+
+	const loadEntityEditorFile = useCallback(
+		async ( path, forceTakeover = false ) => {
+			if ( ! path ) {
+				return;
+			}
+			setEntityFileLoading( true );
+			setEntityFileError( '' );
+			setEntityLockConflict( null );
+			try {
+				const data = await apiGet(
+					`entity-editor/file?path=${ encodeURIComponent( path ) }${
+						forceTakeover ? '&force_takeover=1' : ''
+					}`
+				);
+				setEntityFileData( data );
+				setEntityEditorDraft( data?.content || '' );
+				setEntitySaveError( '' );
+				setEntitySaveNotice( '' );
+				setEntityLockToken( data?.lock?.token || '' );
+				setEntityLockInfo( data?.lock || null );
+			} catch ( error ) {
+				setEntityFileData( null );
+				setEntityFileError(
+					error?.message || 'Failed to load entity file'
+				);
+				setEntityLockToken( '' );
+				setEntityLockInfo( null );
+				setEntityLockConflict( error?.body?.data?.lock || null );
+			} finally {
+				setEntityFileLoading( false );
+			}
+		},
+		[]
+	);
 
 	const normalizedEntityEditorSearch = entityEditorSearch.trim();
 	const entityEditorSearchMatches = useMemo(
-		() => collectSearchMatches(entityEditorDraft, normalizedEntityEditorSearch),
-		[entityEditorDraft, normalizedEntityEditorSearch]
+		() =>
+			collectSearchMatches(
+				entityEditorDraft,
+				normalizedEntityEditorSearch
+			),
+		[ entityEditorDraft, normalizedEntityEditorSearch ]
 	);
 
-	const jumpToEntityEditorSearchMatch = useCallback((matchIndex, matches, query, { keepInputFocus = true } = {}) => {
-		if (!Array.isArray(matches) || !matches.length || !query) return;
-		const textarea = entityEditorTextareaRef.current || document.querySelector('textarea.dbvc-entity-editor__textarea');
-		if (!textarea) return;
-		const activeElement = document.activeElement;
-		const clampedIndex = Math.max(0, Math.min(matchIndex, matches.length - 1));
-		const start = matches[clampedIndex];
-		const end = start + query.length;
-		textarea.focus();
-		textarea.setSelectionRange(start, end);
-		const textBefore = textarea.value.slice(0, start);
-		const lineNumber = (textBefore.match(/\n/g) || []).length;
-		const lineHeight = Number.parseFloat(window.getComputedStyle(textarea).lineHeight) || 20;
-		textarea.scrollTop = Math.max(0, (lineNumber * lineHeight) - (textarea.clientHeight * 0.35));
-		if (keepInputFocus && activeElement && activeElement !== textarea && typeof activeElement.focus === 'function') {
-			activeElement.focus();
+	const jumpToEntityEditorSearchMatch = useCallback(
+		( matchIndex, matches, query, { keepInputFocus = true } = {} ) => {
+			if ( ! Array.isArray( matches ) || ! matches.length || ! query ) {
+				return;
+			}
+			const textarea =
+				entityEditorTextareaRef.current ||
+				document.querySelector(
+					'textarea.dbvc-entity-editor__textarea'
+				);
+			if ( ! textarea ) {
+				return;
+			}
+			const activeElement = document.activeElement;
+			const clampedIndex = Math.max(
+				0,
+				Math.min( matchIndex, matches.length - 1 )
+			);
+			const start = matches[ clampedIndex ];
+			const end = start + query.length;
+			textarea.focus();
+			textarea.setSelectionRange( start, end );
+			const textBefore = textarea.value.slice( 0, start );
+			const lineNumber = ( textBefore.match( /\n/g ) || [] ).length;
+			const lineHeight =
+				Number.parseFloat(
+					window.getComputedStyle( textarea ).lineHeight
+				) || 20;
+			textarea.scrollTop = Math.max(
+				0,
+				lineNumber * lineHeight - textarea.clientHeight * 0.35
+			);
+			if (
+				keepInputFocus &&
+				activeElement &&
+				activeElement !== textarea &&
+				typeof activeElement.focus === 'function'
+			) {
+				activeElement.focus();
+			}
+			setEntityEditorSearchIndex( clampedIndex );
+		},
+		[]
+	);
+
+	const getEntityEditorSearchCursor = useCallback( () => {
+		const textarea =
+			entityEditorTextareaRef.current ||
+			document.querySelector( 'textarea.dbvc-entity-editor__textarea' );
+		if ( ! textarea ) {
+			return 0;
 		}
-		setEntityEditorSearchIndex(clampedIndex);
-	}, []);
+		return Math.max( 0, Number( textarea.selectionStart || 0 ) );
+	}, [] );
 
-	const getEntityEditorSearchCursor = useCallback(() => {
-		const textarea = entityEditorTextareaRef.current || document.querySelector('textarea.dbvc-entity-editor__textarea');
-		if (!textarea) return 0;
-		return Math.max(0, Number(textarea.selectionStart || 0));
-	}, []);
-
-	useEffect(() => {
-		if (!entityIndexLoaded && !entityIndexLoading && !entityIndexError) {
-			loadEntityIndex(false);
+	useEffect( () => {
+		if (
+			! entityIndexLoaded &&
+			! entityIndexLoading &&
+			! entityIndexError
+		) {
+			loadEntityIndex( false );
 		}
-	}, [entityIndexLoaded, entityIndexLoading, entityIndexError, loadEntityIndex]);
+	}, [
+		entityIndexLoaded,
+		entityIndexLoading,
+		entityIndexError,
+		loadEntityIndex,
+	] );
 
-	useEffect(() => {
-		setEntityPartialMatchingPolicy(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
-		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
-		if (!selectedEntityFile) {
-			setEntityFileData(null);
-			setEntityLockToken('');
-			setEntityLockInfo(null);
-			setEntityLockConflict(null);
-			setEntityFileError('');
-			setEntityEditorSearch('');
-			setEntityEditorSearchIndex(-1);
+	useEffect( () => {
+		setEntityPartialMatchingPolicy(
+			DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY
+		);
+		setMergeJsonMatchingPolicy( DEFAULT_MERGE_MATCHING_POLICY );
+		if ( ! selectedEntityFile ) {
+			setEntityFileData( null );
+			setEntityLockToken( '' );
+			setEntityLockInfo( null );
+			setEntityLockConflict( null );
+			setEntityFileError( '' );
+			setEntityEditorSearch( '' );
+			setEntityEditorSearchIndex( -1 );
 			return;
 		}
-		loadEntityEditorFile(selectedEntityFile, false);
-	}, [selectedEntityFile, loadEntityEditorFile]);
+		loadEntityEditorFile( selectedEntityFile, false );
+	}, [ selectedEntityFile, loadEntityEditorFile ] );
 
-	useEffect(() => {
-		if (!normalizedEntityEditorSearch || !entityEditorSearchMatches.length) {
-			setEntityEditorSearchIndex(-1);
+	useEffect( () => {
+		if (
+			! normalizedEntityEditorSearch ||
+			! entityEditorSearchMatches.length
+		) {
+			setEntityEditorSearchIndex( -1 );
 			return;
 		}
 		const cursor = getEntityEditorSearchCursor();
-		const selectedMatchIndex = entityEditorSearchMatches.findIndex((position) => position === cursor);
-		if (selectedMatchIndex >= 0) {
-			setEntityEditorSearchIndex(selectedMatchIndex);
+		const selectedMatchIndex = entityEditorSearchMatches.findIndex(
+			( position ) => position === cursor
+		);
+		if ( selectedMatchIndex >= 0 ) {
+			setEntityEditorSearchIndex( selectedMatchIndex );
 			return;
 		}
-		const nearestIndex = entityEditorSearchMatches.findIndex((position) => position > cursor);
-		setEntityEditorSearchIndex(nearestIndex >= 0 ? nearestIndex : entityEditorSearchMatches.length - 1);
-	}, [entityEditorSearchMatches, normalizedEntityEditorSearch, getEntityEditorSearchCursor]);
+		const nearestIndex = entityEditorSearchMatches.findIndex(
+			( position ) => position > cursor
+		);
+		setEntityEditorSearchIndex(
+			nearestIndex >= 0
+				? nearestIndex
+				: entityEditorSearchMatches.length - 1
+		);
+	}, [
+		entityEditorSearchMatches,
+		normalizedEntityEditorSearch,
+		getEntityEditorSearchCursor,
+	] );
 
-	useEffect(() => {
-		setEntitySubtypeFilter('all');
-		setEntityPage(1);
-	}, [entityKindFilter]);
+	useEffect( () => {
+		setEntitySubtypeFilter( 'all' );
+		setEntityPage( 1 );
+	}, [ entityKindFilter ] );
 
-	useEffect(() => {
-		setRawIntakePreview(null);
-		setRawIntakeError('');
-	}, [rawIntakeDraft, rawIntakeMode]);
+	useEffect( () => {
+		setRawIntakePreview( null );
+		setRawIntakeError( '' );
+	}, [ rawIntakeDraft, rawIntakeMode ] );
 
-	useEffect(() => {
-		setMergeJsonPreview(null);
-		setMergeJsonConfirmed(false);
-		setMergeJsonError('');
-	}, [mergeJsonDraft, mergeJsonIdentity, mergeJsonMatchingPolicy]);
+	useEffect( () => {
+		setMergeJsonPreview( null );
+		setMergeJsonConfirmed( false );
+		setMergeJsonError( '' );
+	}, [ mergeJsonDraft, mergeJsonIdentity, mergeJsonMatchingPolicy ] );
 
-	useEffect(() => {
-		const available = new Set(entityIndex.map((item) => item.relative_path).filter(Boolean));
-		setSelectedEntityPaths((current) => current.filter((path) => available.has(path)));
-	}, [entityIndex]);
+	useEffect( () => {
+		const available = new Set(
+			entityIndex.map( ( item ) => item.relative_path ).filter( Boolean )
+		);
+		setSelectedEntityPaths( ( current ) =>
+			current.filter( ( path ) => available.has( path ) )
+		);
+	}, [ entityIndex ] );
 
-	const saveEntityEditorFile = useCallback(async (forceTakeover = false) => {
-		if (!selectedEntityFile) return;
-		setEntitySaveError('');
-		setEntitySaveNotice('');
-		setEntityLockConflict(null);
-		try {
-			JSON.parse(entityEditorDraft || '{}');
-		} catch (error) {
-			setEntitySaveError(error?.message || 'Invalid JSON');
-			return;
-		}
-		setEntitySaveBusy(true);
-		try {
-			const data = await apiPost('entity-editor/file/save', {
-				path: selectedEntityFile,
-				content: entityEditorDraft,
-				lock_token: entityLockToken || '',
-				force_takeover: !!forceTakeover,
-			});
-			setEntityFileData((current) => ({ ...current, ...data }));
-			setEntityEditorDraft(data?.content || entityEditorDraft);
-			setEntitySaveNotice(forceTakeover ? 'Saved JSON and took over lock.' : 'Saved JSON to sync folder.');
-			setEntityLockToken(data?.lock?.token || entityLockToken);
-			setEntityLockInfo(data?.lock || entityLockInfo);
-			setEntityIndex([]);
-			setEntityIndexLoaded(false);
-		} catch (error) {
-			setEntitySaveError(error?.message || 'Failed to save JSON');
-			setEntityLockConflict(error?.body?.data?.lock || null);
-		} finally {
-			setEntitySaveBusy(false);
-		}
-	}, [selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo]);
-
-	const partialImportEntityEditorFile = useCallback(async (forceTakeover = false) => {
-		if (!selectedEntityFile) return;
-		setEntitySaveError('');
-		setEntitySaveNotice('');
-		setEntityLockConflict(null);
-		try {
-			JSON.parse(entityEditorDraft || '{}');
-		} catch (error) {
-			setEntitySaveError(error?.message || 'Invalid JSON');
-			return;
-		}
-		setEntityImportBusy(true);
-		try {
-			const data = await apiPost('entity-editor/file/import-partial', {
-				path: selectedEntityFile,
-				content: entityEditorDraft,
-				lock_token: entityLockToken || '',
-				force_takeover: !!forceTakeover,
-				matching: getMatchingPayload(entityPartialMatchingPolicy),
-			});
-			const counts = data?.import_result?.counts || {};
-			setEntityFileData((current) => ({ ...current, ...data }));
-			setEntityEditorDraft(data?.content || entityEditorDraft);
-			setEntityLockToken(data?.lock?.token || entityLockToken);
-			setEntityLockInfo(data?.lock || entityLockInfo);
-			setEntitySaveNotice(
-				`Saved + partial import complete (fields: ${counts.core_fields_updated ?? 0}, meta: ${counts.meta_keys_updated ?? 0}, tax: ${counts.taxonomies_updated ?? 0}).`
-			);
-			setEntityIndex([]);
-			setEntityIndexLoaded(false);
-		} catch (error) {
-			setEntitySaveError(error?.message || 'Failed to run partial import');
-			setEntityLockConflict(error?.body?.data?.lock || null);
-		} finally {
-			setEntityImportBusy(false);
-		}
-	}, [selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo, entityPartialMatchingPolicy]);
-
-	const fullReplaceEntityEditorFile = useCallback(async (forceTakeover = false, confirmPhrase = '') => {
-		if (!selectedEntityFile) return;
-		setEntitySaveError('');
-		setEntitySaveNotice('');
-		setEntityLockConflict(null);
-		const phrase = (confirmPhrase || '').trim();
-		if (phrase !== 'REPLACE') {
-			setEntitySaveError('Full replace requires typing "REPLACE".');
-			return;
-		}
-		try {
-			JSON.parse(entityEditorDraft || '{}');
-		} catch (error) {
-			setEntitySaveError(error?.message || 'Invalid JSON');
-			return;
-		}
-		setEntityReplaceBusy(true);
-		try {
-			const data = await apiPost('entity-editor/file/import-replace', {
-				path: selectedEntityFile,
-				content: entityEditorDraft,
-				confirm_phrase: phrase,
-				lock_token: entityLockToken || '',
-				force_takeover: !!forceTakeover,
-			});
-			const counts = data?.import_result?.counts || {};
-			const snapshot = data?.import_result?.snapshot_path || '';
-			setEntityFileData((current) => ({ ...current, ...data }));
-			setEntityEditorDraft(data?.content || entityEditorDraft);
-			setEntityLockToken(data?.lock?.token || entityLockToken);
-			setEntityLockInfo(data?.lock || entityLockInfo);
-			setEntitySaveNotice(
-				`Saved + full replace complete (fields: ${counts.core_fields_updated ?? 0}, meta updated: ${counts.meta_keys_updated ?? 0}, meta deleted: ${counts.meta_keys_deleted ?? 0}, tax: ${counts.taxonomies_updated ?? 0})${snapshot ? `; snapshot: ${snapshot}` : ''}.`
-			);
-			setEntityIndex([]);
-			setEntityIndexLoaded(false);
-		} catch (error) {
-			setEntitySaveError(error?.message || 'Failed to run full replace');
-			setEntityLockConflict(error?.body?.data?.lock || null);
-		} finally {
-			setEntityReplaceBusy(false);
-		}
-	}, [selectedEntityFile, entityEditorDraft, entityLockToken, entityLockInfo]);
-
-	const openFullReplaceModal = useCallback((needsTakeover = false) => {
-		setFullReplaceNeedsTakeover(!!needsTakeover);
-		setFullReplaceConfirmPhrase('');
-		setFullReplaceModalError('');
-		setFullReplaceModalOpen(true);
-	}, []);
-
-	const closeFullReplaceModal = useCallback(() => {
-		setFullReplaceModalOpen(false);
-		setFullReplaceConfirmPhrase('');
-		setFullReplaceModalError('');
-		setFullReplaceNeedsTakeover(false);
-	}, []);
-
-	const closeTransferPreview = useCallback(() => {
-		setTransferPreviewOpen(false);
-		setTransferPreviewLoading(false);
-		setTransferPreviewError('');
-		setTransferPreviewData(null);
-	}, []);
-
-	const openRawIntakeModal = useCallback(() => {
-		setRawIntakeOpen(true);
-		setRawIntakeDraft('');
-		setRawIntakeMode('create_only');
-		setRawIntakeOpenAfterSuccess(true);
-		setRawIntakePreview(null);
-		setRawIntakeError('');
-		setRawIntakeUpdateConfirmation(null);
-	}, []);
-
-	const closeRawIntakeModal = useCallback(() => {
-		setRawIntakeOpen(false);
-		setRawIntakePreviewBusy(false);
-		setRawIntakeCommitBusy(false);
-		setRawIntakeError('');
-		setRawIntakePreview(null);
-		setRawIntakeUpdateConfirmation(null);
-	}, []);
-
-	const closeSyncImportModal = useCallback(() => {
-		setSyncImportOpen(false);
-		setSyncImportPath('');
-		setSyncImportPaths([]);
-		setSyncImportRoute('core');
-		setSyncImportPreviewBusy(false);
-		setSyncImportCommitBusy(false);
-		setSyncImportRemediationBusy('');
-		setSyncImportError('');
-		setSyncImportNotice('');
-		setSyncImportPreview(null);
-		setSyncImportUpdateConfirmations({});
-	}, []);
-
-	const openMergeJsonPanel = useCallback(() => {
-		setMergeJsonOpen(true);
-		setMergeJsonDraft('');
-		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
-		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
-		setMergeJsonPreview(null);
-		setMergeJsonError('');
-		setMergeJsonConfirmed(false);
-	}, []);
-
-	const closeMergeJsonPanel = useCallback(() => {
-		setMergeJsonOpen(false);
-		setMergeJsonDraft('');
-		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
-		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
-		setMergeJsonPreview(null);
-		setMergeJsonError('');
-		setMergeJsonConfirmed(false);
-		setMergeJsonPreviewBusy(false);
-		setMergeJsonSaveBusy(false);
-		setMergeJsonPartialBusy(false);
-	}, []);
-
-	const setMergeIdentityChoice = useCallback((key, value) => {
-		setMergeJsonIdentity((current) => ({
-			...current,
-			[key]: value,
-		}));
-	}, []);
-
-	const previewMergeJson = useCallback(async () => {
-		if (!selectedEntityFile) return;
-		setMergeJsonPreviewBusy(true);
-		setMergeJsonError('');
-		setMergeJsonConfirmed(false);
-		try {
-			const data = await apiPost('entity-editor/merge-json/preview', {
-				path: selectedEntityFile,
-				incoming_json: mergeJsonDraft,
-				identity: mergeJsonIdentity,
-				matching: getMatchingPayload(mergeJsonMatchingPolicy),
-			});
-			setMergeJsonPreview(data);
-		} catch (error) {
-			setMergeJsonError(error?.message || 'Failed to preview incoming JSON merge');
-			setMergeJsonPreview(error?.body?.data?.preview || null);
-		} finally {
-			setMergeJsonPreviewBusy(false);
-		}
-	}, [selectedEntityFile, mergeJsonDraft, mergeJsonIdentity, mergeJsonMatchingPolicy]);
-
-	const saveMergeJson = useCallback(async (partialImport = false, forceTakeover = false) => {
-		if (!selectedEntityFile || !mergeJsonPreview || !mergeJsonConfirmed) return;
-
-		const setBusy = partialImport ? setMergeJsonPartialBusy : setMergeJsonSaveBusy;
-		setBusy(true);
-		setMergeJsonError('');
-		setEntitySaveError('');
-		setEntitySaveNotice('');
-		setEntityLockConflict(null);
-
-		try {
-			const endpoint = partialImport
-				? 'entity-editor/merge-json/save-and-partial-import'
-				: 'entity-editor/merge-json/save';
-			const data = await apiPost(endpoint, {
-				path: selectedEntityFile,
-				incoming_json: mergeJsonDraft,
-				identity: mergeJsonIdentity,
-				matching: getMatchingPayload(mergeJsonMatchingPolicy),
-				lock_token: entityLockToken || '',
-				force_takeover: !!forceTakeover,
-				preview_hash: mergeJsonPreview?.preview_hash || '',
-				confirmed: true,
-			});
-
-			setEntityFileData((current) => ({ ...current, ...data }));
-			setEntityEditorDraft(data?.content || entityEditorDraft);
-			setEntityLockToken(data?.lock?.token || entityLockToken);
-			setEntityLockInfo(data?.lock || entityLockInfo);
-
-			if (partialImport) {
-				const counts = data?.import_result?.counts || {};
+	const saveEntityEditorFile = useCallback(
+		async ( forceTakeover = false ) => {
+			if ( ! selectedEntityFile ) {
+				return;
+			}
+			setEntitySaveError( '' );
+			setEntitySaveNotice( '' );
+			setEntityLockConflict( null );
+			try {
+				JSON.parse( entityEditorDraft || '{}' );
+			} catch ( error ) {
+				setEntitySaveError( error?.message || 'Invalid JSON' );
+				return;
+			}
+			setEntitySaveBusy( true );
+			try {
+				const data = await apiPost( 'entity-editor/file/save', {
+					path: selectedEntityFile,
+					content: entityEditorDraft,
+					lock_token: entityLockToken || '',
+					force_takeover: !! forceTakeover,
+				} );
+				setEntityFileData( ( current ) => ( { ...current, ...data } ) );
+				setEntityEditorDraft( data?.content || entityEditorDraft );
 				setEntitySaveNotice(
-					`Merged JSON saved + partial import complete (fields: ${counts.core_fields_updated ?? 0}, meta: ${counts.meta_keys_updated ?? 0}, tax: ${counts.taxonomies_updated ?? 0}).`
+					forceTakeover
+						? 'Saved JSON and took over lock.'
+						: 'Saved JSON to sync folder.'
 				);
-			} else {
-				setEntitySaveNotice('Merged JSON saved to sync folder.');
+				setEntityLockToken( data?.lock?.token || entityLockToken );
+				setEntityLockInfo( data?.lock || entityLockInfo );
+				setEntityIndex( [] );
+				setEntityIndexLoaded( false );
+			} catch ( error ) {
+				setEntitySaveError( error?.message || 'Failed to save JSON' );
+				setEntityLockConflict( error?.body?.data?.lock || null );
+			} finally {
+				setEntitySaveBusy( false );
 			}
+		},
+		[
+			selectedEntityFile,
+			entityEditorDraft,
+			entityLockToken,
+			entityLockInfo,
+		]
+	);
 
-			closeMergeJsonPanel();
-			setEntityIndex([]);
-			setEntityIndexLoaded(false);
-		} catch (error) {
-			setMergeJsonError(error?.message || 'Failed to save merged JSON');
-			setMergeJsonPreview(error?.body?.data?.preview || mergeJsonPreview);
-			if (error?.body?.code === 'dbvc_entity_editor_merge_stale_preview' || error?.body?.code === 'dbvc_entity_editor_merge_blocked') {
-				setMergeJsonConfirmed(false);
+	const partialImportEntityEditorFile = useCallback(
+		async ( forceTakeover = false ) => {
+			if ( ! selectedEntityFile ) {
+				return;
 			}
-			setEntityLockConflict(error?.body?.data?.lock || null);
+			setEntitySaveError( '' );
+			setEntitySaveNotice( '' );
+			setEntityLockConflict( null );
+			try {
+				JSON.parse( entityEditorDraft || '{}' );
+			} catch ( error ) {
+				setEntitySaveError( error?.message || 'Invalid JSON' );
+				return;
+			}
+			setEntityImportBusy( true );
+			try {
+				const data = await apiPost(
+					'entity-editor/file/import-partial',
+					{
+						path: selectedEntityFile,
+						content: entityEditorDraft,
+						lock_token: entityLockToken || '',
+						force_takeover: !! forceTakeover,
+						matching: getMatchingPayload(
+							entityPartialMatchingPolicy
+						),
+					}
+				);
+				const counts = data?.import_result?.counts || {};
+				setEntityFileData( ( current ) => ( { ...current, ...data } ) );
+				setEntityEditorDraft( data?.content || entityEditorDraft );
+				setEntityLockToken( data?.lock?.token || entityLockToken );
+				setEntityLockInfo( data?.lock || entityLockInfo );
+				setEntitySaveNotice(
+					`Saved + partial import complete (fields: ${
+						counts.core_fields_updated ?? 0
+					}, meta: ${ counts.meta_keys_updated ?? 0 }, tax: ${
+						counts.taxonomies_updated ?? 0
+					}).`
+				);
+				setEntityIndex( [] );
+				setEntityIndexLoaded( false );
+			} catch ( error ) {
+				setEntitySaveError(
+					error?.message || 'Failed to run partial import'
+				);
+				setEntityLockConflict( error?.body?.data?.lock || null );
+			} finally {
+				setEntityImportBusy( false );
+			}
+		},
+		[
+			selectedEntityFile,
+			entityEditorDraft,
+			entityLockToken,
+			entityLockInfo,
+			entityPartialMatchingPolicy,
+		]
+	);
+
+	const fullReplaceEntityEditorFile = useCallback(
+		async ( forceTakeover = false, confirmPhrase = '' ) => {
+			if ( ! selectedEntityFile ) {
+				return;
+			}
+			setEntitySaveError( '' );
+			setEntitySaveNotice( '' );
+			setEntityLockConflict( null );
+			const phrase = ( confirmPhrase || '' ).trim();
+			if ( phrase !== 'REPLACE' ) {
+				setEntitySaveError( 'Full replace requires typing "REPLACE".' );
+				return;
+			}
+			try {
+				JSON.parse( entityEditorDraft || '{}' );
+			} catch ( error ) {
+				setEntitySaveError( error?.message || 'Invalid JSON' );
+				return;
+			}
+			setEntityReplaceBusy( true );
+			try {
+				const data = await apiPost(
+					'entity-editor/file/import-replace',
+					{
+						path: selectedEntityFile,
+						content: entityEditorDraft,
+						confirm_phrase: phrase,
+						lock_token: entityLockToken || '',
+						force_takeover: !! forceTakeover,
+					}
+				);
+				const counts = data?.import_result?.counts || {};
+				const snapshot = data?.import_result?.snapshot_path || '';
+				setEntityFileData( ( current ) => ( { ...current, ...data } ) );
+				setEntityEditorDraft( data?.content || entityEditorDraft );
+				setEntityLockToken( data?.lock?.token || entityLockToken );
+				setEntityLockInfo( data?.lock || entityLockInfo );
+				setEntitySaveNotice(
+					`Saved + full replace complete (fields: ${
+						counts.core_fields_updated ?? 0
+					}, meta updated: ${
+						counts.meta_keys_updated ?? 0
+					}, meta deleted: ${ counts.meta_keys_deleted ?? 0 }, tax: ${
+						counts.taxonomies_updated ?? 0
+					})${ snapshot ? `; snapshot: ${ snapshot }` : '' }.`
+				);
+				setEntityIndex( [] );
+				setEntityIndexLoaded( false );
+			} catch ( error ) {
+				setEntitySaveError(
+					error?.message || 'Failed to run full replace'
+				);
+				setEntityLockConflict( error?.body?.data?.lock || null );
+			} finally {
+				setEntityReplaceBusy( false );
+			}
+		},
+		[
+			selectedEntityFile,
+			entityEditorDraft,
+			entityLockToken,
+			entityLockInfo,
+		]
+	);
+
+	const openFullReplaceModal = useCallback( ( needsTakeover = false ) => {
+		setFullReplaceNeedsTakeover( !! needsTakeover );
+		setFullReplaceConfirmPhrase( '' );
+		setFullReplaceModalError( '' );
+		setFullReplaceModalOpen( true );
+	}, [] );
+
+	const closeFullReplaceModal = useCallback( () => {
+		setFullReplaceModalOpen( false );
+		setFullReplaceConfirmPhrase( '' );
+		setFullReplaceModalError( '' );
+		setFullReplaceNeedsTakeover( false );
+	}, [] );
+
+	const closeTransferPreview = useCallback( () => {
+		setTransferPreviewOpen( false );
+		setTransferPreviewLoading( false );
+		setTransferPreviewError( '' );
+		setTransferPreviewData( null );
+	}, [] );
+
+	const openRawIntakeModal = useCallback( () => {
+		setRawIntakeOpen( true );
+		setRawIntakeDraft( '' );
+		setRawIntakeMode( 'create_only' );
+		setRawIntakeOpenAfterSuccess( true );
+		setRawIntakePreview( null );
+		setRawIntakeError( '' );
+		setRawIntakeUpdateConfirmation( null );
+	}, [] );
+
+	const closeRawIntakeModal = useCallback( () => {
+		setRawIntakeOpen( false );
+		setRawIntakePreviewBusy( false );
+		setRawIntakeCommitBusy( false );
+		setRawIntakeError( '' );
+		setRawIntakePreview( null );
+		setRawIntakeUpdateConfirmation( null );
+	}, [] );
+
+	const closeSyncImportModal = useCallback( () => {
+		setSyncImportOpen( false );
+		setSyncImportPath( '' );
+		setSyncImportPaths( [] );
+		setSyncImportRoute( 'core' );
+		setSyncImportPreviewBusy( false );
+		setSyncImportCommitBusy( false );
+		setSyncImportRemediationBusy( '' );
+		setSyncImportError( '' );
+		setSyncImportNotice( '' );
+		setSyncImportPreview( null );
+		setSyncImportUpdateConfirmations( {} );
+	}, [] );
+
+	const openMergeJsonPanel = useCallback( () => {
+		setMergeJsonOpen( true );
+		setMergeJsonDraft( '' );
+		setMergeJsonIdentity( DEFAULT_MERGE_IDENTITY );
+		setMergeJsonMatchingPolicy( DEFAULT_MERGE_MATCHING_POLICY );
+		setMergeJsonPreview( null );
+		setMergeJsonError( '' );
+		setMergeJsonConfirmed( false );
+	}, [] );
+
+	const closeMergeJsonPanel = useCallback( () => {
+		setMergeJsonOpen( false );
+		setMergeJsonDraft( '' );
+		setMergeJsonIdentity( DEFAULT_MERGE_IDENTITY );
+		setMergeJsonMatchingPolicy( DEFAULT_MERGE_MATCHING_POLICY );
+		setMergeJsonPreview( null );
+		setMergeJsonError( '' );
+		setMergeJsonConfirmed( false );
+		setMergeJsonPreviewBusy( false );
+		setMergeJsonSaveBusy( false );
+		setMergeJsonPartialBusy( false );
+	}, [] );
+
+	const setMergeIdentityChoice = useCallback( ( key, value ) => {
+		setMergeJsonIdentity( ( current ) => ( {
+			...current,
+			[ key ]: value,
+		} ) );
+	}, [] );
+
+	const previewMergeJson = useCallback( async () => {
+		if ( ! selectedEntityFile ) {
+			return;
+		}
+		setMergeJsonPreviewBusy( true );
+		setMergeJsonError( '' );
+		setMergeJsonConfirmed( false );
+		try {
+			const data = await apiPost( 'entity-editor/merge-json/preview', {
+				path: selectedEntityFile,
+				incoming_json: mergeJsonDraft,
+				identity: mergeJsonIdentity,
+				matching: getMatchingPayload( mergeJsonMatchingPolicy ),
+			} );
+			setMergeJsonPreview( data );
+		} catch ( error ) {
+			setMergeJsonError(
+				error?.message || 'Failed to preview incoming JSON merge'
+			);
+			setMergeJsonPreview( error?.body?.data?.preview || null );
 		} finally {
-			setBusy(false);
+			setMergeJsonPreviewBusy( false );
 		}
 	}, [
 		selectedEntityFile,
-		mergeJsonPreview,
-		mergeJsonConfirmed,
 		mergeJsonDraft,
 		mergeJsonIdentity,
 		mergeJsonMatchingPolicy,
-		entityLockToken,
-		entityLockInfo,
-		entityEditorDraft,
-		closeMergeJsonPanel,
-	]);
+	] );
 
-	const previewRawIntake = useCallback(async () => {
-		setRawIntakeError('');
-		setRawIntakeUpdateConfirmation(null);
-		const validationError = getRawIntakeDraftValidationError(rawIntakeDraft);
-		if (validationError) {
-			setRawIntakePreview(null);
-			setRawIntakeError(validationError);
+	const saveMergeJson = useCallback(
+		async ( partialImport = false, forceTakeover = false ) => {
+			if (
+				! selectedEntityFile ||
+				! mergeJsonPreview ||
+				! mergeJsonConfirmed
+			) {
+				return;
+			}
+
+			const setBusy = partialImport
+				? setMergeJsonPartialBusy
+				: setMergeJsonSaveBusy;
+			setBusy( true );
+			setMergeJsonError( '' );
+			setEntitySaveError( '' );
+			setEntitySaveNotice( '' );
+			setEntityLockConflict( null );
+
+			try {
+				const endpoint = partialImport
+					? 'entity-editor/merge-json/save-and-partial-import'
+					: 'entity-editor/merge-json/save';
+				const data = await apiPost( endpoint, {
+					path: selectedEntityFile,
+					incoming_json: mergeJsonDraft,
+					identity: mergeJsonIdentity,
+					matching: getMatchingPayload( mergeJsonMatchingPolicy ),
+					lock_token: entityLockToken || '',
+					force_takeover: !! forceTakeover,
+					preview_hash: mergeJsonPreview?.preview_hash || '',
+					confirmed: true,
+				} );
+
+				setEntityFileData( ( current ) => ( { ...current, ...data } ) );
+				setEntityEditorDraft( data?.content || entityEditorDraft );
+				setEntityLockToken( data?.lock?.token || entityLockToken );
+				setEntityLockInfo( data?.lock || entityLockInfo );
+
+				if ( partialImport ) {
+					const counts = data?.import_result?.counts || {};
+					setEntitySaveNotice(
+						`Merged JSON saved + partial import complete (fields: ${
+							counts.core_fields_updated ?? 0
+						}, meta: ${ counts.meta_keys_updated ?? 0 }, tax: ${
+							counts.taxonomies_updated ?? 0
+						}).`
+					);
+				} else {
+					setEntitySaveNotice( 'Merged JSON saved to sync folder.' );
+				}
+
+				closeMergeJsonPanel();
+				setEntityIndex( [] );
+				setEntityIndexLoaded( false );
+			} catch ( error ) {
+				setMergeJsonError(
+					error?.message || 'Failed to save merged JSON'
+				);
+				setMergeJsonPreview(
+					error?.body?.data?.preview || mergeJsonPreview
+				);
+				if (
+					error?.body?.code ===
+						'dbvc_entity_editor_merge_stale_preview' ||
+					error?.body?.code === 'dbvc_entity_editor_merge_blocked'
+				) {
+					setMergeJsonConfirmed( false );
+				}
+				setEntityLockConflict( error?.body?.data?.lock || null );
+			} finally {
+				setBusy( false );
+			}
+		},
+		[
+			selectedEntityFile,
+			mergeJsonPreview,
+			mergeJsonConfirmed,
+			mergeJsonDraft,
+			mergeJsonIdentity,
+			mergeJsonMatchingPolicy,
+			entityLockToken,
+			entityLockInfo,
+			entityEditorDraft,
+			closeMergeJsonPanel,
+		]
+	);
+
+	const previewRawIntake = useCallback( async () => {
+		setRawIntakeError( '' );
+		setRawIntakeUpdateConfirmation( null );
+		const validationError =
+			getRawIntakeDraftValidationError( rawIntakeDraft );
+		if ( validationError ) {
+			setRawIntakePreview( null );
+			setRawIntakeError( validationError );
 			return;
 		}
 
-		setRawIntakePreviewBusy(true);
+		setRawIntakePreviewBusy( true );
 		try {
-			const data = await apiPost('entity-editor/raw-intake/preview', {
+			const data = await apiPost( 'entity-editor/raw-intake/preview', {
 				content: rawIntakeDraft,
 				mode: rawIntakeMode,
-			});
-			setRawIntakePreview(data);
-		} catch (error) {
-			setRawIntakeError(error?.message || 'Failed to preview raw JSON intake');
-			setRawIntakePreview(error?.body?.data?.preview || null);
-		} finally {
-			setRawIntakePreviewBusy(false);
-		}
-	}, [rawIntakeDraft, rawIntakeMode]);
-
-	const setRawIntakeMatchedUpdateConfirmed = useCallback((confirmed) => {
-		if (!confirmed || !rawIntakePreview) {
-			setRawIntakeUpdateConfirmation(null);
-			return;
-		}
-
-		setRawIntakeUpdateConfirmation({
-			confirmed: true,
-			preview_hash: rawIntakePreview?.preview_hash || '',
-			matched_entity_id: rawIntakePreview?.matched_update?.wp_entity?.id || rawIntakePreview?.match?.id || 0,
-		});
-	}, [rawIntakePreview]);
-
-	const openSyncImportPreview = useCallback(async (paths) => {
-		const normalizedPaths = (Array.isArray(paths) ? paths : [paths])
-			.map((path) => (path || '').toString())
-			.filter(Boolean);
-		if (!normalizedPaths.length) return;
-		const selectedItemsForPreview = normalizedPaths
-			.map((path) => entityIndex.find((item) => item?.relative_path === path))
-			.filter(Boolean);
-		const thirdPartyCount = selectedItemsForPreview.filter((item) => item?.entity_kind === 'third_party').length;
-		const coreCount = selectedItemsForPreview.filter((item) => item?.entity_kind !== 'third_party').length;
-		const route = thirdPartyCount > 0 ? 'third_party' : 'core';
-		setSyncImportOpen(true);
-		setSyncImportPath(normalizedPaths[0] || '');
-		setSyncImportPaths(normalizedPaths);
-		setSyncImportRoute(route);
-		setSyncImportPreview(null);
-		setSyncImportError('');
-		setSyncImportNotice('');
-		setSyncImportUpdateConfirmations({});
-		if (thirdPartyCount > 0 && coreCount > 0) {
-			setSyncImportError('Select either third-party provider JSON or post/term JSON, not both in the same import preview.');
-			return;
-		}
-		setSyncImportPreviewBusy(true);
-		try {
-			const data = await apiPost(route === 'third_party' ? 'entity-editor/third-party/preview' : 'entity-editor/sync-file-import/preview', {
-				paths: normalizedPaths,
-				mode: route === 'third_party' ? 'preview' : 'create_only',
-			});
-			setSyncImportPreview(data);
-		} catch (error) {
-			setSyncImportError(error?.message || 'Failed to preview sync-file import');
-			setSyncImportPreview(error?.body?.data?.preview || null);
-		} finally {
-			setSyncImportPreviewBusy(false);
-		}
-	}, [entityIndex]);
-
-	const remediateSyncImport = useCallback(async (item, remediation) => {
-		const path = item?.relative_path || item?.source_relative_path || '';
-		const remediationId = remediation?.id || '';
-		if (!path || !remediationId) return;
-
-		if (remediation?.requires_confirmation) {
-			const message = remediation?.description || 'Apply this import fix?';
-			if (!window.confirm(message)) return;
-		}
-
-		const busyKey = `${path}:${remediationId}`;
-		setSyncImportRemediationBusy(busyKey);
-		setSyncImportError('');
-		setSyncImportNotice('');
-		try {
-			const data = await apiPost('entity-editor/sync-file-import/remediate', {
-				path,
-				mode: 'create_only',
-				remediation: remediationId,
-				preview_hash: item?.preview_hash || '',
-			});
-			setSyncImportPreview(data);
-			setSyncImportUpdateConfirmations({});
-			const previewPaths = Array.isArray(data?.items)
-				? data.items.map((previewItem) => previewItem?.relative_path || previewItem?.source_relative_path || '').filter(Boolean)
-				: [];
-			if (previewPaths.length) {
-				setSyncImportPath(previewPaths[0]);
-				setSyncImportPaths(previewPaths);
-			}
-			setSyncImportNotice(data?.remediation_result?.action ? 'Import blocker fix applied. Review the refreshed preview before creating entities.' : '');
-			await loadEntityIndex(true);
-		} catch (error) {
-			setSyncImportError(error?.message || 'Failed to apply import fix');
-			setSyncImportPreview(error?.body?.data?.preview || syncImportPreview);
-		} finally {
-			setSyncImportRemediationBusy('');
-		}
-	}, [loadEntityIndex, syncImportPreview]);
-
-	const setSyncImportMatchedUpdateConfirmed = useCallback((item, confirmed) => {
-		const path = getSyncImportItemPath(item);
-		if (!path) return;
-
-		setSyncImportUpdateConfirmations((previous) => {
-			const next = { ...previous };
-			if (!confirmed) {
-				delete next[path];
-				return next;
-			}
-
-			next[path] = {
-				confirmed: true,
-				preview_hash: item?.preview_hash || '',
-				matched_entity_id: item?.matched_update?.wp_entity?.id || item?.match?.id || 0,
-			};
-			return next;
-		});
-	}, []);
-
-	const commitSyncImport = useCallback(async (modeOverride = '') => {
-		let paths = syncImportPaths.length ? syncImportPaths : (syncImportPath ? [syncImportPath] : []);
-		if (modeOverride) {
-			const previewItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
-			const actionPaths = previewItems
-				.filter((item) => !!item?.available_actions?.[modeOverride])
-				.map(getSyncImportItemPath)
-				.filter(Boolean);
-			if (actionPaths.length) {
-				paths = actionPaths;
-			}
-		}
-		if (!paths.length) return;
-		const isThirdParty = syncImportRoute === 'third_party';
-		const mode = modeOverride || (isThirdParty ? 'create_form' : 'create_only');
-		setSyncImportCommitBusy(true);
-		setSyncImportError('');
-		try {
-			const data = await apiPost(isThirdParty ? 'entity-editor/third-party/commit' : 'entity-editor/sync-file-import/commit', {
-				paths,
-				mode,
-			});
-			const summary = data?.summary || {};
-			setSyncImportPreview(data);
-			setSyncImportUpdateConfirmations({});
-			setEntityIndexNotice(
-				`${isThirdParty ? 'Third-party sync import' : 'Sync-file import'} complete: created ${summary?.created ?? 0}, updated ${summary?.updated ?? 0}, blocked ${summary?.blocked ?? 0}, skipped ${summary?.skipped ?? 0}, errors ${summary?.errors ?? 0}.`
+			} );
+			setRawIntakePreview( data );
+		} catch ( error ) {
+			setRawIntakeError(
+				error?.message || 'Failed to preview raw JSON intake'
 			);
-			setEntityIndexError('');
-			setEntityIndexErrorItems([]);
-			await loadEntityIndex(true);
-		} catch (error) {
-			setSyncImportError(error?.message || 'Failed to import sync file');
-			setSyncImportPreview(error?.body?.data?.preview || syncImportPreview);
+			setRawIntakePreview( error?.body?.data?.preview || null );
 		} finally {
-			setSyncImportCommitBusy(false);
+			setRawIntakePreviewBusy( false );
 		}
-	}, [loadEntityIndex, syncImportPath, syncImportPaths, syncImportPreview, syncImportRoute]);
+	}, [ rawIntakeDraft, rawIntakeMode ] );
 
-	const commitSyncImportMatchedUpdates = useCallback(async () => {
-		const previewItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
-		const updateItems = previewItems.filter(isSyncImportMatchedUpdateEligible);
-		const confirmedItems = updateItems.filter((item) => {
-			const path = getSyncImportItemPath(item);
-			const confirmation = path ? syncImportUpdateConfirmations[path] : null;
-			return !!confirmation?.confirmed
-				&& confirmation.preview_hash === item?.preview_hash
-				&& Number(confirmation.matched_entity_id || 0) === Number(item?.matched_update?.wp_entity?.id || item?.match?.id || 0);
-		});
-		if (!updateItems.length || confirmedItems.length !== updateItems.length) return;
+	const setRawIntakeMatchedUpdateConfirmed = useCallback(
+		( confirmed ) => {
+			if ( ! confirmed || ! rawIntakePreview ) {
+				setRawIntakeUpdateConfirmation( null );
+				return;
+			}
 
-		const paths = confirmedItems.map(getSyncImportItemPath).filter(Boolean);
+			setRawIntakeUpdateConfirmation( {
+				confirmed: true,
+				preview_hash: rawIntakePreview?.preview_hash || '',
+				matched_entity_id:
+					rawIntakePreview?.matched_update?.wp_entity?.id ||
+					rawIntakePreview?.match?.id ||
+					0,
+			} );
+		},
+		[ rawIntakePreview ]
+	);
+
+	const openSyncImportPreview = useCallback(
+		async ( paths ) => {
+			const normalizedPaths = (
+				Array.isArray( paths ) ? paths : [ paths ]
+			)
+				.map( ( path ) => ( path || '' ).toString() )
+				.filter( Boolean );
+			if ( ! normalizedPaths.length ) {
+				return;
+			}
+			const selectedItemsForPreview = normalizedPaths
+				.map( ( path ) =>
+					entityIndex.find( ( item ) => item?.relative_path === path )
+				)
+				.filter( Boolean );
+			const thirdPartyCount = selectedItemsForPreview.filter(
+				( item ) => item?.entity_kind === 'third_party'
+			).length;
+			const coreCount = selectedItemsForPreview.filter(
+				( item ) => item?.entity_kind !== 'third_party'
+			).length;
+			const route = thirdPartyCount > 0 ? 'third_party' : 'core';
+			setSyncImportOpen( true );
+			setSyncImportPath( normalizedPaths[ 0 ] || '' );
+			setSyncImportPaths( normalizedPaths );
+			setSyncImportRoute( route );
+			setSyncImportPreview( null );
+			setSyncImportError( '' );
+			setSyncImportNotice( '' );
+			setSyncImportUpdateConfirmations( {} );
+			if ( thirdPartyCount > 0 && coreCount > 0 ) {
+				setSyncImportError(
+					'Select either third-party provider JSON or post/term JSON, not both in the same import preview.'
+				);
+				return;
+			}
+			setSyncImportPreviewBusy( true );
+			try {
+				const data = await apiPost(
+					route === 'third_party'
+						? 'entity-editor/third-party/preview'
+						: 'entity-editor/sync-file-import/preview',
+					{
+						paths: normalizedPaths,
+						mode:
+							route === 'third_party' ? 'preview' : 'create_only',
+					}
+				);
+				setSyncImportPreview( data );
+			} catch ( error ) {
+				setSyncImportError(
+					error?.message || 'Failed to preview sync-file import'
+				);
+				setSyncImportPreview( error?.body?.data?.preview || null );
+			} finally {
+				setSyncImportPreviewBusy( false );
+			}
+		},
+		[ entityIndex ]
+	);
+
+	const remediateSyncImport = useCallback(
+		async ( item, remediation ) => {
+			const path =
+				item?.relative_path || item?.source_relative_path || '';
+			const remediationId = remediation?.id || '';
+			if ( ! path || ! remediationId ) {
+				return;
+			}
+
+			if ( remediation?.requires_confirmation ) {
+				const message =
+					remediation?.description || 'Apply this import fix?';
+				if ( ! window.confirm( message ) ) {
+					return;
+				}
+			}
+
+			const busyKey = `${ path }:${ remediationId }`;
+			setSyncImportRemediationBusy( busyKey );
+			setSyncImportError( '' );
+			setSyncImportNotice( '' );
+			try {
+				const data = await apiPost(
+					'entity-editor/sync-file-import/remediate',
+					{
+						path,
+						mode: 'create_only',
+						remediation: remediationId,
+						preview_hash: item?.preview_hash || '',
+					}
+				);
+				setSyncImportPreview( data );
+				setSyncImportUpdateConfirmations( {} );
+				const previewPaths = Array.isArray( data?.items )
+					? data.items
+							.map(
+								( previewItem ) =>
+									previewItem?.relative_path ||
+									previewItem?.source_relative_path ||
+									''
+							)
+							.filter( Boolean )
+					: [];
+				if ( previewPaths.length ) {
+					setSyncImportPath( previewPaths[ 0 ] );
+					setSyncImportPaths( previewPaths );
+				}
+				setSyncImportNotice(
+					data?.remediation_result?.action
+						? 'Import blocker fix applied. Review the refreshed preview before creating entities.'
+						: ''
+				);
+				await loadEntityIndex( true );
+			} catch ( error ) {
+				setSyncImportError(
+					error?.message || 'Failed to apply import fix'
+				);
+				setSyncImportPreview(
+					error?.body?.data?.preview || syncImportPreview
+				);
+			} finally {
+				setSyncImportRemediationBusy( '' );
+			}
+		},
+		[ loadEntityIndex, syncImportPreview ]
+	);
+
+	const setSyncImportMatchedUpdateConfirmed = useCallback(
+		( item, confirmed ) => {
+			const path = getSyncImportItemPath( item );
+			if ( ! path ) {
+				return;
+			}
+
+			setSyncImportUpdateConfirmations( ( previous ) => {
+				const next = { ...previous };
+				if ( ! confirmed ) {
+					delete next[ path ];
+					return next;
+				}
+
+				next[ path ] = {
+					confirmed: true,
+					preview_hash: item?.preview_hash || '',
+					matched_entity_id:
+						item?.matched_update?.wp_entity?.id ||
+						item?.match?.id ||
+						0,
+				};
+				return next;
+			} );
+		},
+		[]
+	);
+
+	const commitSyncImport = useCallback(
+		async ( modeOverride = '' ) => {
+			let paths = syncImportPaths.length
+				? syncImportPaths
+				: syncImportPath
+				? [ syncImportPath ]
+				: [];
+			if ( modeOverride ) {
+				const previewItems = Array.isArray( syncImportPreview?.items )
+					? syncImportPreview.items
+					: [];
+				const actionPaths = previewItems
+					.filter(
+						( item ) => !! item?.available_actions?.[ modeOverride ]
+					)
+					.map( getSyncImportItemPath )
+					.filter( Boolean );
+				if ( actionPaths.length ) {
+					paths = actionPaths;
+				}
+			}
+			if ( ! paths.length ) {
+				return;
+			}
+			const isThirdParty = syncImportRoute === 'third_party';
+			const mode =
+				modeOverride ||
+				( isThirdParty ? 'create_form' : 'create_only' );
+			setSyncImportCommitBusy( true );
+			setSyncImportError( '' );
+			try {
+				const data = await apiPost(
+					isThirdParty
+						? 'entity-editor/third-party/commit'
+						: 'entity-editor/sync-file-import/commit',
+					{
+						paths,
+						mode,
+					}
+				);
+				const summary = data?.summary || {};
+				setSyncImportPreview( data );
+				setSyncImportUpdateConfirmations( {} );
+				setEntityIndexNotice(
+					`${
+						isThirdParty
+							? 'Third-party sync import'
+							: 'Sync-file import'
+					} complete: created ${ summary?.created ?? 0 }, updated ${
+						summary?.updated ?? 0
+					}, blocked ${ summary?.blocked ?? 0 }, skipped ${
+						summary?.skipped ?? 0
+					}, errors ${ summary?.errors ?? 0 }.`
+				);
+				setEntityIndexError( '' );
+				setEntityIndexErrorItems( [] );
+				await loadEntityIndex( true );
+			} catch ( error ) {
+				setSyncImportError(
+					error?.message || 'Failed to import sync file'
+				);
+				setSyncImportPreview(
+					error?.body?.data?.preview || syncImportPreview
+				);
+			} finally {
+				setSyncImportCommitBusy( false );
+			}
+		},
+		[
+			loadEntityIndex,
+			syncImportPath,
+			syncImportPaths,
+			syncImportPreview,
+			syncImportRoute,
+		]
+	);
+
+	const commitSyncImportMatchedUpdates = useCallback( async () => {
+		const previewItems = Array.isArray( syncImportPreview?.items )
+			? syncImportPreview.items
+			: [];
+		const updateItems = previewItems.filter(
+			isSyncImportMatchedUpdateEligible
+		);
+		const confirmedItems = updateItems.filter( ( item ) => {
+			const path = getSyncImportItemPath( item );
+			const confirmation = path
+				? syncImportUpdateConfirmations[ path ]
+				: null;
+			return (
+				!! confirmation?.confirmed &&
+				confirmation.preview_hash === item?.preview_hash &&
+				Number( confirmation.matched_entity_id || 0 ) ===
+					Number(
+						item?.matched_update?.wp_entity?.id ||
+							item?.match?.id ||
+							0
+					)
+			);
+		} );
+		if (
+			! updateItems.length ||
+			confirmedItems.length !== updateItems.length
+		) {
+			return;
+		}
+
+		const paths = confirmedItems
+			.map( getSyncImportItemPath )
+			.filter( Boolean );
 		const confirmations = {};
-		confirmedItems.forEach((item) => {
-			const path = getSyncImportItemPath(item);
-			if (!path) return;
-			confirmations[path] = {
+		confirmedItems.forEach( ( item ) => {
+			const path = getSyncImportItemPath( item );
+			if ( ! path ) {
+				return;
+			}
+			confirmations[ path ] = {
 				confirmed: true,
 				preview_hash: item?.preview_hash || '',
-				matched_entity_id: item?.matched_update?.wp_entity?.id || item?.match?.id || 0,
+				matched_entity_id:
+					item?.matched_update?.wp_entity?.id || item?.match?.id || 0,
 			};
-		});
+		} );
 
-		setSyncImportCommitBusy(true);
-		setSyncImportError('');
+		setSyncImportCommitBusy( true );
+		setSyncImportError( '' );
 		try {
 			const isThirdParty = syncImportRoute === 'third_party';
-			const data = await apiPost(isThirdParty ? 'entity-editor/third-party/commit' : 'entity-editor/sync-file-import/commit', {
-				paths,
-				mode: isThirdParty ? 'update_matched_form' : 'update_matched',
-				confirmations,
-			});
-			const summary = data?.summary || {};
-			setSyncImportPreview(data);
-			setSyncImportUpdateConfirmations({});
-			setEntityIndexNotice(
-				`${isThirdParty ? 'Third-party matched update' : 'Sync-file matched update'} complete: updated ${summary?.updated ?? 0}, blocked ${summary?.blocked ?? 0}, skipped ${summary?.skipped ?? 0}, errors ${summary?.errors ?? 0}.`
+			const data = await apiPost(
+				isThirdParty
+					? 'entity-editor/third-party/commit'
+					: 'entity-editor/sync-file-import/commit',
+				{
+					paths,
+					mode: isThirdParty
+						? 'update_matched_form'
+						: 'update_matched',
+					confirmations,
+				}
 			);
-			setEntityIndexError('');
-			setEntityIndexErrorItems([]);
-			await loadEntityIndex(true);
-		} catch (error) {
-			setSyncImportError(error?.message || 'Failed to update matched entity from sync file');
-			setSyncImportPreview(error?.body?.data?.preview || syncImportPreview);
+			const summary = data?.summary || {};
+			setSyncImportPreview( data );
+			setSyncImportUpdateConfirmations( {} );
+			setEntityIndexNotice(
+				`${
+					isThirdParty
+						? 'Third-party matched update'
+						: 'Sync-file matched update'
+				} complete: updated ${ summary?.updated ?? 0 }, blocked ${
+					summary?.blocked ?? 0
+				}, skipped ${ summary?.skipped ?? 0 }, errors ${
+					summary?.errors ?? 0
+				}.`
+			);
+			setEntityIndexError( '' );
+			setEntityIndexErrorItems( [] );
+			await loadEntityIndex( true );
+		} catch ( error ) {
+			setSyncImportError(
+				error?.message ||
+					'Failed to update matched entity from sync file'
+			);
+			setSyncImportPreview(
+				error?.body?.data?.preview || syncImportPreview
+			);
 		} finally {
-			setSyncImportCommitBusy(false);
+			setSyncImportCommitBusy( false );
 		}
-	}, [loadEntityIndex, syncImportPreview, syncImportUpdateConfirmations, syncImportRoute]);
+	}, [
+		loadEntityIndex,
+		syncImportPreview,
+		syncImportUpdateConfirmations,
+		syncImportRoute,
+	] );
 
-	const commitRawIntake = useCallback(async () => {
-		setRawIntakeError('');
-		const validationError = getRawIntakeDraftValidationError(rawIntakeDraft);
-		if (validationError) {
-			setRawIntakePreview(null);
-			setRawIntakeUpdateConfirmation(null);
-			setRawIntakeError(validationError);
+	const commitRawIntake = useCallback( async () => {
+		setRawIntakeError( '' );
+		const validationError =
+			getRawIntakeDraftValidationError( rawIntakeDraft );
+		if ( validationError ) {
+			setRawIntakePreview( null );
+			setRawIntakeUpdateConfirmation( null );
+			setRawIntakeError( validationError );
 			return;
 		}
 
-		setRawIntakeCommitBusy(true);
-		const matchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
-		const confirmation = matchedUpdate && rawIntakeUpdateConfirmation?.confirmed
-			? {
-				confirmed: true,
-				preview_hash: rawIntakeUpdateConfirmation.preview_hash || '',
-				matched_entity_id: rawIntakeUpdateConfirmation.matched_entity_id || 0,
-			}
-			: {};
+		setRawIntakeCommitBusy( true );
+		const matchedUpdate = isRawIntakeMatchedUpdateEligible(
+			rawIntakePreview,
+			rawIntakeMode
+		);
+		const confirmation =
+			matchedUpdate && rawIntakeUpdateConfirmation?.confirmed
+				? {
+						confirmed: true,
+						preview_hash:
+							rawIntakeUpdateConfirmation.preview_hash || '',
+						matched_entity_id:
+							rawIntakeUpdateConfirmation.matched_entity_id || 0,
+				  }
+				: {};
 		try {
-			const data = await apiPost('entity-editor/raw-intake/commit', {
+			const data = await apiPost( 'entity-editor/raw-intake/commit', {
 				content: rawIntakeDraft,
 				mode: rawIntakeMode,
 				confirmation,
-				open_after_success: !!rawIntakeOpenAfterSuccess,
-			});
+				open_after_success: !! rawIntakeOpenAfterSuccess,
+			} );
 
-			const actionLabel = getRawIntakeActionLabel(data?.action);
-			setEntityIndexNotice(`Raw JSON intake complete: ${actionLabel}.`);
-			setEntityIndexError('');
-			setEntityIndexErrorItems([]);
+			const actionLabel = getRawIntakeActionLabel( data?.action );
+			setEntityIndexNotice(
+				`Raw JSON intake complete: ${ actionLabel }.`
+			);
+			setEntityIndexError( '' );
+			setEntityIndexErrorItems( [] );
 			closeRawIntakeModal();
-			await loadEntityIndex(true);
-			if (rawIntakeOpenAfterSuccess && data?.relative_path) {
-				setSelectedEntityFile(data.relative_path);
+			await loadEntityIndex( true );
+			if ( rawIntakeOpenAfterSuccess && data?.relative_path ) {
+				setSelectedEntityFile( data.relative_path );
 			}
-		} catch (error) {
-			setRawIntakeError(error?.message || 'Failed to commit raw JSON intake');
-			setRawIntakePreview(error?.body?.data?.preview || rawIntakePreview);
-			setRawIntakeUpdateConfirmation(null);
+		} catch ( error ) {
+			setRawIntakeError(
+				error?.message || 'Failed to commit raw JSON intake'
+			);
+			setRawIntakePreview(
+				error?.body?.data?.preview || rawIntakePreview
+			);
+			setRawIntakeUpdateConfirmation( null );
 		} finally {
-			setRawIntakeCommitBusy(false);
+			setRawIntakeCommitBusy( false );
 		}
-	}, [closeRawIntakeModal, loadEntityIndex, rawIntakeDraft, rawIntakeMode, rawIntakeOpenAfterSuccess, rawIntakePreview, rawIntakeUpdateConfirmation]);
+	}, [
+		closeRawIntakeModal,
+		loadEntityIndex,
+		rawIntakeDraft,
+		rawIntakeMode,
+		rawIntakeOpenAfterSuccess,
+		rawIntakePreview,
+		rawIntakeUpdateConfirmation,
+	] );
 
-	const confirmFullReplaceModal = useCallback(async () => {
-		const phrase = (fullReplaceConfirmPhrase || '').trim();
-		if (phrase !== 'REPLACE') {
-			setFullReplaceModalError('Type "REPLACE" to continue.');
+	const confirmFullReplaceModal = useCallback( async () => {
+		const phrase = ( fullReplaceConfirmPhrase || '' ).trim();
+		if ( phrase !== 'REPLACE' ) {
+			setFullReplaceModalError( 'Type "REPLACE" to continue.' );
 			return;
 		}
-		setFullReplaceModalError('');
-		setFullReplaceModalOpen(false);
-		await fullReplaceEntityEditorFile(fullReplaceNeedsTakeover, phrase);
-	}, [fullReplaceConfirmPhrase, fullReplaceNeedsTakeover, fullReplaceEntityEditorFile]);
+		setFullReplaceModalError( '' );
+		setFullReplaceModalOpen( false );
+		await fullReplaceEntityEditorFile( fullReplaceNeedsTakeover, phrase );
+	}, [
+		fullReplaceConfirmPhrase,
+		fullReplaceNeedsTakeover,
+		fullReplaceEntityEditorFile,
+	] );
 
-	const entitySubtypeOptions = useMemo(() => {
+	const entitySubtypeOptions = useMemo( () => {
 		const values = new Set();
-		entityIndex.forEach((item) => {
-			if (matchesEntityKindFilter(item, entityKindFilter) && item.subtype) {
-				values.add(item.subtype);
+		entityIndex.forEach( ( item ) => {
+			if (
+				matchesEntityKindFilter( item, entityKindFilter ) &&
+				item.subtype
+			) {
+				values.add( item.subtype );
 			}
-		});
-		return Array.from(values).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-	}, [entityIndex, entityKindFilter]);
+		} );
+		return Array.from( values ).sort( ( a, b ) =>
+			a.localeCompare( b, undefined, { sensitivity: 'base' } )
+		);
+	}, [ entityIndex, entityKindFilter ] );
 
-	const filteredEntityIndex = useMemo(() => {
+	const filteredEntityIndex = useMemo( () => {
 		const query = entitySearch.trim().toLowerCase();
-		return entityIndex.filter((item) => {
-			if (!matchesEntityKindFilter(item, entityKindFilter)) return false;
-			if (entitySubtypeFilter !== 'all' && item.subtype !== entitySubtypeFilter) return false;
-			if (!query) return true;
-			const values = [item.title, item.slug, item.uid, item.relative_path, item.subtype, item.entity_kind, item.provider, item.object_type]
-				.map((value) => (value || '').toString().toLowerCase());
-			return values.some((value) => value.includes(query));
-		});
-	}, [entityIndex, entityKindFilter, entitySubtypeFilter, entitySearch]);
+		return entityIndex.filter( ( item ) => {
+			if ( ! matchesEntityKindFilter( item, entityKindFilter ) ) {
+				return false;
+			}
+			if (
+				entitySubtypeFilter !== 'all' &&
+				item.subtype !== entitySubtypeFilter
+			) {
+				return false;
+			}
+			if ( ! query ) {
+				return true;
+			}
+			const values = [
+				item.title,
+				item.slug,
+				item.uid,
+				item.relative_path,
+				item.subtype,
+				item.entity_kind,
+				item.provider,
+				item.object_type,
+			].map( ( value ) => ( value || '' ).toString().toLowerCase() );
+			return values.some( ( value ) => value.includes( query ) );
+		} );
+	}, [ entityIndex, entityKindFilter, entitySubtypeFilter, entitySearch ] );
 
-	const sortedEntityIndex = useMemo(() => {
-		const list = [...filteredEntityIndex];
-		const getValue = (item, key) => {
-			if (key === 'import_status') return getEntityImportStatusRank(item);
-			if (key === 'mtime') return Number(item?.mtime || 0);
-			return (item?.[key] || '').toString().toLowerCase();
+	const sortedEntityIndex = useMemo( () => {
+		const list = [ ...filteredEntityIndex ];
+		const getValue = ( item, key ) => {
+			if ( key === 'import_status' ) {
+				return getEntityImportStatusRank( item );
+			}
+			if ( key === 'mtime' ) {
+				return Number( item?.mtime || 0 );
+			}
+			return ( item?.[ key ] || '' ).toString().toLowerCase();
 		};
-		list.sort((a, b) => {
-			const left = getValue(a, entitySort.key);
-			const right = getValue(b, entitySort.key);
-			if (left === right) {
-				const leftPath = (a?.relative_path || '').toString().toLowerCase();
-				const rightPath = (b?.relative_path || '').toString().toLowerCase();
-				if (leftPath === rightPath) return 0;
+		list.sort( ( a, b ) => {
+			const left = getValue( a, entitySort.key );
+			const right = getValue( b, entitySort.key );
+			if ( left === right ) {
+				const leftPath = ( a?.relative_path || '' )
+					.toString()
+					.toLowerCase();
+				const rightPath = ( b?.relative_path || '' )
+					.toString()
+					.toLowerCase();
+				if ( leftPath === rightPath ) {
+					return 0;
+				}
 				return leftPath > rightPath ? 1 : -1;
 			}
 			const direction = left > right ? 1 : -1;
 			return entitySort.direction === 'asc' ? direction : direction * -1;
-		});
+		} );
 		return list;
-	}, [filteredEntityIndex, entitySort]);
+	}, [ filteredEntityIndex, entitySort ] );
 
-	const entityTotalPages = Math.max(1, Math.ceil(sortedEntityIndex.length / entityPerPage));
-	const safeEntityPage = Math.min(entityPage, entityTotalPages);
-	const selectedEntityPathSet = useMemo(() => new Set(selectedEntityPaths), [selectedEntityPaths]);
-	const filteredEntityPaths = useMemo(() => sortedEntityIndex.map((item) => item.relative_path).filter(Boolean), [sortedEntityIndex]);
-	const pagedEntityIndex = useMemo(() => {
-		const offset = (safeEntityPage - 1) * entityPerPage;
-		return sortedEntityIndex.slice(offset, offset + entityPerPage);
-	}, [sortedEntityIndex, safeEntityPage]);
-	const pagedEntityPaths = useMemo(() => pagedEntityIndex.map((item) => item.relative_path).filter(Boolean), [pagedEntityIndex]);
+	const entityTotalPages = Math.max(
+		1,
+		Math.ceil( sortedEntityIndex.length / entityPerPage )
+	);
+	const safeEntityPage = Math.min( entityPage, entityTotalPages );
+	const selectedEntityPathSet = useMemo(
+		() => new Set( selectedEntityPaths ),
+		[ selectedEntityPaths ]
+	);
+	const filteredEntityPaths = useMemo(
+		() =>
+			sortedEntityIndex
+				.map( ( item ) => item.relative_path )
+				.filter( Boolean ),
+		[ sortedEntityIndex ]
+	);
+	const pagedEntityIndex = useMemo( () => {
+		const offset = ( safeEntityPage - 1 ) * entityPerPage;
+		return sortedEntityIndex.slice( offset, offset + entityPerPage );
+	}, [ sortedEntityIndex, safeEntityPage ] );
+	const pagedEntityPaths = useMemo(
+		() =>
+			pagedEntityIndex
+				.map( ( item ) => item.relative_path )
+				.filter( Boolean ),
+		[ pagedEntityIndex ]
+	);
 	const selectedEntityItems = useMemo(
-		() => entityIndex.filter((item) => selectedEntityPathSet.has(item.relative_path)),
-		[entityIndex, selectedEntityPathSet]
+		() =>
+			entityIndex.filter( ( item ) =>
+				selectedEntityPathSet.has( item.relative_path )
+			),
+		[ entityIndex, selectedEntityPathSet ]
 	);
 	const selectedCanonicalDuplicateCount = useMemo(
-		() => selectedEntityItems.filter((item) => item.is_canonical_duplicate).length,
-		[selectedEntityItems]
+		() =>
+			selectedEntityItems.filter(
+				( item ) => item.is_canonical_duplicate
+			).length,
+		[ selectedEntityItems ]
 	);
 
 	const selectedFilteredCount = useMemo(
-		() => filteredEntityPaths.reduce((count, path) => (selectedEntityPathSet.has(path) ? count + 1 : count), 0),
-		[filteredEntityPaths, selectedEntityPathSet]
+		() =>
+			filteredEntityPaths.reduce(
+				( count, path ) =>
+					selectedEntityPathSet.has( path ) ? count + 1 : count,
+				0
+			),
+		[ filteredEntityPaths, selectedEntityPathSet ]
 	);
-	const allFilteredSelected = filteredEntityPaths.length > 0 && selectedFilteredCount === filteredEntityPaths.length;
-	const allPagedSelected = pagedEntityPaths.length > 0 && pagedEntityPaths.every((path) => selectedEntityPathSet.has(path));
+	const allFilteredSelected =
+		filteredEntityPaths.length > 0 &&
+		selectedFilteredCount === filteredEntityPaths.length;
+	const allPagedSelected =
+		pagedEntityPaths.length > 0 &&
+		pagedEntityPaths.every( ( path ) => selectedEntityPathSet.has( path ) );
 	const unimportedEntityCount = useMemo(
-		() => entityIndex.reduce((count, item) => count + (getEntityImportStatusRank(item) === 0 ? 1 : 0), 0),
-		[entityIndex]
+		() =>
+			entityIndex.reduce(
+				( count, item ) =>
+					count + ( getEntityImportStatusRank( item ) === 0 ? 1 : 0 ),
+				0
+			),
+		[ entityIndex ]
 	);
-	const busyAny = entitySaveBusy || entityImportBusy || entityReplaceBusy || entityDeleteBusy || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy || mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy;
-	const entityBulkActionNeedsSelection = entityBulkAction === 'download_selected'
-		|| entityBulkAction === 'remove_selected'
-		|| entityBulkAction === 'clear_selection'
-		|| entityBulkAction === 'preview_import_selected';
-	const entityBulkActionDisabled = !entityBulkAction
-		|| busyAny
-		|| (entityBulkAction === 'select_filtered' && (!filteredEntityPaths.length || allFilteredSelected))
-		|| (entityBulkAction === 'deselect_filtered' && !selectedFilteredCount)
-		|| (entityBulkActionNeedsSelection && !selectedEntityPaths.length);
+	const busyAny =
+		entitySaveBusy ||
+		entityImportBusy ||
+		entityReplaceBusy ||
+		entityDeleteBusy ||
+		syncImportPreviewBusy ||
+		syncImportCommitBusy ||
+		!! syncImportRemediationBusy ||
+		mergeJsonPreviewBusy ||
+		mergeJsonSaveBusy ||
+		mergeJsonPartialBusy;
+	const entityBulkActionNeedsSelection =
+		entityBulkAction === 'download_selected' ||
+		entityBulkAction === 'remove_selected' ||
+		entityBulkAction === 'clear_selection' ||
+		entityBulkAction === 'preview_import_selected';
+	const entityBulkActionDisabled =
+		! entityBulkAction ||
+		busyAny ||
+		( entityBulkAction === 'select_filtered' &&
+			( ! filteredEntityPaths.length || allFilteredSelected ) ) ||
+		( entityBulkAction === 'deselect_filtered' &&
+			! selectedFilteredCount ) ||
+		( entityBulkActionNeedsSelection && ! selectedEntityPaths.length );
 
-	const toggleEntitySort = (key) => {
-		setEntityPage(1);
-		setEntitySort((current) => (
+	const toggleEntitySort = ( key ) => {
+		setEntityPage( 1 );
+		setEntitySort( ( current ) =>
 			current.key === key
-				? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' }
+				? {
+						key,
+						direction: current.direction === 'asc' ? 'desc' : 'asc',
+				  }
 				: { key, direction: 'asc' }
-		));
+		);
 	};
 
 	const clearEntityEditorFile = () => {
-		setSelectedEntityFile('');
-		setEntityFileData(null);
-		setEntityEditorDraft('');
-		setEntityPartialMatchingPolicy(DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY);
-		setEntitySaveNotice('');
-		setEntitySaveError('');
-		setEntityLockToken('');
-		setEntityLockInfo(null);
-		setEntityLockConflict(null);
-		setFullReplaceModalOpen(false);
-		setFullReplaceConfirmPhrase('');
-		setFullReplaceModalError('');
-		setFullReplaceNeedsTakeover(false);
-		setMergeJsonOpen(false);
-		setMergeJsonDraft('');
-		setMergeJsonIdentity(DEFAULT_MERGE_IDENTITY);
-		setMergeJsonMatchingPolicy(DEFAULT_MERGE_MATCHING_POLICY);
-		setMergeJsonPreview(null);
-		setMergeJsonError('');
-		setMergeJsonConfirmed(false);
+		setSelectedEntityFile( '' );
+		setEntityFileData( null );
+		setEntityEditorDraft( '' );
+		setEntityPartialMatchingPolicy(
+			DEFAULT_ENTITY_PARTIAL_MATCHING_POLICY
+		);
+		setEntitySaveNotice( '' );
+		setEntitySaveError( '' );
+		setEntityLockToken( '' );
+		setEntityLockInfo( null );
+		setEntityLockConflict( null );
+		setFullReplaceModalOpen( false );
+		setFullReplaceConfirmPhrase( '' );
+		setFullReplaceModalError( '' );
+		setFullReplaceNeedsTakeover( false );
+		setMergeJsonOpen( false );
+		setMergeJsonDraft( '' );
+		setMergeJsonIdentity( DEFAULT_MERGE_IDENTITY );
+		setMergeJsonMatchingPolicy( DEFAULT_MERGE_MATCHING_POLICY );
+		setMergeJsonPreview( null );
+		setMergeJsonError( '' );
+		setMergeJsonConfirmed( false );
 	};
 
-	const toggleEntityRowSelection = (path, checked) => {
-		if (!path) return;
-		setSelectedEntityPaths((current) => {
-			const next = new Set(current);
-			if (checked) {
-				next.add(path);
-			} else {
-				next.delete(path);
-			}
-			return Array.from(next);
-		});
-	};
-
-	const setFilteredSelection = (checked) => {
-		setSelectedEntityPaths((current) => {
-			const next = new Set(current);
-			filteredEntityPaths.forEach((path) => {
-				if (checked) {
-					next.add(path);
-				} else {
-					next.delete(path);
-				}
-			});
-			return Array.from(next);
-		});
-	};
-
-	const setPagedSelection = (checked) => {
-		setSelectedEntityPaths((current) => {
-			const next = new Set(current);
-			pagedEntityPaths.forEach((path) => {
-				if (checked) {
-					next.add(path);
-				} else {
-					next.delete(path);
-				}
-			});
-			return Array.from(next);
-		});
-	};
-
-	const clearSelection = () => setSelectedEntityPaths([]);
-
-	const removeSelectedEntityFiles = useCallback(async () => {
-		if (!selectedEntityPaths.length || entityDeleteBusy) return;
-
-		const selectionCount = selectedEntityPaths.length;
-		let confirmation = `Remove ${selectionCount} selected sync JSON file${selectionCount === 1 ? '' : 's'} from the Entity Editor index? This only deletes the file${selectionCount === 1 ? '' : 's'} from the sync folder. It does not delete the WordPress ${selectionCount === 1 ? 'entity' : 'entities'}.`;
-		if (selectedCanonicalDuplicateCount > 0) {
-			confirmation += ` ${selectedCanonicalDuplicateCount} selected row${selectedCanonicalDuplicateCount === 1 ? ' is' : 's are'} currently marked as the latest valid file.`;
+	const toggleEntityRowSelection = ( path, checked ) => {
+		if ( ! path ) {
+			return;
 		}
+		setSelectedEntityPaths( ( current ) => {
+			const next = new Set( current );
+			if ( checked ) {
+				next.add( path );
+			} else {
+				next.delete( path );
+			}
+			return Array.from( next );
+		} );
+	};
 
-		if (!window.confirm(confirmation)) {
+	const setFilteredSelection = ( checked ) => {
+		setSelectedEntityPaths( ( current ) => {
+			const next = new Set( current );
+			filteredEntityPaths.forEach( ( path ) => {
+				if ( checked ) {
+					next.add( path );
+				} else {
+					next.delete( path );
+				}
+			} );
+			return Array.from( next );
+		} );
+	};
+
+	const setPagedSelection = ( checked ) => {
+		setSelectedEntityPaths( ( current ) => {
+			const next = new Set( current );
+			pagedEntityPaths.forEach( ( path ) => {
+				if ( checked ) {
+					next.add( path );
+				} else {
+					next.delete( path );
+				}
+			} );
+			return Array.from( next );
+		} );
+	};
+
+	const clearSelection = () => setSelectedEntityPaths( [] );
+
+	const removeSelectedEntityFiles = useCallback( async () => {
+		if ( ! selectedEntityPaths.length || entityDeleteBusy ) {
 			return;
 		}
 
-		setEntityDeleteBusy(true);
-		setEntityIndexNotice('');
-		setEntityIndexError('');
-		setEntityIndexErrorItems([]);
+		const selectionCount = selectedEntityPaths.length;
+		let confirmation = `Remove ${ selectionCount } selected sync JSON file${
+			selectionCount === 1 ? '' : 's'
+		} from the Entity Editor index? This only deletes the file${
+			selectionCount === 1 ? '' : 's'
+		} from the sync folder. It does not delete the WordPress ${
+			selectionCount === 1 ? 'entity' : 'entities'
+		}.`;
+		if ( selectedCanonicalDuplicateCount > 0 ) {
+			confirmation += ` ${ selectedCanonicalDuplicateCount } selected row${
+				selectedCanonicalDuplicateCount === 1 ? ' is' : 's are'
+			} currently marked as the latest valid file.`;
+		}
+
+		if ( ! window.confirm( confirmation ) ) {
+			return;
+		}
+
+		setEntityDeleteBusy( true );
+		setEntityIndexNotice( '' );
+		setEntityIndexError( '' );
+		setEntityIndexErrorItems( [] );
 
 		try {
-			const data = await apiPost('entity-editor/files/delete', {
+			const data = await apiPost( 'entity-editor/files/delete', {
 				paths: selectedEntityPaths,
-			});
+			} );
 
-			const deletedPaths = Array.isArray(data?.deleted_paths) ? data.deleted_paths : [];
-			const deletedSet = new Set(deletedPaths);
-			const deleteErrors = Array.isArray(data?.errors) ? data.errors : [];
+			const deletedPaths = Array.isArray( data?.deleted_paths )
+				? data.deleted_paths
+				: [];
+			const deletedSet = new Set( deletedPaths );
+			const deleteErrors = Array.isArray( data?.errors )
+				? data.errors
+				: [];
 			const refreshedIndex = data?.index || {};
 
-			setEntityIndex(Array.isArray(refreshedIndex?.items) ? refreshedIndex.items : []);
-			setEntityIndexStats(refreshedIndex?.stats || null);
-			setSelectedEntityPaths((current) => current.filter((path) => !deletedSet.has(path)));
+			setEntityIndex(
+				Array.isArray( refreshedIndex?.items )
+					? refreshedIndex.items
+					: []
+			);
+			setEntityIndexStats( refreshedIndex?.stats || null );
+			setSelectedEntityPaths( ( current ) =>
+				current.filter( ( path ) => ! deletedSet.has( path ) )
+			);
 
-			if (selectedEntityFile && deletedSet.has(selectedEntityFile)) {
+			if ( selectedEntityFile && deletedSet.has( selectedEntityFile ) ) {
 				clearEntityEditorFile();
 			}
 
-			if (deletedPaths.length > 0) {
-				const notice = deleteErrors.length > 0
-					? `Removed ${deletedPaths.length} sync file${deletedPaths.length === 1 ? '' : 's'}. ${deleteErrors.length} selected file${deleteErrors.length === 1 ? '' : 's'} could not be removed.`
-					: `Removed ${deletedPaths.length} sync file${deletedPaths.length === 1 ? '' : 's'}. Backup copies were written to .dbvc_entity_editor_backups.`;
-				setEntityIndexNotice(notice);
+			if ( deletedPaths.length > 0 ) {
+				const notice =
+					deleteErrors.length > 0
+						? `Removed ${ deletedPaths.length } sync file${
+								deletedPaths.length === 1 ? '' : 's'
+						  }. ${ deleteErrors.length } selected file${
+								deleteErrors.length === 1 ? '' : 's'
+						  } could not be removed.`
+						: `Removed ${ deletedPaths.length } sync file${
+								deletedPaths.length === 1 ? '' : 's'
+						  }. Backup copies were written to .dbvc_entity_editor_backups.`;
+				setEntityIndexNotice( notice );
 			}
 
-			if (deleteErrors.length > 0) {
-				setEntityIndexError('Some selected files could not be removed.');
-				setEntityIndexErrorItems(deleteErrors);
+			if ( deleteErrors.length > 0 ) {
+				setEntityIndexError(
+					'Some selected files could not be removed.'
+				);
+				setEntityIndexErrorItems( deleteErrors );
 			}
-		} catch (error) {
-			const errors = Array.isArray(error?.body?.data?.errors) ? error.body.data.errors : [];
-			setEntityIndexError(error?.message || 'Failed to remove selected entity files.');
-			setEntityIndexErrorItems(errors);
+		} catch ( error ) {
+			const errors = Array.isArray( error?.body?.data?.errors )
+				? error.body.data.errors
+				: [];
+			setEntityIndexError(
+				error?.message || 'Failed to remove selected entity files.'
+			);
+			setEntityIndexErrorItems( errors );
 		} finally {
-			setEntityDeleteBusy(false);
+			setEntityDeleteBusy( false );
 		}
-	}, [selectedEntityPaths, entityDeleteBusy, selectedCanonicalDuplicateCount, selectedEntityFile]);
+	}, [
+		selectedEntityPaths,
+		entityDeleteBusy,
+		selectedCanonicalDuplicateCount,
+		selectedEntityFile,
+	] );
 
 	const submitBulkDownload = () => {
-		if (!selectedEntityPaths.length || !DBVC_ENTITY_EDITOR_APP?.download_url) return;
-		const form = document.createElement('form');
+		if (
+			! selectedEntityPaths.length ||
+			! DBVC_ENTITY_EDITOR_APP?.download_url
+		) {
+			return;
+		}
+		const form = document.createElement( 'form' );
 		form.method = 'POST';
 		form.action = DBVC_ENTITY_EDITOR_APP.download_url;
 		form.style.display = 'none';
@@ -1425,26 +2118,31 @@ const EntityEditorApp = () => {
 		const fields = {
 			action: 'dbvc_entity_editor_download_bulk',
 			_wpnonce: DBVC_ENTITY_EDITOR_APP.download_bulk_nonce || '',
-			paths: JSON.stringify(selectedEntityPaths),
+			paths: JSON.stringify( selectedEntityPaths ),
 		};
 
-		Object.entries(fields).forEach(([name, value]) => {
-			const input = document.createElement('input');
+		Object.entries( fields ).forEach( ( [ name, value ] ) => {
+			const input = document.createElement( 'input' );
 			input.type = 'hidden';
 			input.name = name;
 			input.value = value;
-			form.appendChild(input);
-		});
+			form.appendChild( input );
+		} );
 
-		document.body.appendChild(form);
+		document.body.appendChild( form );
 		form.submit();
 		form.remove();
 	};
 
 	const submitTransferPacket = () => {
-		if (!selectedEntityPaths.length || !DBVC_ENTITY_EDITOR_APP?.download_url) return;
-		setTransferPreviewOpen(false);
-		const form = document.createElement('form');
+		if (
+			! selectedEntityPaths.length ||
+			! DBVC_ENTITY_EDITOR_APP?.download_url
+		) {
+			return;
+		}
+		setTransferPreviewOpen( false );
+		const form = document.createElement( 'form' );
 		form.method = 'POST';
 		form.action = DBVC_ENTITY_EDITOR_APP.download_url;
 		form.style.display = 'none';
@@ -1452,176 +2150,308 @@ const EntityEditorApp = () => {
 		const fields = {
 			action: 'dbvc_entity_editor_transfer_packet',
 			_wpnonce: DBVC_ENTITY_EDITOR_APP.transfer_packet_nonce || '',
-			paths: JSON.stringify(selectedEntityPaths),
+			paths: JSON.stringify( selectedEntityPaths ),
 		};
 
-		Object.entries(fields).forEach(([name, value]) => {
-			const input = document.createElement('input');
+		Object.entries( fields ).forEach( ( [ name, value ] ) => {
+			const input = document.createElement( 'input' );
 			input.type = 'hidden';
 			input.name = name;
 			input.value = value;
-			form.appendChild(input);
-		});
+			form.appendChild( input );
+		} );
 
-		document.body.appendChild(form);
+		document.body.appendChild( form );
 		form.submit();
 		form.remove();
 	};
 
-	const openTransferPreview = useCallback(async () => {
-		if (!selectedEntityPaths.length) return;
-		setTransferPreviewOpen(true);
-		setTransferPreviewLoading(true);
-		setTransferPreviewError('');
-		setTransferPreviewData(null);
+	const openTransferPreview = useCallback( async () => {
+		if ( ! selectedEntityPaths.length ) {
+			return;
+		}
+		setTransferPreviewOpen( true );
+		setTransferPreviewLoading( true );
+		setTransferPreviewError( '' );
+		setTransferPreviewData( null );
 		try {
-			const preview = await apiPost('entity-editor/transfer-preview', {
+			const preview = await apiPost( 'entity-editor/transfer-preview', {
 				paths: selectedEntityPaths,
-			});
-			setTransferPreviewData(preview || null);
-		} catch (error) {
-			setTransferPreviewError(error?.message || 'Failed to build transfer preview.');
+			} );
+			setTransferPreviewData( preview || null );
+		} catch ( error ) {
+			setTransferPreviewError(
+				error?.message || 'Failed to build transfer preview.'
+			);
 		} finally {
-			setTransferPreviewLoading(false);
+			setTransferPreviewLoading( false );
 		}
-	}, [selectedEntityPaths]);
+	}, [ selectedEntityPaths ] );
 
-	const runEntityBulkAction = useCallback(async () => {
-		if (!entityBulkAction) {
+	const runEntityBulkAction = useCallback( async () => {
+		if ( ! entityBulkAction ) {
 			return;
 		}
 
-		if (entityBulkAction === 'select_filtered') {
-			setFilteredSelection(true);
-			setEntityBulkAction('');
+		if ( entityBulkAction === 'select_filtered' ) {
+			setFilteredSelection( true );
+			setEntityBulkAction( '' );
 			return;
 		}
 
-		if (entityBulkAction === 'deselect_filtered') {
-			setFilteredSelection(false);
-			setEntityBulkAction('');
+		if ( entityBulkAction === 'deselect_filtered' ) {
+			setFilteredSelection( false );
+			setEntityBulkAction( '' );
 			return;
 		}
 
-		if (entityBulkAction === 'clear_selection') {
+		if ( entityBulkAction === 'clear_selection' ) {
 			clearSelection();
-			setEntityBulkAction('');
+			setEntityBulkAction( '' );
 			return;
 		}
 
-		if (entityBulkAction === 'download_selected') {
+		if ( entityBulkAction === 'download_selected' ) {
 			submitBulkDownload();
-			setEntityBulkAction('');
+			setEntityBulkAction( '' );
 			return;
 		}
 
-		if (entityBulkAction === 'preview_import_selected') {
-			await openSyncImportPreview(selectedEntityPaths);
-			setEntityBulkAction('');
+		if ( entityBulkAction === 'preview_import_selected' ) {
+			await openSyncImportPreview( selectedEntityPaths );
+			setEntityBulkAction( '' );
 			return;
 		}
 
-		if (entityBulkAction === 'remove_selected') {
+		if ( entityBulkAction === 'remove_selected' ) {
 			await removeSelectedEntityFiles();
-			setEntityBulkAction('');
+			setEntityBulkAction( '' );
 		}
-	}, [entityBulkAction, openSyncImportPreview, removeSelectedEntityFiles, selectedEntityPaths, selectedEntityPaths.length, selectedFilteredCount, filteredEntityPaths.length, allFilteredSelected]);
+	}, [
+		entityBulkAction,
+		openSyncImportPreview,
+		removeSelectedEntityFiles,
+		selectedEntityPaths,
+		selectedEntityPaths.length,
+		selectedFilteredCount,
+		filteredEntityPaths.length,
+		allFilteredSelected,
+	] );
 
-	const canNavigateEntitySearch = !!normalizedEntityEditorSearch && entityEditorSearchMatches.length > 0;
-	const transferPreviewSelection = transferPreviewData?.selection?.summary || {};
+	const canNavigateEntitySearch =
+		!! normalizedEntityEditorSearch && entityEditorSearchMatches.length > 0;
+	const transferPreviewSelection =
+		transferPreviewData?.selection?.summary || {};
 	const transferPreviewRequirements = transferPreviewData?.requirements || {};
-	const transferPreviewNotes = Array.isArray(transferPreviewRequirements?.notes) ? transferPreviewRequirements.notes : [];
-	const transferPreviewPostTypes = Array.isArray(transferPreviewRequirements?.post_types) ? transferPreviewRequirements.post_types : [];
-	const transferPreviewTaxonomies = Array.isArray(transferPreviewRequirements?.taxonomies) ? transferPreviewRequirements.taxonomies : [];
-	const transferPreviewWarnings = Array.isArray(transferPreviewData?.warnings?.unsupported_post_references) ? transferPreviewData.warnings.unsupported_post_references : [];
+	const transferPreviewNotes = Array.isArray(
+		transferPreviewRequirements?.notes
+	)
+		? transferPreviewRequirements.notes
+		: [];
+	const transferPreviewPostTypes = Array.isArray(
+		transferPreviewRequirements?.post_types
+	)
+		? transferPreviewRequirements.post_types
+		: [];
+	const transferPreviewTaxonomies = Array.isArray(
+		transferPreviewRequirements?.taxonomies
+	)
+		? transferPreviewRequirements.taxonomies
+		: [];
+	const transferPreviewWarnings = Array.isArray(
+		transferPreviewData?.warnings?.unsupported_post_references
+	)
+		? transferPreviewData.warnings.unsupported_post_references
+		: [];
 	const transferPreviewTotals = transferPreviewData?.totals || {};
 	const transferPreviewMedia = transferPreviewData?.media || {};
-	const rawIntakeWarnings = Array.isArray(rawIntakePreview?.warnings) ? rawIntakePreview.warnings : [];
-	const rawIntakeBlocking = Array.isArray(rawIntakePreview?.blocking) ? rawIntakePreview.blocking : [];
+	const rawIntakeWarnings = Array.isArray( rawIntakePreview?.warnings )
+		? rawIntakePreview.warnings
+		: [];
+	const rawIntakeBlocking = Array.isArray( rawIntakePreview?.blocking )
+		? rawIntakePreview.blocking
+		: [];
 	const rawIntakeAvailable = rawIntakePreview?.available_actions || {};
-	const rawIntakeIsThirdParty = rawIntakePreview?.entity_kind === 'third_party';
+	const rawIntakeIsThirdParty =
+		rawIntakePreview?.entity_kind === 'third_party';
 	const rawIntakeProviderCounts = rawIntakePreview?.counts || {};
-	const rawIntakeMatchedUpdate = isRawIntakeMatchedUpdateEligible(rawIntakePreview, rawIntakeMode);
-	const rawIntakeMatchedUpdateEntity = rawIntakePreview?.matched_update?.wp_entity || {};
-	const rawIntakeUpdateConfirmed = !!rawIntakeUpdateConfirmation?.confirmed
-		&& rawIntakeUpdateConfirmation.preview_hash === rawIntakePreview?.preview_hash
-		&& Number(rawIntakeUpdateConfirmation.matched_entity_id || 0) === Number(rawIntakeMatchedUpdateEntity?.id || rawIntakePreview?.match?.id || 0);
-	const rawIntakeCanCommitBase = !!rawIntakePreview
-		&& !!rawIntakeAvailable?.[rawIntakeMode]
-		&& rawIntakeBlocking.length === 0;
-	const rawIntakeCanCommit = rawIntakeCanCommitBase && (!rawIntakeMatchedUpdate || rawIntakeUpdateConfirmed);
-	const rawIntakeBlockedMessages = collectImportBlockerMessages([{ blocking: rawIntakeBlocking }]);
-	const rawIntakeModeBlocked = !!rawIntakePreview && !rawIntakePreviewBusy && !rawIntakeCanCommitBase;
-	const syncImportItems = Array.isArray(syncImportPreview?.items) ? syncImportPreview.items : [];
+	const rawIntakeMatchedUpdate = isRawIntakeMatchedUpdateEligible(
+		rawIntakePreview,
+		rawIntakeMode
+	);
+	const rawIntakeMatchedUpdateEntity =
+		rawIntakePreview?.matched_update?.wp_entity || {};
+	const rawIntakeUpdateConfirmed =
+		!! rawIntakeUpdateConfirmation?.confirmed &&
+		rawIntakeUpdateConfirmation.preview_hash ===
+			rawIntakePreview?.preview_hash &&
+		Number( rawIntakeUpdateConfirmation.matched_entity_id || 0 ) ===
+			Number(
+				rawIntakeMatchedUpdateEntity?.id ||
+					rawIntakePreview?.match?.id ||
+					0
+			);
+	const rawIntakeCanCommitBase =
+		!! rawIntakePreview &&
+		!! rawIntakeAvailable?.[ rawIntakeMode ] &&
+		rawIntakeBlocking.length === 0;
+	const rawIntakeCanCommit =
+		rawIntakeCanCommitBase &&
+		( ! rawIntakeMatchedUpdate || rawIntakeUpdateConfirmed );
+	const rawIntakeBlockedMessages = collectImportBlockerMessages( [
+		{ blocking: rawIntakeBlocking },
+	] );
+	const rawIntakeModeBlocked =
+		!! rawIntakePreview &&
+		! rawIntakePreviewBusy &&
+		! rawIntakeCanCommitBase;
+	const syncImportItems = Array.isArray( syncImportPreview?.items )
+		? syncImportPreview.items
+		: [];
 	const syncImportSummary = syncImportPreview?.summary || {};
 	const syncImportIsThirdParty = syncImportRoute === 'third_party';
-	const syncImportCreateActionKey = syncImportIsThirdParty ? 'create_form' : 'create_only';
-	const syncImportCreatableCount = syncImportItems.reduce((count, item) => {
-		const blocking = Array.isArray(item?.blocking) ? item.blocking : [];
-		return count + (!item?.created && !!item?.available_actions?.[syncImportCreateActionKey] && blocking.length === 0 ? 1 : 0);
-	}, 0);
-	const syncImportMergeableCount = syncImportItems.reduce((count, item) => {
-		const blocking = Array.isArray(item?.blocking) ? item.blocking : [];
-		return count + (!item?.updated && !!item?.available_actions?.merge_settings && blocking.length === 0 ? 1 : 0);
-	}, 0);
-	const syncImportUpdateableItems = syncImportItems.filter(isSyncImportMatchedUpdateEligible);
+	const syncImportCreateActionKey = syncImportIsThirdParty
+		? 'create_form'
+		: 'create_only';
+	const syncImportCreatableCount = syncImportItems.reduce(
+		( count, item ) => {
+			const blocking = Array.isArray( item?.blocking )
+				? item.blocking
+				: [];
+			return (
+				count +
+				( ! item?.created &&
+				!! item?.available_actions?.[ syncImportCreateActionKey ] &&
+				blocking.length === 0
+					? 1
+					: 0 )
+			);
+		},
+		0
+	);
+	const syncImportMergeableCount = syncImportItems.reduce(
+		( count, item ) => {
+			const blocking = Array.isArray( item?.blocking )
+				? item.blocking
+				: [];
+			return (
+				count +
+				( ! item?.updated &&
+				!! item?.available_actions?.merge_settings &&
+				blocking.length === 0
+					? 1
+					: 0 )
+			);
+		},
+		0
+	);
+	const syncImportUpdateableItems = syncImportItems.filter(
+		isSyncImportMatchedUpdateEligible
+	);
 	const syncImportUpdateableCount = syncImportUpdateableItems.length;
-	const syncImportConfirmedUpdateCount = syncImportUpdateableItems.reduce((count, item) => {
-		const path = getSyncImportItemPath(item);
-		const confirmation = path ? syncImportUpdateConfirmations[path] : null;
-		const matchedId = item?.matched_update?.wp_entity?.id || item?.match?.id || 0;
-		const confirmed = !!confirmation?.confirmed
-			&& confirmation.preview_hash === item?.preview_hash
-			&& Number(confirmation.matched_entity_id || 0) === Number(matchedId || 0);
-		return count + (confirmed ? 1 : 0);
-	}, 0);
+	const syncImportConfirmedUpdateCount = syncImportUpdateableItems.reduce(
+		( count, item ) => {
+			const path = getSyncImportItemPath( item );
+			const confirmation = path
+				? syncImportUpdateConfirmations[ path ]
+				: null;
+			const matchedId =
+				item?.matched_update?.wp_entity?.id || item?.match?.id || 0;
+			const confirmed =
+				!! confirmation?.confirmed &&
+				confirmation.preview_hash === item?.preview_hash &&
+				Number( confirmation.matched_entity_id || 0 ) ===
+					Number( matchedId || 0 );
+			return count + ( confirmed ? 1 : 0 );
+		},
+		0
+	);
 	const syncImportCanCommit = syncImportCreatableCount > 0;
-	const syncImportCanMergeSettings = syncImportIsThirdParty && syncImportMergeableCount > 0;
-	const syncImportCanUpdateMatched = syncImportUpdateableCount > 0 && syncImportConfirmedUpdateCount === syncImportUpdateableCount;
-	const syncImportPreviewEmpty = !!syncImportPreview && !syncImportPreviewBusy && syncImportItems.length === 0;
-	const syncImportNoCreatable = !!syncImportPreview && !syncImportPreviewBusy && syncImportItems.length > 0 && syncImportCreatableCount === 0 && syncImportUpdateableCount === 0 && syncImportMergeableCount === 0;
-	const syncImportBlockedMessages = collectImportBlockerMessages(syncImportItems);
-	const mergeJsonBlockers = Array.isArray(mergeJsonPreview?.blockers)
+	const syncImportCanMergeSettings =
+		syncImportIsThirdParty && syncImportMergeableCount > 0;
+	const syncImportCanUpdateMatched =
+		syncImportUpdateableCount > 0 &&
+		syncImportConfirmedUpdateCount === syncImportUpdateableCount;
+	const syncImportPreviewEmpty =
+		!! syncImportPreview &&
+		! syncImportPreviewBusy &&
+		syncImportItems.length === 0;
+	const syncImportNoCreatable =
+		!! syncImportPreview &&
+		! syncImportPreviewBusy &&
+		syncImportItems.length > 0 &&
+		syncImportCreatableCount === 0 &&
+		syncImportUpdateableCount === 0 &&
+		syncImportMergeableCount === 0;
+	const syncImportBlockedMessages =
+		collectImportBlockerMessages( syncImportItems );
+	const mergeJsonBlockers = Array.isArray( mergeJsonPreview?.blockers )
 		? mergeJsonPreview.blockers
-		: (Array.isArray(mergeJsonPreview?.blocking) ? mergeJsonPreview.blocking : []);
-	const mergeJsonNotes = Array.isArray(mergeJsonPreview?.notes) ? mergeJsonPreview.notes : [];
+		: Array.isArray( mergeJsonPreview?.blocking )
+		? mergeJsonPreview.blocking
+		: [];
+	const mergeJsonNotes = Array.isArray( mergeJsonPreview?.notes )
+		? mergeJsonPreview.notes
+		: [];
 	const mergeJsonSummary = mergeJsonPreview?.summary || {};
 	const mergeJsonAvailable = mergeJsonPreview?.available_actions || {};
-	const globalUidFallbackEnabled = DBVC_ENTITY_EDITOR_APP?.uid_fallback_matching_enabled === true;
-	const mergeJsonCanSave = !!mergeJsonPreview
-		&& mergeJsonBlockers.length === 0
-		&& !!mergeJsonAvailable?.save
-		&& mergeJsonConfirmed
-		&& !!entityLockToken;
-	const mergeJsonCanPartialImport = mergeJsonCanSave && !!mergeJsonAvailable?.save_and_partial_import;
-	const selectedEntityIsThirdParty = entityFileData?.entity_kind === 'third_party';
+	const globalUidFallbackEnabled =
+		DBVC_ENTITY_EDITOR_APP?.uid_fallback_matching_enabled === true;
+	const mergeJsonCanSave =
+		!! mergeJsonPreview &&
+		mergeJsonBlockers.length === 0 &&
+		!! mergeJsonAvailable?.save &&
+		mergeJsonConfirmed &&
+		!! entityLockToken;
+	const mergeJsonCanPartialImport =
+		mergeJsonCanSave && !! mergeJsonAvailable?.save_and_partial_import;
+	const selectedEntityIsThirdParty =
+		entityFileData?.entity_kind === 'third_party';
 
-	const canOfferSyncFileImport = (item) => {
-		if (!item?.relative_path) return false;
-		if (item?.entity_kind === 'third_party') {
-			if (item?.is_duplicate && !item?.is_canonical_duplicate) return false;
-			return item?.provider === 'ws_form' && ['form', 'settings'].includes(item?.object_type);
+	const canOfferSyncFileImport = ( item ) => {
+		if ( ! item?.relative_path ) {
+			return false;
 		}
-		if (!['post', 'term'].includes(item?.entity_kind)) return false;
-		if (item?.matched_wp?.id) return false;
-		if (item?.is_duplicate && !item?.is_canonical_duplicate) return false;
+		if ( item?.entity_kind === 'third_party' ) {
+			if ( item?.is_duplicate && ! item?.is_canonical_duplicate ) {
+				return false;
+			}
+			return (
+				item?.provider === 'ws_form' &&
+				[ 'form', 'settings' ].includes( item?.object_type )
+			);
+		}
+		if ( ! [ 'post', 'term' ].includes( item?.entity_kind ) ) {
+			return false;
+		}
+		if ( item?.matched_wp?.id ) {
+			return false;
+		}
+		if ( item?.is_duplicate && ! item?.is_canonical_duplicate ) {
+			return false;
+		}
 		return true;
 	};
 
-	const handleEntityEditorSearchChange = (value) => {
-		setEntityEditorSearch(value);
+	const handleEntityEditorSearchChange = ( value ) => {
+		setEntityEditorSearch( value );
 		const normalizedQuery = value.trim();
-		if (!normalizedQuery) {
-			setEntityEditorSearchIndex(-1);
+		if ( ! normalizedQuery ) {
+			setEntityEditorSearchIndex( -1 );
 			return;
 		}
-		const matches = collectSearchMatches(entityEditorDraft, normalizedQuery);
-		if (!matches.length) {
-			setEntityEditorSearchIndex(-1);
+		const matches = collectSearchMatches(
+			entityEditorDraft,
+			normalizedQuery
+		);
+		if ( ! matches.length ) {
+			setEntityEditorSearchIndex( -1 );
 			return;
 		}
 		const cursor = getEntityEditorSearchCursor();
-		const targetIndex = matches.findIndex((position) => position >= cursor);
+		const targetIndex = matches.findIndex(
+			( position ) => position >= cursor
+		);
 		jumpToEntityEditorSearchMatch(
 			targetIndex >= 0 ? targetIndex : 0,
 			matches,
@@ -1629,10 +2459,14 @@ const EntityEditorApp = () => {
 		);
 	};
 
-	const jumpToNextEntitySearch = ({ keepInputFocus = true } = {}) => {
-		if (!canNavigateEntitySearch) return;
+	const jumpToNextEntitySearch = ( { keepInputFocus = true } = {} ) => {
+		if ( ! canNavigateEntitySearch ) {
+			return;
+		}
 		const cursor = getEntityEditorSearchCursor();
-		const nextIndex = entityEditorSearchMatches.findIndex((position) => position > cursor);
+		const nextIndex = entityEditorSearchMatches.findIndex(
+			( position ) => position > cursor
+		);
 		jumpToEntityEditorSearchMatch(
 			nextIndex >= 0 ? nextIndex : 0,
 			entityEditorSearchMatches,
@@ -1641,18 +2475,26 @@ const EntityEditorApp = () => {
 		);
 	};
 
-	const jumpToPreviousEntitySearch = ({ keepInputFocus = true } = {}) => {
-		if (!canNavigateEntitySearch) return;
+	const jumpToPreviousEntitySearch = ( { keepInputFocus = true } = {} ) => {
+		if ( ! canNavigateEntitySearch ) {
+			return;
+		}
 		const cursor = getEntityEditorSearchCursor();
 		let previousIndex = -1;
-		for (let index = entityEditorSearchMatches.length - 1; index >= 0; index -= 1) {
-			if (entityEditorSearchMatches[index] < cursor) {
+		for (
+			let index = entityEditorSearchMatches.length - 1;
+			index >= 0;
+			index -= 1
+		) {
+			if ( entityEditorSearchMatches[ index ] < cursor ) {
 				previousIndex = index;
 				break;
 			}
 		}
 		jumpToEntityEditorSearchMatch(
-			previousIndex >= 0 ? previousIndex : entityEditorSearchMatches.length - 1,
+			previousIndex >= 0
+				? previousIndex
+				: entityEditorSearchMatches.length - 1,
 			entityEditorSearchMatches,
 			normalizedEntityEditorSearch,
 			{ keepInputFocus }
@@ -1663,123 +2505,181 @@ const EntityEditorApp = () => {
 		<div className="dbvc-admin-app is-route-entity-editor">
 			<div className="dbvc-admin-app__header">
 				<h1>DBVC Entity Editor</h1>
-				<div style={{ display: 'flex', gap: '8px' }}>
+				<div style={ { display: 'flex', gap: '8px' } }>
 					<Button
 						variant="secondary"
-						onClick={() => loadEntityIndex(false)}
-						disabled={entityIndexLoading}
+						onClick={ () => loadEntityIndex( false ) }
+						disabled={ entityIndexLoading }
 						title="Refresh the entity index from cache"
 					>
-						{entityIndexLoading ? 'Refreshing…' : 'Refresh index'}
+						{ entityIndexLoading ? 'Refreshing…' : 'Refresh index' }
 					</Button>
 					<Button
 						variant="tertiary"
-						onClick={() => loadEntityIndex(true)}
-						disabled={entityIndexLoading}
-						isBusy={entityIndexLoading}
+						onClick={ () => loadEntityIndex( true ) }
+						disabled={ entityIndexLoading }
+						isBusy={ entityIndexLoading }
 						title="Force a full sync-folder rescan and rebuild the index"
 					>
-						{entityIndexLoading ? 'Rebuilding…' : 'Rebuild index'}
+						{ entityIndexLoading ? 'Rebuilding…' : 'Rebuild index' }
 					</Button>
 				</div>
 			</div>
 			<section className="dbvc-entity-editor-shell">
 				<h2>Entity index</h2>
 				<p className="description">
-					Showing {sortedEntityIndex.length} indexed entities from sync. Unimported: {unimportedEntityCount}.
+					Showing { sortedEntityIndex.length } indexed entities from
+					sync. Unimported: { unimportedEntityCount }.
 				</p>
-				{entityIndexError && (
+				{ entityIndexError && (
 					<div className="notice notice-error">
-						<p>{entityIndexError}</p>
-						{entityIndexErrorItems.length > 0 && (
-							<ul style={{ marginLeft: '18px' }}>
-								{entityIndexErrorItems.map((item, index) => (
-									<li key={`${item?.path || 'error'}-${item?.code || index}`}>
-										<strong>{item?.path || 'Selection'}</strong>: {item?.message || 'Unable to complete this operation.'}
-									</li>
-								))}
+						<p>{ entityIndexError }</p>
+						{ entityIndexErrorItems.length > 0 && (
+							<ul style={ { marginLeft: '18px' } }>
+								{ entityIndexErrorItems.map(
+									( item, index ) => (
+										<li
+											key={ `${ item?.path || 'error' }-${
+												item?.code || index
+											}` }
+										>
+											<strong>
+												{ item?.path || 'Selection' }
+											</strong>
+											:{ ' ' }
+											{ item?.message ||
+												'Unable to complete this operation.' }
+										</li>
+									)
+								) }
 							</ul>
-						)}
+						) }
 					</div>
-				)}
-				{entityIndexNotice && (
-					<div className="notice notice-success"><p>{entityIndexNotice}</p></div>
-				)}
+				) }
+				{ entityIndexNotice && (
+					<div className="notice notice-success">
+						<p>{ entityIndexNotice }</p>
+					</div>
+				) }
 				<div className="dbvc-entity-editor__toolbar">
 					<label className="dbvc-entity-editor__toolbar-field">
-						Kind{' '}
-						<select value={entityKindFilter} onChange={(e) => { setEntityKindFilter(e.target.value); setEntityPage(1); }}>
+						Kind{ ' ' }
+						<select
+							value={ entityKindFilter }
+							onChange={ ( e ) => {
+								setEntityKindFilter( e.target.value );
+								setEntityPage( 1 );
+							} }
+						>
 							<option value="all">All</option>
 							<option value="post">Posts</option>
 							<option value="term">Terms</option>
 							<option value="ws_form_form">Forms</option>
-							<option value="ws_form_settings">WS Form Settings</option>
+							<option value="ws_form_settings">
+								WS Form Settings
+							</option>
 							<option value="third_party">Third-party</option>
 						</select>
 					</label>
 					<label className="dbvc-entity-editor__toolbar-field">
-						Subtype{' '}
-						<select value={entitySubtypeFilter} onChange={(e) => { setEntitySubtypeFilter(e.target.value); setEntityPage(1); }}>
+						Subtype{ ' ' }
+						<select
+							value={ entitySubtypeFilter }
+							onChange={ ( e ) => {
+								setEntitySubtypeFilter( e.target.value );
+								setEntityPage( 1 );
+							} }
+						>
 							<option value="all">All</option>
-							{entitySubtypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+							{ entitySubtypeOptions.map( ( option ) => (
+								<option key={ option } value={ option }>
+									{ option }
+								</option>
+							) ) }
 						</select>
 					</label>
 					<label className="dbvc-entity-editor__toolbar-field dbvc-entity-editor__toolbar-field--search">
-						Search{' '}
+						Search{ ' ' }
 						<input
 							type="search"
-							value={entitySearch}
-							onChange={(e) => { setEntitySearch(e.target.value); setEntityPage(1); }}
+							value={ entitySearch }
+							onChange={ ( e ) => {
+								setEntitySearch( e.target.value );
+								setEntityPage( 1 );
+							} }
 							placeholder="title, slug, uid, file"
 						/>
 					</label>
 					<div className="dbvc-entity-editor__toolbar-actions">
 						<span className="dbvc-entity-editor__toolbar-selection">
-							Selected: {selectedEntityPaths.length}
+							Selected: { selectedEntityPaths.length }
 						</span>
 						<label className="dbvc-entity-editor__toolbar-field dbvc-entity-editor__toolbar-field--bulk">
-							Bulk action{' '}
+							Bulk action{ ' ' }
 							<select
-								value={entityBulkAction}
-								onChange={(e) => setEntityBulkAction(e.target.value)}
+								value={ entityBulkAction }
+								onChange={ ( e ) =>
+									setEntityBulkAction( e.target.value )
+								}
 							>
 								<option value="">Choose action</option>
-								<option value="select_filtered">Select filtered ({filteredEntityPaths.length})</option>
-								<option value="deselect_filtered">Deselect filtered</option>
-								<option value="clear_selection">Clear selection</option>
-								<option value="download_selected">Download selected</option>
-								<option value="preview_import_selected">Preview import selected</option>
-								<option value="remove_selected">Remove selected</option>
+								<option value="select_filtered">
+									Select filtered (
+									{ filteredEntityPaths.length })
+								</option>
+								<option value="deselect_filtered">
+									Deselect filtered
+								</option>
+								<option value="clear_selection">
+									Clear selection
+								</option>
+								<option value="download_selected">
+									Download selected
+								</option>
+								<option value="preview_import_selected">
+									Preview import selected
+								</option>
+								<option value="remove_selected">
+									Remove selected
+								</option>
 							</select>
 						</label>
 						<Button
 							variant="secondary"
-							onClick={runEntityBulkAction}
-							disabled={entityBulkActionDisabled}
-							isBusy={entityDeleteBusy && entityBulkAction === 'remove_selected'}
+							onClick={ runEntityBulkAction }
+							disabled={ entityBulkActionDisabled }
+							isBusy={
+								entityDeleteBusy &&
+								entityBulkAction === 'remove_selected'
+							}
 							title="Apply the selected bulk action"
 						>
 							Apply
 						</Button>
 						<Button
 							variant="secondary"
-							onClick={openRawIntakeModal}
-							disabled={entityDeleteBusy}
+							onClick={ openRawIntakeModal }
+							disabled={ entityDeleteBusy }
 							title="Paste one raw DBVC entity JSON payload, preview the detected type, and create or stage it"
 						>
 							New From Raw JSON
 						</Button>
 						<Button
 							variant="primary"
-							onClick={openTransferPreview}
-							disabled={!selectedEntityPaths.length || entityDeleteBusy}
+							onClick={ openTransferPreview }
+							disabled={
+								! selectedEntityPaths.length || entityDeleteBusy
+							}
 							title="Preview the packet contents, dependencies, and warnings before download"
 						>
 							Create transfer packet
 						</Button>
 						<Button
 							variant="tertiary"
-							href={DBVC_ENTITY_EDITOR_APP?.proposal_review_url || 'admin.php?page=dbvc-export#proposal-review'}
+							href={
+								DBVC_ENTITY_EDITOR_APP?.proposal_review_url ||
+								'admin.php?page=dbvc-export#proposal-review'
+							}
 							title="Open Proposal Review to upload a transfer packet"
 						>
 							Upload Transfer Packet
@@ -1794,997 +2694,3071 @@ const EntityEditorApp = () => {
 								<th>
 									<input
 										type="checkbox"
-										checked={allPagedSelected}
-										onChange={(e) => setPagedSelection(e.target.checked)}
+										checked={ allPagedSelected }
+										onChange={ ( e ) =>
+											setPagedSelection(
+												e.target.checked
+											)
+										}
 										title="Select/deselect all rows on this page"
 									/>
 								</th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('entity_kind')}>Kind{entitySort.key === 'entity_kind' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('import_status')}>Import status{entitySort.key === 'import_status' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'entity_kind' )
+										}
+									>
+										Kind
+										{ entitySort.key === 'entity_kind'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'import_status' )
+										}
+									>
+										Import status
+										{ entitySort.key === 'import_status'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
 								<th>Actions</th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('subtype')}>Subtype{entitySort.key === 'subtype' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('title')}>Title{entitySort.key === 'title' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('slug')}>Slug{entitySort.key === 'slug' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('uid')}>UID{entitySort.key === 'uid' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('mtime')}>Modified{entitySort.key === 'mtime' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
-								<th><button type="button" className="button button-link" onClick={() => toggleEntitySort('relative_path')}>File{entitySort.key === 'relative_path' ? (entitySort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'subtype' )
+										}
+									>
+										Subtype
+										{ entitySort.key === 'subtype'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'title' )
+										}
+									>
+										Title
+										{ entitySort.key === 'title'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'slug' )
+										}
+									>
+										Slug
+										{ entitySort.key === 'slug'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'uid' )
+										}
+									>
+										UID
+										{ entitySort.key === 'uid'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'mtime' )
+										}
+									>
+										Modified
+										{ entitySort.key === 'mtime'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
+								<th>
+									<button
+										type="button"
+										className="button button-link"
+										onClick={ () =>
+											toggleEntitySort( 'relative_path' )
+										}
+									>
+										File
+										{ entitySort.key === 'relative_path'
+											? entitySort.direction === 'asc'
+												? ' ↑'
+												: ' ↓'
+											: '' }
+									</button>
+								</th>
 							</tr>
 						</thead>
 						<tbody>
-							{pagedEntityIndex.length ? pagedEntityIndex.map((item) => (
-								<tr
-									key={item.relative_path}
-									className={[
-										selectedEntityFile === item.relative_path ? 'is-active' : '',
-										item.is_canonical_duplicate ? 'dbvc-entity-editor__row--canonical' : '',
-										item.is_duplicate && !item.is_canonical_duplicate ? 'dbvc-entity-editor__row--stale' : '',
-									].filter(Boolean).join(' ')}
-								>
-									<td>
-										<input
-											type="checkbox"
-											checked={selectedEntityPathSet.has(item.relative_path)}
-											onChange={(e) => toggleEntityRowSelection(item.relative_path, e.target.checked)}
-											title="Select this entity row"
-										/>
-									</td>
-									<td>{formatEntityKindLabel(item)}</td>
-									<td>
-										{item.matched_wp?.id || item.matched_provider_entity?.id ? (
-											<>
-												<span className="dbvc-badge dbvc-badge--accept">Imported</span>
-												<div>
-													<a href={item.matched_wp?.edit_url || item.matched_provider_entity?.edit_url || '#'}>
-														{item.matched_wp?.kind || item.matched_provider_entity?.provider || 'entity'} #{item.matched_wp?.id || item.matched_provider_entity?.id}
-													</a>
-												</div>
-												{item.matched_provider_entity?.id && (
-													<div className="description">
-														Matched WS Form: {item.matched_provider_entity?.label || `#${item.matched_provider_entity.id}`}
-														{item.matched_provider_entity?.match_source ? ` · ${item.matched_provider_entity.match_source}` : ''}
+							{ pagedEntityIndex.length ? (
+								pagedEntityIndex.map( ( item ) => (
+									<tr
+										key={ item.relative_path }
+										className={ [
+											selectedEntityFile ===
+											item.relative_path
+												? 'is-active'
+												: '',
+											item.is_canonical_duplicate
+												? 'dbvc-entity-editor__row--canonical'
+												: '',
+											item.is_duplicate &&
+											! item.is_canonical_duplicate
+												? 'dbvc-entity-editor__row--stale'
+												: '',
+										]
+											.filter( Boolean )
+											.join( ' ' ) }
+									>
+										<td>
+											<input
+												type="checkbox"
+												checked={ selectedEntityPathSet.has(
+													item.relative_path
+												) }
+												onChange={ ( e ) =>
+													toggleEntityRowSelection(
+														item.relative_path,
+														e.target.checked
+													)
+												}
+												title="Select this entity row"
+											/>
+										</td>
+										<td>
+											{ formatEntityKindLabel( item ) }
+										</td>
+										<td>
+											{ item.matched_wp?.id ||
+											item.matched_provider_entity?.id ? (
+												<>
+													<span className="dbvc-badge dbvc-badge--accept">
+														Imported
+													</span>
+													<div>
+														<a
+															href={
+																item.matched_wp
+																	?.edit_url ||
+																item
+																	.matched_provider_entity
+																	?.edit_url ||
+																'#'
+															}
+														>
+															{ item.matched_wp
+																?.kind ||
+																item
+																	.matched_provider_entity
+																	?.provider ||
+																'entity' }{ ' ' }
+															#
+															{ item.matched_wp
+																?.id ||
+																item
+																	.matched_provider_entity
+																	?.id }
+														</a>
 													</div>
-												)}
-											</>
-										) : (
-											<span className="dbvc-badge dbvc-badge--pending">Not imported</span>
-										)}
-									</td>
-									<td>
-										<button
-											type="button"
-											className="button button-small"
-											onClick={() => setSelectedEntityFile(item.relative_path)}
-											title="Open this JSON file in the editor"
-										>
-											Edit JSON
-										</button>
-										{canOfferSyncFileImport(item) && (
+													{ item
+														.matched_provider_entity
+														?.id && (
+														<div className="description">
+															Matched WS Form:{ ' ' }
+															{ item
+																.matched_provider_entity
+																?.label ||
+																`#${ item.matched_provider_entity.id }` }
+															{ item
+																.matched_provider_entity
+																?.match_source
+																? ` · ${ item.matched_provider_entity.match_source }`
+																: '' }
+														</div>
+													) }
+												</>
+											) : (
+												<span className="dbvc-badge dbvc-badge--pending">
+													Not imported
+												</span>
+											) }
+										</td>
+										<td>
 											<button
 												type="button"
 												className="button button-small"
-												onClick={() => openSyncImportPreview(item.relative_path)}
-												disabled={busyAny}
-												title={item.entity_kind === 'third_party' ? 'Preview applying this provider sync JSON file' : 'Preview creating a new live WordPress entity from this sync JSON file'}
-												style={{ marginLeft: '6px' }}
+												onClick={ () =>
+													setSelectedEntityFile(
+														item.relative_path
+													)
+												}
+												title="Open this JSON file in the editor"
 											>
-												{item.entity_kind === 'third_party' ? 'Preview Provider Import' : 'Import as New'}
+												Edit JSON
 											</button>
-										)}
-									</td>
-									<td>{item.entity_kind === 'third_party' ? `${item.provider || 'provider'} / ${item.object_type || item.subtype || 'object'}` : (item.subtype || '—')}</td>
-									<td>
-										<div className="dbvc-entity-editor__title-cell">
-											<div>{item.title || '—'}</div>
-											{item.is_duplicate && item.duplicate_group && (
-												<div className="dbvc-entity-editor__title-meta">
-													<span className={`dbvc-badge ${item.is_canonical_duplicate ? 'dbvc-badge--accept' : 'dbvc-badge--pending'}`}>
-														{item.is_canonical_duplicate ? 'Latest valid row' : 'Older duplicate'}
-													</span>
-													<span className="dbvc-entity-editor__duplicate-note">
-														{getDuplicateMatchBasisLabel(item.duplicate_group.match_basis)}
-														{item.duplicate_group?.size ? ` · ${item.duplicate_group.size} file${item.duplicate_group.size === 1 ? '' : 's'}` : ''}
-													</span>
-												</div>
-											)}
-										</div>
-									</td>
-									<td>{item.slug || '—'}</td>
-									<td>{item.uid || '—'}</td>
-									<td>{item.mtime_gmt ? formatDate(item.mtime_gmt) : '—'}</td>
-									<td>
-										{item.relative_path ? (
-											<a
-												href={getEntityDownloadUrl(item.relative_path)}
-												download
-												title="Download this entity JSON file"
-											>
-												{item.relative_path}
-											</a>
-										) : '—'}
+											{ canOfferSyncFileImport(
+												item
+											) && (
+												<button
+													type="button"
+													className="button button-small"
+													onClick={ () =>
+														openSyncImportPreview(
+															item.relative_path
+														)
+													}
+													disabled={ busyAny }
+													title={
+														item.entity_kind ===
+														'third_party'
+															? 'Preview applying this provider sync JSON file'
+															: 'Preview creating a new live WordPress entity from this sync JSON file'
+													}
+													style={ {
+														marginLeft: '6px',
+													} }
+												>
+													{ item.entity_kind ===
+													'third_party'
+														? 'Preview Provider Import'
+														: 'Import as New' }
+												</button>
+											) }
+										</td>
+										<td>
+											{ item.entity_kind === 'third_party'
+												? `${
+														item.provider ||
+														'provider'
+												  } / ${
+														item.object_type ||
+														item.subtype ||
+														'object'
+												  }`
+												: item.subtype || '—' }
+										</td>
+										<td>
+											<div className="dbvc-entity-editor__title-cell">
+												<div>{ item.title || '—' }</div>
+												{ item.is_duplicate &&
+													item.duplicate_group && (
+														<div className="dbvc-entity-editor__title-meta">
+															<span
+																className={ `dbvc-badge ${
+																	item.is_canonical_duplicate
+																		? 'dbvc-badge--accept'
+																		: 'dbvc-badge--pending'
+																}` }
+															>
+																{ item.is_canonical_duplicate
+																	? 'Latest valid row'
+																	: 'Older duplicate' }
+															</span>
+															<span className="dbvc-entity-editor__duplicate-note">
+																{ getDuplicateMatchBasisLabel(
+																	item
+																		.duplicate_group
+																		.match_basis
+																) }
+																{ item
+																	.duplicate_group
+																	?.size
+																	? ` · ${
+																			item
+																				.duplicate_group
+																				.size
+																	  } file${
+																			item
+																				.duplicate_group
+																				.size ===
+																			1
+																				? ''
+																				: 's'
+																	  }`
+																	: '' }
+															</span>
+														</div>
+													) }
+											</div>
+										</td>
+										<td>{ item.slug || '—' }</td>
+										<td>{ item.uid || '—' }</td>
+										<td>
+											{ item.mtime_gmt
+												? formatDate( item.mtime_gmt )
+												: '—' }
+										</td>
+										<td>
+											{ item.relative_path ? (
+												<a
+													href={ getEntityDownloadUrl(
+														item.relative_path
+													) }
+													download
+													title="Download this entity JSON file"
+												>
+													{ item.relative_path }
+												</a>
+											) : (
+												'—'
+											) }
+										</td>
+									</tr>
+								) )
+							) : (
+								<tr>
+									<td colSpan={ 10 }>
+										{ entityIndexLoading
+											? 'Loading index…'
+											: 'No matching entities found.' }
 									</td>
 								</tr>
-							)) : (
-								<tr><td colSpan={10}>{entityIndexLoading ? 'Loading index…' : 'No matching entities found.'}</td></tr>
-							)}
+							) }
 						</tbody>
 					</table>
 				</div>
 
-				{selectedEntityFile && (
-					(Modal ? (
+				{ selectedEntityFile &&
+					( Modal ? (
 						<Modal
-							title={`Editing: ${selectedEntityFile}`}
-							onRequestClose={() => {
-								if (fullReplaceModalOpen) return;
+							title={ `Editing: ${ selectedEntityFile }` }
+							onRequestClose={ () => {
+								if ( fullReplaceModalOpen ) {
+									return;
+								}
 								clearEntityEditorFile();
-							}}
+							} }
 							className="dbvc-entity-editor-modal"
 							overlayClassName="dbvc-entity-editor-modal-overlay"
 						>
 							<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor">
-								{entityFileLoading && (
-									<p style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Spinner /> Loading file…</p>
-								)}
-								{entityFileError && <div className="notice notice-error"><p>{entityFileError}</p></div>}
-								{entityLockConflict && (
-									<div className="notice notice-warning">
-										<p>Current lock owner: {entityLockConflict?.user_display || 'another user'}{entityLockConflict?.expires_at ? ` (expires ${formatDate(entityLockConflict.expires_at)})` : ''}</p>
-										<button type="button" className="button" onClick={() => loadEntityEditorFile(selectedEntityFile, true)} title="Take ownership of this file lock so you can edit and save">Take over lock</button>
+								{ entityFileLoading && (
+									<p
+										style={ {
+											display: 'flex',
+											alignItems: 'center',
+											gap: '8px',
+										} }
+									>
+										<Spinner /> Loading file…
+									</p>
+								) }
+								{ entityFileError && (
+									<div className="notice notice-error">
+										<p>{ entityFileError }</p>
 									</div>
-								)}
-								{entityFileData && (
+								) }
+								{ entityLockConflict && (
+									<div className="notice notice-warning">
+										<p>
+											Current lock owner:{ ' ' }
+											{ entityLockConflict?.user_display ||
+												'another user' }
+											{ entityLockConflict?.expires_at
+												? ` (expires ${ formatDate(
+														entityLockConflict.expires_at
+												  ) })`
+												: '' }
+										</p>
+										<button
+											type="button"
+											className="button"
+											onClick={ () =>
+												loadEntityEditorFile(
+													selectedEntityFile,
+													true
+												)
+											}
+											title="Take ownership of this file lock so you can edit and save"
+										>
+											Take over lock
+										</button>
+									</div>
+								) }
+								{ entityFileData && (
 									<>
 										<p className="description">
-											Kind: {entityFileData.entity_kind || '—'}
-											{' · '}Subtype: {selectedEntityIsThirdParty ? `${entityFileData.provider || 'provider'} / ${entityFileData.object_type || 'object'}` : (entityFileData.subtype || '—')}
-											{' · '}UID: {entityFileData.uid || '—'}
-											{entityFileData.source_id ? ` · Source ID: ${entityFileData.source_id}` : ''}
+											Kind:{ ' ' }
+											{ entityFileData.entity_kind ||
+												'—' }
+											{ ' · ' }Subtype:{ ' ' }
+											{ selectedEntityIsThirdParty
+												? `${
+														entityFileData.provider ||
+														'provider'
+												  } / ${
+														entityFileData.object_type ||
+														'object'
+												  }`
+												: entityFileData.subtype ||
+												  '—' }
+											{ ' · ' }UID:{ ' ' }
+											{ entityFileData.uid || '—' }
+											{ entityFileData.source_id
+												? ` · Source ID: ${ entityFileData.source_id }`
+												: '' }
 										</p>
-										{entityLockInfo && (
-											<p className="description">Editor lock: {entityLockInfo?.user_display || 'unknown'}{entityLockInfo?.expires_at ? ` · expires ${formatDate(entityLockInfo.expires_at)}` : ''}</p>
-										)}
-										<div className="dbvc-entity-editor__actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+										{ entityLockInfo && (
+											<p className="description">
+												Editor lock:{ ' ' }
+												{ entityLockInfo?.user_display ||
+													'unknown' }
+												{ entityLockInfo?.expires_at
+													? ` · expires ${ formatDate(
+															entityLockInfo.expires_at
+													  ) }`
+													: '' }
+											</p>
+										) }
+										<div
+											className="dbvc-entity-editor__actions"
+											style={ {
+												display: 'flex',
+												gap: '8px',
+												flexWrap: 'wrap',
+											} }
+										>
 											<div className="dbvc-entity-editor__search">
 												<input
 													type="search"
-													value={entityEditorSearch}
-													onChange={(e) => handleEntityEditorSearchChange(e.target.value)}
-													onKeyDown={(e) => {
-														if (e.key === 'Enter') {
+													value={ entityEditorSearch }
+													onChange={ ( e ) =>
+														handleEntityEditorSearchChange(
+															e.target.value
+														)
+													}
+													onKeyDown={ ( e ) => {
+														if (
+															e.key === 'Enter'
+														) {
 															e.preventDefault();
-															if (e.shiftKey) {
-																jumpToPreviousEntitySearch({ keepInputFocus: true });
+															if ( e.shiftKey ) {
+																jumpToPreviousEntitySearch(
+																	{
+																		keepInputFocus: true,
+																	}
+																);
 																return;
 															}
-															jumpToNextEntitySearch({ keepInputFocus: true });
+															jumpToNextEntitySearch(
+																{
+																	keepInputFocus: true,
+																}
+															);
 														}
-													}}
+													} }
 													placeholder="Find in JSON..."
 													title="Search within JSON (Enter = next, Shift+Enter = previous)"
 												/>
-												<button type="button" className="button button-small" onClick={() => jumpToPreviousEntitySearch({ keepInputFocus: false })} disabled={!canNavigateEntitySearch} title="Jump to previous match">
+												<button
+													type="button"
+													className="button button-small"
+													onClick={ () =>
+														jumpToPreviousEntitySearch(
+															{
+																keepInputFocus: false,
+															}
+														)
+													}
+													disabled={
+														! canNavigateEntitySearch
+													}
+													title="Jump to previous match"
+												>
 													Prev
 												</button>
-												<button type="button" className="button button-small" onClick={() => jumpToNextEntitySearch({ keepInputFocus: false })} disabled={!canNavigateEntitySearch} title="Jump to next match">
+												<button
+													type="button"
+													className="button button-small"
+													onClick={ () =>
+														jumpToNextEntitySearch(
+															{
+																keepInputFocus: false,
+															}
+														)
+													}
+													disabled={
+														! canNavigateEntitySearch
+													}
+													title="Jump to next match"
+												>
 													Next
 												</button>
 												<span className="dbvc-entity-editor__search-count">
-													{canNavigateEntitySearch
-														? `${entityEditorSearchIndex + 1} / ${entityEditorSearchMatches.length}`
-														: normalizedEntityEditorSearch ? '0 matches' : 'Find'}
+													{ canNavigateEntitySearch
+														? `${
+																entityEditorSearchIndex +
+																1
+														  } / ${
+																entityEditorSearchMatches.length
+														  }`
+														: normalizedEntityEditorSearch
+														? '0 matches'
+														: 'Find' }
 												</span>
 											</div>
-											<Button variant="primary" onClick={() => saveEntityEditorFile(false)} disabled={busyAny || !entityLockToken} isBusy={entitySaveBusy} title="Save JSON file only (no database changes)">
-												{entitySaveBusy ? 'Saving…' : 'Save JSON'}
+											<Button
+												variant="primary"
+												onClick={ () =>
+													saveEntityEditorFile(
+														false
+													)
+												}
+												disabled={
+													busyAny || ! entityLockToken
+												}
+												isBusy={ entitySaveBusy }
+												title="Save JSON file only (no database changes)"
+											>
+												{ entitySaveBusy
+													? 'Saving…'
+													: 'Save JSON' }
 											</Button>
-											{selectedEntityIsThirdParty ? (
-												<Button variant="secondary" onClick={() => openSyncImportPreview(selectedEntityFile)} disabled={busyAny || !selectedEntityFile} title="Preview applying this provider JSON through its provider adapter">
+											{ selectedEntityIsThirdParty ? (
+												<Button
+													variant="secondary"
+													onClick={ () =>
+														openSyncImportPreview(
+															selectedEntityFile
+														)
+													}
+													disabled={
+														busyAny ||
+														! selectedEntityFile
+													}
+													title="Preview applying this provider JSON through its provider adapter"
+												>
 													Preview Provider Import
 												</Button>
 											) : (
 												<>
-													<Button variant="secondary" onClick={() => partialImportEntityEditorFile(false)} disabled={busyAny || !entityLockToken} isBusy={entityImportBusy} title="Save JSON and merge only fields/meta present in JSON">
-														{entityImportBusy ? 'Importing…' : 'Save + Partial Import'}
+													<Button
+														variant="secondary"
+														onClick={ () =>
+															partialImportEntityEditorFile(
+																false
+															)
+														}
+														disabled={
+															busyAny ||
+															! entityLockToken
+														}
+														isBusy={
+															entityImportBusy
+														}
+														title="Save JSON and merge only fields/meta present in JSON"
+													>
+														{ entityImportBusy
+															? 'Importing…'
+															: 'Save + Partial Import' }
 													</Button>
-													<Button variant="secondary" onClick={mergeJsonOpen ? closeMergeJsonPanel : openMergeJsonPanel} disabled={busyAny || !entityLockToken} title="Paste incoming entity JSON and preview a merge into this selected file">
-														{mergeJsonOpen ? 'Close Merge' : 'Merge Incoming JSON'}
+													<Button
+														variant="secondary"
+														onClick={
+															mergeJsonOpen
+																? closeMergeJsonPanel
+																: openMergeJsonPanel
+														}
+														disabled={
+															busyAny ||
+															! entityLockToken
+														}
+														title="Paste incoming entity JSON and preview a merge into this selected file"
+													>
+														{ mergeJsonOpen
+															? 'Close Merge'
+															: 'Merge Incoming JSON' }
 													</Button>
-													<Button variant="secondary" onClick={() => openFullReplaceModal(false)} disabled={busyAny || !entityLockToken} isBusy={entityReplaceBusy} title="Save JSON and fully replace entity data (destructive)">
-														{entityReplaceBusy ? 'Replacing…' : 'Save + Full Replace'}
+													<Button
+														variant="secondary"
+														onClick={ () =>
+															openFullReplaceModal(
+																false
+															)
+														}
+														disabled={
+															busyAny ||
+															! entityLockToken
+														}
+														isBusy={
+															entityReplaceBusy
+														}
+														title="Save JSON and fully replace entity data (destructive)"
+													>
+														{ entityReplaceBusy
+															? 'Replacing…'
+															: 'Save + Full Replace' }
 													</Button>
 												</>
-											)}
-											<Button variant="tertiary" onClick={clearEntityEditorFile} disabled={busyAny} title="Close editor and return to entity table">
+											) }
+											<Button
+												variant="tertiary"
+												onClick={
+													clearEntityEditorFile
+												}
+												disabled={ busyAny }
+												title="Close editor and return to entity table"
+											>
 												Close
 											</Button>
 										</div>
-										{selectedEntityIsThirdParty ? (
-											<div className="notice notice-info" style={{ margin: '12px 0' }}>
-												<p>Provider JSON saves update the sync file only. Use Preview Provider Import to apply WS Form JSON through the WS Form portability adapter.</p>
+										{ selectedEntityIsThirdParty ? (
+											<div
+												className="notice notice-info"
+												style={ { margin: '12px 0' } }
+											>
+												<p>
+													Provider JSON saves update
+													the sync file only. Use
+													Preview Provider Import to
+													apply WS Form JSON through
+													the WS Form portability
+													adapter.
+												</p>
 											</div>
 										) : (
 											<MatchingPolicyControl
 												idPrefix="dbvc-entity-editor-partial-matching"
-												value={entityPartialMatchingPolicy}
-												onChange={setEntityPartialMatchingPolicy}
-												disabled={busyAny || !entityLockToken}
-												globalUidFallbackEnabled={globalUidFallbackEnabled}
+												value={
+													entityPartialMatchingPolicy
+												}
+												onChange={
+													setEntityPartialMatchingPolicy
+												}
+												disabled={
+													busyAny || ! entityLockToken
+												}
+												globalUidFallbackEnabled={
+													globalUidFallbackEnabled
+												}
 											/>
-										)}
-										{mergeJsonOpen && !selectedEntityIsThirdParty && (
-											<div className="notice notice-info" style={{ margin: '12px 0', padding: '12px' }}>
-												<p>
-													<strong>Merge incoming JSON into selected entity</strong>
-													{' · '}Target: {selectedEntityFile}
-												</p>
-												<p className="description">
-													DBVC will preserve the selected entity as the local authority, generate a proposed JSON merge, and require confirmation before saving.
-												</p>
-												<MatchingPolicyControl
-													idPrefix="dbvc-entity-editor-merge-matching"
-													value={mergeJsonMatchingPolicy}
-													onChange={setMergeJsonMatchingPolicy}
-													disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
-													globalUidFallbackEnabled={globalUidFallbackEnabled}
-												/>
-												<div style={{ display: 'grid', gap: '10px', marginTop: '10px' }}>
-													<label>
-														Incoming JSON
-														<textarea
-															className="dbvc-entity-editor__textarea"
-															value={mergeJsonDraft}
-															onChange={(e) => setMergeJsonDraft(e.target.value)}
-															placeholder="Paste incoming DBVC entity JSON here..."
-															style={{ minHeight: '180px', marginTop: '6px' }}
-															disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
-														/>
-													</label>
-													<div style={{ display: 'grid', gap: '8px', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+										) }
+										{ mergeJsonOpen &&
+											! selectedEntityIsThirdParty && (
+												<div
+													className="notice notice-info"
+													style={ {
+														margin: '12px 0',
+														padding: '12px',
+													} }
+												>
+													<p>
+														<strong>
+															Merge incoming JSON
+															into selected entity
+														</strong>
+														{ ' · ' }Target:{ ' ' }
+														{ selectedEntityFile }
+													</p>
+													<p className="description">
+														DBVC will preserve the
+														selected entity as the
+														local authority,
+														generate a proposed JSON
+														merge, and require
+														confirmation before
+														saving.
+													</p>
+													<MatchingPolicyControl
+														idPrefix="dbvc-entity-editor-merge-matching"
+														value={
+															mergeJsonMatchingPolicy
+														}
+														onChange={
+															setMergeJsonMatchingPolicy
+														}
+														disabled={
+															mergeJsonPreviewBusy ||
+															mergeJsonSaveBusy ||
+															mergeJsonPartialBusy
+														}
+														globalUidFallbackEnabled={
+															globalUidFallbackEnabled
+														}
+													/>
+													<div
+														style={ {
+															display: 'grid',
+															gap: '10px',
+															marginTop: '10px',
+														} }
+													>
 														<label>
-															UID
-															<select
-																value={mergeJsonIdentity.uid}
-																onChange={(e) => setMergeIdentityChoice('uid', e.target.value)}
-																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
-																style={{ width: '100%', marginTop: '4px' }}
-															>
-																<option value="keep_local">Keep local</option>
-																<option value="use_incoming">Use incoming</option>
-															</select>
-														</label>
-														<label>
-															Slug
-															<select
-																value={mergeJsonIdentity.slug}
-																onChange={(e) => setMergeIdentityChoice('slug', e.target.value)}
-																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
-																style={{ width: '100%', marginTop: '4px' }}
-															>
-																<option value="keep_local">Keep local</option>
-																<option value="use_incoming">Use incoming</option>
-															</select>
-														</label>
-														<label>
-															ID
-															<input
-																type="text"
-																value={`Keep local${mergeJsonSummary?.local_id ? ` #${mergeJsonSummary.local_id}` : ''}${mergeJsonSummary?.incoming_id ? `; incoming #${mergeJsonSummary.incoming_id} ignored` : ''}`}
-																readOnly
-																style={{ width: '100%', marginTop: '4px' }}
-															/>
-														</label>
-														<label>
-															Title
-															<select
-																value={mergeJsonIdentity.title}
-																onChange={(e) => setMergeIdentityChoice('title', e.target.value)}
-																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}
-																style={{ width: '100%', marginTop: '4px' }}
-															>
-																<option value="use_incoming">Use incoming</option>
-																<option value="keep_local">Keep local</option>
-															</select>
-														</label>
-													</div>
-													<div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-														<Button
-															variant="secondary"
-															onClick={previewMergeJson}
-															disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy || !mergeJsonDraft.trim()}
-															isBusy={mergeJsonPreviewBusy}
-														>
-															{mergeJsonPreviewBusy ? 'Previewing…' : 'Preview Merge'}
-														</Button>
-														{mergeJsonPreview && (
-															<span className="description">
-																{mergeJsonBlockers.length
-																	? `${mergeJsonBlockers.length} blocker${mergeJsonBlockers.length === 1 ? '' : 's'}`
-																	: 'Preview ready'}
-																{mergeJsonNotes.length ? ` · ${mergeJsonNotes.length} note${mergeJsonNotes.length === 1 ? '' : 's'}` : ''}
-															</span>
-														)}
-													</div>
-												</div>
-												{mergeJsonError && (
-													<div className="notice notice-error" style={{ marginTop: '12px' }}>
-														<p>{mergeJsonError}</p>
-														{entityLockConflict && (
-															<div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-																<Button variant="secondary" onClick={() => saveMergeJson(false, true)} disabled={!mergeJsonCanSave || mergeJsonSaveBusy || mergeJsonPartialBusy}>
-																	Take over lock and save merge
-																</Button>
-																<Button variant="secondary" onClick={() => saveMergeJson(true, true)} disabled={!mergeJsonCanPartialImport || mergeJsonSaveBusy || mergeJsonPartialBusy}>
-																	Take over lock and partial import
-																</Button>
-															</div>
-														)}
-													</div>
-												)}
-												{mergeJsonPreview && (
-													<div style={{ marginTop: '12px' }}>
-														<div className="notice notice-info" style={{ margin: 0 }}>
-															<p>
-																Kind: {mergeJsonSummary?.kind || '—'}
-																{' · '}Subtype: {mergeJsonSummary?.subtype || '—'}
-																{' · '}Local match: {mergeJsonSummary?.local_match?.status === 'matched' ? `${mergeJsonSummary.local_match.kind || 'entity'} #${mergeJsonSummary.local_match.id}` : 'none'}
-																{' · '}Matching: {mergeJsonSummary?.matching_policy_label || mergeJsonMatchingPolicy}
-															</p>
-															<p>
-																UID: {mergeJsonSummary?.uid_policy === 'use_incoming' ? (mergeJsonSummary?.incoming_uid || 'incoming empty') : (mergeJsonSummary?.local_uid || 'local empty')}
-																{' · '}Slug: {mergeJsonSummary?.slug_policy === 'use_incoming' ? (mergeJsonSummary?.incoming_slug || 'incoming empty') : (mergeJsonSummary?.local_slug || 'local empty')}
-																{' · '}Title: {mergeJsonSummary?.title_policy === 'keep_local' ? (mergeJsonSummary?.local_title || 'local empty') : (mergeJsonSummary?.incoming_title || 'incoming empty')}
-															</p>
-														</div>
-														<ImportBlockerPanel blocking={mergeJsonBlockers} disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy} />
-														<MergeJsonNotes notes={mergeJsonNotes} />
-														{mergeJsonBlockers.length === 0 && !mergeJsonAvailable?.save_and_partial_import && (
-															<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
-																<p>Save + Partial Import is unavailable because the selected JSON does not currently match a local WordPress entity. You can still save the merged JSON file.</p>
-															</div>
-														)}
-														<label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '10px' }}>
-															<input
-																type="checkbox"
-																checked={mergeJsonConfirmed}
-																onChange={(event) => setMergeJsonConfirmed(event.target.checked)}
-																disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy || mergeJsonBlockers.length > 0}
-															/>
-															<span>I confirm merging this incoming JSON into the selected entity file.</span>
-														</label>
-														<label style={{ display: 'block', marginTop: '10px' }}>
-															Proposed merged JSON
+															Incoming JSON
 															<textarea
 																className="dbvc-entity-editor__textarea"
-																value={mergeJsonPreview?.proposed_json || ''}
-																readOnly
-																style={{ minHeight: '220px', marginTop: '6px' }}
+																value={
+																	mergeJsonDraft
+																}
+																onChange={ (
+																	e
+																) =>
+																	setMergeJsonDraft(
+																		e.target
+																			.value
+																	)
+																}
+																placeholder="Paste incoming DBVC entity JSON here..."
+																style={ {
+																	minHeight:
+																		'180px',
+																	marginTop:
+																		'6px',
+																} }
+																disabled={
+																	mergeJsonPreviewBusy ||
+																	mergeJsonSaveBusy ||
+																	mergeJsonPartialBusy
+																}
 															/>
 														</label>
-														<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: '12px' }}>
-															<Button variant="tertiary" onClick={closeMergeJsonPanel} disabled={mergeJsonPreviewBusy || mergeJsonSaveBusy || mergeJsonPartialBusy}>
-																Cancel Merge
+														<div
+															style={ {
+																display: 'grid',
+																gap: '8px',
+																gridTemplateColumns:
+																	'repeat(auto-fit, minmax(170px, 1fr))',
+															} }
+														>
+															<label>
+																UID
+																<select
+																	value={
+																		mergeJsonIdentity.uid
+																	}
+																	onChange={ (
+																		e
+																	) =>
+																		setMergeIdentityChoice(
+																			'uid',
+																			e
+																				.target
+																				.value
+																		)
+																	}
+																	disabled={
+																		mergeJsonPreviewBusy ||
+																		mergeJsonSaveBusy ||
+																		mergeJsonPartialBusy
+																	}
+																	style={ {
+																		width: '100%',
+																		marginTop:
+																			'4px',
+																	} }
+																>
+																	<option value="keep_local">
+																		Keep
+																		local
+																	</option>
+																	<option value="use_incoming">
+																		Use
+																		incoming
+																	</option>
+																</select>
+															</label>
+															<label>
+																Slug
+																<select
+																	value={
+																		mergeJsonIdentity.slug
+																	}
+																	onChange={ (
+																		e
+																	) =>
+																		setMergeIdentityChoice(
+																			'slug',
+																			e
+																				.target
+																				.value
+																		)
+																	}
+																	disabled={
+																		mergeJsonPreviewBusy ||
+																		mergeJsonSaveBusy ||
+																		mergeJsonPartialBusy
+																	}
+																	style={ {
+																		width: '100%',
+																		marginTop:
+																			'4px',
+																	} }
+																>
+																	<option value="keep_local">
+																		Keep
+																		local
+																	</option>
+																	<option value="use_incoming">
+																		Use
+																		incoming
+																	</option>
+																</select>
+															</label>
+															<label>
+																ID
+																<input
+																	type="text"
+																	value={ `Keep local${
+																		mergeJsonSummary?.local_id
+																			? ` #${ mergeJsonSummary.local_id }`
+																			: ''
+																	}${
+																		mergeJsonSummary?.incoming_id
+																			? `; incoming #${ mergeJsonSummary.incoming_id } ignored`
+																			: ''
+																	}` }
+																	readOnly
+																	style={ {
+																		width: '100%',
+																		marginTop:
+																			'4px',
+																	} }
+																/>
+															</label>
+															<label>
+																Title
+																<select
+																	value={
+																		mergeJsonIdentity.title
+																	}
+																	onChange={ (
+																		e
+																	) =>
+																		setMergeIdentityChoice(
+																			'title',
+																			e
+																				.target
+																				.value
+																		)
+																	}
+																	disabled={
+																		mergeJsonPreviewBusy ||
+																		mergeJsonSaveBusy ||
+																		mergeJsonPartialBusy
+																	}
+																	style={ {
+																		width: '100%',
+																		marginTop:
+																			'4px',
+																	} }
+																>
+																	<option value="use_incoming">
+																		Use
+																		incoming
+																	</option>
+																	<option value="keep_local">
+																		Keep
+																		local
+																	</option>
+																</select>
+															</label>
+														</div>
+														<div
+															style={ {
+																display: 'flex',
+																gap: '8px',
+																flexWrap:
+																	'wrap',
+																alignItems:
+																	'center',
+															} }
+														>
+															<Button
+																variant="secondary"
+																onClick={
+																	previewMergeJson
+																}
+																disabled={
+																	mergeJsonPreviewBusy ||
+																	mergeJsonSaveBusy ||
+																	mergeJsonPartialBusy ||
+																	! mergeJsonDraft.trim()
+																}
+																isBusy={
+																	mergeJsonPreviewBusy
+																}
+															>
+																{ mergeJsonPreviewBusy
+																	? 'Previewing…'
+																	: 'Preview Merge' }
 															</Button>
-															<Button variant="secondary" onClick={() => saveMergeJson(false, false)} disabled={!mergeJsonCanSave || mergeJsonSaveBusy || mergeJsonPartialBusy} isBusy={mergeJsonSaveBusy}>
-																{mergeJsonSaveBusy ? 'Saving…' : 'Save Merged JSON'}
-															</Button>
-															<Button variant="primary" onClick={() => saveMergeJson(true, false)} disabled={!mergeJsonCanPartialImport || mergeJsonSaveBusy || mergeJsonPartialBusy} isBusy={mergeJsonPartialBusy}>
-																{mergeJsonPartialBusy ? 'Importing…' : 'Save Merged JSON + Partial Import'}
-															</Button>
+															{ mergeJsonPreview && (
+																<span className="description">
+																	{ mergeJsonBlockers.length
+																		? `${
+																				mergeJsonBlockers.length
+																		  } blocker${
+																				mergeJsonBlockers.length ===
+																				1
+																					? ''
+																					: 's'
+																		  }`
+																		: 'Preview ready' }
+																	{ mergeJsonNotes.length
+																		? ` · ${
+																				mergeJsonNotes.length
+																		  } note${
+																				mergeJsonNotes.length ===
+																				1
+																					? ''
+																					: 's'
+																		  }`
+																		: '' }
+																</span>
+															) }
 														</div>
 													</div>
-												)}
-											</div>
-										)}
+													{ mergeJsonError && (
+														<div
+															className="notice notice-error"
+															style={ {
+																marginTop:
+																	'12px',
+															} }
+														>
+															<p>
+																{
+																	mergeJsonError
+																}
+															</p>
+															{ entityLockConflict && (
+																<div
+																	style={ {
+																		display:
+																			'flex',
+																		gap: '8px',
+																		flexWrap:
+																			'wrap',
+																	} }
+																>
+																	<Button
+																		variant="secondary"
+																		onClick={ () =>
+																			saveMergeJson(
+																				false,
+																				true
+																			)
+																		}
+																		disabled={
+																			! mergeJsonCanSave ||
+																			mergeJsonSaveBusy ||
+																			mergeJsonPartialBusy
+																		}
+																	>
+																		Take
+																		over
+																		lock and
+																		save
+																		merge
+																	</Button>
+																	<Button
+																		variant="secondary"
+																		onClick={ () =>
+																			saveMergeJson(
+																				true,
+																				true
+																			)
+																		}
+																		disabled={
+																			! mergeJsonCanPartialImport ||
+																			mergeJsonSaveBusy ||
+																			mergeJsonPartialBusy
+																		}
+																	>
+																		Take
+																		over
+																		lock and
+																		partial
+																		import
+																	</Button>
+																</div>
+															) }
+														</div>
+													) }
+													{ mergeJsonPreview && (
+														<div
+															style={ {
+																marginTop:
+																	'12px',
+															} }
+														>
+															<div
+																className="notice notice-info"
+																style={ {
+																	margin: 0,
+																} }
+															>
+																<p>
+																	Kind:{ ' ' }
+																	{ mergeJsonSummary?.kind ||
+																		'—' }
+																	{ ' · ' }
+																	Subtype:{ ' ' }
+																	{ mergeJsonSummary?.subtype ||
+																		'—' }
+																	{ ' · ' }
+																	Local match:{ ' ' }
+																	{ mergeJsonSummary
+																		?.local_match
+																		?.status ===
+																	'matched'
+																		? `${
+																				mergeJsonSummary
+																					.local_match
+																					.kind ||
+																				'entity'
+																		  } #${
+																				mergeJsonSummary
+																					.local_match
+																					.id
+																		  }`
+																		: 'none' }
+																	{ ' · ' }
+																	Matching:{ ' ' }
+																	{ mergeJsonSummary?.matching_policy_label ||
+																		mergeJsonMatchingPolicy }
+																</p>
+																<p>
+																	UID:{ ' ' }
+																	{ mergeJsonSummary?.uid_policy ===
+																	'use_incoming'
+																		? mergeJsonSummary?.incoming_uid ||
+																		  'incoming empty'
+																		: mergeJsonSummary?.local_uid ||
+																		  'local empty' }
+																	{ ' · ' }
+																	Slug:{ ' ' }
+																	{ mergeJsonSummary?.slug_policy ===
+																	'use_incoming'
+																		? mergeJsonSummary?.incoming_slug ||
+																		  'incoming empty'
+																		: mergeJsonSummary?.local_slug ||
+																		  'local empty' }
+																	{ ' · ' }
+																	Title:{ ' ' }
+																	{ mergeJsonSummary?.title_policy ===
+																	'keep_local'
+																		? mergeJsonSummary?.local_title ||
+																		  'local empty'
+																		: mergeJsonSummary?.incoming_title ||
+																		  'incoming empty' }
+																</p>
+															</div>
+															<ImportBlockerPanel
+																blocking={
+																	mergeJsonBlockers
+																}
+																disabled={
+																	mergeJsonPreviewBusy ||
+																	mergeJsonSaveBusy ||
+																	mergeJsonPartialBusy
+																}
+															/>
+															<MergeJsonNotes
+																notes={
+																	mergeJsonNotes
+																}
+															/>
+															{ mergeJsonBlockers.length ===
+																0 &&
+																! mergeJsonAvailable?.save_and_partial_import && (
+																	<div
+																		className="notice notice-warning"
+																		style={ {
+																			margin: '8px 0 0',
+																		} }
+																	>
+																		<p>
+																			Save
+																			+
+																			Partial
+																			Import
+																			is
+																			unavailable
+																			because
+																			the
+																			selected
+																			JSON
+																			does
+																			not
+																			currently
+																			match
+																			a
+																			local
+																			WordPress
+																			entity.
+																			You
+																			can
+																			still
+																			save
+																			the
+																			merged
+																			JSON
+																			file.
+																		</p>
+																	</div>
+																) }
+															<label
+																style={ {
+																	display:
+																		'flex',
+																	gap: '8px',
+																	alignItems:
+																		'flex-start',
+																	marginTop:
+																		'10px',
+																} }
+															>
+																<input
+																	type="checkbox"
+																	checked={
+																		mergeJsonConfirmed
+																	}
+																	onChange={ (
+																		event
+																	) =>
+																		setMergeJsonConfirmed(
+																			event
+																				.target
+																				.checked
+																		)
+																	}
+																	disabled={
+																		mergeJsonPreviewBusy ||
+																		mergeJsonSaveBusy ||
+																		mergeJsonPartialBusy ||
+																		mergeJsonBlockers.length >
+																			0
+																	}
+																/>
+																<span>
+																	I confirm
+																	merging this
+																	incoming
+																	JSON into
+																	the selected
+																	entity file.
+																</span>
+															</label>
+															<label
+																style={ {
+																	display:
+																		'block',
+																	marginTop:
+																		'10px',
+																} }
+															>
+																Proposed merged
+																JSON
+																<textarea
+																	className="dbvc-entity-editor__textarea"
+																	value={
+																		mergeJsonPreview?.proposed_json ||
+																		''
+																	}
+																	readOnly
+																	style={ {
+																		minHeight:
+																			'220px',
+																		marginTop:
+																			'6px',
+																	} }
+																/>
+															</label>
+															<div
+																style={ {
+																	display:
+																		'flex',
+																	gap: '8px',
+																	justifyContent:
+																		'flex-end',
+																	flexWrap:
+																		'wrap',
+																	marginTop:
+																		'12px',
+																} }
+															>
+																<Button
+																	variant="tertiary"
+																	onClick={
+																		closeMergeJsonPanel
+																	}
+																	disabled={
+																		mergeJsonPreviewBusy ||
+																		mergeJsonSaveBusy ||
+																		mergeJsonPartialBusy
+																	}
+																>
+																	Cancel Merge
+																</Button>
+																<Button
+																	variant="secondary"
+																	onClick={ () =>
+																		saveMergeJson(
+																			false,
+																			false
+																		)
+																	}
+																	disabled={
+																		! mergeJsonCanSave ||
+																		mergeJsonSaveBusy ||
+																		mergeJsonPartialBusy
+																	}
+																	isBusy={
+																		mergeJsonSaveBusy
+																	}
+																>
+																	{ mergeJsonSaveBusy
+																		? 'Saving…'
+																		: 'Save Merged JSON' }
+																</Button>
+																<Button
+																	variant="primary"
+																	onClick={ () =>
+																		saveMergeJson(
+																			true,
+																			false
+																		)
+																	}
+																	disabled={
+																		! mergeJsonCanPartialImport ||
+																		mergeJsonSaveBusy ||
+																		mergeJsonPartialBusy
+																	}
+																	isBusy={
+																		mergeJsonPartialBusy
+																	}
+																>
+																	{ mergeJsonPartialBusy
+																		? 'Importing…'
+																		: 'Save Merged JSON + Partial Import' }
+																</Button>
+															</div>
+														</div>
+													) }
+												</div>
+											) }
 										<textarea
 											className="dbvc-entity-editor__textarea"
-											ref={entityEditorTextareaRef}
-											value={entityEditorDraft}
-											onChange={(e) => {
-												setEntityEditorDraft(e.target.value);
-												setEntitySaveNotice('');
-												setEntitySaveError('');
-											}}
+											ref={ entityEditorTextareaRef }
+											value={ entityEditorDraft }
+											onChange={ ( e ) => {
+												setEntityEditorDraft(
+													e.target.value
+												);
+												setEntitySaveNotice( '' );
+												setEntitySaveError( '' );
+											} }
 										/>
-										{entitySaveError && (
+										{ entitySaveError && (
 											<div className="notice notice-error">
-												<p>{entitySaveError}</p>
-												{entityLockConflict && (
+												<p>{ entitySaveError }</p>
+												{ entityLockConflict && (
 													<>
-														<button type="button" className="button" onClick={() => saveEntityEditorFile(true)} disabled={busyAny} title="Take lock ownership and save JSON to sync folder">Take over lock and save</button>
-														<button type="button" className="button" onClick={() => openFullReplaceModal(true)} disabled={busyAny} title="Take lock ownership and run destructive full replace">Take over lock and full replace</button>
+														<button
+															type="button"
+															className="button"
+															onClick={ () =>
+																saveEntityEditorFile(
+																	true
+																)
+															}
+															disabled={ busyAny }
+															title="Take lock ownership and save JSON to sync folder"
+														>
+															Take over lock and
+															save
+														</button>
+														<button
+															type="button"
+															className="button"
+															onClick={ () =>
+																openFullReplaceModal(
+																	true
+																)
+															}
+															disabled={ busyAny }
+															title="Take lock ownership and run destructive full replace"
+														>
+															Take over lock and
+															full replace
+														</button>
 													</>
-												)}
+												) }
 											</div>
-										)}
-										{entitySaveNotice && <div className="notice notice-success"><p>{entitySaveNotice}</p></div>}
+										) }
+										{ entitySaveNotice && (
+											<div className="notice notice-success">
+												<p>{ entitySaveNotice }</p>
+											</div>
+										) }
 									</>
-								)}
+								) }
 							</div>
 						</Modal>
 					) : (
-						<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor" style={{ marginTop: '12px' }}>
-							<div className="notice notice-warning"><p>Editor modal is unavailable in this WordPress build.</p></div>
+						<div
+							className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor"
+							style={ { marginTop: '12px' } }
+						>
+							<div className="notice notice-warning">
+								<p>
+									Editor modal is unavailable in this
+									WordPress build.
+								</p>
+							</div>
 						</div>
-					))
-				)}
+					) ) }
 
-				<div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-					<button type="button" className="button" disabled={safeEntityPage <= 1} onClick={() => setEntityPage((current) => Math.max(1, current - 1))} title="Go to previous page of entities">
+				<div
+					style={ {
+						marginTop: '10px',
+						display: 'flex',
+						gap: '8px',
+						alignItems: 'center',
+					} }
+				>
+					<button
+						type="button"
+						className="button"
+						disabled={ safeEntityPage <= 1 }
+						onClick={ () =>
+							setEntityPage( ( current ) =>
+								Math.max( 1, current - 1 )
+							)
+						}
+						title="Go to previous page of entities"
+					>
 						Previous
 					</button>
-					<span>Page {safeEntityPage} of {entityTotalPages}</span>
-					<button type="button" className="button" disabled={safeEntityPage >= entityTotalPages} onClick={() => setEntityPage((current) => Math.min(entityTotalPages, current + 1))} title="Go to next page of entities">
+					<span>
+						Page { safeEntityPage } of { entityTotalPages }
+					</span>
+					<button
+						type="button"
+						className="button"
+						disabled={ safeEntityPage >= entityTotalPages }
+						onClick={ () =>
+							setEntityPage( ( current ) =>
+								Math.min( entityTotalPages, current + 1 )
+							)
+						}
+						title="Go to next page of entities"
+					>
 						Next
 					</button>
-					{entityIndexStats && (
+					{ entityIndexStats && (
 						<small>
-							{' · '}indexed: {entityIndexStats?.indexed_files ?? 0}, scanned: {entityIndexStats?.scanned_files ?? 0}, excluded: {entityIndexStats?.excluded_files ?? 0}
-							{' · '}duplicate groups: {entityIndexStats?.duplicate_groups ?? 0}, duplicate files: {entityIndexStats?.duplicate_files ?? 0}
+							{ ' · ' }indexed:{ ' ' }
+							{ entityIndexStats?.indexed_files ?? 0 }, scanned:{ ' ' }
+							{ entityIndexStats?.scanned_files ?? 0 }, excluded:{ ' ' }
+							{ entityIndexStats?.excluded_files ?? 0 }
+							{ ' · ' }duplicate groups:{ ' ' }
+							{ entityIndexStats?.duplicate_groups ?? 0 },
+							duplicate files:{ ' ' }
+							{ entityIndexStats?.duplicate_files ?? 0 }
 						</small>
-					)}
+					) }
 				</div>
 
-				{fullReplaceModalOpen && (
-					(Modal ? (
-						<Modal title="Confirm Full Replace" onRequestClose={closeFullReplaceModal}>
-							<p>This operation is destructive. Meta keys not present in JSON will be deleted (except protected keys).</p>
-							{fullReplaceNeedsTakeover && <p>This action will also take over the editor lock.</p>}
-							<p>Type <code>REPLACE</code> to confirm.</p>
+				{ fullReplaceModalOpen &&
+					( Modal ? (
+						<Modal
+							title="Confirm Full Replace"
+							onRequestClose={ closeFullReplaceModal }
+						>
+							<p>
+								This operation is destructive. Meta keys not
+								present in JSON will be deleted (except
+								protected keys).
+							</p>
+							{ fullReplaceNeedsTakeover && (
+								<p>
+									This action will also take over the editor
+									lock.
+								</p>
+							) }
+							<p>
+								Type <code>REPLACE</code> to confirm.
+							</p>
 							<input
 								type="text"
-								value={fullReplaceConfirmPhrase}
-								onChange={(e) => {
-									setFullReplaceConfirmPhrase(e.target.value);
-									setFullReplaceModalError('');
-								}}
+								value={ fullReplaceConfirmPhrase }
+								onChange={ ( e ) => {
+									setFullReplaceConfirmPhrase(
+										e.target.value
+									);
+									setFullReplaceModalError( '' );
+								} }
 								placeholder="REPLACE"
-								style={{ width: '100%' }}
+								style={ { width: '100%' } }
 							/>
-							{fullReplaceModalError && <p style={{ color: '#b32d2e' }}>{fullReplaceModalError}</p>}
-							<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-								<Button variant="tertiary" onClick={closeFullReplaceModal} title="Cancel full replace and return to editor">Cancel</Button>
-								<Button variant="primary" onClick={confirmFullReplaceModal} disabled={entityReplaceBusy} isBusy={entityReplaceBusy} title="Confirm destructive full replace">
+							{ fullReplaceModalError && (
+								<p style={ { color: '#b32d2e' } }>
+									{ fullReplaceModalError }
+								</p>
+							) }
+							<div
+								style={ {
+									display: 'flex',
+									gap: '8px',
+									justifyContent: 'flex-end',
+									marginTop: '12px',
+								} }
+							>
+								<Button
+									variant="tertiary"
+									onClick={ closeFullReplaceModal }
+									title="Cancel full replace and return to editor"
+								>
+									Cancel
+								</Button>
+								<Button
+									variant="primary"
+									onClick={ confirmFullReplaceModal }
+									disabled={ entityReplaceBusy }
+									isBusy={ entityReplaceBusy }
+									title="Confirm destructive full replace"
+								>
 									Confirm Replace
 								</Button>
 							</div>
 						</Modal>
 					) : (
 						<div className="notice notice-warning">
-							<p>Typed confirmation needed: enter "REPLACE" then use Save + Full Replace.</p>
-							<button type="button" className="button" onClick={closeFullReplaceModal} title="Close this warning">Close</button>
+							<p>
+								Typed confirmation needed: enter "REPLACE" then
+								use Save + Full Replace.
+							</p>
+							<button
+								type="button"
+								className="button"
+								onClick={ closeFullReplaceModal }
+								title="Close this warning"
+							>
+								Close
+							</button>
 						</div>
-					))
-				)}
+					) ) }
 
-				{transferPreviewOpen && (
-					(Modal ? (
-						<Modal title="Transfer Packet Preview" onRequestClose={closeTransferPreview}>
-							{transferPreviewLoading && (
-								<p style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Spinner /> Analyzing selection…</p>
-							)}
-							{transferPreviewError && (
+				{ transferPreviewOpen &&
+					( Modal ? (
+						<Modal
+							title="Transfer Packet Preview"
+							onRequestClose={ closeTransferPreview }
+						>
+							{ transferPreviewLoading && (
+								<p
+									style={ {
+										display: 'flex',
+										alignItems: 'center',
+										gap: '8px',
+									} }
+								>
+									<Spinner /> Analyzing selection…
+								</p>
+							) }
+							{ transferPreviewError && (
 								<div className="notice notice-error">
-									<p>{transferPreviewError}</p>
-									<div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-										<Button variant="secondary" onClick={openTransferPreview}>Retry preview</Button>
-										<Button variant="tertiary" onClick={closeTransferPreview}>Close</Button>
+									<p>{ transferPreviewError }</p>
+									<div
+										style={ {
+											display: 'flex',
+											gap: '8px',
+											marginTop: '8px',
+										} }
+									>
+										<Button
+											variant="secondary"
+											onClick={ openTransferPreview }
+										>
+											Retry preview
+										</Button>
+										<Button
+											variant="tertiary"
+											onClick={ closeTransferPreview }
+										>
+											Close
+										</Button>
 									</div>
 								</div>
-							)}
-							{!transferPreviewLoading && !transferPreviewError && transferPreviewData && (
-								<>
-									<p className="description">
-										This preview uses the packet builder’s live dependency analysis. The packet will still be generated fresh when you continue.
-									</p>
-									<div className="notice notice-info">
-										<p>
-											Selected: {transferPreviewSelection.requested_paths ?? selectedEntityPaths.length} item(s)
-											{' · '}posts: {transferPreviewSelection.selected_posts ?? 0}
-											{' · '}terms: {transferPreviewSelection.selected_terms ?? 0}
-											{' · '}dependent terms: {transferPreviewSelection.dependency_terms ?? 0}
+							) }
+							{ ! transferPreviewLoading &&
+								! transferPreviewError &&
+								transferPreviewData && (
+									<>
+										<p className="description">
+											This preview uses the packet
+											builder’s live dependency analysis.
+											The packet will still be generated
+											fresh when you continue.
 										</p>
-										<p>
-											Fallback files: {transferPreviewSelection.fallback_files ?? 0}
-											{' · '}duplicates skipped: {transferPreviewSelection.duplicates_skipped ?? 0}
-											{' · '}missing dependencies: {transferPreviewSelection.missing_dependencies ?? 0}
-										</p>
-										<p>
-											Packet files: {transferPreviewTotals.files ?? '—'}
-											{' · '}media refs: {transferPreviewMedia.items ?? transferPreviewTotals.media_items ?? 0}
-											{' · '}bundle: {transferPreviewMedia.will_include_bundle ? 'included' : (transferPreviewMedia.bundle_enabled ? 'enabled but not needed' : 'disabled on source site')}
-										</p>
-									</div>
-
-									{(transferPreviewPostTypes.length > 0 || transferPreviewTaxonomies.length > 0) && (
 										<div className="notice notice-info">
-											<p>Destination requirements:</p>
-											<ul style={{ marginLeft: '18px' }}>
-												{transferPreviewPostTypes.length > 0 && (
-													<li>Post types: {transferPreviewPostTypes.join(', ')}</li>
-												)}
-												{transferPreviewTaxonomies.length > 0 && (
-													<li>Taxonomies: {transferPreviewTaxonomies.join(', ')}</li>
-												)}
-											</ul>
-										</div>
-									)}
-
-									{transferPreviewWarnings.length > 0 && (
-										<div className="notice notice-warning">
 											<p>
-												Detected likely post-object or relationship references to posts that are not included. These references will not be remapped automatically on import.
+												Selected:{ ' ' }
+												{ transferPreviewSelection.requested_paths ??
+													selectedEntityPaths.length }{ ' ' }
+												item(s)
+												{ ' · ' }posts:{ ' ' }
+												{ transferPreviewSelection.selected_posts ??
+													0 }
+												{ ' · ' }terms:{ ' ' }
+												{ transferPreviewSelection.selected_terms ??
+													0 }
+												{ ' · ' }dependent terms:{ ' ' }
+												{ transferPreviewSelection.dependency_terms ??
+													0 }
 											</p>
-											<ul style={{ marginLeft: '18px' }}>
-												{transferPreviewWarnings.map((warning, index) => (
-													<li key={`${warning?.source_path || 'warning'}-${warning?.meta_key || index}-${warning?.referenced_post_id || 0}`}>
-														{formatTransferReferenceWarning(warning)}
-													</li>
-												))}
-											</ul>
+											<p>
+												Fallback files:{ ' ' }
+												{ transferPreviewSelection.fallback_files ??
+													0 }
+												{ ' · ' }duplicates skipped:{ ' ' }
+												{ transferPreviewSelection.duplicates_skipped ??
+													0 }
+												{ ' · ' }missing dependencies:{ ' ' }
+												{ transferPreviewSelection.missing_dependencies ??
+													0 }
+											</p>
+											<p>
+												Packet files:{ ' ' }
+												{ transferPreviewTotals.files ??
+													'—' }
+												{ ' · ' }media refs:{ ' ' }
+												{ transferPreviewMedia.items ??
+													transferPreviewTotals.media_items ??
+													0 }
+												{ ' · ' }bundle:{ ' ' }
+												{ transferPreviewMedia.will_include_bundle
+													? 'included'
+													: transferPreviewMedia.bundle_enabled
+													? 'enabled but not needed'
+													: 'disabled on source site' }
+											</p>
 										</div>
-									)}
 
-									{transferPreviewNotes.length > 0 && (
-										<div className="notice notice-info">
-											<p>Transfer notes:</p>
-											<ul style={{ marginLeft: '18px' }}>
-												{transferPreviewNotes.map((note, index) => (
-													<li key={`${note}-${index}`}>{note}</li>
-												))}
-											</ul>
+										{ ( transferPreviewPostTypes.length >
+											0 ||
+											transferPreviewTaxonomies.length >
+												0 ) && (
+											<div className="notice notice-info">
+												<p>Destination requirements:</p>
+												<ul
+													style={ {
+														marginLeft: '18px',
+													} }
+												>
+													{ transferPreviewPostTypes.length >
+														0 && (
+														<li>
+															Post types:{ ' ' }
+															{ transferPreviewPostTypes.join(
+																', '
+															) }
+														</li>
+													) }
+													{ transferPreviewTaxonomies.length >
+														0 && (
+														<li>
+															Taxonomies:{ ' ' }
+															{ transferPreviewTaxonomies.join(
+																', '
+															) }
+														</li>
+													) }
+												</ul>
+											</div>
+										) }
+
+										{ transferPreviewWarnings.length >
+											0 && (
+											<div className="notice notice-warning">
+												<p>
+													Detected likely post-object
+													or relationship references
+													to posts that are not
+													included. These references
+													will not be remapped
+													automatically on import.
+												</p>
+												<ul
+													style={ {
+														marginLeft: '18px',
+													} }
+												>
+													{ transferPreviewWarnings.map(
+														( warning, index ) => (
+															<li
+																key={ `${
+																	warning?.source_path ||
+																	'warning'
+																}-${
+																	warning?.meta_key ||
+																	index
+																}-${
+																	warning?.referenced_post_id ||
+																	0
+																}` }
+															>
+																{ formatTransferReferenceWarning(
+																	warning
+																) }
+															</li>
+														)
+													) }
+												</ul>
+											</div>
+										) }
+
+										{ transferPreviewNotes.length > 0 && (
+											<div className="notice notice-info">
+												<p>Transfer notes:</p>
+												<ul
+													style={ {
+														marginLeft: '18px',
+													} }
+												>
+													{ transferPreviewNotes.map(
+														( note, index ) => (
+															<li
+																key={ `${ note }-${ index }` }
+															>
+																{ note }
+															</li>
+														)
+													) }
+												</ul>
+											</div>
+										) }
+
+										<div
+											style={ {
+												display: 'flex',
+												gap: '8px',
+												justifyContent: 'flex-end',
+												marginTop: '12px',
+											} }
+										>
+											<Button
+												variant="tertiary"
+												onClick={ closeTransferPreview }
+											>
+												Cancel
+											</Button>
+											<Button
+												variant="primary"
+												onClick={ submitTransferPacket }
+											>
+												Download Packet ZIP
+											</Button>
 										</div>
-									)}
-
-									<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-										<Button variant="tertiary" onClick={closeTransferPreview}>Cancel</Button>
-										<Button variant="primary" onClick={submitTransferPacket}>Download Packet ZIP</Button>
-									</div>
-								</>
-							)}
+									</>
+								) }
 						</Modal>
 					) : (
 						<div className="notice notice-warning">
-							<p>Transfer preview modal is unavailable in this WordPress build.</p>
-							<button type="button" className="button" onClick={closeTransferPreview}>Close</button>
+							<p>
+								Transfer preview modal is unavailable in this
+								WordPress build.
+							</p>
+							<button
+								type="button"
+								className="button"
+								onClick={ closeTransferPreview }
+							>
+								Close
+							</button>
 						</div>
-					))
-				)}
+					) ) }
 
-				{syncImportOpen && (
-					(Modal ? (
-						<Modal title={syncImportIsThirdParty ? 'Import Provider JSON' : 'Import Sync JSON'} onRequestClose={closeSyncImportModal} className="dbvc-entity-editor-modal" overlayClassName="dbvc-entity-editor-modal-overlay">
+				{ syncImportOpen &&
+					( Modal ? (
+						<Modal
+							title={
+								syncImportIsThirdParty
+									? 'Import Provider JSON'
+									: 'Import Sync JSON'
+							}
+							onRequestClose={ closeSyncImportModal }
+							className="dbvc-entity-editor-modal"
+							overlayClassName="dbvc-entity-editor-modal-overlay"
+						>
 							<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor">
 								<p className="description">
-									{syncImportIsThirdParty
+									{ syncImportIsThirdParty
 										? 'Preview applies provider-owned JSON files that already exist in the DBVC sync folder. WS Form form updates replace the whole matched form graph by UID.'
-										: 'Preview creates unmatched post/CPT or term entities from JSON files that already exist in the DBVC sync folder.'}
+										: 'Preview creates unmatched post/CPT or term entities from JSON files that already exist in the DBVC sync folder.' }
 								</p>
-								{syncImportPreviewBusy && (
-									<p style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Spinner /> Checking sync file…</p>
-								)}
-								{syncImportError && (
-									<div className="notice notice-error" style={{ marginTop: '12px' }}>
-										<p>{syncImportError}</p>
+								{ syncImportPreviewBusy && (
+									<p
+										style={ {
+											display: 'flex',
+											alignItems: 'center',
+											gap: '8px',
+										} }
+									>
+										<Spinner /> Checking sync file…
+									</p>
+								) }
+								{ syncImportError && (
+									<div
+										className="notice notice-error"
+										style={ { marginTop: '12px' } }
+									>
+										<p>{ syncImportError }</p>
 									</div>
-								)}
-								{syncImportNotice && (
-									<div className="notice notice-success" style={{ marginTop: '12px' }}>
-										<p>{syncImportNotice}</p>
+								) }
+								{ syncImportNotice && (
+									<div
+										className="notice notice-success"
+										style={ { marginTop: '12px' } }
+									>
+										<p>{ syncImportNotice }</p>
 									</div>
-								)}
-								{syncImportItems.length > 0 && (
-									<div style={{ marginTop: '12px' }}>
+								) }
+								{ syncImportItems.length > 0 && (
+									<div style={ { marginTop: '12px' } }>
 										<div className="notice notice-info">
 											<p>
-												Selected: {syncImportSummary?.requested ?? syncImportItems.length}
-												{' · '}Creatable: {syncImportSummary?.creatable ?? syncImportCreatableCount}
-												{' · '}Updatable: {syncImportSummary?.updatable ?? syncImportUpdateableCount}
-												{syncImportIsThirdParty ? ` · Mergeable: ${syncImportSummary?.mergeable ?? syncImportMergeableCount}` : ''}
-												{' · '}Created: {syncImportSummary?.created ?? 0}
-												{' · '}Updated: {syncImportSummary?.updated ?? 0}
-												{' · '}Blocked: {syncImportSummary?.blocked ?? 0}
-												{' · '}Skipped: {syncImportSummary?.skipped ?? 0}
-												{' · '}Errors: {syncImportSummary?.errors ?? 0}
+												Selected:{ ' ' }
+												{ syncImportSummary?.requested ??
+													syncImportItems.length }
+												{ ' · ' }Creatable:{ ' ' }
+												{ syncImportSummary?.creatable ??
+													syncImportCreatableCount }
+												{ ' · ' }Updatable:{ ' ' }
+												{ syncImportSummary?.updatable ??
+													syncImportUpdateableCount }
+												{ syncImportIsThirdParty
+													? ` · Mergeable: ${
+															syncImportSummary?.mergeable ??
+															syncImportMergeableCount
+													  }`
+													: '' }
+												{ ' · ' }Created:{ ' ' }
+												{ syncImportSummary?.created ??
+													0 }
+												{ ' · ' }Updated:{ ' ' }
+												{ syncImportSummary?.updated ??
+													0 }
+												{ ' · ' }Blocked:{ ' ' }
+												{ syncImportSummary?.blocked ??
+													0 }
+												{ ' · ' }Skipped:{ ' ' }
+												{ syncImportSummary?.skipped ??
+													0 }
+												{ ' · ' }Errors:{ ' ' }
+												{ syncImportSummary?.errors ??
+													0 }
 											</p>
 										</div>
-										{syncImportNoCreatable && (
+										{ syncImportNoCreatable && (
 											<div className="notice notice-warning">
 												<p>
-													<strong>No apply action is available from this preview.</strong> {syncImportIsThirdParty
+													<strong>
+														No apply action is
+														available from this
+														preview.
+													</strong>{ ' ' }
+													{ syncImportIsThirdParty
 														? 'Apply stays disabled until at least one selected provider JSON passes preflight.'
-														: 'Create stays disabled until at least one selected JSON is unmatched and passes import preflight.'}
+														: 'Create stays disabled until at least one selected JSON is unmatched and passes import preflight.' }
 												</p>
-												{syncImportBlockedMessages.length > 0 && (
-													<ul style={{ marginLeft: '18px' }}>
-														{syncImportBlockedMessages.map((message, index) => (
-															<li key={`sync-import-blocked-summary-${index}`}>{message}</li>
-														))}
+												{ syncImportBlockedMessages.length >
+													0 && (
+													<ul
+														style={ {
+															marginLeft: '18px',
+														} }
+													>
+														{ syncImportBlockedMessages.map(
+															(
+																message,
+																index
+															) => (
+																<li
+																	key={ `sync-import-blocked-summary-${ index }` }
+																>
+																	{ message }
+																</li>
+															)
+														) }
 													</ul>
-												)}
+												) }
 											</div>
-										)}
-										<div style={{ display: 'grid', gap: '10px' }}>
-											{syncImportItems.map((item, itemIndex) => {
-												const itemWarnings = Array.isArray(item?.warnings) ? item.warnings : [];
-												const itemBlocking = Array.isArray(item?.blocking) ? item.blocking : [];
-												const blockerDetails = Array.isArray(item?.blocker_details) ? item.blocker_details : [];
-												const settingsLinks = Array.isArray(item?.settings_links) ? item.settings_links : [];
-												const settingRemediations = Array.isArray(item?.setting_remediations) ? item.setting_remediations : [];
-												const advancedOverrides = Array.isArray(item?.advanced_overrides) ? item.advanced_overrides : [];
-												const bricksAdvisory = item?.bricks_template_advisory?.enabled ? item.bricks_template_advisory : null;
-												const bricksAdvisoryMessages = Array.isArray(bricksAdvisory?.messages) ? bricksAdvisory.messages : [];
-												const bricksAdvisoryConflicts = Array.isArray(bricksAdvisory?.condition_conflicts) ? bricksAdvisory.condition_conflicts : [];
-												const bricksAdvisoryConditions = Array.isArray(bricksAdvisory?.conditions) ? bricksAdvisory.conditions : [];
-												const hasBricksAdvisoryWarning = bricksAdvisory?.severity === 'warning';
-												const action = item?.created ? 'created' : (item?.action || item?.detected_action);
-												const matchedUpdate = isSyncImportMatchedUpdateEligible(item) ? item.matched_update : null;
-												const matchedUpdateEntity = matchedUpdate?.wp_entity || {};
-												const providerCounts = item?.counts || {};
-												const settingsPreview = item?.settings_preview || null;
-												const itemPath = getSyncImportItemPath(item);
-												const itemUpdateConfirmation = itemPath ? syncImportUpdateConfirmations[itemPath] : null;
-												const itemUpdateConfirmed = !!itemUpdateConfirmation?.confirmed
-													&& itemUpdateConfirmation.preview_hash === item?.preview_hash
-													&& Number(itemUpdateConfirmation.matched_entity_id || 0) === Number(matchedUpdateEntity?.id || item?.match?.id || 0);
-												return (
-													<div key={`${item?.relative_path || item?.source_relative_path || 'sync-import'}-${itemIndex}`} className={`notice ${itemBlocking.length ? 'notice-error' : ((itemWarnings.length || hasBricksAdvisoryWarning) ? 'notice-warning' : 'notice-info')}`} style={{ margin: 0 }}>
-														<p>
-															<strong>{item?.title || item?.relative_path || 'Sync JSON'}</strong>
-															{' · '}{item?.entity_kind === 'third_party'
-																? `Provider: ${item?.provider || '—'} / ${item?.object_type || '—'}`
-																: `Subtype: ${item?.subtype || '—'}`}
-															{' · '}Action: {getSyncImportActionLabel(action)}
-														</p>
-														<p>
-															Slug: {item?.slug || '—'}
-															{' · '}UID: {item?.uid || '—'}
-															{item?.source_id ? ` · Source ID: ${item.source_id}` : ''}
-														</p>
-														{item?.object_type === 'form' && (
+										) }
+										<div
+											style={ {
+												display: 'grid',
+												gap: '10px',
+											} }
+										>
+											{ syncImportItems.map(
+												( item, itemIndex ) => {
+													const itemWarnings =
+														Array.isArray(
+															item?.warnings
+														)
+															? item.warnings
+															: [];
+													const itemBlocking =
+														Array.isArray(
+															item?.blocking
+														)
+															? item.blocking
+															: [];
+													const blockerDetails =
+														Array.isArray(
+															item?.blocker_details
+														)
+															? item.blocker_details
+															: [];
+													const settingsLinks =
+														Array.isArray(
+															item?.settings_links
+														)
+															? item.settings_links
+															: [];
+													const settingRemediations =
+														Array.isArray(
+															item?.setting_remediations
+														)
+															? item.setting_remediations
+															: [];
+													const advancedOverrides =
+														Array.isArray(
+															item?.advanced_overrides
+														)
+															? item.advanced_overrides
+															: [];
+													const bricksAdvisory = item
+														?.bricks_template_advisory
+														?.enabled
+														? item.bricks_template_advisory
+														: null;
+													const bricksAdvisoryMessages =
+														Array.isArray(
+															bricksAdvisory?.messages
+														)
+															? bricksAdvisory.messages
+															: [];
+													const bricksAdvisoryConflicts =
+														Array.isArray(
+															bricksAdvisory?.condition_conflicts
+														)
+															? bricksAdvisory.condition_conflicts
+															: [];
+													const bricksAdvisoryConditions =
+														Array.isArray(
+															bricksAdvisory?.conditions
+														)
+															? bricksAdvisory.conditions
+															: [];
+													const hasBricksAdvisoryWarning =
+														bricksAdvisory?.severity ===
+														'warning';
+													const action = item?.created
+														? 'created'
+														: item?.action ||
+														  item?.detected_action;
+													const matchedUpdate =
+														isSyncImportMatchedUpdateEligible(
+															item
+														)
+															? item.matched_update
+															: null;
+													const matchedUpdateEntity =
+														matchedUpdate?.wp_entity ||
+														{};
+													const providerCounts =
+														item?.counts || {};
+													const settingsPreview =
+														item?.settings_preview ||
+														null;
+													const itemPath =
+														getSyncImportItemPath(
+															item
+														);
+													const itemUpdateConfirmation =
+														itemPath
+															? syncImportUpdateConfirmations[
+																	itemPath
+															  ]
+															: null;
+													const itemUpdateConfirmed =
+														!! itemUpdateConfirmation?.confirmed &&
+														itemUpdateConfirmation.preview_hash ===
+															item?.preview_hash &&
+														Number(
+															itemUpdateConfirmation.matched_entity_id ||
+																0
+														) ===
+															Number(
+																matchedUpdateEntity?.id ||
+																	item?.match
+																		?.id ||
+																	0
+															);
+													return (
+														<div
+															key={ `${
+																item?.relative_path ||
+																item?.source_relative_path ||
+																'sync-import'
+															}-${ itemIndex }` }
+															className={ `notice ${
+																itemBlocking.length
+																	? 'notice-error'
+																	: itemWarnings.length ||
+																	  hasBricksAdvisoryWarning
+																	? 'notice-warning'
+																	: 'notice-info'
+															}` }
+															style={ {
+																margin: 0,
+															} }
+														>
 															<p>
-																WS Form graph: groups {providerCounts?.groups ?? 0}
-																{' · '}sections {providerCounts?.sections ?? 0}
-																{' · '}fields {providerCounts?.fields ?? 0}
-																{' · '}actions {providerCounts?.actions ?? 0}
+																<strong>
+																	{ item?.title ||
+																		item?.relative_path ||
+																		'Sync JSON' }
+																</strong>
+																{ ' · ' }
+																{ item?.entity_kind ===
+																'third_party'
+																	? `Provider: ${
+																			item?.provider ||
+																			'—'
+																	  } / ${
+																			item?.object_type ||
+																			'—'
+																	  }`
+																	: `Subtype: ${
+																			item?.subtype ||
+																			'—'
+																	  }` }
+																{ ' · ' }Action:{ ' ' }
+																{ getSyncImportActionLabel(
+																	action
+																) }
 															</p>
-														)}
-														{settingsPreview && (
 															<p>
-																Settings merge: {(settingsPreview?.mergeable_options || []).join(', ') || 'none'}
-																{' · '}local secrets preserved
+																Slug:{ ' ' }
+																{ item?.slug ||
+																	'—' }
+																{ ' · ' }UID:{ ' ' }
+																{ item?.uid ||
+																	'—' }
+																{ item?.source_id
+																	? ` · Source ID: ${ item.source_id }`
+																	: '' }
 															</p>
-														)}
-														<p>Source sync file: {item?.source_relative_path || item?.relative_path || '—'}</p>
-														{item?.source_relative_path && item?.relative_path && item.source_relative_path !== item.relative_path && (
-															<p>Canonical sync file: {item.relative_path}</p>
-														)}
-														{bricksAdvisory && (
-															<div className={`notice ${getBricksAdvisoryNoticeClass(bricksAdvisory)}`} style={{ margin: '8px 0 0' }}>
+															{ item?.object_type ===
+																'form' && (
 																<p>
-																	<strong>Bricks template advisory</strong>
-																	{bricksAdvisory?.template_type ? ` · Type: ${bricksAdvisory.template_type}` : ''}
-																	{bricksAdvisoryConditions.length ? ` · Conditions: ${bricksAdvisoryConditions.join('; ')}` : ''}
+																	WS Form
+																	graph:
+																	groups{ ' ' }
+																	{ providerCounts?.groups ??
+																		0 }
+																	{ ' · ' }
+																	sections{ ' ' }
+																	{ providerCounts?.sections ??
+																		0 }
+																	{ ' · ' }
+																	fields{ ' ' }
+																	{ providerCounts?.fields ??
+																		0 }
+																	{ ' · ' }
+																	actions{ ' ' }
+																	{ providerCounts?.actions ??
+																		0 }
 																</p>
-																{bricksAdvisoryMessages.length > 0 && (
-																	<ul style={{ marginLeft: '18px' }}>
-																		{bricksAdvisoryMessages.map((message, index) => (
-																			<li key={`bricks-advisory-message-${index}`}>{message}</li>
-																		))}
-																	</ul>
-																)}
-																{bricksAdvisoryConflicts.length > 0 && (
-																	<ul style={{ marginLeft: '18px' }}>
-																		{bricksAdvisoryConflicts.map((conflict, index) => (
-																			<li key={`bricks-advisory-conflict-${conflict?.id || index}`}>
-																				{conflict?.edit_url ? (
-																					<a href={conflict.edit_url}>{conflict?.title || 'Bricks template'} #{conflict?.id || 0}</a>
-																				) : (
-																					<span>{conflict?.title || 'Bricks template'} #{conflict?.id || 0}</span>
-																				)}
-																				{conflict?.reason ? ` · ${conflict.reason}` : ''}
-																				{conflict?.condition ? ` · ${conflict.condition}` : ''}
-																			</li>
-																		))}
-																	</ul>
-																)}
-																<p className="description">
-																	DBVC will still only create the entity. Review Bricks conditions after import if this template should replace an existing frontend template.
+															) }
+															{ settingsPreview && (
+																<p>
+																	Settings
+																	merge:{ ' ' }
+																	{ (
+																		settingsPreview?.mergeable_options ||
+																		[]
+																	).join(
+																		', '
+																	) ||
+																		'none' }
+																	{ ' · ' }
+																	local
+																	secrets
+																	preserved
 																</p>
-															</div>
-														)}
-														{item?.match?.status === 'matched' && (
+															) }
 															<p>
-																Matched live entity:{' '}
-																{item?.match?.edit_url ? (
-																	<a href={item.match.edit_url}>
-																		{item?.match?.kind || 'entity'} #{item?.match?.id || 0}
-																	</a>
-																) : (
-																	<span>{item?.match?.kind || 'entity'} #{item?.match?.id || 0}</span>
-																)}
-																{' · '}match source: {item?.match?.match_source || 'unknown'}
+																Source sync
+																file:{ ' ' }
+																{ item?.source_relative_path ||
+																	item?.relative_path ||
+																	'—' }
 															</p>
-														)}
-														{item?.entity_kind === 'third_party' && item?.object_type === 'form' && (
-															<WsFormMatchedProviderNotice entity={item?.matched_provider_entity || item?.matched_update?.wp_entity} source="sync file" />
-														)}
-														{matchedUpdate && (
-															<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+															{ item?.source_relative_path &&
+																item?.relative_path &&
+																item.source_relative_path !==
+																	item.relative_path && (
+																	<p>
+																		Canonical
+																		sync
+																		file:{ ' ' }
+																		{
+																			item.relative_path
+																		}
+																	</p>
+																) }
+															{ bricksAdvisory && (
+																<div
+																	className={ `notice ${ getBricksAdvisoryNoticeClass(
+																		bricksAdvisory
+																	) }` }
+																	style={ {
+																		margin: '8px 0 0',
+																	} }
+																>
+																	<p>
+																		<strong>
+																			Bricks
+																			template
+																			advisory
+																		</strong>
+																		{ bricksAdvisory?.template_type
+																			? ` · Type: ${ bricksAdvisory.template_type }`
+																			: '' }
+																		{ bricksAdvisoryConditions.length
+																			? ` · Conditions: ${ bricksAdvisoryConditions.join(
+																					'; '
+																			  ) }`
+																			: '' }
+																	</p>
+																	{ bricksAdvisoryMessages.length >
+																		0 && (
+																		<ul
+																			style={ {
+																				marginLeft:
+																					'18px',
+																			} }
+																		>
+																			{ bricksAdvisoryMessages.map(
+																				(
+																					message,
+																					index
+																				) => (
+																					<li
+																						key={ `bricks-advisory-message-${ index }` }
+																					>
+																						{
+																							message
+																						}
+																					</li>
+																				)
+																			) }
+																		</ul>
+																	) }
+																	{ bricksAdvisoryConflicts.length >
+																		0 && (
+																		<ul
+																			style={ {
+																				marginLeft:
+																					'18px',
+																			} }
+																		>
+																			{ bricksAdvisoryConflicts.map(
+																				(
+																					conflict,
+																					index
+																				) => (
+																					<li
+																						key={ `bricks-advisory-conflict-${
+																							conflict?.id ||
+																							index
+																						}` }
+																					>
+																						{ conflict?.edit_url ? (
+																							<a
+																								href={
+																									conflict.edit_url
+																								}
+																							>
+																								{ conflict?.title ||
+																									'Bricks template' }{ ' ' }
+																								#
+																								{ conflict?.id ||
+																									0 }
+																							</a>
+																						) : (
+																							<span>
+																								{ conflict?.title ||
+																									'Bricks template' }{ ' ' }
+																								#
+																								{ conflict?.id ||
+																									0 }
+																							</span>
+																						) }
+																						{ conflict?.reason
+																							? ` · ${ conflict.reason }`
+																							: '' }
+																						{ conflict?.condition
+																							? ` · ${ conflict.condition }`
+																							: '' }
+																					</li>
+																				)
+																			) }
+																		</ul>
+																	) }
+																	<p className="description">
+																		DBVC
+																		will
+																		still
+																		only
+																		create
+																		the
+																		entity.
+																		Review
+																		Bricks
+																		conditions
+																		after
+																		import
+																		if this
+																		template
+																		should
+																		replace
+																		an
+																		existing
+																		frontend
+																		template.
+																	</p>
+																</div>
+															) }
+															{ item?.match
+																?.status ===
+																'matched' && (
 																<p>
-																	<strong>Update matched entity</strong>
-																	{matchedUpdate?.match_source ? ` · Match source: ${matchedUpdate.match_source}` : ''}
-																</p>
-																<p>
-																	{item?.entity_kind === 'third_party'
-																		? 'DBVC will replace the matched WS Form form graph from this sync file for '
-																		: 'DBVC will apply JSON-present core fields, meta, and taxonomies from this sync file to '}
-																	{matchedUpdateEntity?.edit_url ? (
-																		<a href={matchedUpdateEntity.edit_url}>
-																			{matchedUpdateEntity?.label || matchedUpdateEntity?.subtype || 'entity'} #{matchedUpdateEntity?.id || 0}
+																	Matched live
+																	entity:{ ' ' }
+																	{ item
+																		?.match
+																		?.edit_url ? (
+																		<a
+																			href={
+																				item
+																					.match
+																					.edit_url
+																			}
+																		>
+																			{ item
+																				?.match
+																				?.kind ||
+																				'entity' }{ ' ' }
+																			#
+																			{ item
+																				?.match
+																				?.id ||
+																				0 }
 																		</a>
 																	) : (
-																		<span>{matchedUpdateEntity?.label || matchedUpdateEntity?.subtype || 'entity'} #{matchedUpdateEntity?.id || 0}</span>
-																	)}
-																	.
+																		<span>
+																			{ item
+																				?.match
+																				?.kind ||
+																				'entity' }{ ' ' }
+																			#
+																			{ item
+																				?.match
+																				?.id ||
+																				0 }
+																		</span>
+																	) }
+																	{ ' · ' }
+																	match
+																	source:{ ' ' }
+																	{ item
+																		?.match
+																		?.match_source ||
+																		'unknown' }
 																</p>
-																<label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '8px' }}>
-																	<input
-																		type="checkbox"
-																		checked={itemUpdateConfirmed}
-																		onChange={(event) => setSyncImportMatchedUpdateConfirmed(item, event.target.checked)}
-																		disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
+															) }
+															{ item?.entity_kind ===
+																'third_party' &&
+																item?.object_type ===
+																	'form' && (
+																	<WsFormMatchedProviderNotice
+																		entity={
+																			item?.matched_provider_entity ||
+																			item
+																				?.matched_update
+																				?.wp_entity
+																		}
+																		source="sync file"
 																	/>
-																	<span>{matchedUpdate?.confirmation_label || 'I confirm updating this matched WordPress entity from the selected JSON.'}</span>
-																</label>
-															</div>
-														)}
-														{(item?.wp_entity?.status === 'matched' || item?.wp_entity?.id) && (
-															<p>
-																{item?.updated ? 'Updated live entity:' : (item?.created ? 'Created live entity:' : 'Live entity:')}{' '}
-																{item?.wp_entity?.edit_url ? (
-																	<a href={item.wp_entity.edit_url}>
-																		{item?.wp_entity?.provider || item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}
-																	</a>
-																) : (
-																	<span>{item?.wp_entity?.provider || item?.wp_entity?.kind || 'entity'} #{item?.wp_entity?.id || 0}</span>
-																)}
-															</p>
-														)}
-														<ImportBlockerPanel
-															blocking={itemBlocking}
-															blockerDetails={blockerDetails}
-															settingsLinks={settingsLinks}
-															settingRemediations={settingRemediations}
-															advancedOverrides={advancedOverrides}
-															canonicalRelativePath={item?.canonical_relative_path || ''}
-															onOpenCanonical={(path) => {
-																setSelectedEntityFile(path);
-																closeSyncImportModal();
-															}}
-															onApplyAction={(action) => remediateSyncImport(item, action)}
-															buildBusyKey={(action) => `${item?.relative_path || item?.source_relative_path || ''}:${action?.id || ''}`}
-															busyKey={syncImportRemediationBusy}
-															disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}
-														/>
-														<ImportWarningNotes warnings={itemWarnings} />
-													</div>
-												);
-											})}
+																) }
+															{ matchedUpdate && (
+																<div
+																	className="notice notice-warning"
+																	style={ {
+																		margin: '8px 0 0',
+																	} }
+																>
+																	<p>
+																		<strong>
+																			Update
+																			matched
+																			entity
+																		</strong>
+																		{ matchedUpdate?.match_source
+																			? ` · Match source: ${ matchedUpdate.match_source }`
+																			: '' }
+																	</p>
+																	<p>
+																		{ item?.entity_kind ===
+																		'third_party'
+																			? 'DBVC will replace the matched WS Form form graph from this sync file for '
+																			: 'DBVC will apply JSON-present core fields, meta, and taxonomies from this sync file to ' }
+																		{ matchedUpdateEntity?.edit_url ? (
+																			<a
+																				href={
+																					matchedUpdateEntity.edit_url
+																				}
+																			>
+																				{ matchedUpdateEntity?.label ||
+																					matchedUpdateEntity?.subtype ||
+																					'entity' }{ ' ' }
+																				#
+																				{ matchedUpdateEntity?.id ||
+																					0 }
+																			</a>
+																		) : (
+																			<span>
+																				{ matchedUpdateEntity?.label ||
+																					matchedUpdateEntity?.subtype ||
+																					'entity' }{ ' ' }
+																				#
+																				{ matchedUpdateEntity?.id ||
+																					0 }
+																			</span>
+																		) }
+																		.
+																	</p>
+																	<label
+																		style={ {
+																			display:
+																				'flex',
+																			gap: '8px',
+																			alignItems:
+																				'flex-start',
+																			marginTop:
+																				'8px',
+																		} }
+																	>
+																		<input
+																			type="checkbox"
+																			checked={
+																				itemUpdateConfirmed
+																			}
+																			onChange={ (
+																				event
+																			) =>
+																				setSyncImportMatchedUpdateConfirmed(
+																					item,
+																					event
+																						.target
+																						.checked
+																				)
+																			}
+																			disabled={
+																				syncImportPreviewBusy ||
+																				syncImportCommitBusy ||
+																				!! syncImportRemediationBusy
+																			}
+																		/>
+																		<span>
+																			{ matchedUpdate?.confirmation_label ||
+																				'I confirm updating this matched WordPress entity from the selected JSON.' }
+																		</span>
+																	</label>
+																</div>
+															) }
+															{ ( item?.wp_entity
+																?.status ===
+																'matched' ||
+																item?.wp_entity
+																	?.id ) && (
+																<p>
+																	{ item?.updated
+																		? 'Updated live entity:'
+																		: item?.created
+																		? 'Created live entity:'
+																		: 'Live entity:' }{ ' ' }
+																	{ item
+																		?.wp_entity
+																		?.edit_url ? (
+																		<a
+																			href={
+																				item
+																					.wp_entity
+																					.edit_url
+																			}
+																		>
+																			{ item
+																				?.wp_entity
+																				?.provider ||
+																				item
+																					?.wp_entity
+																					?.kind ||
+																				'entity' }{ ' ' }
+																			#
+																			{ item
+																				?.wp_entity
+																				?.id ||
+																				0 }
+																		</a>
+																	) : (
+																		<span>
+																			{ item
+																				?.wp_entity
+																				?.provider ||
+																				item
+																					?.wp_entity
+																					?.kind ||
+																				'entity' }{ ' ' }
+																			#
+																			{ item
+																				?.wp_entity
+																				?.id ||
+																				0 }
+																		</span>
+																	) }
+																</p>
+															) }
+															<ImportBlockerPanel
+																blocking={
+																	itemBlocking
+																}
+																blockerDetails={
+																	blockerDetails
+																}
+																settingsLinks={
+																	settingsLinks
+																}
+																settingRemediations={
+																	settingRemediations
+																}
+																advancedOverrides={
+																	advancedOverrides
+																}
+																canonicalRelativePath={
+																	item?.canonical_relative_path ||
+																	''
+																}
+																onOpenCanonical={ (
+																	path
+																) => {
+																	setSelectedEntityFile(
+																		path
+																	);
+																	closeSyncImportModal();
+																} }
+																onApplyAction={ (
+																	action
+																) =>
+																	remediateSyncImport(
+																		item,
+																		action
+																	)
+																}
+																buildBusyKey={ (
+																	action
+																) =>
+																	`${
+																		item?.relative_path ||
+																		item?.source_relative_path ||
+																		''
+																	}:${
+																		action?.id ||
+																		''
+																	}`
+																}
+																busyKey={
+																	syncImportRemediationBusy
+																}
+																disabled={
+																	syncImportPreviewBusy ||
+																	syncImportCommitBusy ||
+																	!! syncImportRemediationBusy
+																}
+															/>
+															<ImportWarningNotes
+																warnings={
+																	itemWarnings
+																}
+															/>
+														</div>
+													);
+												}
+											) }
 										</div>
-										{syncImportItems.length > 25 && (
+										{ syncImportItems.length > 25 && (
 											<div className="notice notice-warning">
-												<p>Only 25 files can be imported in one request.</p>
+												<p>
+													Only 25 files can be
+													imported in one request.
+												</p>
 											</div>
-										)}
+										) }
 									</div>
-								)}
-								{syncImportPreviewEmpty && (
-									<div className="notice notice-warning" style={{ marginTop: '12px' }}>
+								) }
+								{ syncImportPreviewEmpty && (
+									<div
+										className="notice notice-warning"
+										style={ { marginTop: '12px' } }
+									>
 										<p>
-											<strong>No preview items were returned.</strong> The selected path may no longer exist in the sync folder, may not be a supported post/term JSON file, or the server may have returned an incomplete preview.
+											<strong>
+												No preview items were returned.
+											</strong>{ ' ' }
+											The selected path may no longer
+											exist in the sync folder, may not be
+											a supported post/term JSON file, or
+											the server may have returned an
+											incomplete preview.
 										</p>
 									</div>
-								)}
-								<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-									<Button variant="tertiary" onClick={closeSyncImportModal} disabled={syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy}>
+								) }
+								<div
+									style={ {
+										display: 'flex',
+										gap: '8px',
+										justifyContent: 'flex-end',
+										marginTop: '12px',
+									} }
+								>
+									<Button
+										variant="tertiary"
+										onClick={ closeSyncImportModal }
+										disabled={
+											syncImportPreviewBusy ||
+											syncImportCommitBusy ||
+											!! syncImportRemediationBusy
+										}
+									>
 										Close
 									</Button>
-									<Button variant="secondary" onClick={() => openSyncImportPreview(syncImportPaths.length ? syncImportPaths : syncImportPath)} disabled={(!syncImportPath && !syncImportPaths.length) || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportPreviewBusy}>
+									<Button
+										variant="secondary"
+										onClick={ () =>
+											openSyncImportPreview(
+												syncImportPaths.length
+													? syncImportPaths
+													: syncImportPath
+											)
+										}
+										disabled={
+											( ! syncImportPath &&
+												! syncImportPaths.length ) ||
+											syncImportPreviewBusy ||
+											syncImportCommitBusy ||
+											!! syncImportRemediationBusy
+										}
+										isBusy={ syncImportPreviewBusy }
+									>
 										Refresh Preview
 									</Button>
-									<Button variant="primary" onClick={() => commitSyncImport()} disabled={!syncImportCanCommit || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
-										{syncImportCreatableCount > 0
-											? `${syncImportIsThirdParty ? 'Create' : 'Create'} ${syncImportCreatableCount} ${syncImportIsThirdParty ? (syncImportCreatableCount === 1 ? 'WS Form' : 'WS Forms') : (syncImportCreatableCount === 1 ? 'Entity' : 'Entities')}`
-											: (syncImportIsThirdParty ? 'Create WS Form' : 'Create Entity')}
+									<Button
+										variant="primary"
+										onClick={ () => commitSyncImport() }
+										disabled={
+											! syncImportCanCommit ||
+											syncImportPreviewBusy ||
+											syncImportCommitBusy ||
+											!! syncImportRemediationBusy
+										}
+										isBusy={ syncImportCommitBusy }
+									>
+										{ syncImportCreatableCount > 0
+											? `${
+													syncImportIsThirdParty
+														? 'Create'
+														: 'Create'
+											  } ${ syncImportCreatableCount } ${
+													syncImportIsThirdParty
+														? syncImportCreatableCount ===
+														  1
+															? 'WS Form'
+															: 'WS Forms'
+														: syncImportCreatableCount ===
+														  1
+														? 'Entity'
+														: 'Entities'
+											  }`
+											: syncImportIsThirdParty
+											? 'Create WS Form'
+											: 'Create Entity' }
 									</Button>
-									{syncImportCanMergeSettings && (
-										<Button variant="primary" onClick={() => commitSyncImport('merge_settings')} disabled={!syncImportCanMergeSettings || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
-											Merge {syncImportMergeableCount} Settings {syncImportMergeableCount === 1 ? 'File' : 'Files'}
+									{ syncImportCanMergeSettings && (
+										<Button
+											variant="primary"
+											onClick={ () =>
+												commitSyncImport(
+													'merge_settings'
+												)
+											}
+											disabled={
+												! syncImportCanMergeSettings ||
+												syncImportPreviewBusy ||
+												syncImportCommitBusy ||
+												!! syncImportRemediationBusy
+											}
+											isBusy={ syncImportCommitBusy }
+										>
+											Merge { syncImportMergeableCount }{ ' ' }
+											Settings{ ' ' }
+											{ syncImportMergeableCount === 1
+												? 'File'
+												: 'Files' }
 										</Button>
-									)}
-									{syncImportUpdateableCount > 0 && (
-										<Button variant="primary" onClick={commitSyncImportMatchedUpdates} disabled={!syncImportCanUpdateMatched || syncImportPreviewBusy || syncImportCommitBusy || !!syncImportRemediationBusy} isBusy={syncImportCommitBusy}>
-											Update {syncImportUpdateableCount} Matched {syncImportIsThirdParty ? (syncImportUpdateableCount === 1 ? 'WS Form' : 'WS Forms') : (syncImportUpdateableCount === 1 ? 'Entity' : 'Entities')}
+									) }
+									{ syncImportUpdateableCount > 0 && (
+										<Button
+											variant="primary"
+											onClick={
+												commitSyncImportMatchedUpdates
+											}
+											disabled={
+												! syncImportCanUpdateMatched ||
+												syncImportPreviewBusy ||
+												syncImportCommitBusy ||
+												!! syncImportRemediationBusy
+											}
+											isBusy={ syncImportCommitBusy }
+										>
+											Update { syncImportUpdateableCount }{ ' ' }
+											Matched{ ' ' }
+											{ syncImportIsThirdParty
+												? syncImportUpdateableCount ===
+												  1
+													? 'WS Form'
+													: 'WS Forms'
+												: syncImportUpdateableCount ===
+												  1
+												? 'Entity'
+												: 'Entities' }
 										</Button>
-									)}
+									) }
 								</div>
 							</div>
 						</Modal>
 					) : (
 						<div className="notice notice-warning">
-							<p>Sync-file import modal is unavailable in this WordPress build.</p>
-							<button type="button" className="button" onClick={closeSyncImportModal}>Close</button>
+							<p>
+								Sync-file import modal is unavailable in this
+								WordPress build.
+							</p>
+							<button
+								type="button"
+								className="button"
+								onClick={ closeSyncImportModal }
+							>
+								Close
+							</button>
 						</div>
-					))
-				)}
+					) ) }
 
-				{rawIntakeOpen && (
-					(Modal ? (
-						<Modal title="New From Raw JSON" onRequestClose={closeRawIntakeModal} className="dbvc-entity-editor-modal" overlayClassName="dbvc-entity-editor-modal-overlay">
+				{ rawIntakeOpen &&
+					( Modal ? (
+						<Modal
+							title="New From Raw JSON"
+							onRequestClose={ closeRawIntakeModal }
+							className="dbvc-entity-editor-modal"
+							overlayClassName="dbvc-entity-editor-modal-overlay"
+						>
 							<div className="dbvc-entity-editor-shell__pane dbvc-entity-editor__editor">
 								<p className="description">
-									Paste one DBVC post/CPT, term, or WS Form provider JSON payload. Preview will detect the entity kind, target sync path, and whether DBVC will create, update, stage, or block the action.
+									Paste one DBVC post/CPT, term, or WS Form
+									provider JSON payload. Preview will detect
+									the entity kind, target sync path, and
+									whether DBVC will create, update, stage, or
+									block the action.
 								</p>
-								<label style={{ display: 'block', marginBottom: '12px' }}>
+								<label
+									style={ {
+										display: 'block',
+										marginBottom: '12px',
+									} }
+								>
 									Mode
 									<select
-										value={rawIntakeMode}
-										onChange={(e) => {
-											setRawIntakeMode(e.target.value);
-											setRawIntakeUpdateConfirmation(null);
-										}}
-										style={{ display: 'block', width: '100%', marginTop: '6px' }}
-										disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}
+										value={ rawIntakeMode }
+										onChange={ ( e ) => {
+											setRawIntakeMode( e.target.value );
+											setRawIntakeUpdateConfirmation(
+												null
+											);
+										} }
+										style={ {
+											display: 'block',
+											width: '100%',
+											marginTop: '6px',
+										} }
+										disabled={
+											rawIntakePreviewBusy ||
+											rawIntakeCommitBusy
+										}
 									>
-										<option value="create_only">Create only (recommended)</option>
-										<option value="create_or_update_matched">Create or Update Matched</option>
-										<option value="stage_only">Stage JSON Only</option>
+										<option value="create_only">
+											Create only (recommended)
+										</option>
+										<option value="create_or_update_matched">
+											Create or Update Matched
+										</option>
+										<option value="stage_only">
+											Stage JSON Only
+										</option>
 									</select>
 								</label>
-								<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+								<label
+									style={ {
+										display: 'flex',
+										alignItems: 'center',
+										gap: '8px',
+										marginBottom: '12px',
+									} }
+								>
 									<input
 										type="checkbox"
-										checked={rawIntakeOpenAfterSuccess}
-										onChange={(e) => setRawIntakeOpenAfterSuccess(e.target.checked)}
-										disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}
+										checked={ rawIntakeOpenAfterSuccess }
+										onChange={ ( e ) =>
+											setRawIntakeOpenAfterSuccess(
+												e.target.checked
+											)
+										}
+										disabled={
+											rawIntakePreviewBusy ||
+											rawIntakeCommitBusy
+										}
 									/>
-									<span>Open the resulting sync file in Entity Editor after success</span>
+									<span>
+										Open the resulting sync file in Entity
+										Editor after success
+									</span>
 								</label>
 								<textarea
 									className="dbvc-entity-editor__textarea"
-									value={rawIntakeDraft}
-									onChange={(e) => {
-										setRawIntakeDraft(e.target.value);
-										setRawIntakeUpdateConfirmation(null);
-									}}
-									placeholder='Paste one DBVC entity JSON payload here...'
-									style={{ minHeight: '260px' }}
+									value={ rawIntakeDraft }
+									onChange={ ( e ) => {
+										setRawIntakeDraft( e.target.value );
+										setRawIntakeUpdateConfirmation( null );
+									} }
+									placeholder="Paste one DBVC entity JSON payload here..."
+									style={ { minHeight: '260px' } }
 								/>
-								{rawIntakeError && (
-									<div className="notice notice-error" style={{ marginTop: '12px' }}>
-										<p>{rawIntakeError}</p>
+								{ rawIntakeError && (
+									<div
+										className="notice notice-error"
+										style={ { marginTop: '12px' } }
+									>
+										<p>{ rawIntakeError }</p>
 									</div>
-								)}
-								{rawIntakePreview && (
-									<div style={{ marginTop: '12px' }}>
+								) }
+								{ rawIntakePreview && (
+									<div style={ { marginTop: '12px' } }>
 										<div className="notice notice-info">
 											<p>
-												Detected: {rawIntakeIsThirdParty
-													? `Provider: ${rawIntakePreview?.provider || '—'} / ${rawIntakePreview?.object_type || '—'}`
-													: (rawIntakePreview?.entity_kind || '—')}
-												{!rawIntakeIsThirdParty ? ` · Subtype: ${rawIntakePreview?.subtype || '—'}` : ''}
-												{' · '}Action: {getRawIntakeActionLabel(rawIntakePreview?.detected_action)}
+												Detected:{ ' ' }
+												{ rawIntakeIsThirdParty
+													? `Provider: ${
+															rawIntakePreview?.provider ||
+															'—'
+													  } / ${
+															rawIntakePreview?.object_type ||
+															'—'
+													  }`
+													: rawIntakePreview?.entity_kind ||
+													  '—' }
+												{ ! rawIntakeIsThirdParty
+													? ` · Subtype: ${
+															rawIntakePreview?.subtype ||
+															'—'
+													  }`
+													: '' }
+												{ ' · ' }Action:{ ' ' }
+												{ getRawIntakeActionLabel(
+													rawIntakePreview?.detected_action
+												) }
 											</p>
 											<p>
-												Title/Name: {rawIntakePreview?.title || '—'}
-												{' · '}Slug: {rawIntakePreview?.slug || '—'}
-												{' · '}UID: {rawIntakePreview?.uid || '—'}
-												{rawIntakePreview?.source_id ? ` · Source ID: ${rawIntakePreview.source_id}` : ''}
+												Title/Name:{ ' ' }
+												{ rawIntakePreview?.title ||
+													'—' }
+												{ ' · ' }Slug:{ ' ' }
+												{ rawIntakePreview?.slug ||
+													'—' }
+												{ ' · ' }UID:{ ' ' }
+												{ rawIntakePreview?.uid || '—' }
+												{ rawIntakePreview?.source_id
+													? ` · Source ID: ${ rawIntakePreview.source_id }`
+													: '' }
 											</p>
-											{rawIntakePreview?.object_type === 'form' && (
+											{ rawIntakePreview?.object_type ===
+												'form' && (
 												<p>
-													WS Form graph: groups {rawIntakeProviderCounts?.groups ?? 0}
-													{' · '}sections {rawIntakeProviderCounts?.sections ?? 0}
-													{' · '}fields {rawIntakeProviderCounts?.fields ?? 0}
-													{' · '}actions {rawIntakeProviderCounts?.actions ?? 0}
+													WS Form graph: groups{ ' ' }
+													{ rawIntakeProviderCounts?.groups ??
+														0 }
+													{ ' · ' }sections{ ' ' }
+													{ rawIntakeProviderCounts?.sections ??
+														0 }
+													{ ' · ' }fields{ ' ' }
+													{ rawIntakeProviderCounts?.fields ??
+														0 }
+													{ ' · ' }actions{ ' ' }
+													{ rawIntakeProviderCounts?.actions ??
+														0 }
 												</p>
-											)}
-											{rawIntakePreview?.object_type === 'settings' && rawIntakePreview?.settings_preview && (
+											) }
+											{ rawIntakePreview?.object_type ===
+												'settings' &&
+												rawIntakePreview?.settings_preview && (
+													<p>
+														Settings merge:{ ' ' }
+														{ (
+															rawIntakePreview
+																.settings_preview
+																?.mergeable_options ||
+															[]
+														).join( ', ' ) ||
+															'none' }
+														{ ' · ' }local secrets
+														preserved
+													</p>
+												) }
+											<p>
+												Target sync file:{ ' ' }
+												{ rawIntakePreview?.target_relative_path ||
+													'—' }
+											</p>
+											{ rawIntakePreview?.match
+												?.status === 'matched' && (
 												<p>
-													Settings merge: {(rawIntakePreview.settings_preview?.mergeable_options || []).join(', ') || 'none'}
-													{' · '}local secrets preserved
-												</p>
-											)}
-											<p>Target sync file: {rawIntakePreview?.target_relative_path || '—'}</p>
-											{rawIntakePreview?.match?.status === 'matched' && (
-												<p>
-													Matched live {rawIntakeIsThirdParty ? 'provider entity' : 'entity'}:{' '}
-													{rawIntakePreview?.match?.edit_url ? (
-														<a href={rawIntakePreview.match.edit_url}>
-															{rawIntakePreview?.match?.label || rawIntakePreview?.match?.kind || rawIntakePreview?.match?.provider || 'entity'} #{rawIntakePreview?.match?.id || 0}
+													Matched live{ ' ' }
+													{ rawIntakeIsThirdParty
+														? 'provider entity'
+														: 'entity' }
+													:{ ' ' }
+													{ rawIntakePreview?.match
+														?.edit_url ? (
+														<a
+															href={
+																rawIntakePreview
+																	.match
+																	.edit_url
+															}
+														>
+															{ rawIntakePreview
+																?.match
+																?.label ||
+																rawIntakePreview
+																	?.match
+																	?.kind ||
+																rawIntakePreview
+																	?.match
+																	?.provider ||
+																'entity' }{ ' ' }
+															#
+															{ rawIntakePreview
+																?.match?.id ||
+																0 }
 														</a>
 													) : (
-														<span>{rawIntakePreview?.match?.label || rawIntakePreview?.match?.kind || rawIntakePreview?.match?.provider || 'entity'} #{rawIntakePreview?.match?.id || 0}</span>
-													)}
-													{' · '}match source: {rawIntakePreview?.match?.match_source || 'unknown'}
+														<span>
+															{ rawIntakePreview
+																?.match
+																?.label ||
+																rawIntakePreview
+																	?.match
+																	?.kind ||
+																rawIntakePreview
+																	?.match
+																	?.provider ||
+																'entity' }{ ' ' }
+															#
+															{ rawIntakePreview
+																?.match?.id ||
+																0 }
+														</span>
+													) }
+													{ ' · ' }match source:{ ' ' }
+													{ rawIntakePreview?.match
+														?.match_source ||
+														'unknown' }
 												</p>
-											)}
-											{rawIntakeIsThirdParty && rawIntakePreview?.object_type === 'form' && (
-												<WsFormMatchedProviderNotice entity={rawIntakePreview?.matched_provider_entity || rawIntakePreview?.matched_update?.wp_entity} source="raw JSON" />
-											)}
-											{rawIntakeMatchedUpdate && (
-												<div className="notice notice-warning" style={{ margin: '8px 0 0' }}>
+											) }
+											{ rawIntakeIsThirdParty &&
+												rawIntakePreview?.object_type ===
+													'form' && (
+													<WsFormMatchedProviderNotice
+														entity={
+															rawIntakePreview?.matched_provider_entity ||
+															rawIntakePreview
+																?.matched_update
+																?.wp_entity
+														}
+														source="raw JSON"
+													/>
+												) }
+											{ rawIntakeMatchedUpdate && (
+												<div
+													className="notice notice-warning"
+													style={ {
+														margin: '8px 0 0',
+													} }
+												>
 													<p>
-														<strong>Update matched entity</strong>
-														{rawIntakePreview?.matched_update?.match_source ? ` · Match source: ${rawIntakePreview.matched_update.match_source}` : ''}
+														<strong>
+															Update matched
+															entity
+														</strong>
+														{ rawIntakePreview
+															?.matched_update
+															?.match_source
+															? ` · Match source: ${ rawIntakePreview.matched_update.match_source }`
+															: '' }
 													</p>
 													<p>
-														{rawIntakeIsThirdParty
+														{ rawIntakeIsThirdParty
 															? 'DBVC will replace the matched WS Form form graph from this raw JSON payload for '
-															: 'DBVC will apply JSON-present core fields, meta, and taxonomies from this raw JSON payload to '}
-														{rawIntakeMatchedUpdateEntity?.edit_url ? (
-															<a href={rawIntakeMatchedUpdateEntity.edit_url}>
-																{rawIntakeMatchedUpdateEntity?.label || rawIntakeMatchedUpdateEntity?.subtype || 'entity'} #{rawIntakeMatchedUpdateEntity?.id || 0}
+															: 'DBVC will apply JSON-present core fields, meta, and taxonomies from this raw JSON payload to ' }
+														{ rawIntakeMatchedUpdateEntity?.edit_url ? (
+															<a
+																href={
+																	rawIntakeMatchedUpdateEntity.edit_url
+																}
+															>
+																{ rawIntakeMatchedUpdateEntity?.label ||
+																	rawIntakeMatchedUpdateEntity?.subtype ||
+																	'entity' }{ ' ' }
+																#
+																{ rawIntakeMatchedUpdateEntity?.id ||
+																	0 }
 															</a>
 														) : (
-															<span>{rawIntakeMatchedUpdateEntity?.label || rawIntakeMatchedUpdateEntity?.subtype || 'entity'} #{rawIntakeMatchedUpdateEntity?.id || 0}</span>
-														)}
+															<span>
+																{ rawIntakeMatchedUpdateEntity?.label ||
+																	rawIntakeMatchedUpdateEntity?.subtype ||
+																	'entity' }{ ' ' }
+																#
+																{ rawIntakeMatchedUpdateEntity?.id ||
+																	0 }
+															</span>
+														) }
 														.
 													</p>
-													<label style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '8px' }}>
+													<label
+														style={ {
+															display: 'flex',
+															gap: '8px',
+															alignItems:
+																'flex-start',
+															marginTop: '8px',
+														} }
+													>
 														<input
 															type="checkbox"
-															checked={rawIntakeUpdateConfirmed}
-															onChange={(event) => setRawIntakeMatchedUpdateConfirmed(event.target.checked)}
-															disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}
+															checked={
+																rawIntakeUpdateConfirmed
+															}
+															onChange={ (
+																event
+															) =>
+																setRawIntakeMatchedUpdateConfirmed(
+																	event.target
+																		.checked
+																)
+															}
+															disabled={
+																rawIntakePreviewBusy ||
+																rawIntakeCommitBusy
+															}
 														/>
-														<span>{rawIntakePreview?.matched_update?.confirmation_label || 'I confirm updating this matched WordPress entity from the selected JSON.'}</span>
+														<span>
+															{ rawIntakePreview
+																?.matched_update
+																?.confirmation_label ||
+																'I confirm updating this matched WordPress entity from the selected JSON.' }
+														</span>
 													</label>
 												</div>
-											)}
-											{rawIntakePreview?.file_collision?.exists && (
+											) }
+											{ rawIntakePreview?.file_collision
+												?.exists && (
 												<p>
-													File collision: {rawIntakePreview?.file_collision?.relative_path || 'existing sync file'}
-													{rawIntakePreview?.file_collision?.compatible_with_match ? ' (compatible with matched entity)' : ''}
+													File collision:{ ' ' }
+													{ rawIntakePreview
+														?.file_collision
+														?.relative_path ||
+														'existing sync file' }
+													{ rawIntakePreview
+														?.file_collision
+														?.compatible_with_match
+														? ' (compatible with matched entity)'
+														: '' }
 												</p>
-											)}
+											) }
 										</div>
-										{rawIntakeModeBlocked && (
+										{ rawIntakeModeBlocked && (
 											<div className="notice notice-warning">
 												<p>
-													<strong>The selected mode cannot be committed for this payload.</strong>
-													{rawIntakeMode === 'create_only' && rawIntakeAvailable?.create_or_update_matched
+													<strong>
+														The selected mode cannot
+														be committed for this
+														payload.
+													</strong>
+													{ rawIntakeMode ===
+														'create_only' &&
+													rawIntakeAvailable?.create_or_update_matched
 														? ' Switch to Create or Update Matched if you intend to update the matched local entity.'
-														: ' Review the blocker guidance below before trying again.'}
+														: ' Review the blocker guidance below before trying again.' }
 												</p>
-												{rawIntakeBlockedMessages.length > 0 && (
-													<ul style={{ marginLeft: '18px' }}>
-														{rawIntakeBlockedMessages.map((message, index) => (
-															<li key={`raw-intake-blocked-summary-${index}`}>{message}</li>
-														))}
+												{ rawIntakeBlockedMessages.length >
+													0 && (
+													<ul
+														style={ {
+															marginLeft: '18px',
+														} }
+													>
+														{ rawIntakeBlockedMessages.map(
+															(
+																message,
+																index
+															) => (
+																<li
+																	key={ `raw-intake-blocked-summary-${ index }` }
+																>
+																	{ message }
+																</li>
+															)
+														) }
 													</ul>
-												)}
+												) }
 											</div>
-										)}
-										<ImportWarningNotes warnings={rawIntakeWarnings} />
+										) }
+										<ImportWarningNotes
+											warnings={ rawIntakeWarnings }
+										/>
 										<ImportBlockerPanel
-											blocking={rawIntakeBlocking}
-											blockerDetails={rawIntakePreview?.blocker_details || []}
-											settingsLinks={rawIntakePreview?.settings_links || []}
-											settingRemediations={rawIntakePreview?.setting_remediations || []}
-											advancedOverrides={rawIntakePreview?.advanced_overrides || []}
-											disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}
+											blocking={ rawIntakeBlocking }
+											blockerDetails={
+												rawIntakePreview?.blocker_details ||
+												[]
+											}
+											settingsLinks={
+												rawIntakePreview?.settings_links ||
+												[]
+											}
+											settingRemediations={
+												rawIntakePreview?.setting_remediations ||
+												[]
+											}
+											advancedOverrides={
+												rawIntakePreview?.advanced_overrides ||
+												[]
+											}
+											disabled={
+												rawIntakePreviewBusy ||
+												rawIntakeCommitBusy
+											}
 										/>
 									</div>
-								)}
-								<div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px' }}>
-									<Button variant="tertiary" onClick={closeRawIntakeModal} disabled={rawIntakePreviewBusy || rawIntakeCommitBusy}>
+								) }
+								<div
+									style={ {
+										display: 'flex',
+										gap: '8px',
+										justifyContent: 'flex-end',
+										marginTop: '12px',
+									} }
+								>
+									<Button
+										variant="tertiary"
+										onClick={ closeRawIntakeModal }
+										disabled={
+											rawIntakePreviewBusy ||
+											rawIntakeCommitBusy
+										}
+									>
 										Cancel
 									</Button>
-									<Button variant="secondary" onClick={previewRawIntake} disabled={rawIntakePreviewBusy || rawIntakeCommitBusy} isBusy={rawIntakePreviewBusy}>
+									<Button
+										variant="secondary"
+										onClick={ previewRawIntake }
+										disabled={
+											rawIntakePreviewBusy ||
+											rawIntakeCommitBusy
+										}
+										isBusy={ rawIntakePreviewBusy }
+									>
 										Preview
 									</Button>
-									<Button variant="primary" onClick={commitRawIntake} disabled={!rawIntakeCanCommit || rawIntakePreviewBusy || rawIntakeCommitBusy} isBusy={rawIntakeCommitBusy}>
+									<Button
+										variant="primary"
+										onClick={ commitRawIntake }
+										disabled={
+											! rawIntakeCanCommit ||
+											rawIntakePreviewBusy ||
+											rawIntakeCommitBusy
+										}
+										isBusy={ rawIntakeCommitBusy }
+									>
 										Commit
 									</Button>
 								</div>
@@ -2792,17 +5766,25 @@ const EntityEditorApp = () => {
 						</Modal>
 					) : (
 						<div className="notice notice-warning">
-							<p>Raw JSON intake modal is unavailable in this WordPress build.</p>
-							<button type="button" className="button" onClick={closeRawIntakeModal}>Close</button>
+							<p>
+								Raw JSON intake modal is unavailable in this
+								WordPress build.
+							</p>
+							<button
+								type="button"
+								className="button"
+								onClick={ closeRawIntakeModal }
+							>
+								Close
+							</button>
 						</div>
-					))
-				)}
+					) ) }
 			</section>
 		</div>
 	);
 };
 
-const rootNode = document.getElementById('dbvc-entity-editor-root');
-if (rootNode) {
-	createRoot(rootNode).render(<EntityEditorApp />);
+const rootNode = document.getElementById( 'dbvc-entity-editor-root' );
+if ( rootNode ) {
+	createRoot( rootNode ).render( <EntityEditorApp /> );
 }
