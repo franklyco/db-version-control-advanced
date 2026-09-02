@@ -2697,6 +2697,83 @@
 		);
 	}
 
+	function isControlCenterEnabled() {
+		const bootstrap = window.DBVCVisualEditorBootstrap || {};
+		const controlCenter = bootstrap.controlCenter;
+
+		return Boolean(
+			controlCenter &&
+				typeof controlCenter === 'object' &&
+				controlCenter.enabled === true
+		);
+	}
+
+	function dispatchControlCenterEvent( name, detail ) {
+		if ( ! isControlCenterEnabled() ) {
+			return;
+		}
+
+		document.dispatchEvent(
+			new CustomEvent( `dbvc:visual-editor:control-center:${ name }`, {
+				detail: detail || {},
+			} )
+		);
+	}
+
+	/**
+	 * R3-C-2 — Control Center → Editor Panel bridge.
+	 *
+	 * The Brand Control Center drawer lives in a separate frontend module and
+	 * cannot reach `mergeSharedGlobalInventory` / `openToolbarDescriptorPanel`
+	 * directly (both are IIFE-scoped inside overlay-app.js). Instead the drawer
+	 * dispatches `dbvc:visual-editor:absorb-descriptor` with the payload from
+	 * R3-C-1's open route (`{descriptors, descriptorHydrations, token, publicId}`)
+	 * and this listener does the merge + panel-open work using the same helpers
+	 * the Shared Globals popover already uses — so the panel behaves identically
+	 * whether a control was opened from the popover or from the drawer.
+	 *
+	 * Idempotent: gated by `state.controlCenterBridgeBound` so mount() calling
+	 * this twice cannot double-bind. Guarded by `isControlCenterEnabled()` so
+	 * the listener is a no-op when the feature is off.
+	 */
+	function bindControlCenterBridge() {
+		if ( ! isControlCenterEnabled() || state.controlCenterBridgeBound ) {
+			return;
+		}
+
+		state.controlCenterBridgeBound = true;
+		document.addEventListener(
+			'dbvc:visual-editor:absorb-descriptor',
+			function ( event ) {
+				const detail =
+					event && event.detail && typeof event.detail === 'object'
+						? event.detail
+						: {};
+				const token =
+					typeof detail.token === 'string' && detail.token
+						? detail.token
+						: '';
+				if ( ! token ) {
+					return;
+				}
+
+				mergeSharedGlobalInventory( {
+					descriptors: detail.descriptors,
+					descriptorHydrations: detail.descriptorHydrations,
+					fields: [],
+					warnings: [],
+				} );
+
+				if ( findMarkerByToken( token ) ) {
+					locateFieldIndexMarker( token, true );
+					return;
+				}
+
+				openToolbarDescriptorPanel( token );
+			}
+		);
+	}
+
 	function renderToolbarIcon( name ) {
 		const attrs =
 			'aria-hidden="true" focusable="false" viewBox="0 0 24 24"';
@@ -2824,6 +2901,10 @@
 				'toolbarSharedGlobals',
 				'Shared globals'
 			);
+			const controlCenterLabel = getToolbarString(
+				'toolbarControlCenter',
+				'Global Brand Controls'
+			);
 			const moreLabel = getToolbarString( 'toolbarMore', 'More options' );
 			const editLabel = getToolbarString(
 				'toolbarEditObject',
@@ -2883,7 +2964,21 @@
 					'dbvc-ve-toolbar__button--dock',
 					false
 				),
-				isMediaManagerEnabled()
+				isControlCenterEnabled()
+					? createToolbarButtonMarkup(
+							'control-center',
+							'sliders',
+							controlCenterLabel,
+							'dbvc-ve-toolbar__button--dock',
+							false,
+							{
+								controls: 'dbvc-ve-control-center',
+								expanded: false,
+								hasPopup: 'dialog',
+							}
+					  )
+					: '',
+				isMediaManagerEnabled() || isControlCenterEnabled()
 					? ''
 					: createToolbarButtonMarkup(
 							'overflow',
@@ -4038,10 +4133,21 @@
 			event.stopPropagation();
 			closeToolbarPopover();
 			dispatchMediaManagerEvent( 'toggle', { trigger: actionNode } );
+			dispatchControlCenterEvent( 'close', { restoreFocus: false } );
+			return;
+		}
+
+		if ( action === 'control-center' ) {
+			event.preventDefault();
+			event.stopPropagation();
+			closeToolbarPopover();
+			dispatchMediaManagerEvent( 'close', { restoreFocus: false } );
+			dispatchControlCenterEvent( 'toggle', { trigger: actionNode } );
 			return;
 		}
 
 		dispatchMediaManagerEvent( 'close', { restoreFocus: false } );
+		dispatchControlCenterEvent( 'close', { restoreFocus: false } );
 
 		if ( action === 'edit-object' || action === 'toggle-mode' ) {
 			closeToolbarPopover();
@@ -12663,6 +12769,7 @@
 			ensureBadgeLayer();
 			ensureSharedBadge();
 			bindBadgeEvents();
+			bindControlCenterBridge();
 
 			const markers = findMarkers();
 			if ( ! markers.length ) {

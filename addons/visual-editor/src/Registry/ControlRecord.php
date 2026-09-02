@@ -98,6 +98,23 @@ final class ControlRecord
     public $visibleTo;
 
     /**
+     * @var string R4-A — optional short description providers opt in to per
+     *             record. Renders as the drawer's muted second line under the
+     *             label (mockup DESIGN-DECISIONS §4). Sanitized via
+     *             `sanitize_text_field` on ingest. Empty when unset.
+     */
+    public $description;
+
+    /**
+     * @var string R4-A — provider-defined stable sort key. `sanitize_key`.
+     *             {@see ControlRegistry::listControls()} sorts by this first,
+     *             then by `label` (alpha), then by `publicId` as a final
+     *             tie-breaker. Empty when the provider does not care about
+     *             order — records fall through to the label/publicId chain.
+     */
+    public $sortKey;
+
+    /**
      * @param string $id
      * @param string $providerId
      * @param string $label
@@ -123,7 +140,9 @@ final class ControlRecord
         $status,
         array $source,
         array $meta,
-        $visibleTo
+        $visibleTo,
+        $description = '',
+        $sortKey = ''
     ) {
         $this->id = $id;
         $this->providerId = $providerId;
@@ -137,6 +156,8 @@ final class ControlRecord
         $this->source = $source;
         $this->meta = $meta;
         $this->visibleTo = $visibleTo;
+        $this->description = (string) $description;
+        $this->sortKey = (string) $sortKey;
     }
 
     /**
@@ -176,12 +197,14 @@ final class ControlRecord
         return [
             'publicId' => $this->publicId(),
             'label' => $this->label,
+            'description' => $this->description,
             'category' => $this->category,
             'group' => $this->group,
             'ownerType' => $this->ownerType,
             'ownerSubtype' => $this->ownerSubtype,
             'fieldFamily' => $this->fieldFamily,
             'status' => $this->status,
+            'sortKey' => $this->sortKey,
             'meta' => $this->meta,
         ];
     }
@@ -248,6 +271,11 @@ final class ControlRecord
 
         $visible_to = isset($input['visibleTo']) && $input['visibleTo'] instanceof \Closure ? $input['visibleTo'] : null;
 
+        // R4-A additions — both optional. `description` is the drawer's
+        // muted second line; `sortKey` is provider-defined stable ordering.
+        $description = sanitize_text_field((string) ($input['description'] ?? ''));
+        $sort_key = sanitize_key((string) ($input['sortKey'] ?? ''));
+
         return new self(
             $id,
             $sanitized_provider,
@@ -260,7 +288,9 @@ final class ControlRecord
             $status,
             $source,
             $meta,
-            $visible_to
+            $visible_to,
+            $description,
+            $sort_key
         );
     }
 

@@ -33,8 +33,9 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         public const OPTION_EXCLUDED_POST_TYPES = 'dbvc_visual_editor_excluded_post_types';
         public const OPTION_EXCLUDED_TAXONOMIES = 'dbvc_visual_editor_excluded_taxonomies';
         public const OPTION_CURATION_TOOL_ENABLED = 'dbvc_visual_editor_curation_tool_enabled';
+        public const OPTION_CONTROL_CENTER_ENABLED = 'dbvc_visual_editor_control_center_enabled';
         public const OPTION_SETTINGS_VERSION = 'dbvc_visual_editor_settings_version';
-        public const SETTINGS_VERSION = 5;
+        public const SETTINGS_VERSION = 6;
         public const DEFAULT_SHARED_GLOBAL_FIELD_NAMES = 'settings_globals_default_posts';
         public const DEFAULT_EXCLUDED_POST_TYPES = 'bricks_template';
         public const DEFAULT_EXCLUDED_TAXONOMIES = "template_tag\ntemplate_bundle";
@@ -76,6 +77,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             add_option(self::OPTION_EXCLUDED_POST_TYPES, self::DEFAULT_EXCLUDED_POST_TYPES);
             add_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES);
             add_option(self::OPTION_CURATION_TOOL_ENABLED, '0');
+            add_option(self::OPTION_CONTROL_CENTER_ENABLED, '0');
             add_option(self::OPTION_SETTINGS_VERSION, (string) self::SETTINGS_VERSION);
 
             if ((int) get_option(self::OPTION_SETTINGS_VERSION, 0) < self::SETTINGS_VERSION) {
@@ -116,6 +118,47 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         }
 
         /**
+         * Absolute filesystem path to the R3-BX curation export
+         * (`vertical-approved-controls.json`) so external providers such as
+         * `VerticalControlProvider` do not have to hardcode the addon /
+         * plugin folder name. The path is deterministic and computed from
+         * this file's own directory — it survives a plugin-folder rename
+         * because `bootstrap.php` sits at the same relative location.
+         *
+         * Filterable via `dbvc_visual_editor_curation_export_path` so a
+         * site can point at an alternate export location during rollout
+         * (returning a non-string or a path that fails `is_readable` is a
+         * bug in the filter; the caller must handle a missing file).
+         *
+         * @return string
+         */
+        public static function get_curation_export_path()
+        {
+            $default = __DIR__ . '/curation/vertical-approved-controls.json';
+            $path = apply_filters('dbvc_visual_editor_curation_export_path', $default);
+
+            return is_string($path) && $path !== '' ? $path : $default;
+        }
+
+        /**
+         * R3-B kill switch. When true, the Registry-Backed Brand Control
+         * Center registers its providers on the runtime {@see
+         * \Dbvc\VisualEditor\Registry\ControlRegistry}. The registry is a
+         * discovery-only read surface — no new write authority — so this
+         * gate only controls whether the Shared Globals compatibility
+         * provider (and, in R3-C, the drawer UI + open route) is exposed.
+         * Requires the master Visual Editor switch as well, mirroring
+         * `is_media_manager_enabled()`.
+         *
+         * @return bool
+         */
+        public static function is_control_center_enabled()
+        {
+            return self::is_enabled()
+                && get_option(self::OPTION_CONTROL_CENTER_ENABLED, '0') === '1';
+        }
+
+        /**
          * @return array<string, array<string, mixed>>
          */
         public static function get_settings_groups()
@@ -150,6 +193,12 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'label' => __('Brand Control Center — Curation Tool (temporary)', 'dbvc'),
                     'fields' => [
                         self::OPTION_CURATION_TOOL_ENABLED,
+                    ],
+                ],
+                'control_center' => [
+                    'label' => __('Brand Control Center', 'dbvc'),
+                    'fields' => [
+                        self::OPTION_CONTROL_CENTER_ENABLED,
                     ],
                 ],
             ];
@@ -194,6 +243,11 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'input' => 'checkbox',
                     'help' => __('Temporary. Adds a Brand Control Center → Curation admin page for manually approving which options-page ACF fields become registered Visual Editor controls. Turn off when the curation artifact is committed. The page is admin-only, never mutates content, and reads options-page field metadata only.', 'dbvc'),
                 ],
+                self::OPTION_CONTROL_CENTER_ENABLED => [
+                    'label' => __('Enable Brand Control Center', 'dbvc'),
+                    'input' => 'checkbox',
+                    'help' => __('Registers configured Shared Globals fields with the Visual Editor Brand Control Center so editors can discover them from one place. Off by default and has no effect unless the Visual Editor is also enabled. The Control Center is a discovery-only surface — turning it on does not grant any new edit permission; existing capability checks still apply at save time.', 'dbvc'),
+                ],
             ];
         }
 
@@ -211,6 +265,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                 self::OPTION_EXCLUDED_POST_TYPES => (string) get_option(self::OPTION_EXCLUDED_POST_TYPES, self::DEFAULT_EXCLUDED_POST_TYPES),
                 self::OPTION_EXCLUDED_TAXONOMIES => (string) get_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES),
                 self::OPTION_CURATION_TOOL_ENABLED => (string) get_option(self::OPTION_CURATION_TOOL_ENABLED, '0'),
+                self::OPTION_CONTROL_CENTER_ENABLED => (string) get_option(self::OPTION_CONTROL_CENTER_ENABLED, '0'),
             ];
         }
 
@@ -225,6 +280,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                 self::OPTION_ENABLED => isset($request_data[self::OPTION_ENABLED]) ? '1' : '0',
                 self::OPTION_MEDIA_MANAGER_ENABLED => isset($request_data[self::OPTION_MEDIA_MANAGER_ENABLED]) ? '1' : '0',
                 self::OPTION_CURATION_TOOL_ENABLED => isset($request_data[self::OPTION_CURATION_TOOL_ENABLED]) ? '1' : '0',
+                self::OPTION_CONTROL_CENTER_ENABLED => isset($request_data[self::OPTION_CONTROL_CENTER_ENABLED]) ? '1' : '0',
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => self::sanitize_shared_global_field_names(
                     isset($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])
                         ? (string) wp_unslash($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])

@@ -123,6 +123,87 @@ The mockup is a visual and interaction reference. It is not production DOM autho
 - Add deterministic grouping and sorting.
 - Cover provider errors without breaking the entire center.
 
+#### R4-A checkpoint — 2026-08-30 (Slice landed)
+
+Backend shape shipped end-to-end; frontend integration is R4-C. Summary of
+what stands in `main`:
+
+- `ControlRecord` widened with two optional public properties: `description`
+  (`sanitize_text_field`) and `sortKey` (`sanitize_key`). Both default to
+  empty; both are round-tripped through `fromArray()` and emitted on the
+  safe `toListItem()` projection. Interior tests in
+  `tests/phpunit/VisualEditorControlCenterR4ATest.php` pin the projection.
+- `ControlProvider` interface widened with `buildValueSummary(ControlRecord,
+  sessionId): ?array`. All four in-tree implementations
+  (`SharedGlobalsControlProvider`, `VF_Vertical_Control_Provider`, plus the
+  three anon-class test factories) supply `return null;` defaults; the
+  Shared Globals implementation is real for `relationship` + `post_object`
+  families.
+- `ControlRegistry`:
+  - `listControls()` accepts `family` (`sanitize_key`) and `q` (trimmed,
+    case-insensitive, matched against label OR description) in addition to
+    the existing `category` + `status`.
+  - Records now sort globally by `sortKey ASC → label ASC (case-insensitive)
+    → publicId ASC` (previously per-provider then `id` ASC — the R3-A test
+    order still holds because sortKey is empty in those tests).
+  - `getControls()` per provider is wrapped in try/catch; a throwing
+    provider is captured in `getProviderErrors()` (`{providerId → {message}}`)
+    and its records are dropped without shielding the rest of the map. The
+    R3-A observer channel (`dbvc_visual_editor_control_registry_invalid`)
+    also fires with the new `provider_threw` reason.
+  - `buildValueSummaryForRecord(record, sessionId)` mirrors
+    `buildDescriptorForRecord`.
+- `SharedGlobalsControlProvider`:
+  - Emits `description` sourced from (in order) the
+    `dbvc_visual_editor_control_center_description` filter (Vertical hooks
+    this to inject `vf_field_context_get_entry_primary_purpose()`), then
+    ACF's own `instructions`, then empty.
+  - Emits `sortKey` as `shared_{fieldName}` so Shared Globals sits ahead of
+    `vertical_*` records under the registry's ascending sort.
+  - `buildValueSummary()` returns a `{family, count, firstTitles (≤3),
+    hasMore}` shape for `relationship` + `post_object` families. Rechecks
+    the option-owned capability probe (the same one visibility uses) before
+    reading; returns `null` on empty values / gated capability / structural
+    mismatch. A fourth optional constructor seam `$optionValueResolver`
+    fronts `get_field($name, 'option', false)` for the summary path (test
+    injection) — R3-B call sites and the existing R3-B tests keep working
+    unchanged.
+- `ControlCenterListController` response bumped `viewModelVersion` from 1
+  → 2. `query` echoes all four params (`category`, `status`, `family`,
+  `q`). New `providerErrors` map surfaces alongside `items`. `q` is trimmed
+  and clamped at 128 characters at the controller.
+- New `ControlCenterValueSummariesController` route:
+  `POST .../session/{id}/control-center/value-summaries` body
+  `{publicIds: string[]}` (batch cap **50**, over-cap ⇒ 400). Returns
+  `{ok, summaries: {publicId → summary|null}}`. Per record: resolves the
+  visible record → mints a descriptor via the provider → rechecks
+  capability → asks the provider for its summary. Any step failing collapses
+  that entry to `null` (fail-soft — the drawer renders nothing in that
+  slot). Wired under the R3-D two-part kill switch in `Rest\Routes`.
+- Vertical:
+  - `VF_Vertical_Control_Provider` maps `description` via
+    `vf_field_context_get_entry_primary_purpose($fieldName)` → curation
+    `notes` → empty, and `sortKey` as `vertical_{1|2|3|9}_{fieldName}`
+    keyed on `client_priority` (`must=1, should=2, nice=3, empty=9`).
+    `buildValueSummary` still returns `null` (Vertical records are all
+    `status="unsupported"` in the MVP).
+  - `functions/features/dbvc-visual-editor/dbvc-visual-editor.php` adds a
+    filter callback on `dbvc_visual_editor_control_center_description` that
+    injects the same Field Context primary-purpose lookup into DBVC Shared
+    Globals rows.
+
+Test coverage: `VisualEditorControlCenterR4ATest` adds 19 focused cases
+(sort behavior, filter widening, provider-error capture, SharedGlobals
+description/sortKey/summary, new list-controller contract, batch endpoint
+happy path + cap + dedup + edit-mode gate). Existing R3-A/B/C-1/D suites
+stay green with only one localized adjustment: the routes test now asserts
+`viewModelVersion=2` + four-key `query` echo + empty `providerErrors`.
+
+Baselines after the slice: PHPUnit 888 tests / 9305 assertions (19 new;
+same 7 pre-existing failures across unrelated Bricks / Content Collector /
+Content Migration / Proposal Diff / Capability Landscape suites, which
+match the pre-R4-A baseline).
+
 ### R4-B — UI contract and Claude Code mockup
 
 - Document screens, states, data, actions, and accessibility.

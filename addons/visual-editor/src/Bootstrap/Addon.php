@@ -35,7 +35,9 @@ use Dbvc\VisualEditor\MediaManager\ScanSnapshotStore;
 use Dbvc\VisualEditor\Performance\PerformanceProfiler;
 use Dbvc\VisualEditor\Permissions\CapabilityManager;
 use Dbvc\VisualEditor\Presentation\DescriptorSummaryBuilder;
+use Dbvc\VisualEditor\Registry\ControlRegistry;
 use Dbvc\VisualEditor\Registry\EditableRegistry;
+use Dbvc\VisualEditor\Registry\Providers\SharedGlobalsControlProvider;
 use Dbvc\VisualEditor\Resolvers\ResolverRegistry;
 use Dbvc\VisualEditor\Rest\Routes;
 use Dbvc\VisualEditor\Save\MutationService;
@@ -58,6 +60,16 @@ final class Addon
      * @var EditableRegistry
      */
     private $registry;
+
+    /**
+     * @var ControlRegistry
+     */
+    private $control_registry;
+
+    /**
+     * @var CapabilityManager
+     */
+    private $capabilities;
 
     /**
      * @var ToggleNode
@@ -121,12 +133,17 @@ final class Addon
         $this->profiler = new PerformanceProfiler();
         $active_profiler = $this->profiler->isEnabled() ? $this->profiler : null;
         $capabilities = new CapabilityManager();
+        $this->capabilities = $capabilities;
         $page_context = new PageContextResolver($active_profiler);
         $runtime_guard = new FrontendRuntimeGuard();
         $loops = new LoopContextResolver(null, $active_profiler);
         $summaries = new DescriptorSummaryBuilder();
         $this->edit_mode = new EditModeState($capabilities, $page_context, $runtime_guard);
         $this->registry = new EditableRegistry($page_context, $active_profiler);
+        // R3-A: the discovery-only Control Registry is instantiated unconditionally so
+        // R3-C REST controllers can bind to a stable instance. Provider registration is
+        // gated in register() by is_control_center_enabled(); an empty registry is safe.
+        $this->control_registry = new ControlRegistry();
         $resolvers = new ResolverRegistry(null, $loops, null, $active_profiler);
         $validator = new ValidationService();
         $sanitizer = new SanitizationService();
@@ -219,7 +236,8 @@ final class Addon
             $media_assignment_service,
             $media_index_read_model,
             $media_index_store,
-            $media_policy
+            $media_policy,
+            $this->control_registry
         );
     }
 
@@ -254,9 +272,117 @@ final class Addon
             add_action('dbvc_visual_editor_media_index_build_completed', [$this->media_index_json_exporter, 'exportAll']);
             add_action('dbvc_visual_editor_media_index_reconciled', [$this->media_index_json_exporter, 'exportAll']);
         }
+        // R3-B: register the Shared Globals compatibility provider on the discovery-only
+        // Control Registry when the Brand Control Center kill switch is on. This is a
+        // parallel surface — the existing SharedGlobalFieldsController popover route stays
+        // intact — and grants no write authority; save-time capability checks still apply.
+        if (class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_control_center_enabled')
+            && \DBVC_Visual_Editor_Addon::is_control_center_enabled()) {
+            $capabilities = $this->capabilities;
+            $this->control_registry->registerProvider(new SharedGlobalsControlProvider(
+                $capabilities,
+                static function () {
+                    if (class_exists('\\DBVC_Visual_Editor_Addon')
+                        && method_exists('\\DBVC_Visual_Editor_Addon', 'get_shared_global_field_names')) {
+                        return \DBVC_Visual_Editor_Addon::get_shared_global_field_names();
+                    }
+
+                    return [];
+                },
+                static function ($name) {
+                    if (! function_exists('get_field_object')) {
+                        return null;
+                    }
+
+                    return get_field_object($name, 'option', false, true);
+                },
+                // R4-A: option-value resolver for `buildValueSummary`. Uses
+                // ACF's `get_field($name, 'option', false)` so the returned
+                // value is the raw stored id list (or single id for
+                // post_object), not hydrated post objects — cheap and matches
+                // what the summary factory normalizes.
+                static function ($name) {
+                    if (! function_exists('get_field')) {
+                        return null;
+                    }
+
+                    return get_field($name, 'option', false);
+                }
+            ));
+
+            // Post-R3 extension point — deferred to `after_setup_theme` so a
+            // theme (loaded after plugins) has a chance to attach its filter
+            // callback before we invoke the filter. The deferred callback also
+            // fires immediately if `after_setup_theme` has already run — that
+            // happens in tests that call `refresh_runtime_registration()`
+            // after WP's own init sequence, or in a mid-request rebuild.
+            $registry = $this->control_registry;
+            $register_external_providers = static function () use ($registry) {
+                if (! class_exists('\\DBVC_Visual_Editor_Addon')
+                    || ! method_exists('\\DBVC_Visual_Editor_Addon', 'is_control_center_enabled')
+                    || ! \DBVC_Visual_Editor_Addon::is_control_center_enabled()) {
+                    return;
+                }
+
+                /**
+                 * Post-R3 extension point — external providers (e.g. a
+                 * theme's VerticalControlProvider) can register additional
+                 * {@see \Dbvc\VisualEditor\Registry\ControlProvider}s on the
+                 * same runtime
+                 * {@see \Dbvc\VisualEditor\Registry\ControlRegistry}.
+                 *
+                 * Fires only when both parts of the two-part kill switch are
+                 * on (`is_control_center_enabled()` — see D-063). External
+                 * providers inherit the discovery-only contract: their
+                 * `buildDescriptor()` MAY return null (rows then surface as
+                 * `status="unsupported"` and never call the open route), and
+                 * any mutation continues to route through the shared
+                 * `MutationService` pipeline with capability checks. Entries
+                 * that are not ControlProvider instances are silently
+                 * skipped; registration failures fire the observable
+                 * `dbvc_visual_editor_control_registry_invalid` action.
+                 *
+                 * @param array<int, \Dbvc\VisualEditor\Registry\ControlProvider> $providers
+                 *     External providers to register in addition to the
+                 *     built-in Shared Globals compatibility provider. Default `[]`.
+                 */
+                $external_providers = apply_filters('dbvc_visual_editor_control_center_providers', []);
+                if (is_array($external_providers)) {
+                    foreach ($external_providers as $external_provider) {
+                        if ($external_provider instanceof \Dbvc\VisualEditor\Registry\ControlProvider) {
+                            $registry->registerProvider($external_provider);
+                        }
+                    }
+                }
+            };
+            // Always defer to `after_setup_theme` rather than firing the
+            // filter now. In production the plugin main file loads BEFORE
+            // any theme's `functions.php`, so a filter callback the theme
+            // attaches later cannot possibly have been on the hook when
+            // `register()` first runs. Deferring guarantees external
+            // callbacks contribute even though they attach later. A REST
+            // request or a frontend page render is always a fresh request
+            // where `after_setup_theme` fires after plugin bootstrap but
+            // before route dispatch / asset enqueue, so the deferred
+            // callback runs in time to populate the registry.
+            add_action('after_setup_theme', $register_external_providers, 20);
+        }
         add_action('wp_footer', [$this->registry, 'persistRequestSession'], 19);
         add_action('shutdown', [$this->registry, 'persistRequestSession'], 20);
         add_action('shutdown', [$this->profiler, 'flush'], 999);
+    }
+
+    /**
+     * R3-A: expose the discovery-only Control Registry so R3-C REST controllers can
+     * bind to the same instance the providers register into. Read surface only —
+     * see class-level documentation on {@see ControlRegistry}.
+     *
+     * @return ControlRegistry
+     */
+    public function getControlRegistry()
+    {
+        return $this->control_registry;
     }
 
     /**

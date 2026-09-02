@@ -344,14 +344,94 @@ Verification for the polish pass:
 
 **Gate:** no behavior regression when registry-backed discovery is disabled or unavailable.
 
+**Checkpoint (2026-08-28) — implemented, kill-switch gated:**
+
+- New provider `Dbvc\VisualEditor\Registry\Providers\SharedGlobalsControlProvider`
+  implements the R3-A `ControlProvider` interface. Constructor takes
+  `CapabilityManager` + two callable seams (configured-names resolver and
+  field-object resolver) so tests hand in fixtures without ACF. The
+  provider walks each configured Shared Globals field name, skips
+  anything that is not `relationship` or `post_object`, and returns
+  discovery-only `ControlRecord` arrays (`category=globals`,
+  `ownerType=option`, `ownerSubtype=acf_options`, opaque
+  `source={field_name, field_key}` hint for R3-C's descriptor factory,
+  `meta.badge = "Shared Global"`). The record's `visibleTo` closure
+  reproduces `SharedGlobalFieldsController::canManageSharedGlobalOptions`
+  exactly — same option-owned probe descriptor, same `canEditDescriptor`
+  call — so per-user visibility matches the existing popover.
+- New `OPTION_CONTROL_CENTER_ENABLED = 'dbvc_visual_editor_control_center_enabled'`
+  setting (default `'0'`), `is_control_center_enabled()` helper (requires
+  BOTH the master Visual Editor switch and this switch), and a new
+  `control_center` group in the Visual Editor settings admin. Mirrors the
+  media-manager kill-switch pattern.
+- `Bootstrap\Addon::__construct` instantiates `ControlRegistry`
+  unconditionally (empty registry is safe — matches how `EditableRegistry`
+  is wired). `Bootstrap\Addon::register` registers
+  `SharedGlobalsControlProvider` under the kill-switch gate only. New
+  `getControlRegistry()` getter exposes the same instance so R3-C REST
+  controllers can bind to it. `SharedGlobalFieldsController` stays
+  intact — the existing Shared Globals popover keeps working exactly as
+  it does today; R3-B is parallel discovery.
+- No new REST route, no new write authority, no UI. R3-C will add the
+  minimal drawer + open route; R3-D will harden.
+- `SETTINGS_VERSION` bumped 5 → 6; `VisualEditorMediaManagerR1ATest`
+  assertion updated in place (same pattern R3-BX used).
+- **Validation:**
+  `vendor/bin/phpunit --filter "VisualEditorSharedGlobalsControlProvider"`
+  → **5 tests / 28 assertions OK**. Registry subset unchanged
+  (`VisualEditorControlRegistry` 11/44). Curation unchanged (29/96).
+  Media Manager unchanged (115/1962). Full PHP suite **844 tests, 7
+  failures** (was 839/7 pre-R3-B — identical 6 inherited failures + the
+  pre-existing dirty-tree `ProposalDiffContractTest`). Agent docs
+  **54 / 437 / 0 unmapped** after refresh; three extension-point hashes
+  rotated by bootstrap.php line shifts and were re-mapped in
+  `docs/agents/manifest.json`.
+
 ### R3-C — Minimal center UI
 
+**Split (2026-08-28):** R3-C is deliberately delivered as two sub-slices so each fits a bounded session and so the backend REST contract can be reviewed independently of the drawer UI translation.
+
 - Add the smallest production interface that lists registered controls.
-- Reuse existing popover, panel, loading, status, and event patterns.
+- Reuse existing panel, loading, status, and event patterns.
 - Avoid final expanded visual design; R4 will provide the richer UI.
 - Add loading, empty, error, inspect-only, unsupported, and unavailable states.
 
 **Gate:** an authorized user can discover and open a registered control that is absent from the current page.
+
+#### R3-C-1 — Backend + descriptor factory extraction
+
+**Checkpoint (2026-08-28) — implemented, kill-switch gated:**
+
+- Extracted `SharedGlobalFieldsController::buildDescriptor` (plus every private helper that participates in the descriptor build) into a stateless `Registry\Providers\SharedGlobalsDescriptorFactory`. The controller now delegates — the popover route's public response shape is unchanged (a focused extraction-sanity test asserts the produced descriptor's key fields for a fixture ACF field, and the descriptor's associative bags are constructed with keys in the same order the pre-extraction code emitted so JSON encoding is byte-identical).
+- `ControlProvider` interface widened with `buildDescriptor(ControlRecord $record, string $sessionId, array $pageContext): ?EditableDescriptor`. Rejected alternative (parallel factory registration surface) captured in the resume file's decision line. `SharedGlobalsControlProvider::buildDescriptor` re-resolves the ACF field via the constructor's existing `$fieldObjectResolver` seam, re-validates the type is still `relationship`/`post_object`, and delegates to the factory. Anonymous providers in `VisualEditorControlRegistryTest` gained a trivial `return null;` default — one line per anon class.
+- New `ControlRegistry::buildDescriptorForRecord($record, $sessionId, $pageContext)` looks up the record's provider in the private map and delegates — keeps `$providers` fully encapsulated. Fails closed when the provider is gone.
+- Two new session-scoped REST controllers wired into `Rest\Routes::registerRoutes` under the `is_control_center_enabled()` gate (D-063 kill switch, both parts default off):
+  - `ControlCenterListController` — `GET /dbvc/v1/visual-editor/session/{session_id}/control-center/controls?category=&status=`. Returns `{ok:true, viewModelVersion:1, query, items}` — the registry's safe projection, no `source` bag.
+  - `ControlCenterOpenController` — `POST /dbvc/v1/visual-editor/session/{session_id}/control-center/open` body `{publicId}`. Resolves via `registry.getVisibleRecord()` (null → 404) → `registry.buildDescriptorForRecord()` (null → 404) → 403 when the descriptor's `source.reference_post_types` is empty (same policy the popover surfaces as a warning) → `capabilities.canEditDescriptor()` (false → 403) → `session_registry.addDescriptorToSession()` (false → 404) → returns `{ok, publicId, descriptors, descriptorHydrations}` matching the shape the frontend panel already consumes.
+- `Rest\Routes::__construct` gains a `ControlRegistry` param; `Bootstrap\Addon::__construct` passes `$this->control_registry`. No other constructor changes across the codebase.
+- No frontend JS/CSS in this slice — R3-C-2 lands the drawer. Kill switch stays operationally inert until the drawer arrives.
+- **Validation:** `vendor/bin/phpunit --filter "VisualEditorControlCenterRoutes"` → **10 tests / 36 assertions OK**. R3-A subset unchanged (11/44), R3-B unchanged (5/28), Curation unchanged (29/96), Media unchanged (115/1962). Full PHP suite **854 tests, 7 failures** (was 844/7 pre-R3-C-1 — identical 6 inherited + 1 pre-existing dirty-tree `ProposalDiffContractTest`). Agent docs **54 curated / 439 discovered / 0 unmapped** (2 new REST routes discovered + mapped; 1 REST hash rotated on `SharedGlobalFieldsController`; 1 extension-point hash rotated on `ControlRegistry`).
+
+**Gate (met):** the two new REST routes work end-to-end against fixture data; the existing Shared Globals popover route is unaffected; the interface extension has not broken any R3-A / R3-B tests.
+
+#### R3-C-2 — Drawer UI translation
+
+**Checkpoint (2026-08-29) — implemented, kill-switch gated:**
+
+- New `assets/js/brand-control-center-app.js` (~900 lines) — IIFE state machine mirroring `media-manager-app.js`'s shape: `bootstrap()`/`config()`/`strings()`/`text()`/`templateText()` helpers, `state` store keyed on `requestSequence`, `ensureRoot()` lazy DOM build, event delegation on `[data-dbvc-ve-control-center-action]`, `mount()` at the bottom wiring document listeners and exposing `window.DBVCVisualEditorBrandControlCenter = {open, close, toggle, list, isOpen, getState}`. Covers every state in the accepted mockup's §4 matrix: loading-initial / list / opening (per row, `aria-busy="true"`) / opened (drawer + panel coexist via `is-focused-source` modifier) / open-error (inline row-notice with Dismiss, assertive for 409) / empty / empty-filtered / error (with Retry). Client-side filtering across tab / status / priority / field-family / search — no round-trips (pinned decision #3). Row-focus continuity across rerenders (`activeElement` snapshot pattern). Single polite `role="status"` live region (Component Map §6). `@media (prefers-reduced-motion: reduce)` suppresses spinner + slide transitions. Rows carry ONLY `data-public-id` — no `data-owner-id` / `data-field-key` / `data-selector` / `data-path` / `data-descriptor` / `data-token` (schematic §6 invariant 2, jsdom-asserted).
+- New `assets/css/control-center.css` — direct translation of the mockup's production-scoped `.dbvc-ve-control-center*` selectors. Drops all `.dbvc-ve-control-center-mockup__*` scaffolding. Every color/font/spacing draws from existing `--dbvc-ve-*` tokens in `overlay.css`. Component-local sizing (`--dbvc-ve-control-center-width: 480px`, admin-bar / toolbar-strip offsets, header/section padding, focus ring, shadow, chip padding) lives on `.dbvc-ve-control-center` itself.
+- One net-new `:root` token in `overlay.css`: `--dbvc-ve-z-drawer: 120015` (between panel 120010 and toolbar 120020). Every other overlay.css declaration untouched.
+- `AssetLoader::enqueue` gained a new branch mirroring the media-manager branch: `isControlCenterEnabled()` gate → enqueue `control-center.css` + `brand-control-center-app.js` (both dependencies on `dbvc-visual-editor-overlay`, `filemtime()`-versioned). New `controlCenter: { enabled, restBase }` block in the localized `DBVCVisualEditorBootstrap` payload; ~40 new `strings.controlCenter*` keys covering drawer copy (title, close, tabs, filter labels, chip labels, action labels, state-panel titles/bodies, live-region announcement templates, category labels). Bricks Builder exclusion inherits — the whole enqueue path is already skipped inside Bricks by `shouldLoadFrontendAssets()`.
+- `overlay-app.js` gained four surgical additions:
+  1. `isControlCenterEnabled()` + `dispatchControlCenterEvent(name, detail)` helpers next to their media-manager twins.
+  2. New toolbar entry inside the dock right after `shared-globals` — `createToolbarButtonMarkup('control-center', 'sliders', controlCenterLabel, 'dbvc-ve-toolbar__button--dock', false, {controls, expanded, hasPopup:'dialog'})` — gated by `isControlCenterEnabled()` (pinned decision #2). Existing Shared Globals (Layers) popover button is unchanged (D-063).
+  3. `handleToolbarClick` branch for `action === 'control-center'` dispatches `dbvc:visual-editor:control-center:toggle` and closes the media manager if it was open (mutual exclusion mirrors the existing media-manager branch).
+  4. `bindControlCenterBridge()` (called from `mount()`) attaches ONE document listener for `dbvc:visual-editor:absorb-descriptor`. On the drawer's successful open, it reuses the existing internal `mergeSharedGlobalInventory({descriptors, descriptorHydrations, fields:[]})` + `openToolbarDescriptorPanel(token)` helpers — the same path the Shared Globals popover already uses (pinned decision #1). Idempotent via `state.controlCenterBridgeBound`. Failure modes (existing marker on page) short-circuit to `locateFieldIndexMarker(token, true)` for parity with the popover.
+- jsdom coverage `tests/visual-editor-brand-control-center-state.test.cjs` (14 tests) covers: initial load renders row per item, forbidden-attr security invariant, tab click filters client-side (no fetch), chip toggle applies+clears per-axis filter, row Open POSTs correct payload + marks opening, successful open dispatches `absorb-descriptor` with the R3-C-1 payload, 404 renders inline row-notice with Dismiss, 409 renders assertive alert notice, empty list renders empty-registry panel-state, empty-filtered renders Clear-filters panel-state, Escape closes + restores focus, toggle-event lifecycle, single polite live region invariant, error panel-state + Retry recovers.
+- Kill switch stays default off; when off, `AssetLoader` enqueues nothing, `overlay-app.js`'s `isControlCenterEnabled()` returns false → toolbar entry hidden, bridge listener not bound, drawer JS never boots. When on, drawer opens against the R3-C-1 REST routes.
+- **Validation:** `node --test tests/visual-editor-brand-control-center-state.test.cjs` → **14 pass**. `node --test tests/visual-editor-media-manager-state.test.cjs` → **42 pass** (baseline preserved — the R3-B resume-file claim of 43 was stale; corrected). Full PHPUnit unchanged at **854 tests / 7 pre-existing failures**. Agent docs `54 / 439 / 0 unmapped` (one filter hash rotated on `AssetLoader::enqueue` due to the new `controlCenter` block adding lines above the existing `apply_filters` call; re-mapped).
+
+**Gate (met):** an authorized user with both switches on opens the drawer from the toolbar's `sliders` entry, sees the R3-B-registered Shared Globals controls, filters them client-side, opens one into the existing main editor panel, saves via the existing pipeline, and the drawer stays open.
 
 ### R3-D — Production hardening
 
@@ -360,6 +440,28 @@ Verification for the polish pass:
 - Verify R3 adds no new heavy editor/media enqueue and document the existing active-mode eager asset baseline.
 - Add browser coverage and release notes.
 - Document rollback and compatibility behavior.
+
+**Checkpoint (2026-08-29) — implemented; R3 core is ship-ready:**
+
+- New `tests/phpunit/VisualEditorControlCenterHardeningTest.php` (7 tests / 18 assertions) locks down the two invariants R3-D was created to prove:
+  1. **Kill-switch registration guarantee** — both REST routes register only when BOTH the master Visual Editor switch and `OPTION_CONTROL_CENTER_ENABLED` are on; they are absent when either half is off; a mid-session flip from on→off makes them unreachable on the very next REST-init dispatch (the test resets `$wp_rest_server` between passes to force a clean re-init). Complements the behavior-level guards from R3-C-1's `VisualEditorControlCenterRoutesTest` (10 tests) by adding the routes-registration axis those tests didn't cover.
+  2. **Bricks Builder isolation** — with `$_GET['bricks']='1'`, `AssetLoader::enqueue` short-circuits via `FrontendRuntimeGuard::shouldRunFrontend()` before reaching the drawer branch: `wp_style_is('dbvc-visual-editor-control-center')` and `wp_script_is('dbvc-visual-editor-control-center')` both return false. Also asserts the media-manager assets stay off, proving both feature branches sit behind the same guard.
+- Also asserts the "feature switch off → drawer assets do not enqueue" invariant with the edit-mode cookie forced on (isolates the feature-switch gate from the mode-active gate).
+- New `docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/BRAND-CONTROL-CENTER-RELEASE-NOTES-AND-ROLLBACK.md` — sibling to `MEDIA-MANAGER-RELEASE-NOTES-AND-ROLLBACK.md`. Covers *What shipped* (R3-A / R3-B / R3-C-1 / R3-C-2 / R3-D), *Feature gates & isolation (verified)* — every gate cross-referenced to the exact test that proves it, *Side effects & boundaries* (writes: none from R3 itself; storage: none beyond the one setting; enqueue footprint), *Residual / deferred* (real-browser QA of drawer + panel coexistence, marked as a residual gate along the Media Manager D-049 shape), *Rollback runbook* (6 numbered steps + pre-flip verification recipe), *Verification snapshot*.
+- No new REST routes; no descriptor changes; no drawer state additions; no new persistent option.
+- **Residual gate (browser QA) — CLOSED 2026-08-29** via `qa/R3-DRAWER-BROWSER-QA-REPORT.md`. All 12 checklist items pass at both supported viewports (1440×900 primary, 1280×720 secondary) against a live 400-row registry (1 Shared Globals + 399 Vertical). Drawer geometry, aria-expanded lifecycle, client-side tab/chip/search filtering (0 fetch calls during filter interactions — confirms pinned decision #3), Escape close + focus restore, security invariant (0 forbidden `data-*` on 400 rows), single polite live region, drawer + panel coexistence (drawer left 0–480, panel right 892–1272 at 1280×720 with 412px gap; drawer left 0–480, panel right 1044–1424 at 1440×900 with 564px gap), `@media (prefers-reduced-motion: reduce)` CSS rule confirmed, popover route response shape unchanged after R3-C-1 extraction (canonical top-level keys + 13-key field shape + `shared_relationship_collection` contract). Real Safari + real AT remain **permanently out of scope** per D-058. Media Manager D-049 shape maintained.
+- **Validation:** `vendor/bin/phpunit --filter "VisualEditorControlCenterHardening"` → **7 tests / 18 assertions OK**. Full PHP suite **861 tests, 7 pre-existing failures** (was 854/7 pre-R3-D). R3-A / R3-B / R3-C-1 / R3-BX / Media Manager subsets all unchanged. Drawer + Media Manager jsdom baselines preserved (14/42). Agent docs **54 curated / 439 discovered / 0 unmapped** (no new discoveries — R3-D added no REST or hook surface).
+
+**Gate (met):** the drawer + backend behave as specified when both switches are on; when either switch is off the routes are unreachable and no drawer asset enqueues; a Bricks Builder request never sees the drawer; the Shared Globals popover's response is unchanged; the release notes + rollback runbook cover the two-part kill switch and no-write-authority guarantees end-to-end. **R3 core (R3-A + R3-B + R3-C-1 + R3-C-2 + R3-D) is ship-ready.** Remaining follow-ups (R4 expanded UI, cross-repo VerticalControlProvider) are separate slices with their own gates.
+
+### Post-R3 extension point (2026-08-29)
+
+Landed alongside the VerticalControlProvider cross-repo slice to unblock external providers without touching addon source:
+
+- **`dbvc_visual_editor_control_center_providers`** filter in `Bootstrap\Addon::register()` — fires only when both parts of the two-part kill switch are on (respects D-063). Returned `ControlProvider` instances register on the runtime `ControlRegistry` after the built-in `SharedGlobalsControlProvider`. Non-`ControlProvider` entries are silently skipped. Same discovery-only contract; `buildDescriptor()` may return null (rows surface as `status="unsupported"` and never call the open route); no new mutation authority; `MutationService` still gates every save.
+- **`DBVC_Visual_Editor_Addon::get_curation_export_path()`** static helper + **`dbvc_visual_editor_curation_export_path`** filter — deterministic absolute path to the R3-BX curation JSON (`addons/visual-editor/curation/vertical-approved-controls.json`), computed from bootstrap.php's own directory so it survives a plugin-folder rename. External providers use this instead of hardcoding a plugin folder name.
+- Tests: `VisualEditorControlCenterProvidersFilterTest` (7 tests / 11 assertions) — filter fires only under both-switches-on, external ControlProvider is registered, non-provider entries are silently skipped, kill-switch flip in either half stops the filter from firing, helper returns the committed export by default and honors its filter, helper falls back on non-string filter return.
+- Agent docs: 2 new discovered surfaces (`hook.extension_point.dbvc_visual_editor_control_center_providers.0d92c6ae`, `hook.extension_point.dbvc_visual_editor_curation_export_path.03b25a10`) mapped; 3 sibling filter hashes rotated by line shifts from the additions.
 
 ## Data and API rules
 

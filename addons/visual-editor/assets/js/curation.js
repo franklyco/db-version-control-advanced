@@ -286,6 +286,15 @@
         var parts = raw.split(':');
         var field = parts.shift();
         var value = parts.join(':');
+
+        // Special actions route to dedicated endpoints — they can't be
+        // expressed as a single {field: value} broadcast because each row
+        // gets a different value.
+        if (field === 'special' && value === 'adopt_suggested_priorities') {
+            bulkAdoptSuggestedPriorities(ids, status);
+            return;
+        }
+
         var decision = {};
         decision[field] = value;
 
@@ -300,6 +309,28 @@
             }
             status.textContent = (i18n.saved || 'Saved') + ' (' + (json.written || 0) + ')';
             // Reload to reflect canonical server state on every affected row + summary.
+            window.location.reload();
+        });
+    }
+
+    function bulkAdoptSuggestedPriorities(ids, status) {
+        status.textContent = i18n.saving || 'Saving…';
+        postForm(config.actions.adopt_priorities, {
+            ids: ids
+        }, function (err, json) {
+            if (err || !json || !json.ok) {
+                status.textContent = i18n.error || 'Save failed';
+                return;
+            }
+            var written = (json.written || 0);
+            var skippedNo = (json.skipped_no_suggestion || 0);
+            var msg = (i18n.saved || 'Saved') + ' (' + written + ')';
+            if (skippedNo > 0) {
+                msg += ' · ' + skippedNo + ' skipped (no suggestion)';
+            }
+            status.textContent = msg;
+            // Reload so every affected row's Priority radios reflect the
+            // canonical server state without per-row JS repaint.
             window.location.reload();
         });
     }
@@ -424,10 +455,68 @@
             }
             if (target.matches('[data-dbvc-ve-curation="export"]')) {
                 exportSeed();
+                return;
+            }
+            if (target.matches('[data-dbvc-ve-curation="adopt-priority"]')) {
+                adoptSuggestedPriority(target);
             }
         });
     }
 
+    var PRIORITY_REC_TOGGLE_KEY = 'dbvc_ve_curation_show_priority_rec';
+
+    function applyPriorityRecToggleState(checked) {
+        var table = doc.querySelector('.dbvc-ve-curation__table');
+        if (!table) {
+            return;
+        }
+        table.classList.toggle('is-hiding-priority-rec', !checked);
+        try {
+            window.localStorage.setItem(PRIORITY_REC_TOGGLE_KEY, checked ? '1' : '0');
+        } catch (e) {
+            // localStorage may be unavailable (private window, blocked storage) —
+            // toggle still works for the session, just doesn't persist.
+        }
+    }
+
+    function restorePriorityRecToggleState() {
+        var toggle = doc.querySelector('[data-dbvc-ve-curation="toggle-priority-rec"]');
+        if (!toggle) {
+            return;
+        }
+        var stored = null;
+        try {
+            stored = window.localStorage.getItem(PRIORITY_REC_TOGGLE_KEY);
+        } catch (e) {
+            stored = null;
+        }
+        if (stored === '0') {
+            toggle.checked = false;
+        } else if (stored === '1') {
+            toggle.checked = true;
+        }
+        applyPriorityRecToggleState(toggle.checked);
+        toggle.addEventListener('change', function () {
+            applyPriorityRecToggleState(toggle.checked);
+        });
+    }
+
+    function adoptSuggestedPriority(button) {
+        var row = button.closest('.dbvc-ve-curation__row');
+        if (!row) {
+            return;
+        }
+        var priority = button.getAttribute('data-priority') || '';
+        var radio = row.querySelector('[data-dbvc-ve-curation="field"][data-field="client_priority"][value="' + priority + '"]');
+        if (!radio) {
+            return;
+        }
+        radio.checked = true;
+        // Fire the same save path as a manual radio click.
+        saveRow(row);
+    }
+
     bindEvents();
     applyFilters();
+    restorePriorityRecToggleState();
 }());

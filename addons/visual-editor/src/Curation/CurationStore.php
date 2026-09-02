@@ -131,6 +131,51 @@ final class CurationStore
     }
 
     /**
+     * Apply a DIFFERENT partial decision to each id in the map. Unlike
+     * setDecisionsBulk (which broadcasts one partial to many ids), this method
+     * accepts a `[id => partial]` shape so the caller can write, e.g., a
+     * per-row suggested priority in a single option write. Sanitisation +
+     * validation runs per id (same as setDecision); malformed ids are silently
+     * skipped and counted in the return value's `skipped`.
+     *
+     * @param array<string, array<string, mixed>> $map Keyed by canonical id.
+     * @return array{written:int,skipped:int}
+     */
+    public function setDecisionsPerId(array $map)
+    {
+        $all = $this->getAll();
+        $written = 0;
+        $skipped = 0;
+
+        foreach ($map as $id => $partial) {
+            $sanitized_id = $this->sanitizeId((string) $id);
+            if ($sanitized_id === '' || ! is_array($partial)) {
+                $skipped++;
+                continue;
+            }
+            $existing = isset($all[$sanitized_id]) ? $all[$sanitized_id] : $this->emptyDecision();
+            $merged = $this->normalizeDecision(array_merge($existing, $partial), true);
+
+            if ($this->isEmptyDecision($merged)) {
+                unset($all[$sanitized_id]);
+            } else {
+                $all[$sanitized_id] = $merged;
+            }
+            $written++;
+        }
+
+        if ($written === 0) {
+            return ['written' => 0, 'skipped' => $skipped];
+        }
+        $ok = update_option(self::OPTION_KEY, $all, false);
+
+        return [
+            'written' => $ok ? $written : 0,
+            'skipped' => $skipped,
+        ];
+    }
+
+    /**
      * @param string $id
      * @return bool
      */

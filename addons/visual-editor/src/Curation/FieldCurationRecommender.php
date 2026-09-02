@@ -212,6 +212,133 @@ final class FieldCurationRecommender
     }
 
     /**
+     * Priority-tier keyword rules. Order matters within each tier: the first
+     * matching tier wins. `must` runs before `should`, `should` before `nice`.
+     * Matched against the lowercased `field_name_path + field_label + options_page`
+     * so tab / group / owner-page context can inform the tier (e.g. anything on
+     * `advanced-settings` under `vertical_global_palette` is a brand-critical color).
+     */
+    private const MUST_KEYWORDS = [
+        // Identity-critical brand assets every client edits day-one.
+        'main_logo', 'logo_mark', 'favicon',
+        'business_name', 'brand_name',
+        'tagline', 'phone_number_primary', 'email_primary',
+        'address_primary', 'office_manager',
+        // The six core Vertical brand palette slots — the visual identity anchors.
+        'colorprimary', 'colorsecondary', 'colordark', 'colorlight',
+        'coloraccent', 'colorneutral',
+    ];
+
+    private const SHOULD_KEYWORDS = [
+        // Common brand + content edits most clients touch eventually.
+        'bio', 'mission', 'trust_signal',
+        'footer_logo', 'brand_content', 'brand_verbiage',
+        'phone_number_secondary', 'email_secondary', 'sms',
+        'policy', 'disclaimer', 'terms', 'privacy', 'refund', 'cancellation',
+        'banner', 'announcement',
+        'cta', 'button_1', 'button_2', 'custom_secondary_cta',
+        'social_default', 'social_profiles', 'knowledge_graph',
+        'partner_logo', 'partner_logos',
+        'hours', 'availability',
+        'nav_header', 'header_', 'footer_',
+        'popup', 'exitpopup',
+        'default_posts', 'default_terms',
+        'custom_title_', 'custom_name_',
+        // Non-core Vertical palette slots — visually meaningful but less identity-critical.
+        'colorheading', 'colortext', 'colortextlink', 'colorbodybg',
+        'colorbutton', 'colorborder', 'colorsuccess', 'colorempha',
+        'colorneutralalt', 'colortransbg',
+    ];
+
+    private const NICE_KEYWORDS = [
+        // Advanced / stylistic / occasional-touch controls.
+        'preset', 'style_master', 'layout_', 'components_',
+        'interaction_', 'border_', 'radius', 'spacing', 'surface', 'corner',
+        'textures', 'filters', 'bg_noise', 'effects',
+        'enable_effects', 'card_enable', 'card_options',
+        'breadcrumbs', 'archive_', 'floating_menu', 'float_navs',
+        'mega_menu', 'mm_', 'fullscreen_',
+        'schema_', 'sitemap_ui', 'seo_local',
+    ];
+
+    /**
+     * Recommend a priority tier for a candidate. Returns an empty priority when
+     * the recommender declined to recommend (e.g. the candidate itself is being
+     * recommended to ignore or defer — priority only makes sense for candidates
+     * that could become approved controls).
+     *
+     * @param array<string, mixed> $candidate
+     * @return array{priority:string,reasoning:string}
+     */
+    public function recommendPriority(array $candidate)
+    {
+        $decision = $this->recommend($candidate);
+        $primary = (string) ($decision['recommendation'] ?? 'review');
+
+        // Priority only makes sense for candidates that could become approved.
+        // A field the recommender is already asking you to ignore or defer has
+        // no meaningful priority to suggest.
+        if ($primary === 'ignore' || $primary === 'defer') {
+            return [
+                'priority' => '',
+                'reasoning' => __('No priority recommendation — the recommender suggests ignore/defer for this field.', 'dbvc'),
+            ];
+        }
+
+        $needle = strtolower(
+            (string) ($candidate['field_name_path'] ?? '') . ' '
+            . (string) ($candidate['field_label'] ?? '') . ' '
+            . (string) ($candidate['options_page'] ?? '')
+        );
+
+        foreach (self::MUST_KEYWORDS as $keyword) {
+            if (strpos($needle, strtolower($keyword)) !== false) {
+                return [
+                    'priority' => 'must',
+                    'reasoning' => sprintf(
+                        /* translators: %s: matched keyword */
+                        __('Matched must-tier keyword "%s" — identity-critical, every client edits this early.', 'dbvc'),
+                        $keyword
+                    ),
+                ];
+            }
+        }
+
+        foreach (self::SHOULD_KEYWORDS as $keyword) {
+            if (strpos($needle, strtolower($keyword)) !== false) {
+                return [
+                    'priority' => 'should',
+                    'reasoning' => sprintf(
+                        /* translators: %s: matched keyword */
+                        __('Matched should-tier keyword "%s" — common brand/content edit most clients touch eventually.', 'dbvc'),
+                        $keyword
+                    ),
+                ];
+            }
+        }
+
+        foreach (self::NICE_KEYWORDS as $keyword) {
+            if (strpos($needle, strtolower($keyword)) !== false) {
+                return [
+                    'priority' => 'nice',
+                    'reasoning' => sprintf(
+                        /* translators: %s: matched keyword */
+                        __('Matched nice-tier keyword "%s" — advanced/stylistic control, occasional edits.', 'dbvc'),
+                        $keyword
+                    ),
+                ];
+            }
+        }
+
+        // Default when nothing matches — safe middle. The maintainer's
+        // annotation guidance is "when in doubt, `should`."
+        return [
+            'priority' => 'should',
+            'reasoning' => __('No keyword match — default to should (safe middle per the annotation guidance).', 'dbvc'),
+        ];
+    }
+
+    /**
      * @param string $field_type
      * @return string
      */

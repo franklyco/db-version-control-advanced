@@ -74,6 +74,13 @@ final class AssetLoader
         $media_manager_enabled = $this->isMediaManagerEnabled();
         $media_manager_style_version = $this->resolveAssetVersion('assets/css/media-manager.css');
         $media_manager_script_version = $this->resolveAssetVersion('assets/js/media-manager-app.js');
+        // R3-C-2: Brand Control Center drawer assets are only enqueued when both the master
+        // Visual Editor switch and OPTION_CONTROL_CENTER_ENABLED are on (D-063). Bricks
+        // Builder exclusion inherits — this whole enqueue path is already skipped inside
+        // Bricks by the parent shouldLoadFrontendAssets() check.
+        $control_center_enabled = $this->isControlCenterEnabled();
+        $control_center_style_version = $this->resolveAssetVersion('assets/css/control-center.css');
+        $control_center_script_version = $this->resolveAssetVersion('assets/js/brand-control-center-app.js');
         $overlay_dependencies = ['dbvc-visual-editor-api-client', 'dbvc-visual-editor-media-frame-factory'];
 
         if (function_exists('wp_enqueue_editor')) {
@@ -140,6 +147,23 @@ final class AssetLoader
             );
         }
 
+        if ($control_center_enabled) {
+            wp_enqueue_style(
+                'dbvc-visual-editor-control-center',
+                $base_url . 'assets/css/control-center.css',
+                ['dbvc-visual-editor-overlay'],
+                $control_center_style_version
+            );
+
+            wp_enqueue_script(
+                'dbvc-visual-editor-control-center',
+                $base_url . 'assets/js/brand-control-center-app.js',
+                ['dbvc-visual-editor-overlay'],
+                $control_center_script_version,
+                true
+            );
+        }
+
         wp_localize_script(
             'dbvc-visual-editor-overlay',
             'DBVCVisualEditorBootstrap',
@@ -164,6 +188,16 @@ final class AssetLoader
                     // ephemeral scan as an automatic fallback. Filterable so a site can
                     // force the scan-only path if needed.
                     'indexList' => (bool) apply_filters('dbvc_visual_editor_media_index_list_enabled', $media_manager_enabled),
+                ],
+                // R3-C-2: Brand Control Center drawer bootstrap. `restBase` is the
+                // session-neutral prefix; the drawer builds session-scoped URLs as
+                // `restBase + '/session/' + sessionId + '/control-center/{controls|open}'`
+                // — matches the R3-C-1 route shape (session-scoped so the open route can
+                // attach its minted descriptor to the same Visual Editor session the
+                // popover uses).
+                'controlCenter' => [
+                    'enabled' => $control_center_enabled,
+                    'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor')),
                 ],
                 'strings' => [
                     'modeActive' => __('Visual Editor active', 'dbvc'),
@@ -354,6 +388,57 @@ final class AssetLoader
                     'toolbarGoToObject' => __('Go to object', 'dbvc'),
                     'toolbarMediaManager' => __('Media Manager', 'dbvc'),
                     'toolbarSharedGlobals' => __('Shared globals', 'dbvc'),
+                    'toolbarControlCenter' => __('Global Brand Controls', 'dbvc'),
+                    'controlCenterTitle' => __('Global Brand Controls', 'dbvc'),
+                    'controlCenterClose' => __('Close Global Brand Control Center', 'dbvc'),
+                    'controlCenterSummary' => __('{count} controls', 'dbvc'),
+                    'controlCenterSearchLabel' => __('Search controls', 'dbvc'),
+                    'controlCenterSearchPlaceholder' => __('Search controls…', 'dbvc'),
+                    'controlCenterTabAll' => __('All', 'dbvc'),
+                    'controlCenterTablist' => __('Category', 'dbvc'),
+                    'controlCenterStatusLabel' => __('Status', 'dbvc'),
+                    'controlCenterPriorityLabel' => __('Priority', 'dbvc'),
+                    'controlCenterFieldLabel' => __('Field', 'dbvc'),
+                    'controlCenterStatusAvailable' => __('Available', 'dbvc'),
+                    'controlCenterStatusInspectOnly' => __('View only', 'dbvc'),
+                    'controlCenterStatusUnsupported' => __('Unsupported', 'dbvc'),
+                    'controlCenterStatusUnavailable' => __('Unavailable', 'dbvc'),
+                    'controlCenterActionOpen' => __('Open', 'dbvc'),
+                    'controlCenterActionView' => __('View', 'dbvc'),
+                    'controlCenterActionOpening' => __('Opening…', 'dbvc'),
+                    'controlCenterActionUnsupported' => __('Unsupported', 'dbvc'),
+                    'controlCenterActionUnavailable' => __('Unavailable', 'dbvc'),
+                    'controlCenterClearFilters' => __('Clear filters', 'dbvc'),
+                    'controlCenterDismiss' => __('Dismiss', 'dbvc'),
+                    'controlCenterRetry' => __('Retry', 'dbvc'),
+                    'controlCenterFooterCount' => __('{visible} of {total} controls', 'dbvc'),
+                    'controlCenterFooterHidden' => __('{hidden} hidden by filters', 'dbvc'),
+                    'controlCenterLoadingTitle' => __('Loading Global Brand Controls', 'dbvc'),
+                    'controlCenterLoadingBody' => __('Fetching registered controls for this session.', 'dbvc'),
+                    'controlCenterEmptyTitle' => __('No global controls registered yet', 'dbvc'),
+                    'controlCenterEmptyBody' => __('Once a provider registers controls, they will appear here.', 'dbvc'),
+                    'controlCenterEmptyFilteredTitle' => __('No controls match these filters', 'dbvc'),
+                    'controlCenterEmptyFilteredBody' => __('Clear the filters to see every registered control again.', 'dbvc'),
+                    'controlCenterErrorTitle' => __('Controls could not be loaded', 'dbvc'),
+                    'controlCenterErrorBody' => __('The registered-controls request failed. Retry when you are ready.', 'dbvc'),
+                    'controlCenterOpenErrorUnknown' => __('That control is no longer available.', 'dbvc'),
+                    'controlCenterOpenErrorForbidden' => __('You cannot edit that control right now.', 'dbvc'),
+                    'controlCenterOpenErrorRefresh' => __('The control changed since it was listed. Refresh the drawer before trying again.', 'dbvc'),
+                    'controlCenterAnnounceOpened' => __('Global Brand Controls opened. Showing {count} registered controls.', 'dbvc'),
+                    'controlCenterAnnounceClosed' => __('Global Brand Controls closed.', 'dbvc'),
+                    'controlCenterAnnounceFiltered' => __('{count} controls visible after filters.', 'dbvc'),
+                    'controlCenterAnnounceOpenSuccess' => __('Opened {label}.', 'dbvc'),
+                    'controlCenterAnnounceOpenError' => __('Could not open {label}. {message}', 'dbvc'),
+                    'controlCenterCategoryGlobals' => __('Globals', 'dbvc'),
+                    'controlCenterCategoryBrand' => __('Brand', 'dbvc'),
+                    'controlCenterCategoryContact' => __('Contact', 'dbvc'),
+                    'controlCenterCategoryContent' => __('Content', 'dbvc'),
+                    'controlCenterCategoryDesign' => __('Design', 'dbvc'),
+                    'controlCenterCategoryLayout' => __('Layout', 'dbvc'),
+                    'controlCenterCategoryLegal' => __('Legal', 'dbvc'),
+                    'controlCenterCategorySeo' => __('SEO', 'dbvc'),
+                    'controlCenterCategoryGeneral' => __('General', 'dbvc'),
+                    'controlCenterOwnerHint' => __('{ownerType}/{ownerSubtype} · {fieldFamily}', 'dbvc'),
                     'toolbarSharedGlobalsLoading' => __('Loading shared globals...', 'dbvc'),
                     'toolbarSharedGlobalsFailed' => __('Shared globals could not be loaded.', 'dbvc'),
                     'toolbarMore' => __('More options', 'dbvc'),
@@ -625,5 +710,19 @@ final class AssetLoader
         return class_exists('\\DBVC_Visual_Editor_Addon')
             && method_exists('\\DBVC_Visual_Editor_Addon', 'is_media_manager_enabled')
             && \DBVC_Visual_Editor_Addon::is_media_manager_enabled();
+    }
+
+    /**
+     * R3-C-2 — mirror of {@see isMediaManagerEnabled()}. The two-part kill switch
+     * (master Visual Editor switch AND `dbvc_visual_editor_control_center_enabled`)
+     * is enforced by `DBVC_Visual_Editor_Addon::is_control_center_enabled()`.
+     *
+     * @return bool
+     */
+    private function isControlCenterEnabled()
+    {
+        return class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_control_center_enabled')
+            && \DBVC_Visual_Editor_Addon::is_control_center_enabled();
     }
 }

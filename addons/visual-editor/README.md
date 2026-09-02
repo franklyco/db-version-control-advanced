@@ -165,7 +165,7 @@ This addon now lives inside the DBVC repo at:
 
 - `ARCHITECTURE.md`
 - `docs/handoffs/DBVC_VISUAL_EDITOR_HANDOFF.md` - current detailed implementation handoff and next-slice boundary
-- `docs/handoffs/DBVC_MEDIA_MANAGER_RESUME_PROMPT.md` - token-conscious launcher for a fresh Codex task
+- `docs/handoffs/DBVC_R4C_RESUME_PROMPT.md` - fresh copy/paste resume for the next slice (R4-C production drawer)
 - `docs/knowledge/HOOK_USAGE_STRATEGY.md`
 - `docs/knowledge/DATA_CONTRACTS.md`
 - `docs/knowledge/NATIVE_ACF_LOOP_HARDENING_MAP.md`

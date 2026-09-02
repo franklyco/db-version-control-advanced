@@ -34,6 +34,7 @@ final class CurationPage
     private const AJAX_ACTION_SAVE = 'dbvc_visual_editor_curation_save';
     private const AJAX_ACTION_BULK = 'dbvc_visual_editor_curation_bulk_save';
     private const AJAX_ACTION_EXPORT = 'dbvc_visual_editor_curation_export';
+    private const AJAX_ACTION_ADOPT_PRIORITIES = 'dbvc_visual_editor_curation_adopt_priorities';
 
     /**
      * @return void
@@ -45,6 +46,7 @@ final class CurationPage
         add_action('wp_ajax_' . self::AJAX_ACTION_SAVE, [$this, 'ajaxSaveDecision']);
         add_action('wp_ajax_' . self::AJAX_ACTION_BULK, [$this, 'ajaxBulkSaveDecisions']);
         add_action('wp_ajax_' . self::AJAX_ACTION_EXPORT, [$this, 'ajaxExport']);
+        add_action('wp_ajax_' . self::AJAX_ACTION_ADOPT_PRIORITIES, [$this, 'ajaxAdoptPriorities']);
     }
 
     /**
@@ -116,6 +118,7 @@ final class CurationPage
                 'save' => self::AJAX_ACTION_SAVE,
                 'bulk' => self::AJAX_ACTION_BULK,
                 'export' => self::AJAX_ACTION_EXPORT,
+                'adopt_priorities' => self::AJAX_ACTION_ADOPT_PRIORITIES,
             ],
             'i18n' => [
                 'saving' => __('Saving…', 'dbvc'),
@@ -213,6 +216,74 @@ final class CurationPage
     }
 
     /**
+     * Bulk "adopt suggested priorities for selected rows" — the client posts
+     * a `priorities` map keyed by canonical id whose values are the
+     * recommender's per-row suggested tier. We re-derive the suggestions on
+     * the server (the client-sent values are guidance only; we never trust
+     * client-supplied field values as authoritative) and write them per-id
+     * in one option update via {@see CurationStore::setDecisionsPerId}.
+     *
+     * @return void
+     */
+    public function ajaxAdoptPriorities()
+    {
+        if (! $this->verifyAjax()) {
+            return;
+        }
+
+        $ids_raw = isset($_POST['ids']) && is_array($_POST['ids'])
+            ? array_map('wp_unslash', $_POST['ids'])
+            : [];
+        if (empty($ids_raw)) {
+            wp_send_json([
+                'ok' => true,
+                'written' => 0,
+                'skipped' => 0,
+                'message' => __('No rows selected.', 'dbvc'),
+            ]);
+            return;
+        }
+
+        // Build canonical id → server-recomputed suggested priority map. Any
+        // id whose recommender-declined the suggestion (ignore/defer primary)
+        // is silently skipped — nothing to adopt for those.
+        $provider = new FieldCandidateProvider();
+        $recommender = new FieldCurationRecommender();
+        $candidates_by_id = [];
+        foreach ($provider->getCandidates() as $c) {
+            $candidates_by_id[(string) ($c['id'] ?? '')] = $c;
+        }
+
+        $map = [];
+        $skipped_no_suggestion = 0;
+        $skipped_unknown_id = 0;
+        foreach ($ids_raw as $id) {
+            $id = (string) $id;
+            if (! isset($candidates_by_id[$id])) {
+                $skipped_unknown_id++;
+                continue;
+            }
+            $rec = $recommender->recommendPriority($candidates_by_id[$id]);
+            $priority = (string) ($rec['priority'] ?? '');
+            if ($priority === '') {
+                $skipped_no_suggestion++;
+                continue;
+            }
+            $map[$id] = ['client_priority' => $priority];
+        }
+
+        $store = new CurationStore();
+        $result = $store->setDecisionsPerId($map);
+
+        wp_send_json([
+            'ok' => true,
+            'written' => (int) ($result['written'] ?? 0),
+            'skipped_no_suggestion' => $skipped_no_suggestion,
+            'skipped_unknown_id' => $skipped_unknown_id,
+        ]);
+    }
+
+    /**
      * @return void
      */
     public function ajaxExport()
@@ -298,6 +369,7 @@ final class CurationPage
             $id = (string) $candidate['id'];
             $candidate['_decision'] = isset($decisions[$id]) ? $decisions[$id] : null;
             $candidate['_recommendation'] = $recommender->recommend($candidate);
+            $candidate['_priority_rec'] = $recommender->recommendPriority($candidate);
             $out[] = $candidate;
         }
 
@@ -385,6 +457,10 @@ final class CurationPage
                     <?php esc_html_e('Export curated seed', 'dbvc'); ?>
                 </button>
                 <span class="dbvc-ve-curation__export-status" data-dbvc-ve-curation="export-status" aria-live="polite"></span>
+                <label class="dbvc-ve-curation__toggle" style="margin-left:1em;">
+                    <input type="checkbox" data-dbvc-ve-curation="toggle-priority-rec" checked />
+                    <?php esc_html_e('Show suggested-priority column', 'dbvc'); ?>
+                </label>
             </div>
 
             <form method="get" action="" class="dbvc-ve-curation__filters" data-dbvc-ve-curation="filter-form">
@@ -479,6 +555,7 @@ final class CurationPage
                         <option value="decision:ignore"><?php esc_html_e('Set decision → Ignore', 'dbvc'); ?></option>
                         <option value="decision:defer"><?php esc_html_e('Set decision → Defer', 'dbvc'); ?></option>
                         <option value="decision:"><?php esc_html_e('Clear decision', 'dbvc'); ?></option>
+                        <option value="special:adopt_suggested_priorities"><?php esc_html_e('Adopt suggested priorities for selected rows', 'dbvc'); ?></option>
                         <?php foreach ($categories as $category) : ?>
                             <option value="category:<?php echo esc_attr($category); ?>">
                                 <?php
@@ -502,15 +579,16 @@ final class CurationPage
             <table class="wp-list-table widefat striped dbvc-ve-curation__table">
                 <colgroup>
                     <col style="width:32px" />
-                    <col style="width:11%" />
-                    <col style="width:13%" />
-                    <col style="width:7%" />
                     <col style="width:10%" />
-                    <col style="width:11%" />
-                    <col style="width:11%" />
+                    <col style="width:12%" />
                     <col style="width:7%" />
                     <col style="width:9%" />
+                    <col style="width:10%" />
+                    <col style="width:10%" />
+                    <col style="width:7%" />
                     <col style="width:8%" />
+                    <col style="width:8%" />
+                    <col class="dbvc-ve-curation__col-priority-rec" style="width:7%" />
                     <col style="width:8%" />
                     <col style="width:auto" />
                 </colgroup>
@@ -528,19 +606,20 @@ final class CurationPage
                         <th><?php esc_html_e('Recommendation', 'dbvc'); ?></th>
                         <th><?php esc_html_e('Category', 'dbvc'); ?></th>
                         <th><?php esc_html_e('Decision', 'dbvc'); ?></th>
+                        <th class="dbvc-ve-curation__col-priority-rec"><?php esc_html_e('Suggested priority', 'dbvc'); ?></th>
                         <th><?php esc_html_e('Priority', 'dbvc'); ?></th>
                         <th><?php esc_html_e('Notes', 'dbvc'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($rows)) : ?>
-                        <tr><td colspan="12"><?php esc_html_e('No candidates discovered. Confirm the Visual Editor curation tool has ACF options-page groups to walk.', 'dbvc'); ?></td></tr>
+                        <tr><td colspan="13"><?php esc_html_e('No candidates discovered. Confirm the Visual Editor curation tool has ACF options-page groups to walk.', 'dbvc'); ?></td></tr>
                     <?php else : ?>
                         <?php foreach ($rows as $row) : ?>
                             <?php $this->renderRow($row, $categories); ?>
                         <?php endforeach; ?>
                         <tr class="dbvc-ve-curation__no-match-row" data-dbvc-ve-curation="no-match" hidden>
-                            <td colspan="12"><?php esc_html_e('No candidates match the current filters.', 'dbvc'); ?></td>
+                            <td colspan="13"><?php esc_html_e('No candidates match the current filters.', 'dbvc'); ?></td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -569,6 +648,9 @@ final class CurationPage
         $notes_value = (string) ($decision['notes'] ?? '');
         $rec_value = (string) ($recommendation['recommendation'] ?? 'review');
         $rec_reasoning = (string) ($recommendation['reasoning'] ?? '');
+        $priority_rec = isset($row['_priority_rec']) && is_array($row['_priority_rec']) ? $row['_priority_rec'] : [];
+        $priority_rec_value = (string) ($priority_rec['priority'] ?? '');
+        $priority_rec_reasoning = (string) ($priority_rec['reasoning'] ?? '');
         $search_haystack = strtolower(
             (string) $row['field_label'] . ' '
             . (string) $row['field_name_path'] . ' '
@@ -616,6 +698,18 @@ final class CurationPage
                     <label><input type="radio" name="decision-<?php echo esc_attr($id); ?>" value="ignore" data-dbvc-ve-curation="field" data-field="decision" <?php checked($decision_value, 'ignore'); ?> /> <?php esc_html_e('Ignore', 'dbvc'); ?></label>
                     <label><input type="radio" name="decision-<?php echo esc_attr($id); ?>" value="defer" data-dbvc-ve-curation="field" data-field="decision" <?php checked($decision_value, 'defer'); ?> /> <?php esc_html_e('Defer', 'dbvc'); ?></label>
                 </div>
+            </td>
+            <td class="dbvc-ve-curation__col-priority-rec">
+                <?php if ($priority_rec_value !== '') : ?>
+                    <span class="dbvc-ve-curation__chip is-priority-<?php echo esc_attr($priority_rec_value); ?>" title="<?php echo esc_attr($priority_rec_reasoning); ?>">
+                        <?php echo esc_html($priority_rec_value); ?>
+                    </span>
+                    <button type="button" class="button button-small dbvc-ve-curation__adopt-priority" data-dbvc-ve-curation="adopt-priority" data-priority="<?php echo esc_attr($priority_rec_value); ?>" title="<?php esc_attr_e('Adopt the suggested priority for this row', 'dbvc'); ?>">
+                        <?php esc_html_e('adopt', 'dbvc'); ?>
+                    </button>
+                <?php else : ?>
+                    <span class="dbvc-ve-curation__chip is-review" title="<?php echo esc_attr($priority_rec_reasoning); ?>">—</span>
+                <?php endif; ?>
             </td>
             <td>
                 <div class="dbvc-ve-curation__radio-group">

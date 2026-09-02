@@ -1323,14 +1323,15 @@
                     "type": "rest",
                     "identifier": "Additional current-checkout rest routes surfaces",
                     "discovery_ids": [
-                        "rest.02228c99c1991532",
                         "rest.10a68abc63126bd5",
                         "rest.164c8acc40770023",
                         "rest.2c0b6e7098b6d326",
+                        "rest.2c6592da113e4d85",
                         "rest.2cea40c122dba16c",
                         "rest.3a99c7ffca15a1c2",
                         "rest.3b1b46940cb41b28",
                         "rest.47c721585ff7ce62",
+                        "rest.4c1cbc65dd5b2863",
                         "rest.599cb69c24383a95",
                         "rest.66ba26eaebd96d17",
                         "rest.6c0468163a3b14a9",
@@ -1340,6 +1341,8 @@
                         "rest.954a9d0af8729b2f",
                         "rest.962ec3486bcf625f",
                         "rest.962f44fa8ec77c12",
+                        "rest.8b80558338c2edeb",
+                        "rest.e206ff4efb17a63a",
                         "rest.b7c88c490d503a92",
                         "rest.c37fc7ce7476e84f",
                         "rest.d06f6d2ec8fd95b3",
@@ -1361,14 +1364,17 @@
                         "hook.extension_point.dbvc_visual_editor_audit_event.14ad54ad",
                         "hook.extension_point.dbvc_visual_editor_base_capability.229f85de",
                         "hook.extension_point.dbvc_visual_editor_descriptor_batch_limit.bb03e273",
-                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.cbf73c02",
-                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.4344824c",
+                        "hook.extension_point.dbvc_visual_editor_control_center_description.5d884d1f",
+                        "hook.extension_point.dbvc_visual_editor_control_center_providers.799148fb",
+                        "hook.extension_point.dbvc_visual_editor_curation_export_path.03b25a10",
+                        "hook.extension_point.dbvc_visual_editor_excluded_post_types.8efdf138",
+                        "hook.extension_point.dbvc_visual_editor_excluded_taxonomies.3b704999",
                         "hook.extension_point.dbvc_visual_editor_invalidate_cache.f9b6eb43",
-                        "hook.extension_point.dbvc_visual_editor_control_registry_invalid.2129b02e",
+                        "hook.extension_point.dbvc_visual_editor_control_registry_invalid.183d21e7",
                         "hook.extension_point.dbvc_visual_editor_media_index_build_completed.144d938f",
                         "hook.extension_point.dbvc_visual_editor_media_index_exported.90047f02",
                         "hook.extension_point.dbvc_visual_editor_media_index_imported.fbb45cc9",
-                        "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.784de0da",
+                        "hook.extension_point.dbvc_visual_editor_media_index_list_enabled.c8ae9455",
                         "hook.extension_point.dbvc_visual_editor_media_index_rebuild_skipped.a757fac4",
                         "hook.extension_point.dbvc_visual_editor_media_index_rebuild_started.33810e3e",
                         "hook.extension_point.dbvc_visual_editor_media_index_reconciled.9dba836a",
@@ -1382,7 +1388,7 @@
                         "hook.extension_point.dbvc_visual_editor_session_descriptor_compression_level.67cf1221",
                         "hook.extension_point.dbvc_visual_editor_session_refresh_interval.8d796a0d",
                         "hook.extension_point.dbvc_visual_editor_session_ttl.0086f4bd",
-                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.e8f6d82e"
+                        "hook.extension_point.dbvc_visual_editor_shared_global_field_names.6d6d3290"
                     ]
                 },
                 {
@@ -1398,16 +1404,17 @@
                     "type": "admin",
                     "identifier": "R3-BX Brand Control Center curation admin submenu",
                     "discovery_ids": [
-                        "admin.menu.2ef573d2f42e"
+                        "admin.menu.814631a2c145"
                     ]
                 },
                 {
                     "type": "ajax",
-                    "identifier": "R3-BX curation admin-ajax handlers (kill-switch gated, manage_options + nonce)",
+                    "identifier": "R3-BX curation admin-ajax handlers (kill-switch gated, manage_options + nonce): save decision, bulk save, export seed, adopt suggested priorities",
                     "discovery_ids": [
-                        "hook.listener.wp_ajax_.03deb29a",
-                        "hook.listener.wp_ajax_.16e487eb",
-                        "hook.listener.wp_ajax_.360ff9f6"
+                        "hook.listener.wp_ajax_.07655148",
+                        "hook.listener.wp_ajax_.b8aa9da8",
+                        "hook.listener.wp_ajax_.ddf64420",
+                        "hook.listener.wp_ajax_.e50b6f45"
                     ]
                 },
                 {
