@@ -1,0 +1,21 @@
+{
+  "name": "vertical-dbvc-content",
+  "version": "0.1.0",
+  "description": "Draft and review DBVC content submission JSON for current VerticalFramework WordPress sites.",
+  "author": {
+    "name": "VerticalFramework"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Vertical DBVC Content",
+    "shortDescription": "Draft DBVC article and CPT JSON safely.",
+    "longDescription": "Draft or review DBVC submission JSON from a current sample package. This skills-only release never creates a ZIP, uploads, imports, or publishes content.",
+    "developerName": "VerticalFramework",
+    "category": "Productivity",
+    "capabilities": [
+      "Content authoring",
+      "JSON package review"
+    ],
+    "defaultPrompt": "Help me draft or review DBVC submission JSON from a current sample package. Keep the result in draft-only, no-upload mode."
+  }
+}

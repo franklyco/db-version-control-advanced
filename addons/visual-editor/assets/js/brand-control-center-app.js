@@ -28,6 +28,104 @@
 ( function () {
 	'use strict';
 
+	// R5.later-perf (2026-09-06) — gated `dbvc.ve.drawer.*` User Timing
+	// spans for the BCC drawer lifecycle. Enabled via URL query arg
+	// `?dbvc_ve_perf=1` — zero-cost no-op otherwise. Feeds Chrome DevTools
+	// Performance panel's User Timing track for the audit recipe at
+	// docs/dropins/dbvc-visual-editor-brand-controls-guide/qa/
+	// R5-LATER-PERF-MEASUREMENT-RECIPE.md. Mirrors overlay-app.js's
+	// helper shape (deliberately duplicated — ~35 LOC vs the ceremony
+	// of a shared enqueued script).
+	const PERF_PREFIX = 'dbvc.ve.';
+	let perfMeasureId = 0;
+
+	function isPerformanceProfilerEnabled() {
+		try {
+			if ( typeof window.URLSearchParams !== 'function' ) {
+				return false;
+			}
+			return (
+				new window.URLSearchParams( window.location.search ).get(
+					'dbvc_ve_perf'
+				) === '1'
+			);
+		} catch ( err ) {
+			return false;
+		}
+	}
+
+	function supportsPerformanceTimings() {
+		return Boolean(
+			window.performance &&
+				typeof window.performance.mark === 'function' &&
+				typeof window.performance.measure === 'function'
+		);
+	}
+
+	function normalizePerfName( name ) {
+		return (
+			String( name || 'step' )
+				.replace( /[^a-z0-9_.:-]+/gi, '_' )
+				.replace( /^_+|_+$/g, '' )
+				.slice( 0, 80 ) || 'step'
+		);
+	}
+
+	function createPerfSpan( name ) {
+		if ( ! isPerformanceProfilerEnabled() || ! supportsPerformanceTimings() ) {
+			return { end() {} };
+		}
+		const normalized = normalizePerfName( name );
+		const id = `${ Date.now() }.${ ++perfMeasureId }`;
+		const startName = `${ PERF_PREFIX }${ normalized }.start.${ id }`;
+		const endName = `${ PERF_PREFIX }${ normalized }.end.${ id }`;
+		let ended = false;
+		try {
+			window.performance.mark( startName );
+		} catch ( err ) {
+			return { end() {} };
+		}
+		return {
+			end() {
+				if ( ended ) {
+					return;
+				}
+				ended = true;
+				try {
+					window.performance.mark( endName );
+					window.performance.measure(
+						`${ PERF_PREFIX }${ normalized }`,
+						startName,
+						endName
+					);
+					if ( typeof window.performance.clearMarks === 'function' ) {
+						window.performance.clearMarks( startName );
+						window.performance.clearMarks( endName );
+					}
+				} catch ( err ) {
+					/* swallow */
+				}
+			},
+		};
+	}
+
+	function measurePerf( name, callback ) {
+		const span = createPerfSpan( name );
+		try {
+			const result = callback();
+			if ( result && typeof result.finally === 'function' ) {
+				return result.finally( function () {
+					span.end();
+				} );
+			}
+			span.end();
+			return result;
+		} catch ( err ) {
+			span.end();
+			throw err;
+		}
+	}
+
 	const DEFAULT_QUERY = Object.freeze( {
 		search: '',
 		category: 'all',
@@ -1638,6 +1736,7 @@
 		if ( ! entries || ! entries.length ) {
 			return;
 		}
+		const perfSpan = createPerfSpan( 'drawer.value_summary.io_trigger' );
 		ensureValueSummaryState();
 		let queued = false;
 		entries.forEach( function ( entry ) {
@@ -1676,6 +1775,7 @@
 		if ( queued ) {
 			scheduleValueSummaryFlush();
 		}
+		perfSpan.end();
 	}
 
 	function scheduleValueSummaryFlush() {
@@ -1716,7 +1816,8 @@
 		if ( state.valueSummaryPending.length ) {
 			scheduleValueSummaryFlush();
 		}
-		window
+		measurePerf( 'drawer.value_summary.batch_flush', function () {
+			return window
 			.fetch( valueSummariesUrl(), {
 				method: 'POST',
 				credentials: 'same-origin',
@@ -1759,6 +1860,7 @@
 					patchValueSummarySlot( publicId );
 				} );
 			} );
+		} );
 	}
 
 	// Surgical DOM patch — only touches the affected row's summary slot.
@@ -2491,6 +2593,13 @@
 	}
 
 	function renderList() {
+		// R5.later-perf: wraps renderListImpl in a `drawer.render_list` span.
+		// The impl has 6 early-return branches — wrapping via `measurePerf`
+		// closure avoids sprinkling `perfSpan.end()` at each return site.
+		return measurePerf( 'drawer.render_list', renderListImpl );
+	}
+
+	function renderListImpl() {
 		if ( ! state.root ) {
 			return;
 		}
@@ -2749,6 +2858,16 @@
 		}
 		labelCell.appendChild( labelBlock );
 		labelCell.appendChild( renderMeta( item ) );
+		// R5.later-c (2026-09-10): value-inline slot MOVED here from the
+		// action cell per the pinned design decision. Renders lazily via
+		// the same IntersectionObserver → batch POST machinery from
+		// R4-C-1b; the class name `.__value-summary` stays so cache +
+		// observer + patchValueSummarySlot selectors continue to resolve
+		// byte-identical. Tree parents get a synchronous compact aggregate
+		// chip (`[N colors]` / `[N rows]`) instead of the async summary.
+		labelCell.appendChild(
+			renderValueSummarySlot( item, status, publicId, treeParent )
+		);
 		labelCell.appendChild(
 			createElement(
 				'div',
@@ -2807,15 +2926,9 @@
 				);
 			}
 		} else {
-			// R4-C-1b: `.__value-summary` slot sits before the action button.
-			// Populated lazily via IntersectionObserver → batch POST. For rows
-			// whose status is not `available`, the slot renders empty (only
-			// available rows have descriptors + capabilities to source a value
-			// from). A cached summary renders synchronously; a cache miss
-			// leaves the slot empty until the observer fires.
-			actionCell.appendChild(
-				renderValueSummarySlot( item, status, publicId )
-			);
+			// R5.later-c (2026-09-10): value-summary slot MOVED to the
+			// label cell (see labelCell.appendChild above). Action cell
+			// now hosts only the Open button.
 			actionCell.appendChild( renderAction( item, status, publicId ) );
 		}
 
@@ -2965,12 +3078,24 @@
 		} );
 	}
 
-	function renderValueSummarySlot( item, status, publicId ) {
+	function renderValueSummarySlot( item, status, publicId, treeParent ) {
 		const slot = createElement(
 			'span',
 			'dbvc-ve-control-center__value-summary'
 		);
 		slot.setAttribute( 'data-public-id', publicId );
+		// R5.later-c: tree parents (repeater / palette) render a synchronous
+		// compact aggregate chip — `[N rows]` / `[N colors]` — instead of
+		// hitting the async value-summaries endpoint (they have no leaf
+		// descriptor of their own to summarize; the childCount already sits
+		// on the item.meta payload).
+		if ( treeParent ) {
+			const chip = renderTreeParentAggregateChip( item );
+			if ( chip ) {
+				slot.appendChild( chip );
+			}
+			return slot;
+		}
 		if ( status !== 'available' || ! publicId ) {
 			return slot;
 		}
@@ -2983,6 +3108,57 @@
 			}
 		}
 		return slot;
+	}
+
+	// R5.later-c: compact aggregate chip for tree-parent rows in the
+	// value-inline slot. Mirrors the existing childCount chip semantics
+	// (`renderTreeChildCountChip` in the action cell) so the parent row
+	// stays visually distinguishable from leaves at a glance. Palette-role
+	// parents render "N colors"; repeater parents render "N rows".
+	function renderTreeParentAggregateChip( item ) {
+		const meta =
+			item && item.meta && typeof item.meta === 'object' ? item.meta : {};
+		const count = Math.max( 0, Math.floor( Number( meta.childCount || 0 ) ) );
+		if ( count <= 0 ) {
+			return null;
+		}
+		const isPalette = meta.role === 'palette';
+		const isRepeater = meta.role === 'repeater_parent' || meta.role === 'repeater';
+		if ( ! isPalette && ! isRepeater ) {
+			return null;
+		}
+		const chip = createElement(
+			'span',
+			'dbvc-ve-control-center__value-aggregate'
+		);
+		if ( isPalette ) {
+			chip.textContent =
+				count === 1
+					? templateText(
+							'controlCenterValueAggregatePaletteOne',
+							'{count} color',
+							{ count }
+					  )
+					: templateText(
+							'controlCenterValueAggregatePaletteMany',
+							'{count} colors',
+							{ count }
+					  );
+		} else {
+			chip.textContent =
+				count === 1
+					? templateText(
+							'controlCenterValueAggregateRepeaterOne',
+							'{count} row',
+							{ count }
+					  )
+					: templateText(
+							'controlCenterValueAggregateRepeaterMany',
+							'{count} rows',
+							{ count }
+					  );
+		}
+		return chip;
 	}
 
 	function renderMeta( item ) {
@@ -3226,16 +3402,17 @@
 			family: state.query.fieldFamily,
 			q: state.query.search,
 		} );
-		return window
-			.fetch( url, {
-				method: 'GET',
-				credentials: 'same-origin',
-				headers: {
-					Accept: 'application/json',
-					'X-WP-Nonce': nonce(),
-				},
-			} )
-			.then( async function ( response ) {
+		return measurePerf( 'drawer.list_fetch', function () {
+			return window
+				.fetch( url, {
+					method: 'GET',
+					credentials: 'same-origin',
+					headers: {
+						Accept: 'application/json',
+						'X-WP-Nonce': nonce(),
+					},
+				} )
+				.then( async function ( response ) {
 				const payload = await response.json().catch( function () {
 					return null;
 				} );
@@ -3301,22 +3478,23 @@
 					);
 				}
 			} )
-			.catch( function ( error ) {
-				if ( requestId !== state.requestSequence ) {
-					return;
-				}
-				state.requestStatus = 'error';
-				state.error = {
-					message:
-						error && error.message
-							? String( error.message )
-							: text(
-									'controlCenterErrorBody',
-									'The registered-controls request failed. Retry when you are ready.'
-							  ),
-				};
-				renderList();
-			} );
+				.catch( function ( error ) {
+					if ( requestId !== state.requestSequence ) {
+						return;
+					}
+					state.requestStatus = 'error';
+					state.error = {
+						message:
+							error && error.message
+								? String( error.message )
+								: text(
+										'controlCenterErrorBody',
+										'The registered-controls request failed. Retry when you are ready.'
+								  ),
+					};
+					renderList();
+				} );
+		} );
 	}
 
 	function openRow( publicId ) {
@@ -3328,7 +3506,8 @@
 		delete state.openErrors[ publicId ];
 		renderList();
 
-		window
+		measurePerf( 'drawer.open_row', function () {
+			return window
 			.fetch( openUrl(), {
 				method: 'POST',
 				credentials: 'same-origin',
@@ -3389,6 +3568,7 @@
 				} );
 				renderList();
 			} );
+		} );
 	}
 
 	function firstTokenFrom( descriptors ) {
@@ -3451,6 +3631,7 @@
 	}
 
 	function open( options ) {
+		const perfSpan = createPerfSpan( 'drawer.open' );
 		const root = ensureRoot();
 		const trigger = options && options.trigger;
 		const activeElement = root.ownerDocument.activeElement;
@@ -3486,14 +3667,17 @@
 		} else {
 			renderList();
 		}
+		perfSpan.end();
 	}
 
 	function close( options ) {
+		const perfSpan = createPerfSpan( 'drawer.close' );
 		const root = state.root;
 		const restoreFocus = ! options || options.restoreFocus !== false;
 		const trigger = state.trigger;
 		if ( ! root || root.hidden ) {
 			setTriggerExpanded( false );
+			perfSpan.end();
 			return;
 		}
 		root.hidden = true;
@@ -3531,6 +3715,7 @@
 		announce(
 			text( 'controlCenterAnnounceClosed', 'Global Brand Controls closed.' )
 		);
+		perfSpan.end();
 	}
 
 	function toggle( options ) {

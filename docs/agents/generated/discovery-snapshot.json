@@ -3,8 +3,8 @@
     "snapshot_status": "observed_unreviewed",
     "repository": {
         "scope": "repository_only",
-        "source_file_count": 372,
-        "source_fingerprint": "sha256:d630c9b43844e4b51330d46f1bbbf84db5b23b4c5166759899d0be00b82d6226",
+        "source_file_count": 373,
+        "source_fingerprint": "sha256:67d6d794af629e954dc10fc242c8b500b7ad28045a39654a0d9c2a6d10b565ca",
         "live_runtime_verified": false
     },
     "counts": {
@@ -15,14 +15,14 @@
         "cli_commands": 26,
         "cli_namespaces": 9,
         "database_tables": 14,
-        "documentation": 414,
+        "documentation": 416,
         "extension_points": 156,
         "hook_listeners": 187,
         "rest_routes": 142,
         "scheduled_hooks": 3,
         "settings": 51,
         "source_reference_documentation": 13,
-        "tests": 122
+        "tests": 124
     },
     "collections": {
         "admin_handlers": [
@@ -2652,6 +2652,7 @@
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R5-CODEX-PROMPT.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/prompts/R6-CODEX-PROMPT.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/qa/R3-DRAWER-BROWSER-QA-REPORT.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/qa/R5-7-TREE-BROWSER-QA-REPORT.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/quality/MEDIA-MANAGER-TEST-MATRIX.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/quality/OBSERVABILITY-ROLLBACK-AND-COMPATIBILITY.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/quality/SECURITY-AND-DATA-SAFETY.md",
@@ -2670,6 +2671,7 @@
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R4-EXPANDED-GLOBAL-BRAND-CONTROL-CENTER.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R5-ACF-OPTION-FIELD-FAMILY-SUPPORT.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R5-REMAINING-UNLOCK-FRONTIERS.md",
+            "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R5.7-INLINE-TREE-IMPLEMENTATION-PLAN.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/releases/R6-FRONTEND-SITE-MANAGER-WORKSPACE.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/DECISION-LOG.md",
             "docs/dropins/dbvc-visual-editor-brand-controls-guide/tracking/EVIDENCE-LOG.md",
@@ -4424,14 +4426,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_control_registry_invalid.183d21e7",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_control_registry_invalid.05edcf01",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "do_action",
                 "hook": "dbvc_visual_editor_control_registry_invalid",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Registry/ControlRegistry.php",
-                    "line": 412
+                    "line": 466
                 }
             },
             {
@@ -4633,14 +4635,14 @@
                 }
             },
             {
-                "discovery_id": "hook.extension_point.dbvc_visual_editor_restricted_option_group_roots.3b65b39c",
+                "discovery_id": "hook.extension_point.dbvc_visual_editor_restricted_option_group_roots.e23acbb9",
                 "kind": "extension_point",
                 "scope": "core",
                 "function": "apply_filters",
                 "hook": "dbvc_visual_editor_restricted_option_group_roots",
                 "source_ref": {
                     "path": "addons/visual-editor/src/Resolvers/ResolverRegistry.php",
-                    "line": 5199
+                    "line": 5203
                 }
             },
             {
@@ -10325,6 +10327,8 @@
             "tests/phpunit/VisualEditorControlCenterR52ColorPickerTest.php",
             "tests/phpunit/VisualEditorControlCenterR52Test.php",
             "tests/phpunit/VisualEditorControlCenterR53Test.php",
+            "tests/phpunit/VisualEditorControlCenterR55DatePickerTest.php",
+            "tests/phpunit/VisualEditorControlCenterR57ATest.php",
             "tests/phpunit/VisualEditorControlCenterRoutesTest.php",
             "tests/phpunit/VisualEditorControlCenterTrueFalseTest.php",
             "tests/phpunit/VisualEditorControlRegistryTest.php",

@@ -368,7 +368,10 @@ foundation stable.
 
 Four new phases captured before starting the R6 Frontend Site Manager Workspace major phase. Sequenced deliberately after a risk pass: **R5.later-tests → R5.later-perf → R5.later-c → R5.later-cache**. Rationale in §Sequencing at the bottom.
 
-### R5.later-tests — Overlay-app.js jsdom scaffolding **[PLANNED, sequenced first]**
+### R5.later-tests — Overlay-app.js jsdom scaffolding **[LANDED 2026-09-05, sequenced first]**
+
+**Landing summary (2026-09-05).** New `tests/visual-editor-overlay-app-state.test.cjs` (~700 lines, 15 tests) loads the full 13K-line `overlay-app.js` IIFE into jsdom (Option (a) — zero production surface change) and drives coverage through existing public DOM/event contracts. Covered: `renderEditorPanel` per-family dispatch (7 family regression guards for the R5.later-y-2c bug class), `createPaletteOverviewController` (lazy-open + pre-minted + save-error), `handleSave` `palette_grid` early-return, palette bulk popover (Copy-hex + Copy-all-as-CSS-variables + Escape close). Target 4 (`handleOpenControlRequest` routing) landed in the drawer test file (+3 tests) because the current Option Z inline-edit palette overview no longer dispatches `dbvc:visual-editor:open-control` from the panel; drawer-side receipt is what survives today. Baselines: PHPUnit **441/3036 OK**, drawer **63 pass** (was 60), media-manager **42 pass**, NEW overlay-app **15 pass**. Zero backend touches. See CHANGELOG Unreleased top + E-134. Unblocks R5.later-perf / R5.later-c / R5.later-cache — every follow-on can extend the harness.
+
 
 **Scope.** Every panel controller (R5.1 text, R5.2 choice/link/wysiwyg, R5.2+color_picker, R5.3 image, R5.4 relationship/post_object, R5.5 date, true_false, R5.later-y palette overview, R5.later-y-2 inline swatch editing, R5.later-b modal) currently ships with the caveat "overlay-app.js has no dedicated jsdom test file — live-verified only." Every one of the next three planned phases (perf, value-display, cache) touches overlay-app.js and/or the drawer's fetch paths. This slice stands up the missing test scaffolding before more code lands.
 
@@ -387,6 +390,82 @@ Four new phases captured before starting the R6 Frontend Site Manager Workspace 
 **Non-goals.** Not a full mock of every panel controller — just the surface the next three phases will touch. Not a replacement for live QA — modal focus trap + click-outside close + real color-picker interaction still need real-browser verification.
 
 **Sizing.** Medium — the scaffolding is a one-time setup cost; each covered controller is small once the fixtures exist.
+
+### R5.later-toolbar-skin — Floating-toolbar structural reskin **[LANDED 2026-09-07, parallel to the perf/c/cache arc]**
+
+**Landing summary (2026-09-07).** Four CSS edits in `overlay.css` executed as planned. `.dbvc-ve-toolbar` root gained the pill container styling (padding/border/border-radius/background/box-shadow/backdrop-blur) that previously lived on `__dock`; `__dock` neutralized to a flex row inside the outer pill with `::before` and `::after` divider pseudos giving the mockup's two 1×18px vertical dividers strictly via CSS (zero DOM change); `.dbvc-ve-toolbar__button` unified to a transparent 30×30 circle with `--font-icon--m (18px)` SVG size (down from `--l` 26px); redundant `--dock` size override + `--satellite:hover` background override removed; narrow-viewport media query simplified to move padding up to the outer pill and drop the button-size-growth rules. Both `--dock` and `--satellite` modifier classes preserved in CSS as JS/DOM hooks. Baselines: PHPUnit **441/3036 OK**, drawer jsdom **63 pass**, media-manager jsdom **42 pass**, overlay-app jsdom **15 pass** — all preserved. Live-site QA gate is required (visual outcomes not testable via jsdom or PHPUnit). Reversibility: single-block revert at each of the two `overlay.css` edit sites restores the pre-slice look. See CHANGELOG Unreleased top + E-135.
+
+**Follow-on `R5.later-toolbar-skin.b` LANDED 2026-09-07 (same day).** Color-scheme flip from light glassy to dark per the mockup, executed as the deferred second half of this phase. Four value swaps in the same late-override block: (1) `.dbvc-ve-toolbar` background → `--dbvc-ve-color-background-dark--opacity-m`, border dropped, explicit white color override; (2) divider pseudos → light-on-dark polarity; (3) `.dbvc-ve-toolbar__button` icons → white with `opacity: 0.85` for de-emphasis; (4) `:hover / :focus / [aria-expanded="true"]` → subtle white overlay `rgba(surface-rgb, 0.14)` + `opacity: 1`. `[aria-expanded="true"]` intentionally stays merged with the hover/focus rule for now — the mockup's distinct-orange (`--color-primary`) affordance for an open dropdown remains available as a one-rule follow-on. Opacity 0.85 chosen (not mockup's 0.72) for real-display legibility at the 30×30 button size. Count badge intentionally left untouched. Baselines preserved: PHPUnit **441/3036 OK**, jsdom **120 pass** across all three files. Reversibility: single-block revert of the four value swaps restores the R5.later-toolbar-skin structural-only look exactly. See CHANGELOG Unreleased top + E-136. Both halves of the mockup match are now closed.
+
+
+**Scope.** CSS-only reskin of the frontend floating toolbar (`.dbvc-ve-toolbar` + its `__dock` + `__button--dock` + `__button--satellite` variants) so it renders as a single unified pill matching the R3-brand-control-center mockup's toolbar shape. **Zero DOM changes, zero JS changes, zero PHP changes.** Icon order, action bindings, ARIA, popover behavior, count-badge positioning, and every hover/focus/disabled state preserved byte-identical.
+
+**Why now.** Maintainer flagged that the production toolbar visually diverges from the accepted mockup at `docs/ui-mockups/dbvc-visual-editor/r3-brand-control-center/index.html`. Current live rendering shows the satellite pause button + a separate glassy `__dock` pill + trailing satellite edit/exit pills as four visible chunks with 12px gaps between them. The mockup shows one unified pill with 1px vertical dividers marking button groups. Traced through the CSS cascade: the late override block at `overlay.css:2427-2513` places the pill container styling on `__dock` (background, border, shadow, backdrop-blur, padding) instead of on `.dbvc-ve-toolbar`, forcing satellite buttons to sit outside the visual container.
+
+**Rough scope (four edits, all in `overlay.css`'s late override block + its narrow-viewport counterpart).**
+- **Edit 1** — Enrich `.dbvc-ve-toolbar` root with the pill container styling (`padding: 6px 10px`, border, `border-radius: --l`, `background: --color-background-light--opacity-m`, `box-shadow`, `backdrop-filter: blur`). Tighten `gap: 12px → 6px`.
+- **Edit 2** — Strip `.dbvc-ve-toolbar__dock` of its independent pill styling; leave it as a flex row inside the outer pill. Add `.dbvc-ve-toolbar__dock::before` and `::after` pseudo-elements (1×18px vertical bars at 16% dark opacity) — because `__dock` is a flex container, its pseudos become flex items at the leading/trailing edges of the dock's children, giving exactly the mockup's two divider lines with zero DOM change.
+- **Edit 3** — Unify `.dbvc-ve-toolbar__button` styling. Base rule becomes an already-transparent 30×30 circle (`border: 0`, `border-radius: 50%`, `background: transparent`, `box-shadow: none`). Remove the now-redundant `--dock` size override and the redundant `--satellite:hover` background override (base `:hover` covers both). Reduce SVG size from `--font-icon--l (26px)` to `--font-icon--m (18px)` — 26px is too dense inside a 30px button.
+- **Edit 4** — Narrow-viewport `@media (max-width: 640px)` cleanup. Move `padding` from `__dock` up to `.dbvc-ve-toolbar` root (tighter values). Remove the two rules that grew buttons back to 36×36 on narrow — buttons stay 30×30 uniformly.
+
+**Pinned design decisions (2026-09-07).**
+- **Structural only** this slice. Color scheme (light glassy → dark, per mockup) explicitly deferred. Once the maintainer has reviewed the structural result on the live site, a follow-on slice (potentially `R5.later-toolbar-skin.b`) may pick up the color-scheme flip. Splitting the two decisions gives us one clean visual reference point to A/B against.
+- **Dividers via CSS pseudo-elements, NOT DOM additions.** The "preserve icon order" constraint the maintainer set is strictly honored — nothing new enters the DOM. `::before` / `::after` on `__dock` inserts flex items at render time only.
+- **Both `--dock` and `--satellite` modifier classes preserved** in the CSS even though the visual differentiation between them is dropped. They're still emitted by `createToolbarButtonMarkup` in `overlay-app.js:2856` and consumed by click delegates elsewhere; removing them would be a DOM change out of scope for this slice.
+- **Late-override block is the edit surface** (not the earlier lines 94-203 declarations). The earlier block is already overridden in the cascade; touching it would risk breaking rules that flow through it into unrelated contexts.
+
+**Known risks / open design questions.**
+- **Divider pseudos depend on `__dock` being a flex container.** If a future contributor changes `__dock`'s layout mode (e.g. to CSS Grid), the `::before` and `::after` dividers will no longer sit at the leading/trailing edges of its children — they'll render at unexpected positions. Inline CSS comment flags this dependency at the pseudo declarations so the constraint is discoverable at the point of maintenance.
+- **`__dock` is always in the DOM** (per `ensureToolbar()` in `overlay-app.js:2986`) even when its two conditional buttons (`media-manager`, `control-center`) are both disabled at the addon-config level. In that unusual case the dock still contains two unconditional buttons (`review-fields`, `go-object`) and the dividers still bracket those — visually acceptable but worth noting so a maintainer investigating "why are there dividers on a nearly-empty bar?" has a pointer.
+
+**Non-goals.**
+- No color-scheme flip (light glassy → dark). Explicit follow-on.
+- No drawer reskin (`.dbvc-ve-control-center`). Explicit follow-on if requested.
+- No JS/DOM changes to `ensureToolbar()`, `createToolbarButtonMarkup()`, or the click delegate.
+- No changes to `.dbvc-ve-toolbar-popover*` / `.dbvc-ve-toolbar-object*` selectors (dropdowns anchored to the toolbar are visually independent).
+- No changes to icon SVG markup or the icon-name → button-id mapping in `renderToolbarIcon`.
+- No changes to hover/focus/active/disabled/`is-popover-open` state semantics — only the `border-color:` line in the `:hover` rule is dropped, because there's no border anymore.
+
+**Sizing.** Small — approximately 40 LOC edited across 2 rule-block sites in a single file (`addons/visual-editor/assets/css/overlay.css`).
+
+**Sequencing.** Independent of the pre-R6 test/perf/c/cache arc. Can land in parallel. **R5.later-perf is currently PAUSED** as of 2026-09-07 pending resolution of a LocalWP dev-environment TTFB investigation (uniform 3.7s server think-time not attributable to Xdebug, `WP_DEBUG_LOG`, autoload, or object cache; suspected Bricks-ecosystem or plugin-init cost — captured as a future follow-on investigation rather than blocking the audit) — the R5.later-toolbar-skin slice does not touch any code the perf audit measures and lands cleanly in parallel.
+
+**Live-site QA gate.** CSS reskin — jsdom tests and PHPUnit cannot verify visual outcomes. Maintainer eyeballs the live site at both supported viewports (1440×900 primary, 1280×720 narrow) and confirms: (a) all buttons visually contained in one pill, (b) two vertical dividers visible bracketing the dock's contents, (c) hover states still readable, (d) count badge still visible on the status button, (e) no unexpected layout shift on the popover / dropdown anchors.
+
+### R5.later-darkmode — System dark-mode support **[PLANNED 2026-09-08, umbrella phase]**
+
+**Scope.** Add `@media (prefers-color-scheme: dark)` support to the frontend Visual Editor chrome so the surfaces adapt appropriately when the user's OS is in dark mode. Phased across multiple slices — the toolbar first (small, well-scoped), then drawer/panel/popovers (larger), then a potential token-level override layer for downstream components. **Design intent: preserve each surface's identity (dark pill stays dark, light drawer stays light) but boost edge affordance so surfaces don't blend into a dark-mode page background.** Not a full theme flip; a "same object, tuned for the environment" approach.
+
+**Why now.** The VE chrome currently has zero `prefers-color-scheme` plumbing — every surface renders with a fixed color intent regardless of OS setting. On a user in system dark mode editing a dark-mode-themed page, the toolbar (dark blue at 90% opacity) can blend against a dark page bg; the drawer + panel (light surfaces) scream against a dark page. The toolbar case is subtler and small in scope, so it lands first as the pattern reference.
+
+**Rough scope (per slice).**
+- **`.a` — Toolbar edge-boost in dark mode.** Add two component-scoped tokens (`--dbvc-ve-color-toolbar-background`, `--dbvc-ve-box-shadow-toolbar`) with default values matching R5.later-toolbar-skin.b's shipped look. Add a `@media (prefers-color-scheme: dark) { :root { ... } }` override that bumps background opacity `0.9 → 0.96` (silhouette reads more solid) and swaps the box-shadow to a layered `inset 0 0 0 1px rgba(surface-rgb, 0.08)` + `var(--dbvc-ve-box-shadow--panel)` (subtle white rim + deeper lift). Update `.dbvc-ve-toolbar` to reference the new tokens. Zero JS/DOM/PHP changes.
+- **`.b` — Drawer + panel + popover chrome. LANDED 2026-09-10.** Five new component-scoped tokens (`--dbvc-ve-color-drawer-background/text`, `--dbvc-ve-color-chrome-background/text/header-background`) in `overlay.css :root` with defaults matching shipped light values byte-identical; dark-mode overrides added to the existing `.a` media block (drawer bg → dark 0.94, chrome bg → dark 0.88, chrome-header → surface 0.06, both text tokens → white). Shared compound rules + `.dbvc-ve-control-center` root updated to consume the new tokens. .a toolbar inset-rim opacity bumped 0.08 → 0.12 in the same slice per maintainer feedback. Internal element colors (chips, rows, buttons, borders) intentionally deferred to `.c` — visible as inconsistency in dark mode but documented as expected pre-`.c`. See E-138.
+- **`.c` — Token-level override layer. LANDED 2026-09-10.** Architectural finish of the darkmode arc. Two ops: (1) `replace_all` migration of 9 sites (`color: --color-surface` → `color: --color-text-light`) across `overlay.css` + `control-center.css` — removes `--color-surface` dual-use conflict; (2) 9-token flip block appended to the existing `@media (prefers-color-scheme: dark) { :root }` block redefines `--color-surface-muted`, `--color-surface-glass`, `--color-background-light`, `--color-background-light--opacity-m`, `--color-text-dark`, `--color-text-muted`, `--color-text-subtle`, `--color-border`, `--color-border-muted`. Also aligned .b `--drawer-text`/`--chrome-text` dark values to `--color-text-light`. Every rule consuming these tokens now adapts automatically — no rule-level edits. Semantic names retained; brand tokens + `-rgb` tuples + `--color-text-light` intentionally NOT flipped. Residual hardcoded rgba/hex in ~10-15 specific rules (`.dbvc-ve-target` outline, `--empty` colors, box-shadow tuples) remain in light-mode values — optional `.d` slice if maintainer identifies rough edges. **The R5.later-darkmode arc is COMPLETE.** See E-139.
+
+**Pinned design decisions (2026-09-08).**
+- **Option A over Option B.** Toolbar stays dark in both light and dark mode; dark mode gets edge affordance via inset rim + deeper shadow. NOT the "invert to light toolbar on dark page" pattern.
+- **Component-scoped tokens, not global token flips.** Each slice introduces `--dbvc-ve-color-<component>-<property>` tokens that the component consumes; the media-query override only touches those tokens. This scopes dark-mode changes precisely and avoids cascading into unrelated surfaces.
+- **Fully token-driven.** Every value composed from existing `-rgb` base tokens + numeric opacity — no literal hex codes introduced. Matches the codebase's established pattern (see lines 21, 79-82).
+- **Opacity 0.96 (not 1.0)** — the toolbar remains slightly transparent so backdrop-blur keeps its subtle glassy quality; a fully-opaque toolbar would feel too heavy.
+
+**Known risks / open design questions.**
+- `prefers-color-scheme: dark` requires the user's OS to explicitly report dark preference. Users on "auto" who haven't set dark still see the light-mode variant — not a bug, just how the media query semantics work.
+- Inset shadows can render slightly differently under `mix-blend-mode` or heavy `backdrop-filter`. Not a concern today; documented inline at the media-query block.
+- The `--dbvc-ve-color-toolbar-*` tokens are `:root`-scoped (global). Naming is specific enough that unintended consumers are unlikely, but any future component matching `.dbvc-ve-toolbar-*` could inadvertently pull the same values. Docblock notes the intended-owner selector (`.dbvc-ve-toolbar` only).
+
+**Non-goals.**
+- No JS/DOM changes.
+- No new REST routes, no new mutation authority.
+- No changes to hover / focus / active / disabled state semantics.
+- No color-scheme flip inside light mode (the shipped light-mode look is byte-identical to R5.later-toolbar-skin.b).
+
+**Sizing.**
+- `.a`: small — ~15 LOC across two edit sites in `overlay.css`.
+- `.b`: medium — per-surface analysis + token additions + media-query overrides.
+- `.c`: medium-large — codebase audit + token override infrastructure.
+
+**Sequencing.** Independent of the pre-R6 test/perf/c/cache arc. Can land in parallel. `.a` lands first; `.b` and `.c` are future decisions.
 
 ### R5.later-perf — Deep frontend performance audit **[PLANNED, sequenced second]**
 
@@ -412,7 +491,10 @@ Four new phases captured before starting the R6 Frontend Site Manager Workspace 
 
 **Sizing.** Small-medium — mostly measurement + writing. The instrumentation is one-shot (removed after audit) unless it turns out to be broadly useful.
 
-### R5.later-c — Drawer inline current-value display **[PLANNED, sequenced third]**
+### R5.later-c — Drawer inline current-value display **[LANDED 2026-09-10]**
+
+**Landing summary (2026-09-10).** Backend was already complete from prior R5.x slices (`SharedGlobalsControlProvider::buildValueSummary` emits every family shape). Frontend rewire only: `renderValueSummarySlot()` extended with `treeParent` arg + moved from action cell to label cell after `renderMeta`; new `renderTreeParentAggregateChip()` renders synchronous `{count} color(s)` / `{count} row(s)` for palette/repeater parents. `.__value-summary` CSS reshaped for label-cell context (flex, 1-line ellipsis, R4-D-3 overflow-wrap) + new `.__value-aggregate` pill. 4 new i18n keys; +3 jsdom tests (drawer up from 63 → 66). CSS class name `.__value-summary` intentionally preserved — R4-C-1b's cache/observer/patch selectors target this class byte-identical. Zero backend changes, zero new REST routes. **Shipped without the R5.later-perf gate answered** — perf audit remains PAUSED, so image-family hydration cost is unmeasured in production; a future perf follow-on may recommend R5.later-cache before extending image coverage. Baselines: PHPUnit 441/3036, jsdom 123 total (63+42+15+3), PHP lint clean. See CHANGELOG + E-140.
+
 
 **Scope.** Every drawer row currently renders `.__meta` (category · group · badge) directly under the label. Beneath that, render the field's **current stored value** in a compact sanitized preview so a curator scanning the drawer can see the site's actual state at a glance without opening each control individually.
 

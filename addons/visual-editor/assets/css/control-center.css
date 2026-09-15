@@ -35,10 +35,14 @@
   width: var(--dbvc-ve-control-center-width);
   display: flex;
   flex-direction: column;
-  background: var(--dbvc-ve-color-surface);
+  /* R5.later-darkmode.b (2026-09-10): drawer chrome surface + text.
+     Tokens declared in overlay.css :root; dark-mode override lives in
+     the same file. Internal chip / row / button colors retain their
+     light-mode values in this slice — deferred to .c. */
+  background: var(--dbvc-ve-color-drawer-background);
   border-right: 1px solid var(--dbvc-ve-color-border-muted);
   box-shadow: var(--dbvc-ve-control-center-shadow);
-  color: var(--dbvc-ve-color-text-dark);
+  color: var(--dbvc-ve-color-drawer-text);
   z-index: var(--dbvc-ve-z-drawer);
 
   transform: translateX(0);
@@ -197,7 +201,7 @@
 }
 
 .dbvc-ve-control-center__tab[aria-selected="true"] {
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
   background: var(--dbvc-ve-color-secondary);
   border-color: var(--dbvc-ve-color-secondary);
 }
@@ -281,7 +285,7 @@
 
 .dbvc-ve-control-center__chip[aria-pressed="true"] {
   background: var(--dbvc-ve-color-secondary);
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
   border-color: var(--dbvc-ve-color-secondary);
 }
 
@@ -615,31 +619,44 @@
   overflow: hidden;
 }
 
-/* R4-C-1b: value-summary chip sits in the action cell before the Open
-   button. Populated lazily by IntersectionObserver → batch POST. Empty
-   slot renders no chip. Only relationship / post_object surfaces in
-   R4-C-1b; other families / null render nothing. */
+/* R5.later-c (2026-09-10): value-summary chip MOVED from action cell
+   to the label cell (sits directly after `.__meta` inside `.__label-cell`).
+   Populated lazily by IntersectionObserver → batch POST for leaf rows;
+   tree-parent rows get a synchronous compact aggregate chip
+   (`renderTreeParentAggregateChip`). One-line ellipsis cap so
+   long-string previews don't push row height; R4-D-3 overflow-wrap
+   defense kicks in for extreme single-word content. Empty slot
+   collapses out of the flow. */
 .dbvc-ve-control-center__value-summary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  margin-right: 8px;
-  padding: 2px 6px;
-  border-radius: var(--dbvc-ve-border-radius--s);
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 65%, #ffffff);
+  margin-top: 4px;
+  max-width: 100%;
   color: var(--dbvc-ve-color-text-muted);
   font-size: var(--dbvc-ve-font--meta);
-  font-weight: var(--dbvc-ve-font-weight--bold);
-  max-width: 200px;
+  font-weight: var(--dbvc-ve-font-weight--normal);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
-/* Empty slot collapses out of the flow so unhydrated / null rows do not
-   claim visual space next to the Open button. */
+/* Empty slot collapses out of the flow so unhydrated / null rows do
+   not claim visual space between .__meta and .__owner. */
 .dbvc-ve-control-center__value-summary:empty {
   display: none;
+}
+
+/* R5.later-c: tree-parent aggregate chip (`N colors` / `N rows`). */
+.dbvc-ve-control-center__value-aggregate {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--dbvc-ve-border-radius--s);
+  background: color-mix(in srgb, var(--dbvc-ve-color-light) 65%, #ffffff);
+  color: var(--dbvc-ve-color-text-muted);
+  font-weight: var(--dbvc-ve-font-weight--bold);
 }
 
 .dbvc-ve-control-center__value-relationship {

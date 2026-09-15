@@ -1,4 +1,102 @@
 ( function () {
+	// R5.later-perf (2026-09-06) — gated `dbvc.ve.api.*` User Timing spans
+	// for the Visual Editor / BCC api surface. Enabled via URL query arg
+	// `?dbvc_ve_perf=1` — zero-cost no-op otherwise (early-return skips the
+	// wrap; the original api object is exposed unchanged). Feeds Chrome
+	// DevTools Performance panel's User Timing track for the audit recipe
+	// at docs/dropins/dbvc-visual-editor-brand-controls-guide/qa/
+	// R5-LATER-PERF-MEASUREMENT-RECIPE.md. Media-manager methods are
+	// intentionally NOT instrumented — MM has its own audit slice.
+	const PERF_PREFIX = 'dbvc.ve.';
+	let perfMeasureId = 0;
+
+	function isPerformanceProfilerEnabled() {
+		try {
+			if ( typeof window.URLSearchParams !== 'function' ) {
+				return false;
+			}
+			return (
+				new window.URLSearchParams( window.location.search ).get(
+					'dbvc_ve_perf'
+				) === '1'
+			);
+		} catch ( err ) {
+			return false;
+		}
+	}
+
+	function supportsPerformanceTimings() {
+		return Boolean(
+			window.performance &&
+				typeof window.performance.mark === 'function' &&
+				typeof window.performance.measure === 'function'
+		);
+	}
+
+	function normalizePerfName( name ) {
+		return (
+			String( name || 'step' )
+				.replace( /[^a-z0-9_.:-]+/gi, '_' )
+				.replace( /^_+|_+$/g, '' )
+				.slice( 0, 80 ) || 'step'
+		);
+	}
+
+	function createPerfSpan( name ) {
+		if ( ! isPerformanceProfilerEnabled() || ! supportsPerformanceTimings() ) {
+			return { end() {} };
+		}
+		const normalized = normalizePerfName( name );
+		const id = `${ Date.now() }.${ ++perfMeasureId }`;
+		const startName = `${ PERF_PREFIX }${ normalized }.start.${ id }`;
+		const endName = `${ PERF_PREFIX }${ normalized }.end.${ id }`;
+		let ended = false;
+		try {
+			window.performance.mark( startName );
+		} catch ( err ) {
+			return { end() {} };
+		}
+		return {
+			end() {
+				if ( ended ) {
+					return;
+				}
+				ended = true;
+				try {
+					window.performance.mark( endName );
+					window.performance.measure(
+						`${ PERF_PREFIX }${ normalized }`,
+						startName,
+						endName
+					);
+					if ( typeof window.performance.clearMarks === 'function' ) {
+						window.performance.clearMarks( startName );
+						window.performance.clearMarks( endName );
+					}
+				} catch ( err ) {
+					/* swallow */
+				}
+			},
+		};
+	}
+
+	function measurePerf( name, callback ) {
+		const span = createPerfSpan( name );
+		try {
+			const result = callback();
+			if ( result && typeof result.finally === 'function' ) {
+				return result.finally( function () {
+					span.end();
+				} );
+			}
+			span.end();
+			return result;
+		} catch ( err ) {
+			span.end();
+			throw err;
+		}
+	}
+
 	function mediaManagerBaseUrl() {
 		const bootstrap = window.DBVCVisualEditorBootstrap || {};
 		const config = bootstrap.mediaManager;
@@ -818,4 +916,35 @@
 			},
 		},
 	};
+
+	// R5.later-perf: wrap the Visual Editor / BCC api surface with
+	// `dbvc.ve.api.<method>` User Timing spans when `?dbvc_ve_perf=1`.
+	// The `mediaManager` sub-object is preserved by reference — its
+	// methods are NOT wrapped (out of scope for this audit; media-manager
+	// gets its own audit slice). Wrap-after-define keeps the method
+	// definitions above readable + gives us a single-decision-point for
+	// the profiling scope.
+	if ( isPerformanceProfilerEnabled() ) {
+		const originalApi = window.DBVCVisualEditorApi;
+		const spannedApi = {};
+		Object.keys( originalApi ).forEach( function ( key ) {
+			const value = originalApi[ key ];
+			if ( key === 'mediaManager' ) {
+				spannedApi[ key ] = value;
+				return;
+			}
+			if ( typeof value === 'function' ) {
+				spannedApi[ key ] = function () {
+					const args = arguments;
+					const self = this;
+					return measurePerf( 'api.' + key, function () {
+						return value.apply( self, args );
+					} );
+				};
+			} else {
+				spannedApi[ key ] = value;
+			}
+		} );
+		window.DBVCVisualEditorApi = spannedApi;
+	}
 } )();

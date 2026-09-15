@@ -80,6 +80,26 @@
   --dbvc-ve-box-shadow--button: 0 14px 32px rgba(15, 23, 42, 0.26);
   --dbvc-ve-box-shadow--soft: 0 16px 36px rgba(0, 10, 54, 0.14);
   --dbvc-ve-box-shadow--panel: 0 24px 56px rgba(0, 10, 54, 0.2);
+  /* R5.later-darkmode.a (2026-09-08) — component-scoped toolbar tokens.
+     Defaults match the shipped R5.later-toolbar-skin.b look (dark pill,
+     standard lift shadow, no rim). The `@media (prefers-color-scheme: dark)`
+     block just below flips them for the dark-mode edge-visibility boost:
+     silhouette gets more solid + a subtle inset white rim + deeper lift.
+     Intended-owner selector: `.dbvc-ve-toolbar` only. */
+  --dbvc-ve-color-toolbar-background: var(--dbvc-ve-color-background-dark--opacity-m);
+  --dbvc-ve-box-shadow-toolbar: var(--dbvc-ve-box-shadow);
+  /* R5.later-darkmode.b (2026-09-10) — component-scoped chrome tokens for
+     the drawer, editor panel, popovers, statusbar, and toolbar__message.
+     Defaults match the shipped light look byte-identical; the
+     `@media (prefers-color-scheme: dark)` block below flips them so
+     these surfaces adapt in dark mode. Internal chip / button / border
+     colors are intentionally out of scope for this slice — deferred to
+     `.c` (token-level global override). */
+  --dbvc-ve-color-drawer-background: var(--dbvc-ve-color-surface);
+  --dbvc-ve-color-drawer-text: var(--dbvc-ve-color-text-dark);
+  --dbvc-ve-color-chrome-background: var(--dbvc-ve-color-surface-glass);
+  --dbvc-ve-color-chrome-text: var(--dbvc-ve-color-text-dark);
+  --dbvc-ve-color-chrome-header-background: var(--dbvc-ve-color-background-light);
   --dbvc-ve-filter-backdrop--blur: blur(8px);
   --dbvc-ve-transparent--l: transparent 20%;
   --dbvc-ve-notice-dot--color-bg: var(--dbvc-ve-color-primary);
@@ -91,6 +111,56 @@
   --dbvc-ve-z-toolbar: 120020;
 }
 
+/* R5.later-darkmode.a (2026-09-08) — system dark-mode support for the
+   floating toolbar. Preserves the "dark pill" identity across both OS
+   color-scheme preferences (Option A per the phase spec) — the toolbar
+   is always dark, but in dark mode it needs edge affordance so it does
+   not blend into a dark-mode page background. Overrides only the two
+   toolbar-scoped tokens defined above; every non-toolbar surface is
+   unchanged. NOTE: inset shadows can render slightly differently under
+   `mix-blend-mode` or aggressive backdrop-filter — reproduce here if
+   the toolbar's blur is later changed. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dbvc-ve-color-toolbar-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.96);
+    --dbvc-ve-box-shadow-toolbar:
+      inset 0 0 0 1px rgba(var(--dbvc-ve-color-surface-rgb), 0.12),
+      var(--dbvc-ve-box-shadow--panel);
+    /* R5.later-darkmode.b: flip drawer / panel / popover / statusbar
+       chrome surfaces to dark equivalents. Text becomes white via
+       inheritance where the compound rule at line ~2427 consumes
+       --chrome-text; child elements retain their own light-mode
+       colors (chips, buttons, borders) — full internal treatment
+       lives in .c. */
+    --dbvc-ve-color-drawer-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.94);
+    --dbvc-ve-color-drawer-text: var(--dbvc-ve-color-text-light);
+    --dbvc-ve-color-chrome-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.88);
+    --dbvc-ve-color-chrome-text: var(--dbvc-ve-color-text-light);
+    --dbvc-ve-color-chrome-header-background: rgba(var(--dbvc-ve-color-surface-rgb), 0.06);
+
+    /* R5.later-darkmode.c (2026-09-10) — token-level global flip.
+       Redefines base semantic tokens so every rule consuming them adapts
+       automatically. Semantic names retained (--surface, --text-dark)
+       even though concrete values invert — safer than renaming which
+       would touch hundreds of rules. `--color-surface` is INTENTIONALLY
+       NOT flipped (its 9 `color:` uses are "always white on colored bg"
+       — those were pre-swapped to `--color-text-light` in this slice);
+       elsewhere it appears in rgba() with `-rgb` variants which stay
+       255,255,255-based (so overlays stay white-tinted in both modes).
+       Brand intent tokens (primary/secondary/accent/success/warning/
+       error/info) also NOT flipped — they carry meaning across themes. */
+    --dbvc-ve-color-surface-muted: color-mix(in srgb, var(--dbvc-ve-color-dark) 82%, #ffffff);
+    --dbvc-ve-color-surface-glass: rgba(var(--dbvc-ve-color-dark-rgb), 0.86);
+    --dbvc-ve-color-background-light: color-mix(in srgb, var(--dbvc-ve-color-dark) 84%, #ffffff);
+    --dbvc-ve-color-background-light--opacity-m: rgba(var(--dbvc-ve-color-dark-rgb), 0.84);
+    --dbvc-ve-color-text-dark: rgb(var(--dbvc-ve-color-surface-rgb));
+    --dbvc-ve-color-text-muted: rgba(var(--dbvc-ve-color-surface-rgb), 0.68);
+    --dbvc-ve-color-text-subtle: rgba(var(--dbvc-ve-color-surface-rgb), 0.52);
+    --dbvc-ve-color-border: rgba(var(--dbvc-ve-color-surface-rgb), 0.18);
+    --dbvc-ve-color-border-muted: rgba(var(--dbvc-ve-color-surface-rgb), 0.10);
+  }
+}
+
 .dbvc-ve-toolbar {
   position: fixed;
   left: 50%;
@@ -100,7 +170,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
   font: 600 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   transform: translateX(-50%);
 }
@@ -130,7 +200,7 @@
   border-radius: var(--dbvc-ve-border-radius--l);
   padding: 0;
   background: var(--dbvc-ve-color-background-dark--opacity-m);
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
   box-shadow: var(--dbvc-ve-box-shadow--button);
   cursor: pointer;
   text-decoration: none;
@@ -182,7 +252,7 @@
   border: 1px solid rgba(var(--dbvc-ve-color-dark-rgb), 0.88);
   border-radius: var(--dbvc-ve-border-radius--l);
   background: var(--dbvc-ve-color-success);
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
   font-size: var(--dbvc-ve-font--overline);
   font-weight: var(--dbvc-ve-font-weight--heavy);
   line-height: 1;
@@ -345,7 +415,7 @@
 .dbvc-ve-toolbar-object__filter.is-active {
   border-color: var(--dbvc-ve-color-success);
   background: var(--dbvc-ve-color-success);
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
 }
 
 .dbvc-ve-toolbar-object__filter:hover,
@@ -648,7 +718,7 @@
 .dbvc-ve-field-index__filter.is-active {
   border-color: var(--dbvc-ve-color-success);
   background: var(--dbvc-ve-color-success);
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
 }
 
 .dbvc-ve-field-index__filter span:last-child {
@@ -2420,7 +2490,7 @@ textarea.dbvc-ve-panel__input--textlike {
 
 .dbvc-ve-panel__button--primary {
   background: var(--dbvc-ve-color-success);
-  color: var(--dbvc-ve-color-surface);
+  color: var(--dbvc-ve-color-text-light);
 }
 
 /* Tokenized Visual Editor chrome. Marker outlines and badge source colors stay below this block. */
@@ -2428,64 +2498,129 @@ textarea.dbvc-ve-panel__input--textlike {
 .dbvc-ve-statusbar,
 .dbvc-ve-panel,
 .dbvc-ve-toolbar-popover {
-  color: var(--dbvc-ve-color-text-dark);
+  /* R5.later-darkmode.b: --chrome-text resolves to --color-text-dark in
+     light mode + --color-surface (white) in dark mode. `.dbvc-ve-toolbar`
+     still overrides to explicit surface in its own rule below. */
+  color: var(--dbvc-ve-color-chrome-text);
   font: var(--dbvc-ve-font-weight--bold) var(--dbvc-ve-font--body)/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* R5.later-toolbar-skin (2026-09-07) — the toolbar is one unified pill.
+   Container styling (background, shadow, backdrop-blur) lives on the
+   root `.dbvc-ve-toolbar`, NOT on `__dock`, so the outer satellite
+   buttons (status + edit + power) visually sit inside the same pill as
+   the dock's buttons. Matches the R3-brand-control-center mockup's
+   toolbar shape. Icon order, action bindings, ARIA, and every hover /
+   focus / active / disabled state are unchanged.
+
+   R5.later-toolbar-skin.b (2026-09-07) — color scheme flipped from light
+   glassy to dark, matching the mockup's `color-mix(dark 88%, #fff)` shell.
+   Reuses the existing `--dbvc-ve-color-background-dark--opacity-m` token
+   (90% dark blue) so backdrop-blur still glimmers behind the pill.
+   Explicit `color: var(--dbvc-ve-color-surface)` overrides the shared
+   text-color declaration in the `.dbvc-ve-toolbar, .dbvc-ve-statusbar, …`
+   rule immediately above so `.dbvc-ve-toolbar` itself and its ARIA-labels
+   render on-brand-white. Border dropped — the mockup uses only shadow
+   for edge definition. */
 .dbvc-ve-toolbar {
-  gap: 12px;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  /* R5.later-darkmode.a: sources background + shadow from component-scoped
+     tokens (see `:root` block + the `@media (prefers-color-scheme: dark)`
+     override above). In light mode these resolve to the same values used
+     by R5.later-toolbar-skin.b; in dark mode they gain an inset rim +
+     deeper lift for edge affordance against a dark-mode page. */
+  background: var(--dbvc-ve-color-toolbar-background);
+  box-shadow: var(--dbvc-ve-box-shadow-toolbar);
+  backdrop-filter: var(--dbvc-ve-filter-backdrop--blur);
+  color: var(--dbvc-ve-color-text-light);
 }
 
+/* `__dock` is now just a flex row inside the outer pill — no independent
+   background / border / shadow. Its `::before` and `::after` pseudos are
+   the mockup's two 1px vertical dividers bracketing the middle button
+   group. RISK: the pseudos depend on `__dock` remaining a flex container
+   (see the earlier declaration at line ~108) — a future contributor who
+   changes `__dock` to a non-flex layout will find the dividers rendering
+   at unexpected positions. */
 .dbvc-ve-toolbar__dock {
-  min-height: calc(var(--dbvc-ve-size-toolbar-height) * 1.4);
-  padding: 8px 18px;
-  border: var(--dbvc-ve-border--light-s);
-  border-radius: var(--dbvc-ve-border-radius--l);
-  background: var(--dbvc-ve-color-background-light--opacity-m);
-  box-shadow: var(--dbvc-ve-box-shadow);
-  backdrop-filter: var(--dbvc-ve-filter-backdrop--blur);
-}
-
-.dbvc-ve-toolbar__button {
-  width: calc(var(--dbvc-ve-size-toolbar-width) * 1.2);
-  height: calc(var(--dbvc-ve-size-toolbar-height) * 1.2);
-  border: var(--dbvc-ve-border--light-s);
-  border-radius: var(--dbvc-ve-border-radius--l);
-  padding: 4px;
-  background: color-mix(in srgb, var(--dbvc-ve-color-background-light), var(--dbvc-ve-transparent--l));
-  color: var(--dbvc-ve-color-text-dark);
-  box-shadow: var(--dbvc-ve-box-shadow);
-  backdrop-filter: var(--dbvc-ve-filter-backdrop--blur);
-}
-
-.dbvc-ve-toolbar__button--dock,
-button.dbvc-ve-toolbar__button.dbvc-ve-toolbar__button--dock {
-  width: var(--dbvc-ve-size-icon-width);
-  height: var(--dbvc-ve-size-icon-height);
-  border-color: transparent;
+  min-height: 0;
+  padding: 0;
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
+  backdrop-filter: none;
+}
+
+.dbvc-ve-toolbar__dock::before,
+.dbvc-ve-toolbar__dock::after {
+  content: "";
+  flex: 0 0 auto;
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  /* R5.later-toolbar-skin.b: light-on-dark divider (was dark-on-light). */
+  background: rgba(var(--dbvc-ve-color-surface-rgb), 0.16);
+}
+
+/* Unified button styling — 30×30 transparent circle. `--dock` and
+   `--satellite` modifiers stay in the DOM (still emitted by
+   `createToolbarButtonMarkup` in overlay-app.js and consumed by
+   click delegates) but no longer differ visually. */
+.dbvc-ve-toolbar__button {
+  width: var(--dbvc-ve-size-icon-width);
+  height: var(--dbvc-ve-size-icon-height);
+  border: 0;
+  border-radius: 50%;
+  padding: 4px;
+  background: transparent;
+  /* R5.later-toolbar-skin.b: white icons on the dark pill.
+     SVGs use `stroke="currentColor"` so they inherit this color.
+     `opacity: 0.85` de-emphasizes non-hovered buttons so the bar reads
+     as a group of subtle glyphs rather than a row of loud icons —
+     matches the mockup's intent (mockup uses 0.72; 0.85 is a middle
+     ground that stays legible on a real display). */
+  color: var(--dbvc-ve-color-text-light);
+  opacity: 0.85;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .dbvc-ve-toolbar__button svg {
-  width: var(--dbvc-ve-font-icon--l);
-  height: var(--dbvc-ve-font-icon--l);
+  width: var(--dbvc-ve-font-icon--m);
+  height: var(--dbvc-ve-font-icon--m);
 }
 
 .dbvc-ve-toolbar__button:hover,
-.dbvc-ve-toolbar__button:focus,
-.dbvc-ve-toolbar__button[aria-expanded="true"] {
-  border-color: color-mix(in srgb, var(--dbvc-ve-color-primary) 64%, var(--dbvc-ve-color-surface));
-  background: rgba(var(--dbvc-ve-color-surface-rgb), 0.96);
-  color: var(--dbvc-ve-color-secondary);
+.dbvc-ve-toolbar__button:focus {
+  /* R5.later-toolbar-skin.b: subtle white overlay on the dark pill
+     (was a 96% white fill, which was jarring on the dark background).
+     `opacity: 1` overrides the base 0.85 so the hovered button reaches
+     full brightness. */
+  background: rgba(var(--dbvc-ve-color-surface-rgb), 0.14);
+  color: var(--dbvc-ve-color-text-light);
+  opacity: 1;
   outline: 2px solid var(--dbvc-ve-color-focus);
   outline-offset: 2px;
 }
 
-.dbvc-ve-toolbar__button--satellite:hover,
-.dbvc-ve-toolbar__button--satellite:focus,
-.dbvc-ve-toolbar__button--satellite[aria-expanded="true"] {
-  background: rgba(var(--dbvc-ve-color-surface-rgb), 0.96);
+/* R5.later-toolbar-skin.c (2026-09-11) — the button whose dropdown is
+   currently OPEN gets a distinct orange fill instead of the subtle
+   white overlay used by hover/focus. Mirrors the mockup's `is-active`
+   state (solid `--color-primary`) and gives curators a clear "which
+   panel is open right now?" affordance separate from "which button
+   is my cursor over?". Retains the focus outline so keyboard nav
+   still shows the focus ring on top of the orange fill. */
+.dbvc-ve-toolbar__button[aria-expanded="true"] {
+  background: var(--dbvc-ve-color-primary);
+  color: var(--dbvc-ve-color-text-light);
+  opacity: 1;
+  outline: 2px solid var(--dbvc-ve-color-focus);
+  outline-offset: 2px;
 }
 
 .dbvc-ve-toolbar__count {
@@ -2519,7 +2654,10 @@ button.dbvc-ve-toolbar__button.dbvc-ve-toolbar__button--dock {
 .dbvc-ve-statusbar,
 .dbvc-ve-panel {
   border: var(--dbvc-ve-border--surface-s);
-  background: var(--dbvc-ve-color-surface-glass);
+  /* R5.later-darkmode.b: chrome surface background — resolves to
+     --color-surface-glass in light mode + a dark-blue-88% variant in
+     dark mode. */
+  background: var(--dbvc-ve-color-chrome-background);
   box-shadow: var(--dbvc-ve-box-shadow--panel);
   backdrop-filter: var(--dbvc-ve-filter-backdrop--blur);
 }
@@ -2538,7 +2676,9 @@ button.dbvc-ve-toolbar__button.dbvc-ve-toolbar__button--dock {
 
 .dbvc-ve-toolbar-popover__header {
   border-bottom: var(--dbvc-ve-border--surface-s);
-  background: var(--dbvc-ve-color-background-light);
+  /* R5.later-darkmode.b: subtle strip that stays legible on both light
+     and dark chrome variants. */
+  background: var(--dbvc-ve-color-chrome-header-background);
 }
 
 .dbvc-ve-toolbar-popover__title {
@@ -2852,23 +2992,18 @@ button.dbvc-ve-toolbar__button.dbvc-ve-toolbar__button--dock {
 }
 
 @media (max-width: 640px) {
+  /* R5.later-toolbar-skin (2026-09-07) — padding moved from `__dock` to
+     the outer pill; button-size override dropped because buttons now
+     stay 30×30 at all viewports (matches the mockup's density). */
   .dbvc-ve-toolbar {
     width: calc(100vw - 24px);
+    padding: 6px 8px;
+    gap: 4px;
   }
 
   .dbvc-ve-toolbar__dock {
-    padding: 8px 12px;
-  }
-
-  .dbvc-ve-toolbar__button {
-    width: calc(var(--dbvc-ve-size-toolbar-width) * 1.2);
-    height: calc(var(--dbvc-ve-size-toolbar-height) * 1.2);
-  }
-
-  .dbvc-ve-toolbar__button--dock,
-  button.dbvc-ve-toolbar__button.dbvc-ve-toolbar__button--dock {
-    width: var(--dbvc-ve-size-icon-width);
-    height: var(--dbvc-ve-size-icon-height);
+    padding: 0;
+    gap: 4px;
   }
 }
 

@@ -469,6 +469,11 @@ final class AssetLoader
                     'controlCenterTreeCollapse' => __('Collapse {name}', 'dbvc'),
                     'controlCenterTreeChildCountOne' => __('{count} row', 'dbvc'),
                     'controlCenterTreeChildCountMany' => __('{count} rows', 'dbvc'),
+                    // R5.later-c: tree-parent aggregate chip in the value-inline slot.
+                    'controlCenterValueAggregateRepeaterOne' => __('{count} row', 'dbvc'),
+                    'controlCenterValueAggregateRepeaterMany' => __('{count} rows', 'dbvc'),
+                    'controlCenterValueAggregatePaletteOne' => __('{count} color', 'dbvc'),
+                    'controlCenterValueAggregatePaletteMany' => __('{count} colors', 'dbvc'),
                     'controlCenterProviderShared' => __('Shared Globals', 'dbvc'),
                     'controlCenterProviderVertical' => __('Vertical', 'dbvc'),
                     'controlCenterProviderUnknown' => __('Other', 'dbvc'),
