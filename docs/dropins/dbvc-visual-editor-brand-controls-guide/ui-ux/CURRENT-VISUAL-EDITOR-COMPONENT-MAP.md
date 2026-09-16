@@ -4,8 +4,19 @@
 
 **Companion doc:** [R3-BRAND-CONTROL-CENTER-WIRING-SCHEMATIC.md](./R3-BRAND-CONTROL-CENTER-WIRING-SCHEMATIC.md) — the R3-specific wiring.
 
+> **R6 addendum (2026-09-15, R6-B).** This map was written for the R3 mockup and predates several landed surfaces. Before drawing the R6 workspace, layer these deltas on top of the sections below; the code remains authoritative.
+> - **Brand Control Center drawer** (`.dbvc-ve-control-center`, `control-center.css`, `brand-control-center-app.js`) — R3-C-2/R4: left-anchored 480px fixed drawer, `top:32px`/`bottom:76px`, `--dbvc-ve-z-drawer` 120015, no backdrop, outside-click does not close, Escape closes (capture-phase handler), `localStorage` view-mode/group preferences, events `dbvc:visual-editor:control-center:{toggle|close|opened|closed}`.
+> - **Toolbar reskin** (R5.later-toolbar-skin.a/b/c) — the toolbar is now a single dark pill: satellite Status button, a dock of icon buttons, satellite Edit + Power (Exit) links; hover/focus = subtle white overlay; `[aria-expanded="true"]` = solid `--dbvc-ve-color-primary` orange. The older R3/R4 mockup toolbars are stale for this.
+> - **Toolbar slot table in §2 below is stale** (it predates R3-C-2/R5). Verified order from `ensureToolbar()` (`overlay-app.js:2927`) as of 2026-09-15, left → right: satellite `status` (icon `status`) · dock: `review-fields` (`layers`), `go-object` (`search`), `media-manager` (`media`, only when the Media Manager flag is on), `shared-globals` (`globe`), `control-center` (`sliders`, only when the BCC flag is on), `overflow` (`more`, only when neither flag is on) · satellite `edit-object` (`edit`, an `<a>` to `currentEditLink`) · `toggle-mode` (`power`, an `<a href=toggleUrl>`). Attribute is `data-dbvc-ve-toolbar-action`. Icon names available in `renderToolbarIcon`: `edit, globe, layers, media, more, power, search, sliders, status` — R6-D-1 adds `grid` for the Workspace button, which is inserted **first in the dock** when `workspace.enabled`.
+> - **System dark mode** (R5.later-darkmode.a/b/c) — one `@media (prefers-color-scheme: dark)` block in `overlay.css` redefines base tokens; every surface flips via the cascade. Mockups must provide their dark block through the same token names.
+> - **Inline value summaries in drawer rows** (R5.later-c) — `.__value-summary` chips render after `.__meta` in the label cell.
+> - **Gated perf instrumentation** (`?dbvc_ve_perf=1`) — irrelevant to mockups.
+> - `overlay-app.js` is now ~13.9K lines; `media-manager-app.js` ~4.5K; `brand-control-center-app.js` ~3.9K. The R6 workspace adds a fourth sibling IIFE (`workspace-app.js`) and `workspace.css`; see `releases/R6-WORKSPACE-STATE-CONTRACT.md` §1 for the full z-stack including the new `--dbvc-ve-z-workspace` (120005).
+
 **Source of truth is the code**, not this doc — when they disagree, the code wins:
-- `addons/visual-editor/assets/js/overlay-app.js` (~8000 lines; the shell + all panels + popovers)
+- `addons/visual-editor/assets/js/overlay-app.js` (~13.9K lines as of 2026-09-15; the shell + all panels + popovers)
+- `addons/visual-editor/assets/js/brand-control-center-app.js` (~3.9K lines; the R3/R4/R5 Brand Control Center drawer)
+- `addons/visual-editor/assets/css/control-center.css` (drawer only; loaded after overlay.css when the BCC flag is on)
 - `addons/visual-editor/assets/js/media-manager-app.js` (~4500 lines; the Media Manager modal + rows)
 - `addons/visual-editor/assets/js/media-frame-factory.js` (shared wp.media construction)
 - `addons/visual-editor/assets/js/api-client.js` (REST client)

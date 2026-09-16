@@ -2578,14 +2578,23 @@
 	}
 
 	function setTriggerExpanded( expanded ) {
+		const value = expanded ? 'true' : 'false';
+		// R6-E: the toolbar entry always reflects open state, even when the
+		// modal was opened from somewhere else (e.g. the Site Manager
+		// Workspace's Tools tab) and `state.trigger` is that other control.
+		const toolbarButton = document.querySelector(
+			'[data-dbvc-ve-toolbar-action="media-manager"]'
+		);
+
+		if ( toolbarButton && toolbarButton !== state.trigger ) {
+			toolbarButton.setAttribute( 'aria-expanded', value );
+		}
+
 		if ( ! state.trigger || ! state.trigger.isConnected ) {
 			return;
 		}
 
-		state.trigger.setAttribute(
-			'aria-expanded',
-			expanded ? 'true' : 'false'
-		);
+		state.trigger.setAttribute( 'aria-expanded', value );
 	}
 
 	function scanIsOlder( scan ) {

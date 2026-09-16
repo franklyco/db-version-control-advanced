@@ -99,11 +99,9 @@
   padding: var(--dbvc-ve-control-center-header-padding-y)
     var(--dbvc-ve-control-center-section-padding-x);
   border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
-  background: linear-gradient(
-    180deg,
-    var(--dbvc-ve-color-surface) 0%,
-    color-mix(in srgb, var(--dbvc-ve-color-light) 60%, #ffffff) 100%
-  );
+  /* R5.later-darkmode.d: chrome-header token flips in dark mode; the old
+     white→light gradient stayed white on a dark drawer. */
+  background: var(--dbvc-ve-color-chrome-header-background);
 }
 
 .dbvc-ve-control-center__header-icon {
@@ -113,8 +111,8 @@
   width: 36px;
   height: 36px;
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-light);
-  color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-background-light);
+  color: var(--dbvc-ve-color-emphasis-foreground);
 }
 
 .dbvc-ve-control-center__title-block {
@@ -126,10 +124,15 @@
 
 .dbvc-ve-control-center__title {
   margin: 0;
+  /* Live-site QA (E-152): pin the <h2> to the drawer's font stack so the host
+     theme's heading rules cannot leak in. */
+  font-family: inherit;
   font-size: 15px;
+  line-height: 1.25;
   font-weight: var(--dbvc-ve-font-weight--heavy);
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   letter-spacing: -0.005em;
+  text-transform: none;
 }
 
 .dbvc-ve-control-center__summary-chip {
@@ -141,7 +144,7 @@
 }
 
 .dbvc-ve-control-center__summary-chip strong {
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   font-weight: var(--dbvc-ve-font-weight--bold);
 }
 
@@ -163,7 +166,7 @@
 .dbvc-ve-control-center__close:hover,
 .dbvc-ve-control-center__close:focus-visible {
   border-color: var(--dbvc-ve-color-border);
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   outline: none;
 }
 
@@ -176,7 +179,7 @@
   border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
   overflow-x: auto;
   scrollbar-width: thin;
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-drawer-background);
 }
 
 .dbvc-ve-control-center__tab {
@@ -196,14 +199,14 @@
 }
 
 .dbvc-ve-control-center__tab:hover {
-  color: var(--dbvc-ve-color-secondary);
-  background: var(--dbvc-ve-color-light);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  background: var(--dbvc-ve-color-background-light);
 }
 
 .dbvc-ve-control-center__tab[aria-selected="true"] {
-  color: var(--dbvc-ve-color-text-light);
-  background: var(--dbvc-ve-color-secondary);
-  border-color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-text);
+  background: var(--dbvc-ve-color-emphasis-background);
+  border-color: var(--dbvc-ve-color-emphasis-background);
 }
 
 .dbvc-ve-control-center__tab-count {
@@ -213,7 +216,7 @@
   min-width: 20px;
   padding: 0 6px;
   border-radius: var(--dbvc-ve-border-radius--l);
-  background: color-mix(in srgb, var(--dbvc-ve-color-dark) 12%, #ffffff);
+  background: color-mix(in srgb, var(--dbvc-ve-color-text-dark) 12%, transparent);
   color: var(--dbvc-ve-color-text-muted);
   font-size: 10px;
   font-weight: var(--dbvc-ve-font-weight--heavy);
@@ -233,7 +236,7 @@
   gap: 8px;
   padding: 10px var(--dbvc-ve-control-center-section-padding-x);
   border-bottom: 1px solid var(--dbvc-ve-color-border-muted);
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 44%, #ffffff);
+  background: var(--dbvc-ve-color-surface-muted);
 }
 
 .dbvc-ve-control-center__search {
@@ -241,7 +244,7 @@
   padding: 8px 12px;
   border-radius: var(--dbvc-ve-border-radius--s);
   border: 1px solid var(--dbvc-ve-color-border);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   color: var(--dbvc-ve-color-text-dark);
   font: var(--dbvc-ve-font-weight--normal) var(--dbvc-ve-font--body) / 1.4
     -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -275,7 +278,7 @@
   gap: 4px;
   padding: var(--dbvc-ve-control-center-chip-padding);
   border-radius: var(--dbvc-ve-border-radius--l);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   border: 1px solid var(--dbvc-ve-color-border);
   color: var(--dbvc-ve-color-text-muted);
   font-size: var(--dbvc-ve-font--meta);
@@ -284,9 +287,9 @@
 }
 
 .dbvc-ve-control-center__chip[aria-pressed="true"] {
-  background: var(--dbvc-ve-color-secondary);
-  color: var(--dbvc-ve-color-text-light);
-  border-color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
+  border-color: var(--dbvc-ve-color-emphasis-background);
 }
 
 .dbvc-ve-control-center__clear-filters {
@@ -324,7 +327,7 @@
 .dbvc-ve-control-center__thead {
   position: sticky;
   top: 0;
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 62%, #ffffff);
+  background: var(--dbvc-ve-color-surface-muted);
   z-index: 1;
   box-shadow: 0 1px 0 var(--dbvc-ve-color-border-muted);
 }
@@ -351,7 +354,7 @@
 }
 
 .dbvc-ve-control-center__row.is-focused-source td {
-  background: color-mix(in srgb, var(--dbvc-ve-color-primary) 12%, #ffffff);
+  background: color-mix(in srgb, var(--dbvc-ve-color-primary) 12%, transparent);
 }
 
 .dbvc-ve-control-center__row.is-unsupported,
@@ -403,7 +406,7 @@
 .dbvc-ve-control-center__label {
   font-size: var(--dbvc-ve-font--body);
   font-weight: var(--dbvc-ve-font-weight--bold);
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   /* R4-D-3 (defense-in-depth): pathological single-word ACF labels
      (200+ chars without word boundaries) would otherwise force
      horizontal overflow because .__label-block gives us space via
@@ -481,15 +484,15 @@
 }
 
 .dbvc-ve-control-center__action--view {
-  background: var(--dbvc-ve-color-surface);
-  color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   border: 1px solid var(--dbvc-ve-color-border);
 }
 
 .dbvc-ve-control-center__action--view:hover,
 .dbvc-ve-control-center__action--view:focus-visible {
-  background: var(--dbvc-ve-color-light);
-  color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-background-light);
+  color: var(--dbvc-ve-color-emphasis-foreground);
 }
 
 .dbvc-ve-control-center__action--opening {
@@ -537,7 +540,7 @@
 /* Row-level inline notices (open-error) ----------------------------------- */
 
 .dbvc-ve-control-center__row-notice {
-  background: color-mix(in srgb, var(--dbvc-ve-color-error) 6%, #ffffff);
+  background: color-mix(in srgb, var(--dbvc-ve-color-error) 6%, transparent);
 }
 
 .dbvc-ve-control-center__row-notice-cell {
@@ -654,7 +657,7 @@
   align-items: center;
   padding: 1px 6px;
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 65%, #ffffff);
+  background: var(--dbvc-ve-color-surface-muted);
   color: var(--dbvc-ve-color-text-muted);
   font-weight: var(--dbvc-ve-font-weight--bold);
 }
@@ -663,7 +666,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
 }
 
 .dbvc-ve-control-center__value-relationship strong {
@@ -675,7 +678,7 @@
    parent .__value-summary already caps at max-width:200px and ellipses,
    so oversized previews compress gracefully at the row edge. */
 .dbvc-ve-control-center__value-text {
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -693,7 +696,7 @@
    layout. Choice for single/multi-select; link with a trailing external
    glyph. The parent .__value-summary caps at 200px + ellipses. */
 .dbvc-ve-control-center__value-choice {
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -709,7 +712,7 @@
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -725,7 +728,7 @@
 /* R5.2-b: wysiwyg chip — stripped-text preview + subtle word-count
    suffix. Same one-line ellipsis pattern. */
 .dbvc-ve-control-center__value-wysiwyg {
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -745,7 +748,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   overflow: hidden;
   min-width: 0;
 }
@@ -756,7 +759,7 @@
   border-radius: 4px;
   object-fit: cover;
   display: block;
-  background: color-mix(in srgb, var(--dbvc-ve-color-secondary) 12%, #ffffff);
+  background: color-mix(in srgb, var(--dbvc-ve-color-secondary) 12%, transparent);
   flex: 0 0 auto;
 }
 
@@ -774,7 +777,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   overflow: hidden;
   min-width: 0;
 }
@@ -805,7 +808,7 @@
   padding: 0 8px;
   min-height: 20px;
   border-radius: var(--dbvc-ve-border-radius--l);
-  background: color-mix(in srgb, var(--dbvc-ve-color-text-subtle) 22%, #ffffff);
+  background: color-mix(in srgb, var(--dbvc-ve-color-text-subtle) 22%, transparent);
   color: var(--dbvc-ve-color-text-muted);
   font-size: var(--dbvc-ve-font--meta);
   font-weight: var(--dbvc-ve-font-weight--heavy);
@@ -814,7 +817,7 @@
 }
 
 .dbvc-ve-control-center__value-boolean.is-on {
-  background: color-mix(in srgb, var(--dbvc-ve-color-success) 22%, #ffffff);
+  background: color-mix(in srgb, var(--dbvc-ve-color-success) 22%, transparent);
   color: var(--dbvc-ve-color-success);
 }
 
@@ -826,7 +829,7 @@
   padding: 0 8px;
   min-height: 20px;
   border-radius: var(--dbvc-ve-border-radius--l);
-  background: color-mix(in srgb, var(--dbvc-ve-color-text-subtle) 18%, #ffffff);
+  background: color-mix(in srgb, var(--dbvc-ve-color-text-subtle) 18%, transparent);
   color: var(--dbvc-ve-color-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--dbvc-ve-font--meta);
@@ -846,7 +849,7 @@
   gap: 2px;
   padding: 2px;
   border-radius: var(--dbvc-ve-border-radius--l);
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 62%, #ffffff);
+  background: var(--dbvc-ve-color-surface-muted);
   border: 1px solid var(--dbvc-ve-color-border-muted);
 }
 
@@ -866,8 +869,8 @@
 }
 
 .dbvc-ve-control-center__view-toggle-option[aria-selected="true"] {
-  background: var(--dbvc-ve-color-surface);
-  color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   box-shadow: 0 1px 0 rgba(0, 10, 54, 0.06);
 }
 
@@ -916,8 +919,8 @@
 
 .dbvc-ve-control-center__search-clear:hover,
 .dbvc-ve-control-center__search-clear:focus-visible {
-  color: var(--dbvc-ve-color-secondary);
-  background: var(--dbvc-ve-color-light);
+  color: var(--dbvc-ve-color-emphasis-foreground);
+  background: var(--dbvc-ve-color-background-light);
   outline: none;
 }
 
@@ -931,7 +934,7 @@
 }
 
 .dbvc-ve-control-center__group-header {
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 52%, #ffffff);
+  background: var(--dbvc-ve-color-surface-muted);
 }
 
 .dbvc-ve-control-center__group-header-cell {
@@ -946,7 +949,7 @@
   padding: 8px var(--dbvc-ve-control-center-section-padding-x);
   background: transparent;
   border: 0;
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   font-size: var(--dbvc-ve-font--caption);
   font-weight: var(--dbvc-ve-font-weight--bold);
   text-align: left;
@@ -955,7 +958,7 @@
 
 .dbvc-ve-control-center__group-toggle:hover,
 .dbvc-ve-control-center__group-toggle:focus-visible {
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 78%, #ffffff);
+  background: var(--dbvc-ve-color-background-light);
   outline: none;
 }
 
@@ -1052,7 +1055,7 @@
   margin: 0;
   font-size: 15px;
   font-weight: var(--dbvc-ve-font-weight--heavy);
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
 }
 
 .dbvc-ve-control-center__panel-state-body {
@@ -1083,9 +1086,9 @@
 }
 
 .dbvc-ve-control-center__button--secondary {
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   border: 1px solid var(--dbvc-ve-color-border);
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
 }
 
 .dbvc-ve-control-center__loading-spinner {
@@ -1109,8 +1112,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.6);
-  color: var(--dbvc-ve-color-secondary);
+  background: color-mix(in srgb, var(--dbvc-ve-color-drawer-background) 60%, transparent);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   font-size: var(--dbvc-ve-font--caption);
   font-weight: var(--dbvc-ve-font-weight--bold);
   pointer-events: none;
@@ -1121,7 +1124,7 @@
 .dbvc-ve-control-center__footer {
   padding: 8px var(--dbvc-ve-control-center-section-padding-x);
   border-top: 1px solid var(--dbvc-ve-color-border-muted);
-  background: color-mix(in srgb, var(--dbvc-ve-color-light) 44%, #ffffff);
+  background: var(--dbvc-ve-color-surface-muted);
   font-size: var(--dbvc-ve-font--meta);
   color: var(--dbvc-ve-color-text-muted);
   display: flex;
@@ -1130,7 +1133,7 @@
 }
 
 .dbvc-ve-control-center__footer strong {
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   font-weight: var(--dbvc-ve-font-weight--bold);
 }
 
@@ -1232,7 +1235,7 @@
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 .dbvc-ve-control-center__row-expand:hover {
-  color: var(--dbvc-ve-color-secondary);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   border-color: var(--dbvc-ve-color-primary, currentColor);
   background: rgba(0, 0, 0, 0.02);
 }

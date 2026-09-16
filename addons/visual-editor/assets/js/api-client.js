@@ -380,8 +380,20 @@
 			} );
 		},
 
-		searchObjects( search, objectType ) {
+		/**
+		 * R6-D-2 (2026-09-15): third `options` argument widens the call for
+		 * the Site Manager Workspace — `{ subtype, page, perPage,
+		 * includeTypes, sort }` map 1:1 onto the R6-A / R6.1-a read-model params.
+		 * The two-argument form the Go To Object popover uses is unchanged,
+		 * and the response is passed through untouched (`items`, `page`,
+		 * `perPage`, `hasMore`, `query`, optional `types`). Non-2xx
+		 * responses reject with an Error carrying `status` so callers can
+		 * distinguish a 403 (mode lapsed) from a failed search.
+		 */
+		searchObjects( search, objectType, options ) {
 			const params = new URLSearchParams();
+			const settings =
+				options && typeof options === 'object' ? options : {};
 
 			if ( typeof search === 'string' && search.trim() ) {
 				params.set( 'search', search.trim() );
@@ -393,6 +405,31 @@
 				objectType !== 'all'
 			) {
 				params.set( 'objectType', objectType.trim() );
+			}
+
+			if ( typeof settings.subtype === 'string' && settings.subtype ) {
+				params.set( 'subtype', settings.subtype );
+			}
+
+			if ( Number.isFinite( Number( settings.page ) ) && settings.page > 0 ) {
+				params.set( 'page', String( Math.floor( settings.page ) ) );
+			}
+
+			if (
+				Number.isFinite( Number( settings.perPage ) ) &&
+				settings.perPage > 0
+			) {
+				params.set( 'perPage', String( Math.floor( settings.perPage ) ) );
+			}
+
+			if ( settings.includeTypes === true ) {
+				params.set( 'includeTypes', '1' );
+			}
+
+			// R6.1-a: explicit sort key (recent | title_asc | title_desc |
+			// newest | oldest | relevance); omitted → server default.
+			if ( typeof settings.sort === 'string' && settings.sort ) {
+				params.set( 'sort', settings.sort );
 			}
 
 			return fetch(
@@ -411,12 +448,15 @@
 					return data;
 				}
 
-				throw new Error(
+				const error = new Error(
 					( data && data.message ) ||
 						`Visual Editor object search failed (${ response.status }).`
 				);
+				error.status = response.status;
+				throw error;
 			} );
 		},
+
 
 		getSharedGlobalFields( sessionId ) {
 			return fetch(

@@ -34,8 +34,9 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         public const OPTION_EXCLUDED_TAXONOMIES = 'dbvc_visual_editor_excluded_taxonomies';
         public const OPTION_CURATION_TOOL_ENABLED = 'dbvc_visual_editor_curation_tool_enabled';
         public const OPTION_CONTROL_CENTER_ENABLED = 'dbvc_visual_editor_control_center_enabled';
+        public const OPTION_WORKSPACE_ENABLED = 'dbvc_visual_editor_workspace_enabled';
         public const OPTION_SETTINGS_VERSION = 'dbvc_visual_editor_settings_version';
-        public const SETTINGS_VERSION = 6;
+        public const SETTINGS_VERSION = 7;
         public const DEFAULT_SHARED_GLOBAL_FIELD_NAMES = 'settings_globals_default_posts';
         public const DEFAULT_EXCLUDED_POST_TYPES = 'bricks_template';
         public const DEFAULT_EXCLUDED_TAXONOMIES = "template_tag\ntemplate_bundle";
@@ -78,6 +79,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             add_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES);
             add_option(self::OPTION_CURATION_TOOL_ENABLED, '0');
             add_option(self::OPTION_CONTROL_CENTER_ENABLED, '0');
+            add_option(self::OPTION_WORKSPACE_ENABLED, '0');
             add_option(self::OPTION_SETTINGS_VERSION, (string) self::SETTINGS_VERSION);
 
             if ((int) get_option(self::OPTION_SETTINGS_VERSION, 0) < self::SETTINGS_VERSION) {
@@ -159,6 +161,22 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         }
 
         /**
+         * R6-D-1 kill switch for the Frontend Site Manager Workspace drawer.
+         * Gates the toolbar entry, the `workspace-app.js` / `workspace.css`
+         * enqueue, and the `workspace` bootstrap block. Off by default so the
+         * rollout fallback is today's toolbar/popover navigation (R6 spec
+         * §Compatibility and rollback). Requires the master switch, mirroring
+         * `is_control_center_enabled()`. Read-only surface — no write authority.
+         *
+         * @return bool
+         */
+        public static function is_workspace_enabled()
+        {
+            return self::is_enabled()
+                && get_option(self::OPTION_WORKSPACE_ENABLED, '0') === '1';
+        }
+
+        /**
          * @return array<string, array<string, mixed>>
          */
         public static function get_settings_groups()
@@ -199,6 +217,12 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'label' => __('Brand Control Center', 'dbvc'),
                     'fields' => [
                         self::OPTION_CONTROL_CENTER_ENABLED,
+                    ],
+                ],
+                'workspace' => [
+                    'label' => __('Site Manager Workspace', 'dbvc'),
+                    'fields' => [
+                        self::OPTION_WORKSPACE_ENABLED,
                     ],
                 ],
             ];
@@ -248,6 +272,11 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'input' => 'checkbox',
                     'help' => __('Registers configured Shared Globals fields with the Visual Editor Brand Control Center so editors can discover them from one place. Off by default and has no effect unless the Visual Editor is also enabled. The Control Center is a discovery-only surface — turning it on does not grant any new edit permission; existing capability checks still apply at save time.', 'dbvc'),
                 ],
+                self::OPTION_WORKSPACE_ENABLED => [
+                    'label' => __('Enable Site Manager Workspace', 'dbvc'),
+                    'input' => 'checkbox',
+                    'help' => __('Adds the persistent Site Manager drawer to the frontend Visual Editor toolbar for navigating pages, posts, approved post types, and terms without leaving Visual Editor mode, with shortcuts to Review Fields, the Brand Control Center, and the Media Manager. Off by default; turning it off restores the previous toolbar navigation.', 'dbvc'),
+                ],
             ];
         }
 
@@ -266,6 +295,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                 self::OPTION_EXCLUDED_TAXONOMIES => (string) get_option(self::OPTION_EXCLUDED_TAXONOMIES, self::DEFAULT_EXCLUDED_TAXONOMIES),
                 self::OPTION_CURATION_TOOL_ENABLED => (string) get_option(self::OPTION_CURATION_TOOL_ENABLED, '0'),
                 self::OPTION_CONTROL_CENTER_ENABLED => (string) get_option(self::OPTION_CONTROL_CENTER_ENABLED, '0'),
+                self::OPTION_WORKSPACE_ENABLED => (string) get_option(self::OPTION_WORKSPACE_ENABLED, '0'),
             ];
         }
 
@@ -281,6 +311,7 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                 self::OPTION_MEDIA_MANAGER_ENABLED => isset($request_data[self::OPTION_MEDIA_MANAGER_ENABLED]) ? '1' : '0',
                 self::OPTION_CURATION_TOOL_ENABLED => isset($request_data[self::OPTION_CURATION_TOOL_ENABLED]) ? '1' : '0',
                 self::OPTION_CONTROL_CENTER_ENABLED => isset($request_data[self::OPTION_CONTROL_CENTER_ENABLED]) ? '1' : '0',
+                self::OPTION_WORKSPACE_ENABLED => isset($request_data[self::OPTION_WORKSPACE_ENABLED]) ? '1' : '0',
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => self::sanitize_shared_global_field_names(
                     isset($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])
                         ? (string) wp_unslash($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])

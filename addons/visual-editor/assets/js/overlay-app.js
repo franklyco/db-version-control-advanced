@@ -28,6 +28,11 @@
 		toolbarStatusbarParkingNode: null,
 		toolbarOpenPanel: '',
 		toolbarTriggerNode: null,
+		// VE-prefs-1: viewer preferences (localStorage-backed). Only
+		// `colorScheme` exists today; future preferences add a key here and
+		// a section in openPreferencesToolbarPopover().
+		preferences: { colorScheme: 'system' },
+		workspaceBridgeBound: false,
 		toolbarEventsBound: false,
 		toolbarObjectSearchRequestId: 0,
 		toolbarObjectSearchTimer: 0,
@@ -2721,6 +2726,267 @@
 	}
 
 	/**
+	 * R6-D-1 — Site Manager Workspace bootstrap gate + event bridge. The
+	 * drawer lives in its own IIFE (`workspace-app.js`, enqueued only when
+	 * `bootstrap.workspace.enabled`); the toolbar talks to it exclusively
+	 * through `dbvc:visual-editor:workspace:*` events (contract §3.2), the
+	 * same shape as the BCC / Media Manager bridges above.
+	 */
+	function isWorkspaceEnabled() {
+		const bootstrap = window.DBVCVisualEditorBootstrap || {};
+		const workspace = bootstrap.workspace;
+
+		return Boolean(
+			workspace &&
+				typeof workspace === 'object' &&
+				workspace.enabled === true
+		);
+	}
+
+	function dispatchWorkspaceEvent( name, detail ) {
+		if ( ! isWorkspaceEnabled() ) {
+			return;
+		}
+
+		document.dispatchEvent(
+			new CustomEvent( `dbvc:visual-editor:workspace:${ name }`, {
+				detail: detail || {},
+			} )
+		);
+	}
+
+	/**
+	 * VE-prefs-1 (2026-09-15, D-079) — viewer preferences.
+	 *
+	 * `colorScheme` overrides the OS `prefers-color-scheme` for Visual
+	 * Editor surfaces only: the value is mirrored onto
+	 * `<html data-dbvc-ve-scheme="light|dark">` (absent = "system"), which
+	 * overlay.css / workspace.css read — the media-guarded dark block skips
+	 * when the attribute is "light", and an explicit block applies when it
+	 * is "dark". Nothing but our own selectors read the attribute, so the
+	 * host page is untouched. Persisted per viewer in localStorage (same
+	 * pattern as the BCC / workspace preferences); no server round-trip,
+	 * no new write authority.
+	 */
+	const PREFERENCES_STORAGE_KEY = 'dbvc-ve-preferences:v1';
+	const COLOR_SCHEMES = [ 'system', 'light', 'dark' ];
+
+	function normalizeColorScheme( value ) {
+		return COLOR_SCHEMES.indexOf( value ) === -1 ? 'system' : value;
+	}
+
+	function loadPreferences() {
+		try {
+			const raw = window.localStorage.getItem( PREFERENCES_STORAGE_KEY );
+			const parsed = raw ? JSON.parse( raw ) : null;
+
+			return {
+				colorScheme: normalizeColorScheme(
+					parsed && typeof parsed === 'object' ? parsed.colorScheme : ''
+				),
+			};
+		} catch ( _err ) {
+			return { colorScheme: 'system' };
+		}
+	}
+
+	function persistPreferences() {
+		try {
+			window.localStorage.setItem(
+				PREFERENCES_STORAGE_KEY,
+				JSON.stringify( { colorScheme: state.preferences.colorScheme } )
+			);
+		} catch ( _err ) {
+			/* private window / quota / permission — drop silently */
+		}
+	}
+
+	function applyColorScheme( scheme ) {
+		const root = document.documentElement;
+
+		if ( scheme === 'light' || scheme === 'dark' ) {
+			root.setAttribute( 'data-dbvc-ve-scheme', scheme );
+		} else {
+			root.removeAttribute( 'data-dbvc-ve-scheme' );
+		}
+	}
+
+	function initPreferences() {
+		state.preferences = loadPreferences();
+		applyColorScheme( state.preferences.colorScheme );
+	}
+
+	function setColorScheme( value ) {
+		const scheme = normalizeColorScheme( value );
+
+		if ( scheme === state.preferences.colorScheme ) {
+			return;
+		}
+
+		state.preferences.colorScheme = scheme;
+		applyColorScheme( scheme );
+		persistPreferences();
+		document.dispatchEvent(
+			new CustomEvent( 'dbvc:visual-editor:preferences:changed', {
+				detail: { colorScheme: scheme },
+			} )
+		);
+
+		if ( state.toolbarOpenPanel === 'settings' ) {
+			renderPreferencesPopoverBody( getToolbarPopoverBody(), { focusChecked: true } );
+		}
+
+		announceToolbar(
+			getToolbarString(
+				'preferencesAnnounceScheme',
+				'Appearance set to {scheme}.'
+			).split( '{scheme}' ).join( colorSchemeLabel( scheme ) )
+		);
+	}
+
+	function colorSchemeLabel( scheme ) {
+		if ( scheme === 'light' ) {
+			return getToolbarString( 'preferencesAppearanceLight', 'Light' );
+		}
+
+		if ( scheme === 'dark' ) {
+			return getToolbarString( 'preferencesAppearanceDark', 'Dark' );
+		}
+
+		return getToolbarString( 'preferencesAppearanceSystem', 'System' );
+	}
+
+	function announceToolbar( message ) {
+		const toolbar = state.toolbarNode;
+		const region = toolbar
+			? toolbar.querySelector( '[data-dbvc-ve-toolbar-announcer]' )
+			: null;
+
+		if ( region ) {
+			region.textContent = String( message || '' );
+		}
+	}
+
+	function renderPreferencesPopoverBody( body, options ) {
+		if ( ! body ) {
+			return;
+		}
+
+		const current = state.preferences.colorScheme;
+		const settings = options || {};
+
+		body.innerHTML = [
+			'<div class="dbvc-ve-toolbar-prefs">',
+			`  <div class="dbvc-ve-toolbar-prefs__section" role="group" aria-labelledby="dbvc-ve-toolbar-prefs-appearance-label">`,
+			`    <div class="dbvc-ve-toolbar-prefs__label" id="dbvc-ve-toolbar-prefs-appearance-label">${ escapeHtml(
+				getToolbarString( 'preferencesAppearanceLabel', 'Appearance' )
+			) }</div>`,
+			`    <div class="dbvc-ve-toolbar-prefs__segmented" role="radiogroup" aria-labelledby="dbvc-ve-toolbar-prefs-appearance-label">`,
+			COLOR_SCHEMES.map( function ( scheme ) {
+				const checked = scheme === current;
+
+				return `<button type="button" class="dbvc-ve-toolbar-prefs__option${
+					checked ? ' is-checked' : ''
+				}" role="radio" aria-checked="${
+					checked ? 'true' : 'false'
+				}" tabindex="${ checked ? '0' : '-1' }" data-dbvc-ve-preference="colorScheme" data-dbvc-ve-preference-value="${ escapeHtml(
+					scheme
+				) }">${ escapeHtml( colorSchemeLabel( scheme ) ) }</button>`;
+			} ).join( '' ),
+			'    </div>',
+			`    <p class="dbvc-ve-toolbar-prefs__hint">${ escapeHtml(
+				getToolbarString(
+					'preferencesAppearanceHint',
+					'System follows your operating system setting. Applies to Visual Editor surfaces only.'
+				)
+			) }</p>`,
+			'  </div>',
+			'</div>',
+		].join( '' );
+
+		if ( settings.focusChecked ) {
+			const checked = body.querySelector( '[role="radio"][aria-checked="true"]' );
+
+			if ( checked && typeof checked.focus === 'function' ) {
+				checked.focus();
+			}
+		}
+	}
+
+	function handlePreferencesPopoverClick( event ) {
+		const option =
+			event.target && typeof event.target.closest === 'function'
+				? event.target.closest( '[data-dbvc-ve-preference="colorScheme"]' )
+				: null;
+
+		if ( ! option ) {
+			return;
+		}
+
+		event.preventDefault();
+		setColorScheme( option.getAttribute( 'data-dbvc-ve-preference-value' ) );
+	}
+
+	function handlePreferencesPopoverKeydown( event ) {
+		const option =
+			event.target && typeof event.target.closest === 'function'
+				? event.target.closest( '[data-dbvc-ve-preference="colorScheme"]' )
+				: null;
+
+		if ( ! option ) {
+			return;
+		}
+
+		const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
+		if ( ! ( event.key in keys ) ) {
+			return;
+		}
+
+		const index = COLOR_SCHEMES.indexOf( state.preferences.colorScheme );
+		const next =
+			COLOR_SCHEMES[ ( index + keys[ event.key ] + COLOR_SCHEMES.length ) % COLOR_SCHEMES.length ];
+
+		event.preventDefault();
+		setColorScheme( next );
+	}
+
+	function openPreferencesToolbarPopover( options ) {
+		const toolbar = ensureToolbar();
+		const popover =
+			state.toolbarPopoverNode ||
+			toolbar.querySelector( '.dbvc-ve-toolbar-popover' );
+		const title = toolbar.querySelector( '.dbvc-ve-toolbar-popover__title' );
+		const body = getToolbarPopoverBody();
+
+		state.toolbarOpenPanel = 'settings';
+		state.toolbarTriggerNode =
+			options && options.trigger ? options.trigger : null;
+		state.fieldIndexOpen = false;
+
+		if ( popover ) {
+			popover.hidden = false;
+			popover.setAttribute( 'aria-labelledby', 'dbvc-ve-toolbar-popover-title' );
+		}
+
+		if ( title ) {
+			title.textContent = getToolbarString( 'preferencesTitle', 'Preferences' );
+		}
+
+		if ( body ) {
+			renderPreferencesPopoverBody( body, { focusChecked: true } );
+
+			if ( body.dataset.dbvcVePrefsBound !== '1' ) {
+				body.dataset.dbvcVePrefsBound = '1';
+				body.addEventListener( 'click', handlePreferencesPopoverClick );
+				body.addEventListener( 'keydown', handlePreferencesPopoverKeydown );
+			}
+		}
+
+		updateToolbarExpandedState();
+	}
+
+	/**
 	 * R4-D-1 — panel-saved signal for the Brand Control Center drawer's
 	 * save-status-strip.
 	 *
@@ -2764,6 +3030,62 @@
 	 * this twice cannot double-bind. Guarded by `isControlCenterEnabled()` so
 	 * the listener is a no-op when the feature is off.
 	 */
+	/**
+	 * R6-D-3 — Site Manager Workspace bridge (contract §3.2 / §5.4). Two
+	 * listeners only: the workspace's "Review fields" tool asks the toolbar
+	 * to open the existing Review Fields popover (no new UI), and the
+	 * drawer's open/close re-clamps the movable panel against the inset.
+	 * No-op when the workspace flag is off.
+	 */
+	function bindWorkspaceBridge() {
+		if ( ! isWorkspaceEnabled() || state.workspaceBridgeBound ) {
+			return;
+		}
+		state.workspaceBridgeBound = true;
+		document.addEventListener(
+			'dbvc:visual-editor:review-fields:open',
+			function ( event ) {
+				const detail =
+					event && event.detail && typeof event.detail === 'object'
+						? event.detail
+						: {};
+				const trigger =
+					detail.trigger && detail.trigger.isConnected
+						? detail.trigger
+						: null;
+				openStatusBarToolbarPopover( {
+					trigger,
+					expandIndex: true,
+				} );
+			}
+		);
+		[ 'opened', 'closed' ].forEach( function ( name ) {
+			document.addEventListener(
+				`dbvc:visual-editor:workspace:${ name }`,
+				function () {
+					// Keep the toolbar entry's expanded state authoritative here
+					// as well (E-152): the drawer may open before the toolbar
+					// exists (persisted restore) or from a non-toolbar trigger.
+					const button = state.toolbarNode
+						? state.toolbarNode.querySelector(
+								'[data-dbvc-ve-toolbar-action="workspace"]'
+						  )
+						: null;
+					if ( button ) {
+						button.setAttribute(
+							'aria-expanded',
+							name === 'opened' ? 'true' : 'false'
+						);
+					}
+					if ( state.panelPosition ) {
+						applyPanelPosition( ensureEditorPanel() );
+					}
+					schedulePanelViewportClamp();
+				}
+			);
+		} );
+	}
+
 	function bindControlCenterBridge() {
 		if ( ! isControlCenterEnabled() || state.controlCenterBridgeBound ) {
 			return;
@@ -2848,6 +3170,11 @@
 			sliders: `<svg ${ attrs }><path ${ common } d="M4 6h11"/><circle ${ common } cx="18" cy="6" r="2"/><path ${ common } d="M9 12H4"/><circle ${ common } cx="12" cy="12" r="2"/><path ${ common } d="M16 12h4"/><path ${ common } d="M4 18h11"/><circle ${ common } cx="18" cy="18" r="2"/></svg>`,
 			more: `<svg ${ attrs }><circle ${ filled } cx="5" cy="12" r="1.8"/><circle ${ filled } cx="12" cy="12" r="1.8"/><circle ${ filled } cx="19" cy="12" r="1.8"/></svg>`,
 			power: `<svg ${ attrs }><path ${ common } d="M12 2v10"/><path ${ common } d="M18.4 6.6a8 8 0 1 1-12.8 0"/></svg>`,
+			// R6-D-1 — Site Manager Workspace toolbar entry (four rounded
+			// squares; accepted from the R6-C mockup, D-077).
+			grid: `<svg ${ attrs }><rect ${ common } x="3" y="3" width="7" height="7" rx="1.5"/><rect ${ common } x="14" y="3" width="7" height="7" rx="1.5"/><rect ${ common } x="3" y="14" width="7" height="7" rx="1.5"/><rect ${ common } x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
+			// VE-prefs-1 — Preferences toolbar entry (gear).
+			gear: `<svg ${ attrs }><circle ${ common } cx="12" cy="12" r="3"/><path ${ common } d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>`,
 		};
 
 		return icons[ name ] || icons.more;
@@ -2960,6 +3287,10 @@
 				'toolbarControlCenter',
 				'Global Brand Controls'
 			);
+			const workspaceLabel = getToolbarString(
+				'toolbarWorkspace',
+				'Site Manager'
+			);
 			const moreLabel = getToolbarString( 'toolbarMore', 'More options' );
 			const editLabel = getToolbarString(
 				'toolbarEditObject',
@@ -2968,6 +3299,10 @@
 			const exitLabel = getToolbarString(
 				'toolbarExitMode',
 				'Exit Visual Editor'
+			);
+			const preferencesLabel = getToolbarString(
+				'toolbarPreferences',
+				'Visual Editor preferences'
 			);
 			const toggleUrl = getToolbarToggleUrl();
 
@@ -2984,6 +3319,22 @@
 					false
 				),
 				'<div class="dbvc-ve-toolbar__dock">',
+				// R6-D-1: the workspace is the entry point to the other tools, so
+				// it sits first in the dock (D-077). Landmark, not dialog — no
+				// aria-haspopup; aria-expanded is maintained by workspace-app.js.
+				isWorkspaceEnabled()
+					? createToolbarButtonMarkup(
+							'workspace',
+							'grid',
+							workspaceLabel,
+							'dbvc-ve-toolbar__button--dock',
+							false,
+							{
+								controls: 'dbvc-ve-workspace',
+								expanded: false,
+							}
+					  )
+					: '',
 				createToolbarButtonMarkup(
 					'review-fields',
 					'layers',
@@ -3050,6 +3401,16 @@
 				) }" target="_blank" rel="noopener noreferrer" aria-disabled="true">${ renderToolbarIcon(
 					'edit'
 				) }</a>`,
+				// VE-prefs-1: Preferences satellite between Edit and Exit —
+				// always present (not feature-flagged); opens the popover shell.
+				createToolbarButtonMarkup(
+					'settings',
+					'gear',
+					preferencesLabel,
+					'dbvc-ve-toolbar__button--satellite',
+					false,
+					{ expanded: false, hasPopup: 'dialog' }
+				),
 				toggleUrl
 					? `<a class="dbvc-ve-toolbar__button dbvc-ve-toolbar__button--satellite dbvc-ve-toolbar__button--power" data-dbvc-ve-toolbar-action="toggle-mode" aria-label="${ escapeHtml(
 							exitLabel
@@ -3066,6 +3427,7 @@
 							true
 					  ),
 				'<div class="dbvc-ve-toolbar__message" hidden></div>',
+				'<p class="dbvc-ve-toolbar__sr-only" role="status" aria-live="polite" aria-atomic="true" data-dbvc-ve-toolbar-announcer="1"></p>',
 				'<div class="dbvc-ve-toolbar-popover" role="dialog" aria-modal="false" hidden>',
 				'  <div class="dbvc-ve-toolbar-popover__header">',
 				'    <div class="dbvc-ve-toolbar-popover__title" id="dbvc-ve-toolbar-popover-title"></div>',
@@ -4064,7 +4426,11 @@
 					node.getAttribute( 'data-dbvc-ve-toolbar-action' ) || '';
 				const expanded = action === state.toolbarOpenPanel;
 
-				if ( action === 'status' || action === 'review-fields' ) {
+				if (
+					action === 'status' ||
+					action === 'review-fields' ||
+					action === 'settings'
+				) {
 					node.setAttribute(
 						'aria-expanded',
 						expanded ? 'true' : 'false'
@@ -4191,6 +4557,20 @@
 			dispatchControlCenterEvent( 'close', { restoreFocus: false } );
 			return;
 		}
+		if ( action === 'workspace' ) {
+			// R6-D-1: toggling the workspace from the toolbar closes any
+			// popover and any surface painted ABOVE it (BCC, Media Manager)
+			// so the drawer is actually visible; opening the BCC / Media
+			// Manager FROM the workspace leaves it open underneath instead
+			// (contract §5.2–5.3, handled in workspace-app.js).
+			event.preventDefault();
+			event.stopPropagation();
+			closeToolbarPopover();
+			dispatchMediaManagerEvent( 'close', { restoreFocus: false } );
+			dispatchControlCenterEvent( 'close', { restoreFocus: false } );
+			dispatchWorkspaceEvent( 'toggle', { trigger: actionNode } );
+			return;
+		}
 
 		if ( action === 'control-center' ) {
 			event.preventDefault();
@@ -4229,6 +4609,14 @@
 					trigger: actionNode,
 					expandIndex: false,
 				} );
+			}
+			return;
+		}
+		if ( action === 'settings' ) {
+			if ( state.toolbarOpenPanel === 'settings' ) {
+				closeToolbarPopover();
+			} else {
+				openPreferencesToolbarPopover( { trigger: actionNode } );
 			}
 			return;
 		}
@@ -4286,9 +4674,22 @@
 			return;
 		}
 
+		// Polish (E-154): Escape hands focus back to whatever opened the
+		// popover, exactly like the × button does — keyboard users were
+		// being dropped to <body>. The trigger may live outside the toolbar
+		// (e.g. a Site Manager Tools button), so use the stored node.
+		const trigger = state.toolbarTriggerNode;
 		closeToolbarPopover();
 		event.preventDefault();
 		event.stopPropagation();
+
+		if (
+			trigger &&
+			trigger.isConnected &&
+			typeof trigger.focus === 'function'
+		) {
+			trigger.focus();
+		}
 	}
 
 	function bindStatusBarEvents( bar ) {
@@ -7225,6 +7626,54 @@
 		syncToolbarState( nextState );
 	}
 
+	/**
+	 * R6-D-3 (D-072): while the Site Manager Workspace drawer is open,
+	 * workspace-app.js publishes `--dbvc-ve-workspace-inset` (its width) on
+	 * <html>. The movable panel's clamp bounds are inset by that amount so
+	 * the panel can never be dragged or auto-placed under the drawer.
+	 * Zero when the workspace is closed, disabled, or not enqueued.
+	 */
+	function getWorkspaceInset() {
+		if ( ! isWorkspaceEnabled() ) {
+			return 0;
+		}
+
+		const root = document.documentElement;
+		let raw = root.style.getPropertyValue( '--dbvc-ve-workspace-inset' );
+
+		if ( ! raw && typeof window.getComputedStyle === 'function' ) {
+			raw = window
+				.getComputedStyle( root )
+				.getPropertyValue( '--dbvc-ve-workspace-inset' );
+		}
+
+		const value = parseFloat( String( raw || '' ).trim() );
+
+		return Number.isFinite( value ) && value > 0 ? value : 0;
+	}
+
+	/**
+	 * Polish (E-154): the WordPress admin bar is `position: fixed` at the
+	 * top on desktop; the panel used to clamp to `top: 8` and slide under it.
+	 * Measured live (never assumed) so a hidden / non-fixed bar costs nothing.
+	 */
+	function getAdminBarInset() {
+		const bar = document.getElementById( 'wpadminbar' );
+
+		if ( ! bar || typeof window.getComputedStyle !== 'function' ) {
+			return 0;
+		}
+
+		if ( window.getComputedStyle( bar ).position !== 'fixed' ) {
+			return 0;
+		}
+
+		const rect = bar.getBoundingClientRect();
+		const height = rect && rect.height ? rect.height : bar.offsetHeight || 0;
+
+		return Number.isFinite( height ) && height > 0 ? height : 0;
+	}
+
 	function getPanelViewportBounds() {
 		const visualViewport = window.visualViewport;
 		const width =
@@ -7251,12 +7700,16 @@
 			visualViewport && Number.isFinite( visualViewport.offsetTop )
 				? visualViewport.offsetTop
 				: 0;
+		// R6-D-3: keep the panel to the right of an open workspace drawer.
+		const inset = Math.min( getWorkspaceInset(), Math.max( 0, width - 1 ) );
+		// E-154: and below the fixed admin bar.
+		const topInset = Math.min( getAdminBarInset(), Math.max( 0, height - 1 ) );
 
 		return {
-			left,
-			top,
-			width: Math.max( 1, width ),
-			height: Math.max( 1, height ),
+			left: left + inset,
+			top: top + topInset,
+			width: Math.max( 1, width - inset ),
+			height: Math.max( 1, height - topInset ),
 		};
 	}
 
@@ -13834,6 +14287,9 @@
 			}
 
 			document.body.classList.add( 'dbvc-ve-active' );
+			// VE-prefs-1: apply the viewer's colour-scheme choice before the
+			// first Visual Editor surface paints (no flash of the wrong scheme).
+			initPreferences();
 			ensureToolbar();
 			ensureStatusBar();
 			ensureEditorPanel();
@@ -13841,6 +14297,7 @@
 			ensureSharedBadge();
 			bindBadgeEvents();
 			bindControlCenterBridge();
+			bindWorkspaceBridge();
 
 			const markers = findMarkers();
 			if ( ! markers.length ) {

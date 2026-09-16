@@ -81,6 +81,13 @@ final class AssetLoader
         $control_center_enabled = $this->isControlCenterEnabled();
         $control_center_style_version = $this->resolveAssetVersion('assets/css/control-center.css');
         $control_center_script_version = $this->resolveAssetVersion('assets/js/brand-control-center-app.js');
+        // R6-D-1: Site Manager Workspace drawer. Same gate shape as the BCC
+        // (master switch AND OPTION_WORKSPACE_ENABLED, default off). Depends on
+        // the BCC script when that is enabled so its capture-phase Escape
+        // handler registers AFTER the BCC's (contract §6 ordering).
+        $workspace_enabled = $this->isWorkspaceEnabled();
+        $workspace_style_version = $this->resolveAssetVersion('assets/css/workspace.css');
+        $workspace_script_version = $this->resolveAssetVersion('assets/js/workspace-app.js');
         $overlay_dependencies = ['dbvc-visual-editor-api-client', 'dbvc-visual-editor-media-frame-factory'];
 
         if (function_exists('wp_enqueue_editor')) {
@@ -164,6 +171,33 @@ final class AssetLoader
             );
         }
 
+        if ($workspace_enabled) {
+            $workspace_dependencies = ['dbvc-visual-editor-overlay'];
+
+            if ($control_center_enabled) {
+                $workspace_dependencies[] = 'dbvc-visual-editor-control-center';
+            }
+
+            if ($media_manager_enabled) {
+                $workspace_dependencies[] = 'dbvc-visual-editor-media-manager';
+            }
+
+            wp_enqueue_style(
+                'dbvc-visual-editor-workspace',
+                $base_url . 'assets/css/workspace.css',
+                ['dbvc-visual-editor-overlay'],
+                $workspace_style_version
+            );
+
+            wp_enqueue_script(
+                'dbvc-visual-editor-workspace',
+                $base_url . 'assets/js/workspace-app.js',
+                $workspace_dependencies,
+                $workspace_script_version,
+                true
+            );
+        }
+
         wp_localize_script(
             'dbvc-visual-editor-overlay',
             'DBVCVisualEditorBootstrap',
@@ -197,6 +231,13 @@ final class AssetLoader
                 // popover uses).
                 'controlCenter' => [
                     'enabled' => $control_center_enabled,
+                    'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor')),
+                ],
+                // R6-D-1: Site Manager Workspace bootstrap. `restBase` is the
+                // same session-neutral prefix; the drawer calls the existing
+                // `object-search` route through DBVCVisualEditorApi (R6-D-2).
+                'workspace' => [
+                    'enabled' => $workspace_enabled,
                     'restBase' => esc_url_raw(rest_url('dbvc/v1/visual-editor')),
                 ],
                 'strings' => [
@@ -428,6 +469,85 @@ final class AssetLoader
                     'toolbarControlCenter' => __('Global Brand Controls', 'dbvc'),
                     'controlCenterTitle' => __('Global Brand Controls', 'dbvc'),
                     'controlCenterClose' => __('Close Global Brand Control Center', 'dbvc'),
+                    // VE-prefs-1: toolbar Preferences popover (appearance override).
+                    'toolbarPreferences' => __('Visual Editor preferences', 'dbvc'),
+                    'preferencesTitle' => __('Preferences', 'dbvc'),
+                    'preferencesAppearanceLabel' => __('Appearance', 'dbvc'),
+                    'preferencesAppearanceSystem' => __('System', 'dbvc'),
+                    'preferencesAppearanceLight' => __('Light', 'dbvc'),
+                    'preferencesAppearanceDark' => __('Dark', 'dbvc'),
+                    'preferencesAppearanceHint' => __('System follows your operating system setting. Applies to Visual Editor surfaces only.', 'dbvc'),
+                    'preferencesAnnounceScheme' => __('Appearance set to {scheme}.', 'dbvc'),
+                    // R6-D-1: Site Manager Workspace drawer strings (contract §10;
+                    // copy accepted from the R6-C mockup, D-074).
+                    'toolbarWorkspace' => __('Site Manager', 'dbvc'),
+                    'workspaceEyebrow' => __('Visual Editor', 'dbvc'),
+                    'workspaceTitle' => __('Site Manager', 'dbvc'),
+                    'workspaceClose' => __('Close Site Manager', 'dbvc'),
+                    'workspaceCurrentLabel' => __('Current object', 'dbvc'),
+                    'workspaceCurrentHere' => __('You are here', 'dbvc'),
+                    'workspaceCurrentPage' => __('Current page', 'dbvc'),
+                    'workspaceCurrentTerm' => __('Current term', 'dbvc'),
+                    'workspaceSectionsLabel' => __('Site Manager sections', 'dbvc'),
+                    'workspaceSectionNavigate' => __('Navigate', 'dbvc'),
+                    'workspaceSectionTools' => __('Tools', 'dbvc'),
+                    'workspaceSearchLabel' => __('Search objects', 'dbvc'),
+                    'workspaceSearchPlaceholder' => __('Search pages, posts, and terms…', 'dbvc'),
+                    'workspaceSearchClear' => __('Clear search', 'dbvc'),
+                    'workspaceTypesLabel' => __('Object types', 'dbvc'),
+                    // R6.1-b: kind filter + sort select.
+                    'workspaceKindLabel' => __('Show', 'dbvc'),
+                    'workspaceKindAll' => __('All', 'dbvc'),
+                    'workspaceKindContent' => __('Content', 'dbvc'),
+                    'workspaceKindTaxonomies' => __('Taxonomies', 'dbvc'),
+                    'workspaceSortLabel' => __('Sort', 'dbvc'),
+                    'workspaceSortRecent' => __('Recently updated', 'dbvc'),
+                    'workspaceSortTitleAsc' => __('Title A → Z', 'dbvc'),
+                    'workspaceSortTitleDesc' => __('Title Z → A', 'dbvc'),
+                    'workspaceSortNewest' => __('Newest first', 'dbvc'),
+                    'workspaceSortOldest' => __('Oldest first', 'dbvc'),
+                    'workspaceSortRelevance' => __('Best match', 'dbvc'),
+                    'workspaceTypeAll' => __('All', 'dbvc'),
+                    'workspaceTypeBackendOnly' => __('(backend only)', 'dbvc'),
+                    'workspaceStatusIdle' => __('Search or pick a type to start.', 'dbvc'),
+                    'workspaceStatusTypesLoading' => __('Loading object types…', 'dbvc'),
+                    'workspaceStatusSearching' => __('Searching…', 'dbvc'),
+                    'workspaceStatusShowing' => __('Showing {count}', 'dbvc'),
+                    'workspaceStatusShowingMore' => __('Showing {count} · more available', 'dbvc'),
+                    'workspaceStatusNoResults' => __('No results', 'dbvc'),
+                    'workspaceEmptyType' => __('No {label} yet.', 'dbvc'),
+                    'workspaceEmptyTypeHint' => __('New items are created in the WordPress admin; they will appear here once they exist.', 'dbvc'),
+                    'workspaceEmptySearch' => __('No matches for “{search}” in {label}.', 'dbvc'),
+                    'workspaceEmptySearchHint' => __('Try a different word, or search all types.', 'dbvc'),
+                    'workspaceError' => __('Object search failed.', 'dbvc'),
+                    'workspaceErrorHint' => __('The last request did not complete. The rows below are from the previous result and may be stale.', 'dbvc'),
+                    'workspaceRetry' => __('Retry', 'dbvc'),
+                    'workspaceModeInactive' => __('Visual Editor mode is no longer active.', 'dbvc'),
+                    'workspaceModeInactiveHint' => __('Refresh the page to continue. Your place on the site is unchanged.', 'dbvc'),
+                    'workspaceReload' => __('Refresh page', 'dbvc'),
+                    'workspaceLoadMore' => __('Load more', 'dbvc'),
+                    'workspaceLoading' => __('Loading…', 'dbvc'),
+                    'workspaceEnd' => __('No more results', 'dbvc'),
+                    'workspaceResultsLabel' => __('Objects', 'dbvc'),
+                    'workspaceOpenFrontend' => __('Open', 'dbvc'),
+                    'workspaceOpenBackend' => __('Edit', 'dbvc'),
+                    'workspaceOpensNewTab' => __('(opens in a new tab)', 'dbvc'),
+                    'workspaceNoPublicPage' => __('No public page', 'dbvc'),
+                    'workspaceNoPublicArchive' => __('No public archive', 'dbvc'),
+                    'workspaceToolsLabel' => __('Tools', 'dbvc'),
+                    'workspaceToolReviewFields' => __('Review fields', 'dbvc'),
+                    'workspaceToolReviewFieldsDetail' => __('Marked fields on this page', 'dbvc'),
+                    'workspaceToolControlCenter' => __('Brand & Globals', 'dbvc'),
+                    'workspaceToolControlCenterDetail' => __('Global Brand Controls drawer', 'dbvc'),
+                    'workspaceToolMediaManager' => __('Media Manager', 'dbvc'),
+                    'workspaceToolMediaManagerDetail' => __('Missing-image scan and site media index', 'dbvc'),
+                    'workspaceToolEditObject' => __('Edit active object', 'dbvc'),
+                    'workspaceToolEditObjectDetail' => __('Opens the WordPress editor in a new tab', 'dbvc'),
+                    'workspaceToolExit' => __('Exit Visual Editor', 'dbvc'),
+                    'workspaceToolUnavailable' => __('Not enabled on this site', 'dbvc'),
+                    'workspaceToolNoEditLink' => __('No backend edit link for this page', 'dbvc'),
+                    'workspaceAnnounceOpened' => __('Site Manager opened.', 'dbvc'),
+                    'workspaceAnnounceClosed' => __('Site Manager closed.', 'dbvc'),
                     'controlCenterSummary' => __('{count} controls', 'dbvc'),
                     'controlCenterSearchLabel' => __('Search controls', 'dbvc'),
                     // R4-C-1a: placeholder widened to reflect the R4-A `q`
@@ -813,5 +933,18 @@ final class AssetLoader
         return class_exists('\\DBVC_Visual_Editor_Addon')
             && method_exists('\\DBVC_Visual_Editor_Addon', 'is_control_center_enabled')
             && \DBVC_Visual_Editor_Addon::is_control_center_enabled();
+    }
+
+    /**
+     * R6-D-1 gate for the Site Manager Workspace drawer (master switch AND
+     * `dbvc_visual_editor_workspace_enabled`, both default off).
+     *
+     * @return bool
+     */
+    private function isWorkspaceEnabled()
+    {
+        return class_exists('\\DBVC_Visual_Editor_Addon')
+            && method_exists('\\DBVC_Visual_Editor_Addon', 'is_workspace_enabled')
+            && \DBVC_Visual_Editor_Addon::is_workspace_enabled();
     }
 }

@@ -100,15 +100,36 @@
   --dbvc-ve-color-chrome-background: var(--dbvc-ve-color-surface-glass);
   --dbvc-ve-color-chrome-text: var(--dbvc-ve-color-text-dark);
   --dbvc-ve-color-chrome-header-background: var(--dbvc-ve-color-background-light);
+  /* R5.later-darkmode.d (2026-09-15, D-080) — the last semantic tokens the dark
+     cascade needed. `--color-surface` stays un-flipped by design (darkmode.c);
+     these three cover the places that previously used it (or --secondary)
+     directly and therefore needed rule-level dark overrides:
+     - control-surface: inputs, chips, secondary buttons, list items;
+     - emphasis-background/-text: the "selected / checked / primary" fill
+       (navy on light, lavender accent on dark for contrast);
+     - emphasis-foreground: emphasised text without a fill (selected section
+       tab, "You are here"). */
+  --dbvc-ve-color-control-surface: var(--dbvc-ve-color-surface);
+  --dbvc-ve-color-emphasis-background: var(--dbvc-ve-color-secondary);
+  --dbvc-ve-color-emphasis-text: var(--dbvc-ve-color-text-light);
+  --dbvc-ve-color-emphasis-foreground: var(--dbvc-ve-color-secondary);
   --dbvc-ve-filter-backdrop--blur: blur(8px);
   --dbvc-ve-transparent--l: transparent 20%;
   --dbvc-ve-notice-dot--color-bg: var(--dbvc-ve-color-primary);
   --dbvc-ve-z-statusbar: 119970;
   --dbvc-ve-z-section-badge: 119980;
   --dbvc-ve-z-badge-layer: 119990;
+  /* R6-D-1 (2026-09-15): Site Manager Workspace drawer sits BELOW the panel /
+     Media Manager (120010) and the BCC drawer (120015) so every existing
+     surface keeps painting over it unchanged (D-072). Consumed by
+     workspace.css only. */
+  --dbvc-ve-z-workspace: 120005;
   --dbvc-ve-z-panel: 120010;
   --dbvc-ve-z-drawer: 120015;
   --dbvc-ve-z-toolbar: 120020;
+  /* Modal popups opened FROM a drawer / the toolbar (palette bulk editor).
+     Above the toolbar, below the WordPress media modal (560000). */
+  --dbvc-ve-z-modal: 120030;
 }
 
 /* R5.later-darkmode.a (2026-09-08) — system dark-mode support for the
@@ -120,8 +141,18 @@
    unchanged. NOTE: inset shadows can render slightly differently under
    `mix-blend-mode` or aggressive backdrop-filter — reproduce here if
    the toolbar's blur is later changed. */
+/* VE-prefs-1 (2026-09-15, D-079): the dark token set is applied in two ways —
+   (1) by the OS preference, unless the viewer chose "Light" in the toolbar
+       Preferences popover (`data-dbvc-ve-scheme="light"` on <html>), and
+   (2) explicitly when the viewer chose "Dark" (`data-dbvc-ve-scheme="dark"`).
+   The attribute is set by overlay-app.js from localStorage `dbvc-ve-preferences:v1`;
+   absent = "System" = today's media-query behaviour, byte-identical. The token
+   set is deliberately declared twice (no build step; `light-dark()` could
+   collapse it later). `color-scheme: dark` is applied ONLY to Visual Editor
+   surface roots — never to :root — so the host site's native controls and
+   scrollbars are untouched (governing directives: no site/Bricks leakage). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-dbvc-ve-scheme="light"]) {
     --dbvc-ve-color-toolbar-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.96);
     --dbvc-ve-box-shadow-toolbar:
       inset 0 0 0 1px rgba(var(--dbvc-ve-color-surface-rgb), 0.12),
@@ -132,7 +163,9 @@
        --chrome-text; child elements retain their own light-mode
        colors (chips, buttons, borders) — full internal treatment
        lives in .c. */
-    --dbvc-ve-color-drawer-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.94);
+    /* 0.94 → 0.98 (2026-09-16, live QA E-152): host-page text ghosted through
+       the dark drawers; near-opaque keeps a hint of glass without the bleed. */
+    --dbvc-ve-color-drawer-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.98);
     --dbvc-ve-color-drawer-text: var(--dbvc-ve-color-text-light);
     --dbvc-ve-color-chrome-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.88);
     --dbvc-ve-color-chrome-text: var(--dbvc-ve-color-text-light);
@@ -155,10 +188,58 @@
     --dbvc-ve-color-background-light--opacity-m: rgba(var(--dbvc-ve-color-dark-rgb), 0.84);
     --dbvc-ve-color-text-dark: rgb(var(--dbvc-ve-color-surface-rgb));
     --dbvc-ve-color-text-muted: rgba(var(--dbvc-ve-color-surface-rgb), 0.68);
-    --dbvc-ve-color-text-subtle: rgba(var(--dbvc-ve-color-surface-rgb), 0.52);
+    /* R6-D-1 (2026-09-15, D-076): 0.52 measured 4.45:1 on --surface-muted for
+       11px meta text (axe, R6-C D4); 0.58 clears WCAG AA 4.5:1. */
+    --dbvc-ve-color-text-subtle: rgba(var(--dbvc-ve-color-surface-rgb), 0.58);
     --dbvc-ve-color-border: rgba(var(--dbvc-ve-color-surface-rgb), 0.18);
     --dbvc-ve-color-border-muted: rgba(var(--dbvc-ve-color-surface-rgb), 0.10);
+    --dbvc-ve-color-control-surface: rgba(var(--dbvc-ve-color-surface-rgb), 0.10);
+    --dbvc-ve-color-emphasis-background: var(--dbvc-ve-color-accent);
+    --dbvc-ve-color-emphasis-text: var(--dbvc-ve-color-dark);
+    --dbvc-ve-color-emphasis-foreground: var(--dbvc-ve-color-text-light);
   }
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-toolbar,
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-toolbar-popover,
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-panel,
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-control-center,
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-workspace,
+  :root:not([data-dbvc-ve-scheme="light"]) .dbvc-ve-media-manager {
+    color-scheme: dark;
+  }
+}
+/* Explicit "Dark" choice — a verbatim mirror of the media-guarded token set
+   above. Keep the two in sync (the jsdom + screenshot smoke assert parity). */
+:root[data-dbvc-ve-scheme="dark"] {
+  --dbvc-ve-color-toolbar-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.96);
+  --dbvc-ve-box-shadow-toolbar:
+    inset 0 0 0 1px rgba(var(--dbvc-ve-color-surface-rgb), 0.12),
+    var(--dbvc-ve-box-shadow--panel);
+  --dbvc-ve-color-drawer-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.98);
+  --dbvc-ve-color-drawer-text: var(--dbvc-ve-color-text-light);
+  --dbvc-ve-color-chrome-background: rgba(var(--dbvc-ve-color-dark-rgb), 0.88);
+  --dbvc-ve-color-chrome-text: var(--dbvc-ve-color-text-light);
+  --dbvc-ve-color-chrome-header-background: rgba(var(--dbvc-ve-color-surface-rgb), 0.06);
+  --dbvc-ve-color-surface-muted: color-mix(in srgb, var(--dbvc-ve-color-dark) 82%, #ffffff);
+  --dbvc-ve-color-surface-glass: rgba(var(--dbvc-ve-color-dark-rgb), 0.86);
+  --dbvc-ve-color-background-light: color-mix(in srgb, var(--dbvc-ve-color-dark) 84%, #ffffff);
+  --dbvc-ve-color-background-light--opacity-m: rgba(var(--dbvc-ve-color-dark-rgb), 0.84);
+  --dbvc-ve-color-text-dark: rgb(var(--dbvc-ve-color-surface-rgb));
+  --dbvc-ve-color-text-muted: rgba(var(--dbvc-ve-color-surface-rgb), 0.68);
+  --dbvc-ve-color-text-subtle: rgba(var(--dbvc-ve-color-surface-rgb), 0.58);
+  --dbvc-ve-color-border: rgba(var(--dbvc-ve-color-surface-rgb), 0.18);
+  --dbvc-ve-color-border-muted: rgba(var(--dbvc-ve-color-surface-rgb), 0.10);
+  --dbvc-ve-color-control-surface: rgba(var(--dbvc-ve-color-surface-rgb), 0.10);
+  --dbvc-ve-color-emphasis-background: var(--dbvc-ve-color-accent);
+  --dbvc-ve-color-emphasis-text: var(--dbvc-ve-color-dark);
+  --dbvc-ve-color-emphasis-foreground: var(--dbvc-ve-color-text-light);
+}
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-toolbar,
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-toolbar-popover,
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-panel,
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-control-center,
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-workspace,
+:root[data-dbvc-ve-scheme="dark"] .dbvc-ve-media-manager {
+  color-scheme: dark;
 }
 
 .dbvc-ve-toolbar {
@@ -258,7 +339,11 @@
   line-height: 1;
 }
 
-.dbvc-ve-toolbar__count[hidden] {
+.dbvc-ve-toolbar__count[hidden],
+/* R6-D-3 (2026-09-15): every dock/satellite button carries a count node but
+   only Status / Review fields ever populate (and hide) it; the empty ones
+   rendered as meaningless 10px orange dots since the R5.later reskin. */
+.dbvc-ve-toolbar__count:empty {
   display: none;
 }
 
@@ -432,7 +517,7 @@
   padding: 10px 12px;
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   color: var(--dbvc-ve-color-text-dark);
   font: inherit;
   box-sizing: border-box;
@@ -511,6 +596,76 @@
   font-size: var(--dbvc-ve-font--caption);
 }
 
+/* VE-prefs-1 (2026-09-15, D-079) — Preferences popover body + the toolbar's
+   single polite live region. Segmented control mirrors the drawer tab
+   treatment (secondary fill on the checked option); every colour is a
+   shared token so the popover flips with the scheme it controls. */
+.dbvc-ve-toolbar__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.dbvc-ve-toolbar-prefs {
+  display: grid;
+  gap: 14px;
+}
+.dbvc-ve-toolbar-prefs__section {
+  display: grid;
+  gap: 8px;
+}
+.dbvc-ve-toolbar-prefs__label {
+  color: var(--dbvc-ve-color-text-muted);
+  font-size: var(--dbvc-ve-font--overline);
+  font-weight: var(--dbvc-ve-font-weight--heavy);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.dbvc-ve-toolbar-prefs__segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--dbvc-ve-color-border-muted);
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: var(--dbvc-ve-color-surface-muted);
+}
+.dbvc-ve-toolbar-prefs__option {
+  flex: 1 1 auto;
+  min-width: 72px;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--dbvc-ve-border-radius--l);
+  background: transparent;
+  color: var(--dbvc-ve-color-text-muted);
+  font: inherit;
+  font-size: var(--dbvc-ve-font--caption);
+  font-weight: var(--dbvc-ve-font-weight--bold);
+  line-height: 1.2;
+  cursor: pointer;
+}
+.dbvc-ve-toolbar-prefs__option:hover {
+  color: var(--dbvc-ve-color-secondary);
+}
+.dbvc-ve-toolbar-prefs__option:focus-visible {
+  outline: 2px solid var(--dbvc-ve-color-focus);
+  outline-offset: 2px;
+}
+.dbvc-ve-toolbar-prefs__option[aria-checked="true"] {
+  border-color: var(--dbvc-ve-color-emphasis-background);
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
+}
+.dbvc-ve-toolbar-prefs__hint {
+  margin: 0;
+  color: var(--dbvc-ve-color-text-subtle);
+  font-size: var(--dbvc-ve-font--meta);
+  font-weight: var(--dbvc-ve-font-weight--normal);
+}
 .dbvc-ve-toolbar-shared {
   display: grid;
   gap: 8px;
@@ -813,7 +968,7 @@
 .dbvc-ve-field-index__item {
   border: 1px solid var(--dbvc-ve-color-border-muted);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
 }
 
 .dbvc-ve-field-index__item-summary {
@@ -1315,7 +1470,7 @@ body.dbvc-ve-panel-dragging {
   padding: 10px 12px;
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
 }
 
 .dbvc-ve-panel__composite-child[data-status="readonly"] {
@@ -1479,8 +1634,8 @@ body.dbvc-ve-panel-dragging {
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--dbvc-ve-color-secondary) 18%, var(--dbvc-ve-color-surface));
   border-radius: 999px;
-  background: var(--dbvc-ve-color-surface);
-  color: var(--dbvc-ve-color-secondary);
+  background: var(--dbvc-ve-color-control-surface);
+  color: var(--dbvc-ve-color-emphasis-foreground);
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
@@ -1642,7 +1797,7 @@ body.dbvc-ve-panel-dragging {
 .dbvc-ve-panel__collection-group {
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   overflow: hidden;
 }
 
@@ -1750,7 +1905,7 @@ body.dbvc-ve-panel-dragging {
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--l);
   padding: 0;
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   color: var(--dbvc-ve-color-text-dark);
   font: inherit;
   font-size: var(--dbvc-ve-font--caption);
@@ -1774,7 +1929,7 @@ body.dbvc-ve-panel-dragging {
   padding: 12px 14px;
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   color: var(--dbvc-ve-color-text-dark);
   font: inherit;
   box-sizing: border-box;
@@ -1838,7 +1993,7 @@ textarea.dbvc-ve-panel__input--textlike {
   align-items: stretch;
   gap: 6px;
   padding: 8px;
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--s);
   cursor: pointer;
@@ -1993,7 +2148,10 @@ textarea.dbvc-ve-panel__input--textlike {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100000;
+  /* 2026-09-15: was a hardcoded 100000, which sat UNDER every tokenised
+     Visual Editor layer (statusbar 119970 … toolbar 120020) — the BCC drawer
+     painted over its own modal. Modal layer token, above the toolbar. */
+  z-index: var(--dbvc-ve-z-modal);
   padding: 24px;
   box-sizing: border-box;
   animation: dbvc-ve-palette-bulk-fade-in 140ms ease-out;
@@ -2004,9 +2162,14 @@ textarea.dbvc-ve-panel__input--textlike {
 }
 
 .dbvc-ve-palette-bulk-popover {
-  background: var(--dbvc-ve-color-surface, #fff);
+  /* drawer-background resolves to --color-surface in light mode and flips
+     in dark mode; --color-surface itself is intentionally not flipped
+     (darkmode.c), which left this popup white-on-white in dark mode. */
+  background: var(--dbvc-ve-color-drawer-background, #fff);
   color: var(--dbvc-ve-color-text-dark, #1a1a1a);
-  border-radius: var(--dbvc-ve-border-radius--l, 8px);
+  /* popovers share --border-radius--m (toolbar popover, this modal) — --l is
+     the 100px pill radius and was clipping the corners. */
+  border-radius: var(--dbvc-ve-border-radius--m);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   width: min(880px, 100%);
   max-height: 100%;
@@ -2042,8 +2205,8 @@ textarea.dbvc-ve-panel__input--textlike {
   padding: 6px 12px;
   border: 1px solid var(--dbvc-ve-color-border, #d0d4dc);
   border-radius: var(--dbvc-ve-border-radius--s, 4px);
-  background: var(--dbvc-ve-color-surface, #fff);
-  color: var(--dbvc-ve-color-secondary, #333);
+  background: var(--dbvc-ve-color-control-surface, #fff);
+  color: var(--dbvc-ve-color-emphasis-foreground, #333);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -2105,7 +2268,7 @@ textarea.dbvc-ve-panel__input--textlike {
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  background: var(--dbvc-ve-color-surface, #fff);
+  background: var(--dbvc-ve-color-control-surface, #fff);
   border: 1px solid var(--dbvc-ve-color-border, #e2e5eb);
   border-radius: var(--dbvc-ve-border-radius--s, 4px);
   transition: border-color 120ms ease;
@@ -2277,7 +2440,7 @@ textarea.dbvc-ve-panel__input--textlike {
   padding: 12px 14px;
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   color: var(--dbvc-ve-color-text-dark);
   box-sizing: border-box;
   overflow: auto;
@@ -2291,7 +2454,7 @@ textarea.dbvc-ve-panel__input--textlike {
 .dbvc-ve-panel__wysiwyg-host {
   border: 1px solid var(--dbvc-ve-color-border);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   overflow: hidden;
 }
 
@@ -2335,7 +2498,7 @@ textarea.dbvc-ve-panel__input--textlike {
   padding: 10px 12px;
   border: 1px solid var(--dbvc-ve-color-border-muted);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
 }
 
 .dbvc-ve-panel__option input {
@@ -2715,7 +2878,7 @@ textarea.dbvc-ve-panel__input--textlike {
 .dbvc-ve-panel__wysiwyg-host {
   border: var(--dbvc-ve-border--surface-s);
   border-radius: var(--dbvc-ve-border-radius--s);
-  background: var(--dbvc-ve-color-surface);
+  background: var(--dbvc-ve-color-control-surface);
   color: var(--dbvc-ve-color-text-dark);
 }
 
@@ -2776,9 +2939,9 @@ textarea.dbvc-ve-panel__input--textlike {
 
 .dbvc-ve-toolbar-object__filter.is-active,
 .dbvc-ve-field-index__filter.is-active {
-  border-color: var(--dbvc-ve-color-secondary);
-  background: var(--dbvc-ve-color-secondary);
-  color: var(--dbvc-ve-color-text-light);
+  border-color: var(--dbvc-ve-color-emphasis-background);
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
 }
 
 .dbvc-ve-panel__button--primary {
@@ -2811,9 +2974,9 @@ textarea.dbvc-ve-panel__input--textlike {
 .dbvc-ve-toolbar-object__filter.is-active:focus,
 .dbvc-ve-field-index__filter.is-active:hover,
 .dbvc-ve-field-index__filter.is-active:focus {
-  border-color: var(--dbvc-ve-color-secondary);
-  background: var(--dbvc-ve-color-secondary);
-  color: var(--dbvc-ve-color-text-light);
+  border-color: var(--dbvc-ve-color-emphasis-background);
+  background: var(--dbvc-ve-color-emphasis-background);
+  color: var(--dbvc-ve-color-emphasis-text);
 }
 
 .dbvc-ve-toolbar__button:disabled:hover,

@@ -391,7 +391,9 @@ Four new phases captured before starting the R6 Frontend Site Manager Workspace 
 
 **Sizing.** Medium — the scaffolding is a one-time setup cost; each covered controller is small once the fixtures exist.
 
-### R5.later-toolbar-skin — Floating-toolbar structural reskin **[LANDED 2026-09-07, parallel to the perf/c/cache arc]**
+### R5.later-toolbar-skin — Floating-toolbar reskin arc **[COMPLETE 2026-09-11 across .a + .b + .c]** — structural reskin (.a, 2026-09-07); color-scheme flip light glassy → dark (.b, 2026-09-07); aria-expanded orange split (.c, 2026-09-11 — see E-141). Full mockup match for the toolbar surface.
+
+### R5.later-toolbar-skin (original scope) — Floating-toolbar structural reskin **[LANDED 2026-09-07, parallel to the perf/c/cache arc]**
 
 **Landing summary (2026-09-07).** Four CSS edits in `overlay.css` executed as planned. `.dbvc-ve-toolbar` root gained the pill container styling (padding/border/border-radius/background/box-shadow/backdrop-blur) that previously lived on `__dock`; `__dock` neutralized to a flex row inside the outer pill with `::before` and `::after` divider pseudos giving the mockup's two 1×18px vertical dividers strictly via CSS (zero DOM change); `.dbvc-ve-toolbar__button` unified to a transparent 30×30 circle with `--font-icon--m (18px)` SVG size (down from `--l` 26px); redundant `--dock` size override + `--satellite:hover` background override removed; narrow-viewport media query simplified to move padding up to the outer pill and drop the button-size-growth rules. Both `--dock` and `--satellite` modifier classes preserved in CSS as JS/DOM hooks. Baselines: PHPUnit **441/3036 OK**, drawer jsdom **63 pass**, media-manager jsdom **42 pass**, overlay-app jsdom **15 pass** — all preserved. Live-site QA gate is required (visual outcomes not testable via jsdom or PHPUnit). Reversibility: single-block revert at each of the two `overlay.css` edit sites restores the pre-slice look. See CHANGELOG Unreleased top + E-135.
 
@@ -432,7 +434,9 @@ Four new phases captured before starting the R6 Frontend Site Manager Workspace 
 
 **Live-site QA gate.** CSS reskin — jsdom tests and PHPUnit cannot verify visual outcomes. Maintainer eyeballs the live site at both supported viewports (1440×900 primary, 1280×720 narrow) and confirms: (a) all buttons visually contained in one pill, (b) two vertical dividers visible bracketing the dock's contents, (c) hover states still readable, (d) count badge still visible on the status button, (e) no unexpected layout shift on the popover / dropdown anchors.
 
-### R5.later-darkmode — System dark-mode support **[PLANNED 2026-09-08, umbrella phase]**
+### R5.later-darkmode — System dark-mode support **[COMPLETE 2026-09-10 across .a + .b + .c]** — .a toolbar edge-boost (2026-09-08, rim later bumped 0.08→0.12), .b drawer/panel/popover chrome (2026-09-10), .c token-level global override (2026-09-10). Every internal element adapts via the token cascade. Optional `.d` (residual hardcoded rgba/hex tokenization) not planned unless maintainer identifies rough edges. See E-137 / E-138 / E-139.
+
+### R5.later-darkmode (original umbrella spec) **[originally PLANNED 2026-09-08]**
 
 **Scope.** Add `@media (prefers-color-scheme: dark)` support to the frontend Visual Editor chrome so the surfaces adapt appropriately when the user's OS is in dark mode. Phased across multiple slices — the toolbar first (small, well-scoped), then drawer/panel/popovers (larger), then a potential token-level override layer for downstream components. **Design intent: preserve each surface's identity (dark pill stays dark, light drawer stays light) but boost edge affordance so surfaces don't blend into a dark-mode page background.** Not a full theme flip; a "same object, tuned for the environment" approach.
 
@@ -467,7 +471,9 @@ Four new phases captured before starting the R6 Frontend Site Manager Workspace 
 
 **Sequencing.** Independent of the pre-R6 test/perf/c/cache arc. Can land in parallel. `.a` lands first; `.b` and `.c` are future decisions.
 
-### R5.later-perf — Deep frontend performance audit **[PLANNED, sequenced second]**
+### R5.later-perf — Deep frontend performance audit **[PAUSED 2026-09-07 pending LocalWP dev-env TTFB investigation]** — Task 2 (gated `dbvc.ve.*` User Timing instrumentation on drawer + api-client) LANDED 2026-09-06; Task 3 (measurement recipe) LANDED 2026-09-06; Task 4 (real-Chrome captures) surfaced uniform 3.7s server think-time not attributable to Xdebug, `WP_DEBUG_LOG`, autoload, or object cache — suspected Bricks-ecosystem or plugin-init cost. Full 8-scenario sweep would produce dev-env-dominated numbers, so audit paused. Instrumentation stays gated OFF via URL param `?dbvc_ve_perf=1`. Original spec below preserved for reference.
+
+### R5.later-perf (original spec) — Deep frontend performance audit **[PLANNED, sequenced second]**
 
 **Scope.** Systematic audit of the Brand Control Center's frontend load path, measuring where time and network bytes go from `?dbvc_ve_editmode=1` through drawer-opens through first meaningful interaction. Produces a scoped findings report with prioritized fixes, no code changes in this slice itself.
 

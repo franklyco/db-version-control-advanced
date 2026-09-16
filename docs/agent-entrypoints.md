@@ -52,6 +52,18 @@ Read:
 2. `addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
 3. `docs/implementation/proposed/bricks-portability-drift-manager/README.md` only for the proposed drift-manager design
 
+## Agency Control / Connected Environments (Proposed)
+
+Read:
+
+1. `docs/implementation/proposed/agency-control-connected-environments/README.md`
+2. `docs/implementation/proposed/agency-control-connected-environments/m0-discovery.md`
+3. `docs/implementation/proposed/agency-control-connected-environments/reconciliation.md`
+4. `addons/bricks/docs/BRICKS_ADDON_PLAN.md` and `addons/bricks/docs/BRICKS_ADDON_PROGRESS_TRACKER.md`
+5. `docs/implementation/proposed/bricks-portability-drift-manager/README.md` and `docs/implementation/proposed/cross-site-entity-packet-guide.md`
+
+Treat this as a documentation-only proposal until M0 reconciles the active checkout and runtime. Do not create an add-on, enroll sites, create credentials, schedule workers, send network traffic, or apply content from this route alone.
+
 ## Admin App or Entity Editor UI Work
 
 Read:

@@ -57,6 +57,10 @@ final class PageContextResolver
                 'isTaxonomyArchive' => false,
                 'isSupported' => true,
                 'url' => $this->resolveSingularUrl($entity_id),
+                // R6-D-2: safe display title for the Site Manager current-object
+                // card. Plain text only; falls back to the post-type label so
+                // the card never shows an empty title.
+                'title' => $this->resolvePostTitle($entity_id, $post_type),
             ];
         }
 
@@ -94,6 +98,26 @@ final class PageContextResolver
         }
 
         return is_singular() ? absint(get_queried_object_id()) : 0;
+    }
+
+    /**
+     * @param int    $post_id
+     * @param string $post_type
+     * @return string
+     */
+    private function resolvePostTitle($post_id, $post_type)
+    {
+        $title = html_entity_decode(wp_strip_all_tags((string) get_the_title($post_id)), ENT_QUOTES);
+
+        if ($title !== '') {
+            return sanitize_text_field($title);
+        }
+
+        $object = get_post_type_object((string) $post_type);
+
+        return $object && ! empty($object->labels->singular_name)
+            ? sanitize_text_field((string) $object->labels->singular_name)
+            : sanitize_key((string) $post_type);
     }
 
     /**
@@ -147,6 +171,7 @@ final class PageContextResolver
             'isTaxonomyArchive' => true,
             'isSupported' => true,
             'url' => $url,
+            'title' => sanitize_text_field((string) $term->name),
         ];
     }
 
