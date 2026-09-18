@@ -1,0 +1,27 @@
+<?php
+namespace Dbvc\Connected\Capture;
+
+use Dbvc\Connected\Contracts\ObservationStore;
+
+/** Small save-side port. Concrete hook registration/allowlists are integration work. */
+final class DirtyCapture
+{
+    private $store;
+    private $domains;
+
+    public function __construct(ObservationStore $store, array $domains)
+    {
+        $this->store = $store;
+        $this->domains = $domains;
+    }
+
+    public function signal($domain, $objectKey, array $context = array())
+    {
+        if (! in_array($domain, $this->domains, true) || ! is_string($objectKey) || $objectKey === '') {
+            return false;
+        }
+        // The caller supplies an opaque locator, never option values or secrets.
+        $allowed = array_intersect_key($context, array('origin' => true, 'causation_id' => true));
+        return $this->store->markDirty($domain, $objectKey, $allowed);
+    }
+}

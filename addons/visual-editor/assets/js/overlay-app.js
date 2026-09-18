@@ -2770,32 +2770,106 @@
 	 */
 	const PREFERENCES_STORAGE_KEY = 'dbvc-ve-preferences:v1';
 	const COLOR_SCHEMES = [ 'system', 'light', 'dark' ];
+	// VE-prefs-2 (2026-09-16): how the Site Manager drawer starts on page load.
+	// `remember` = today's D-070 behaviour (restore what the viewer left);
+	// `open` / `closed` override the persisted state on every load. Read by
+	// workspace-app.js at mount from the same storage key (read-only there).
+	const WORKSPACE_STARTUPS = [ 'remember', 'open', 'closed' ];
+
+	/**
+	 * VE-prefs-2: one definition per viewer preference. `apply` runs on load
+	 * and on change (null = load-time only, consumed elsewhere); `available`
+	 * hides the section when its surface is off — the stored value survives.
+	 */
+	const PREFERENCE_DEFINITIONS = [
+		{
+			name: 'colorScheme',
+			slug: 'appearance',
+			values: COLOR_SCHEMES,
+			fallback: 'system',
+			label: [ 'preferencesAppearanceLabel', 'Appearance' ],
+			hint: [
+				'preferencesAppearanceHint',
+				'System follows your operating system setting. Applies to Visual Editor surfaces only.',
+			],
+			announce: [ 'preferencesAnnounceScheme', 'Appearance set to {scheme}.' ],
+			optionLabel: colorSchemeLabel,
+			apply: applyColorScheme,
+			available: function () {
+				return true;
+			},
+		},
+		{
+			name: 'workspaceStartup',
+			slug: 'workspace',
+			values: WORKSPACE_STARTUPS,
+			fallback: 'remember',
+			label: [ 'preferencesWorkspaceLabel', 'Site Manager on page load' ],
+			hint: [
+				'preferencesWorkspaceHint',
+				'Remember restores the Site Manager the way you last left it; Always open and Always closed override that on every page load.',
+			],
+			announce: [ 'preferencesAnnounceWorkspace', 'Site Manager on page load set to {value}.' ],
+			optionLabel: workspaceStartupLabel,
+			apply: null,
+			available: isWorkspaceEnabled,
+		},
+	];
+
+	function preferenceDefinition( name ) {
+		for ( let index = 0; index < PREFERENCE_DEFINITIONS.length; index++ ) {
+			if ( PREFERENCE_DEFINITIONS[ index ].name === name ) {
+				return PREFERENCE_DEFINITIONS[ index ];
+			}
+		}
+
+		return null;
+	}
+
+	function normalizePreference( definition, value ) {
+		return definition.values.indexOf( value ) === -1 ? definition.fallback : value;
+	}
 
 	function normalizeColorScheme( value ) {
-		return COLOR_SCHEMES.indexOf( value ) === -1 ? 'system' : value;
+		return normalizePreference( preferenceDefinition( 'colorScheme' ), value );
+	}
+
+	function defaultPreferences() {
+		const defaults = {};
+
+		PREFERENCE_DEFINITIONS.forEach( function ( definition ) {
+			defaults[ definition.name ] = definition.fallback;
+		} );
+
+		return defaults;
 	}
 
 	function loadPreferences() {
 		try {
 			const raw = window.localStorage.getItem( PREFERENCES_STORAGE_KEY );
 			const parsed = raw ? JSON.parse( raw ) : null;
+			const source = parsed && typeof parsed === 'object' ? parsed : {};
+			const loaded = {};
 
-			return {
-				colorScheme: normalizeColorScheme(
-					parsed && typeof parsed === 'object' ? parsed.colorScheme : ''
-				),
-			};
+			PREFERENCE_DEFINITIONS.forEach( function ( definition ) {
+				loaded[ definition.name ] = normalizePreference( definition, source[ definition.name ] );
+			} );
+
+			return loaded;
 		} catch ( _err ) {
-			return { colorScheme: 'system' };
+			return defaultPreferences();
 		}
 	}
 
 	function persistPreferences() {
 		try {
-			window.localStorage.setItem(
-				PREFERENCES_STORAGE_KEY,
-				JSON.stringify( { colorScheme: state.preferences.colorScheme } )
-			);
+			const payload = {};
+
+			PREFERENCE_DEFINITIONS.forEach( function ( definition ) {
+				payload[ definition.name ] = state.preferences[ definition.name ];
+			} );
+
+			window.localStorage.setItem( PREFERENCES_STORAGE_KEY, JSON.stringify( payload ) );
 		} catch ( _err ) {
 			/* private window / quota / permission — drop silently */
 		}
@@ -2813,35 +2887,57 @@
 
 	function initPreferences() {
 		state.preferences = loadPreferences();
-		applyColorScheme( state.preferences.colorScheme );
+
+		PREFERENCE_DEFINITIONS.forEach( function ( definition ) {
+			if ( typeof definition.apply === 'function' ) {
+				definition.apply( state.preferences[ definition.name ] );
+			}
+		} );
 	}
 
-	function setColorScheme( value ) {
-		const scheme = normalizeColorScheme( value );
+	function setPreference( name, value ) {
+		const definition = preferenceDefinition( name );
 
-		if ( scheme === state.preferences.colorScheme ) {
+		if ( ! definition ) {
 			return;
 		}
 
-		state.preferences.colorScheme = scheme;
-		applyColorScheme( scheme );
+		const next = normalizePreference( definition, value );
+
+		if ( next === state.preferences[ name ] ) {
+			return;
+		}
+
+		state.preferences[ name ] = next;
+
+		if ( typeof definition.apply === 'function' ) {
+			definition.apply( next );
+		}
+
 		persistPreferences();
+		// Detail carries every preference (so `detail.colorScheme` keeps
+		// working for VE-prefs-1 listeners) plus which one changed.
 		document.dispatchEvent(
 			new CustomEvent( 'dbvc:visual-editor:preferences:changed', {
-				detail: { colorScheme: scheme },
+				detail: Object.assign( { name: name, value: next }, state.preferences ),
 			} )
 		);
 
 		if ( state.toolbarOpenPanel === 'settings' ) {
-			renderPreferencesPopoverBody( getToolbarPopoverBody(), { focusChecked: true } );
+			renderPreferencesPopoverBody( getToolbarPopoverBody(), { focusChecked: name } );
 		}
 
 		announceToolbar(
-			getToolbarString(
-				'preferencesAnnounceScheme',
-				'Appearance set to {scheme}.'
-			).split( '{scheme}' ).join( colorSchemeLabel( scheme ) )
+			getToolbarString( definition.announce[ 0 ], definition.announce[ 1 ] )
+				.split( '{scheme}' )
+				.join( definition.optionLabel( next ) )
+				.split( '{value}' )
+				.join( definition.optionLabel( next ) )
 		);
+	}
+
+	function setColorScheme( value ) {
+		setPreference( 'colorScheme', value );
 	}
 
 	function colorSchemeLabel( scheme ) {
@@ -2854,6 +2950,18 @@
 		}
 
 		return getToolbarString( 'preferencesAppearanceSystem', 'System' );
+	}
+
+	function workspaceStartupLabel( value ) {
+		if ( value === 'open' ) {
+			return getToolbarString( 'preferencesWorkspaceOpen', 'Always open' );
+		}
+
+		if ( value === 'closed' ) {
+			return getToolbarString( 'preferencesWorkspaceClosed', 'Always closed' );
+		}
+
+		return getToolbarString( 'preferencesWorkspaceRemember', 'Remember' );
 	}
 
 	function announceToolbar( message ) {
@@ -2872,40 +2980,56 @@
 			return;
 		}
 
-		const current = state.preferences.colorScheme;
 		const settings = options || {};
+		const sections = PREFERENCE_DEFINITIONS.filter( function ( definition ) {
+			return definition.available();
+		} );
 
 		body.innerHTML = [
 			'<div class="dbvc-ve-toolbar-prefs">',
-			`  <div class="dbvc-ve-toolbar-prefs__section" role="group" aria-labelledby="dbvc-ve-toolbar-prefs-appearance-label">`,
-			`    <div class="dbvc-ve-toolbar-prefs__label" id="dbvc-ve-toolbar-prefs-appearance-label">${ escapeHtml(
-				getToolbarString( 'preferencesAppearanceLabel', 'Appearance' )
-			) }</div>`,
-			`    <div class="dbvc-ve-toolbar-prefs__segmented" role="radiogroup" aria-labelledby="dbvc-ve-toolbar-prefs-appearance-label">`,
-			COLOR_SCHEMES.map( function ( scheme ) {
-				const checked = scheme === current;
+			sections.map( function ( definition ) {
+				const current = state.preferences[ definition.name ];
+				const labelId = 'dbvc-ve-toolbar-prefs-' + definition.slug + '-label';
 
-				return `<button type="button" class="dbvc-ve-toolbar-prefs__option${
-					checked ? ' is-checked' : ''
-				}" role="radio" aria-checked="${
-					checked ? 'true' : 'false'
-				}" tabindex="${ checked ? '0' : '-1' }" data-dbvc-ve-preference="colorScheme" data-dbvc-ve-preference-value="${ escapeHtml(
-					scheme
-				) }">${ escapeHtml( colorSchemeLabel( scheme ) ) }</button>`;
+				return [
+					`  <div class="dbvc-ve-toolbar-prefs__section" role="group" aria-labelledby="${ labelId }" data-dbvc-ve-preference-section="${ escapeHtml(
+						definition.name
+					) }">`,
+					`    <div class="dbvc-ve-toolbar-prefs__label" id="${ labelId }">${ escapeHtml(
+						getToolbarString( definition.label[ 0 ], definition.label[ 1 ] )
+					) }</div>`,
+					`    <div class="dbvc-ve-toolbar-prefs__segmented" role="radiogroup" aria-labelledby="${ labelId }">`,
+					definition.values.map( function ( value ) {
+						const checked = value === current;
+
+						return `<button type="button" class="dbvc-ve-toolbar-prefs__option${
+							checked ? ' is-checked' : ''
+						}" role="radio" aria-checked="${
+							checked ? 'true' : 'false'
+						}" tabindex="${ checked ? '0' : '-1' }" data-dbvc-ve-preference="${ escapeHtml(
+							definition.name
+						) }" data-dbvc-ve-preference-value="${ escapeHtml( value ) }">${ escapeHtml(
+							definition.optionLabel( value )
+						) }</button>`;
+					} ).join( '' ),
+					'    </div>',
+					`    <p class="dbvc-ve-toolbar-prefs__hint">${ escapeHtml(
+						getToolbarString( definition.hint[ 0 ], definition.hint[ 1 ] )
+					) }</p>`,
+					'  </div>',
+				].join( '' );
 			} ).join( '' ),
-			'    </div>',
-			`    <p class="dbvc-ve-toolbar-prefs__hint">${ escapeHtml(
-				getToolbarString(
-					'preferencesAppearanceHint',
-					'System follows your operating system setting. Applies to Visual Editor surfaces only.'
-				)
-			) }</p>`,
-			'  </div>',
 			'</div>',
 		].join( '' );
 
 		if ( settings.focusChecked ) {
-			const checked = body.querySelector( '[role="radio"][aria-checked="true"]' );
+			// `true` focuses the first group's checked option (popover open);
+			// a preference name focuses that group's (after a change).
+			const scope =
+				typeof settings.focusChecked === 'string'
+					? body.querySelector( `[data-dbvc-ve-preference-section="${ settings.focusChecked }"]` ) || body
+					: body;
+			const checked = scope.querySelector( '[role="radio"][aria-checked="true"]' );
 
 			if ( checked && typeof checked.focus === 'function' ) {
 				checked.focus();
@@ -2916,7 +3040,7 @@
 	function handlePreferencesPopoverClick( event ) {
 		const option =
 			event.target && typeof event.target.closest === 'function'
-				? event.target.closest( '[data-dbvc-ve-preference="colorScheme"]' )
+				? event.target.closest( '[data-dbvc-ve-preference]' )
 				: null;
 
 		if ( ! option ) {
@@ -2924,13 +3048,16 @@
 		}
 
 		event.preventDefault();
-		setColorScheme( option.getAttribute( 'data-dbvc-ve-preference-value' ) );
+		setPreference(
+			option.getAttribute( 'data-dbvc-ve-preference' ),
+			option.getAttribute( 'data-dbvc-ve-preference-value' )
+		);
 	}
 
 	function handlePreferencesPopoverKeydown( event ) {
 		const option =
 			event.target && typeof event.target.closest === 'function'
-				? event.target.closest( '[data-dbvc-ve-preference="colorScheme"]' )
+				? event.target.closest( '[data-dbvc-ve-preference]' )
 				: null;
 
 		if ( ! option ) {
@@ -2943,12 +3070,19 @@
 			return;
 		}
 
-		const index = COLOR_SCHEMES.indexOf( state.preferences.colorScheme );
-		const next =
-			COLOR_SCHEMES[ ( index + keys[ event.key ] + COLOR_SCHEMES.length ) % COLOR_SCHEMES.length ];
+		const name = option.getAttribute( 'data-dbvc-ve-preference' );
+		const definition = preferenceDefinition( name );
+
+		if ( ! definition ) {
+			return;
+		}
+
+		const values = definition.values;
+		const index = values.indexOf( state.preferences[ name ] );
+		const next = values[ ( index + keys[ event.key ] + values.length ) % values.length ];
 
 		event.preventDefault();
-		setColorScheme( next );
+		setPreference( name, next );
 	}
 
 	function openPreferencesToolbarPopover( options ) {

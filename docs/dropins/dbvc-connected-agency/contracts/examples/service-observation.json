@@ -1,0 +1,20 @@
+{
+  "schema_version": "agency-control.observation.v0.2",
+  "event_id": "event-service-002",
+  "environment_id": "a-prod",
+  "installation_epoch": "epoch-a-prod-1",
+  "sequence": 2,
+  "observed_at": "2026-09-16T12:00:00Z",
+  "object": {
+    "domain": "wp.service",
+    "instance_uid": "service-roofing-a"
+  },
+  "projection": {
+    "profile": "service-fixture-v1",
+    "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "exists": true,
+    "complete": true
+  },
+  "origin": "human",
+  "causation_id": null
+}

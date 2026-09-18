@@ -118,4 +118,4 @@ These were decided in the contract and are inherited, not re-litigated here: lef
 - Per-type counts, Recently Opened, Pinned, Users/Media rows, "Open Fields", ⌘K, Publish (reference images) — out of scope, unchanged.
 - Dropping the TERM chip — deferred to production review (decision 8).
 - A visible sliver of the workspace under the BCC (D3 review question) — not adopted; would require unequal drawer widths and reopens D-065.
-- Fixing the toolbar count badge contrast (white on `--color-primary`, 2.95:1) — **production defect outside R6 scope**; recorded for the toolbar owner (see README §Known limitations).
+- Fixing the toolbar count badge contrast (white on `--color-primary`, 2.95:1) — **production defect outside R6 scope**; recorded for the toolbar owner (see README §Known limitations). — **fixed in production 2026-09-16 (E-158), 6.17:1.**

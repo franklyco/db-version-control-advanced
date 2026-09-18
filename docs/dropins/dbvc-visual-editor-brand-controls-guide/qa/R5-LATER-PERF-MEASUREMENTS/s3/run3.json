@@ -1,0 +1,59 @@
+{
+  "scenario": "s3",
+  "run": "run3",
+  "capturedAt": "17:42:39",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14686,
+    "domContentLoaded": 15568,
+    "load": 23748
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "rows": 382,
+    "clickToRows": 3584,
+    "chips": 12
+  },
+  "spanCount": 5,
+  "aggregate": {
+    "dbvc.ve.drawer.open": {
+      "count": 1,
+      "totalMs": 1.6,
+      "maxMs": 1.6
+    },
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 10.9,
+      "maxMs": 10.4
+    },
+    "dbvc.ve.drawer.list_fetch": {
+      "count": 1,
+      "totalMs": 3560.1,
+      "maxMs": 3560.1
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 1,
+      "totalMs": 0,
+      "maxMs": 0
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.list_fetch",
+      "startTime": 25837,
+      "duration": 3560.1
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 29380,
+      "duration": 10.4
+    }
+  ],
+  "notes": ""
+}

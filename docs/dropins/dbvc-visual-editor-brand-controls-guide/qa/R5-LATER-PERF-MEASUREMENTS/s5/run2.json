@@ -1,0 +1,136 @@
+{
+  "scenario": "s5",
+  "run": "run2",
+  "capturedAt": "18:16:55",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14154,
+    "domContentLoaded": 14820,
+    "load": 22458
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "token": "ve_83d57ff182c5",
+    "hoverToBadgeMs": 21,
+    "hoverToClickMs": 323,
+    "clickToPanelReadyMs": 1090,
+    "panelState": "ready",
+    "panelTitle": "Home",
+    "controls": 1,
+    "requests": [
+      [
+        "s/descriptors",
+        1,
+        715,
+        29249
+      ],
+      [
+        "s/descriptors",
+        22,
+        685,
+        26471
+      ],
+      [
+        "s/descriptor/ve_83d57ff182c5",
+        186,
+        1199,
+        6105
+      ],
+      [
+        "s/descriptors",
+        716,
+        673,
+        31735
+      ]
+    ],
+    "requestCount": 4
+  },
+  "spanCount": 122,
+  "aggregate": {
+    "dbvc.ve.prefetch.pump": {
+      "count": 112,
+      "totalMs": 39.8,
+      "maxMs": 0.8
+    },
+    "dbvc.ve.api.getDescriptors": {
+      "count": 3,
+      "totalMs": 2105.2,
+      "maxMs": 717
+    },
+    "dbvc.ve.descriptor_batch_request": {
+      "count": 3,
+      "totalMs": 2106,
+      "maxMs": 717.2
+    },
+    "dbvc.ve.descriptor_request": {
+      "count": 1,
+      "totalMs": 1200.8,
+      "maxMs": 1200.8
+    },
+    "dbvc.ve.api.getDescriptor": {
+      "count": 1,
+      "totalMs": 1200.7,
+      "maxMs": 1200.7
+    },
+    "dbvc.ve.panel.open.marker": {
+      "count": 1,
+      "totalMs": 1072,
+      "maxMs": 1072
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 9.3,
+      "maxMs": 9.3
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.descriptor_request",
+      "startTime": 185,
+      "duration": 1200.8
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptor",
+      "startTime": 185,
+      "duration": 1200.7
+    },
+    {
+      "name": "dbvc.ve.panel.open.marker",
+      "startTime": 323,
+      "duration": 1072
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 1,
+      "duration": 717.2
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptors",
+      "startTime": 1,
+      "duration": 717
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 715,
+      "duration": 701.1
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptors",
+      "startTime": 715,
+      "duration": 700.8
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 22,
+      "duration": 687.7
+    }
+  ],
+  "notes": "protocol as in discarded-warmup notes"
+}

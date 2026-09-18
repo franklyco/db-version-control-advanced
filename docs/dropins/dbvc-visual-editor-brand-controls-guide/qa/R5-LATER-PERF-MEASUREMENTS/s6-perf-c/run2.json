@@ -1,0 +1,95 @@
+{
+  "scenario": "s6-perf-c",
+  "run": "run2",
+  "capturedAt": "21:14:17",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 15801,
+    "domContentLoaded": 16643,
+    "load": 24931
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "publicId": "vertical:palette_vertical_global_palette",
+    "clickToGridReadyMs": 4479,
+    "cells": 19,
+    "panelState": "locked",
+    "requests": [
+      [
+        "s/control-center/open",
+        20,
+        4357,
+        57982
+      ]
+    ],
+    "requestCount": 1
+  },
+  "spanCount": 19,
+  "aggregate": {
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 36.6,
+      "maxMs": 18.8
+    },
+    "dbvc.ve.drawer.open_row": {
+      "count": 1,
+      "totalMs": 4441.3,
+      "maxMs": 4441.3
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 2,
+      "totalMs": 0.1,
+      "maxMs": 0.1
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 1,
+      "totalMs": 0.4,
+      "maxMs": 0.4
+    },
+    "dbvc.ve.panel.open.toolbar": {
+      "count": 1,
+      "totalMs": 51.1,
+      "maxMs": 51.1
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 4.1,
+      "maxMs": 4.1
+    },
+    "dbvc.ve.prefetch.pump": {
+      "count": 11,
+      "totalMs": 3.1,
+      "maxMs": 1
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.open_row",
+      "startTime": 20,
+      "duration": 4441.3
+    },
+    {
+      "name": "dbvc.ve.panel.open.toolbar",
+      "startTime": 4401,
+      "duration": 51.1
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 1,
+      "duration": 18.8
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 4382,
+      "duration": 17.8
+    }
+  ],
+  "notes": "perf-c (E-163) in place; same protocol as s6. Setup call: list_fetch 3663 ms, value-summary batch server wait 3615-3773 ms."
+}

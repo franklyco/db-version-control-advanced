@@ -1,0 +1,98 @@
+{
+  "schema_version": "dbvc.dropin.overlay.v0.2",
+  "repo_root_marker": "db-version-control.php",
+  "paths_are_proposed": true,
+  "bootstrap_patch_included": false,
+  "files": [
+    {
+      "source": "scaffold/addons/connected-environments/bootstrap.php.stub",
+      "proposed_destination": "addons/connected-environments/bootstrap.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/connected-environments/src/Runtime.php.stub",
+      "proposed_destination": "addons/connected-environments/src/Runtime.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/agency-control/bootstrap.php.stub",
+      "proposed_destination": "addons/agency-control/bootstrap.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/agency-control/src/Runtime.php.stub",
+      "proposed_destination": "addons/agency-control/src/Runtime.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/includes/Dbvc/ConnectedProtocol/DomainObserver.php.stub",
+      "proposed_destination": "includes/Dbvc/ConnectedProtocol/DomainObserver.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/includes/Dbvc/ConnectedProtocol/RoleGate.php.stub",
+      "proposed_destination": "includes/Dbvc/ConnectedProtocol/RoleGate.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/includes/Dbvc/ConnectedProtocol/Comparison.php.stub",
+      "proposed_destination": "includes/Dbvc/ConnectedProtocol/Comparison.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/connected-environments/src/Contracts/ObservationStore.php.stub",
+      "proposed_destination": "addons/connected-environments/src/Contracts/ObservationStore.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/connected-environments/src/Contracts/Transport.php.stub",
+      "proposed_destination": "addons/connected-environments/src/Contracts/Transport.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/connected-environments/src/Capture/DirtyCapture.php.stub",
+      "proposed_destination": "addons/connected-environments/src/Capture/DirtyCapture.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/connected-environments/src/Adapters/UnconfiguredBricksObserver.php.stub",
+      "proposed_destination": "addons/connected-environments/src/Adapters/UnconfiguredBricksObserver.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/agency-control/src/Contracts/EnrollmentRegistry.php.stub",
+      "proposed_destination": "addons/agency-control/src/Contracts/EnrollmentRegistry.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/agency-control/src/Contracts/ReceiptStore.php.stub",
+      "proposed_destination": "addons/agency-control/src/Contracts/ReceiptStore.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/agency-control/src/Routing/RoutingPolicy.php.stub",
+      "proposed_destination": "addons/agency-control/src/Routing/RoutingPolicy.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    },
+    {
+      "source": "scaffold/addons/connected-environments/src/Lifecycle/TransferExclusions.php.stub",
+      "proposed_destination": "addons/connected-environments/src/Lifecycle/TransferExclusions.php",
+      "status": "starter_not_integrated",
+      "automatic_copy": false
+    }
+  ]
+}

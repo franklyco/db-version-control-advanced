@@ -31,6 +31,11 @@
 
 	const ROOT_ID = 'dbvc-ve-workspace';
 	const STORAGE_KEY = 'dbvc-ve-workspace:v1';
+	// VE-prefs-2 (2026-09-16): viewer preferences are owned and written by
+	// overlay-app.js (same key, VE-prefs-1). Read-only here — only the
+	// `workspaceStartup` field matters, and only at mount.
+	const PREFERENCES_STORAGE_KEY = 'dbvc-ve-preferences:v1';
+	const WORKSPACE_STARTUPS = [ 'remember', 'open', 'closed' ];
 	const DRAWER_WIDTH = '480px';
 	const SECTIONS = [ 'navigate', 'tools' ];
 	const PER_PAGE = 20;
@@ -164,6 +169,24 @@
 		}
 
 		return value === 'relevance' && ! allowRelevance ? DEFAULT_SORT : value;
+	}
+
+	/**
+	 * VE-prefs-2: `remember` (default) restores the persisted drawer state
+	 * (D-070); `open` / `closed` override it on every page load. The
+	 * persisted value itself is left untouched so switching back to
+	 * Remember restores what the viewer last had.
+	 */
+	function startupPreference() {
+		try {
+			const raw = window.localStorage.getItem( PREFERENCES_STORAGE_KEY );
+			const parsed = raw ? JSON.parse( raw ) : null;
+			const value = parsed && typeof parsed === 'object' ? parsed.workspaceStartup : '';
+
+			return WORKSPACE_STARTUPS.indexOf( value ) === -1 ? 'remember' : value;
+		} catch ( _err ) {
+			return 'remember';
+		}
 	}
 
 	function loadPersisted() {
@@ -2499,7 +2522,10 @@
 		};
 
 		// D-070: restore an open drawer on navigation without stealing focus.
-		if ( persisted.isOpen ) {
+		// VE-prefs-2: unless the viewer pinned the startup state.
+		const startup = startupPreference();
+
+		if ( startup === 'open' || ( startup === 'remember' && persisted.isOpen ) ) {
 			open( { focus: false } );
 		}
 	}

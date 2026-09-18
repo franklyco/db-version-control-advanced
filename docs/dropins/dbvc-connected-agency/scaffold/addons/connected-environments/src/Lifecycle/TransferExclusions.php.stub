@@ -1,0 +1,21 @@
+<?php
+namespace Dbvc\Connected\Lifecycle;
+
+/**
+ * Proposed option exclusion predicate; NOT attached to any existing filter here.
+ * Tables and full-site clone tools need separate handling. Narrow to verified keys
+ * if existing DBVC conventions use different prefixes. Never export credentials.
+ */
+final class TransferExclusions
+{
+    public static function isOperationalOption($key)
+    {
+        if (in_array($key, array('dbvc_addon_connected_environments_enabled', 'dbvc_addon_agency_control_enabled'), true)) {
+            return true;
+        }
+        foreach (array('dbvc_ce_', 'dbvc_ac_') as $prefix) {
+            if (strpos($key, $prefix) === 0) { return true; }
+        }
+        return false;
+    }
+}

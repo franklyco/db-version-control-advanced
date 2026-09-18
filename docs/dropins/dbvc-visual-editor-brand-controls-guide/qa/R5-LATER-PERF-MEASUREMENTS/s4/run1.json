@@ -1,0 +1,67 @@
+{
+  "scenario": "s4",
+  "run": "run1",
+  "capturedAt": "17:55:49",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14407,
+    "domContentLoaded": 15446,
+    "load": 25313
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "visRows": 382,
+    "scrollPx": 46554,
+    "scrollMs": 2896,
+    "pxPerFrame": 250,
+    "posts": 44,
+    "postsDone": 44,
+    "rowsQueued": 379,
+    "batchHist": {
+      "3": 1,
+      "7": 3,
+      "8": 14,
+      "9": 17,
+      "10": 9
+    },
+    "statuses": {
+      "200": 44
+    },
+    "serverWaitMs": [
+      3997,
+      46650,
+      85306
+    ],
+    "queueMs": [
+      1,
+      1,
+      3
+    ],
+    "maxConcurrent": 44,
+    "resBytesDecoded": 43287,
+    "resBytesTransfer": 26004,
+    "allDoneAtMs": 88173,
+    "firstDoneAtMs": 4138
+  },
+  "spanCount": 217,
+  "aggregate": {
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 173,
+      "totalMs": 6.4,
+      "maxMs": 0.4
+    },
+    "dbvc.ve.drawer.value_summary.batch_flush": {
+      "count": 44,
+      "totalMs": 1967502.9,
+      "maxMs": 85316.1
+    }
+  },
+  "topSpans": [],
+  "notes": "rAF scroll 250px/frame (~15000px/s), full list in 2.9 s, all 10 groups expanded (382 rows visible). Polled until every value-summaries POST completed. serverWaitMs/queueMs = [min, median, max] from Resource Timing (responseStart-requestStart / requestStart-startTime); maxConcurrent = overlapping requests (HTTP/2: all 44 dispatched at once, no client queueing); allDoneAtMs = time from scroll start to last POST completion. batch_flush span totals are inflated by server-side serialisation (requests complete ~2 at a time at ~4 s each)."
+}

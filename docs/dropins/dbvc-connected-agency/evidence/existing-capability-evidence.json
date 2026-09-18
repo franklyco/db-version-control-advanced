@@ -1,0 +1,228 @@
+{
+  "note": "Existing manifest excerpts, not updated/reverified capability claims. Source commit given in source-lock.json.",
+  "records": [
+    {
+      "id": "addon.bricks.command_queue",
+      "status": "active",
+      "verification": {
+        "evidence_types": [
+          "bootstrap_review",
+          "source_review",
+          "static_registration_discovery"
+        ],
+        "live_runtime_verified": false,
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed.",
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-08-05"
+      },
+      "source_refs": [
+        {
+          "path": "addons/bricks/bricks-command-auth.php"
+        },
+        {
+          "path": "addons/bricks/bricks-command-queue.php"
+        },
+        {
+          "line": 1315,
+          "path": "addons/bricks/bricks-command-queue.php"
+        },
+        {
+          "line": 1329,
+          "path": "addons/bricks/bricks-command-queue.php"
+        },
+        {
+          "line": 1361,
+          "path": "addons/bricks/bricks-command-queue.php"
+        }
+      ]
+    },
+    {
+      "id": "addon.bricks.connected_onboarding",
+      "status": "active",
+      "verification": {
+        "evidence_types": [
+          "bootstrap_review",
+          "source_review",
+          "static_registration_discovery"
+        ],
+        "live_runtime_verified": false,
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed.",
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-08-05"
+      },
+      "source_refs": [
+        {
+          "line": 3856,
+          "path": "addons/bricks/bricks-addon.php"
+        },
+        {
+          "line": 3876,
+          "path": "addons/bricks/bricks-addon.php"
+        },
+        {
+          "line": 3886,
+          "path": "addons/bricks/bricks-addon.php"
+        },
+        {
+          "line": 3896,
+          "path": "addons/bricks/bricks-addon.php"
+        },
+        {
+          "path": "addons/bricks/bricks-connected-sites.php"
+        },
+        {
+          "path": "addons/bricks/bricks-onboarding.php"
+        },
+        {
+          "line": 365,
+          "path": "addons/bricks/bricks-onboarding.php"
+        }
+      ]
+    },
+    {
+      "id": "addon.bricks.packages",
+      "status": "active",
+      "verification": {
+        "evidence_types": [
+          "bootstrap_review",
+          "source_review",
+          "static_registration_discovery"
+        ],
+        "live_runtime_verified": false,
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed.",
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-08-05"
+      },
+      "source_refs": [
+        {
+          "line": 3769,
+          "path": "addons/bricks/bricks-addon.php"
+        },
+        {
+          "path": "addons/bricks/bricks-packages.php"
+        }
+      ]
+    },
+    {
+      "id": "hooks.bricks.extensions",
+      "status": "active",
+      "verification": {
+        "evidence_types": [
+          "bootstrap_review",
+          "source_review",
+          "static_registration_discovery"
+        ],
+        "live_runtime_verified": false,
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed.",
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-08-05"
+      },
+      "source_refs": [
+        {
+          "path": "addons/bricks/bricks-addon.php"
+        },
+        {
+          "path": "addons/bricks/bricks-apply.php"
+        },
+        {
+          "path": "addons/bricks/bricks-packages.php"
+        },
+        {
+          "line": 5023,
+          "path": "admin/class-admin-app.php"
+        },
+        {
+          "line": 229,
+          "path": "includes/Dbvc/EntityReferences/BricksReferenceMapper.php"
+        }
+      ]
+    },
+    {
+      "id": "hooks.core.lifecycle",
+      "status": "active",
+      "verification": {
+        "evidence_types": [
+          "bootstrap_review",
+          "source_review",
+          "static_registration_discovery"
+        ],
+        "live_runtime_verified": false,
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed.",
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-08-05"
+      },
+      "source_refs": [
+        {
+          "path": "includes/hooks.php"
+        }
+      ]
+    },
+    {
+      "id": "identity.core.entities",
+      "status": "active",
+      "verification": {
+        "evidence_types": [
+          "bootstrap_review",
+          "source_review",
+          "static_registration_discovery"
+        ],
+        "live_runtime_verified": false,
+        "notes": "Reviewed in the repository checkout; no live WordPress route or command inventory was executed.",
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-08-05"
+      },
+      "source_refs": [
+        {
+          "line": 223,
+          "path": "includes/class-database.php"
+        },
+        {
+          "line": 196,
+          "path": "includes/class-sync-posts.php"
+        },
+        {
+          "line": 308,
+          "path": "includes/class-sync-posts.php"
+        },
+        {
+          "path": "includes/class-sync-taxonomies.php"
+        }
+      ]
+    },
+    {
+      "id": "storage.core.snapshots",
+      "status": "active",
+      "verification": {
+        "evidence_types": [
+          "bootstrap_review",
+          "source_review",
+          "static_registration_discovery",
+          "focused_unit_test",
+          "same_checkout_absent_storage_snapshot_read",
+          "same_checkout_absent_storage_backup_read",
+          "same_checkout_identity_metadata_fingerprint"
+        ],
+        "live_runtime_verified": false,
+        "notes": "Phase 21 separates snapshot lookup from capture writes. read_snapshot() and metadata lookup use non-creating upload and base-path resolution; capture writers explicitly create and harden storage. Phase 22 makes backup-base lookup non-creating for list and manifest readers while writer paths continue to create and harden storage. Phase 23 makes post and term snapshot inspection read existing UID metadata without assigning UIDs or synchronizing identity records. Same-checkout inspection retained an identity-metadata fingerprint. This is scoped storage evidence; database history, cleanup, capture, and retention remain broader write-capable behavior.",
+        "repository_commit": "78a06ad6429574bc1ac88158ec7c037b257dd3a6",
+        "verified_date": "2026-08-11"
+      },
+      "source_refs": [
+        {
+          "line": 7041,
+          "path": "admin/class-admin-app.php"
+        },
+        {
+          "path": "includes/class-backup-manager.php"
+        },
+        {
+          "line": 218,
+          "path": "includes/class-database.php"
+        },
+        {
+          "path": "includes/class-snapshot-manager.php"
+        }
+      ]
+    }
+  ]
+}

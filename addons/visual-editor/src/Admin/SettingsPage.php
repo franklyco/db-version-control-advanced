@@ -49,6 +49,19 @@ final class SettingsPage
             'error' => [],
         ];
 
+        // R5.later-perf-b: nonce-checked GET actions rendered from field meta `actions`.
+        if (isset($_GET['dbvc_ve_action'], $_GET['_wpnonce']) && $_SERVER['REQUEST_METHOD'] === 'GET') {
+            $action = sanitize_key(wp_unslash($_GET['dbvc_ve_action']));
+
+            if (! wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'dbvc_ve_action_' . $action)) {
+                $feedback['error'][] = __('The action could not be run because the security check failed.', 'dbvc');
+            } elseif (class_exists('\DBVC_Visual_Editor_Addon')) {
+                $result = \DBVC_Visual_Editor_Addon::run_settings_action($action);
+                $feedback['success'] = array_merge($feedback['success'], array_map('sanitize_text_field', (array) ($result['success'] ?? [])));
+                $feedback['error'] = array_merge($feedback['error'], array_map('sanitize_text_field', (array) ($result['error'] ?? [])));
+            }
+        }
+
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (
                 ! isset($_POST[self::NONCE_NAME])
@@ -160,6 +173,35 @@ final class SettingsPage
     }
 
     /**
+     * Small nonce'd action links declared in field meta as
+     * `actions => [ [ 'action' => slug, 'label' => text ], … ]`.
+     *
+     * @param array<string, mixed> $field_meta
+     * @return void
+     */
+    private function renderActions(array $field_meta)
+    {
+        $actions = isset($field_meta['actions']) && is_array($field_meta['actions']) ? $field_meta['actions'] : [];
+
+        if ($actions === []) {
+            return;
+        }
+
+        $base = admin_url('admin.php?page=' . self::PAGE_SLUG);
+        ?>
+        <br>
+        <?php foreach ($actions as $action) :
+            if (! is_array($action) || empty($action['action']) || empty($action['label'])) {
+                continue;
+            }
+            $slug = sanitize_key((string) $action['action']);
+            $url = wp_nonce_url(add_query_arg('dbvc_ve_action', $slug, $base), 'dbvc_ve_action_' . $slug);
+            ?>
+            <a class="button button-small" href="<?php echo esc_url($url); ?>"><?php echo esc_html((string) $action['label']); ?></a>
+        <?php endforeach;
+    }
+
+    /**
      * @param string               $field_key
      * @param array<string, mixed> $field_meta
      * @param string               $field_value
@@ -182,6 +224,7 @@ final class SettingsPage
                 <?php if ($field_help !== '') : ?>
                     <br><small class="description"><?php echo esc_html($field_help); ?></small>
                 <?php endif; ?>
+                <?php $this->renderActions($field_meta); ?>
             </p>
             <?php
             return;

@@ -1,0 +1,84 @@
+{
+  "scenario": "s4",
+  "run": "discarded-warmup",
+  "capturedAt": "17:47:31",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14526,
+    "domContentLoaded": 15389,
+    "load": 23828
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "visRows": 382,
+    "scrollPx": 43747,
+    "scrollMs": 14491,
+    "posts": 8,
+    "batchSizes": "~190 POSTs of 2 rows each (one of 1) \u2014 list truncated by tool output",
+    "postWaitMs": null,
+    "postBytes": null,
+    "lastPostEnd": null
+  },
+  "spanCount": 387,
+  "aggregate": {
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 379,
+      "totalMs": 19.1,
+      "maxMs": 0.4
+    },
+    "dbvc.ve.drawer.value_summary.batch_flush": {
+      "count": 8,
+      "totalMs": 75631,
+      "maxMs": 15261.2
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 80007,
+      "duration": 15261.2
+    },
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 80092,
+      "duration": 15198.5
+    },
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 79841,
+      "duration": 11316.1
+    },
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 79942,
+      "duration": 11166.6
+    },
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 79674,
+      "duration": 7461.6
+    },
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 79761,
+      "duration": 7367.6
+    },
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 79542,
+      "duration": 3941.5
+    },
+    {
+      "name": "dbvc.ve.drawer.value_summary.batch_flush",
+      "startTime": 79597,
+      "duration": 3917.9
+    }
+  ],
+  "notes": "warmup, not counted. rAF scroll 50px/frame (3000px/s) over 43.7k px = 14.5 s; all 10 groups expanded (382 rows visible). Only 8 batch_flush spans had completed 2 s after the scroll ended \u2014 requests complete 2-at-a-time at ~3.7 s each; ~180 POSTs still queued. Resource Timing buffer (250) overflowed, so per-request timing is incomplete here; counted runs enlarge the buffer and poll until a sample of requests completes."
+}

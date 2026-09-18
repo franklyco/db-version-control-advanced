@@ -36,7 +36,12 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
         public const OPTION_CONTROL_CENTER_ENABLED = 'dbvc_visual_editor_control_center_enabled';
         public const OPTION_WORKSPACE_ENABLED = 'dbvc_visual_editor_workspace_enabled';
         public const OPTION_SETTINGS_VERSION = 'dbvc_visual_editor_settings_version';
-        public const SETTINGS_VERSION = 7;
+        // R5.later-perf-a (2026-09-17): Bricks ACF dynamic-data tag-index shim. Site-wide
+        // (every frontend / REST request), independent of the master switch, default off.
+        public const OPTION_BRICKS_ACF_TAG_INDEX_ENABLED = \Dbvc\VisualEditor\Performance\Bricks\AcfTagIndexShim::OPTION_ENABLED;
+        // R5.later-perf-b (2026-09-17): persistent cache for Bricks' ACF field schema. Site-wide, default off.
+        public const OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED = \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::OPTION_ENABLED;
+        public const SETTINGS_VERSION = 9;
         public const DEFAULT_SHARED_GLOBAL_FIELD_NAMES = 'settings_globals_default_posts';
         public const DEFAULT_EXCLUDED_POST_TYPES = 'bricks_template';
         public const DEFAULT_EXCLUDED_TAXONOMIES = "template_tag\ntemplate_bundle";
@@ -65,6 +70,10 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             self::register_admin_settings_page();
             self::register_admin_curation_page();
             self::refresh_runtime_registration();
+            // R5.later-perf-a: inert unless its own switch is on (see the shim's gate).
+            \Dbvc\VisualEditor\Performance\Bricks\AcfTagIndexShim::register();
+            // R5.later-perf-b: same posture — inert unless its own switch is on.
+            \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::register();
         }
 
         /**
@@ -80,6 +89,12 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
             add_option(self::OPTION_CURATION_TOOL_ENABLED, '0');
             add_option(self::OPTION_CONTROL_CENTER_ENABLED, '0');
             add_option(self::OPTION_WORKSPACE_ENABLED, '0');
+            add_option(self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED, '0');
+            add_option(\Dbvc\VisualEditor\Performance\Bricks\AcfTagIndexShim::OPTION_VERIFIED, '');
+            add_option(self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED, '0');
+            add_option(\Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::OPTION_SALT, '', '', 'yes');
+            add_option(\Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::OPTION_VERIFIED, '');
+            add_option(\Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::OPTION_META, [], '', 'no');
             add_option(self::OPTION_SETTINGS_VERSION, (string) self::SETTINGS_VERSION);
 
             if ((int) get_option(self::OPTION_SETTINGS_VERSION, 0) < self::SETTINGS_VERSION) {
@@ -225,6 +240,13 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                         self::OPTION_WORKSPACE_ENABLED,
                     ],
                 ],
+                'performance_bricks' => [
+                    'label' => __('Performance — Bricks compatibility (site-wide)', 'dbvc'),
+                    'fields' => [
+                        self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED,
+                        self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED,
+                    ],
+                ],
             ];
         }
 
@@ -277,7 +299,103 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                     'input' => 'checkbox',
                     'help' => __('Adds the persistent Site Manager drawer to the frontend Visual Editor toolbar for navigating pages, posts, approved post types, and terms without leaving Visual Editor mode, with shortcuts to Review Fields, the Brand Control Center, and the Media Manager. Off by default; turning it off restores the previous toolbar navigation.', 'dbvc'),
                 ],
+                self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED => [
+                    'label' => __('Index Bricks ACF dynamic-data tags', 'dbvc'),
+                    'input' => 'checkbox',
+                    'help' => self::bricks_acf_tag_index_help(),
+                ],
+                self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED => [
+                    'label' => __('Cache the Bricks ACF field schema', 'dbvc'),
+                    'input' => 'checkbox',
+                    'help' => self::bricks_acf_fields_cache_help(),
+                    'actions' => [
+                        ['action' => 'bricks-acf-fields-cache-rebuild', 'label' => __('Rebuild now', 'dbvc')],
+                        ['action' => 'bricks-acf-fields-cache-verify', 'label' => __('Verify now', 'dbvc')],
+                    ],
+                ],
             ];
+        }
+
+        /**
+         * Settings-page help text for the R5.later-perf-a switch, including the
+         * shim's live status so the maintainer can see why it is (not) active.
+         *
+         * @return string
+         */
+        public static function bricks_acf_tag_index_help()
+        {
+            $status = \Dbvc\VisualEditor\Performance\Bricks\AcfTagIndexShim::status();
+            $verified = (string) $status['verified'];
+            $state = $status['gate'] === 'ok' ? 'ready' : (string) $status['gate'];
+
+            return sprintf(
+                /* translators: 1: Bricks version label or "unknown", 2: gate state, 3: verification summary */
+                __('Speeds up every frontend and REST request on Bricks sites with large group-nested ACF schemas by giving Bricks\' ACF dynamic-data provider an indexed nested-group lookup (identical output, verified on save). Applies site-wide, regardless of the Visual Editor activation switch; default off. Only arms when the installed Bricks code matches a pinned fingerprint and that fingerprint has been verified on this site. Detected: %1$s · gate: %2$s · verification: %3$s.', 'dbvc'),
+                (string) $status['bricks'],
+                $state,
+                $verified === '' ? 'never run' : (strpos($verified, 'failed:') === 0 ? 'FAILED — registries differed' : 'passed for ' . substr($verified, 0, 12))
+            );
+        }
+
+        /**
+         * Settings-page help text for the R5.later-perf-b switch with the live cache status.
+         *
+         * @return string
+         */
+        public static function bricks_acf_fields_cache_help()
+        {
+            $status = \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::status();
+            $meta = (array) $status['meta'];
+            $gate = $status['gate'] === 'ok' ? 'ready' : (string) $status['gate'];
+            $built = ! empty($meta['built_at'])
+                ? sprintf('%s ago, %s, %d fields', human_time_diff((int) $meta['built_at']), size_format((int) ($meta['bytes'] ?? 0)), (int) ($meta['fields'] ?? 0))
+                : 'never';
+            $verify = ! empty($meta['last_verify_at'])
+                ? sprintf('%s ago — %s', human_time_diff((int) $meta['last_verify_at']), ! empty($meta['last_verify_ok']) ? 'identical' : sprintf('%d field(s) differed (replaced)', (int) ($meta['last_verify_differing'] ?? 0)))
+                : 'pending (runs via WP-Cron shortly after enabling)';
+            $divergence = ! empty($meta['last_divergence_at'])
+                ? sprintf(' Last divergence: %s ago (%d field(s)) — add a trigger for whatever changed.', human_time_diff((int) $meta['last_divergence_at']), (int) ($meta['last_divergence_differing'] ?? 0))
+                : '';
+
+            return sprintf(
+                /* translators: 1: Bricks version label or "unknown", 2: gate state, 3: build summary, 4: verification summary, 5: TTL in hours, 6: divergence note */
+                __('Removes the remaining per-request cost of Bricks materialising the ACF schema (about 2 s on large group-nested schemas) by keeping the field definitions in a persistent, fingerprinted cache and handing them to Bricks before it registers dynamic-data tags. Applies to every frontend and REST request; admin screens always use live ACF. Invalidated by ACF field-group edits, theme/plugin changes, file changes in field-registering PHP, saves of configured post types, a %5$d-hour TTL and a daily verification that rebuilds and compares. Detected: %1$s · gate: %2$s · built: %3$s · verification: %4$s.%6$s', 'dbvc'),
+                (string) $status['bricks'],
+                $gate,
+                $built,
+                $verify,
+                (int) round($status['ttl'] / HOUR_IN_SECONDS),
+                $divergence
+            );
+        }
+
+        /**
+         * Nonce-checked settings-page actions (GET links rendered from field meta).
+         *
+         * @param string $action
+         * @return array{success: array<int, string>, error: array<int, string>}
+         */
+        public static function run_settings_action($action)
+        {
+            $feedback = ['success' => [], 'error' => []];
+
+            switch ((string) $action) {
+                case 'bricks-acf-fields-cache-rebuild':
+                    \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::flush('settings_rebuild');
+                    $feedback['success'][] = __('Bricks ACF field cache invalidated; a warm-up has been scheduled and will run on the next WP-Cron tick.', 'dbvc');
+                    break;
+                case 'bricks-acf-fields-cache-verify':
+                    if (! wp_next_scheduled(\Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::CRON_VERIFY, [])) {
+                        wp_schedule_single_event(time() - 1, \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::CRON_VERIFY);
+                    }
+                    add_action('shutdown', 'spawn_cron', 100);
+                    $feedback['success'][] = __('Bricks ACF field cache verification scheduled; it runs in a frontend-context WP-Cron request and reports here.', 'dbvc');
+                    break;
+                default:
+                    $feedback['error'][] = __('Unknown settings action.', 'dbvc');
+            }
+
+            return $feedback;
         }
 
         /**
@@ -296,6 +414,8 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                 self::OPTION_CURATION_TOOL_ENABLED => (string) get_option(self::OPTION_CURATION_TOOL_ENABLED, '0'),
                 self::OPTION_CONTROL_CENTER_ENABLED => (string) get_option(self::OPTION_CONTROL_CENTER_ENABLED, '0'),
                 self::OPTION_WORKSPACE_ENABLED => (string) get_option(self::OPTION_WORKSPACE_ENABLED, '0'),
+                self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED => (string) get_option(self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED, '0'),
+                self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED => (string) get_option(self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED, '0'),
             ];
         }
 
@@ -312,6 +432,8 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
                 self::OPTION_CURATION_TOOL_ENABLED => isset($request_data[self::OPTION_CURATION_TOOL_ENABLED]) ? '1' : '0',
                 self::OPTION_CONTROL_CENTER_ENABLED => isset($request_data[self::OPTION_CONTROL_CENTER_ENABLED]) ? '1' : '0',
                 self::OPTION_WORKSPACE_ENABLED => isset($request_data[self::OPTION_WORKSPACE_ENABLED]) ? '1' : '0',
+                self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED => isset($request_data[self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED]) ? '1' : '0',
+                self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED => isset($request_data[self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED]) ? '1' : '0',
                 self::OPTION_SHARED_GLOBAL_FIELD_NAMES => self::sanitize_shared_global_field_names(
                     isset($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])
                         ? (string) wp_unslash($request_data[self::OPTION_SHARED_GLOBAL_FIELD_NAMES])
@@ -337,9 +459,40 @@ if (! class_exists('DBVC_Visual_Editor_Addon')) {
 
             self::refresh_runtime_registration();
 
+            $errors = [];
+
+            // R5.later-perf-a: switching the shim on (re)verifies the installed
+            // Bricks code against the indexed provider before it can ever arm.
+            if ($values[self::OPTION_BRICKS_ACF_TAG_INDEX_ENABLED] === '1') {
+                $verification = \Dbvc\VisualEditor\Performance\Bricks\AcfTagIndexShim::verify(true);
+
+                if (! $verification['ok']) {
+                    $errors[] = sprintf(
+                        /* translators: %s: verification reason code */
+                        __('Bricks ACF tag index: not activated — %s. The switch stays on but the shim remains inert until a verification passes.', 'dbvc'),
+                        (string) $verification['reason']
+                    );
+                }
+            }
+
+            // R5.later-perf-b: enabling schedules the daily verification and an
+            // immediate warm-up (which also produces the first verification);
+            // disabling clears both schedules. The payload is left to expire.
+            if ($values[self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED] === '1') {
+                \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::ensureVerifySchedule();
+                if ($current[self::OPTION_BRICKS_ACF_FIELDS_CACHE_ENABLED] !== '1') {
+                    \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::flush('enabled');
+                    if (! wp_next_scheduled(\Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::CRON_VERIFY, [])) {
+                        wp_schedule_single_event(time() + 5, \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::CRON_VERIFY);
+                    }
+                }
+            } else {
+                \Dbvc\VisualEditor\Performance\Bricks\AcfFieldsCache::clearSchedules();
+            }
+
             return [
                 'values' => $values,
-                'errors' => [],
+                'errors' => $errors,
             ];
         }
 

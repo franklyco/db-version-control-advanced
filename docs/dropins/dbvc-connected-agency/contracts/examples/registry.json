@@ -1,0 +1,87 @@
+{
+  "environments": {
+    "a-prod": {
+      "agency": "studio",
+      "client": "client-a",
+      "epoch": "epoch-a-prod-1",
+      "enabled": true,
+      "revoked": false,
+      "online": true
+    },
+    "a-stage": {
+      "agency": "studio",
+      "client": "client-a",
+      "epoch": "epoch-a-stage-1",
+      "enabled": true,
+      "revoked": false,
+      "online": true
+    },
+    "a-local": {
+      "agency": "studio",
+      "client": "client-a",
+      "epoch": "epoch-a-local-1",
+      "enabled": true,
+      "revoked": false,
+      "online": false
+    },
+    "b-prod": {
+      "agency": "studio",
+      "client": "client-b",
+      "epoch": "epoch-b-prod-1",
+      "enabled": true,
+      "revoked": false,
+      "online": true
+    },
+    "b-stage": {
+      "agency": "studio",
+      "client": "client-b",
+      "epoch": "epoch-b-stage-1",
+      "enabled": true,
+      "revoked": false,
+      "online": true
+    }
+  },
+  "client_subscriptions": [
+    {
+      "source": "a-prod",
+      "target": "a-stage",
+      "domains": [
+        "bricks.global_class",
+        "bricks.variable",
+        "wp.service"
+      ],
+      "enabled": true
+    },
+    {
+      "source": "a-prod",
+      "target": "a-local",
+      "domains": [
+        "bricks.global_class",
+        "bricks.variable",
+        "wp.service"
+      ],
+      "enabled": true
+    },
+    {
+      "source": "b-prod",
+      "target": "b-stage",
+      "domains": [
+        "bricks.global_class",
+        "bricks.variable",
+        "wp.service"
+      ],
+      "enabled": true
+    }
+  ],
+  "framework_subscriptions": [
+    {
+      "agency": "studio",
+      "client": "client-a",
+      "environment": "a-prod",
+      "domain": "bricks.global_class",
+      "instance_uid": "class-button-a",
+      "definition_uid": "framework-button",
+      "enabled": true
+    }
+  ]
+}

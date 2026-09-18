@@ -1,0 +1,19 @@
+<?php
+namespace Dbvc\ConnectedProtocol;
+
+/** Read-only domain port. Missing identity must not trigger backfill during reads. */
+interface DomainObserver
+{
+    /** Return domain/profile versions, completeness limits and report capabilities. */
+    public function capabilities();
+
+    /** Bounded query: cursor/limit. Return items, next_cursor, complete and problems. */
+    public function inventory(array $query);
+
+    /**
+     * Return status (available|unavailable|unsupported|identity_missing), exists,
+     * complete, profile, semantic_hash, storage_fingerprint and opaque revision.
+     * An unavailable read is not a missing object. No export/network/writes here.
+     */
+    public function snapshot(array $identity);
+}

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flourish:agency-control:observation:v0.2",
+  "title": "Draft observation event; no authority from payload",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "agency-control.observation.v0.2"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+    },
+    "environment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+    },
+    "installation_epoch": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain",
+        "instance_uid"
+      ],
+      "properties": {
+        "domain": {
+          "enum": [
+            "bricks.global_class",
+            "bricks.variable",
+            "wp.service"
+          ]
+        },
+        "instance_uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+        }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "hash",
+        "exists",
+        "complete"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      }
+    },
+    "origin": {
+      "enum": [
+        "human",
+        "apply",
+        "rollback",
+        "reconciliation"
+      ]
+    },
+    "causation_id": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "environment_id",
+    "installation_epoch",
+    "sequence",
+    "observed_at",
+    "object",
+    "projection",
+    "origin",
+    "causation_id"
+  ]
+}

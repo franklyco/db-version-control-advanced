@@ -38,10 +38,35 @@ final class ControlRegistry
      *
      * Cleared at the start of every {@see collectValidRecords()} pass so it
      * reflects the current call rather than accumulating across the request.
+     * Since R5.later-perf-c a pass runs once per request (see
+     * {@see $recordCache}), so the map describes that pass until the cache
+     * is invalidated.
      *
      * @var array<string, array<string, string>>
      */
     private $providerErrors = [];
+
+    /**
+     * R5.later-perf-c (E-162 F2) — the last {@see collectValidRecords()}
+     * pass, memoised for the lifetime of this instance (one REST request).
+     * Every provider's `getControls()` is called exactly once per request;
+     * before this the value-summary batch route re-collected, re-validated
+     * and re-sorted every provider's records once per public id (62 ms × N
+     * on the reference site). Invalidated by {@see registerProvider()} and
+     * {@see resetRecordCache()}. Per-user visibility is still applied at
+     * read time, so the memo never bakes a capability decision in.
+     *
+     * @var array<int, ControlRecord>|null
+     */
+    private $recordCache = null;
+
+    /**
+     * `publicId → ControlRecord` index over {@see $recordCache}, built lazily
+     * by {@see getVisibleRecord()}.
+     *
+     * @var array<string, ControlRecord>|null
+     */
+    private $recordIndex = null;
 
     /**
      * Registration reasons for a rejected provider or record, observable via
@@ -84,8 +109,24 @@ final class ControlRegistry
         }
 
         $this->providers[$id] = $provider;
+        $this->resetRecordCache();
 
         return true;
+    }
+
+    /**
+     * R5.later-perf-c — drop the memoised record pass so the next read
+     * calls every provider's `getControls()` again. Registration does this
+     * automatically; call it explicitly when a provider's output is known
+     * to have changed within the same request (tests, future in-request
+     * schema mutations).
+     *
+     * @return void
+     */
+    public function resetRecordCache()
+    {
+        $this->recordCache = null;
+        $this->recordIndex = null;
     }
 
     /**
@@ -208,13 +249,19 @@ final class ControlRegistry
         }
 
         $records = $this->collectValidRecords();
-        foreach ($records as $record) {
-            if ($record->providerId === $providerId && $record->id === $localId) {
-                return $record->isVisibleToCurrentUser() ? $record : null;
+        if ($this->recordIndex === null) {
+            $this->recordIndex = [];
+            foreach ($records as $record) {
+                $this->recordIndex[$record->publicId()] = $record;
             }
         }
 
-        return null;
+        $publicId = $providerId . ':' . $localId;
+        if (! isset($this->recordIndex[$publicId])) {
+            return null;
+        }
+
+        return $this->recordIndex[$publicId]->isVisibleToCurrentUser() ? $this->recordIndex[$publicId] : null;
     }
 
     /**
@@ -296,10 +343,16 @@ final class ControlRegistry
      * per-provider local id (which happened to align alphabetically with
      * their labels).
      *
+     * R5.later-perf-c: memoised per instance — see {@see $recordCache}.
+     *
      * @return array<int, ControlRecord>
      */
     private function collectValidRecords()
     {
+        if (is_array($this->recordCache)) {
+            return $this->recordCache;
+        }
+
         $this->providerErrors = [];
         $records = [];
         $provider_ids = array_keys($this->providers);
@@ -363,7 +416,10 @@ final class ControlRegistry
             return strcmp($a->publicId(), $b->publicId());
         });
 
-        return $this->flattenParentChildOrder($records);
+        $this->recordCache = $this->flattenParentChildOrder($records);
+        $this->recordIndex = null;
+
+        return $this->recordCache;
     }
 
     /**

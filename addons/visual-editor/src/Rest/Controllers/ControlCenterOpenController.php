@@ -195,7 +195,42 @@ final class ControlCenterOpenController
             );
         }
 
-        if (! $this->session_registry->addDescriptorToSession($session_id, $descriptor)) {
+        // R5.later-y-3 (2026-09-05): a palette-parent descriptor can carry
+        // pre-minted leaf descriptors in `source.leaves[i].descriptor`.
+        // Register each in the session so subsequent per-swatch saves
+        // route through those tokens WITHOUT a separate `/open` call
+        // (first save per swatch drops from 2 round-trips to 1).
+        // Capability + exclusion checks are re-applied per leaf; a
+        // failed leaf is silently skipped rather than blocking the
+        // palette parent from opening.
+        //
+        // R5.later-perf-c (E-162 F3): the parent and every capability-
+        // cleared leaf are attached in ONE session round-trip
+        // (`addDescriptorsToSession`) instead of one per descriptor —
+        // each serial attach decoded and rewrote the whole session
+        // (≈ 0.5 s × 20 on the reference site). The parent's own attach
+        // result still gates the response; leaf results only decide which
+        // leaves are reported back.
+        $to_attach = [$descriptor->token => $descriptor];
+        $leaves = isset($descriptor->source['leaves']) && is_array($descriptor->source['leaves'])
+            ? $descriptor->source['leaves']
+            : [];
+        foreach ($leaves as $leaf) {
+            if (! is_array($leaf) || empty($leaf['descriptor']) || ! is_array($leaf['descriptor'])) {
+                continue;
+            }
+            $leaf_descriptor = EditableDescriptor::fromArray($leaf['descriptor']);
+            if (! $leaf_descriptor->token || $leaf_descriptor->token === $descriptor->token) {
+                continue;
+            }
+            if (! $this->capabilities->canEditDescriptor($leaf_descriptor)) {
+                continue;
+            }
+            $to_attach[$leaf_descriptor->token] = $leaf_descriptor;
+        }
+
+        $attached = $this->session_registry->addDescriptorsToSession($session_id, array_values($to_attach));
+        if (empty($attached[$descriptor->token])) {
             return new WP_REST_Response(
                 [
                     'ok' => false,
@@ -205,33 +240,11 @@ final class ControlCenterOpenController
             );
         }
 
-        // R5.later-y-3 (2026-09-05): a palette-parent descriptor can carry
-        // pre-minted leaf descriptors in `source.leaves[i].descriptor`.
-        // Register each in the session so subsequent per-swatch saves
-        // route through those tokens WITHOUT a separate `/open` call
-        // (first save per swatch drops from 2 round-trips to 1).
-        // Capability + exclusion checks are re-applied per leaf; a
-        // failed leaf is silently skipped rather than blocking the
-        // palette parent from opening.
-        $collected_descriptors = [$descriptor->token => $descriptor];
-        $leaves = isset($descriptor->source['leaves']) && is_array($descriptor->source['leaves'])
-            ? $descriptor->source['leaves']
-            : [];
-        foreach ($leaves as $leaf) {
-            if (! is_array($leaf) || empty($leaf['descriptor']) || ! is_array($leaf['descriptor'])) {
-                continue;
+        $collected_descriptors = [];
+        foreach ($to_attach as $token => $candidate) {
+            if (! empty($attached[$token])) {
+                $collected_descriptors[$token] = $candidate;
             }
-            $leaf_descriptor = EditableDescriptor::fromArray($leaf['descriptor']);
-            if (! $leaf_descriptor->token) {
-                continue;
-            }
-            if (! $this->capabilities->canEditDescriptor($leaf_descriptor)) {
-                continue;
-            }
-            if (! $this->session_registry->addDescriptorToSession($session_id, $leaf_descriptor)) {
-                continue;
-            }
-            $collected_descriptors[$leaf_descriptor->token] = $leaf_descriptor;
         }
 
         $payload = $this->payloads->build($descriptor);

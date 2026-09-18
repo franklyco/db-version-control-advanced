@@ -1,0 +1,26 @@
+<?php
+namespace Dbvc\Connected\Adapters;
+
+use Dbvc\ConnectedProtocol\DomainObserver;
+
+/** Explicit placeholder. Replace with adapters derived from current Bricks fixtures. */
+final class UnconfiguredBricksObserver implements DomainObserver
+{
+    public function capabilities()
+    {
+        return array('report' => false, 'prepare' => false, 'apply' => false,
+            'reason' => 'bricks_storage_adapter_not_implemented');
+    }
+
+    public function inventory(array $query)
+    {
+        return array('items' => array(), 'next_cursor' => null, 'complete' => false,
+            'problems' => array('adapter_unavailable'));
+    }
+
+    public function snapshot(array $identity)
+    {
+        return array('status' => 'unavailable', 'exists' => null, 'complete' => false,
+            'reason' => 'adapter_unavailable');
+    }
+}

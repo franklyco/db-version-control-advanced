@@ -1,0 +1,15 @@
+<?php
+namespace Dbvc\Connected\Contracts;
+
+/** Outbound only. Implement auth/TLS/timeouts/limits; never call this from a save hook. */
+interface Transport
+{
+    /** Same event ID/body on retries; return per-event durable receipt outcomes. */
+    public function sendObservations(array $immutableEvents);
+
+    /** Bounded authenticated inbox for this enrollment only. */
+    public function pollInbox($cursor, $limit);
+
+    /** Called only after local durable inbox persistence; cursor is not authority. */
+    public function acknowledge(array $deliveryIds);
+}

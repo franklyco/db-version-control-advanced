@@ -1,0 +1,130 @@
+{
+  "scenario": "s5",
+  "run": "discarded-warmup",
+  "capturedAt": "18:14:32",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 15107,
+    "domContentLoaded": 16004,
+    "load": 25151
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "token": "ve_5e94489803ad",
+    "hoverToBadgeMs": 24,
+    "hoverToClickMs": 326,
+    "clickToPanelReadyMs": 1242,
+    "panelState": "ready",
+    "panelTitle": "Home",
+    "controls": 1,
+    "requests": [
+      [
+        "s/descriptors",
+        4,
+        849,
+        29249
+      ],
+      [
+        "s/descriptors",
+        18,
+        1830,
+        26471
+      ],
+      [
+        "s/descriptor/ve_5e94489803ad",
+        183,
+        1349,
+        6105
+      ]
+    ],
+    "requestCount": 3
+  },
+  "spanCount": 130,
+  "aggregate": {
+    "dbvc.ve.prefetch.pump": {
+      "count": 122,
+      "totalMs": 36.5,
+      "maxMs": 1
+    },
+    "dbvc.ve.api.getDescriptors": {
+      "count": 2,
+      "totalMs": 2685.7,
+      "maxMs": 1832
+    },
+    "dbvc.ve.descriptor_batch_request": {
+      "count": 2,
+      "totalMs": 2686.8,
+      "maxMs": 1832.1
+    },
+    "dbvc.ve.api.getDescriptor": {
+      "count": 1,
+      "totalMs": 1351.2,
+      "maxMs": 1351.2
+    },
+    "dbvc.ve.descriptor_request": {
+      "count": 1,
+      "totalMs": 1351.3,
+      "maxMs": 1351.3
+    },
+    "dbvc.ve.panel.open.marker": {
+      "count": 1,
+      "totalMs": 1221.9,
+      "maxMs": 1221.9
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 14.5,
+      "maxMs": 14.5
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 18,
+      "duration": 1832.1
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptors",
+      "startTime": 18,
+      "duration": 1832
+    },
+    {
+      "name": "dbvc.ve.descriptor_request",
+      "startTime": 183,
+      "duration": 1351.3
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptor",
+      "startTime": 183,
+      "duration": 1351.2
+    },
+    {
+      "name": "dbvc.ve.panel.open.marker",
+      "startTime": 327,
+      "duration": 1221.9
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 3,
+      "duration": 854.7
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptors",
+      "startTime": 3,
+      "duration": 853.7
+    },
+    {
+      "name": "dbvc.ve.panel.render",
+      "startTime": 1535,
+      "duration": 14.5
+    }
+  ],
+  "notes": "warmup, not counted. Protocol: fresh load, 2 s settle, clear timing, dispatch mouseover on the hero eyebrow text marker (\"Modern website design\", text family) \u2192 Edit badge appears \u2192 badge.click() 300 ms after hover \u2192 wait for panel.render + an input in the panel body \u2192 +500 ms. top[] startTimes are relative to the hover. requests = [endpoint, startMs after hover, serverWaitMs, decodedBytes]."
+}

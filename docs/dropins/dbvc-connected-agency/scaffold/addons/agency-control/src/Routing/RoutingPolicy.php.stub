@@ -1,0 +1,47 @@
+<?php
+namespace Dbvc\AgencyControl\Routing;
+
+/**
+ * Pure starter policy for VALIDATED events + TRUSTED registry snapshots.
+ * This is not authentication, request validation, SQL persistence or a REST handler.
+ */
+final class RoutingPolicy
+{
+    public static function decide(array $event, $principalEnvironment, array $registry, $verifiedExpectedOperation = false)
+    {
+        foreach (array('agency_id', 'client_id', 'recipients', 'audience') as $key) {
+            if (array_key_exists($key, $event)) { throw new \InvalidArgumentException('sender_authority_forbidden'); }
+        }
+        $envs = $registry['environments'];
+        $source = isset($envs[$principalEnvironment]) ? $envs[$principalEnvironment] : null;
+        if (! $source || ! $source['enabled'] || $source['revoked'] ||
+            $event['environment_id'] !== $principalEnvironment ||
+            $event['installation_epoch'] !== $source['epoch']) {
+            throw new \InvalidArgumentException('enrollment_mismatch');
+        }
+        $object = $event['object'];
+        $targets = array();
+        foreach ($registry['client_subscriptions'] as $sub) {
+            $target = isset($envs[$sub['target']]) ? $envs[$sub['target']] : null;
+            if ($sub['enabled'] && $sub['source'] === $principalEnvironment && $target &&
+                $target['enabled'] && ! $target['revoked'] && $sub['target'] !== $principalEnvironment &&
+                $target['agency'] === $source['agency'] && $target['client'] === $source['client'] &&
+                in_array($object['domain'], $sub['domains'], true)) {
+                $targets[] = $sub['target']; // Online state intentionally does not suppress a delivery.
+            }
+        }
+        $review = array();
+        if (! $verifiedExpectedOperation) {
+            foreach ($registry['framework_subscriptions'] as $sub) {
+                if ($sub['enabled'] && $sub['agency'] === $source['agency'] &&
+                    $sub['client'] === $source['client'] && $sub['environment'] === $principalEnvironment &&
+                    $sub['domain'] === $object['domain'] && $sub['instance_uid'] === $object['instance_uid']) {
+                    $review[] = $sub['definition_uid'];
+                }
+            }
+        }
+        $targets = array_values(array_unique($targets)); sort($targets, SORT_STRING);
+        $review = array_values(array_unique($review)); sort($review, SORT_STRING);
+        return array('client_targets' => $targets, 'framework_review' => $review);
+    }
+}

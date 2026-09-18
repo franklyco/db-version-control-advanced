@@ -1,0 +1,138 @@
+{
+  "scenario": "s6",
+  "run": "discarded-warmup",
+  "capturedAt": "18:21:44",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 14182,
+    "domContentLoaded": 14842,
+    "load": 22545
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "publicId": "vertical:palette_vertical_global_palette",
+    "clickToGridReadyMs": 14814,
+    "cells": 19,
+    "panelState": "locked",
+    "panelTitle": "Site Settings",
+    "requests": [
+      [
+        "s/control-center/open",
+        22,
+        13966,
+        57982
+      ],
+      [
+        "s/touch",
+        14051,
+        727,
+        92
+      ],
+      [
+        "s/descriptors",
+        14191,
+        727,
+        29249
+      ]
+    ],
+    "requestCount": 3
+  },
+  "spanCount": 78,
+  "aggregate": {
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 38.4,
+      "maxMs": 21.3
+    },
+    "dbvc.ve.drawer.open_row": {
+      "count": 1,
+      "totalMs": 14036.9,
+      "maxMs": 14036.9
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 2,
+      "totalMs": 0.2,
+      "maxMs": 0.1
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 1,
+      "totalMs": 0.3,
+      "maxMs": 0.3
+    },
+    "dbvc.ve.panel.open.toolbar": {
+      "count": 1,
+      "totalMs": 772.3,
+      "maxMs": 772.3
+    },
+    "dbvc.ve.api.touchSession": {
+      "count": 1,
+      "totalMs": 730,
+      "maxMs": 730
+    },
+    "dbvc.ve.prefetch.pump": {
+      "count": 67,
+      "totalMs": 18,
+      "maxMs": 0.8
+    },
+    "dbvc.ve.api.getDescriptors": {
+      "count": 1,
+      "totalMs": 730.7,
+      "maxMs": 730.7
+    },
+    "dbvc.ve.descriptor_batch_request": {
+      "count": 1,
+      "totalMs": 731,
+      "maxMs": 731
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 1.4,
+      "maxMs": 1.4
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.open_row",
+      "startTime": 22,
+      "duration": 14036.9
+    },
+    {
+      "name": "dbvc.ve.panel.open.toolbar",
+      "startTime": 14011,
+      "duration": 772.3
+    },
+    {
+      "name": "dbvc.ve.descriptor_batch_request",
+      "startTime": 14191,
+      "duration": 731
+    },
+    {
+      "name": "dbvc.ve.api.getDescriptors",
+      "startTime": 14191,
+      "duration": 730.7
+    },
+    {
+      "name": "dbvc.ve.api.touchSession",
+      "startTime": 14051,
+      "duration": 730
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 1,
+      "duration": 21.3
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 13992,
+      "duration": 17.1
+    }
+  ],
+  "notes": "warmup, not counted. Protocol: S3 steady state (drawer open via toggle event, all groups expanded), palette parent row (vertical:palette_vertical_global_palette, 19 leaves) scrolled into view and its value-summary batch allowed to finish, then clear timing \u2192 row Open button .click() \u2192 wait for the panel with 19 palette cells + hex labels and panel.render \u2192 +500 ms. top[] startTimes relative to the click. requests = [endpoint, startMs, serverWaitMs, decodedBytes]."
+}

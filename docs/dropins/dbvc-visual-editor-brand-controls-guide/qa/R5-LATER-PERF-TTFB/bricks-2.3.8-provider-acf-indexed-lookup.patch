@@ -1,0 +1,83 @@
+--- a/includes/integrations/dynamic-data/providers/provider-acf.php
++++ b/includes/integrations/dynamic-data/providers/provider-acf.php
+@@ -32,6 +32,37 @@
+ 		}
+ 
+ 		return class_exists( 'ACF' );
++	}
++
++	/**
++	 * Sub-field key => [ tag name => true ] and tag name => first-insertion
++	 * position. Lets get_nested_parent_group_field_data() find the parent group's
++	 * tag without scanning every registered tag for every nested sub-field.
++	 */
++	private $sub_field_index = [];
++	private $tag_position    = [];
++	private $next_position   = 0;
++
++	private function index_tag( $name, $tag ) {
++		if ( ! isset( $this->tag_position[ $name ] ) ) {
++			$this->tag_position[ $name ] = $this->next_position++;
++		}
++
++		foreach ( $tag['field']['sub_fields'] ?? [] as $sub_field ) {
++			if ( isset( $sub_field['key'] ) ) {
++				$this->sub_field_index[ $sub_field['key'] ][ $name ] = true;
++			}
++		}
++	}
++
++	private function tag_has_sub_field_key( $tag, $key ) {
++		foreach ( $tag['field']['sub_fields'] ?? [] as $sub_field ) {
++			if ( ( $sub_field['key'] ?? null ) === $key ) {
++				return true;
++			}
++		}
++
++		return false;
+ 	}
+ 
+ 	public function register_tags() {
+@@ -77,19 +108,14 @@
+ 
+ 		$found_tag = false;
+ 
+-		// Find from the tags that subfields has key same as $field_key
+-		foreach ( $this->tags as $tag ) {
+-			$sub_fields = $tag['field']['sub_fields'] ?? false;
+-
+-			if ( ! $sub_fields ) {
+-				continue;
+-			}
++		// Find the first tag (array order) whose current sub-fields carry $field_key
++		// via the index instead of scanning every registered tag (O(tags × sub-fields)).
++		$best_position = PHP_INT_MAX;
+ 
+-			foreach ( $sub_fields as $sub_field ) {
+-				if ( $sub_field['key'] === $field_key ) {
+-					$found_tag = $tag;
+-					break 2; // Break out of both loops since the tag is found
+-				}
++		foreach ( $this->sub_field_index[ $field_key ] ?? [] as $tag_name => $_ ) {
++			if ( $this->tag_position[ $tag_name ] < $best_position && isset( $this->tags[ $tag_name ] ) && $this->tag_has_sub_field_key( $this->tags[ $tag_name ], $field_key ) ) {
++				$best_position = $this->tag_position[ $tag_name ];
++				$found_tag     = $this->tags[ $tag_name ];
+ 			}
+ 		}
+ 
+@@ -218,6 +244,7 @@
+ 				// Register the group field tag as deprecated to be used in case groups are nested inside a repeater (@since 1.5.1)
+ 				if ( $type === 'group' ) {
+ 					$this->tags[ $name ]               = $tag;
++					$this->index_tag( $name, $this->tags[ $name ] );
+ 					$this->tags[ $name ]['deprecated'] = 1;
+ 				} else {
+ 					$this->loop_tags[ $name ] = $tag;
+@@ -245,6 +272,7 @@
+ 			// Only register fields from other contexts, other than CONTEXT_TEXT, if they are not sub-fields (legacy purposes)
+ 			elseif ( $context === self::CONTEXT_TEXT || empty( $parent_field ) ) {
+ 				$this->tags[ $name ] = $tag;
++				$this->index_tag( $name, $this->tags[ $name ] );
+ 
+ 				if ( $context !== self::CONTEXT_TEXT ) {
+ 					$this->tags[ $name ]['deprecated'] = 1;

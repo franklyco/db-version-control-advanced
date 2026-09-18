@@ -478,6 +478,13 @@ final class AssetLoader
                     'preferencesAppearanceDark' => __('Dark', 'dbvc'),
                     'preferencesAppearanceHint' => __('System follows your operating system setting. Applies to Visual Editor surfaces only.', 'dbvc'),
                     'preferencesAnnounceScheme' => __('Appearance set to {scheme}.', 'dbvc'),
+                    // VE-prefs-2: Site Manager startup preference (rendered only with the workspace flag on).
+                    'preferencesWorkspaceLabel' => __('Site Manager on page load', 'dbvc'),
+                    'preferencesWorkspaceRemember' => __('Remember', 'dbvc'),
+                    'preferencesWorkspaceOpen' => __('Always open', 'dbvc'),
+                    'preferencesWorkspaceClosed' => __('Always closed', 'dbvc'),
+                    'preferencesWorkspaceHint' => __('Remember restores the Site Manager the way you last left it; Always open and Always closed override that on every page load.', 'dbvc'),
+                    'preferencesAnnounceWorkspace' => __('Site Manager on page load set to {value}.', 'dbvc'),
                     // R6-D-1: Site Manager Workspace drawer strings (contract §10;
                     // copy accepted from the R6-C mockup, D-074).
                     'toolbarWorkspace' => __('Site Manager', 'dbvc'),

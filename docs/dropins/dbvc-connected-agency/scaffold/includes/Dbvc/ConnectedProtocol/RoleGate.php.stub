@@ -1,0 +1,15 @@
+<?php
+namespace Dbvc\ConnectedProtocol;
+
+/** Pure gate decision. Host integration supplies trusted settings/readiness. */
+final class RoleGate
+{
+    public static function state($enabled, $killed, $schemaReady, $supportedRuntime)
+    {
+        if ($killed) { return 'emergency_disabled'; }
+        if (! $enabled) { return 'disabled'; }
+        if (! $supportedRuntime) { return 'unsupported_runtime'; }
+        if (! $schemaReady) { return 'migration_required'; }
+        return 'ready';
+    }
+}

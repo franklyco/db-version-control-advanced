@@ -1,0 +1,25 @@
+{
+  "class-observation.json": {
+    "client_targets": [
+      "a-local",
+      "a-stage"
+    ],
+    "framework_review": [
+      "framework-button"
+    ]
+  },
+  "service-observation.json": {
+    "client_targets": [
+      "a-local",
+      "a-stage"
+    ],
+    "framework_review": []
+  },
+  "variable-observation.json": {
+    "client_targets": [
+      "a-local",
+      "a-stage"
+    ],
+    "framework_review": []
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "scenario": "s6-perf-c",
+  "run": "discarded-warmup",
+  "capturedAt": "21:11:30",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": false,
+  "navigation": {
+    "ttfb": 15804,
+    "domContentLoaded": 17036,
+    "load": 25533
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "extra": {
+    "ready": true,
+    "publicId": "vertical:palette_vertical_global_palette",
+    "clickToGridReadyMs": 4857,
+    "cells": 19,
+    "panelState": "locked",
+    "requests": [
+      [
+        "s/control-center/open",
+        20,
+        4556,
+        57982
+      ]
+    ],
+    "requestCount": 1
+  },
+  "spanCount": 38,
+  "aggregate": {
+    "dbvc.ve.drawer.render_list": {
+      "count": 2,
+      "totalMs": 37.4,
+      "maxMs": 18.8
+    },
+    "dbvc.ve.drawer.open_row": {
+      "count": 1,
+      "totalMs": 4646.9,
+      "maxMs": 4646.9
+    },
+    "dbvc.ve.drawer.value_summary.io_trigger": {
+      "count": 2,
+      "totalMs": 0,
+      "maxMs": 0
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 1,
+      "totalMs": 0.3,
+      "maxMs": 0.3
+    },
+    "dbvc.ve.panel.open.toolbar": {
+      "count": 1,
+      "totalMs": 55,
+      "maxMs": 55
+    },
+    "dbvc.ve.panel.render": {
+      "count": 1,
+      "totalMs": 2.8,
+      "maxMs": 2.8
+    },
+    "dbvc.ve.prefetch.pump": {
+      "count": 30,
+      "totalMs": 8.4,
+      "maxMs": 1
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.drawer.open_row",
+      "startTime": 20,
+      "duration": 4646.9
+    },
+    {
+      "name": "dbvc.ve.panel.open.toolbar",
+      "startTime": 4604,
+      "duration": 55
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 4584,
+      "duration": 18.8
+    },
+    {
+      "name": "dbvc.ve.drawer.render_list",
+      "startTime": 1,
+      "duration": 18.6
+    }
+  ],
+  "notes": "warmup after the perf-c code change (opcache recompile), not counted. Same protocol as s6/discarded-warmup."
+}

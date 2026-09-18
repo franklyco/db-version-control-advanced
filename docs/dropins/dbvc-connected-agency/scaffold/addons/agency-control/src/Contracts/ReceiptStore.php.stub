@@ -1,0 +1,17 @@
+<?php
+namespace Dbvc\AgencyControl\Contracts;
+
+interface ReceiptStore
+{
+    /**
+     * Atomic scoped event/sequence uniqueness + digest binding. Persist routing intent
+     * before ACK. Return duplicate only for same scoped ID and identical payload.
+     */
+    public function accept(array $trustedEnrollment, array $validatedEvent, $requestDigest);
+
+    /** Per-object/profile sequence guard, not only the source's highest sequence. */
+    public function updateProjection(array $receipt, array $projection);
+
+    /** Pending deliveries survive offline targets. Recheck authorization on retrieval. */
+    public function createDeliveries(array $receipt, array $authorizedTargets, $policyRevision);
+}

@@ -1,0 +1,109 @@
+{
+  "scenario": "s2",
+  "run": "discarded-hidden-tab",
+  "capturedAt": "04:58:35",
+  "viewport": {
+    "w": 1280,
+    "h": 720,
+    "dpr": 2
+  },
+  "hidden": true,
+  "navigation": {
+    "ttfb": 15141,
+    "domContentLoaded": 16164,
+    "load": 24526
+  },
+  "markers": 681,
+  "workspaceOpen": false,
+  "spanCount": 16,
+  "aggregate": {
+    "dbvc.ve.overlay_boot": {
+      "count": 1,
+      "totalMs": 2320.6,
+      "maxMs": 2320.6
+    },
+    "dbvc.ve.markers.scan": {
+      "count": 5,
+      "totalMs": 13.4,
+      "maxMs": 7.3
+    },
+    "dbvc.ve.api.getSession": {
+      "count": 1,
+      "totalMs": 1029.3,
+      "maxMs": 1029.3
+    },
+    "dbvc.ve.session.public_map_request": {
+      "count": 1,
+      "totalMs": 1029.4,
+      "maxMs": 1029.4
+    },
+    "dbvc.ve.session.public_map_sync": {
+      "count": 1,
+      "totalMs": 0.2,
+      "maxMs": 0.2
+    },
+    "dbvc.ve.markers.recover_query_collections": {
+      "count": 4,
+      "totalMs": 80.6,
+      "maxMs": 70.2
+    },
+    "dbvc.ve.prefetch.setup": {
+      "count": 1,
+      "totalMs": 3.1,
+      "maxMs": 3.1
+    },
+    "dbvc.ve.markers.mount": {
+      "count": 1,
+      "totalMs": 51,
+      "maxMs": 51
+    },
+    "dbvc.ve.badges.query_collection_mount": {
+      "count": 1,
+      "totalMs": 1201,
+      "maxMs": 1201
+    }
+  },
+  "topSpans": [
+    {
+      "name": "dbvc.ve.overlay_boot",
+      "startTime": 16089,
+      "duration": 2320.6
+    },
+    {
+      "name": "dbvc.ve.badges.query_collection_mount",
+      "startTime": 17208,
+      "duration": 1201
+    },
+    {
+      "name": "dbvc.ve.session.public_map_request",
+      "startTime": 16121,
+      "duration": 1029.4
+    },
+    {
+      "name": "dbvc.ve.api.getSession",
+      "startTime": 16121,
+      "duration": 1029.3
+    },
+    {
+      "name": "dbvc.ve.markers.recover_query_collections",
+      "startTime": 21452,
+      "duration": 70.2
+    },
+    {
+      "name": "dbvc.ve.markers.mount",
+      "startTime": 17157,
+      "duration": 51
+    },
+    {
+      "name": "dbvc.ve.markers.scan",
+      "startTime": 20395,
+      "duration": 7.3
+    },
+    {
+      "name": "dbvc.ve.markers.recover_query_collections",
+      "startTime": 19388,
+      "duration": 6.9
+    }
+  ],
+  "notes": "DISCARDED: document.hidden was true during this load (tab backgrounded) \u2014 badges.query_collection_mount 1201 ms vs ~50 ms foregrounded, markers.mount 51 vs ~5 ms: the E-123 throttling effect, recorded as evidence"
+}
